@@ -641,6 +641,8 @@ private func chatListFilterEntries(state: State, includePeers: [Peer], excludePe
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_include(peer.id), equatable: InputDataEquatable(E(viewType: viewType, peer: SidebarPeerEquatable(peer))), comparable: nil, item: { initialSize, stableId in
                     return arguments.environment.makePeerRow(initialSize, peer: peer, stableId: stableId, viewType: viewType, action: {
                         arguments.openInfo(peer.id)
+                    }, remove: {
+                        arguments.removeIncluded(peer.id)
                     }, contextMenuItems: {
                         return .single([ContextMenuItem(strings().chatListFilterIncludeRemoveChat, handler: {
                             arguments.removeIncluded(peer.id)
@@ -715,6 +717,8 @@ private func chatListFilterEntries(state: State, includePeers: [Peer], excludePe
                     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_exclude(peer.id), equatable: InputDataEquatable(E(viewType: viewType, peer: SidebarPeerEquatable(peer))), comparable: nil, item: { initialSize, stableId in
                         return arguments.environment.makePeerRow(initialSize, peer: peer, stableId: stableId, viewType: viewType, action: {
                             arguments.openInfo(peer.id)
+                        }, remove: {
+                            arguments.removeExcluded(peer.id)
                         }, contextMenuItems: {
                             return .single([ContextMenuItem.init(strings().chatListFilterExcludeRemoveChat, handler: {
                                 arguments.removeExcluded(peer.id)
