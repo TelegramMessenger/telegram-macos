@@ -1067,6 +1067,9 @@ public class ChatRowItem: TableRowItem {
             if message.containsSecretMedia {
                 return false
             }
+            if let peer = message.peers[message.id.peerId], !canSendReactionsToPeer(EnginePeer(peer)) {
+                return false
+            }
             if let media = message.extendedMedia, let _ = media as? TelegramMediaAction {
                 return message.flags.contains(.ReactionsArePossible)
             }
