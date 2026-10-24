@@ -19,6 +19,9 @@ import FoundationUtils
 import ChatHistoryModel
 
 public final class StarsSendActionView : Control {
+    private static let horizontalInset: CGFloat = 8
+    private static let contentSpacing: CGFloat = 4
+
     public let text: TextView = TextView()
     public let image: ImageView = ImageView()
 
@@ -53,16 +56,17 @@ public final class StarsSendActionView : Control {
         image.sizeToFit()
 
 
-        setFrameSize(NSMakeSize(text.frame.width + 12 + image.frame.width, 24))
+        let contentWidth = image.frame.width + Self.contentSpacing + text.frame.width
+        setFrameSize(NSMakeSize(max(ChatInputSendButton.fieldSize.width, contentWidth + Self.horizontalInset * 2), ChatInputSendButton.fieldSize.height))
 
         layer?.cornerRadius = frame.height / 2
     }
 
     public override func layout() {
         super.layout()
-        image.centerY(x: 5)
-
-        text.centerY(x: image.frame.maxX + 2)
+        let contentWidth = image.frame.width + Self.contentSpacing + text.frame.width
+        image.centerY(x: floorToScreenPixels(backingScaleFactor, (frame.width - contentWidth) / 2))
+        text.centerY(x: image.frame.maxX + Self.contentSpacing)
     }
 }
 

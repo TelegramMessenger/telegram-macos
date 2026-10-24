@@ -300,7 +300,7 @@ public final class ChatInputContainerView: FlippableView {
 
     private func sendSlot(gap: CGFloat) -> (outside: CGFloat, inField: CGFloat) {
         if sendButton.isInField {
-            return (0, ChatInputSendButton.fieldInset + ChatInputSendButton.fieldSize.width + ChatInputSendButton.fieldTextGap)
+            return (0, ChatInputSendButton.fieldInset + sendButton.desiredSize.width + ChatInputSendButton.fieldTextGap)
         }
         return (gap + sendButton.desiredSize.width, 0)
     }
@@ -399,7 +399,7 @@ public final class ChatInputContainerView: FlippableView {
         let sendFrame: NSRect
         let voiceGhostFrame: NSRect
         if sendButton.isInField {
-            let capsule = ChatInputSendButton.fieldSize
+            let capsule = NSMakeSize(sendWidth, ChatInputSendButton.fieldSize.height)
             sendFrame = NSMakeRect(textFieldFrame.maxX - ChatInputSendButton.fieldInset - sendWidth, inputBarBottom, sendWidth, sendSize.height)
             voiceGhostFrame = NSRect(x: sendFrame.midX - capsule.width / 2, y: sendFrame.midY - capsule.height / 2, width: capsule.width, height: capsule.height)
         } else {
@@ -518,7 +518,7 @@ public final class ChatInputContainerView: FlippableView {
                 isNew = true
             }
             let bs = current.frame.size
-            let sendColumnMidX = containerWidth - ChatInputSendButton.fieldInset - ChatInputSendButton.fieldSize.width / 2
+            let sendColumnMidX = containerWidth - ChatInputSendButton.fieldInset - sendWidth / 2
             let frame = NSMakeRect(sendColumnMidX - bs.width / 2, accessoryHeight + 8, bs.width, bs.height)
             if isNew {
                 current.frame = frame
