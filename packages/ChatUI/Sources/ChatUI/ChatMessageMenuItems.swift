@@ -299,6 +299,18 @@ public func chatMenuItemsData(for message: Message, textLayout: (TextViewLayout?
     }
 }
 
+private func copyImageToPasteboard(path: String) -> Bool {
+    guard let path = copyToTemp(path: path, ext: "jpg") else {
+        return false
+    }
+    let url = NSURL(fileURLWithPath: path)
+    let image = NSImage(contentsOf: url as URL)
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.writeObjects([url, image].compactMap { $0 })
+    return true
+}
+
 private func copyRichTextMessage(_ message: Message, text: String, page: InstantPage, isTranslated: Bool) {
     copyToClipboard(text)
     guard !isTranslated else {
@@ -387,10 +399,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     }, itemImage: MenuAnimation.menu_copy.value))
                 } else if data.image != nil, let resourceData = data.resourceData, resourceData.complete {
                     items.append(ContextMenuItem(strings().chatContextCopyMedia, handler: {
-                        if let path = link(path: resourceData.path, ext: "jpg") {
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.clearContents()
-                            pasteboard.writeObjects([NSURL(fileURLWithPath: path)])
+                        if copyImageToPasteboard(path: resourceData.path) {
                             showModalText(for: context.window, text: strings().contextAlertCopied)
                         }
                     }, itemImage: MenuAnimation.menu_copy_media.value, keyEquivalent: .cmdc))
@@ -1428,10 +1437,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 if resourceData.complete {
                     let text = strings().chatContextCopyMedia
                     thirdBlock.append(ContextMenuItem(text, handler: {
-                        if let path = link(path: resourceData.path, ext: "jpg") {
-                            let pb = NSPasteboard.general
-                            pb.clearContents()
-                            pb.writeObjects([NSURL(fileURLWithPath: path)])
+                        if copyImageToPasteboard(path: resourceData.path) {
                             showModalText(for: context.window, text: strings().contextAlertCopied)
                         }
                     }, itemImage: MenuAnimation.menu_copy_media.value, keyEquivalent: .cmdc))
