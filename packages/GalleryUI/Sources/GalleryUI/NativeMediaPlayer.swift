@@ -97,7 +97,7 @@ public final class NativeMediaPlayer : View, UniversalVideoContentView {
     
     public override func layout() {
         super.layout()
-        self.updateLayout(size: self.frame.size, transition: .immediate)
+        self.updateLayout(size: self.bounds.size, transition: .immediate)
     }
     
     public func play() {

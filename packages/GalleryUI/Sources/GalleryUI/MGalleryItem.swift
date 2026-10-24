@@ -560,6 +560,16 @@ public class MGalleryItem: NSObject, Comparable, Identifiable {
         return pagerSize
     }
     
+    func rotatedSize(_ size: NSSize) -> NSSize {
+        let swapped = NSMakeSize(size.height, size.width)
+        let fillsContainer = size.width >= pagerSize.width - 1 || size.height >= pagerSize.height - 1
+        return fillsContainer ? swapped.aspectFitted(pagerSize) : swapped.fitted(pagerSize)
+    }
+
+    func rotatedContentSize(for orientation: ImageOrientation?) -> NSSize {
+        return orientation?.isQuarterTurn == true ? rotatedSize(sizeValue) : sizeValue
+    }
+
     public var minMagnify:CGFloat {
         return 0.25
     }
@@ -755,5 +765,21 @@ public class MGalleryItem: NSObject, Comparable, Identifiable {
     
 }
 
+extension ImageOrientation {
+    var isQuarterTurn: Bool {
+        return self == .right || self == .left
+    }
 
-
+    var viewRotationDegrees: CGFloat {
+        switch self {
+        case .right:
+            return -90
+        case .down:
+            return 180
+        case .left:
+            return 90
+        default:
+            return 0
+        }
+    }
+}

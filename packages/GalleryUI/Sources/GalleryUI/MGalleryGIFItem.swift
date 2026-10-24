@@ -22,9 +22,41 @@ import InAppSettings
 import FoundationUtils
 import ObjcUtils
 
+final class MGalleryGIFContainerView: View {
+    let player = MediaPlayerView(backgroundThread: true)
+
+    var rotation: ImageOrientation? {
+        didSet {
+            if oldValue != rotation {
+                needsLayout = true
+            }
+        }
+    }
+
+    required init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        player.layerContentsRedrawPolicy = .duringViewResize
+        autoresizesSubviews = false
+        addSubview(player)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let playerSize = rotation?.isQuarterTurn == true ? NSMakeSize(bounds.height, bounds.width) : bounds.size
+        player.frameCenterRotation = 0
+        player.frame = NSMakeRect(floor((bounds.width - playerSize.width) / 2), floor((bounds.height - playerSize.height) / 2), playerSize.width, playerSize.height)
+        player.frameCenterRotation = rotation?.viewRotationDegrees ?? 0
+    }
+}
+
 public class MGalleryGIFItem: MGalleryItem {
 
     private var mediaPlayer: MediaPlayer!
+    private let rotateDisposable = MetaDisposable()
     
     public override init(_ context: any AccountContextProtocol, _ entry: GalleryEntry, _ pagerSize: NSSize) {
         super.init(context, entry, pagerSize)
@@ -44,8 +76,21 @@ public class MGalleryGIFItem: MGalleryItem {
 
         
         disposable.set(view.get().start(next: { [weak self] view in
-            if let view = (view as? MediaPlayerView) {
-                self?.mediaPlayer.attachPlayerView(view)
+            if let view = (view as? MGalleryGIFContainerView) {
+                self?.mediaPlayer.attachPlayerView(view.player)
+            }
+        }))
+
+        rotateDisposable.set((combineLatest(rotate.get(), self.view.get()) |> deliverOnMainQueue).start(next: { [weak self] orientation, view in
+            guard let self, let container = view as? MGalleryGIFContainerView else {
+                return
+            }
+            if orientation != nil {
+                container.layer?.contents = nil
+            }
+            container.rotation = orientation
+            if let magnify = container.superview?.superview as? MagnifyView {
+                magnify.contentSize = self.rotatedContentSize(for: orientation)
             }
         }))
         
@@ -106,9 +151,7 @@ public class MGalleryGIFItem: MGalleryItem {
 //    }
 
     public override func singleView() -> NSView {
-        let player = MediaPlayerView(backgroundThread: true)
-        player.layerContentsRedrawPolicy = .duringViewResize
-        return player
+        return MGalleryGIFContainerView(frame: NSZeroRect)
     }
     
     public override var sizeValue: NSSize {
@@ -172,8 +215,7 @@ public class MGalleryGIFItem: MGalleryItem {
     
  
     deinit {
-        var bp:Int = 0
-        bp += 1
+        rotateDisposable.dispose()
     }
     
     public override func fetch() -> Void {
