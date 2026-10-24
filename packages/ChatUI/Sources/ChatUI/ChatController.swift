@@ -9132,18 +9132,16 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 messageIdsWithReactions.append(message.id)
                             }
                             if message.id.namespace == Namespaces.Message.Cloud {
-                                if message.author?.id != strongSelf.context.peerId, message.effectivelyIncoming(strongSelf.context.peerId) {
-                                    if !message.text.isEmpty {
-                                        messagesToTranslate.append(message)
-                                    } else if let _ = message.media.first as? TelegramMediaPoll {
-                                        messagesToTranslate.append(message)
-                                    } else if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
-                                        messagesToTranslate.append(message)
-                                    }
-                                    if let media = message.media.first as? TelegramMediaFile, media.isVoice || media.isInstantVideo {
-                                        if case .revealed(true) = state.transribe[message.id] {
-                                            messagesToTranslateTranscribe.append(message)
-                                        }
+                                if !message.text.isEmpty {
+                                    messagesToTranslate.append(message)
+                                } else if let _ = message.media.first as? TelegramMediaPoll {
+                                    messagesToTranslate.append(message)
+                                } else if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
+                                    messagesToTranslate.append(message)
+                                }
+                                if let media = message.media.first as? TelegramMediaFile, media.isVoice || media.isInstantVideo {
+                                    if case .revealed(true) = state.transribe[message.id] {
+                                        messagesToTranslateTranscribe.append(message)
                                     }
                                 }
                                 if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
@@ -9208,7 +9206,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     strongSelf.updateMaxVisibleReadIncomingMessageIndex(MessageIndex(message))
                 }
                 
-                if let pinned = strongSelf.chatInteraction.presentation.pinnedMessageId, let message = pinned.message, !message.text.isEmpty, message.author?.id != strongSelf.context.peerId {
+                if let pinned = strongSelf.chatInteraction.presentation.pinnedMessageId, let message = pinned.message, !message.text.isEmpty {
                     messagesToTranslate.append(message)
                 }
                 

@@ -1228,18 +1228,15 @@ public func messageEntries(_ messagesEntries: [MessageHistoryEntry], location: C
         
         var messageTranslate: ChatLiveTranslateContext.State.Result?
         var replyTranslate: ChatLiveTranslateContext.State.Result?
-        let canDisplayTranslation = accountPeerId.flatMap { message.effectivelyIncoming($0) } ?? true
         if let translate = translate, let translateTo = translateTo {
-            if canDisplayTranslation {
-                messageTranslate = translate.result[.Key(id: message.id, toLang: translateTo)]
-            }
+            messageTranslate = translate.result[.Key(id: message.id, toLang: translateTo)]
             if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
                 replyTranslate = translate.result[.init(id: replyMessage.id, toLang: translateTo)]
             } else {
                 replyTranslate = nil
             }
             if translateCanTranslate, translateTranslate {
-                if canDisplayTranslation, let _ = message.translationAttribute(toLang: translateTo) {
+                if let _ = message.translationAttribute(toLang: translateTo) {
                     messageTranslate = .complete(toLang: translateTo)
                 }
                 if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
