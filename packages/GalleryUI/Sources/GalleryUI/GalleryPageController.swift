@@ -785,10 +785,15 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
         return controller.selectedIndex > 0
     }
     
+    public var boundaryReached: ((Bool) -> Void)?
+
     public func next() {
         if !lockedTransition, !controller.arrangedObjects.isEmpty {
             if let item = self.selectedItem as? MGalleryVideoItem, item.isFullscreen {
                 return
+            }
+            if controller.selectedIndex >= controller.arrangedObjects.count - 1 {
+                boundaryReached?(false)
             }
             let item = self.item(at: min(controller.selectedIndex + 1, controller.arrangedObjects.count - 1))
             item.request()
@@ -803,6 +808,9 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
         if !lockedTransition, !controller.arrangedObjects.isEmpty {
             if let item = self.selectedItem as? MGalleryVideoItem, item.isFullscreen {
                 return
+            }
+            if controller.selectedIndex <= 0 {
+                boundaryReached?(true)
             }
             let item = self.item(at: max(controller.selectedIndex - 1, 0))
             item.request()
