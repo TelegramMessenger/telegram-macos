@@ -1480,7 +1480,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         
                         menu.addItem(ContextSeparatorItem())
                         
-                        let canEditTag = (peer.id == context.peerId && channel.hasPermission(.editRank)) || channel.hasPermission(.manageRanks)
+                        let canEditTag = !channel.isChannel && ((peer.id == context.peerId && channel.hasPermission(.editRank)) || channel.hasPermission(.manageRanks))
                         let authorId = peer.id
                         let peerId = channel.id
 

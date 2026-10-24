@@ -31,6 +31,7 @@ open class GeneralInteractedRowItem: GeneralRowItem {
     public let name:String
     public let nameAttributed: NSAttributedString?
     public var descLayout:TextViewLayout?
+    public var balancedDescriptionLayout: Bool = false
     public var nameStyle:ControlStyle
     public let thumb:GeneralThumbAdditional?
     public let activeThumb:GeneralThumbAdditional?

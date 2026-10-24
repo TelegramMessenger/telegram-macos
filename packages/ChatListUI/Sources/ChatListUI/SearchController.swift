@@ -404,6 +404,7 @@ private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], argume
                                             peers.removeAll(where: { $0 == peerId })
                                             folderData.includePeers.setPeers(peers)
                                         } else {
+                                            folderData.excludePeers.removeAll(where: { $0 == peerId })
                                             folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
                                         }
                                         list[i] = list[i].withUpdatedData(folderData)

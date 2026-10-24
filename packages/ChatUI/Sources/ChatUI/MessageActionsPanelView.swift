@@ -145,6 +145,11 @@ public class MessageActionsPanelView: Control, Notifable {
         deleteButton.isEnabled = canDelete
         forwardButton.isEnabled = canForward
 
+        deleteButton.alphaValue = canDelete ? 1.0 : 0.3
+        deleteGhost?.alphaValue = canDelete ? 1.0 : 0.3
+        forwardButton.alphaValue = canForward ? 1.0 : 0.3
+        forwardGhost?.alphaValue = canForward ? 1.0 : 0.3
+
         // Resolve against the chat theme (stored via `updateLocalizationAndTheme`),
         // not the global app `theme` — `notify` fires this on every selection
         // change and previously clobbered any chat-theme styling already

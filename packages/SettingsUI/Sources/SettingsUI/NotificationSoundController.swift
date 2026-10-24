@@ -152,7 +152,45 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 }
 
 
-public func NotificationSoundController(context: any AccountContextProtocol) -> InputDataController {
+func uploadNotificationTone(context: any AccountContextProtocol, completion: @escaping(PeerMessageSound)->Void) {
+    filePanel(with: ["m4a"], allowMultiple: false, for: context.window, completion: { files in
+        if let files = files {
+            let settings = NotificationSoundSettings.extract(from: context.appConfiguration)
+            var signals:[Signal<NotificationSoundList.NotificationSound, UploadNotificationSoundError>] = []
+            for file in files {
+                if let data = try? Data(contentsOf: URL(fileURLWithPath: file)) {
+                    if data.count < settings.maxSize {
+                        signals.append(context.engine.peers.uploadNotificationSound(title: file.nsstring.lastPathComponent, data: data))
+                    } else {
+                        alert(for: context.window, info: strings().notificationSoundTonesSizeError(String.prettySized(with: settings.maxSize)))
+                    }
+                }
+            }
+            if !signals.isEmpty {
+                _ = showModalProgress(signal: combineLatest(signals), for: context.window).start(next: { values in
+                    if let value = values.first {
+                        completion(.cloud(fileId: value.file.fileId.id))
+                    }
+                }, error: { error in
+                    alert(for: context.window, info: strings().unknownError)
+                })
+            }
+        }
+    })
+}
+
+func playNotificationTone(context: any AccountContextProtocol, sound: PeerMessageSound, list: [NotificationSoundList.NotificationSound]?) {
+    guard sound != .default, sound != .none else {
+        return
+    }
+    _ = fileNameForNotificationSound(postbox: context.account.postbox, sound: sound, defaultSound: nil, list: list).start(next: { resource in
+        if let resource = resource {
+            SoundEffectPlay.play(postbox: context.account.postbox, path: resourcePath(context.account.postbox, resource))
+        }
+    })
+}
+
+public func NotificationSoundController(context: any AccountContextProtocol, tone: Signal<PeerMessageSound, NoError>? = nil, updateTone: ((PeerMessageSound)->Void)? = nil) -> InputDataController {
 
     let actionsDisposable = DisposableSet()
 
@@ -165,52 +203,19 @@ public func NotificationSoundController(context: any AccountContextProtocol) -> 
     }
     
     let selectTone:(PeerMessageSound)->Void = { tone in
-        if tone == .default {
-            
-        } else if tone != .none {
-            let path = fileNameForNotificationSound(postbox: context.account.postbox, sound: tone, defaultSound: nil, list: stateValue.with { $0.list })
-            
-            _ = path.start(next: { resource in
-                if let resource = resource {
-                    let path = resourcePath(context.account.postbox, resource)
-                    SoundEffectPlay.play(postbox: context.account.postbox, path: path)
-                }
-            })
-            
-        }
+        playNotificationTone(context: context, sound: tone, list: stateValue.with { $0.list })
         let wasDisabled = stateValue.with { $0.tone == .none }
         if wasDisabled != (tone == .none) {
         }
-        _ = updateInAppNotificationSettingsInteractively(accountManager: context.sharedContext.accountManager, {$0.withUpdatedTone(tone)}).start()
+        if let updateTone = updateTone {
+            updateTone(tone)
+        } else {
+            _ = updateInAppNotificationSettingsInteractively(accountManager: context.sharedContext.accountManager, {$0.withUpdatedTone(tone)}).start()
+        }
     }
 
     let arguments = Arguments(context: context, selectSound: selectTone, upload: {
-        filePanel(with: ["m4a"], allowMultiple: false, for: context.window, completion: { files in
-            if let files = files {
-                let settings = NotificationSoundSettings.extract(from: context.appConfiguration)
-                var signals:[Signal<NotificationSoundList.NotificationSound, UploadNotificationSoundError>] = []
-                for file in files {
-                    if let data = try? Data(contentsOf: URL(fileURLWithPath: file)) {
-                        if data.count < settings.maxSize {
-                            signals.append(context.engine.peers.uploadNotificationSound(title: file.nsstring.lastPathComponent, data: data))
-                        } else {
-                            alert(for: context.window, info: strings().notificationSoundTonesSizeError(String.prettySized(with: settings.maxSize)))
-                        }
-                    }
-                }
-                if !signals.isEmpty {
-                    _ = showModalProgress(signal: combineLatest(signals), for: context.window).start(next: { values in
-                        if let value = values.first {
-                            selectTone(.cloud(fileId: value.file.fileId.id))
-                        }
-                    }, error: { error in
-                        alert(for: context.window, info: strings().unknownError)
-                    })
-                }
-                
-            }
-            
-        })
+        uploadNotificationTone(context: context, completion: selectTone)
     }, removeCloudNote: { file in
         _ = showModalProgress(signal: context.engine.peers.removeNotificationSound(file: .standalone(media: file)), for: context.window).start()
     })
@@ -219,12 +224,14 @@ public func NotificationSoundController(context: any AccountContextProtocol) -> 
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
-    let dataSignal = combineLatest(queue: .mainQueue(), appNotificationSettings(accountManager: context.sharedContext.accountManager), context.engine.peers.notificationSoundList())
+    let toneSignal: Signal<PeerMessageSound, NoError> = tone ?? (appNotificationSettings(accountManager: context.sharedContext.accountManager) |> map { $0.tone })
     
-    actionsDisposable.add(dataSignal.start(next: { value, list in
+    let dataSignal = combineLatest(queue: .mainQueue(), toneSignal, context.engine.peers.notificationSoundList())
+    
+    actionsDisposable.add(dataSignal.start(next: { tone, list in
         updateState { current in
             var current = current
-            current.tone = value.tone
+            current.tone = tone
             current.list = list?.sounds.filter { value in
                 return true//value.file.mimeType.contains("m4a")
             }

@@ -324,7 +324,7 @@ public final class ChatLiveTranslateContext {
         shouldDisposable.set(should.start(next: { [weak self] state, appearance, isPremium, autoTranslate in
             self?.updateState { current in
                 var current = current
-                let to = state?.toLang ?? appearance.languageCode
+                let to = Translate.normalizeLanguageCode(state?.toLang ?? appearance.languageCode)
                 let toUpdated = current.to != to
                 current.tone = state?.tone ?? .neutral
                 if let state = state, state.fromLang != to, state.fromLang != "" {

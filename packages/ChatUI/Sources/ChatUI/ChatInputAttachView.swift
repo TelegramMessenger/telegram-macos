@@ -133,13 +133,21 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
 
     private func runAITranslate() {
         let chatInteraction = self.chatInteraction
-        let text = chatInteraction.presentation.effectiveInput.inputText
+        let presentation = chatInteraction.presentation
+        let text = presentation.effectiveInput.inputText
+        let editMessageId = presentation.interfaceState.editState?.message.id
         guard !text.isEmpty else { return }
         let context = chatInteraction.interactionContext
         let language = Translate.detectLanguage(for: text)
         let apply: (NSAttributedString, Bool) -> Void = { [weak chatInteraction] translated, send in
-            guard let chatInteraction else { return }
-            chatInteraction.updateInput(with: translated)
+            guard let chatInteraction,
+                  chatInteraction.presentation.state == .normal || chatInteraction.presentation.state == .editing,
+                  (chatInteraction.presentation.interfaceState.editState?.loadingState ?? EditStateLoading.none) == EditStateLoading.none,
+                  chatInteraction.presentation.interfaceState.editState?.message.id == editMessageId else {
+                return
+            }
+            let inputState = ChatTextInputState(attributedText: translated, selectionRange: translated.length ..< translated.length)
+            chatInteraction.update { $0.withUpdatedEffectiveInputState(inputState) }
             if send {
                 chatInteraction.sendMessage(true, nil, nil)
             }

@@ -631,8 +631,9 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                     current.centerY(x: innerInsets.left)
                 }
                 
+                let balancedOffset: CGFloat = item.balancedDescriptionLayout ? 2 : 0
                 if let descriptionView = self.descriptionView {
-                    descriptionView.setFrameOrigin(innerInsets.left + textXAdditional, containerView.frame.height - descriptionView.frame.height - 5)
+                    descriptionView.setFrameOrigin(innerInsets.left + textXAdditional, containerView.frame.height - descriptionView.frame.height - 5 - balancedOffset)
                 }
                 var nextInset = nextView.isHidden ? 0 : nextView.frame.width + 6
                 
@@ -647,7 +648,7 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 if item.descLayout == nil {
                     textRect.origin.y = innerInsets.top - 1
                 } else {
-                    textRect.origin.y = 5
+                    textRect.origin.y = 5 - balancedOffset
                 }
                 
                 nameView.setFrameOrigin(textRect.origin)

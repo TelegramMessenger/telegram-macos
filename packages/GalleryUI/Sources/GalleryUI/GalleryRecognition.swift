@@ -263,7 +263,7 @@ public final class GalleryRecognition {
                 var entities: [MessageTextEntity] = []
                 var length = 0
                 var currentText: String = ""
-                let toLang = appAppearance.languageCode
+                let toLang = Translate.normalizeLanguageCode(appAppearance.languageCode)
                 for text in text {
                     entities.append(.init(range: length ..< length + text.text.length, type: .BlockQuote(isCollapsed: false)))
                     currentText += text.text

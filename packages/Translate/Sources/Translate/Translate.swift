@@ -28,17 +28,24 @@ public struct Translate {
     }
     
     public static func find(_ code: String) -> Value? {
+        let code = normalizeLanguageCode(code)
+        return self.codes.first(where: {
+            return $0.code.contains(code)
+        })
+    }
+
+    public static func normalizeLanguageCode(_ code: String) -> String {
+        if self.codes.contains(where: { $0.code.contains(code) }) {
+            return code
+        }
         var code = code
-        if code == "pt-br" {
-            code = "pt"
+        if code.contains("-") {
+            code = code.components(separatedBy: "-").first ?? code
         }
         if code == "nb" {
             code = "no"
         }
-
-        return self.codes.first(where: {
-            return $0.code.contains(code)
-        })
+        return code
     }
     
     public static var codes: [Value] {

@@ -198,12 +198,37 @@ public enum InAppSettingsSection : Equatable {
         case message_effect
         case badge
         case show
+        case accounts
+        case new_contacts
+        case reset
         case private_chats(ChatNotificationSubSection?)
         case groups(ChatNotificationSubSection?)
         case channels(ChatNotificationSubSection?)
+        case stories(StoriesNotificationSubSection?)
+        case reactions(ReactionsNotificationSubSection?)
 
         public enum ChatNotificationSubSection : String {
+            case edit = "edit"
             case show = "show"
+            case preview = "preview"
+            case sound = "sound"
+            case add_exception = "add-exception"
+            case delete_exceptions = "delete-exceptions"
+        }
+
+        public enum StoriesNotificationSubSection : String {
+            case new = "new"
+            case important = "important"
+            case show_sender = "show-sender"
+            case sound = "sound"
+            case add_exception = "add-exception"
+            case delete_exceptions = "delete-exceptions"
+        }
+
+        public enum ReactionsNotificationSubSection : String {
+            case messages = "messages"
+            case stories = "stories"
+            case show_sender = "show-sender"
             case sound = "sound"
         }
 
@@ -223,6 +248,24 @@ public enum InAppSettingsSection : Equatable {
                 self = .badge
             case "show":
                 self = .show
+            case "accounts":
+                self = .accounts
+            case "new-contacts":
+                self = .new_contacts
+            case "reset":
+                self = .reset
+            case "stories":
+                if components.count > 2 {
+                    self = .stories(StoriesNotificationSubSection(rawValue: components[2]))
+                } else {
+                    self = .stories(nil)
+                }
+            case "reactions":
+                if components.count > 2 {
+                    self = .reactions(ReactionsNotificationSubSection(rawValue: components[2]))
+                } else {
+                    self = .reactions(nil)
+                }
             case "private-chats":
                 if components.count > 2 {
                     self = .private_chats(ChatNotificationSubSection(rawValue: components[2]))

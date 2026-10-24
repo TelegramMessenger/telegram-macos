@@ -23,5 +23,6 @@ let package = Package(
         .target(
             name: "Translate",
             dependencies: [.product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil)]),
+        .testTarget(name: "TranslateTests", dependencies: ["Translate"], path: "Tests/TranslateTests"),
     ]
 )

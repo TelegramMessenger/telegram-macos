@@ -84,5 +84,13 @@ let package = Package(
                 .product(name: "AvatarUI", package: "AvatarUI", condition: nil),
             ],
             path: "Sources/ChatHistoryModel"),
+        .testTarget(
+            name: "ChatHistoryModelTests",
+            dependencies: [
+                "ChatHistoryModel",
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "Postbox", package: "Postbox"),
+            ],
+            path: "Tests/ChatHistoryModelTests"),
     ]
 )

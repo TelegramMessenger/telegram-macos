@@ -776,6 +776,11 @@ public enum TelegramThemeImage {
     case iconSettingsLanguage
     case iconSettingsLogout
     case iconSettingsNotifications
+    case iconSettingsNotifyChannels
+    case iconSettingsNotifyGroupChats
+    case iconSettingsNotifyPrivateChats
+    case iconSettingsNotifyReactions
+    case iconSettingsNotifyStories
     case iconSettingsProfile
     case iconSettingsProxy
     case iconSettingsSecurity

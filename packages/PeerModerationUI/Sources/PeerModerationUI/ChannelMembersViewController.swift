@@ -30,6 +30,7 @@ struct ChannelMembersConfiguration {
 
 private final class ChannelMembersControllerArguments {
     let context: any AccountContextProtocol
+    let peerId: PeerId
 
     let removePeer: (PeerId) -> Void
     let addMembers:()-> Void
@@ -37,14 +38,48 @@ private final class ChannelMembersControllerArguments {
     let openInfo:(RenderedChannelParticipant)->Void
     let openMemberInfo:(Peer)->Void
     let toggleHideMembers:(Bool)-> Void
-    init(context: any AccountContextProtocol, removePeer: @escaping (PeerId) -> Void, addMembers:@escaping()->Void, inviteLink:@escaping()->Void, openInfo:@escaping(RenderedChannelParticipant)->Void, openMemberInfo:@escaping(Peer)->Void, toggleHideMembers:@escaping(Bool)-> Void) {
+    init(context: any AccountContextProtocol, peerId: PeerId, removePeer: @escaping (PeerId) -> Void, addMembers:@escaping()->Void, inviteLink:@escaping()->Void, openInfo:@escaping(RenderedChannelParticipant)->Void, openMemberInfo:@escaping(Peer)->Void, toggleHideMembers:@escaping(Bool)-> Void) {
         self.context = context
+        self.peerId = peerId
         self.removePeer = removePeer
         self.addMembers = addMembers
         self.inviteLink = inviteLink
         self.openInfo = openInfo
         self.openMemberInfo = openMemberInfo
         self.toggleHideMembers = toggleHideMembers
+    }
+
+    func profileMenuItems(for peer: Peer, beforeAction: @escaping () -> Void = {}) -> [ContextMenuItem] {
+        return [ContextMenuItem(strings().chatContextPeerOpenInfo, handler: {
+            beforeAction()
+            self.openMemberInfo(peer)
+        }, itemImage: MenuAnimation.menu_open_profile.value)]
+    }
+
+    func contextMenuItems(for participant: RenderedChannelParticipant, beforeAction: @escaping () -> Void = {}) -> Signal<[ContextMenuItem], NoError> {
+        return context.account.postbox.loadedPeerWithId(peerId)
+            |> take(1)
+            |> deliverOnMainQueue
+            |> map { peer in
+                var items: [ContextMenuItem] = []
+                let channel = peer as? TelegramChannel
+                if let channel, !channel.isChannel,
+                   channel.hasPermission(.manageRanks) || (participant.peer.id == self.context.peerId && channel.hasPermission(.editRank)) {
+                    items.append(ContextMenuItem(strings().channelMemberEditTag, handler: {
+                        beforeAction()
+                        self.openInfo(participant)
+                    }, itemImage: MenuAnimation.menu_tag_rename.value))
+                }
+                items.append(contentsOf: self.profileMenuItems(for: participant.peer._asPeer(), beforeAction: beforeAction))
+                if let channel, channel.canRemoveParticipant(participant.participant, accountId: self.context.peerId) {
+                    items.append(ContextSeparatorItem())
+                    items.append(ContextMenuItem(strings().confirmDelete, handler: {
+                        beforeAction()
+                        self.removePeer(participant.peer.id)
+                    }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+                }
+                return items
+            }
     }
 }
 
@@ -156,7 +191,7 @@ private enum ChannelMembersEntry: Identifiable, Comparable {
     
     func item(_ arguments: ChannelMembersControllerArguments, initialSize:NSSize) -> TableRowItem {
         switch self {
-        case let .peerItem(_, _, participant, editing, enabled, editable, viewType):
+        case let .peerItem(_, _, participant, editing, enabled, _, viewType):
 
             let interactionType:ShortPeerItemInteractionType
             if let editing = editing {
@@ -191,10 +226,6 @@ private enum ChannelMembersEntry: Identifiable, Comparable {
                 generalType = .context(label)
             }
 
-            // In non-edit mode, a left-click opens a context menu offering
-            // (Edit Tag / Open Info / Delete) instead of jumping straight to
-            // the participant editor. Edit Tag + Delete are gated on the
-            // existing `editable` rights check; Open Info is always shown.
             let isPlain: Bool
             if case .plain = interactionType { isPlain = true } else { isPlain = false }
             return ShortPeerRowItem(initialSize, peer: participant.peer._asPeer(), account: arguments.context.account, context: arguments.context, stableId: stableId, enabled: enabled, height:46, photoSize: NSMakeSize(32, 32), drawLastSeparator: true, inset: NSEdgeInsets(left: 20, right: 20), interactionType: interactionType, generalType: generalType, viewType: viewType, action: {
@@ -202,22 +233,7 @@ private enum ChannelMembersEntry: Identifiable, Comparable {
                     arguments.openMemberInfo(participant.peer._asPeer())
                 }
             }, contextMenuItems: {
-                var items:[ContextMenuItem] = []
-                if editable {
-                    items.append(ContextMenuItem(strings().chatContextEdit1, handler: {
-                        arguments.openInfo(participant)
-                    }, itemImage: MenuAnimation.menu_edit.value))
-                }
-                items.append(ContextMenuItem(strings().chatContextPeerOpenInfo, handler: {
-                    arguments.openMemberInfo(participant.peer._asPeer())
-                }, itemImage: MenuAnimation.menu_open_profile.value))
-                if editable {
-                    items.append(ContextSeparatorItem())
-                    items.append(ContextMenuItem(strings().confirmDelete, handler: {
-                        arguments.removePeer(participant.peer.id)
-                    }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
-                }
-                return .single(items)
+                return arguments.contextMenuItems(for: participant)
             }, menuOnAction: isPlain)
         case let .hideMembers(_, value, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().channelMembersGroupHideMembers, type: .switchable(value), viewType: viewType, action: {
@@ -301,17 +317,7 @@ private func channelMembersControllerEntries(view: PeerView, context: any Accoun
                 var index: Int32 = 0
                 for (i, participant) in contacts.sorted(by: <).enumerated() {
                     
-                    let editable:Bool
-                    switch participant.participant {
-                    case let .member(_, _, adminInfo, _, _, _):
-                        if let adminInfo = adminInfo {
-                            editable = adminInfo.canBeEditedByAccountPeer
-                        } else {
-                            editable = participant.participant.peerId != context.account.peerId
-                        }
-                    default:
-                        editable = false
-                    }
+                    let editable = peer.canRemoveParticipant(participant.participant, accountId: context.peerId)
                     
                     var deleting:ShortPeerDeleting? = nil
                     if state.editing {
@@ -341,17 +347,7 @@ private func channelMembersControllerEntries(view: PeerView, context: any Accoun
             var index: Int32 = 0
             for (i, participant) in participants.sorted(by: <).enumerated() {
                 
-                let editable:Bool
-                switch participant.participant {
-                case let .member(_, _, adminInfo, _, _, _):
-                    if let adminInfo = adminInfo {
-                        editable = adminInfo.canBeEditedByAccountPeer
-                    } else {
-                        editable = participant.participant.peerId != context.account.peerId
-                    }
-                default:
-                    editable = false
-                }
+                let editable = peer.canRemoveParticipant(participant.participant, accountId: context.peerId)
                 
                 var deleting:ShortPeerDeleting? = nil
                 if state.editing {
@@ -396,6 +392,7 @@ open class ChannelMembersViewController<Context: AccountContextProtocol>: Editab
     
     private let disposable:MetaDisposable = MetaDisposable()
     private var isChannel: Bool = true
+    private var memberActions: ChannelMembersControllerArguments?
 
     public init(_ context: Context, peerId:PeerId) {
         self.peerId = peerId
@@ -441,7 +438,7 @@ open class ChannelMembersViewController<Context: AccountContextProtocol>: Editab
         let peersPromise = Promise<[RenderedChannelParticipant]?>(nil)
         let contactsPromise = Promise<[RenderedChannelParticipant]?>(nil)
 
-        let arguments = ChannelMembersControllerArguments(context: context, removePeer: { [weak self] memberId in
+        let arguments = ChannelMembersControllerArguments(context: context, peerId: peerId, removePeer: { [weak self] memberId in
             
             updateState {
                 return $0.withUpdatedRemovingPeerId(memberId)
@@ -534,6 +531,7 @@ open class ChannelMembersViewController<Context: AccountContextProtocol>: Editab
             let signal = context.engine.peers.updateChannelMembersHidden(peerId: peerId, value: value)
             actionsDisposable.add(signal.start())
         })
+        self.memberActions = arguments
         
         let peerView = context.account.viewTracker.peerView(peerId)
 
@@ -600,21 +598,18 @@ open class ChannelMembersViewController<Context: AccountContextProtocol>: Editab
     
     private func searchChannelUsers() {
         let peerId = self.peerId
-        _ = (selectModalPeers(window: context.window, context: context, title: strings().selectPeersTitleSearchMembers, behavior: SelectChannelMembersBehavior(peerId: peerId, peerChannelMemberContextsManager: context.peerChannelMemberCategoriesContextsManager, limit: 1, settings: [])) |> deliverOnMainQueue |> map {$0.first}).start(next: { [weak self] selectedPeerId in
-            guard let selectedPeerId = selectedPeerId, let context = self?.context else { return }
-            let signal = context.engine.peers.fetchChannelParticipant(peerId: peerId, participantId: selectedPeerId)
-                |> mapToSignal { participant -> Signal<RenderedChannelParticipant?, NoError> in
-                    guard let participant = participant else { return .single(nil) }
-                    return context.account.postbox.loadedPeerWithId(selectedPeerId)
-                        |> map { peer in
-                            return RenderedChannelParticipant(participant: participant, peer: .init(peer))
-                        }
-                }
-                |> deliverOnMainQueue
-            _ = signal.start(next: { rendered in
-                if let rendered = rendered {
-                    showModal(with: ChannelParticipantController(context: context, peerId: peerId, participant: rendered), for: context.window)
-                }
+        let behavior = SelectChannelMembersBehavior(peerId: peerId, peerChannelMemberContextsManager: context.peerChannelMemberCategoriesContextsManager, limit: 1, settings: [])
+        behavior.contextMenuItems = { [weak self, weak behavior] peer, closeSearch in
+            guard let arguments = self?.memberActions else { return .single([]) }
+            if let participant = behavior?.participants[peer.id] {
+                return arguments.contextMenuItems(for: participant, beforeAction: closeSearch)
+            }
+            return .single(arguments.profileMenuItems(for: peer, beforeAction: closeSearch))
+        }
+        _ = (selectModalPeers(window: context.window, context: context, title: strings().selectPeersTitleSearchMembers, behavior: behavior) |> deliverOnMainQueue |> map {$0.first}).start(next: { [weak self] selectedPeerId in
+            guard let selectedPeerId, let arguments = self?.memberActions else { return }
+            _ = (arguments.context.account.postbox.loadedPeerWithId(selectedPeerId) |> deliverOnMainQueue).start(next: { peer in
+                arguments.openMemberInfo(peer)
             })
         })
     }

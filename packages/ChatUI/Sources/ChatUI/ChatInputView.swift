@@ -364,7 +364,8 @@ public final class ChatInputContainerView: FlippableView {
 
         // The AI (rephrase) button lives in the attach view and appears once the input has grown to 4+
         // lines; the attach view then expands into a vertical pill to hold it (glass ghost follows).
-        let showAi = chatInteraction.presentation.state == .normal
+        let showAi = (chatInteraction.presentation.state == .normal || chatInteraction.presentation.state == .editing)
+            && (chatInteraction.presentation.interfaceState.editState?.loadingState ?? EditStateLoading.none) == EditStateLoading.none
             && chatInteraction.presentation.peer?.isSecretChat != true
             && textView.numberOfLines(for: textSize.width) >= 4
 
@@ -498,7 +499,7 @@ public final class ChatInputContainerView: FlippableView {
             textView.updateLayout(size: textRect.size, textHeight: textHeight, transition: transition)
         }
 
-        let showExpand = (showAi || richDraftPreview != nil) && chatInteraction.interactionContext.appConfiguration.isRichTextEditorEnabled
+        let showExpand = ((showAi && chatInteraction.presentation.state == .normal) || richDraftPreview != nil) && chatInteraction.interactionContext.appConfiguration.isRichTextEditorEnabled
         if showExpand {
             let current: ImageButton
             var isNew = false

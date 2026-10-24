@@ -919,6 +919,18 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                         NSApp.activate(ignoringOtherApps: true)
                         window.deminiaturize(nil)
                     }
+                }, navigateToStory: { account, peerId in
+                    if let contextValue = self.accountContext(for: account.id) {
+                        closeAllModals(window: contextValue.window)
+                        contextValue.window.makeKeyAndOrderFront(nil)
+                        NSApp.activate(ignoringOtherApps: true)
+                        contextValue.window.deminiaturize(nil)
+                        StoryModalController.ShowStories(context: contextValue, isHidden: false, initialId: StoryInitialIndex(peerId: peerId, id: nil, messageId: nil, takeControl: nil), singlePeer: true)
+                    } else {
+                        sharedContext.switchToAccount(id: account.id, action: .story(peerId))
+                        NSApp.activate(ignoringOtherApps: true)
+                        window.deminiaturize(nil)
+                    }
                 }, updateCurrectController: {
                     if let contextValue = self.contextValue {
                         contextValue.context.bindings.rootNavigation().controller.updateController()

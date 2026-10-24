@@ -245,11 +245,51 @@ private func notificationSearchableItems<Context: AccountContextProtocol>(contex
         present(.push, NotificationPreferencesController(context, focusOnItemTag: itemTag))
     }
     
-    return [
+    let presentCategory: (NotificationSettingsCategory, NotificationCategoryEntryTag?, (SettingsSearchableItemPresentation, ViewController?) -> Void, Context) -> Void = { category, tag, present, context in
+        present(.push, NotificationCategorySettingsController(context: context, category: category, focusOnItemTag: tag))
+    }
+    
+    let presentReactions: (ReactionNotificationEntryTag?, (SettingsSearchableItemPresentation, ViewController?) -> Void, Context) -> Void = { tag, present, context in
+        present(.push, ReactionNotificationSettingsController(context: context, focusOnItemTag: tag))
+    }
+    
+    let categoryItems: (NotificationSettingsCategory, Int32) -> [SettingsSearchableItem<Context>] = { category, base in
+        let breadcrumbs = [strings().accountSettingsNotifications, category.title]
+        var rows: [(String, NotificationCategoryEntryTag)]
+        if case .stories = category {
+            rows = [(strings().notificationSettingsStoriesNew, .show), (strings().notificationSettingsStoriesImportant, .important), (strings().notificationSettingsCategoryShowSender, .preview)]
+        } else {
+            rows = [(strings().notificationSettingsCategoryShowNotifications, .show), (strings().notificationSettingsMessagesPreview, .preview)]
+        }
+        rows += [(strings().notificationSettingsCategorySound, .sound), (strings().notificationSettingsExceptionsAdd, .addException), (strings().notificationSettingsExceptionsDeleteAll, .deleteExceptions)]
+        var items: [SettingsSearchableItem<Context>] = [SettingsSearchableItem(id: .notifications(base), title: category.title, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsMessageNotifications], present: { context, _, present in
+            presentCategory(category, nil, present, context)
+        })]
+        for (i, row) in rows.enumerated() {
+            items.append(SettingsSearchableItem(id: .notifications(base + 1 + Int32(i)), title: row.0, alternate: [], icon: icon, breadcrumbs: breadcrumbs, present: { context, _, present in
+                presentCategory(category, row.1, present, context)
+            }))
+        }
+        return items
+    }
+    
+    let reactionRows: [(String, ReactionNotificationEntryTag)] = [(strings().notificationSettingsReactionsMessages, .messages), (strings().notificationSettingsCategoryShowSender, .showSender), (strings().notificationSettingsCategorySound, .sound)]
+    var reactionItems: [SettingsSearchableItem<Context>] = [SettingsSearchableItem(id: .notifications(70), title: strings().notificationSettingsReactions, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsMessageNotifications], present: { context, _, present in
+        presentReactions(nil, present, context)
+    })]
+    for (i, row) in reactionRows.enumerated() {
+        reactionItems.append(SettingsSearchableItem(id: .notifications(71 + Int32(i)), title: row.0, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsReactions], present: { context, _, present in
+            presentReactions(row.1, present, context)
+        }))
+    }
+    
+    let categorySearchItems = categoryItems(.privateChats, 30) + categoryItems(.groupChats, 40) + categoryItems(.channels, 50) + categoryItems(.stories, 60) + reactionItems
+    
+    return categorySearchItems + [
         SettingsSearchableItem(id: .notifications(0), title: strings().accountSettingsNotifications, alternate: synonyms(strings().settingsSearchSynonymsNotificationsTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
             presentNotificationSettings(context, present, nil)
         }),
-        SettingsSearchableItem(id: .notifications(2), title: strings().notificationSettingsMessagesPreview, alternate: synonyms(strings().settingsSearchSynonymsNotificationsMessageNotificationsPreview), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsToggleNotificationsHeader], present: { context, _, present in
+        SettingsSearchableItem(id: .notifications(2), title: strings().notificationSettingsThisDeviceShowMessageText, alternate: synonyms(strings().settingsSearchSynonymsNotificationsMessageNotificationsPreview), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsThisDeviceHeader], present: { context, _, present in
             presentNotificationSettings(context, present, .messagePreviews)
         }),
 //        SettingsSearchableItem(id: .notifications(18), title: strings().notificationSettingsIncludeGroups, alternate: synonyms(strings().settingsSearchSynonymsNotificationsBadgeIncludeMutedPublicGroups), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsBadgeHeader], present: { context, _, present in
@@ -264,7 +304,13 @@ private func notificationSearchableItems<Context: AccountContextProtocol>(contex
         SettingsSearchableItem(id: .notifications(21), title: strings().notificationSettingsContactJoined, alternate: synonyms(strings().settingsSearchSynonymsNotificationsContactJoined), icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
             presentNotificationSettings(context, present, .joinedNotifications)
         }),
-        SettingsSearchableItem(id: .notifications(22), title: strings().notificationSettingsResetNotifications, alternate: synonyms(strings().settingsSearchSynonymsNotificationsResetAllNotifications), icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
+        SettingsSearchableItem(id: .notifications(23), title: strings().notificationSettingsAllAccounts, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
+            presentNotificationSettings(context, present, .allAccounts)
+        }),
+        SettingsSearchableItem(id: .notifications(24), title: strings().notificationSettingsThisDeviceDefaultSound, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsThisDeviceHeader], present: { context, _, present in
+            presentNotificationSettings(context, present, .tone)
+        }),
+        SettingsSearchableItem(id: .notifications(22), title: strings().notificationSettingsResetAll, alternate: synonyms(strings().settingsSearchSynonymsNotificationsResetAllNotifications), icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
             presentNotificationSettings(context, present, .reset)
         })
     ]

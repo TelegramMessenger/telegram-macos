@@ -929,8 +929,8 @@ private func fullExportInfo(_ update: FullExportUpdate?) -> (overallPercent: Int
         }
         let mediaText = (p.media?.name).flatMap { $0.isEmpty ? nil : $0 } ?? exportString("WaitingMedia")
         return (overallPercent, overallLine, chatLine, chatPercent, mediaText, p.media?.progress ?? 0)
-    case .completed:
-        return (100, exportString("Completed"), "", 100, exportString("WaitingMedia"), 0)
+    case let .completed(_, failedChats):
+        return (100, exportString(failedChats.isEmpty ? "Completed" : "Failed"), "", 100, exportString("WaitingMedia"), 0)
     case .failed:
         return (0, exportString("Failed"), "", 0, exportString("WaitingMedia"), 0)
     case nil:
@@ -961,8 +961,8 @@ public final class FullExportSession {
             _ = self.lastState.swap(update)
             self.statePipe.putNext(update)
             switch update {
-            case let .completed(url):
-                self.finish(url)
+            case let .completed(url, failedChats):
+                self.finish(failedChats.isEmpty ? url : nil)
             case .failed:
                 self.finish(nil)
             default:
@@ -1048,6 +1048,10 @@ private final class FullExportHeaderView: NavigationHeaderView {
             self.text = fullExportString("ExportingTitle") + " — \(p.chatIndex)/\(p.chatCount)"
         } else if case let .progress(p)? = update {
             self.text = fullExportString("ExportingTitle") + " — " + p.stage
+        } else if case let .completed(_, failedChats)? = update {
+            self.text = exportString(failedChats.isEmpty ? "Completed" : "Failed")
+        } else if case .failed? = update {
+            self.text = exportString("Failed")
         } else {
             self.text = fullExportString("ExportingTitle")
         }
@@ -1100,11 +1104,16 @@ private func fullExportProgressEntries(update: FullExportUpdate?, context: any A
     let info = fullExportInfo(update)
 
     var currentPeer: Peer?
+    var failedChats: [FullExportChatFailure] = []
+    var resultURL: URL?
+    var failureReason: String?
     var chatStatus = ""
     var messageLine = exportString("WaitingMedia")
     var messagePercent = 0
     var prepareLine = fullExportString("Preparing")
-    if case let .progress(p)? = update {
+    switch update {
+    case let .progress(p)?:
+        failedChats = p.failedChats
         currentPeer = p.currentPeer?.peer
         if !p.stage.isEmpty {
             prepareLine = p.stage
@@ -1120,6 +1129,13 @@ private func fullExportProgressEntries(update: FullExportUpdate?, context: any A
         } else if p.processed > 0 {
             messageLine = exportString("MessagesProgressNoTotal").replacingOccurrences(of: "{done}", with: "\(p.processed)")
         }
+    case let .completed(url, failures)?:
+        resultURL = url
+        failedChats = failures
+    case let .failed(reason)?:
+        failureReason = reason
+    case nil:
+        break
     }
 
     entries.append(.sectionId(sectionId, type: .normal))
@@ -1128,7 +1144,15 @@ private func fullExportProgressEntries(update: FullExportUpdate?, context: any A
     entries.append(.desc(sectionId: sectionId, index: index, text: .plain(fullExportString("OverallHeader")), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
     index += 1
 
-    if let currentPeer = currentPeer {
+    if let failureReason = failureReason {
+        entries.append(.desc(sectionId: sectionId, index: index, text: .plain(failureReason), data: .init(color: theme.colors.redUI, viewType: .textBottomItem)))
+        index += 1
+    } else if let resultURL = resultURL {
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("_id_full_result"), data: .init(name: strings().contextShowInFinder, color: theme.colors.accent, type: .next, viewType: .singleItem, action: {
+            NSWorkspace.shared.activateFileViewerSelecting([resultURL])
+        })))
+        index += 1
+    } else if let currentPeer = currentPeer {
         let peerKey = "\(currentPeer.id.toInt64())_\(chatStatus)"
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_full_peer, equatable: InputDataEquatable(peerKey), comparable: nil, item: { initialSize, stableId in
             return ShortPeerRowItem(initialSize, peer: currentPeer, account: context.account, context: context, stableId: stableId, height: 46, photoSize: NSMakeSize(32, 32), status: chatStatus, inset: NSEdgeInsets(left: 20, right: 20), viewType: .singleItem)
@@ -1167,6 +1191,18 @@ private func fullExportProgressEntries(update: FullExportUpdate?, context: any A
         }
     }
 
+    for failure in failedChats {
+        entries.append(.sectionId(sectionId, type: .normal))
+        sectionId += 1
+        let identifier = InputDataIdentifier("_id_full_failed_\(failure.peer.peer.id.toInt64())")
+        entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: identifier, equatable: InputDataEquatable(failure), comparable: nil, item: { initialSize, stableId in
+            return ShortPeerRowItem(initialSize, peer: failure.peer.peer, account: context.account, context: context, stableId: stableId, height: 46, photoSize: NSMakeSize(32, 32), statusStyle: ControlStyle(font: .normal(.text), foregroundColor: theme.colors.redUI, highlightColor: .white), status: exportString("Failed"), inset: NSEdgeInsets(left: 20, right: 20), viewType: .singleItem)
+        }))
+        index += 1
+        entries.append(.desc(sectionId: sectionId, index: index, text: .plain(failure.reason), data: .init(color: theme.colors.redUI, viewType: .textBottomItem)))
+        index += 1
+    }
+
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
@@ -1189,21 +1225,21 @@ private func fullExportProgressModal(session: FullExportSession) -> InputDataMod
         disposable.dispose()
     }
 
-    disposable.set((session.updates |> deliverOnMainQueue).start(next: { update in
-        statePromise.set(update)
-        switch update {
-        case .completed, .failed:
-            close?()
-        default:
-            break
-        }
-    }))
-
     let modalInteractions = ModalInteractions(acceptTitle: exportString("Cancel"), accept: {
-        session.cancel()
+        switch session.current {
+        case .completed?, .failed?:
+            session.context.bindings.rootNavigation().additionalHeader?.hide(true)
+        default:
+            session.cancel()
+        }
         close?()
     }, singleButton: true, customTheme: {
-        .init(accent: theme.colors.redUI)
+        switch session.current {
+        case .completed?, .failed?:
+            return .init()
+        default:
+            return .init(accent: theme.colors.redUI)
+        }
     })
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
@@ -1215,6 +1251,28 @@ private func fullExportProgressModal(session: FullExportSession) -> InputDataMod
     close = { [weak modalController] in
         modalController?.close()
     }
+
+    disposable.set((Signal<FullExportUpdate?, NoError>.single(session.current)
+        |> then(session.updates |> map { Optional($0) })
+        |> deliverOnMainQueue).start(next: { update in
+            statePromise.set(update)
+            switch update {
+            case let .completed(_, failedChats)?:
+                if failedChats.isEmpty {
+                    close?()
+                    return
+                }
+            case .failed?:
+                break
+            default:
+                return
+            }
+            modalInteractions.acceptTitle = strings().modalOK
+            modalInteractions.updateDone { button in
+                button.set(text: strings().modalOK, for: .Normal)
+                button.set(color: theme.colors.accent, for: .Normal)
+            }
+        }))
 
     return modalController
 }
@@ -1254,11 +1312,17 @@ public func startFullExport(context: any AccountContextProtocol, settings: FullE
     let navigation = context.bindings.rootNavigation()
     let session = FullExportSession(context: context, settings: settings)
 
-    session.onFinished = { [weak navigation] url in
-        navigation?.additionalHeader?.hide(true)
+    session.onFinished = { [weak navigation, weak session] url in
         if takeoutId != nil {
             finishTakeoutSession(context: context, success: url != nil)
         }
+        if case let .completed(_, failedChats)? = session?.current, !failedChats.isEmpty {
+            return
+        }
+        if case .failed? = session?.current {
+            return
+        }
+        navigation?.additionalHeader?.hide(true)
         if let url = url {
             NSWorkspace.shared.activateFileViewerSelecting([url])
             showModalText(for: context.window, text: exportString("Completed"))

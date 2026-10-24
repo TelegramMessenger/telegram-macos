@@ -33,6 +33,11 @@ public enum NotificationsAndSoundsEntryTag: ItemListItemTag {
     case tone
     case messageEffect
     case badgeEnabled
+    case reactions
+    case privateChats
+    case groupChats
+    case channels
+    case stories
 
     public var stableId: InputDataEntryId {
         switch self {
@@ -56,6 +61,16 @@ public enum NotificationsAndSoundsEntryTag: ItemListItemTag {
             return .general(_id_message_effect)
         case .badgeEnabled:
             return .general(_id_badge_enabled)
+        case .reactions:
+            return .custom(_id_reactions)
+        case .privateChats:
+            return .custom(_id_category(.privateChats))
+        case .groupChats:
+            return .custom(_id_category(.groupChats))
+        case .channels:
+            return .custom(_id_category(.channels))
+        case .stories:
+            return .custom(_id_category(.stories))
         }
     }
     
@@ -85,7 +100,9 @@ private final class NotificationArguments {
     public let toggleInAppSounds:(Bool)->Void
     public let toggleChats:()->Void
     public let toggleIncomingCalls:()->Void
-    public init(resetAllNotifications: @escaping() -> Void, toggleMessagesPreview:@escaping() -> Void, toggleNotifications:@escaping() -> Void, notificationTone:@escaping() -> Void, toggleIncludeUnreadChats:@escaping(Bool) -> Void, toggleCountUnreadMessages:@escaping(Bool) -> Void, toggleIncludeGroups:@escaping(Bool) -> Void, toggleIncludeChannels:@escaping(Bool) -> Void, allAcounts: @escaping()-> Void, snoof: @escaping()-> Void, updateJoinedNotifications: @escaping(Bool) -> Void, toggleBadge: @escaping(Bool)->Void, toggleRequestUserAttention: @escaping ()->Void, toggleInAppSounds: @escaping(Bool)->Void, toggleChats: @escaping()->Void, toggleIncomingCalls:@escaping()->Void) {
+    public let openCategory:(NotificationSettingsCategory)->Void
+    public let openReactions:()->Void
+    public init(resetAllNotifications: @escaping() -> Void, toggleMessagesPreview:@escaping() -> Void, toggleNotifications:@escaping() -> Void, notificationTone:@escaping() -> Void, toggleIncludeUnreadChats:@escaping(Bool) -> Void, toggleCountUnreadMessages:@escaping(Bool) -> Void, toggleIncludeGroups:@escaping(Bool) -> Void, toggleIncludeChannels:@escaping(Bool) -> Void, allAcounts: @escaping()-> Void, snoof: @escaping()-> Void, updateJoinedNotifications: @escaping(Bool) -> Void, toggleBadge: @escaping(Bool)->Void, toggleRequestUserAttention: @escaping ()->Void, toggleInAppSounds: @escaping(Bool)->Void, toggleChats: @escaping()->Void, toggleIncomingCalls:@escaping()->Void, openCategory:@escaping(NotificationSettingsCategory)->Void, openReactions:@escaping()->Void) {
         self.resetAllNotifications = resetAllNotifications
         self.toggleMessagesPreview = toggleMessagesPreview
         self.toggleNotifications = toggleNotifications
@@ -102,6 +119,8 @@ private final class NotificationArguments {
         self.toggleInAppSounds = toggleInAppSounds
         self.toggleChats = toggleChats
         self.toggleIncomingCalls = toggleIncomingCalls
+        self.openCategory = openCategory
+        self.openReactions = openReactions
     }
 }
 
@@ -124,6 +143,10 @@ private let _id_turnon_notifications = InputDataIdentifier("_id_turnon_notificat
 private let _id_turnon_notifications_title = InputDataIdentifier("_id_turnon_notifications_title")
 
 private let _id_message_effect = InputDataIdentifier("_id_message_effect")
+private let _id_reactions = InputDataIdentifier("_id_reactions")
+private func _id_category(_ category: NotificationSettingsCategory) -> InputDataIdentifier {
+    return InputDataIdentifier("_id_category_\(category)")
+}
 
 
 private let _id_accept_calls = InputDataIdentifier("_id_accept_calls")
@@ -135,7 +158,36 @@ private struct State : Equatable {
     public var session: RecentAccountSession?
 }
 
-private func notificationEntries(state: State, settings:InAppNotificationSettings, soundList: NotificationSoundList?, globalSettings: GlobalNotificationSettingsSet, accounts: [AccountWithInfo], unAuthStatus: NotificationAuthorizationStatus, arguments: NotificationArguments) -> [InputDataEntry] {
+private struct CategoryRow : Equatable {
+    let title: String
+    let value: String
+    let description: String?
+    let viewType: GeneralViewType
+}
+
+private func categoryEntry(sectionId: Int32, index: Int32, identifier: InputDataIdentifier, row: CategoryRow, icon: CGImage, action: @escaping()->Void) -> InputDataEntry {
+    return .custom(sectionId: sectionId, index: index, value: .none, identifier: identifier, equatable: .init(row), comparable: nil, item: { initialSize, stableId in
+        let item = GeneralInteractedRowItem(initialSize, stableId: stableId, name: row.title, icon: icon, nameStyle: ControlStyle(font: .normal(.title), foregroundColor: theme.colors.text), description: row.description, descTextColor: theme.colors.grayText, type: .nextContext(row.value), viewType: row.viewType, action: action)
+        item.balancedDescriptionLayout = true
+        return item
+    })
+}
+
+private func categoryValue(_ category: NotificationSettingsCategory, settings: GlobalNotificationSettingsSet) -> String {
+    if case .stories = category {
+        switch settings.privateChats.storySettings.mute {
+        case .default:
+            return strings().notificationSettingsTopChats
+        case .muted:
+            return strings().notificationSettingsOff
+        case .unmuted:
+            return strings().notificationSettingsOn
+        }
+    }
+    return category.messageSettings(settings).enabled ? strings().notificationSettingsOn : strings().notificationSettingsOff
+}
+
+private func notificationEntries(state: State, settings:InAppNotificationSettings, soundList: NotificationSoundList?, globalSettings: GlobalNotificationSettingsSet, exceptions: [NotificationException], accounts: [AccountWithInfo], unAuthStatus: NotificationAuthorizationStatus, arguments: NotificationArguments) -> [InputDataEntry] {
     
     var entries:[InputDataEntry] = []
     
@@ -181,7 +233,27 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
         
     }
     
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsToggleNotificationsHeader), data: InputDataGeneralTextData(viewType: .textTopItem)))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsMessageNotifications), data: InputDataGeneralTextData(viewType: .textTopItem)))
+    index += 1
+    
+    let categories: [NotificationSettingsCategory] = [.privateChats, .groupChats, .channels, .stories]
+    for (i, category) in categories.enumerated() {
+        let count = exceptions.filter { $0.hasCustomSettings(for: category) }.count
+        let row = CategoryRow(title: category.title, value: categoryValue(category, settings: globalSettings), description: count > 0 ? strings().notificationSettingsExceptionsOther(count) : nil, viewType: i == 0 ? .firstItem : .innerItem)
+        entries.append(categoryEntry(sectionId: sectionId, index: index, identifier: _id_category(category), row: row, icon: category.icon, action: {
+            arguments.openCategory(category)
+        }))
+        index += 1
+    }
+    
+    let reactionsRow = CategoryRow(title: strings().notificationSettingsReactions, value: globalSettings.reactionSettings.messages == .nobody ? strings().notificationSettingsOff : strings().notificationSettingsOn, description: nil, viewType: .lastItem)
+    entries.append(categoryEntry(sectionId: sectionId, index: index, identifier: _id_reactions, row: reactionsRow, icon: reactionsNotificationIcon, action: arguments.openReactions))
+    index += 1
+    
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
+    
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsThisDeviceHeader), data: InputDataGeneralTextData(viewType: .textTopItem)))
     index += 1
     
     entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_notifications, data: InputDataGeneralData(name: strings().notificationSettingsToggleNotifications, color: theme.colors.text, type: .switchable(settings.enabled), viewType: .firstItem, action: {
@@ -189,31 +261,38 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
     })))
     index += 1
     
-    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_message_preview, data: InputDataGeneralData(name: strings().notificationSettingsMessagesPreview, color: theme.colors.text, type: .switchable(settings.displayPreviews), viewType: .innerItem, action: {
+    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_message_preview, data: InputDataGeneralData(name: strings().notificationSettingsThisDeviceShowMessageText, color: theme.colors.text, type: .switchable(settings.displayPreviews), viewType: .innerItem, action: {
         arguments.toggleMessagesPreview()
     })))
     index += 1
     
-    
-    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_tone, data: InputDataGeneralData(name: strings().notificationSettingsNotificationTone, color: theme.colors.text, type: .nextContext(localizedPeerNotificationSoundString(sound: settings.tone, list: soundList?.sounds)), viewType: .innerItem, action: arguments.notificationTone)))
+    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_tone, data: InputDataGeneralData(name: strings().notificationSettingsThisDeviceDefaultSound, color: theme.colors.text, type: .nextContext(localizedPeerNotificationSoundString(sound: settings.tone, list: soundList?.sounds)), viewType: .innerItem, action: arguments.notificationTone)))
     index += 1
 
-    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_bounce, data: InputDataGeneralData(name: strings().notificationSettingsBounceDockIcon, color: theme.colors.text, type: .switchable(settings.requestUserAttention), viewType: .innerItem, action: {
+    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_bounce, data: InputDataGeneralData(name: strings().notificationSettingsBounceDockIcon, color: theme.colors.text, type: .switchable(settings.requestUserAttention), viewType: .lastItem, action: {
         arguments.toggleRequestUserAttention()
     })))
     index += 1
     
-    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_reset, data: InputDataGeneralData(name: strings().notificationSettingsResetNotifications, color: theme.colors.text, type: .none, viewType: .lastItem, action: {
-        arguments.resetAllNotifications()
-    })))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsThisDeviceInfo), data: InputDataGeneralTextData(viewType: .textBottomItem)))
     index += 1
-    
-    
-    
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
     
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsSnoofHeader), data: InputDataGeneralTextData(viewType: .textTopItem)))
+    index += 1
+    
+    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_snoof, data: InputDataGeneralData(name: strings().notificationSettingsSnoof, color: theme.colors.text, type: .switchable(!settings.showNotificationsOutOfFocus), viewType: .singleItem, action: {
+        arguments.snoof()
+    })))
+    index += 1
+    
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(!settings.showNotificationsOutOfFocus ? strings().notificationSettingsSnoofOn : strings().notificationSettingsSnoofOff), data: InputDataGeneralTextData(viewType: .textBottomItem)))
+    index += 1
+    
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
     
     if let _ = state.session {
         entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().sessionPreviewAcceptHeader), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
@@ -229,11 +308,9 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
         })))
         index += 1
 
-        
         entries.append(.sectionId(sectionId, type: .normal))
         sectionId += 1
     }
-   
     
     entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsSoundEffects), data: InputDataGeneralTextData(viewType: .textTopItem)))
     index += 1
@@ -242,7 +319,6 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
         arguments.toggleInAppSounds(!FastSettings.inAppSounds)
     })))
     index += 1
-    
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
@@ -254,7 +330,6 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
         arguments.toggleBadge(!settings.badgeEnabled)
     })))
     index += 1
-    
     
     entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_include_public_group, data: InputDataGeneralData(name: strings().notificationSettingsIncludeGroups, color: theme.colors.text, type: .switchable(settings.totalUnreadCountIncludeTags.contains(.group)), viewType: .innerItem, enabled: settings.badgeEnabled, action: {
         arguments.toggleIncludeGroups(!settings.totalUnreadCountIncludeTags.contains(.group))
@@ -273,7 +348,6 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
     
     entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsBadgeDesc), data: InputDataGeneralTextData(viewType: .textBottomItem)))
     index += 1
-
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
@@ -288,23 +362,17 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
-
     
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsSnoofHeader), data: InputDataGeneralTextData(viewType: .textTopItem)))
-    index += 1
-    
-    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_snoof, data: InputDataGeneralData(name: strings().notificationSettingsSnoof, color: theme.colors.text, type: .switchable(!settings.showNotificationsOutOfFocus), viewType: .singleItem, action: {
-        arguments.snoof()
+    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_reset, data: InputDataGeneralData(name: strings().notificationSettingsResetAll, color: theme.colors.redUI, type: .none, viewType: .singleItem, action: {
+        arguments.resetAllNotifications()
     })))
     index += 1
     
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(!settings.showNotificationsOutOfFocus ? strings().notificationSettingsSnoofOn : strings().notificationSettingsSnoofOff), data: InputDataGeneralTextData(viewType: .textBottomItem)))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsResetAllInfo), data: InputDataGeneralTextData(viewType: .textBottomItem)))
     index += 1
-    
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
-
 
     return entries
 }
@@ -314,6 +382,8 @@ public func NotificationPreferencesController(_ context: any AccountContextProto
     
     let initialState = State()
     
+    let exceptionsContext = NotificationExceptionsContext(context: context)
+    
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
@@ -322,6 +392,7 @@ public func NotificationPreferencesController(_ context: any AccountContextProto
     
     let arguments = NotificationArguments(resetAllNotifications: {
         verifyAlert_button(for: context.window, header: strings().notificationSettingsConfirmReset, information: strings().chatConfirmActionUndonable, successHandler: { _ in
+            exceptionsContext.removeAll()
             _ = resetPeerNotificationSettings(network: context.account.network).start()
         })
     }, toggleMessagesPreview: {
@@ -398,13 +469,17 @@ public func NotificationPreferencesController(_ context: any AccountContextProto
         if let session = session {
             _ = context.activeSessionsContext.updateSessionAcceptsIncomingCalls(session, accepts: stateValue.with { $0.acceptCalls }).start()
         }
+    }, openCategory: { category in
+        context.bindings.rootNavigation().push(NotificationCategorySettingsController(context: context, category: category, exceptionsContext: exceptionsContext))
+    }, openReactions: {
+        context.bindings.rootNavigation().push(ReactionNotificationSettingsController(context: context))
     })
     
     let actionsDisposable = DisposableSet()
     
     
-    let entriesSignal = combineLatest(queue: prepareQueue, appNotificationSettings(accountManager: context.sharedContext.accountManager), globalNotificationSettings(postbox: context.account.postbox), context.sharedContext.activeAccountsWithInfo |> map { $0.accounts }, NotificationSettingsHooks.shared.authorizationStatus(context), context.engine.peers.notificationSoundList(), statePromise.get()) |> map { inAppSettings, globalSettings, accounts, unAuthStatus, soundList, state -> [InputDataEntry] in
-        return notificationEntries(state: state, settings: inAppSettings, soundList: soundList, globalSettings: globalSettings, accounts: accounts, unAuthStatus: unAuthStatus, arguments: arguments)
+    let entriesSignal = combineLatest(queue: prepareQueue, appNotificationSettings(accountManager: context.sharedContext.accountManager), globalNotificationSettings(postbox: context.account.postbox), exceptionsContext.exceptions, context.sharedContext.activeAccountsWithInfo |> map { $0.accounts }, NotificationSettingsHooks.shared.authorizationStatus(context), context.engine.peers.notificationSoundList(), statePromise.get()) |> map { inAppSettings, globalSettings, exceptions, accounts, unAuthStatus, soundList, state -> [InputDataEntry] in
+        return notificationEntries(state: state, settings: inAppSettings, soundList: soundList, globalSettings: globalSettings, exceptions: exceptions, accounts: accounts, unAuthStatus: unAuthStatus, arguments: arguments)
     }
 
     

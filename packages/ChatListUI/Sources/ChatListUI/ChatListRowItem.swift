@@ -2305,6 +2305,7 @@ public class ChatListRowItem: TableRowItem {
                                                 peers.removeAll(where: { $0 == peerId })
                                                 folderData.includePeers.setPeers(peers)
                                             } else {
+                                                folderData.excludePeers.removeAll(where: { $0 == peerId })
                                                 folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
                                             }
                                             list[i] = list[i].withUpdatedData(folderData)
@@ -2344,6 +2345,30 @@ public class ChatListRowItem: TableRowItem {
                 }
                 item.submenu = menu
                 secondGroup.append(item)
+            }
+
+            if let peerId = peerId, peerId.namespace != Namespaces.Peer.SecretChat, !isAd, case .chat = mode, case let .filter(filterId, _, _, _) = filter {
+                secondGroup.append(ContextMenuItem(strings().chatListFilterRemoveFromFolder, handler: {
+                    let limit = context.isPremium ? context.premiumLimits.dialog_filters_chats_limit_premium : context.premiumLimits.dialog_filters_chats_limit_default
+                    _ = context.engine.peers.updateChatListFiltersInteractively({ list in
+                        var list = list
+                        if let index = list.firstIndex(where: { $0.id == filterId }), var data = list[index].data {
+                            if data.isShared || data.categories.isEmpty {
+                                _ = data.includePeers.removePeer(peerId)
+                            } else {
+                                if !data.excludePeers.contains(peerId), data.excludePeers.count >= limit {
+                                    Queue.mainQueue().async {
+                                        alert(for: context.window, info: strings().chatListFilterExcludeLimitReachedNew(Int(limit)))
+                                    }
+                                    return list
+                                }
+                                _ = data.addExcludePeer(peerId: peerId)
+                            }
+                            list[index] = list[index].withUpdatedData(data)
+                        }
+                        return list
+                    }).start()
+                }, itemImage: MenuAnimation.menu_unarchive.value))
             }
             
             let blocks:[[ContextMenuItem]] = [headGroup, zeroGroup, firstGroup,

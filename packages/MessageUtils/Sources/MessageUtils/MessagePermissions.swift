@@ -10,12 +10,12 @@ import ChatModeTypes
 import InAppSettings
 import TelegramTheme
 
-public func canDeleteMessage(_ message:Message, account:Account, chatLocation: ChatLocation, mode: ChatMode) -> Bool {
-    
+public func canDeleteMessage(_ message:Message, account:Account, chatLocation: ChatLocation, mode: ChatMode, ranks: CachedChannelAdminRanks? = nil) -> Bool {
+
     if case .searchHashtag = mode.customChatContents?.kind {
         return false
     }
-    
+
     if mode.customChatContents != nil {
         return true
     }
@@ -28,16 +28,36 @@ public func canDeleteMessage(_ message:Message, account:Account, chatLocation: C
     if mode.isSavedMode {
         return false
     }
-    
-    
-    if let channel = message.peers[message.id.peerId] as? TelegramChannel {
-        if case .broadcast = channel.info {
-            if !message.flags.contains(.Incoming) {
-                return channel.hasPermission(.sendText)
+
+
+    if message.id.peerId.namespace == Namespaces.Peer.CloudChannel || chatLocation.peerId.namespace == Namespaces.Peer.CloudChannel {
+        if let channel = (message.peers[message.id.peerId] ?? message.peers[chatLocation.peerId]) as? TelegramChannel {
+            if case .broadcast = channel.info {
+                if channel.flags.contains(.isCreator) {
+                    return true
+                }
+                return channel.hasPermission(.deleteAllMessages)
             }
-            return channel.hasPermission(.deleteAllMessages)
+            if channel.flags.contains(.isCreator) {
+                return true
+            }
+            if message.author?.id == channel.id {
+                return false
+            }
+            if let authorId = message.author?.id, let rank = ranks?.ranks[authorId], case .owner = rank {
+                return false
+            }
+            if channel.hasPermission(.deleteAllMessages) {
+                return true
+            }
+            return !message.effectivelyIncoming(account.peerId)
+        } else {
+            return !message.effectivelyIncoming(account.peerId)
         }
-        return channel.hasPermission(.deleteAllMessages) || !message.effectivelyIncoming(account.peerId)
+    } else if (message.peers[message.id.peerId] ?? message.peers[chatLocation.peerId]) is TelegramGroup {
+        return true
+    } else if (message.peers[message.id.peerId] ?? message.peers[chatLocation.peerId]) is TelegramUser {
+        return true
     } else if message.peers[message.id.peerId] is TelegramSecretChat {
         return true
     } else {

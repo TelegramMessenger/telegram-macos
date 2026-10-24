@@ -131,6 +131,7 @@
         
         let inset:CGFloat = view.isSelectionState ? 50 : 0
         actionsPanelView.frame = NSMakeRect(0, frame.height - inset, frame.width, 50)
+        actionsPanelView.isHidden = !view.isSelectionState
         emptyView?.frame = bounds
     }
     

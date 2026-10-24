@@ -508,7 +508,7 @@ private final class TokenizedRowView: TableRowView, TokenizedProtocol {
     }
 }
 
-fileprivate func prepareEntries(from:[SelectPeerEntry]?, to:[SelectPeerEntry], context: any AccountContextProtocol, initialSize:NSSize, animated:Bool, interactions:SelectPeerInteraction, singleAction:((Peer)->Void)? = nil, scroll: TableScrollState = .none(nil), tokenView: TokenizedView? = nil, customTheme: GeneralRowItem.Theme? = nil) -> Signal<TableUpdateTransition, NoError> {
+fileprivate func prepareEntries(from:[SelectPeerEntry]?, to:[SelectPeerEntry], context: any AccountContextProtocol, initialSize:NSSize, animated:Bool, interactions:SelectPeerInteraction, singleAction:((Peer)->Void)? = nil, contextMenuItems: ((Peer, @escaping () -> Void) -> Signal<[ContextMenuItem], NoError>)? = nil, scroll: TableScrollState = .none(nil), tokenView: TokenizedView? = nil, customTheme: GeneralRowItem.Theme? = nil) -> Signal<TableUpdateTransition, NoError> {
     return Signal { subscriber in
         var cancelled = false
         
@@ -533,6 +533,8 @@ fileprivate func prepareEntries(from:[SelectPeerEntry]?, to:[SelectPeerEntry], c
                     if let singleAction = singleAction {
                         singleAction(peer.peer)
                     }
+                }, contextMenuItems: {
+                    return contextMenuItems?(peer.peer, interactions.close) ?? .single([])
                 }, highlightVerified: true, customTheme: peer.customTheme, passLeftAction: peer.passLeftAction, rightActions: peer.rightActions)
             case let .searchEmpty(theme, icon):
                 return SearchEmptyRowItem(initialSize, stableId: entry.stableId, icon: icon, customTheme: theme)
@@ -637,6 +639,7 @@ public struct SelectPeerSettings: OptionSet {
 }
 
 open class SelectPeersBehavior {
+    public var contextMenuItems: ((Peer, @escaping () -> Void) -> Signal<[ContextMenuItem], NoError>)?
     open var result:[PeerId:TemporaryPeer] {
         return _peersResult.modify({$0})
     }
@@ -1649,6 +1652,7 @@ public class SelectPeersController: SelectPeersMainController<[PeerId], Void, Se
         let context = self.context
         let account = self.context.account
         let interactions = self.interactions
+        let behavior = self.behavior
         
         interactions.add(observer: self)
         
@@ -1673,7 +1677,7 @@ public class SelectPeersController: SelectPeersMainController<[PeerId], Void, Se
         let first: Atomic<Bool> = Atomic(value: true)
         
         let transition = combineLatest(queue: prepareQueue, behavior.start(context: context, search: search.get() |> distinctUntilChanged |> map {SearchState(state: .None, request: $0)}), limitsSignal) |> mapToQueue { entries, limits -> Signal<(TableUpdateTransition, LimitsConfiguration?), NoError> in
-            return prepareEntries(from: previous.swap(entries.0), to: entries.0, context: context, initialSize: initialSize.modify({$0}), animated: false, interactions: interactions, scroll: entries.1 ? .up(false) : .none(nil)) |> runOn(first.swap(false) ? .mainQueue() : prepareQueue) |> map { ($0, limits) }
+            return prepareEntries(from: previous.swap(entries.0), to: entries.0, context: context, initialSize: initialSize.modify({$0}), animated: false, interactions: interactions, contextMenuItems: behavior.contextMenuItems, scroll: entries.1 ? .up(false) : .none(nil)) |> runOn(first.swap(false) ? .mainQueue() : prepareQueue) |> map { ($0, limits) }
         } |> deliverOnMainQueue
         
         disposable.set(transition.start(next: { [weak self] transition, limits in
@@ -1743,6 +1747,12 @@ fileprivate class SelectPeersView : View {
         }
     }
 
+    var bottomInset: CGFloat = 60 {
+        didSet {
+            needsLayout = true
+        }
+    }
+
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(tableView)
@@ -1766,7 +1776,7 @@ fileprivate class SelectPeersView : View {
 
     fileprivate override func layout() {
         super.layout()
-        tableView.frame = NSMakeRect(0, 50, frame.width, frame.height - 110)
+        tableView.frame = NSMakeRect(0, 50, frame.width, frame.height - 50 - bottomInset)
     }
 
     public required init?(coder: NSCoder) {
@@ -1879,7 +1889,9 @@ open class SelectPeersModalController : ModalViewController, Notifable {
         let interactions = self.interactions
         let initialSize = atomicSize
         let account = context.account
+        let behavior = self.behavior
         genericView.customTheme = behavior.customTheme
+        genericView.bottomInset = behavior.limit == 1 ? 0 : 60
         
         
         let selectedPeerIds = self.selectedPeerIds
@@ -1946,7 +1958,7 @@ open class SelectPeersModalController : ModalViewController, Notifable {
             var allEntries = entries
             allEntries.append(.search(.init()))
             allEntries.sort()
-            return prepareEntries(from: previous.swap(allEntries), to: allEntries, context: context, initialSize: initialSize.modify({$0}), animated: false, interactions:interactions, singleAction: singleAction, scroll: updateSearch ? .up(false) : .none(nil), tokenView: tokenView, customTheme: customTheme()) |> runOn(first.swap(false) ? .mainQueue() : prepareQueue)
+            return prepareEntries(from: previous.swap(allEntries), to: allEntries, context: context, initialSize: initialSize.modify({$0}), animated: false, interactions:interactions, singleAction: singleAction, contextMenuItems: behavior.contextMenuItems, scroll: updateSearch ? .up(false) : .none(nil), tokenView: tokenView, customTheme: customTheme()) |> runOn(first.swap(false) ? .mainQueue() : prepareQueue)
         } |> deliverOnMainQueue
 
         disposable.set(transition.start(next: { [weak self] transition in

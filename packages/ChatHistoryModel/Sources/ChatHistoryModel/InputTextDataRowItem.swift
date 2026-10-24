@@ -737,7 +737,7 @@ public class InputTextDataRowView : GeneralContainableRowView {
         
         textView.interactions.filterEvent = { event in
             if let chars = event.characters {
-                return !item.filter(chars).isEmpty
+                return chars.isEmpty || !item.filter(chars).isEmpty
             } else {
                 return false
             }

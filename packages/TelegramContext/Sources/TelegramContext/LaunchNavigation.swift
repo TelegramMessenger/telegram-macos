@@ -7,4 +7,5 @@ public enum LaunchNavigation : Equatable {
     case thread(MessageId, MessageId?, MessageHistoryThreadData?, necessary: Bool)
     case profile(EnginePeer, necessary: Bool)
     case settings
+    case story(PeerId)
 }

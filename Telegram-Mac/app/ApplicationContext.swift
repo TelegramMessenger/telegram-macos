@@ -11,6 +11,7 @@ import InAppSettings
 import IOKit
 import CodeSyntax
 import SettingsUI
+import StoriesUI
 import PrivateCallScreen
 import DetectSpeech
 import WalletContext
@@ -215,6 +216,7 @@ final class UnauthorizedApplicationContext {
 enum ApplicationContextLaunchAction {
     case navigate(ViewController)
     case preferences
+    case story(PeerId)
 }
 
 
@@ -909,6 +911,10 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                     _ready.set(leftController.chatList.ready.get())
                     self.leftController.tabController.select(index: self.leftController.chatIndex)
                 }
+            case let .story(peerId):
+                self.launchAction = .story(peerId)
+                _ready.set(leftController.chatList.ready.get())
+                self.leftController.tabController.select(index: self.leftController.chatIndex)
             case let .thread(threadId, fromId, threadData, _):
                 self.leftController.tabController.select(index: self.leftController.chatIndex)
                 self._ready.set(self.leftController.chatList.ready.get())
@@ -1089,6 +1095,9 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 context.bindings.rootNavigation().push(controller, context.layout == .single)
             case .preferences:
                 leftController.tabController.select(index: leftController.settingsIndex)
+            case let .story(peerId):
+                leftController.tabController.select(index: leftController.chatIndex)
+                StoryModalController.ShowStories(context: context, isHidden: false, initialId: StoryInitialIndex(peerId: peerId, id: nil, messageId: nil, takeControl: nil), singlePeer: true)
             }
             self.launchAction = nil
         } else {

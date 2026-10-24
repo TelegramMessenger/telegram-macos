@@ -207,6 +207,12 @@ final class LinkParsingTests: XCTestCase {
             ("tg://settings/appearance/stickers-and-emoji/emoji", .appearance(.stickers_and_emoji(.emoji))),
             ("tg://settings/data/proxy/add", .data(.proxy(.add))),
             ("tg://settings/notifications/groups/sound", .notifications(.groups(.sound))),
+            ("tg://settings/notifications/private-chats/add-exception", .notifications(.private_chats(.add_exception))),
+            ("tg://settings/notifications/channels/preview", .notifications(.channels(.preview))),
+            ("tg://settings/notifications/stories/show-sender", .notifications(.stories(.show_sender))),
+            ("tg://settings/notifications/reactions", .notifications(.reactions(nil))),
+            ("tg://settings/notifications/reactions/messages", .notifications(.reactions(.messages))),
+            ("tg://settings/notifications/reset", .notifications(.reset)),
             ("tg://settings/edit/username", .edit_profile(.username)),
             ("tg://settings/privacy/unknown", .privacy(nil))
         ]

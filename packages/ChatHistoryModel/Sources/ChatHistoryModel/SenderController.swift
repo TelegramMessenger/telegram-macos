@@ -161,11 +161,11 @@ public class Sender: NSObject {
         return preview
     }
 
-    public static func enqueue(input:ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, disablePreview:Bool = false, linkBelowMessage: Bool = false, largeMedia: Bool? = nil, silent: Bool = false, atDate:Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, mediaPreview: TelegramMediaWebpage? = nil, emptyHandler:(()->Void)? = nil, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil) -> Signal<[MessageId?],NoError> {
-        return enqueue(input: input, context: context, peerId: peerId, replyId: replyId, threadId: threadId, replyStoryId: replyStoryId, disablePreview: disablePreview, linkBelowMessage: linkBelowMessage, largeMedia: largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: sendAsPeerId, mediaPreview: mediaPreview, emptyHandler: emptyHandler, customChatContents: customChatContents, messageEffect: messageEffect, sendPaidMessageStars: sendPaidMessageStars, suggestPost: suggestPost, observedResult: nil)
+    public static func enqueue(input:ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, disablePreview:Bool = false, linkBelowMessage: Bool = false, largeMedia: Bool? = nil, silent: Bool = false, atDate:Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, mediaPreview: TelegramMediaWebpage? = nil, emptyHandler:(()->Void)? = nil, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil, ephemeralBotPeerId: PeerId? = nil) -> Signal<[MessageId?],NoError> {
+        return enqueue(input: input, context: context, peerId: peerId, replyId: replyId, threadId: threadId, replyStoryId: replyStoryId, disablePreview: disablePreview, linkBelowMessage: linkBelowMessage, largeMedia: largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: sendAsPeerId, mediaPreview: mediaPreview, emptyHandler: emptyHandler, customChatContents: customChatContents, messageEffect: messageEffect, sendPaidMessageStars: sendPaidMessageStars, suggestPost: suggestPost, ephemeralBotPeerId: ephemeralBotPeerId, observedResult: nil)
     }
 
-    public static func enqueue(input:ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, disablePreview:Bool = false, linkBelowMessage: Bool = false, largeMedia: Bool? = nil, silent: Bool = false, atDate:Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, mediaPreview: TelegramMediaWebpage? = nil, emptyHandler:(()->Void)? = nil, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil, observedResult: ((Int, [MessageId?]) -> Void)?) -> Signal<[MessageId?],NoError> {
+    public static func enqueue(input:ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, disablePreview:Bool = false, linkBelowMessage: Bool = false, largeMedia: Bool? = nil, silent: Bool = false, atDate:Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, mediaPreview: TelegramMediaWebpage? = nil, emptyHandler:(()->Void)? = nil, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil, ephemeralBotPeerId: PeerId? = nil, observedResult: ((Int, [MessageId?]) -> Void)?) -> Signal<[MessageId?],NoError> {
         
         var inset:Int = 0
         let dynamicEmojiOrder = context.stickerSettings.dynamicPackOrder
@@ -263,7 +263,24 @@ public class Sender: NSObject {
             
             if !mapped.isEmpty {
                 let inlineMedia = input.inlineMedia.map { $0.key }
-                return observe(enqueueMessages(account: context.account, peerId: peerId, messages: mapped) |> mapToSignal { value in
+                let preparedMessages: Signal<[EnqueueMessage], NoError>
+                if atDate == nil, suggestPost == nil, replyStoryId == nil {
+                    if let ephemeralBotPeerId {
+                        preparedMessages = .single(ephemeralBotCommand(botPeerId: ephemeralBotPeerId, text: input.inputText).apply(to: mapped))
+                    } else if mayContainTypedEphemeralBotCommand(input.inputText) {
+                        let text = input.inputText
+                        preparedMessages = context.engine.peers.peerCommands(id: peerId) |> take(1) |> map { commands in
+                            return resolveEphemeralBotCommand(text: text, peerCommands: commands)?.apply(to: mapped) ?? mapped
+                        }
+                    } else {
+                        preparedMessages = .single(mapped)
+                    }
+                } else {
+                    preparedMessages = .single(mapped)
+                }
+                return observe(preparedMessages |> mapToSignal { messages in
+                    return enqueueMessages(account: context.account, peerId: peerId, messages: messages)
+                } |> mapToSignal { value in
                     if !emojis.isEmpty {
                         let es = saveUsedEmoji(emojis, postbox: context.account.postbox)
                         let aes = saveAnimatedUsedEmoji(inlineMedia, postbox: context.account.postbox)

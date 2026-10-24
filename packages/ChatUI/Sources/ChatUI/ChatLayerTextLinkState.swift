@@ -23,7 +23,8 @@ final class ChatLayerTextLinkState: NSObject, NSViewToolTipOwner, Disposable {
     init(node: ChatLayerTextNode) { self.node = node }
 
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
-        guard let node, let scene = node.scene, view === scene, !scene.isHiddenOrHasHiddenAncestor, node.isVisible, node.isEffectivelyEnabled else { return "" }
+        guard let node, let scene = node.scene, view === scene, !scene.isHiddenOrHasHiddenAncestor, node.isVisible, node.isEffectivelyEnabled,
+              chatLayerPointerIsExposed(scene, at: point) else { return "" }
         if let toolTip { return toolTip }
         guard let layout = node.textLayout,
               let link = layout.link(at: node.layer.convert(point, from: scene.root.layer)),
@@ -100,7 +101,7 @@ final class ChatLayerTextLinkState: NSObject, NSViewToolTipOwner, Disposable {
 
     func hover(link: Any, range: NSRange, layout: TextViewLayout) {
         guard let node, node.textLayout === layout, let scene = node.scene,
-              node.isVisible, node.isEffectivelyEnabled, !scene.isHiddenOrHasHiddenAncestor else { return }
+              node.isVisible, node.isEffectivelyEnabled, !scene.isHiddenOrHasHiddenAncestor, scene.hasExposedPointer else { return }
         if text === layout.attributedString, self.range == range { return }
         if let text, self.range.location != NSNotFound, self.range.location < text.length,
            let previous = text.attribute(.link, at: self.range.location, effectiveRange: nil) {
@@ -116,7 +117,7 @@ final class ChatLayerTextLinkState: NSObject, NSViewToolTipOwner, Disposable {
         let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: false, completion: { [weak self, weak node, weak layout, weak scene] timer in
             guard let self, let node, let layout, let scene, self.version == version,
                   self.timer === timer, node.textLayout === layout else { return }
-            guard node.scene === scene, node.isVisible, node.isEffectivelyEnabled, !scene.isHiddenOrHasHiddenAncestor,
+            guard node.scene === scene, node.isVisible, node.isEffectivelyEnabled, !scene.isHiddenOrHasHiddenAncestor, scene.hasExposedPointer,
                   self.windowId == scene.window.map(ObjectIdentifier.init), self.matches(layout), !contextMenuOnScreen() else {
                 self.cancel()
                 return

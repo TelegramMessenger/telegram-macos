@@ -1040,7 +1040,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
 
     let configTones = translationStyles(from: context)
     let defaultToneId = configTones.first?.id ?? "neutral"
-    var initialState = State(text: text, textEntities: entities, from: from, to: toLang, fromIsRevealed: !canBreak, toIsRevealed: true)
+    var initialState = State(text: text, textEntities: entities, from: from, to: Translate.normalizeLanguageCode(toLang), fromIsRevealed: !canBreak, toIsRevealed: true)
     initialState.tones = configTones
     initialState.toneId = defaultToneId
     initialState.mode = isInputMode ? .style : .translate

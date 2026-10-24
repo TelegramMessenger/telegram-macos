@@ -70,6 +70,14 @@ class UNUserNotifications : NSObject {
     }
     
     fileprivate func activateNotification(userInfo:[AnyHashable : Any], replyText: String? = nil) {
+        if let id = userInfo["story.peer.id"] as? Int64, let namespace = userInfo["story.peer.namespace"] as? Int32, let accountId = userInfo["accountId"] as? Int64 {
+            guard let account = manager.activeAccounts.accounts.first(where: { $0.0 == AccountRecordId(rawValue: accountId) })?.1 else {
+                return
+            }
+            let peerId = PeerId(namespace: PeerId.Namespace._internalFromInt32Value(namespace), id: PeerId.Id._internalFromInt64Value(id))
+            self.bindings.navigateToStory(account, peerId)
+            return
+        }
         if let messageId = getNotificationMessageId(userInfo: userInfo, for: "reply"), let accountId = userInfo["accountId"] as? Int64 {
             
             let accountId = AccountRecordId(rawValue: accountId)
