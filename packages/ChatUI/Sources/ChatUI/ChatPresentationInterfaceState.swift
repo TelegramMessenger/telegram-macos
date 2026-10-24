@@ -546,12 +546,8 @@ public class ChatPresentationInterfaceState: Equatable {
             return _sendPaidMessageStars
         } else if let cachedData = cachedData as? CachedUserData {
             return cachedData.sendPaidMessageStars
-        } else if let peer = peer as? TelegramChannel, !peer.isAdmin {
-            if let cachedData = cachedData as? CachedChannelData, let stars = cachedData.sendPaidMessageStars {
-               return stars.value == 0 ? nil : stars
-            } else {
-                return peer.sendPaidMessageStars
-            }
+        } else if let peer = peer as? TelegramChannel, !peer.isAdmin, let stars = peer.sendPaidMessageStars, stars.value > 0 {
+            return stars
         } else {
             return nil
         }
