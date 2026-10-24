@@ -670,6 +670,13 @@ public class MGalleryItem: NSObject, Comparable, Identifiable {
         let image = combineLatest(self.image.get() |> map { $0.value }, view.get()) |> map { [weak self] value, view  in
             guard let `self` = self else {return}
             
+            CATransaction.begin()
+            if self.disableAnimations {
+                CATransaction.setDisableActions(true)
+            }
+            defer {
+                CATransaction.commit()
+            }
             if let view = view as? MGalleryItemView {
                 view.preventsCapture = false
             }
@@ -685,7 +692,7 @@ public class MGalleryItem: NSObject, Comparable, Identifiable {
                 var size = magnify.contentSize
                 if self is MGalleryPhotoItem || self is MGalleryPeerPhotoItem {
                     if value.rotation == nil {
-                        size = value.size?.aspectFitted(size) ?? size
+                        size = value.size?.aspectFitted(self.sizeValue) ?? size
                     } else {
                         size = value.size ?? size
                     }
