@@ -210,7 +210,7 @@ xcconfig that defines `TYPE` (a Swift compiler flag) plus the Sparkle feed URL:
 
 | xcconfig | `TYPE` | Feed |
 |---|---|---|
-| `Telegram-Mac/Debug.xcconfig` | (none) | beta feed |
+| `Telegram-Mac/Debug.xcconfig` | `BETA` | beta feed |
 | `Telegram-Mac/Release.xcconfig` | `STABLE` | `mac-updates.telegram.org/updates` |
 | `configurations/Stable.xcconfig` | `STABLE` | stable feed |
 | `configurations/Beta.xcconfig` | `BETA` | `mac-updates.telegram.org/beta` |
@@ -231,7 +231,12 @@ the app target; Swift packages under `packages/` do not read it, so the channel 
 the command line, which applies to every target including packages. Builds started from the Xcode UI
 do not get it, so `#if BETA` / `STABLE` / `ALPHA` / `APP_STORE` inside packages are false there.
 
-The script then extracts `Telegram.app` and its dSYM. GitLab runs this direct Mac
+`scripts/build-local.sh` passes `SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEBUG BETA`
+for both full and `--app-only` builds. This enables beta features, including the app icon picker,
+in Swift packages while keeping the Debug configuration and inherited target conditions.
+Local builds still disable the updater.
+
+`buildbox/build-mac.sh` then extracts `Telegram.app` and its dSYM. GitLab runs this direct Mac
 build through `buildbox/internal.sh`, which verifies and deploys the result while
 holding the existing machine-wide lock. `buildbox/build.sh` is the separate legacy
 Parallels VM build path.

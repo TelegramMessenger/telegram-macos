@@ -23,6 +23,8 @@ Read the matching document before starting the task.
 
 Use `scripts/build-local.sh` on macOS with full Xcode. It builds a Debug app without archiving or deploying it.
 
+The script passes `SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEBUG BETA` to every Swift target, including packages. Local Debug builds therefore include beta features such as the app icon picker while retaining Debug behavior and inherited conditions like `SHARE`.
+
 | Command | Purpose |
 |---|---|
 | `sh scripts/build-local.sh` | Prompt for `arm64`, `x86_64` or `universal`, defaulting to this Mac's architecture |
@@ -98,7 +100,7 @@ Only the modules you will touch most. Find anything else with `grep -rn "func Na
 
 ### Moving Code into Packages
 - Packages enforce runtime exclusivity (the app has it off), so `inout` access conflicts can trap after a move
-- `BETA`/`STABLE`/`ALPHA`/`APP_STORE` are false in packages in Xcode UI builds; only `buildbox/build-mac.sh` sets them
+- `BETA`/`STABLE`/`ALPHA`/`APP_STORE` are false in packages in Xcode UI builds; `buildbox/build-mac.sh` passes the release channel, and `scripts/build-local.sh` passes `DEBUG BETA`
 - App extensions like `Peer.isForum` and `Peer.displayLetters` shadow TelegramCore members; in a package call them through hooks
 
 

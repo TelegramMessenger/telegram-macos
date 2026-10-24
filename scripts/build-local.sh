@@ -140,6 +140,7 @@ run_step app xcodebuild build \
     -destination "$DESTINATION" \
     -derivedDataPath "$OUTPUT_DIR/DerivedData" \
     "${BUILD_SETTINGS[@]}" \
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEBUG BETA' \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="Apple Development" \
     TELEGRAM_DISABLE_UPDATES=YES \
