@@ -1126,6 +1126,10 @@ final class QrStudioView: View {
         menu.addItem(ContextMenuItem(strings().qrStudioControllerMenuSaveImage, handler: { [weak self] in
             self?.saveImage()
         }, itemImage: MenuAnimation.menu_save_as.value))
+        //TODOLANG
+        menu.addItem(ContextMenuItem("Copy Image", handler: { [weak self] in
+            self?.copyImage()
+        }, itemImage: MenuAnimation.menu_copy_media.value))
         AppMenu.show(menu: menu, event: event, for: sourceView)
     }
 
@@ -1293,6 +1297,23 @@ final class QrStudioView: View {
                     self?.showToast("info", strings().qrStudioControllerSomethingWentWrong)
                 }
             })
+        })
+    }
+
+    private func copyImage() {
+        self.renderExportImage(canvas: .story, completion: { [weak self] image in
+            guard let self else {
+                return
+            }
+            guard let image else {
+                self.showToast("info", strings().qrStudioControllerSomethingWentWrong)
+                return
+            }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([NSImage(cgImage: image, size: NSMakeSize(CGFloat(image.width), CGFloat(image.height)))])
+            //TODOLANG
+            self.showToast("image", "Image copied to clipboard.")
         })
     }
 
