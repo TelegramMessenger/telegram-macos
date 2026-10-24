@@ -315,6 +315,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public var reactionPressed:()->Void = {}
     public var showToaster:(NSAttributedString)->Void = { _ in }
     public var previewTopic:(Int64)->Void = { _ in }
+    public var showAnimatedToaster:(LocalAnimatedSticker, String)->Void = { _, _ in }
     public var removeToaster:()->Void = {}
     public var clearReactions:()->Void = {}
     public var attachFile:(Bool)->Void = { _ in }
@@ -1231,6 +1232,7 @@ public final class ChatInteraction : InterfaceObserver  {
         self.reactionPressed = { }
         self.showToaster = { _ in }
         self.previewTopic = { _ in }
+        self.showAnimatedToaster = { _, _ in }
         self.removeToaster = { }
         self.clearReactions = { }
         self.attachFile = { _ in }

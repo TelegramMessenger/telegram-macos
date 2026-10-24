@@ -1679,7 +1679,11 @@ public class ChatControllerView : View, ChatInputDelegate {
         return frame.focusX(size, y: y)
     }
 
-    func showToaster(text: NSAttributedString, action: (() -> Void)? = nil, timeout: Double, animated: Bool) {
+    var presentationTextColor: NSColor {
+        return presentation.colors.text
+    }
+
+    func showToaster(text: NSAttributedString, animation: LocalAnimatedSticker? = nil, context: (any AccountContextProtocol)? = nil, action: (() -> Void)? = nil, timeout: Double, animated: Bool) {
         // Tear down any in-flight toaster before installing the new one —
         // `dismissImmediately` only kills the timer, so we also have to
         // remove the view from the hierarchy or it sticks around forever.
@@ -1691,7 +1695,7 @@ public class ChatControllerView : View, ChatInputDelegate {
 
         let view = ChatToasterView(frame: .zero)
         let maxWidth = max(80, frame.width - 24)
-        view.update(text: text, maxWidth: maxWidth)
+        view.update(text: text, animation: animation, context: context, maxWidth: maxWidth)
         let size = view.contentSize(maxWidth: maxWidth)
         let y = ChatHeaderBubblesView.totalHeight + header.state.height + 8
         view.frame = frame.focusX(size, y: y)
@@ -1737,6 +1741,10 @@ public class ChatControllerView : View, ChatInputDelegate {
 final class ChatToasterView: Control {
     private let glass: LiquidGlassView
     private let textView = TextView()
+    private let animationView: MediaAnimatedStickerView = MediaAnimatedStickerView(frame: NSMakeRect(0, 0, 26, 26))
+    private var hasAnimation: Bool = false
+    private let animationSize: CGFloat = 26
+    private let animationSpacing: CGFloat = 8
     /// Auto-dismiss timer owned by the view itself, so the view manages its
     /// own lifecycle. Previously a separate `ChatToaster` model held both a
     /// strong reference to the view AND the disposable, which made the
@@ -1752,6 +1760,9 @@ final class ChatToasterView: Control {
         super.init(frame: frameRect)
         addSubview(glass)
         addSubview(textView)
+        addSubview(animationView)
+        animationView.userInteractionEnabled = false
+        animationView.isHidden = true
         textView.isSelectable = false
         textView.userInteractionEnabled = false
         textView.disableBackgroundDrawing = true
@@ -1766,9 +1777,22 @@ final class ChatToasterView: Control {
         dismissDisposable.dispose()
     }
 
-    func update(text: NSAttributedString, maxWidth: CGFloat) {
+    func update(text: NSAttributedString, animation: LocalAnimatedSticker? = nil, context: (any AccountContextProtocol)? = nil, maxWidth: CGFloat) {
+        let iconWidth: CGFloat
+        if let animation, let context {
+            hasAnimation = true
+            animationView.isHidden = false
+            let color = (text.length > 0 ? text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor : nil) ?? NSColor.white
+            let parameters = ChatAnimatedStickerMediaLayoutParameters(playPolicy: .once, alwaysAccept: true, cache: .temporaryLZ4(.thumb), hidePlayer: false, media: animation.file, colors: [.init(keyPath: "", color: color)], shimmer: false)
+            animationView.update(with: animation.file, size: NSMakeSize(animationSize, animationSize), context: context, table: nil, parameters: parameters, animated: false)
+            iconWidth = animationSize + animationSpacing
+        } else {
+            hasAnimation = false
+            animationView.isHidden = true
+            iconWidth = 0
+        }
         let layout = TextViewLayout(text, maximumNumberOfLines: 3, truncationType: .end, alignment: .center)
-        layout.measure(width: max(40, maxWidth - horizontalPadding * 2))
+        layout.measure(width: max(40, maxWidth - horizontalPadding * 2 - iconWidth))
         textView.update(layout)
     }
 
@@ -1788,7 +1812,8 @@ final class ChatToasterView: Control {
         guard let layout = textView.textLayout else {
             return NSMakeSize(120, minHeight)
         }
-        let width = min(maxWidth, layout.layoutSize.width + horizontalPadding * 2)
+        let iconWidth: CGFloat = hasAnimation ? animationSize + animationSpacing : 0
+        let width = min(maxWidth, layout.layoutSize.width + iconWidth + horizontalPadding * 2)
         let height = max(minHeight, layout.layoutSize.height + verticalPadding * 2)
         return NSMakeSize(width, height)
     }
@@ -1797,7 +1822,15 @@ final class ChatToasterView: Control {
         super.layout()
         glass.frame = bounds
         glass.cornerRadius = bounds.height / 2
-        textView.center()
+        if hasAnimation {
+            let iconWidth = animationSize + animationSpacing
+            let contentWidth = iconWidth + textView.frame.width
+            let startX = floor((bounds.width - contentWidth) / 2)
+            animationView.setFrameOrigin(NSMakePoint(startX, floor((bounds.height - animationSize) / 2)))
+            textView.setFrameOrigin(NSMakePoint(startX + iconWidth, floor((bounds.height - textView.frame.height) / 2)))
+        } else {
+            textView.center()
+        }
     }
 }
 
@@ -7835,6 +7868,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             _ = (fetchAndPreloadReplyThreadInfo(context: context, subject: .groupMessage(threadMessageId), preload: false) |> take(1) |> deliverOnMainQueue).start(next: { [weak self] result in
                 self?.navigationController?.push(ChatController(context: context, chatLocation: .thread(result.message), mode: .preview, chatLocationContextHolder: result.contextHolder))
             })
+        }
+        chatInteraction.showAnimatedToaster = { [weak self] animation, text in
+            guard let self else { return }
+            let attributed = NSAttributedString.initialize(string: text, color: self.genericView.presentationTextColor, font: .normal(.text))
+            self.genericView.showToaster(text: attributed, animation: animation, context: self.context, timeout: 3.0, animated: true)
         }
         chatInteraction.removeToaster = { [weak self] in
             self?.genericView.removeToaster(animated: true)
