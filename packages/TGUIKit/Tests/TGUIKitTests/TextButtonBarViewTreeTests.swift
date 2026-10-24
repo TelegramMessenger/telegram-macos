@@ -71,4 +71,31 @@ final class TextButtonBarViewTreeTests: XCTestCase {
         bar.isLoading = true
         XCTAssertEqual(spinners(bar).count, 1)
     }
+
+    func testDoneRemainsInsideNavigationBarAfterLoadingWithoutResize() {
+        let controller = ViewController()
+        let bar = TextButtonBarView(controller: controller, text: "Done")
+        bar.isLoading = true
+        let navigationBar = NavigationBarView(frame: NSMakeRect(0, 0, 420, 64))
+        navigationBar.switchViews(left: BarView(controller: controller), center: BarView(controller: controller), right: bar, controller: controller, style: .push, animationStyle: .init(duration: 0, function: .linear), liveSwiping: false)
+        XCTAssertTrue(bar.bounds.contains(bar.button.frame))
+
+        navigationBar.layoutSubtreeIfNeeded()
+        navigationBar.needsLayout = false
+
+        bar.isLoading = false
+        bar.isEnabled = true
+        bar.set(text: "Done", for: .Normal)
+        XCTAssertTrue(navigationBar.needsLayout)
+        navigationBar.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(navigationBar.frame.size, NSMakeSize(420, 64))
+        XCTAssertEqual(bar.frame.maxX, navigationBar.bounds.maxX - 12)
+        XCTAssertTrue(bar.bounds.contains(bar.button.frame))
+        XCTAssertTrue(navigationBar.bounds.contains(bar.convert(bar.button.frame, to: navigationBar)))
+        let center = bar.button.convert(NSMakePoint(bar.button.bounds.midX, bar.button.bounds.midY), to: navigationBar)
+        let hit = navigationBar.hitTest(center)
+        XCTAssertTrue(hit === bar.button || hit?.isDescendant(of: bar.button) == true)
+        XCTAssertTrue(bar.button.userInteractionEnabled)
+    }
 }

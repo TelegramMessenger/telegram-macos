@@ -108,7 +108,7 @@ open class TextButtonBarView: BarView {
         let pillHeight = TextButtonBarView.pillHeight
         let addition = NSMakeSize(pad, 0)
         _isFitted = button.sizeToFit(addition, NSMakeSize(maxWidth, pillHeight), thatFit: false, transition: transition)
-        return button.frame.width
+        return max(button.frame.width, isLoading ? pillHeight : 0)
     }
 
     public override var style: ControlStyle {
@@ -127,6 +127,9 @@ open class TextButtonBarView: BarView {
 
     open var isLoading: Bool = false {
         didSet {
+            guard isLoading != oldValue else {
+                return
+            }
             if isLoading {
                 button.set(text: "", for: .Normal)
             } else {
@@ -147,7 +150,9 @@ open class TextButtonBarView: BarView {
                 progressIndicator = nil
             }
             button.userInteractionEnabled = !isLoading
+            _isFitted = false
             needsLayout = true
+            superview?.needsLayout = true
         }
     }
 

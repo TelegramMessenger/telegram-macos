@@ -270,19 +270,22 @@ private struct State : Equatable {
     var botsResult: BotsResult? = nil
     var bot: EnginePeer? = nil
     
+    var isLoading = true
+    var loadFailed = false
+    var isSaving = false
     var permissions: [Permission] = []
     
     var botRights: TelegramBusinessBotRights {
-        var botRights: TelegramBusinessBotRights = [.readMessages]
+        var botRights: TelegramBusinessBotRights = []
         for permission in permissions {
             if let subpermissions = permission.subpermissions {
                 for subpermission in subpermissions {
-                    if let rights = subpermission.rights {
+                    if subpermission.value == true, let rights = subpermission.rights {
                         botRights.insert(rights)
                     }
                 }
             }
-            if let rights = permission.rights {
+            if permission.value == true, let rights = permission.rights {
                 botRights.insert(rights)
             }
         }
@@ -303,6 +306,11 @@ private struct State : Equatable {
     
     var initialBot: TelegramAccountConnectedBot?
     
+    var hasChanges: Bool {
+        let bot = self.mapped
+        return initialBot?.id != bot?.id || initialBot?.rights != bot?.rights || initialBot?.recipients != bot?.recipients
+    }
+
     var mapped: TelegramAccountConnectedBot? {
         if let bot = bot {
             var categories: TelegramBusinessRecipients.Categories = []
@@ -338,7 +346,8 @@ private struct State : Equatable {
                     categories.insert(.existingChats)
                 }
             }
-            return .init(id: bot.id, recipients: .init(categories: categories, additionalPeers: peerIds, excludePeers: Set(excludeIds.filter { $0.namespace._internalGetInt32Value() != ChatListFilterPeerCategories.Namespace }), exclude: self.access == .all), rights: self.botRights)
+            let excludedPeerIds = self.access == .all ? self.disableIds : self.excludeIds
+            return .init(id: bot.id, recipients: .init(categories: categories, additionalPeers: peerIds, excludePeers: Set(excludedPeerIds.filter { $0.namespace._internalGetInt32Value() != ChatListFilterPeerCategories.Namespace }), exclude: self.access == .all), rights: self.botRights)
         } else {
             return nil
         }
@@ -394,6 +403,17 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
     
+    if state.isLoading || state.isSaving {
+        entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_loading, equatable: nil, comparable: nil, item: { initialSize, stableId in
+            return GeneralLoadingRowItem(initialSize, stableId: stableId, viewType: .singleItem)
+        }))
+        return entries
+    }
+    if state.loadFailed {
+        entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().unknownError), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+        return entries
+    }
+
     if let bot = state.bot {
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_input, equatable: .init(state), comparable: nil, item: { initialSize, stableId in
             return GeneralBlockTextRowItem(initialSize, stableId: stableId, viewType: .firstItem, text: arguments.context.meUrlPrefix + "\(bot.addressName ?? "")", font: .normal(.text), color: theme.colors.text)
@@ -629,7 +649,11 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             
             
             entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init(permission.id), data: .init(name: permission.title, color: theme.colors.text, type: .switchable(selected), viewType: viewType, action: {
-                arguments.toggleExpand(permission.id)
+                if permission.subpermissions != nil {
+                    arguments.toggleExpand(permission.id)
+                } else {
+                    arguments.toggleRight(permission.id)
+                }
             }, switchAction: {
                 arguments.toggleRight(permission.id)
             }, afterNameImage: afterNameImage, autoswitch: false)))
@@ -749,13 +773,29 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
         }
     }))
     
-    let chatbot = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.BusinessConnectedBot(id: context.peerId)) |> take(1)
+    func resolveBot(_ bot: TelegramAccountConnectedBot?) -> Signal<(TelegramAccountConnectedBot?, EnginePeer?), NoError> {
+        guard let bot else {
+            return .single((nil, nil))
+        }
+        return context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: bot.id))
+        |> map { (bot, $0) }
+    }
 
-    
-    actionsDisposable.add(chatbot.start(next: { connectedBot in
+    func applyBot(_ connectedBot: TelegramAccountConnectedBot?, peer: EnginePeer?) {
         updateState { current in
             var current = current
             current.initialBot = connectedBot
+            current.bot = peer
+            current.botsResult = peer.map { .found([$0]) }
+            current.username = nil
+            current.isLoading = false
+            current.loadFailed = false
+            current.isSaving = false
+            current.access = .all
+            current.includeIds = []
+            current.excludeIds = []
+            current.disableIds = []
+            current.permissions = makePermissions(connectedBot?.rights, current.permissions)
             if let connectedBot = connectedBot {
                 
                 var categories: [PeerId] = []
@@ -783,15 +823,35 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
                     current.excludeIds = Array(connectedBot.recipients.excludePeers)
                 }
                 current.disableIds = Array(connectedBot.recipients.excludePeers)
-                
-                current.permissions = makePermissions(connectedBot.rights, current.permissions)
             }
             return current
         }
-        
-    }))
-    
-    
+    }
+
+    let loadDisposable = MetaDisposable()
+    actionsDisposable.add(loadDisposable)
+    func loadBot() {
+        updateState { current in
+            var current = current
+            current.isLoading = true
+            current.loadFailed = false
+            return current
+        }
+        let signal = context.engine.accountData.requestAccountConnectedBot()
+        |> mapToSignal { bot in resolveBot(bot) |> castError(AccountConnectedBotError.self) }
+        |> deliverOnMainQueue
+        loadDisposable.set(signal.start(next: { bot, peer in
+            applyBot(bot, peer: peer)
+        }, error: { _ in
+            updateState { current in
+                var current = current
+                current.isLoading = false
+                current.loadFailed = true
+                return current
+            }
+        }))
+    }
+
     func presentStarGiftsWarningIfNeeded(_ key: TelegramBusinessBotRights, completion: @escaping (Bool) -> Void) -> Bool {
         
         guard let peer = stateValue.with ({ $0.bot }) else {
@@ -928,6 +988,8 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
                     update()
                 }
             })
+        } else {
+            update()
         }
         
     }, removeSelected: { type, peerId in
@@ -981,25 +1043,64 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
     
     controller.validateData = { data in
         let state = stateValue.with { $0 }
-        if state.initialBot != state.mapped {
-            _ = context.engine.accountData.setAccountConnectedBot(bot: state.mapped).start()
-            showModalText(for: context.window, text: strings().businessUpdated)
-            return .success(.navigationBack)
+        guard !state.isLoading && !state.isSaving else {
+            return .none
         }
-        return .none
+        if state.loadFailed {
+            loadBot()
+            return .none
+        }
+        guard state.hasChanges else {
+            return .none
+        }
+        return .fail(.doSomething { complete in
+            updateState { current in
+                var current = current
+                current.isSaving = true
+                return current
+            }
+            let requestedBot = state.mapped
+            let signal = context.engine.accountData.updateAccountConnectedBot(bot: requestedBot)
+            |> mapToSignal { bot in resolveBot(bot) |> castError(AccountConnectedBotError.self) }
+            |> deliverOnMainQueue
+            actionsDisposable.add(signal.start(next: { bot, peer in
+                applyBot(bot, peer: peer)
+                if bot?.id == requestedBot?.id && bot?.rights == requestedBot?.rights && bot?.recipients == requestedBot?.recipients {
+                    showModalText(for: context.window, text: strings().businessBotUpdated)
+                }
+                complete(.success(.navigationBack))
+            }, error: { error in
+                updateState { current in
+                    var current = current
+                    current.isSaving = false
+                    return current
+                }
+                loadBot()
+                switch error {
+                case .generic:
+                    complete(.fail(.alert(strings().unknownError)))
+                case let .server(text):
+                    complete(.fail(.alert(text)))
+                }
+            }))
+        })
     }
-    
+
     controller.updateDoneValue = { data in
         return { f in
-            let isEnabled = stateValue.with { $0.initialBot != $0.mapped }
-            if isEnabled {
+            let state = stateValue.with { $0 }
+            if state.isLoading || state.isSaving {
+                f(.loading)
+            } else if state.loadFailed {
+                f(.enabled(strings().voiceOverCommonRetry))
+            } else if state.hasChanges {
                 f(.enabled(strings().navigationDone))
             } else {
                 f(.disabled(strings().navigationDone))
             }
         }
     }
-    
+
     let usernameUpdate: Signal<State.BotsResult?, NoError> = statePromise.get() |> filter { $0.bot == nil }
     |> map { $0.username }
     |> distinctUntilChanged
@@ -1014,18 +1115,6 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
     }
     
     
-    let initialIdUpdate: Signal<EnginePeer?, NoError> = statePromise.get() |> filter { $0.bot == nil }
-    |> map { $0.initialBot?.id }
-    |> distinctUntilChanged
-    |> mapToSignal { peerId in
-        if let peerId = peerId {
-            return context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
-        } else {
-            return .never()
-        }
-    }
-    
-    
     actionsDisposable.add(usernameUpdate.startStandalone(next: { result in
         updateState { current in
             var current = current
@@ -1034,18 +1123,8 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
         }
     }))
     
-    actionsDisposable.add(initialIdUpdate.start(next: { result in
-        updateState { current in
-            var current = current
-            current.bot = result
-            if let result {
-                current.botsResult = .found([result])
-            }
-            return current
-        }
-    }))
-    
-    
+    loadBot()
+
     controller.onDeinit = {
         actionsDisposable.dispose()
     }

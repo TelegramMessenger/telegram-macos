@@ -1239,6 +1239,8 @@ public final class L10n {
   }
   /// Limit Reached
   public static var broadcastGroupsLimitAlertTitle: String  { return L10n.tr("Localizable", "BroadcastGroups.LimitAlert.Title") }
+  /// Your Telegram Business Bot has been updated
+  public static var businessBotUpdated: String  { return L10n.tr("Localizable", "Business.BotUpdated") }
   /// Schedule End
   public static var businessScheduleEnd: String  { return L10n.tr("Localizable", "Business.ScheduleEnd") }
   /// Schedule Start
