@@ -32,6 +32,31 @@ private final class WallpaperCachedRecord {
     }
 }
 
+private final class WeakWallpaperCachedRecord {
+    public let restoreMode: () -> TableBackgroundMode?
+
+    public init?(mode: TableBackgroundMode) {
+        switch mode {
+        case let .background(image, intensity, colors, rotation, metadata):
+            self.restoreMode = { [weak image] in
+                guard let image = image else {
+                    return nil
+                }
+                return .background(image: image, intensity: intensity, colors: colors, rotation: rotation, metadata: metadata)
+            }
+        case let .tiled(image):
+            self.restoreMode = { [weak image] in
+                guard let image = image else {
+                    return nil
+                }
+                return .tiled(image: image)
+            }
+        default:
+            return nil
+        }
+    }
+}
+
 
 public enum AppearanceThumbSource : Int32 {
     case general
@@ -303,16 +328,26 @@ public enum PhotoCacheKeyEntry : Hashable {
 private class WallpaperCache {
     public let memoryLimit:Int
     private var values:NSCache<NSNumber, WallpaperCachedRecord> = NSCache()
+    private let weakValues = NSCache<NSNumber, WeakWallpaperCachedRecord>()
+    private let lock = NSLock()
     
     public init(_ memoryLimit:Int = 100, byteLimit: Int = 64 * 1024 * 1024) {
         self.memoryLimit = memoryLimit
         self.values.countLimit = memoryLimit
         self.values.totalCostLimit = byteLimit
+        self.weakValues.countLimit = memoryLimit
     }
     
     fileprivate func cacheImage(_ mode: TableBackgroundMode, for key:PhotoCacheKeyEntry) {
         let record = WallpaperCachedRecord(mode: mode)
         let cacheKey = NSNumber(value: key.hashValue)
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        if let weakRecord = WeakWallpaperCachedRecord(mode: mode) {
+            self.weakValues.setObject(weakRecord, forKey: cacheKey)
+        } else {
+            self.weakValues.removeObject(forKey: cacheKey)
+        }
         guard record.cost <= self.values.totalCostLimit else {
             self.values.removeObject(forKey: cacheKey)
             return
@@ -321,11 +356,24 @@ private class WallpaperCache {
     }
     
     public func cachedImage(for key:PhotoCacheKeyEntry) -> TableBackgroundMode? {
-        return self.values.object(forKey: .init(value: key.hashValue))?.mode
+        let cacheKey = NSNumber(value: key.hashValue)
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        if let mode = self.values.object(forKey: cacheKey)?.mode {
+            return mode
+        }
+        if let mode = self.weakValues.object(forKey: cacheKey)?.restoreMode() {
+            return mode
+        }
+        self.weakValues.removeObject(forKey: cacheKey)
+        return nil
     }
     
     public func clearAll() {
+        self.lock.lock()
+        defer { self.lock.unlock() }
         self.values.removeAllObjects()
+        self.weakValues.removeAllObjects()
     }
 }
 

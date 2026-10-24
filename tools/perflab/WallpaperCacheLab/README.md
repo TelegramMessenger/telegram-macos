@@ -1,52 +1,81 @@
-# Wallpaper memory cache lab
+# Wallpaper cache: reuse live images without retaining more bitmaps
 
-The global wallpaper cache previously limited the number of entries to 20, regardless of decoded bitmap size. Twelve distinct 2080×3160 wallpapers occupy about 301 MiB of bitmap data even after their callers release them. The cache can retain those images until eviction or a memory-pressure purge.
+The shared cache keeps the 64 MiB decoded-bitmap budget and 20-entry count limit introduced in PR #60. A second, count-limited cache stores reconstruction closures with **weak NSImage references**. After a strong-cache miss, an image that still belongs to a live theme/view can be reused with its original intensity, colors, rotation and SVG metadata. A weak hit does not promote the image into the strong cache or decode it again.
 
-The change supplies each record's drawing bitmap cost (`CGImage.bytesPerRow × height`) to `NSCache` and sets a 64 MiB total-cost limit. This accommodates two wallpapers at the default 1040×1580-point background size at 2× resolution, while preserving the 20-entry limit for small previews and modes without an image. A single image larger than the budget is not admitted, so it cannot flush useful smaller entries. Replacing an existing key with such an image removes the old entry instead of returning stale content.
+This addresses a gap in the cost-only cache: an active theme can still own an evicted bitmap while a newly created theme for the same wallpaper decodes a second copy. Weak records do not own the pixels. Once the last external owner closes, the image can be released unless it remains among the strong-cache entries. Replacement and memory-pressure purge update both caches under one lock; a purge also forgets still-live weak entries. `NSCache` eviction remains best-effort, with advisory limits. Weak records retain rendering metadata, not bitmap data.
 
-`NSCache` cost/count limits are advisory, and its eviction order is unspecified. This is a cache-retention budget, not a strict cap on process RAM. The byte cost describes the selected drawing bitmap, not every possible image representation or metadata allocation. Active themes and views retain their own backgrounds; clearing or evicting the shared cache does not release those owners. The production patch changes no cache keys, image resolution, rendering, or memory-pressure hook.
+Already-created themes have their own `_backgroundMode` value. Returning to the same theme already avoided global-cache lookup and decoding before this change. The improvement is for new themes that can reuse an image still alive elsewhere. It cannot eliminate the memory-versus-redecode tradeoff for images whose owners have all closed and which no longer fit in the strong cache.
 
 ## Reproduce
 
-On macOS with Xcode and Python 3, run from the repository root:
+From the repository root on macOS with Xcode and Python 3:
 
 ```sh
 python3 tools/perflab/WallpaperCacheLab/run.py test
+python3 tools/perflab/WallpaperCacheLab/run.py test \
+  --test-ref 68ed4df53c55b6344e7c3f50619e15861b734273 \
+  --work-dir /tmp/wallpaper-reuse-before
 python3 tools/perflab/WallpaperCacheLab/run.py bench \
   --baseline-ref 35a0182637c683686a1db1d33ef48c8c3adb2e97 \
-  --repetitions 5
+  --current-ref 68ed4df53c55b6344e7c3f50619e15861b734273 \
+  --repetitions 6
 ```
 
-`--work-dir /absolute/path` chooses the output directory; the default is `/tmp/telegram-wallpaper-cache-lab` (under the system temporary directory). Generated sources, fixtures, binaries, XCTest logs, individual process reports, `summary.json`, `runs.jsonl`, and `pixels.json` remain outside the checkout.
+The second command is expected to fail: six new assertions expose the missing live-image reuse in PR #60. `--work-dir` chooses the generated output location; otherwise it uses the system temporary directory. `--scenarios live-themes return-to-open` can limit a benchmark run. To repeat the concurrency check, run `swift test --sanitize=thread` on the generated `tests` package after the first command.
 
-The runner extracts `WallpaperCache` and `WallpaperCachedRecord` directly from `PhotoCache.swift`, relaxing only access modifiers. It uses the actual `TableBackgroundMode` enum and the unchanged production `downsampledImage`/`decodedBitmapImage` functions. Stand-ins provide an integer cache key and SVG metadata: TelegramCore resource-key construction and SVG parsing are not exercised. The comparison executable extracts the old cache from the requested Git revision; both executables use the same decoder. No full application, account, network request, or dependency submodule build is required.
+The runner extracts the cache classes, `TableBackgroundMode`, `SVG_SlotsMetadata`, and decoder functions from production sources. It relaxes cache access modifiers for testing. The theme scenarios additionally compile the production `backgroundMode` getter in a small probe with the same lock and per-instance stored mode. Resource keys, palette values, and wallpaper lookup use fixture adapters. The probe does not construct real `TelegramPresentationTheme`/`ChatController` instances or test routing, layout, SVG parsing, GPU work, or account/network state.
 
 ## Verification
 
-Twelve XCTest cases pass in both Debug and Release. They cover pixel rather than point dimensions, row padding, tiled/background costs, image identity and settings, non-image modes, exact-budget admission, oversized admission/replacement, replacement release, purge with and without an external image owner, and 16,000 concurrent cache operations. Tests do not assume a particular `NSCache` eviction order.
+- **19 XCTest cases pass in Debug and Release, and with Thread Sanitizer.** Existing cost/retention coverage remains; new cases exercise weak background/tiled reuse, real rendering metadata, owner release, purge, replacement without stale fallback, and returning to a retained wallpaper after unrelated visits. The concurrency case performs 16,000 operations. The same suite against the cost-only cache fails six new assertions.
+- **180 native measurements:** ten scenarios × three variants × six fresh-process runs. Variant order rotates, so each variant occupies every order position twice. Full decoded-bitmap hashes match for all twenty JPEG fixtures in all variants; workload render digests also match. Pixel resolution and cache-key behavior are unchanged.
+- **Complete Debug arm64 application build passed**, including `TelegramTheme` and `TelegramThemeShare`, in the prepared checkout based on `166e37d737865fc97af99aa1283e4a4454c3ab0d` with the local Xcode 27 compatibility setup. The whole patched `PhotoCache.swift` and the decoder/getter/metadata blocks match the measured sources byte for byte. This is not a clean latest-head application build or an authenticated UI test. Application version: Telegram 13.1.0 (283357).
 
-The benchmark generates twenty deterministic JPEG files on disk, then decodes them through the production path. Full decoded bitmap SHA-256 hashes match for all twenty images before/after. Each workload also checks 64×64 offscreen render hashes, including cache hits and subsequent decodes. These checks establish image equivalence in the native harness; they are not screenshots from an authenticated client.
+## Measurements
 
-A complete Debug arm64 application build also passed with the exact patched `PhotoCache.swift` in a prepared checkout based on `166e37d737865fc97af99aa1283e4a4454c3ab0d`, using the repository's local Xcode 27 compatibility changes. Both `TelegramTheme` and `TelegramThemeShare` compiled; the whole patched file matched by SHA-256. This is not a clean build of the latest PR head. The build used macOS 27.0.1, Xcode 27.1/Swift 6.4, Telegram 13.1.0 build 283357. An authenticated client walkthrough and app-wide RAM/FPS/battery profiling were not performed.
+Mac16,8, 24 GiB RAM, 12 logical CPUs; macOS 27.0.1, Xcode 27.1 / Swift 6.4. All application builds and sanitizer runs finished before timing measurements. Filesystem caches are warm. Each process warms the image frameworks with a small decode. Fixtures are deterministic on-disk 2080×3160 JPEGs, decoded through production `downsampledImage`; preview cases use a 132-pixel cap.
 
-## Before / after
+Variants: **original** = count-only cache at `35a01826`; **PR #60** = cost-only cache at `68ed4df5`; **live reuse** = the final cache implementation. Its measurement provenance records the production SHA-256 and the base commit of the measured worktree.
 
-Measured on a Mac16,8 with 24 GiB RAM and 12 logical CPUs, macOS 27.0.1. Values are medians of five fresh-process runs per variant/scenario (50 processes total), with before/after order alternated. Full-app compilation had finished before timing runs. A small decode warms the image frameworks before the initial memory reading. The metric is the increase in `TASK_VM_INFO.phys_footprint` after the workload, with autorelease pools drained and a 100 ms settling interval. File-system caches are warm: this does not measure cold disk latency.
+### Decode counts
 
-| Workload | Before footprint increase | After footprint increase | Before → after decodes | Before → after cache hits |
-| --- | ---: | ---: | ---: | ---: |
-| 12 different full-size wallpapers, one pass | 304.94 MiB | 54.08 MiB | 12 → 12 | 0 → 0 |
-| Same pass with first image retained by an external owner | 304.94 MiB | 79.17 MiB | 12 → 12 | 0 → 0 |
-| Alternate two recent wallpapers, 100 requests | 52.59 MiB | 52.66 MiB | 2 → 2 | 98 → 98 |
-| Twenty 132-pixel previews, 100 requests | 1.58 MiB | 1.61 MiB | 20 → 20 | 80 → 80 |
-| Cycle through twelve full-size wallpapers twice | 304.91 MiB | 53.77 MiB | 12 → 24 | 12 → 0 |
+| Scenario | Original | PR #60 | Live reuse |
+| --- | ---: | ---: | ---: |
+| Twelve themes remain alive; create new themes for those backgrounds 120 more times (132 requests) | 12 | 132 | 12 |
+| Keep the base theme, visit twelve other backgrounds, then create a new theme for the base (14 requests) | 13 | 14 | 13 |
+| Reuse the same two theme objects, 100 accesses | 2 | 2 | 2 |
+| Twelve backgrounds visited twice, each theme released after its access (24 requests) | 12 | 24 | 24 |
 
-The first workload retained 12 → 2 cache-only images, or 300.88 → 50.15 MiB of bitmap data. It reduced this harness's footprint increase by 250.86 MiB (82%). Two recent full-size wallpapers and twenty previews still fit and have the same hit counts. Small differences near equality are noise, not claimed improvements.
+The live-themes scenario avoids 120 redundant decodes compared with PR #60. The base-theme return also avoids a decode after unrelated backgrounds have displaced its strong-cache entry. The same-object control still decodes just twice. With fully released owners, decode counts remain unchanged from PR #60; weak references cannot recover an already-freed bitmap.
 
-There is an explicit reuse tradeoff. Cycling through a working set larger than the budget needs additional decodes: twelve wallpapers visited twice took 262.81 → 503.25 ms of total decode time (about 240 ms extra across the second pass). Total cache-operation time including insertion/eviction was 0.059 → 3.911 ms over those 24 requests. For two recent wallpapers it was 0.037 → 0.047 ms over 100 requests. This is a memory-retention improvement, not a universal speedup.
+### Background-access latency
 
-After `clearAll`, weak references observed zero cache-only images in every run; the external-owner scenario retained its one independently owned image. The footprint readings after clear are included in the raw reports, but allocator/OS behavior is not an immediate-return guarantee.
+Values below are the median of six per-process p95 values, in milliseconds. They time synchronous background retrieval and probe creation only; offscreen hashing is excluded. They are **not chat-switch latency**. For `return-to-open`, each process has one measured final return access. Other theme scenarios exclude their first twelve initial accesses; the same-object control excludes its first two.
 
-These are controlled cache/decoder measurements, not a claim that every Telegram session saves 251 MiB. Actual benefit depends on image sizes, distinct backgrounds visited, their other owners, and system eviction.
+| Scenario | Original ms | PR #60 ms | Live reuse ms |
+| --- | ---: | ---: | ---: |
+| Recreate themes for still-live wallpapers | <0.001 | 29.789 | <0.001 |
+| Return to the retained base theme after twelve other backgrounds | 0.019 | 25.590 | 0.022 |
+| Access the same two theme objects | <0.001 | <0.001 | <0.001 |
+| Reopen backgrounds after their owners were released | 0.020 | 28.887 | 29.970 |
 
-[Summary and provenance](Results/summary.json), [all 50 process measurements](Results/runs.jsonl), [full bitmap hashes](Results/pixels.json). Individual unsummarized JSON reports and test/build logs can be regenerated with the commands above; the full application build additionally needs the documented native dependencies and local toolchain setup.
+Sub-microsecond differences are not claimed speedups. Miss-heavy decoder timings fluctuate by a few percent across runs; the exact raw samples and total decode/cache times are included in the reports. The stable behavioral result is elimination of duplicate decodes when an owner remains alive, with no new decodes in the tested controls. A signed-in end-to-end latency guarantee has not been established.
+
+### Physical footprint and owner release
+
+Memory values are medians of `TASK_VM_INFO.phys_footprint` increases from the warmed process baseline, after autorelease-pool drainage and settling. They are component-process measurements, not Telegram's total RAM usage.
+
+| Scenario | Original MiB | PR #60 MiB | Live reuse MiB |
+| --- | ---: | ---: | ---: |
+| Browse twelve backgrounds without keeping external owners | 305.89 | 54.90 | 54.76 |
+| Recreate themes while twelve original themes remain alive | 305.81 | 356.21 | 305.45 |
+| Same scenario after the twelve themes close, before clearing the cache | 305.81 | 55.11 | 54.54 |
+| Base-theme return after twelve other backgrounds | 330.19 | 79.73 | 79.63 |
+
+The twelve live owners necessarily retain their twelve images. Live reuse avoids the duplicate copies seen with PR #60. After those owners close, both budgeted variants retain only two bitmaps (50.15 MiB of pixels), versus twelve in the original cache. The original large-memory saving is therefore preserved. `clearAll` releases every cache-only image; an explicitly retained separate image remains alive until its owner is released. After purge and all owner releases, every measured weak image is gone. Allocator/OS footprint changes are observations, not an immediate-return guarantee.
+
+## Evidence and limits
+
+[Summary/provenance](Results/Reuse/summary.json), [all 180 process samples](Results/Reuse/runs.jsonl), [decoded bitmap hashes](Results/Reuse/pixels.json), [verification manifest](Results/Reuse/verification.json). The [initial budget report](BudgetReport.md) preserves the earlier cost-only experiment.
+
+The cache budget stays 64 MiB. There are no new timers, image resizes, compression/quality changes, dependencies, or public module APIs. The weak fallback is opportunistic and may itself be evicted under pressure. It improves reuse of still-live images; it does not guarantee the original count-only cache's hit rate after all owners close. Real chat navigation, frame timing, total application RAM and battery impact still need an authenticated application walkthrough/profile.

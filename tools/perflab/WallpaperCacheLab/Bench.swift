@@ -58,6 +58,41 @@ func fingerprint(_ image: NSImage, full: Bool = false) -> String {
     return SHA256.hash(data: Data(bytes: context.data!, count: 64 * 256)).map { String(format: "%02x", $0) }.joined()
 }
 
+func wallpaperID(_ wallpaper: ProbeWallpaper) -> Int {
+    switch wallpaper {
+    case let .image(id): return id
+    case .emoticon: preconditionFailure("No emoticon fixture")
+    }
+}
+
+func cachedBackground(_ wallpaper: ProbeWallpaper, palette: Int, size: NSSize) -> TableBackgroundMode? {
+    let start = DispatchTime.now().uptimeNanoseconds
+    let result = cache.cachedImage(for: PhotoCacheKeyEntry(id: wallpaperID(wallpaper)))
+    cacheNanoseconds += DispatchTime.now().uptimeNanoseconds - start
+    if result != nil { hits += 1 }
+    return result
+}
+
+func cacheBackground(_ wallpaper: ProbeWallpaper, palette: Int, size: NSSize, background: TableBackgroundMode) {
+    let start = DispatchTime.now().uptimeNanoseconds
+    cache.cacheImage(background, for: PhotoCacheKeyEntry(id: wallpaperID(wallpaper)))
+    cacheNanoseconds += DispatchTime.now().uptimeNanoseconds - start
+}
+
+func loadImage(_ id: Int, maxPixelSize: CGFloat) -> NSImage {
+    let begin = DispatchTime.now().uptimeNanoseconds
+    let image = downsampledImage(contentsOfFile: directory.appendingPathComponent("\(id).jpg").path, maxPixelSize: maxPixelSize)!
+    decodeNanoseconds += DispatchTime.now().uptimeNanoseconds - begin
+    decodes += 1
+    let bitmap = image.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+    weakImages.append(WeakImage(image, bytes: bitmap.bytesPerRow * bitmap.height))
+    return image
+}
+
+func generateBackgroundMode(_ wallpaper: ProbeWallpaper, palette: Int, maxSize: NSSize, emoticonThemes: [Int]) -> TableBackgroundMode {
+    return .background(image: loadImage(wallpaperID(wallpaper), maxPixelSize: 3160), intensity: nil, colors: nil, rotation: nil, metadata: nil)
+}
+
 let scenario = CommandLine.arguments[1]
 let directory = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
 if scenario == "fixtures" {
@@ -76,6 +111,9 @@ autoreleasepool {
 let cache = WallpaperCache(20)
 var weakImages: [WeakImage] = []
 var owner: NSImage?
+var retainedThemes: [Int: WallpaperThemeProbe] = [:]
+var requestNanoseconds: UInt64 = 0
+var warmRequests: [Double] = []
 var hashes: [String: String] = [:]
 var hits = 0
 var decodes = 0
@@ -87,29 +125,50 @@ case "recent": ids = (0..<100).map { $0 % 2 }
 case "thumbnails": ids = (0..<100).map { $0 % 20 }
 case "revisit": ids = Array(0..<12) + Array(0..<12)
 case "verify": ids = Array(0..<20)
+case "live-themes": ids = Array(0..<12) + (0..<120).map { $0 % 12 }
+case "released-themes", "close-themes": ids = Array(0..<12) + Array(0..<12)
+case "same-themes": ids = (0..<100).map { $0 % 2 }
+case "return-to-open": ids = Array(0..<13) + [0]
 default: ids = Array(0..<12)
 }
 let initial = footprint()
 for (step, id) in ids.enumerated() {
     autoreleasepool {
-        let key = PhotoCacheKeyEntry(id: id)
-        let start = DispatchTime.now().uptimeNanoseconds
-        let cached = cache.cachedImage(for: key)
-        cacheNanoseconds += DispatchTime.now().uptimeNanoseconds - start
+        if scenario == "close-themes", step == 12 { retainedThemes.removeAll() }
+        let requestStart = DispatchTime.now().uptimeNanoseconds
         let image: NSImage
-        if case let .background(value, _, _, _, _) = cached {
-            hits += 1
+        if ["live-themes", "released-themes", "same-themes", "close-themes", "return-to-open"].contains(scenario) {
+            let probe: WallpaperThemeProbe
+            if scenario == "same-themes", let existing = retainedThemes[id] {
+                probe = existing
+            } else {
+                probe = WallpaperThemeProbe(id)
+            }
+            guard case let .background(value, _, _, _, _) = probe.backgroundMode else { fatalError("Background missing") }
             image = value
+            if scenario == "live-themes" || scenario == "same-themes" || (scenario == "close-themes" && step < 12) || (scenario == "return-to-open" && step == 0) {
+                if retainedThemes[id] == nil { retainedThemes[id] = probe }
+            }
         } else {
-            let begin = DispatchTime.now().uptimeNanoseconds
-            image = downsampledImage(contentsOfFile: directory.appendingPathComponent("\(id).jpg").path, maxPixelSize: scenario == "thumbnails" ? 132 : 3160)!
-            decodeNanoseconds += DispatchTime.now().uptimeNanoseconds - begin
-            decodes += 1
-            let bitmap = image.cgImage(forProposedRect: nil, context: nil, hints: nil)!
-            weakImages.append(WeakImage(image, bytes: bitmap.bytesPerRow * bitmap.height))
-            let insertion = DispatchTime.now().uptimeNanoseconds
-            cache.cacheImage(.background(image: image, intensity: nil, colors: nil, rotation: nil, metadata: nil), for: key)
-            cacheNanoseconds += DispatchTime.now().uptimeNanoseconds - insertion
+            let key = PhotoCacheKeyEntry(id: id)
+            let start = DispatchTime.now().uptimeNanoseconds
+            let cached = cache.cachedImage(for: key)
+            cacheNanoseconds += DispatchTime.now().uptimeNanoseconds - start
+            if case let .background(value, _, _, _, _) = cached {
+                hits += 1
+                image = value
+            } else {
+                image = loadImage(id, maxPixelSize: scenario == "thumbnails" ? 132 : 3160)
+                let insertion = DispatchTime.now().uptimeNanoseconds
+                cache.cacheImage(.background(image: image, intensity: nil, colors: nil, rotation: nil, metadata: nil), for: key)
+                cacheNanoseconds += DispatchTime.now().uptimeNanoseconds - insertion
+            }
+        }
+        let elapsed = DispatchTime.now().uptimeNanoseconds - requestStart
+        requestNanoseconds += elapsed
+        let initialRequests = scenario == "return-to-open" ? 13 : (scenario == "thumbnails" ? 20 : (scenario == "same-themes" || scenario == "recent" ? 2 : 12))
+        if step >= initialRequests {
+            warmRequests.append(Double(elapsed) / 1_000_000)
         }
         if scenario == "active-owner", step == 0 { owner = image }
         let hash = fingerprint(image, full: scenario == "verify")
@@ -122,13 +181,29 @@ let held = footprint()
 let alive = weakImages.filter { $0.image != nil }
 let bitmapBytes = alive.reduce(0) { $0 + $1.bytes }
 let liveCount = alive.count
+retainedThemes.removeAll()
+usleep(100000)
+let afterThemesClose = weakImages.filter { $0.image != nil }
+let bitmapBytesAfterThemesClose = afterThemesClose.reduce(0) { $0 + $1.bytes }
+let footprintAfterThemesClose = footprint()
 cache.clearAll()
 usleep(100000)
 let liveAfterClear = weakImages.filter { $0.image != nil }.count
 let cleared = footprint()
+owner = nil
+let liveAfterOwnersClose = weakImages.filter { $0.image != nil }.count
+warmRequests.sort()
+func percentile(_ fraction: Double) -> Double {
+    guard !warmRequests.isEmpty else { return 0 }
+    return warmRequests[min(warmRequests.count - 1, Int(ceil(Double(warmRequests.count) * fraction)) - 1)]
+}
 let output: [String: Any] = ["scenario": scenario, "requests": ids.count, "hits": hits, "decodes": decodes,
     "decode_ms": Double(decodeNanoseconds) / 1_000_000, "cache_ms": Double(cacheNanoseconds) / 1_000_000,
+    "request_ms": Double(requestNanoseconds) / 1_000_000,
+    "warm_request_p50_ms": percentile(0.5), "warm_request_p95_ms": percentile(0.95),
+    "live_after_owners_close": liveAfterOwnersClose, "theme_local_hits": ids.count - hits - decodes,
+    "live_after_themes_close": afterThemesClose.count, "bitmap_bytes_after_themes_close": bitmapBytesAfterThemesClose,
+    "footprint_after_themes_close_delta": footprintAfterThemesClose - initial,
     "live_images": liveCount, "retained_bitmap_bytes": bitmapBytes, "footprint_delta": held - initial,
     "footprint_after_clear_delta": cleared - initial, "live_after_clear": liveAfterClear, "render_hashes": hashes]
-withExtendedLifetime(owner) {}
 print(String(data: try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys, .prettyPrinted]), encoding: .utf8)!)

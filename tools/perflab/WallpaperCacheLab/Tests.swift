@@ -13,7 +13,7 @@ final class WallpaperCacheTests: XCTestCase {
     }
 
     func mode(_ image: NSImage) -> TableBackgroundMode {
-        return .background(image: image, intensity: -45, colors: [.red, .blue], rotation: 90, metadata: SVG_SlotsMetadata(fixture: 42))
+        return .background(image: image, intensity: -45, colors: [.red, .blue], rotation: 90, metadata: metadataFixture())
     }
 
     func testPixelCostUsesPixelsRatherThanPoints() {
@@ -107,6 +107,87 @@ final class WallpaperCacheTests: XCTestCase {
         XCTAssertNotNil(weak.value)
         cache.clearAll()
         XCTAssertNil(weak.value)
+    }
+
+    func testLiveBackgroundCanBeReusedWithoutStrongAdmission() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let value = image()
+        let original = mode(value)
+        let key = PhotoCacheKeyEntry(id: 1)
+        cache.cacheImage(original, for: key)
+        XCTAssertEqual(cache.cachedImage(for: key), original)
+        withExtendedLifetime(value) {}
+    }
+
+    func testLiveTiledImageCanBeReusedWithoutStrongAdmission() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let value = image()
+        let key = PhotoCacheKeyEntry(id: 1)
+        cache.cacheImage(.tiled(image: value), for: key)
+        XCTAssertEqual(cache.cachedImage(for: key), .tiled(image: value))
+        withExtendedLifetime(value) {}
+    }
+
+    func testUnadmittedImageIsReleasedWhenOwnerCloses() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let key = PhotoCacheKeyEntry(id: 1)
+        var owner: NSImage? = image()
+        let weak = WeakImage(owner!)
+        cache.cacheImage(mode(owner!), for: key)
+        XCTAssertNotNil(cache.cachedImage(for: key))
+        owner = nil
+        XCTAssertNil(weak.value)
+        XCTAssertNil(cache.cachedImage(for: key))
+    }
+
+    func testReplacementCannotResurrectOldLiveImage() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let value = image()
+        let key = PhotoCacheKeyEntry(id: 1)
+        cache.cacheImage(mode(value), for: key)
+        cache.cacheImage(.plain, for: key)
+        XCTAssertEqual(cache.cachedImage(for: key), .plain)
+        cache.clearAll()
+        XCTAssertNil(cache.cachedImage(for: key))
+        withExtendedLifetime(value) {}
+    }
+
+    func testPurgeForgetsLiveWeakEntry() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let value = image()
+        let key = PhotoCacheKeyEntry(id: 1)
+        cache.cacheImage(mode(value), for: key)
+        XCTAssertNotNil(cache.cachedImage(for: key))
+        cache.clearAll()
+        XCTAssertNil(cache.cachedImage(for: key))
+        withExtendedLifetime(value) {}
+    }
+
+    func testExpiredReplacementCannotFallBackToOldOwner() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let first = image()
+        var second: NSImage? = image(width: 48)
+        let key = PhotoCacheKeyEntry(id: 1)
+        cache.cacheImage(.tiled(image: first), for: key)
+        cache.cacheImage(mode(second!), for: key)
+        XCTAssertEqual(cache.cachedImage(for: key), mode(second!))
+        second = nil
+        XCTAssertNil(cache.cachedImage(for: key))
+        withExtendedLifetime(first) {}
+    }
+
+    func testRetainedWallpaperSurvivesUnrelatedBackgroundVisits() {
+        let cache = WallpaperCache(20, byteLimit: 1)
+        let retained = image()
+        cache.cacheImage(mode(retained), for: PhotoCacheKeyEntry(id: 0))
+        for id in 1...12 {
+            autoreleasepool {
+                cache.cacheImage(mode(image(width: 32 + id)), for: PhotoCacheKeyEntry(id: id))
+            }
+        }
+        XCTAssertEqual(cache.cachedImage(for: PhotoCacheKeyEntry(id: 0)), mode(retained))
+        for id in 1...12 { XCTAssertNil(cache.cachedImage(for: PhotoCacheKeyEntry(id: id))) }
+        withExtendedLifetime(retained) {}
     }
 
     func testConcurrentLookupInsertionAndPurge() {

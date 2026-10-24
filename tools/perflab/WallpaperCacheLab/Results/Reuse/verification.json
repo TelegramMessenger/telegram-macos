@@ -1,0 +1,21 @@
+{
+  "candidate_base": "68ed4df53c55b6344e7c3f50619e15861b734273",
+  "candidate_source_sha256": "237299be17326ff3ba23c565ef2157f227d06515f8f25042d6bbb831a9c16d44",
+  "debug_tests": 19,
+  "release_tests": 19,
+  "tsan_tests": 19,
+  "pr60_regression_test_failures": 6,
+  "native_measurements": 180,
+  "scenarios": 10,
+  "variants": 3,
+  "runs_each": 6,
+  "decoded_bitmap_equivalence_cases": 20,
+  "all_workload_render_digests_equal": true,
+  "cache_only_bitmaps_after_live_themes_close": 2,
+  "cache_only_bitmap_bytes_after_live_themes_close": 52582400,
+  "prepared_full_application_build": "passed",
+  "prepared_build_base": "166e37d737865fc97af99aa1283e4a4454c3ab0d",
+  "patched_cache_file_and_relevant_helper_blocks_identical_in_build": true,
+  "clean_latest_head_build": false,
+  "authenticated_chat_navigation_profiled": false
+}
