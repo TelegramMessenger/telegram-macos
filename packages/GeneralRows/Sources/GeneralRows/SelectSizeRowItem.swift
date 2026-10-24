@@ -97,6 +97,12 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
     
     private var availableRects:[NSRect] = []
     private let containerView = GeneralRowContainerView(frame: NSZeroRect)
+    private var knobPosition: CGFloat?
+    private var knobAnimator: DisplayLinkAnimator?
+    private var trackMinX: CGFloat = 0
+    private var trackStep: CGFloat = 0
+    private var isTracking: Bool = false
+    private var isDragging: Bool = false
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         self.addSubview(containerView)
@@ -109,42 +115,106 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
     
     
     
-    public override func mouseDragged(with event: NSEvent) {
+    private var currentIndex: Int {
+        guard let item = item as? SelectSizeRowItem else {
+            return 0
+        }
+        return item.sizes.firstIndex(of: item.current) ?? 0
+    }
+    
+    private var effectivePosition: CGFloat {
+        return knobPosition ?? CGFloat(currentIndex)
+    }
+    
+    private func position(for event: NSEvent) -> CGFloat? {
+        guard let item = item as? SelectSizeRowItem, item.sizes.count > 1, trackStep > 0 else {
+            return nil
+        }
+        let point = containerView.convert(event.locationInWindow, from: nil)
+        let value = (point.x - trackMinX) / trackStep
+        return min(max(0, value), CGFloat(item.sizes.count - 1))
+    }
+    
+    private func isInsideTrack(_ event: NSEvent) -> Bool {
+        guard let item = item as? SelectSizeRowItem, item.sizes.count > 1, trackStep > 0 else {
+            return false
+        }
+        let point = containerView.convert(event.locationInWindow, from: nil)
+        let maxX = trackMinX + trackStep * CGFloat(item.sizes.count - 1)
+        return point.x >= trackMinX - 15 && point.x <= maxX + 15 && point.y >= 0 && point.y <= containerView.frame.height
+    }
+    
+    private func moveKnob(to position: CGFloat) {
+        knobAnimator?.invalidate()
+        knobAnimator = nil
+        knobPosition = position
+        containerView.needsDisplay = true
+    }
+    
+    private func animateKnob(to index: Int) {
         guard let item = item as? SelectSizeRowItem, !item.sizes.isEmpty else {
-            super.mouseDragged(with: event)
             return
         }
+        let index = min(max(0, index), item.sizes.count - 1)
+        let from = effectivePosition
+        let changed = index != currentIndex
+        knobPosition = from
+        item.current = item.sizes[index]
         
-        if item.sizes.count == availableRects.count {
-            let point = containerView.convert(event.locationInWindow, from: nil)
-            for i in 0 ..< availableRects.count {
-                if NSPointInRect(point, availableRects[i]), item.current != i {
-                    item.current = item.sizes[i]
-                    containerView.needsDisplay = true
-                }
+        let completion: () -> Void = { [weak self, weak item] in
+            guard let self else {
+                return
             }
+            self.knobAnimator = nil
+            self.knobPosition = nil
+            self.containerView.needsDisplay = true
+            if changed {
+                item?.selectAction(index)
+            }
+        }
+        
+        knobAnimator?.invalidate()
+        knobAnimator = nil
+        if abs(from - CGFloat(index)) < 0.001 {
+            completion()
+        } else {
+            knobAnimator = DisplayLinkAnimator(duration: 0.2, from: from, to: CGFloat(index), update: { [weak self] value in
+                self?.knobPosition = value
+                self?.containerView.needsDisplay = true
+            }, completion: completion)
         }
     }
     
+    public override func mouseDown(with event: NSEvent) {
+        guard isInsideTrack(event) else {
+            super.mouseDown(with: event)
+            return
+        }
+        isTracking = true
+        isDragging = false
+    }
+    
+    public override func mouseDragged(with event: NSEvent) {
+        guard isTracking, let position = position(for: event) else {
+            super.mouseDragged(with: event)
+            return
+        }
+        isDragging = true
+        moveKnob(to: position)
+    }
+    
     public override func mouseUp(with event: NSEvent) {
-        guard let item = item as? SelectSizeRowItem, !item.sizes.isEmpty else {
+        guard isTracking, let position = position(for: event) else {
             super.mouseUp(with: event)
             return
         }
-        
-        if item.sizes.count == availableRects.count {
-            let point = containerView.convert(event.locationInWindow, from: nil)
-            for i in 0 ..< availableRects.count {
-                if NSPointInRect(point, availableRects[i]), item.sizes.firstIndex(of: item.current) != i {
-                    item.selectAction(i)
-                    return
-                }
-            }
-            if item.initialCurrent != item.current {
-                item.selectAction(item.sizes.firstIndex(of: item.current)!)
-            }
+        if isDragging {
+            animateKnob(to: Int(effectivePosition.rounded()))
+        } else {
+            animateKnob(to: Int(position.rounded()))
         }
-        
+        isTracking = false
+        isDragging = false
     }
     
     public func _focus(_ size: NSSize) -> NSRect {
@@ -205,11 +275,14 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
             
             ctx.fill(interactionRect)
             
-            let current: CGFloat = CGFloat(item.sizes.firstIndex(of: item.current) ?? 0)
+            let current: CGFloat = effectivePosition
             
             let selectSize = NSMakeSize(20, 20)
             
-            let selectPoint = NSMakePoint(minX + floorToScreenPixels(backingScaleFactor, interactionRect.width / CGFloat(count)) * current - selectSize.width / 2, _focus(selectSize).minY)
+            trackMinX = minX
+            trackStep = floorToScreenPixels(backingScaleFactor, interactionRect.width / CGFloat(count))
+            
+            let selectPoint = NSMakePoint(minX + trackStep * current - selectSize.width / 2, _focus(selectSize).minY)
             
             ctx.setFillColor(theme.colors.grayText.cgColor)
             let unMinX = selectPoint.x + selectSize.width / 2
@@ -223,7 +296,7 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
                 ctx.setFillColor(theme.colors.background.cgColor)
                 ctx.fill(NSMakeRect(point.x, point.y, perSize.width, perSize.height))
                 
-                ctx.setFillColor(item.sizes[i] <= item.current ? theme.colors.accent.cgColor : theme.colors.grayText.cgColor)
+                ctx.setFillColor(CGFloat(i) <= current + 0.001 ? theme.colors.accent.cgColor : theme.colors.grayText.cgColor)
                 ctx.fillEllipse(in: NSMakeRect(point.x + perSize.width/2 - 2, point.y + 3, 4, 4))
                 
                 if let titles = item.titles, titles.count == item.sizes.count {
@@ -297,11 +370,14 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
             
             ctx.fill(interactionRect)
             
-            let current: CGFloat = CGFloat(item.sizes.firstIndex(of: item.current) ?? 0)
+            let current: CGFloat = effectivePosition
             
             let selectSize = NSMakeSize(20, 20)
             
-            let selectPoint = NSMakePoint(minX + floorToScreenPixels(backingScaleFactor, interactionRect.width / CGFloat(count)) * current - selectSize.width / 2, _focus(selectSize).minY)
+            trackMinX = minX
+            trackStep = floorToScreenPixels(backingScaleFactor, interactionRect.width / CGFloat(count))
+            
+            let selectPoint = NSMakePoint(minX + trackStep * current - selectSize.width / 2, _focus(selectSize).minY)
             
             ctx.setFillColor(theme.colors.grayText.cgColor)
             let unMinX = selectPoint.x + selectSize.width / 2
@@ -318,7 +394,7 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
                 ctx.setFillColor(theme.colors.background.cgColor)
                 ctx.fill(NSMakeRect(point.x, point.y, perSize.width, perSize.height))
                 
-                ctx.setFillColor(i <= (item.sizes.firstIndex(of: item.current) ?? 0) ? theme.colors.accent.cgColor : theme.colors.grayText.cgColor)
+                ctx.setFillColor(CGFloat(i) <= current + 0.001 ? theme.colors.accent.cgColor : theme.colors.grayText.cgColor)
                 ctx.fillEllipse(in: NSMakeRect(point.x + perSize.width/2 - 2, point.y + 3, 4, 4))
 
 
@@ -337,7 +413,7 @@ private class SelectSizeRowView : TableRowView, ViewDisplayDelegate {
                     for j in 0 ..< count {
                         let rect = NSMakeRect(rect.minX + CGFloat(j) * w, rect.minY, w, rect.height)
                         ctx.saveGState()
-                        ctx.setFillColor(i <= (item.sizes.firstIndex(of: item.current) ?? 0) ? theme.colors.accent.cgColor : theme.colors.grayText.cgColor)
+                        ctx.setFillColor(CGFloat(i) <= current + 0.001 ? theme.colors.accent.cgColor : theme.colors.grayText.cgColor)
                         ctx.fill(NSMakeRect(rect.minX + inset + 2, rect.minY, w - 4, rect.height))
                         ctx.restoreGState()
                     }
