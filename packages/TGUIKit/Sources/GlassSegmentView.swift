@@ -8,6 +8,9 @@ public final class GlassSegmentView: View {
 
     private let glass = LiquidGlassView(frame: NSZeroRect, cornerRadius: GlassSegmentView.height / 2, hasShadow: true, hasBorder: true)
     private let selectionView = View()
+    private let selectionGlass = LiquidGlassView(frame: NSZeroRect, cornerRadius: (GlassSegmentView.height - GlassSegmentView.selectionInset * 2) / 2, hasShadow: true, hasBorder: true, tintAlpha: 0)
+    private lazy var selectionTouchEffect = GlassTouchEffect(transformView: selectionGlass)
+    private var liftGeneration: Int = 0
     private var labels: [TextView] = []
     private var currentTheme: PresentationTheme = presentation
     private var selectionPosition: CGFloat?
@@ -118,6 +121,44 @@ public final class GlassSegmentView: View {
         return false
     }
 
+    private func liftSelection() {
+        liftGeneration += 1
+        if selectionGlass.superview == nil {
+            selectionGlass.alphaValue = 0
+            addSubview(selectionGlass)
+            updateLayout(size: frame.size, transition: .immediate)
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            selectionGlass.animator().alphaValue = 1
+            selectionView.animator().alphaValue = 0
+        }
+        selectionTouchEffect.setStretchVector(.zero, animated: false)
+        selectionTouchEffect.setIsTracking(true)
+    }
+
+    private func dropSelection() {
+        selectionTouchEffect.setIsTracking(false)
+        liftGeneration += 1
+        let generation = liftGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.liftGeneration == generation else {
+                return
+            }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.2
+                self.selectionGlass.animator().alphaValue = 0
+                self.selectionView.animator().alphaValue = 1
+            }, completionHandler: { [weak self] in
+                guard let self, self.liftGeneration == generation else {
+                    return
+                }
+                self.selectionTouchEffect.reset(animated: false)
+                self.selectionGlass.removeFromSuperview()
+            })
+        }
+    }
+
     public override func mouseDown(with event: NSEvent) {
         let frames = itemFrames
         let start = convert(event.locationInWindow, from: nil)
@@ -129,10 +170,12 @@ public final class GlassSegmentView: View {
         if pressedIndex != selectedIndex {
             setSelection(position: position, animated: true)
         }
+        liftSelection()
         while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if next.type == .leftMouseUp {
                 let index = Int(position.rounded())
                 setSelection(position: CGFloat(index), animated: true)
+                dropSelection()
                 if !moved || index != selectedIndex {
                     didSelect?(index)
                 }
@@ -140,6 +183,7 @@ public final class GlassSegmentView: View {
             }
             let point = convert(next.locationInWindow, from: nil)
             moved = moved || abs(point.x - start.x) > 2
+            selectionTouchEffect.setStretchVector(CGPoint(x: point.x - start.x, y: point.y - start.y), animated: false)
             if moved {
                 position = self.position(forCenterX: frames[pressedIndex].midX + point.x - start.x, frames: frames)
                 setSelection(position: position, animated: false)
@@ -164,8 +208,13 @@ public final class GlassSegmentView: View {
 
         if let position = selectionPosition, !frames.isEmpty {
             let selectionTransition: ContainedViewLayoutTransition = selectionView.isHidden ? .immediate : transition
+            let selectionRect = selectionFrame(at: position, frames: frames)
             selectionView.isHidden = false
-            selectionTransition.updateFrame(view: selectionView, frame: selectionFrame(at: position, frames: frames))
+            selectionTransition.updateFrame(view: selectionView, frame: selectionRect)
+            if selectionGlass.superview != nil {
+                selectionTransition.updateFrame(view: selectionGlass, frame: selectionRect)
+                selectionGlass.updateLayout(size: selectionRect.size, transition: selectionTransition)
+            }
         } else {
             selectionView.isHidden = true
         }
