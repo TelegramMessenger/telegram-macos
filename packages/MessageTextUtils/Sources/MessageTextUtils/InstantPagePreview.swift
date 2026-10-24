@@ -64,9 +64,60 @@ private func markdownPreviewRichText(from block: InstantPageBlock) -> RichText? 
     case let .pullQuote(text, caption):
         return text.plainText.isEmpty ? caption : text
     case let .kicker(text):          return text
-    case let .table(title, _, _, _, _): return title
-    case let .details(title, _, _):  return title
+    case let .cover(block):
+        return markdownPreviewRichText(from: block)
+    case let .thinking(text):
+        return text
+    case let .table(title, rows, _, _, _):
+        if !title.plainText.isEmpty {
+            return title
+        }
+        var parts: [RichText] = []
+        for row in rows {
+            for cell in row.cells {
+                if let cellText = cell.text, !cellText.plainText.isEmpty {
+                    parts.append(cellText)
+                }
+            }
+        }
+        return parts.isEmpty ? nil : (parts.count == 1 ? parts[0] : .concat(parts))
+    case let .details(title, blocks, _):
+        if !title.plainText.isEmpty {
+            return title
+        }
+        let inner = instantPageRichTextFromBlocks(blocks)
+        return inner.plainText.isEmpty ? nil : inner
     case let .relatedArticles(title, _): return title
+    case let .postEmbed(_, _, _, author, _, blocks, caption):
+        let inner = instantPageRichTextFromBlocks(blocks)
+        if !inner.plainText.isEmpty {
+            return inner
+        }
+        if !caption.text.plainText.isEmpty {
+            return caption.text
+        }
+        return author.isEmpty ? nil : .plain(author)
+    case let .collage(items, caption), let .slideshow(items, caption):
+        let inner = instantPageRichTextFromBlocks(items)
+        if !inner.plainText.isEmpty {
+            return inner
+        }
+        return caption.text.plainText.isEmpty ? nil : caption.text
+    case let .buttonRow(_, buttons):
+        var parts: [RichText] = []
+        for button in buttons {
+            if !button.text.plainText.isEmpty {
+                parts.append(button.text)
+            }
+        }
+        return parts.isEmpty ? nil : (parts.count == 1 ? parts[0] : .concat(parts))
+    case let .image(_, caption, _, _, _),
+         let .video(_, caption, _, _, _),
+         let .audio(_, caption),
+         let .document(_, caption),
+         let .webEmbed(_, _, _, caption, _, _, _),
+         let .map(_, _, _, _, caption):
+        return caption.text.plainText.isEmpty ? nil : caption.text
     default:                         return nil
     }
 }

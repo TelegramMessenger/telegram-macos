@@ -318,7 +318,7 @@ public func chatListText(account:Account, for message:Message?, messagesCount: I
         
            
         
-        if message.text.isEmpty, message.media.isEmpty, let rich = message.attributes.compactMap({ $0 as? RichTextMessageAttribute }).first {
+        if let rich = message.attributes.compactMap({ $0 as? RichTextMessageAttribute }).first {
             let preview = instantPagePreview(rich.instantPage)
             if !preview.text.isEmpty {
                 let attr = NSMutableAttributedString()
@@ -330,6 +330,9 @@ public func chatListText(account:Account, for message:Message?, messagesCount: I
         }
 
         if message.text.isEmpty && message.media.isEmpty {
+            if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
+                return NSMutableAttributedString()
+            }
             let attr = NSMutableAttributedString()
             _ = attr.append(string: strings().chatListUnsupportedMessage, color: theme.chatList.grayTextColor, font: .normal(.text))
             attr.setSelected(color: theme.colors.underSelectedColor, range: attr.range)
