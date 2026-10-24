@@ -290,6 +290,199 @@ private func applyCommunityChatListSummaries(_ list: EngineChatList, account: Ac
     }
 }
 
+private struct CollapsedCommunityPeers: Equatable {
+    var communityIdByPeerId: [PeerId: PeerId] = [:]
+    var peerIds: [PeerId] = []
+}
+
+private func collapsedCommunityPeers(account: Account) -> Signal<CollapsedCommunityPeers, NoError> {
+    return TelegramEngine(account: account).peers.updatedCommunitiesState()
+    |> map { state -> [PeerId] in
+        return state.communityIds ?? []
+    }
+    |> distinctUntilChanged
+    |> mapToSignal { communityIds -> Signal<CollapsedCommunityPeers, NoError> in
+        if communityIds.isEmpty {
+            return .single(CollapsedCommunityPeers())
+        }
+        let keys: [PostboxViewKey] = communityIds.map { communityId in
+            return .peer(peerId: communityId, components: [.cachedData])
+        }
+        return account.postbox.combinedView(keys: keys)
+        |> map { views -> CollapsedCommunityPeers in
+            var result = CollapsedCommunityPeers()
+            for communityId in communityIds {
+                guard let view = views.views[.peer(peerId: communityId, components: [.cachedData])] as? PeerView else {
+                    continue
+                }
+                guard let community = view.peers[communityId] as? TelegramCommunity, community.collapsedInDialogs == true else {
+                    continue
+                }
+                guard let cachedData = view.cachedData as? CachedCommunityData else {
+                    continue
+                }
+                for linkedPeer in cachedData.linkedPeers {
+                    if linkedPeer.peerId == communityId || result.communityIdByPeerId[linkedPeer.peerId] != nil {
+                        continue
+                    }
+                    result.communityIdByPeerId[linkedPeer.peerId] = communityId
+                    result.peerIds.append(linkedPeer.peerId)
+                }
+            }
+            return result
+        }
+        |> distinctUntilChanged
+    }
+}
+
+private struct CollapsedCommunityFilterItems {
+    var items: [EngineChatList.Item] = []
+    var communityIdByPeerId: [PeerId: PeerId] = [:]
+}
+
+private func collapsedCommunityFilterItems(account: Account, filter: ChatListFilterData, predicate: ChatListFilterPredicate) -> Signal<CollapsedCommunityFilterItems, NoError> {
+    return collapsedCommunityPeers(account: account)
+    |> mapToSignal { collapsed -> Signal<CollapsedCommunityFilterItems, NoError> in
+        let peerIds = collapsed.peerIds.filter { peerId in
+            return !predicate.excludePeerIds.contains(peerId)
+        }
+        if peerIds.isEmpty {
+            return .single(CollapsedCommunityFilterItems())
+        }
+
+        let topMessageKey: PostboxViewKey = .topChatMessage(peerIds: peerIds)
+        let globalNotificationsKey: PostboxViewKey = .preferences(keys: Set([PreferencesKeys.globalNotifications]))
+        let peerKeys: [PostboxViewKey] = peerIds.map { .basicPeer($0) }
+
+        let views = account.postbox.combinedView(keys: [topMessageKey, globalNotificationsKey] + peerKeys)
+        let readStates = account.postbox.unreadMessageCountsView(items: peerIds.map { peerId in
+            return .peer(id: peerId, handleThreads: true)
+        })
+        |> map { view -> [PeerId: CombinedPeerReadState] in
+            var result: [PeerId: CombinedPeerReadState] = [:]
+            for entry in view.entries {
+                if case let .peer(peerId, state) = entry, let state {
+                    result[peerId] = state
+                }
+            }
+            return result
+        }
+
+        return combineLatest(views, readStates)
+        |> map { views, readStates -> CollapsedCommunityFilterItems in
+            let topMessages = (views.views[topMessageKey] as? TopChatMessageView)?.messages ?? [:]
+            let globalNotificationSettings = ((views.views[globalNotificationsKey] as? PreferencesView)?.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings).postboxAccessor
+
+            var result = CollapsedCommunityFilterItems(items: [], communityIdByPeerId: collapsed.communityIdByPeerId)
+            for peerId in peerIds {
+                guard let peerView = views.views[.basicPeer(peerId)] as? BasicPeerView, let peer = peerView.peer else {
+                    continue
+                }
+                guard let topMessage = topMessages[peerId] else {
+                    continue
+                }
+                let readState = readStates[peerId]
+                let isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalNotificationSettings, peer: peer, peerSettings: peerView.notificationSettings)
+
+                let pinningIndex: UInt16?
+                if let index = filter.includePeers.pinnedPeers.firstIndex(of: peerId) {
+                    pinningIndex = UInt16(index)
+                } else if predicate.includes(peer: peer, groupId: .root, isRemovedFromTotalUnreadCount: isMuted, isUnread: readState?.isUnread ?? false, isContact: peerView.isContact, messageTagSummaryResult: nil) {
+                    pinningIndex = nil
+                } else {
+                    continue
+                }
+
+                result.items.append(EngineChatList.Item(
+                    id: .chatList(peerId),
+                    index: .chatList(ChatListIndex(pinningIndex: pinningIndex, messageIndex: topMessage.index)),
+                    messages: [EngineMessage(topMessage)],
+                    readCounters: EnginePeerReadCounters(state: readState, isMuted: isMuted),
+                    isMuted: isMuted,
+                    draft: nil,
+                    threadData: nil,
+                    renderedPeer: EngineRenderedPeer(peer: EnginePeer(peer)),
+                    presence: nil,
+                    hasUnseenMentions: false,
+                    hasUnseenReactions: false,
+                    hasUnseenPollVotes: false,
+                    forumTopicData: nil,
+                    topForumTopicItems: [],
+                    hasFailed: false,
+                    isContact: peerView.isContact,
+                    autoremoveTimeout: nil,
+                    storyStats: nil,
+                    displayAsTopicList: false,
+                    isPremiumRequiredToMessage: false,
+                    mediaDraftContentType: nil
+                ))
+            }
+            return result
+        }
+    }
+}
+
+private func mergeCollapsedCommunityFilterItems(_ list: EngineChatList, extra: CollapsedCommunityFilterItems, filter: ChatListFilterData) -> EngineChatList {
+    if extra.items.isEmpty {
+        return list
+    }
+    if list.items.isEmpty && (list.hasEarlier || list.hasLater || list.isLoading) {
+        return list
+    }
+    let existingIds = Set(list.items.map(\.id))
+    let lowerBound = (list.hasEarlier || list.isLoading) ? list.items.first?.index : nil
+    let upperBound = list.hasLater ? list.items.last?.index : nil
+
+    let added = extra.items.filter { item in
+        if existingIds.contains(item.id) {
+            return false
+        }
+        if let lowerBound, item.index < lowerBound {
+            return false
+        }
+        if let upperBound, item.index > upperBound {
+            return false
+        }
+        return true
+    }
+    if added.isEmpty {
+        return list
+    }
+
+    let explicitlyIncluded = Set(filter.includePeers.peers)
+    var replacedCommunityIds = Set<PeerId>()
+    for item in added {
+        if case let .chatList(peerId) = item.id, let communityId = extra.communityIdByPeerId[peerId], !explicitlyIncluded.contains(communityId) {
+            replacedCommunityIds.insert(communityId)
+        }
+    }
+
+    var items = list.items.filter { item in
+        if case let .chatList(peerId) = item.id {
+            return !replacedCommunityIds.contains(peerId)
+        }
+        return true
+    }
+    items.append(contentsOf: added)
+    items.sort(by: { $0.index < $1.index })
+
+    return EngineChatList(items: items, groupItems: list.groupItems, additionalItems: list.additionalItems, hasEarlier: list.hasEarlier, hasLater: list.hasLater, isLoading: list.isLoading)
+}
+
+private func chatListWithCollapsedCommunityPeers(_ view: Signal<(ChatListView, ViewUpdateType), NoError>, account: Account, filter: ChatListFilter?, predicate: ChatListFilterPredicate?) -> Signal<(EngineChatList, ViewUpdateType), NoError> {
+    let mapped = view
+    |> map { view, updateType -> (EngineChatList, ViewUpdateType) in
+        return (EngineChatList(view, accountPeerId: account.peerId), updateType)
+    }
+    guard let data = filter?.data, let predicate else {
+        return mapped
+    }
+    return combineLatest(mapped, collapsedCommunityFilterItems(account: account, filter: data, predicate: predicate))
+    |> map { value, extra -> (EngineChatList, ViewUpdateType) in
+        return (mergeCollapsedCommunityFilterItems(value.0, extra: extra, filter: data), value.1)
+    }
+}
+
 public func chatListViewForLocation(chatListLocation: ChatListControllerLocation, location: ChatListIndexRequest, filter: ChatListFilter?, account: Account) -> Signal<ChatListViewUpdate, NoError> {
     switch chatListLocation {
     case let .chatList(groupId):
@@ -299,9 +492,9 @@ public func chatListViewForLocation(chatListLocation: ChatListControllerLocation
             switch location {
             case let .Initial(count, st):
                 let signal = account.viewTracker.tailChatListView(groupId: groupId, filterPredicate: filterPredicate, count: count)
-                return signal
-                |> mapToSignal { view, updateType -> Signal<ChatListViewUpdate, NoError> in
-                    return applyCommunityChatListSummaries(EngineChatList(view, accountPeerId: account.peerId), account: account)
+                return chatListWithCollapsedCommunityPeers(signal, account: account, filter: groupId == .root ? filter : nil, predicate: filterPredicate)
+                |> mapToSignal { list, updateType -> Signal<ChatListViewUpdate, NoError> in
+                    return applyCommunityChatListSummaries(list, account: account)
                     |> map { list -> ChatListViewUpdate in
                         return ChatListViewUpdate(list: list, type: updateType, scroll: st, removeNextAnimation: false, communityCategories: communityCategories)
                     }
@@ -311,8 +504,9 @@ public func chatListViewForLocation(chatListLocation: ChatListControllerLocation
                     return .never()
                 }
                 var first = true
-                return account.viewTracker.aroundChatListView(groupId: groupId, filterPredicate: filterPredicate, index: index, count: 100)
-                |> mapToSignal { view, updateType -> Signal<ChatListViewUpdate, NoError> in
+                let signal = account.viewTracker.aroundChatListView(groupId: groupId, filterPredicate: filterPredicate, index: index, count: 100)
+                return chatListWithCollapsedCommunityPeers(signal, account: account, filter: groupId == .root ? filter : nil, predicate: filterPredicate)
+                |> mapToSignal { list, updateType -> Signal<ChatListViewUpdate, NoError> in
                     let genericType: ViewUpdateType
                     if first {
                         first = false
@@ -320,7 +514,7 @@ public func chatListViewForLocation(chatListLocation: ChatListControllerLocation
                     } else {
                         genericType = updateType
                     }
-                    return applyCommunityChatListSummaries(EngineChatList(view, accountPeerId: account.peerId), account: account)
+                    return applyCommunityChatListSummaries(list, account: account)
                     |> map { list -> ChatListViewUpdate in
                         return ChatListViewUpdate(list: list, type: genericType, scroll: st, removeNextAnimation: st != nil, communityCategories: communityCategories)
                     }
