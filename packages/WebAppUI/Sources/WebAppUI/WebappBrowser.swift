@@ -208,7 +208,7 @@ public final class WebappBrowser : Window {
         
         let shadow = SimpleShapeLayer()
         
-        let cornerRadius: CGFloat = 14.0
+        let cornerRadius: CGFloat = BrowserHeaderMetrics.windowCornerRadius
 
        
         
@@ -236,6 +236,7 @@ public final class WebappBrowser : Window {
         self.isReleasedWhenClosed = false
                 
         containerView.layer?.cornerRadius = cornerRadius
+        containerView.layer?.masksToBounds = true
         self.contentView?.layer?.cornerRadius = cornerRadius
     }
     
@@ -268,7 +269,7 @@ public final class WebappBrowser : Window {
         testLayer.shadowRadius = 5
         testLayer.shadowOpacity = 1
 
-        testLayer.cornerRadius = 14
+        testLayer.cornerRadius = BrowserHeaderMetrics.windowCornerRadius
         testLayer.frame = bounds.insetBy(dx: 13, dy: 13)
         testLayer.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
         
@@ -362,7 +363,10 @@ private final class TabView: Control {
         addSubview(backgroundView)
         
         
-        backgroundView.layer?.cornerRadius = 10
+        backgroundView.layer?.cornerRadius = BrowserHeaderMetrics.tabHeight / 2
+        if #available(macOS 10.15, *) {
+            backgroundView.layer?.cornerCurve = .continuous
+        }
         self.scaleOnClick = true
         
         self.contextMenu = { [weak self] in
@@ -412,7 +416,7 @@ private final class TabView: Control {
                 self.avatarView = current
                 addSubview(current)
                 if item.selected {
-                    current.centerY(x: 20)
+                    current.centerY(x: BrowserHeaderMetrics.tabIconX)
                 } else {
                     current.center()
                 }
@@ -437,7 +441,7 @@ private final class TabView: Control {
                 addSubview(current)
                 current.animates = true
                 if item.selected {
-                    current.centerY(x: 20)
+                    current.centerY(x: BrowserHeaderMetrics.tabIconX)
                 } else {
                     current.center()
                 }
@@ -474,7 +478,7 @@ private final class TabView: Control {
                 current.progress = nil
                 self.loading = current
                 addSubview(current)
-                current.centerY(x: self.avatarView?.frame.minX ?? 20)
+                current.centerY(x: self.avatarView?.frame.minX ?? BrowserHeaderMetrics.tabIconX)
                 
                 if animated {
                     current.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
@@ -506,7 +510,7 @@ private final class TabView: Control {
             current.update(item.title)
             
             if isNew {
-                current.centerY(x: 50)
+                current.centerY(x: BrowserHeaderMetrics.tabTextX)
                 if animated {
                     current.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
                 }
@@ -530,7 +534,7 @@ private final class TabView: Control {
                     current.update(urlText)
                     
                     if isNew {
-                        current.centerY(x: 50)
+                        current.centerY(x: BrowserHeaderMetrics.tabTextX)
                         if animated {
                             current.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
                         }
@@ -590,13 +594,14 @@ private final class TabView: Control {
             return
         }
         
-        transition.updateFrame(view: self.backgroundView, frame: size.bounds.insetBy(dx: 10, dy: 0))
+        transition.updateFrame(view: self.backgroundView, frame: size.bounds)
+        self.backgroundView.layer?.cornerRadius = size.height / 2
         
         let imageView = avatarView ?? iconView
         
         if let imageView {
             if data.selected {
-                transition.updateFrame(view: imageView, frame: imageView.centerFrameY(x: 20))
+                transition.updateFrame(view: imageView, frame: imageView.centerFrameY(x: BrowserHeaderMetrics.tabIconX))
             } else {
                 transition.updateFrame(view: imageView, frame: imageView.centerFrame())
             }
@@ -606,12 +611,12 @@ private final class TabView: Control {
         }
         if let urlText {
             if let textView {
-                transition.updateFrame(view: textView, frame: CGRect(origin: NSMakePoint(50, 4), size: textView.frame.size))
+                transition.updateFrame(view: textView, frame: CGRect(origin: NSMakePoint(BrowserHeaderMetrics.tabTextX, 2), size: textView.frame.size))
             }
-            transition.updateFrame(view: urlText, frame: CGRect(origin: NSMakePoint(50, size.height - urlText.frame.height - 4), size: urlText.frame.size))
+            transition.updateFrame(view: urlText, frame: CGRect(origin: NSMakePoint(BrowserHeaderMetrics.tabTextX, size.height - urlText.frame.height - 2), size: urlText.frame.size))
         } else {
             if let textView {
-                transition.updateFrame(view: textView, frame: textView.centerFrameY(x: 50))
+                transition.updateFrame(view: textView, frame: textView.centerFrameY(x: BrowserHeaderMetrics.tabTextX))
             }
         }
         if let premiumStatus, let textView {
@@ -731,7 +736,7 @@ private final class TabsView: View {
         }
         
         for (idx, item, _) in indicesAndItems {
-            let view = TabView(frame: NSMakeRect(width, 0, 40, 38))
+            let view = TabView(frame: NSMakeRect(width, 0, BrowserHeaderMetrics.collapsedTabWidth, BrowserHeaderMetrics.tabHeight))
             view.update(item: item, arguments: arguments, transition: .immediate)
             
             views.insert(view, at: idx)
@@ -804,7 +809,7 @@ private final class TabsView: View {
                 x += item.width
             }
         }
-        return NSMakeRect(x, (50 - 38) / 2, items[index].width, 38)
+        return NSMakeRect(x, 0, items[index].width, BrowserHeaderMetrics.tabHeight)
     }
     
     public var width: CGFloat {
@@ -1021,7 +1026,7 @@ public struct BrowserTabData : Comparable, Identifiable {
     public var width: CGFloat {
         if let title {
             let textWidth = max(title.layoutSize.width, urlText?.layoutSize.width ?? 0)
-            var width = textWidth + 20 + 20 + 10 + 20
+            var width = textWidth + BrowserHeaderMetrics.tabTextX + BrowserHeaderMetrics.tabTrailing
             if let peer = self.peer {
                 if let size = PremiumStatusControl.controlSize(peer._asPeer(), false, left: false) {
                     width += (size.width) + 2
@@ -1030,7 +1035,7 @@ public struct BrowserTabData : Comparable, Identifiable {
             
             return width
         } else {
-            return 40
+            return BrowserHeaderMetrics.collapsedTabWidth
         }
     }
     
@@ -1222,8 +1227,12 @@ private final class MoreControl : Control {
         addSubview(animationView)
         setAccessibilityLabel(strings().voiceOverCommonMore)
         set(handler: { [weak self] _ in
-            self?.animationView.set(self?.lottieAnimation?.withUpdatedPolicy(.onceEnd), reset: true)
+            self?.play()
         }, for: .Down)
+    }
+
+    public func play() {
+        animationView.set(lottieAnimation?.withUpdatedPolicy(.onceEnd), reset: true)
     }
     private let animationView: LottiePlayerView = .init(frame: NSMakeRect(0, 0, 30, 30))
 
@@ -1251,69 +1260,116 @@ private final class MoreControl : Control {
     }
 }
 
+private enum BrowserHeaderMetrics {
+    static let height: CGFloat = 52
+    static let controlSize: CGFloat = 40
+    static let inset: CGFloat = 8
+    static let spacing: CGFloat = 6
+    static let tabsPadding: CGFloat = 3
+    static let tabHeight: CGFloat = controlSize - tabsPadding * 2
+    static let collapsedTabWidth: CGFloat = tabHeight
+    static let tabIconX: CGFloat = 7
+    static let tabTextX: CGFloat = tabIconX + 20 + 8
+    static let tabTrailing: CGFloat = 14
+    static var windowCornerRadius: CGFloat {
+        if #available(macOS 26.0, *) {
+            return inset + controlSize / 2
+        }
+        return 14
+    }
+}
+
+private final class GlassMoreButton : Control {
+    private let glass: LiquidGlassView
+    public let more = MoreControl(frame: NSMakeRect(0, 0, 30, 30))
+
+    public init(frame frameRect: NSRect, forceAppearance: LiquidGlassAppearance?) {
+        glass = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: frameRect.height / 2, hasShadow: true, hasBorder: true, forceAppearance: forceAppearance)
+        super.init(frame: frameRect)
+        addSubview(glass)
+        addSubview(more)
+
+        more.userInteractionEnabled = false
+        more.isEventLess = true
+        more.isAccessibilityDecorative = true
+        setAccessibilityLabel(strings().voiceOverCommonMore)
+
+        layer?.masksToBounds = false
+        scaleOnClick = true
+
+        set(handler: { [weak self] _ in
+            self?.more.play()
+        }, for: .Down)
+    }
+
+    public required init(frame frameRect: NSRect) {
+        fatalError("init(frame:) has not been implemented")
+    }
+
+    public required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    public override func layout() {
+        super.layout()
+        glass.frame = bounds
+        more.center()
+    }
+}
+
+private final class GlassBackCloseButton : Control {
+    private let glass: LiquidGlassView
+    public let close = BackOrClose(frame: NSMakeRect(0, 0, 30, 30))
+
+    public init(frame frameRect: NSRect, forceAppearance: LiquidGlassAppearance?) {
+        glass = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: frameRect.height / 2, hasShadow: true, hasBorder: true, forceAppearance: forceAppearance)
+        super.init(frame: frameRect)
+        addSubview(glass)
+        addSubview(close)
+
+        close.userInteractionEnabled = false
+        close.isEventLess = true
+        close.isAccessibilityDecorative = true
+        setAccessibilityLabel(strings().voiceOverCommonClose)
+
+        layer?.masksToBounds = false
+        scaleOnClick = true
+    }
+
+    public required init(frame frameRect: NSRect) {
+        fatalError("init(frame:) has not been implemented")
+    }
+
+    public required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    public func updateState(state: BackOrClose.State, animated: Bool) {
+        close.updateState(state: state, animated: animated)
+        switch state {
+        case .back:
+            setAccessibilityLabel(strings().voiceOverCommonBack)
+        case .close:
+            setAccessibilityLabel(strings().voiceOverCommonClose)
+        case .none:
+            break
+        }
+    }
+
+    public override func layout() {
+        super.layout()
+        glass.frame = bounds
+        close.center()
+    }
+}
+
 private final class FullscreenControls : View {
-    
-    fileprivate final class MoreButton : Control {
-        private let visual = VisualEffect()
-        public let more = MoreControl(frame: NSMakeRect(0, 0, 30, 30))
-        public required init(frame frameRect: NSRect) {
-            super.init(frame: frameRect)
-            addSubview(visual)
-            addSubview(more)
-            visual.bgColor = theme.colors.grayForeground.withAlphaComponent(0.6)
-            self.layer?.cornerRadius = frameRect.height / 2
-        }
-        
-         public required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-        
-        public override func layout() {
-            super.layout()
-            visual.frame = bounds
-        }
-    }
-    
-    
-    fileprivate final class BackCloseButton : Control {
-        private let visual = VisualEffect()
-        public let close = BackOrClose(frame: NSMakeRect(0, 0, 30, 30))
-        public required init(frame frameRect: NSRect) {
-            super.init(frame: frameRect)
-            addSubview(visual)
-            addSubview(close)
-            visual.bgColor = theme.colors.grayForeground.withAlphaComponent(0.6)
-            self.layer?.cornerRadius = frameRect.height / 2
-        }
-        
-         public required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-        
-        public override func layout() {
-            super.layout()
-            visual.frame = bounds
-        }
-    }
-    fileprivate let more = MoreButton(frame: NSMakeRect(0, 0, 30, 30))
-    fileprivate let close: BackCloseButton = BackCloseButton(frame: NSMakeRect(0, 0, 30, 30))
+    fileprivate let more = GlassMoreButton(frame: NSMakeRect(0, 0, 30, 30), forceAppearance: .forceDark)
+    fileprivate let close = GlassBackCloseButton(frame: NSMakeRect(0, 0, 30, 30), forceAppearance: .forceDark)
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(close)
         addSubview(more)
-        
-        more.more.userInteractionEnabled = false
-        more.more.isEventLess = true
-        more.more.isAccessibilityDecorative = true
-        more.setAccessibilityLabel(strings().voiceOverCommonMore)
-        
-        close.close.userInteractionEnabled = false
-        close.close.isEventLess = true
-        close.close.isAccessibilityDecorative = true
-        close.setAccessibilityLabel(strings().voiceOverCommonClose)
-
-        close.scaleOnClick = true
-        more.scaleOnClick = true
     }
     
      public required init?(coder: NSCoder) {
@@ -1327,15 +1383,7 @@ private final class FullscreenControls : View {
     }
     
     public func updateState(state: BackOrClose.State, animated: Bool) {
-        self.close.close.updateState(state: state, animated: animated)
-        switch state {
-        case .back:
-            self.close.setAccessibilityLabel(strings().voiceOverCommonBack)
-        case .close:
-            self.close.setAccessibilityLabel(strings().voiceOverCommonClose)
-        case .none:
-            break
-        }
+        self.close.updateState(state: state, animated: animated)
     }
     public func set(color: NSColor) {
         self.more.more.set(color: color)
@@ -1344,8 +1392,9 @@ private final class FullscreenControls : View {
 
 private final class BrowserView : View {
     fileprivate var tabsView: TabsView?
-    fileprivate let more = MoreControl(frame: NSMakeRect(0, 0, 50, 50))
-    fileprivate let close = BackOrClose(frame: NSMakeRect(0, 0, 50, 50))
+    fileprivate let more = GlassMoreButton(frame: NSMakeRect(0, 0, BrowserHeaderMetrics.controlSize, BrowserHeaderMetrics.controlSize), forceAppearance: nil)
+    fileprivate let close = GlassBackCloseButton(frame: NSMakeRect(0, 0, BrowserHeaderMetrics.controlSize, BrowserHeaderMetrics.controlSize), forceAppearance: nil)
+    private let tabsGlass = LiquidGlassView(frame: .zero, cornerRadius: BrowserHeaderMetrics.controlSize / 2, hasShadow: true, hasBorder: true)
     
     public let header = View()
     
@@ -1365,15 +1414,15 @@ private final class BrowserView : View {
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = BrowserHeaderMetrics.windowCornerRadius
+        if #available(macOS 10.15, *) {
+            layer?.cornerCurve = .continuous
+        }
         addSubview(contentView)
         addSubview(header)
         
-        more.scaleOnClick = true
-        close.scaleOnClick = true
-
-
-
+        header.layer?.masksToBounds = false
+        header.addSubview(tabsGlass)
         header.addSubview(more)
         header.addSubview(close)
         
@@ -1401,14 +1450,22 @@ private final class BrowserView : View {
         
         let transition: ContainedViewLayoutTransition = fullscreen != state.fullscreen ? .immediate : transition
         
-        let startY: CGFloat = state.fullscreen ? -50 : 0
+        let metrics = BrowserHeaderMetrics.self
+        let startY: CGFloat = state.fullscreen ? -metrics.height : 0
         
-        transition.updateFrame(view: header, frame: NSMakeRect(0, startY, size.width, 50))
-
-        transition.updateFrame(view: tabsView, frame: NSMakeRect(40, startY, size.width - 80, header.frame.height))
-
-        transition.updateFrame(view: close, frame: close.centerFrameY(x: 0))
-        transition.updateFrame(view: more, frame: more.centerFrameY(x: size.width - more.frame.width))
+        transition.updateFrame(view: header, frame: NSMakeRect(0, startY, size.width, metrics.height))
+        
+        let controlY = floorToScreenPixels((metrics.height - metrics.controlSize) / 2)
+        
+        transition.updateFrame(view: close, frame: NSMakeRect(metrics.inset, controlY, metrics.controlSize, metrics.controlSize))
+        transition.updateFrame(view: more, frame: NSMakeRect(size.width - metrics.inset - metrics.controlSize, controlY, metrics.controlSize, metrics.controlSize))
+        
+        let tabsX = close.frame.maxX + metrics.spacing
+        let tabsRect = NSMakeRect(tabsX, controlY, max(0, more.frame.minX - metrics.spacing - tabsX), metrics.controlSize)
+        
+        transition.updateFrame(view: tabsGlass, frame: tabsRect)
+        tabsGlass.updateLayout(size: tabsRect.size, transition: transition)
+        transition.updateFrame(view: tabsView, frame: tabsRect.insetBy(dx: metrics.tabsPadding, dy: metrics.tabsPadding))
 
         transition.updateFrame(view: contentView, frame: NSMakeRect(0, header.frame.maxY, size.width, size.height - header.frame.maxY))
         
@@ -1421,13 +1478,13 @@ private final class BrowserView : View {
     
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
-        self.more.set(color: theme.colors.text.withAlphaComponent(0.5))
-        self.close.updateState(state: self.close.withUpdatedColor(theme.colors.text.withAlphaComponent(0.5)), animated: false)
+        self.more.more.set(color: theme.colors.text.withAlphaComponent(0.75))
+        self.close.updateState(state: self.close.close.withUpdatedColor(theme.colors.text.withAlphaComponent(0.75)), animated: false)
     }
     
     public func update(tab: BrowserTabData, animated: Bool) {
         let isBackButton = tab.external?.isBackButton ?? false
-        let color = theme.colors.text.withAlphaComponent(0.5)
+        let color = theme.colors.text.withAlphaComponent(0.75)
         self.close.updateState(state: isBackButton ? .back(color) : .close(color), animated: animated)
         
         updateFullscreenControls()
