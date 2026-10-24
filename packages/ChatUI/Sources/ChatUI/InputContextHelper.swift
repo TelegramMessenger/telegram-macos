@@ -1106,7 +1106,7 @@ public class InputContextHelper: NSObject {
                 case let .stickers(stickers):
                     
                     if let peer = chatInteraction.presentation.peer {
-                        if let text = permissionText(from: peer, for: .banSendStickers) {
+                        if let text = permissionText(from: peer, for: .banSendStickers, cachedData: chatInteraction.presentation.cachedData) {
                             entries.append(.inlineRestricted(text))
                             break
                         }
