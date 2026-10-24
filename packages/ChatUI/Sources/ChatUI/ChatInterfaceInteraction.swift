@@ -374,7 +374,7 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public var runEmojiScreenEffect:(String, Message, Bool, Bool)->Void = { _, _, _, _ in }
     public var runPremiumScreenEffect:(Message, Bool, Bool)->Void = { _, _, _ in }
-    public var runReactionEffect:(MessageReaction.Reaction, MessageId)->Void = { _, _ in }
+    public var runReactionEffect:(MessageReaction.Reaction, MessageId, Bool)->Void = { _, _, _ in }
     
     public var toggleSendAs: (PeerId)->Void = { _ in }
     
@@ -1269,7 +1269,7 @@ public final class ChatInteraction : InterfaceObserver  {
         self.joinGroupCall = { _, _ in }
         self.runEmojiScreenEffect = { _, _, _, _ in }
         self.runPremiumScreenEffect = { _, _, _ in }
-        self.runReactionEffect = { _, _ in }
+        self.runReactionEffect = { _, _, _ in }
         self.toggleSendAs = { _ in }
         self.showDeleterSetup = { _ in }
         self.showEmojiUseTooltip = { }

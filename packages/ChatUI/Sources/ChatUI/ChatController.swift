@@ -6115,12 +6115,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
         }
         
-        chatInteraction.runReactionEffect = { [weak self] value, messageId in
+        chatInteraction.runReactionEffect = { [weak self] value, messageId, isLarge in
             guard let strongSelf = self else {
                 return
             }
             if strongSelf.isOnScreen {
-                strongSelf.emojiEffects.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), viewFrame: context.window.bounds, for: context.window.contentView!)
+                strongSelf.emojiEffects.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), isLarge: isLarge, viewFrame: context.window.bounds, for: context.window.contentView!)
             }
         }
         

@@ -1786,8 +1786,8 @@ public class ChatRowItem: TableRowItem {
             if let reactions = reactions, !reactions.reactions.isEmpty, let available = context.reactions.available {
                 let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), openInfo: { peerId in
                     ChatHistoryUIHooks.shared.pushReactionPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, message.id)
-                }, runEffect: { [weak chatInteraction] value in
-                    chatInteraction?.runReactionEffect(value, message.id)
+                }, runEffect: { [weak chatInteraction] value, isLarge in
+                    chatInteraction?.runReactionEffect(value, message.id, isLarge)
                 }, tagAction: { [weak chatInteraction] reaction in
                     if !context.isPremium {
                         prem(with: PremiumBoardingController(context: context, source: .saved_tags, openFeatures: true), for: context.window)
@@ -4136,7 +4136,7 @@ public class ChatRowItem: TableRowItem {
                 
                 if accessToAll {
                     reveal = { view in
-                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, { sticker, fromRect in
+                        let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
                             let parsedFile = sticker.file._parse()
                             let value: UpdateMessageReaction
                             if let bundle = parsedFile.stickerText {
@@ -4166,9 +4166,14 @@ public class ChatRowItem: TableRowItem {
                                     })
                                 } else {
                                     let updated = ChatHistoryUIHooks.shared.messageNewReactions(message, value, isTags)
-                                    context.reactions.react(message.id, values: updated, fromRect: fromRect, storeAsRecentlyUsed: true)
+                                    context.reactions.react(message.id, values: updated, fromRect: fromRect, storeAsRecentlyUsed: true, isLarge: isLarge)
                                 }
                             }
+                        }
+                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, { sticker, fromRect in
+                            react(sticker, fromRect, false)
+                        }, isTags ? nil : { sticker, fromRect in
+                            react(sticker, fromRect, true)
                         })
 //                        let transition = ContainedViewLayoutTransition.animated(duration: 0.2, curve: .easeOut)
 //                        transition.updateFrame(view: view, frame: CGRect(origin: view.frame.origin, size: NSMakeSize(view.frame.width, 60)))
@@ -4190,6 +4195,8 @@ public class ChatRowItem: TableRowItem {
                             context.reactions.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(), isTags), fromRect: fromRect, storeAsRecentlyUsed: true)
                         }
                     }
+                }, addLarge: isTags ? nil : { value, fromRect in
+                    context.reactions.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(), isTags), fromRect: fromRect, storeAsRecentlyUsed: true, isLarge: true)
                 }, radiusLayer: nil, revealReactions: reveal, aboveText: aboveLayout, message: message)
                 
                 

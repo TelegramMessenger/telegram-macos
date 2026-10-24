@@ -34,6 +34,7 @@ public final class EntertainmentInteractions {
     
     public var sendEmoji:(String, CGRect?) ->Void = { _,_ in }
     public var sendAnimatedEmoji:(StickerPackItem, StarGift.UniqueGift?, StickerPackCollectionInfo?, Int32?, NSRect?) ->Void = { _, _, _, _, _ in}
+    public var sendLargeReaction:((StickerPackItem, NSRect?) ->Void)?
     public var sendSticker:(TelegramMediaFile, Bool, Bool, ItemCollectionId?) ->Void = { _, _, _, _ in}
     public var sendGIF:(TelegramMediaFile, Bool, Bool) ->Void = { _, _, _ in}
     

@@ -2182,6 +2182,10 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         case effect
         case reaction(MessageReaction.Reaction)
     }
+    public func getReactionChip(_ value: MessageReaction.Reaction) -> ReactionViewImpl? {
+        return reactionsView?.getView(value)
+    }
+
     public func getScreenEffectView(_ mode: ScreenEffectMode) -> NSView? {
         switch mode {
         case .effect:
