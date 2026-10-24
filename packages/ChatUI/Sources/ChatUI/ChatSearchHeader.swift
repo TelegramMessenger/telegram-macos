@@ -891,6 +891,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
                     
                 case let .from(query, complete):
                     from.isHidden = true
+                    closeCalendarPopover()
                     calendar.isHidden = true
                     searchView.change(size: NSMakeSize(searchWidth, searchView.frame.height), animated: animated)
                     needsLayout = true
@@ -935,6 +936,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
                     }
                 case .emojiTag:
                     from.isHidden = true
+                    closeCalendarPopover()
                     calendar.isHidden = true
                     searchView.change(size: NSMakeSize(searchWidth, searchView.frame.height), animated: animated)
                     needsLayout = true
@@ -1247,6 +1249,12 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
        
     }
     
+    private func closeCalendarPopover() {
+        if !calendar.isHidden, let window = self.window as? Window {
+            closeAllPopovers(for: window)
+        }
+    }
+
     func prevAction() {
         inputInteraction.update({$0.updatedSelectedIndex(min($0.selectedIndex + 1, $0.messages.0.count - 1))})
         perform()
