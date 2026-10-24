@@ -160,6 +160,12 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
             }
         } else if let botInfo = peer.botInfo {
             
+            if peer.id != verifyCodePeerId, let cachedData = item.peerView.cachedData as? CachedUserData {
+                items.append(ActionItem(text: !cachedData.isBlocked ? strings().peerInfoStopBot : strings().peerInfoRestartBot, color: item.accentColor, image: !cachedData.isBlocked ? theme.icons.profile_block : theme.icons.profile_unblock, animation: cachedData.isBlocked ? .menu_unblock : .menu_restrict, destruct: true, action: {
+                    arguments.updateBlocked(peer: peer, !cachedData.isBlocked, true)
+                }))
+            }
+
             if let address = peer.addressName, !address.isEmpty {
                 items.append(ActionItem(text: strings().peerInfoBotShare, color: item.accentColor, image: theme.icons.profile_share, animation: .menu_forward, action: {
                     arguments.botShare(address)
@@ -184,10 +190,6 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
                 }
                 if peer.id != verifyCodePeerId, botInfo.flags.contains(.canEdit) {
                     items.append(ActionItem(text: strings().peerInfoReportBot, color: item.accentColor, image: theme.icons.profile_report, animation: .menu_report, action: arguments.reportBot))
-                    
-                    items.append(ActionItem(text: !cachedData.isBlocked ? strings().peerInfoStopBot : strings().peerInfoRestartBot, color: item.accentColor, image: theme.icons.profile_more, animation: .menu_restrict, destruct: true, action: {
-                        arguments.updateBlocked(peer: peer, !cachedData.isBlocked, true)
-                    }))
                 }
                 
                 
