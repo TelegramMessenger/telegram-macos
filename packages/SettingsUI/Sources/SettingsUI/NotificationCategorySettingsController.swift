@@ -160,6 +160,13 @@ public struct NotificationException: Equatable {
     }
 }
 
+private struct CachedNotificationExceptions {
+    var list: NotificationExceptionsList?
+    var peerIds: [PeerId]
+}
+
+private let cachedNotificationExceptions = Atomic<[PeerId: CachedNotificationExceptions]>(value: [:])
+
 public final class NotificationExceptionsContext {
     private let context: any AccountContextProtocol
     private let peerIds = ValuePromise<[PeerId]>([], ignoreRepeated: true)
@@ -167,24 +174,37 @@ public final class NotificationExceptionsContext {
     private let serverList = Promise<NotificationExceptionsList?>(nil)
     private let loadedPromise = ValuePromise<Bool>(false, ignoreRepeated: true)
     private let disposable = MetaDisposable()
+    private let accountPeerId: PeerId
 
     public init(context: any AccountContextProtocol) {
         self.context = context
-        self.disposable.set((context.engine.peers.notificationExceptionsList() |> deliverOnMainQueue).start(next: { [weak self] list in
-            guard let self else {
-                return
-            }
-            let ids = Array(list.settings.keys)
+        self.accountPeerId = context.account.peerId
+        if let cached = cachedNotificationExceptions.with({ $0[context.account.peerId] }), let list = cached.list {
             self.serverList.set(.single(list))
-            self.updatePeerIds { current in
-                var current = current
-                for id in ids where !current.contains(id) {
-                    current.append(id)
-                }
-                return current
-            }
+            self.updatePeerIds { _ in cached.peerIds }
             self.loadedPromise.set(true)
+        }
+        self.disposable.set((context.engine.peers.notificationExceptionsList() |> deliverOnMainQueue).start(next: { [weak self] list in
+            self?.apply(list)
         }))
+    }
+
+    private func apply(_ list: NotificationExceptionsList) {
+        let ids = Array(list.settings.keys)
+        self.serverList.set(.single(list))
+        _ = cachedNotificationExceptions.modify { current in
+            var current = current
+            current[self.accountPeerId, default: CachedNotificationExceptions(list: nil, peerIds: [])].list = list
+            return current
+        }
+        self.updatePeerIds { current in
+            var current = current
+            for id in ids where !current.contains(id) {
+                current.append(id)
+            }
+            return current
+        }
+        self.loadedPromise.set(true)
     }
 
     deinit {
@@ -192,7 +212,13 @@ public final class NotificationExceptionsContext {
     }
 
     private func updatePeerIds(_ f: ([PeerId]) -> [PeerId]) {
-        self.peerIds.set(self.peerIdsValue.modify(f))
+        let peerIds = self.peerIdsValue.modify(f)
+        _ = cachedNotificationExceptions.modify { current in
+            var current = current
+            current[self.accountPeerId, default: CachedNotificationExceptions(list: nil, peerIds: [])].peerIds = peerIds
+            return current
+        }
+        self.peerIds.set(peerIds)
     }
 
     func add(_ peerId: PeerId) {
