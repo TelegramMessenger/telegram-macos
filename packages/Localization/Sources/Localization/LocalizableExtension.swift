@@ -72,10 +72,12 @@ public class Language : Equatable {
     public let languageCode:String
     public let customPluralizationCode: String?
     public let strings:[String: String]
+    fileprivate let bundledFallbacks: [Bundle]
     public init (languageCode:String, customPluralizationCode: String?, strings:[String: String]) {
         self.languageCode = languageCode
         self.customPluralizationCode = customPluralizationCode
         self.strings = strings
+        self.bundledFallbacks = bundledLocalizationFallbacks(for: languageCode)
     }
 }
 
@@ -234,16 +236,44 @@ public var languageSignal:Signal<TelegramLocalization, NoError> {
     return languagePromise.get() |> distinctUntilChanged |> deliverOnMainQueue
 }
 
-/// The bundled English `.lproj` is the fallback for every key that isn't
-/// in the user's downloaded translation. The previous code re-fetched the
-/// path and re-allocated the Bundle on every fallback (twice per
-/// `translate(_:)` plural call); load it once and reuse.
 private let _englishFallbackBundle: Bundle? = {
     guard let path = Bundle.main.path(forResource: "en", ofType: "lproj") else {
         return nil
     }
     return Bundle(path: path)
 }()
+
+private let _localizedFallbackBundles: [String: Bundle] = {
+    var bundles: [String: Bundle] = [:]
+    for code in Bundle.main.localizations where code != "en" {
+        if let path = Bundle.main.path(forResource: code, ofType: "lproj"), let bundle = Bundle(path: path) {
+            bundles[code.lowercased().replacingOccurrences(of: "_", with: "-")] = bundle
+        }
+    }
+    return bundles
+}()
+
+private func bundledLocalizationFallbacks(for languageCode: String) -> [Bundle] {
+    var components = languageCode.lowercased().replacingOccurrences(of: "_", with: "-").split(separator: "-").map(String.init)
+    var bundles: [Bundle] = []
+    while !components.isEmpty {
+        if let bundle = _localizedFallbackBundles[components.joined(separator: "-")] {
+            bundles.append(bundle)
+        }
+        components.removeLast()
+    }
+    return bundles
+}
+
+private func bundledLocalizedString(_ key: String, in bundles: [Bundle]) -> String? {
+    for bundle in bundles {
+        let value = NSLocalizedString(key, bundle: bundle, comment: "")
+        if value != key && !value.isEmpty {
+            return value
+        }
+    }
+    return nil
+}
 
 /// Single combined lookup used by `translate`. Returning `String?` lets the
 /// caller skip a second exist+fetch round-trip when a key is missing.
@@ -255,6 +285,12 @@ internal func _LocalizedStringFor(_ key: String, primary: Language, secondary: L
         return value
     }
     if let value = secondary?.strings[key], !value.isEmpty {
+        return value
+    }
+    if let value = bundledLocalizedString(key, in: primary.bundledFallbacks) {
+        return value
+    }
+    if let secondary, let value = bundledLocalizedString(key, in: secondary.bundledFallbacks) {
         return value
     }
     if let bundle = _englishFallbackBundle {

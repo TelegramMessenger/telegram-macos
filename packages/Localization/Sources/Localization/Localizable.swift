@@ -7719,6 +7719,82 @@ public final class L10n {
   public static var deprecatedAlertThird: String  { return L10n.tr("Localizable", "Deprecated.Alert.Third") }
   /// Update Your System
   public static var deprecatedAlertTitle: String  { return L10n.tr("Localizable", "Deprecated.Alert.Title") }
+  /// Accessibility Audit
+  public static var developerAccessibilityAudit: String  { return L10n.tr("Localizable", "Developer.AccessibilityAudit") }
+  /// Accessibility Audit (to clipboard)
+  public static var developerAccessibilityAuditToClipboard: String  { return L10n.tr("Localizable", "Developer.AccessibilityAuditToClipboard") }
+  /// VoiceOver Accessibility Tree
+  public static var developerAccessibilityTree: String  { return L10n.tr("Localizable", "Developer.AccessibilityTree") }
+  /// ACCOUNTS
+  public static var developerAccounts: String  { return L10n.tr("Localizable", "Developer.Accounts") }
+  /// Animate Emoji to Input
+  public static var developerAnimateEmojiInput: String  { return L10n.tr("Localizable", "Developer.AnimateEmojiInput") }
+  /// ANIMATIONS
+  public static var developerAnimations: String  { return L10n.tr("Localizable", "Developer.Animations") }
+  /// Crash App
+  public static var developerCrash: String  { return L10n.tr("Localizable", "Developer.Crash") }
+  /// DEBUGGING
+  public static var developerDebugging: String  { return L10n.tr("Localizable", "Developer.Debugging") }
+  /// Debug Web App
+  public static var developerDebugWebApp: String  { return L10n.tr("Localizable", "Developer.DebugWebApp") }
+  /// Enable Logs
+  public static var developerEnableLogs: String  { return L10n.tr("Localizable", "Developer.EnableLogs") }
+  /// Experimental Downloads
+  public static var developerExperimentalDownloads: String  { return L10n.tr("Localizable", "Developer.ExperimentalDownloads") }
+  /// Experimental Network
+  public static var developerExperimentalNetwork: String  { return L10n.tr("Localizable", "Developer.ExperimentalNetwork") }
+  /// Lottie: force rlottie
+  public static var developerForceRLottie: String  { return L10n.tr("Localizable", "Developer.ForceRLottie") }
+  /// LOGS
+  public static var developerLogs: String  { return L10n.tr("Localizable", "Developer.Logs") }
+  /// Memory Report
+  public static var developerMemoryReport: String  { return L10n.tr("Localizable", "Developer.MemoryReport") }
+  /// Memory Report (to log)
+  public static var developerMemoryReportToLog: String  { return L10n.tr("Localizable", "Developer.MemoryReportToLog") }
+  /// Native Context Menu (Get Ready for glitches)
+  public static var developerNativeContextMenu: String  { return L10n.tr("Localizable", "Developer.NativeContextMenu") }
+  /// Use Native Graphic Context
+  public static var developerNativeGraphicContext: String  { return L10n.tr("Localizable", "Developer.NativeGraphicContext") }
+  /// NETWORK
+  public static var developerNetwork: String  { return L10n.tr("Localizable", "Developer.Network") }
+  /// Network Engine
+  public static var developerNetworkEngine: String  { return L10n.tr("Localizable", "Developer.NetworkEngine") }
+  /// Open Logs
+  public static var developerOpenLogs: String  { return L10n.tr("Localizable", "Developer.OpenLogs") }
+  /// Parsing Error
+  public static var developerPaletteParsingError: String  { return L10n.tr("Localizable", "Developer.PaletteParsingError") }
+  /// Show Peer Id on Profile Page
+  public static var developerShowPeerId: String  { return L10n.tr("Localizable", "Developer.ShowPeerId") }
+  /// Test Environment
+  public static var developerTestEnvironment: String  { return L10n.tr("Localizable", "Developer.TestEnvironment") }
+  /// Developer
+  public static var developerTitle: String  { return L10n.tr("Localizable", "Developer.Title") }
+  /// %1$d issue copied to the clipboard.
+  public static func developerAccessibilityAuditCopiedOne(_ p1: Int) -> String {
+    return L10n.tr("Localizable", "Developer.AccessibilityAudit.Copied_one", p1)
+  }
+  /// %1$d issues copied to the clipboard.
+  public static func developerAccessibilityAuditCopiedOther(_ p1: Int) -> String {
+    return L10n.tr("Localizable", "Developer.AccessibilityAudit.Copied_other", p1)
+  }
+  /// No accessibility issues in %1$d window.
+  public static func developerAccessibilityAuditNoIssuesOne(_ p1: Int) -> String {
+    return L10n.tr("Localizable", "Developer.AccessibilityAudit.NoIssues_one", p1)
+  }
+  /// No accessibility issues in %1$d windows.
+  public static func developerAccessibilityAuditNoIssuesOther(_ p1: Int) -> String {
+    return L10n.tr("Localizable", "Developer.AccessibilityAudit.NoIssues_other", p1)
+  }
+  /// %1$@ (active: %2$@)
+  public static func developerNetworkEngineActive(_ p1: String, _ p2: String) -> String {
+    return L10n.tr("Localizable", "Developer.NetworkEngine.Active", p1, p2)
+  }
+  /// Restart Telegram to switch the network engine.
+  public static var developerNetworkEngineRestart: String  { return L10n.tr("Localizable", "Developer.NetworkEngine.Restart") }
+  /// The server disabled the Rust engine (mtproto_engine_rust_disabled).
+  public static var developerNetworkEngineRustDisabled: String  { return L10n.tr("Localizable", "Developer.NetworkEngine.RustDisabled") }
+  /// Rust (restart required)
+  public static var developerNetworkEngineRustRestartRequired: String  { return L10n.tr("Localizable", "Developer.NetworkEngine.RustRestartRequired") }
   /// Emoji Stake
   public static var diceRollEmojiStake: String  { return L10n.tr("Localizable", "DiceRoll.EmojiStake") }
   /// A limited play-test of the upcoming emoji mini-game platform for a small group of users.

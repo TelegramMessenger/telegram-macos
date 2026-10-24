@@ -124,62 +124,62 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("ACCOUNTS"), data: .init(viewType: .textTopItem)))
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().developerAccounts), data: .init(viewType: .textTopItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_add_account, data: InputDataGeneralData(name: "Add Account", color: theme.colors.text, type: .next, viewType: .singleItem, action: arguments.addAccount)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_add_account, data: InputDataGeneralData(name: strings().editAccountAddAccount, color: theme.colors.text, type: .next, viewType: .singleItem, action: arguments.addAccount)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("LOGS"), data: .init(viewType: .textTopItem)))
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().developerLogs), data: .init(viewType: .textTopItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_toggle_logs, data: InputDataGeneralData(name: "Enable Logs", color: theme.colors.text, type: .switchable(state.logToFile), viewType: .firstItem, action: {
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_toggle_logs, data: InputDataGeneralData(name: strings().developerEnableLogs, color: theme.colors.text, type: .switchable(state.logToFile), viewType: .firstItem, action: {
         arguments.toggleLogs(!state.logToFile)
     })))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_open_logs, data: InputDataGeneralData(name: "Open Logs", color: theme.colors.text, type: .next, viewType: .lastItem, action: arguments.navigateToLogs)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_open_logs, data: InputDataGeneralData(name: strings().developerOpenLogs, color: theme.colors.text, type: .next, viewType: .lastItem, action: arguments.navigateToLogs)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("INTERFACE"), data: .init(viewType: .textTopItem)))
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().generalSettingsInterfaceHeader), data: .init(viewType: .textTopItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_toggle_menu, data: InputDataGeneralData(name: "Native Context Menu (Get Ready for glitches)", color: theme.colors.text, type: .switchable(state.legacyMenu), viewType: .firstItem, action: {
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_toggle_menu, data: InputDataGeneralData(name: strings().developerNativeContextMenu, color: theme.colors.text, type: .switchable(state.legacyMenu), viewType: .firstItem, action: {
         arguments.toggleMenu(!state.legacyMenu)
     })))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_native_graphic_context, data: InputDataGeneralData(name: "Use Native Graphic Context", color: theme.colors.text, type: .switchable(state.useNativeGraphicContext), viewType: .innerItem, action: arguments.toggleNativeGraphicContext)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_native_graphic_context, data: InputDataGeneralData(name: strings().developerNativeGraphicContext, color: theme.colors.text, type: .switchable(state.useNativeGraphicContext), viewType: .innerItem, action: arguments.toggleNativeGraphicContext)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_show_peer_id, data: InputDataGeneralData(name: "Show Peer Id on Profile Page", color: theme.colors.text, type: .switchable(state.canViewPeerId), viewType: .lastItem, action: arguments.toggleCanViewPeerId)))
-    index += 1
-
-    entries.append(.sectionId(sectionId, type: .normal))
-    sectionId += 1
-
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("ANIMATIONS"), data: .init(viewType: .textTopItem)))
-    index += 1
-
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_animate_input_emoji, data: InputDataGeneralData(name: "Animate Emoji to Input", color: theme.colors.text, type: .switchable(state.animateInputEmoji), viewType: .firstItem, action: arguments.toggleAnimatedInputEmoji)))
-    index += 1
-
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_force_rlottie, data: InputDataGeneralData(name: "Lottie: force rlottie", color: theme.colors.text, type: .switchable(state.forceRLottieBackend), viewType: .lastItem, action: arguments.toggleForceRLottieBackend)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_show_peer_id, data: InputDataGeneralData(name: strings().developerShowPeerId, color: theme.colors.text, type: .switchable(state.canViewPeerId), viewType: .lastItem, action: arguments.toggleCanViewPeerId)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("NETWORK"), data: .init(viewType: .textTopItem)))
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().developerAnimations), data: .init(viewType: .textTopItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_network, data: InputDataGeneralData(name: "Experimental Network", color: theme.colors.text, type: .switchable(state.useNetworkFramework), viewType: .firstItem, action: arguments.toggleNetwork)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_animate_input_emoji, data: InputDataGeneralData(name: strings().developerAnimateEmojiInput, color: theme.colors.text, type: .switchable(state.animateInputEmoji), viewType: .firstItem, action: arguments.toggleAnimatedInputEmoji)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_force_rlottie, data: InputDataGeneralData(name: strings().developerForceRLottie, color: theme.colors.text, type: .switchable(state.forceRLottieBackend), viewType: .lastItem, action: arguments.toggleForceRLottieBackend)))
+    index += 1
+
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
+
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().developerNetwork), data: .init(viewType: .textTopItem)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_network, data: InputDataGeneralData(name: strings().developerExperimentalNetwork, color: theme.colors.text, type: .switchable(state.useNetworkFramework), viewType: .firstItem, action: arguments.toggleNetwork)))
     index += 1
 
     let networkEngineTitle: (NetworkEngineKind) -> String = { engine in
@@ -192,41 +192,41 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     }
     var networkEngineValue = networkEngineTitle(state.networkEngine)
     if state.networkEngine != state.activeNetworkEngine {
-        networkEngineValue += " (active: \(networkEngineTitle(state.activeNetworkEngine)))"
+        networkEngineValue = strings().developerNetworkEngineActive(networkEngineValue, networkEngineTitle(state.activeNetworkEngine))
     }
     let networkEngineItems: [ContextMenuItem] = [
         ContextMenuItem("MtProtoKit", handler: {
             arguments.selectNetworkEngine(.mtProtoKit)
         }),
-        ContextMenuItem("Rust (restart required)", handler: {
+        ContextMenuItem(strings().developerNetworkEngineRustRestartRequired, handler: {
             arguments.selectNetworkEngine(.rust)
         })
     ]
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_network_engine, data: InputDataGeneralData(name: "Network Engine", color: theme.colors.text, type: .contextSelector(networkEngineValue, networkEngineItems), viewType: .innerItem)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_network_engine, data: InputDataGeneralData(name: strings().developerNetworkEngine, color: theme.colors.text, type: .contextSelector(networkEngineValue, networkEngineItems), viewType: .innerItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_downloads, data: InputDataGeneralData(name: "Experimental Downloads", color: theme.colors.text, type: .switchable(state.useExperimentalDownload), viewType: .lastItem, action: arguments.toggleDownloads)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_downloads, data: InputDataGeneralData(name: strings().developerExperimentalDownloads, color: theme.colors.text, type: .switchable(state.useExperimentalDownload), viewType: .lastItem, action: arguments.toggleDownloads)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("DEBUGGING"), data: .init(viewType: .textTopItem)))
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().developerDebugging), data: .init(viewType: .textTopItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_debug_web_app, data: InputDataGeneralData(name: "Debug Web App", color: theme.colors.text, type: .switchable(state.debugWebApp), viewType: .firstItem, action: arguments.toggleDebugWebApp)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_debug_web_app, data: InputDataGeneralData(name: strings().developerDebugWebApp, color: theme.colors.text, type: .switchable(state.debugWebApp), viewType: .firstItem, action: arguments.toggleDebugWebApp)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_memory_report, data: InputDataGeneralData(name: "Memory Report (to log)", color: theme.colors.text, type: .none, viewType: .innerItem, action: arguments.memoryReport)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_memory_report, data: InputDataGeneralData(name: strings().developerMemoryReportToLog, color: theme.colors.text, type: .none, viewType: .innerItem, action: arguments.memoryReport)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_accessibility_tree, data: InputDataGeneralData(name: "VoiceOver Accessibility Tree", color: theme.colors.text, type: .switchable(state.accessibilityTree), viewType: .innerItem, action: arguments.toggleAccessibilityTree)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_accessibility_tree, data: InputDataGeneralData(name: strings().developerAccessibilityTree, color: theme.colors.text, type: .switchable(state.accessibilityTree), viewType: .innerItem, action: arguments.toggleAccessibilityTree)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_accessibility_audit, data: InputDataGeneralData(name: "Accessibility Audit (to clipboard)", color: theme.colors.text, type: .none, viewType: .innerItem, action: arguments.accessibilityAudit)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_accessibility_audit, data: InputDataGeneralData(name: strings().developerAccessibilityAuditToClipboard, color: theme.colors.text, type: .none, viewType: .innerItem, action: arguments.accessibilityAudit)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_crash, data: InputDataGeneralData(name: "Crash App", color: theme.colors.redUI, type: .none, viewType: .lastItem, action: arguments.crash)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_crash, data: InputDataGeneralData(name: strings().developerCrash, color: theme.colors.redUI, type: .none, viewType: .lastItem, action: arguments.crash)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
@@ -272,7 +272,7 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
                         return settings.withUpdatedPalette(palette).withUpdatedCloudTheme(nil)
                     }).start()
                 } else {
-                    alert(for: context.window, info: "Parsing Error")
+                    alert(for: context.window, info: strings().developerPaletteParsingError)
                 }
             }
         })
@@ -288,7 +288,7 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
     }, navigateToLogs: {
         NSWorkspace.shared.activateFileViewerSelecting([ApiEnvironment.containerURL!.appendingPathComponent("logs")])
     }, addAccount: {
-        verifyAlert(for: context.window, header: "Add Account", information: nil, ok: "Add", option: "Test Environment", optionIsSelected: false, successHandler: { result in
+        verifyAlert(for: context.window, header: strings().editAccountAddAccount, information: nil, ok: strings().navigationAdd, option: strings().developerTestEnvironment, optionIsSelected: false, successHandler: { result in
             context.sharedContext.beginNewAuth(testingEnvironment: result == .thrid)
         })
     }, toggleMenu: { value in
@@ -350,9 +350,9 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
                     return current
                 }
             } else if network.isRustEngineDisabled {
-                alert(for: context.window, header: "Network Engine", info: "The server disabled the Rust engine (mtproto_engine_rust_disabled).")
+                alert(for: context.window, header: strings().developerNetworkEngine, info: strings().developerNetworkEngineRustDisabled)
             } else {
-                verifyAlert(for: context.window, header: "Network Engine", information: "Restart Telegram to switch the network engine.", ok: strings().commonRestart, successHandler: { _ in
+                verifyAlert(for: context.window, header: strings().developerNetworkEngine, information: strings().developerNetworkEngineRestart, ok: strings().commonRestart, successHandler: { _ in
                     restartApp()
                 })
             }
@@ -380,7 +380,7 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
     }, memoryReport: {
         let report = layerMemoryReport()
         Logger.shared.log("Memory", report)
-        alert(for: context.window, header: "Memory Report", info: report.split(separator: "\n").prefix(18).joined(separator: "\n"))
+        alert(for: context.window, header: strings().developerMemoryReport, info: report.split(separator: "\n").prefix(18).joined(separator: "\n"))
     }, toggleAccessibilityTree: {
         FastSettings.accessibilityTreeEnabled = !FastSettings.accessibilityTreeEnabled
         TGUIKitAccessibility.isEnabled = FastSettings.accessibilityTreeEffective
@@ -397,11 +397,11 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
                 lines.append("[\(window.title.isEmpty ? String(describing: type(of: window)) : window.title)] \(issue)")
             }
         }
-        let report = lines.isEmpty ? "No accessibility issues in \(windows.count) window(s)." : lines.joined(separator: "\n")
+        let report = lines.isEmpty ? strings().developerAccessibilityAuditNoIssuesOther(windows.count) : lines.joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(report, forType: .string)
         Logger.shared.log("Accessibility", report)
-        alert(for: context.window, header: "Accessibility Audit", info: lines.isEmpty ? report : "\(lines.count) issue(s), copied to the clipboard.\n\n" + lines.prefix(12).joined(separator: "\n"))
+        alert(for: context.window, header: strings().developerAccessibilityAudit, info: lines.isEmpty ? report : strings().developerAccessibilityAuditCopiedOther(lines.count) + "\n\n" + lines.prefix(12).joined(separator: "\n"))
     }, toggleForceRLottieBackend: {
         DeveloperHooks.shared.toggleForceRLottieBackend()
         updateState { current in
@@ -431,11 +431,13 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
         }
     }))
 
-    let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
+    let signal = combineLatest(statePromise.get(), languageSignal) |> deliverOnPrepareQueue |> map { state, _ in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
 
-    let controller = InputDataController(dataSignal: signal, title: "Developer", hasDone: false)
+    let controller = InputDataController(dataSignal: signal, title: strings().developerTitle, hasDone: false)
+
+    controller.getTitle = { strings().developerTitle }
 
     controller.onDeinit = {
         actionsDisposable.dispose()
