@@ -488,7 +488,7 @@ open class PeerMediaPhotosController<Context: AccountContextProtocol>: TableView
             
             let accept:()->Void = { [weak self] in
                 let parameters = ChatMediaGalleryParameters(showMedia: { _ in }, showMessage: { message in
-                    self?.chatInteraction.focusMessageId(nil, .init(messageId: message.id, string: nil), .none(nil))
+                    self?.chatInteraction.focusMessageId(nil, .init(messageId: message.id, string: nil), .center(id: 0, innerId: nil, animated: false, focus: .init(focus: true), inset: 0))
                 }, isWebpage: false, media: message.anyMedia!, automaticDownload: true)
 
                 // Rich messages are expanded into synthetic per-media messages and aren't in the live
