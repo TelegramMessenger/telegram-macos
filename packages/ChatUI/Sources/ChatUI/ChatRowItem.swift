@@ -1832,7 +1832,7 @@ public class ChatRowItem: TableRowItem {
                     guard self?.canReact == true else { return }
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: context.window)
                 }, reactionsDisabled: { [weak chatInteraction] in
-                    chatInteraction?.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG
+                    chatInteraction?.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG Chat.SendReactionRestricted
                 })
                 
                 _reactionsLayout = layout
@@ -3879,7 +3879,7 @@ public class ChatRowItem: TableRowItem {
                 }
             }
         } else if isReactionRestricted {
-            chatInteraction.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG
+            chatInteraction.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG Chat.SendReactionRestricted
         }
         return false
     }
