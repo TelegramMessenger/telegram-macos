@@ -10288,6 +10288,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }
                 }
             }
+        } else if chatInteraction.mode == .preview {
+            let peerId = chatInteraction.peerId
+            var threadInfo: ThreadInfo?
+            if case let .thread(data) = chatInteraction.chatLocation, data.threadId != Message.newTopicThreadId {
+                threadInfo = ThreadInfo(message: data, isChannelPost: false, isMonoforumPost: data.isMonoforumPost, isEmpty: false, contextHolder: chatLocationContextHolder)
+            }
+            navigationController?.modal?.close()
+            ChatUIHooks.shared.pushPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, threadInfo, nil, nil, nil)
         } else if chatInteraction.presentation.isTopicMode {
             chatInteraction.openInfoObserved(chatInteraction.peerId, false, nil, nil)
         } else if chatInteraction.mode.isSavedMessagesThread, let threadId = chatInteraction.chatLocation.threadId {
