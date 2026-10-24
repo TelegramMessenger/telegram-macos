@@ -1235,7 +1235,7 @@ public class ChatControllerView : View, ChatInputDelegate {
             }
             
             value = .search(searchInteractions, interfaceState.searchMode.peer?._asPeer(), interfaceState.searchMode.query, tags, selected, interfaceState.chatLocation)
-        } else if let threadData = interfaceState.threadInfo, threadData.isClosed, let peer = interfaceState.peer as? TelegramChannel, peer.adminRights != nil || peer.flags.contains(.isCreator) || threadData.isOwnedByMe {
+        } else if interfaceState.chatMode != .preview, let threadData = interfaceState.threadInfo, threadData.isClosed, let peer = interfaceState.peer as? TelegramChannel, peer.adminRights != nil || peer.flags.contains(.isCreator) || threadData.isOwnedByMe {
             value = .restartTopic
         } else if interfaceState.managedBotNeedsPhoto {
             value = .setBotPhoto
@@ -11712,7 +11712,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             
             if let peer = value.mainPeer, let oldPeer = oldValue.mainPeer {
                 if TelegramUtilsHooks.shared.peerIsForum(peer) && !TelegramUtilsHooks.shared.peerIsForum(oldPeer) || (oldValue.threadInfo != nil && value.threadInfo == nil && !peer.displayForumAsTabs(splitState: context.layout)), !peer.isMonoForum {
-                    self.navigationController?.removeImmediately(self)
+                    if (self.navigationController?.stackCount ?? 0) > 1 {
+                        self.navigationController?.removeImmediately(self)
+                    } else if self.mode == .preview {
+                        self.navigationController?.modal?.close()
+                    }
                 }
             }
 

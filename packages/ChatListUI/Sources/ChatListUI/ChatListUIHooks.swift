@@ -65,7 +65,7 @@ public struct ChatListUIHooks {
     public let composeCreateChannel: ((any AccountContextProtocol)?) -> Void
     public let navigateToChat: (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?, Bool, Bool, ViewControllerStyle?) -> Void
     public let makeChatController: (any AccountContextProtocol, ChatLocation, ChatInitialAction?) -> ViewController
-    public let makeChatControllerWithMode: (any AccountContextProtocol, ChatLocation, ChatMode) -> ViewController
+    public let makeChatControllerWithMode: (any AccountContextProtocol, ChatLocation, ChatMode, Atomic<ChatLocationContextHolder?>?) -> ViewController
     public let makeChatAdditionController: (any AccountContextProtocol, ChatLocation) -> ViewController
     public let makeChatAdditionControllerWithFocus: (any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?) -> ViewController
     public let makeChatAdditionControllerWithMode: (any AccountContextProtocol, ChatLocation, ChatMode) -> ViewController
@@ -125,7 +125,7 @@ public struct ChatListUIHooks {
                 composeCreateChannel: @escaping ((any AccountContextProtocol)?) -> Void,
                 navigateToChat: @escaping (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?, Bool, Bool, ViewControllerStyle?) -> Void,
                 makeChatController: @escaping (any AccountContextProtocol, ChatLocation, ChatInitialAction?) -> ViewController,
-                makeChatControllerWithMode: @escaping (any AccountContextProtocol, ChatLocation, ChatMode) -> ViewController,
+                makeChatControllerWithMode: @escaping (any AccountContextProtocol, ChatLocation, ChatMode, Atomic<ChatLocationContextHolder?>?) -> ViewController,
                 makeChatAdditionController: @escaping (any AccountContextProtocol, ChatLocation) -> ViewController,
                 makeChatAdditionControllerWithFocus: @escaping (any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?) -> ViewController,
                 makeChatAdditionControllerWithMode: @escaping (any AccountContextProtocol, ChatLocation, ChatMode) -> ViewController,
@@ -241,7 +241,7 @@ public struct ChatListUIHooks {
     }, navigateToChat: { _, _, _, _, _, _, _, _ in
     }, makeChatController: { _, _, _ in
         ViewController()
-    }, makeChatControllerWithMode: { _, _, _ in
+    }, makeChatControllerWithMode: { _, _, _, _ in
         ViewController()
     }, makeChatAdditionController: { _, _ in
         ViewController()
