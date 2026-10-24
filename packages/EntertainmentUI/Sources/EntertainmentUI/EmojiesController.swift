@@ -2068,6 +2068,7 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
     private var presentation: TelegramPresentationTheme?
     private let selectedItems: [EmojiesSectionRowItem.SelectedItem]
     private let ignorePremium: Bool
+    private let orderedTags: [RecentReactionItem]?
     
     public var staticEmojiFilter: ((String) -> Bool)?
 
@@ -2116,7 +2117,8 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
         })
     }
 
-    public init(_ context: Context, mode: Mode = .emoji, selectedItems: [EmojiesSectionRowItem.SelectedItem] = [], presentation: TelegramPresentationTheme? = nil, color: NSColor? = nil, ignorePremium: Bool = false) {
+    public init(_ context: Context, mode: Mode = .emoji, selectedItems: [EmojiesSectionRowItem.SelectedItem] = [], presentation: TelegramPresentationTheme? = nil, color: NSColor? = nil, ignorePremium: Bool = false, orderedTags: [RecentReactionItem]? = nil) {
+        self.orderedTags = orderedTags
         self.mode = mode
         self.presentation = presentation
         self.selectedItems = selectedItems
@@ -2617,6 +2619,7 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
                 }
             }))
         default:
+            let orderedTags = self.orderedTags
             let signal = combineLatest(queue: prepareQueue, emojies, featured, peer, search, reactions, recentUsedEmoji(postbox: context.account.postbox), reactionSettings, iconStatusEmoji, groupEmojiPack, forumTopic, searchCategories, context.reactions.stateValue, onStage.get()) |> filter { $0.12 }
             actionsDisposable.add(signal.start(next: { view, featured, peer, search, reactions, recentEmoji, reactionSettings, iconStatusEmoji, groupEmojiPack, forumTopic, searchCategories, availableReactions, _ in
                 
@@ -2823,8 +2826,8 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
                     current.reactions = reactions
                     current.recent = recentEmoji
                     current.uniqueStarGiftsItems = uniqueStarGiftsItems
-                    current.topReactionsItems = mode == .defaultTags ? defaultTagReactionsItems : topReactionsItems
-                    current.recentReactionsItems = mode == .defaultTags ? defaultTagReactionsItems : recentReactionsItems
+                    current.topReactionsItems = orderedTags ?? (mode == .defaultTags ? defaultTagReactionsItems : topReactionsItems)
+                    current.recentReactionsItems = orderedTags ?? (mode == .defaultTags ? defaultTagReactionsItems : recentReactionsItems)
                     current.featuredBackgroundIconEmojiItems = featuredBackgroundIconEmojiItems
                     current.featuredChannelStatusEmojiItems = featuredChannelStatusEmojiItems
                     current.reactionSettings = reactionSettings

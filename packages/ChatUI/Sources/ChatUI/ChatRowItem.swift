@@ -3953,7 +3953,62 @@ public class ChatRowItem: TableRowItem {
             }
             
             
-            let signal = combineLatest(queue: .mainQueue(), builtin, peerAllowed, reactions, maximumReactionsLimit, starsAllowed)
+            let tagsThreadId = chatInteraction.chatLocation.threadId
+            let orderedReactions: Signal<[RecentReactionItem], NoError>
+            if isTags {
+                orderedReactions = reactions |> mapToSignal { defaults -> Signal<[RecentReactionItem], NoError> in
+                    return context.engine.data.get(TelegramEngine.EngineData.Item.Messages.SavedMessageTagStats(peerId: context.peerId, threadId: tagsThreadId))
+                    |> mapToSignal { stats -> Signal<[RecentReactionItem], NoError> in
+                        let used = stats.filter { $0.value > 0 }.sorted(by: { lhs, rhs in
+                            if lhs.value != rhs.value {
+                                return lhs.value > rhs.value
+                            }
+                            return lhs.key < rhs.key
+                        }).map(\.key)
+                        var fileIds: [Int64] = []
+                        for reaction in used {
+                            if case let .custom(fileId) = reaction, !fileIds.contains(fileId) {
+                                fileIds.append(fileId)
+                            }
+                        }
+                        return context.engine.stickers.resolveInlineStickers(fileIds: fileIds)
+                        |> map { files -> [RecentReactionItem] in
+                            var result: [RecentReactionItem] = []
+                            for reaction in used {
+                                switch reaction {
+                                case let .builtin(emoji):
+                                    result.append(RecentReactionItem(.builtin(emoji)))
+                                case let .custom(fileId):
+                                    if let file = files[fileId] {
+                                        result.append(RecentReactionItem(.custom(TelegramMediaFile.Accessor(file))))
+                                    }
+                                case .stars:
+                                    break
+                                }
+                            }
+                            let reactionKey:(RecentReactionItem) -> String = { item in
+                                switch item.content {
+                                case let .builtin(emoji):
+                                    return "b" + emoji
+                                case let .custom(file):
+                                    return "c\(file.fileId.id)"
+                                case .stars:
+                                    return "s"
+                                }
+                            }
+                            var existing = Set(result.map(reactionKey))
+                            for item in defaults where existing.insert(reactionKey(item)).inserted {
+                                result.append(item)
+                            }
+                            return result
+                        }
+                    }
+                }
+            } else {
+                orderedReactions = reactions
+            }
+
+            let signal = combineLatest(queue: .mainQueue(), builtin, peerAllowed, orderedReactions, maximumReactionsLimit, starsAllowed)
             |> take(1)
 
             return (signal) |> map { builtin, peerAllowed, reactions, maximumReactionsLimit, starsAllowed in
@@ -4144,6 +4199,8 @@ public class ChatRowItem: TableRowItem {
                     }
                 }
                 
+                let orderedTagItems: [RecentReactionItem]? = isTags ? reactions : nil
+
                 if accessToAll {
                     reveal = { view in
                         let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
@@ -4180,7 +4237,7 @@ public class ChatRowItem: TableRowItem {
                                 }
                             }
                         }
-                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, { sticker, fromRect in
+                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, orderedTagItems, { sticker, fromRect in
                             react(sticker, fromRect, false)
                         }, isTags ? nil : { sticker, fromRect in
                             react(sticker, fromRect, true)

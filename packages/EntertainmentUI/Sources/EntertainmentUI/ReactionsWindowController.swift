@@ -198,14 +198,14 @@ public final class ReactionsWindowController : NSObject {
     private var skipAppearAnimation = false
     
     private let parentWindow: Window
-    public init<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, selectedItems: [EmojiesSectionRowItem.SelectedItem], react: @escaping(StickerPackItem, NSRect?)->Void, reactLarge: ((StickerPackItem, NSRect?)->Void)? = nil, onClose:(()->Void)? = nil, presentation: TelegramPresentationTheme = theme, name: String = "", moveTop: Bool = false, mode: EmojiesController.Mode = .reactions, parentWindow: Window? = nil) {
+    public init<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, selectedItems: [EmojiesSectionRowItem.SelectedItem], react: @escaping(StickerPackItem, NSRect?)->Void, reactLarge: ((StickerPackItem, NSRect?)->Void)? = nil, onClose:(()->Void)? = nil, presentation: TelegramPresentationTheme = theme, name: String = "", moveTop: Bool = false, mode: EmojiesController.Mode = .reactions, parentWindow: Window? = nil, orderedTags: [RecentReactionItem]? = nil) {
         self.parentWindow = parentWindow ?? context.window
         self.context = context
         self.presentation = presentation
         self.onClose = onClose
         self.name = name
         self.moveTop = moveTop
-        self.emojies = EmojiesController(context, mode: context.peerId == peerId ? .defaultTags : mode, selectedItems: selectedItems, presentation: presentation)
+        self.emojies = EmojiesController(context, mode: context.peerId == peerId ? .defaultTags : mode, selectedItems: selectedItems, presentation: presentation, orderedTags: orderedTags)
         self.emojies.loadViewIfNeeded()
         super.init()
         
