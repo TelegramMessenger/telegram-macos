@@ -2712,19 +2712,29 @@ public class ChatRowItem: TableRowItem {
                 }
                 if let attribute = attribute as? ViewCountMessageAttribute {
                     let attr: NSAttributedString = .initialize(string: max(1, attribute.count).prettyNumber, color: isStateOverlayLayout ? stateOverlayTextColor : !hasBubble ? theme.colors.grayText : theme.chat.grayText(isIncoming, object.renderType == .bubble), font: renderType == .bubble ? .normal(.small) : .normal(.short))
-                    
+
                     self.channelViews = TextViewLayout(attr, maximumNumberOfLines: 1)
                     var author: String = ""
-                    loop: for attr in message.attributes {
+                    var forwardCount: Int?
+                    for attr in message.attributes {
                         if let attr = attr as? AuthorSignatureMessageAttribute {
                             author = "\(attr.signature), "
-                            break loop
+                        } else if let attr = attr as? ForwardCountMessageAttribute {
+                            forwardCount = attr.count
                         }
                     }
-                    
-                    
+
+                    var statsParts: [String] = []
                     if attribute.count >= 1000 {
-                        fullDate = "\(author)\(attribute.count.separatedNumber) \(strings().chatMessageTooltipViews), \(fullDate)"
+                        statsParts.append("\(attribute.count.separatedNumber) \(strings().chatMessageTooltipViews)")
+                    }
+                    if let forwardCount = forwardCount, forwardCount > 0 {
+                        let shares = strings().channelStatsSharesCountOther(forwardCount).replacingOccurrences(of: "\(forwardCount)", with: forwardCount.separatedNumber)
+                        statsParts.append(shares)
+                    }
+
+                    if !statsParts.isEmpty {
+                        fullDate = "\(author)\(statsParts.joined(separator: ", ")), \(fullDate)"
                     } else {
                         fullDate = "\(author)\(fullDate)"
                     }
