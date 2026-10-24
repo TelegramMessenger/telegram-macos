@@ -168,24 +168,17 @@ do
 done
 
 
-ARCH_COUNT=( $ARCHS )
-ARCH_COUNT=${#ARCH_COUNT[@]}
-if [[ $ARCH_COUNT -gt 1 ]] ; then
-LIBSSLA=""
-LIBCRYPTO=""
+LIBSSLA=()
+LIBCRYPTO=()
 mkdir -p ${BUILD_DIR}build/openssl/lib
 mv $SOURCE_DIR/include ${BUILD_DIR}build/openssl/include
 for ARCH in $ARCHS
 do
-LIBSSLA="$LIBSSLA ${BUILD_DIR}build/$ARCH/libssl.a"
-LIBCRYPTO="$LIBCRYPTO ${BUILD_DIR}build/$ARCH/libcrypto.a"
+LIBSSLA+=("${BUILD_DIR}build/$ARCH/libssl.a")
+LIBCRYPTO+=("${BUILD_DIR}build/$ARCH/libcrypto.a")
 done
-lipo -create -output ${BUILD_DIR}build/openssl/lib/libssl.a $LIBSSLA
-lipo -create -output ${BUILD_DIR}build/openssl/lib/libcrypto.a $LIBCRYPTO
-else
-mv "${BUILD_DIR}build/$ARCHS/libssl.a" "${BUILD_DIR}build/libssl.a"
-mv "${BUILD_DIR}build/$ARCHS/libcrypto.a" "${BUILD_DIR}build/libcrypto.a"
-fi
+lipo -create -output "${BUILD_DIR}build/openssl/lib/libssl.a" "${LIBSSLA[@]}"
+lipo -create -output "${BUILD_DIR}build/openssl/lib/libcrypto.a" "${LIBCRYPTO[@]}"
 
 
 #cp -r "${TMP_DIR}/$ARCH/include" "${TMP_DIR}/"

@@ -1314,6 +1314,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
 
     @IBAction func checkForUpdates(_ sender: Any) {
+        guard appUpdatesEnabled else { return }
         #if !APP_STORE
             showModal(with: InputDataModalController(AppUpdateViewController()), for: window)
             #if STABLE
@@ -1330,10 +1331,13 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     
     override func awakeFromNib() {
         #if APP_STORE
-        if let menu = NSApp.mainMenu?.item(at: 0)?.submenu, let sparkleItem = menu.item(withTag: 1000) {
+        let hideUpdateMenu = true
+        #else
+        let hideUpdateMenu = !appUpdatesEnabled
+        #endif
+        if hideUpdateMenu, let menu = NSApp.mainMenu?.item(at: 0)?.submenu, let sparkleItem = menu.item(withTag: 1000) {
             menu.removeItem(sparkleItem)
         }
-        #endif
         installServicesMenu()
     }
 
@@ -1351,6 +1355,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     
     
     @objc func checkUpdates() {
+        guard appUpdatesEnabled else { return }
         #if !APP_STORE
         showModal(with: InputDataModalController(AppUpdateViewController()), for: window)
         #endif
@@ -1399,6 +1404,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     private func crashRecoveryUpdate() -> CrashRecoveryUpdate {
+        guard appUpdatesEnabled else { return .disabled }
         #if APP_STORE
         return .appStore
         #elseif GITHUB || DEBUG

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-FRAMEWORK_STAMP_SCHEMA=1
+FRAMEWORK_STAMP_SCHEMA=2
 
 framework_project_dir() {
     MATCH="$(ls "$1/core-xprojects" 2>/dev/null | awk -v n="$2" 'tolower($0) == tolower(n) { print; exit }')"
@@ -49,6 +49,7 @@ framework_source_roots() {
 framework_inputs() {
     framework_project_dir "$1" "$2"
     framework_source_roots "$1" "$2"
+    echo "$1/scripts/build-architectures.sh"
 }
 
 framework_dependencies() {
@@ -107,6 +108,8 @@ framework_outputs_consistent() {
 
 framework_required_outputs() {
     local BUILD_DIR="$(framework_build_dir "$1" "$2")"
+    local ARCHITECTURES="${TELEGRAM_BUILD_ARCHS:-arm64 x86_64}"
+    local XCFRAMEWORK_SLICE="macos-${ARCHITECTURES// /_}"
     case "$2" in
         OpenH264)
             printf '%s\n' "$BUILD_DIR/output/lib/libopenh264.a" "$BUILD_DIR/output/include/include/wels/codec_api.h"
@@ -141,14 +144,14 @@ framework_required_outputs() {
         wallet-engine)
             local XCFRAMEWORK="$1/packages/WalletEngine/wallet_engineFFI.xcframework"
             printf '%s\n' "$BUILD_DIR/libwallet_engine.a" "$BUILD_DIR/WalletEngineFFI.swift" \
-                "$XCFRAMEWORK/Info.plist" "$XCFRAMEWORK/macos-arm64_x86_64/libwallet_engine.a" \
-                "$XCFRAMEWORK/macos-arm64_x86_64/Headers/"{wallet_engineFFI.h,module.modulemap}
+                "$XCFRAMEWORK/Info.plist" "$XCFRAMEWORK/$XCFRAMEWORK_SLICE/libwallet_engine.a" \
+                "$XCFRAMEWORK/$XCFRAMEWORK_SLICE/Headers/"{wallet_engineFFI.h,module.modulemap}
             ;;
         mtproto-engine)
             local XCFRAMEWORK="$1/submodules/telegram-ios/submodules/MTProtoRustEngine/MTProtoEngineFFI.xcframework"
             printf '%s\n' "$BUILD_DIR/libmtproto_engine_ffi.a" "$XCFRAMEWORK/Info.plist" \
-                "$XCFRAMEWORK/macos-arm64_x86_64/libmtproto_engine_ffi.a" \
-                "$XCFRAMEWORK/macos-arm64_x86_64/Headers/MTProtoEngineFFI/"{mtproto_engine.h,module.modulemap}
+                "$XCFRAMEWORK/$XCFRAMEWORK_SLICE/libmtproto_engine_ffi.a" \
+                "$XCFRAMEWORK/$XCFRAMEWORK_SLICE/Headers/MTProtoEngineFFI/"{mtproto_engine.h,module.modulemap}
             ;;
         *) return 1 ;;
     esac
@@ -211,6 +214,7 @@ framework_stamp() {
     CACHE_DIR="$3"
     echo "schema=$FRAMEWORK_STAMP_SCHEMA"
     echo "lib=$LIB"
+    echo "architectures=${TELEGRAM_BUILD_ARCHS:-arm64 x86_64}"
     echo "xcode=${FRAMEWORK_XCODE_VERSION:-$(xcodebuild -version 2>/dev/null | tr '\n' ' ')}"
     echo "deployment=${MACOSX_DEPLOYMENT_TARGET:-default}"
     framework_extra_fingerprint "$LIB"

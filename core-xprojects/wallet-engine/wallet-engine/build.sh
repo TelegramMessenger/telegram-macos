@@ -4,6 +4,7 @@ set -e
 set -x
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/../../../scripts/build-architectures.sh"
 
 SOURCE_DIR="$1"
 BUILD_DIR="$2"
@@ -15,7 +16,10 @@ if [ -z "$SOURCE_DIR" ] || [ -z "$BUILD_DIR" ] || [ -z "$PACKAGE_DIR" ]; then
     exit 1
 fi
 
-DEPLOYMENT_TARGET="10.15"
+DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.15}"
+case "$DEPLOYMENT_TARGET" in
+    10.[0-9]|10.1[0-4]) DEPLOYMENT_TARGET=10.15 ;;
+esac
 
 if [ ! -f "$SOURCE_DIR/Cargo.toml" ]; then
     echo "wallet-engine sources are missing at $SOURCE_DIR"
@@ -49,7 +53,9 @@ mkdir -p "$BUILD_DIR"
 
 cd "$SOURCE_DIR"
 
-for RUST_TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
+RUST_LIBRARIES=()
+for ARCH in $TELEGRAM_BUILD_ARCHS; do
+    RUST_TARGET="$(telegram_rust_target "$ARCH")"
     if [ -x "$RUSTUP_BIN" ]; then
         "$RUSTUP_BIN" target add "$RUST_TARGET" >/dev/null 2>&1 || true
     fi
@@ -58,12 +64,10 @@ for RUST_TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
         --release \
         --locked \
         --target "$RUST_TARGET"
+    RUST_LIBRARIES+=("$BUILD_DIR/lib/$RUST_TARGET/release/libwallet_engine.a")
 done
 
-lipo -create \
-    "$BUILD_DIR/lib/aarch64-apple-darwin/release/libwallet_engine.a" \
-    "$BUILD_DIR/lib/x86_64-apple-darwin/release/libwallet_engine.a" \
-    -output "$BUILD_DIR/libwallet_engine.a"
+lipo -create "${RUST_LIBRARIES[@]}" -output "$BUILD_DIR/libwallet_engine.a"
 
 CARGO="$CARGO_BIN" CARGO_TARGET_DIR="$BUILD_DIR/xtask" "$CARGO_BIN" run \
     --manifest-path xtask/Cargo.toml \

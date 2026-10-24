@@ -68,6 +68,49 @@ You can fork this application and make something awesome! Make sure that your fo
 
 ## How to Build
 
+For a local test build, install the prerequisites in [INSTALL.md](INSTALL.md), then copy
+`Telegram-Mac/Local.xcconfig.example` to `Telegram-Mac/Local.xcconfig`. Fill in your API ID,
+API hash, a unique bundle ID, and the team ID of your installed Apple Development certificate.
+The local configuration is ignored by Git. Then run:
+
+```sh
+sh scripts/build-local.sh
+```
+
+Choose `arm64` (Apple Silicon), `x86_64` (Intel), or `universal`. Press Enter to use this Mac's
+architecture. The choice applies to the native libraries and Rust engines as well as the Debug app.
+The script signs with your Apple Development certificate. The configured bundle ID and team
+are shared by the app, extension and app groups, keeping local data separate from the official app
+when you choose a distinct bundle ID.
+Local builds disable the app updater, including background downloads, manual update commands,
+recovery update actions and installation on quit. The update menu and Settings entry are hidden.
+The script applies the Xcode 27 compatibility changes when needed and keeps logs, timings and
+DerivedData under `.build/local-<architecture>/`.
+It does not archive or deploy the app. The finished app is under `DerivedData/Build/Products/Debug/Telegram.app`.
+
+You can also pass the architecture directly or preview the commands without building:
+
+```sh
+sh scripts/build-local.sh arm64
+sh scripts/build-local.sh arm64 --dry-run
+```
+
+After preparing the native frameworks for an architecture, rebuild just the app with:
+
+```sh
+sh scripts/build-local.sh arm64 --app-only
+```
+
+`--app-only` skips framework preparation and its tool checks, while keeping the Xcode compatibility
+step, local signing, disabled updater, logs and existing DerivedData. It also works with `--dry-run`
+and the interactive architecture prompt. Xcode may still rebuild affected Swift packages and workspace
+dependencies. Run without `--app-only` when native sources or the required framework architectures change.
+
+Repeated builds reuse compatible native outputs. Changing architectures rebuilds those shared
+outputs; the regular framework and release scripts still default to both architectures.
+The script checks tools but does not install them. The legacy `setup_build_env.sh` still requests
+`openssl@1.1`; use the Homebrew dependency list without that formula, since OpenSSL is built from source.
+
 Quick start (full details, requirements and troubleshooting are in [INSTALL.md](INSTALL.md)):
 
 1. Install Xcode 16 or newer, Homebrew and a Rust toolchain (rustup). On Xcode 27, apply the local changes in

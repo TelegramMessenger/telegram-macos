@@ -2,17 +2,17 @@ import Cocoa
 
 public final class ApiEnvironment {
     public static var apiId:Int32 {
-        return 9
+        return Configuration.value(for: .apiId).flatMap(Int32.init) ?? 9
     }
     public static var apiHash:String {
-        return "3975f648bb682ee889f35483bc618d1c"
+        return Configuration.value(for: .apiHash) ?? "3975f648bb682ee889f35483bc618d1c"
     }
     
     public static var bundleId: String {
-        return "ru.keepcoder.Telegram"
+        return Configuration.value(for: .bundleId) ?? "ru.keepcoder.Telegram"
     }
     public static var teamId: String {
-        return "6N38VWS5BX"
+        return Configuration.value(for: .teamId) ?? "6N38VWS5BX"
     }
     
     

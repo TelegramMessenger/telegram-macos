@@ -60,6 +60,7 @@ else
 mv "${BUILD_DIR}build/$ARCHS/$OUTPUTNAME" "${BUILD_DIR}build/$OUTPUTNAME"
 fi
 
-mv "${BUILD_DIR}build/x86_64/jconfigint.h" "${BUILD_DIR}build/jconfigint.h"
-mv "${BUILD_DIR}build/x86_64/jconfig.h" "${BUILD_DIR}build/jconfig.h"
+HEADER_ARCH="${ARCHS##* }"
+mv "${BUILD_DIR}build/$HEADER_ARCH/jconfigint.h" "${BUILD_DIR}build/jconfigint.h"
+mv "${BUILD_DIR}build/$HEADER_ARCH/jconfig.h" "${BUILD_DIR}build/jconfig.h"
 cp -r "${BUILD_DIR}../../submodules/telegram-ios/third-party/mozjpeg/mozjpeg/" "${BUILD_DIR}build/"

@@ -1,3 +1,7 @@
+import Foundation
+
+let appUpdatesEnabled = (Bundle.main.object(forInfoDictionaryKey: "TELEGRAM_DISABLE_UPDATES") as? NSString)?.boolValue != true
+
 #if !APP_STORE
 
 import Cocoa
@@ -86,7 +90,7 @@ private var driver:SUBasicUpdateDriver? {
 private let host = SUHost(bundle: Bundle.main)
 
 func updateApplication(sharedContext: SharedAccountContext) {
-
+    guard appUpdatesEnabled else { return }
     
     let state = stateValue.with {$0.loadingState}
     switch state {
@@ -243,6 +247,7 @@ func AppUpdateViewController() -> InputDataController {
     
 
     return InputDataController(dataSignal: signal, title: strings().appUpdateTitle, validateData: { data in
+        guard appUpdatesEnabled else { return .none }
         
         if let _ = data[_id_download_update] {
             driver?.downloadUpdate()
@@ -361,6 +366,7 @@ private final class InternalUpdateDriver : ExternalUpdateDriver {
     }
     
     override func checkForUpdates(at URL: URL!, host aHost: SUHost!, domain: String!) {
+        guard appUpdatesEnabled else { return }
         self.host = aHost
 
         updateSharedState {
@@ -379,6 +385,7 @@ private final class InternalUpdateDriver : ExternalUpdateDriver {
     }
     
     override func downloadUpdate() {
+        guard appUpdatesEnabled else { return }
         let downloader = InternalUpdaterDownloader(context: self.context, updateItem: self.updateItem, delegate: self)
         self.download = downloader
         let fileName = "Telegram \(self.updateItem.versionString ?? "")"
@@ -457,6 +464,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
 
     
     override func install(withToolAndRelaunch relaunch: Bool, displayingUserInterface showUI: Bool) {
+        guard appUpdatesEnabled else { return }
         if isCurrentDriver {
             cancelStagedUpdate()
         }
@@ -486,6 +494,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
     }
     
     override func checkForUpdates(at url: URL!, host aHost: SUHost!, domain: String!) {
+        guard appUpdatesEnabled else { return }
         updateSharedState {
             return $0.withUpdatedLoadingState(.initializing)
         }
@@ -494,6 +503,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
     }
     
     override func downloadUpdate() {
+        guard appUpdatesEnabled else { return }
         if isStaging {
             downloadKeepingReadyUpdate()
             return
@@ -582,6 +592,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
 private let disposable = MetaDisposable()
 
 func setAppUpdaterBaseDomain(_ domain: String?) {
+    guard appUpdatesEnabled else { return }
     updater.domain = domain
     if let domain = domain {
         updater.host = URL(string: domain)?.host
@@ -615,6 +626,7 @@ func crashRecoveryUpdater() -> CrashRecoveryUpdater {
     return CrashRecoveryUpdater(state: state, check: {
         updater_resetWithUpdaterSource(.external(context: nil))
     }, install: {
+        guard appUpdatesEnabled else { return }
         if case .readyToInstall = stateValue.with({ $0.loadingState }) {
             driver?.install(withToolAndRelaunch: true)
         }
@@ -622,6 +634,7 @@ func crashRecoveryUpdater() -> CrashRecoveryUpdater {
 }
 
 func updateAppIfNeeded() {
+    guard appUpdatesEnabled else { return }
     let state = stateValue.with {$0.loadingState}
     
     switch state {
@@ -732,6 +745,7 @@ private func cancelStagedUpdate() {
 }
 
 private func resetUpdater() {
+    guard appUpdatesEnabled else { return }
     
     #if !GITHUB
         let update:()->Void = {
@@ -763,6 +777,7 @@ private func resetUpdater() {
 private var updaterSource: UpdaterSource? = nil
 
 func updater_resetWithUpdaterSource(_ source: UpdaterSource, force: Bool = true) {
+    guard appUpdatesEnabled else { return }
     let state = stateValue.with { $0 }
     switch state.loadingState {
     case .readyToInstall:

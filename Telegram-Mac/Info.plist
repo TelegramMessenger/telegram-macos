@@ -87,6 +87,16 @@
 	<string>Speech recognition is used to turn what you dictate into message text. Recognition happens on your Mac whenever possible.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<key>TELEGRAM_API_ID</key>
+	<string>$(TELEGRAM_API_ID)</string>
+	<key>TELEGRAM_API_HASH</key>
+	<string>$(TELEGRAM_API_HASH)</string>
+	<key>TELEGRAM_BUNDLE_ID</key>
+	<string>$(TELEGRAM_BUNDLE_ID)</string>
+	<key>TELEGRAM_TEAM_ID</key>
+	<string>$(TELEGRAM_TEAM_ID)</string>
+	<key>TELEGRAM_DISABLE_UPDATES</key>
+	<string>$(TELEGRAM_DISABLE_UPDATES)</string>
 	<key>SOURCE</key>
 	<string>${SOURCE}</string>
 	<key>SUFeedURL</key>

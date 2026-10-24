@@ -182,12 +182,26 @@ It prints the temporary directory containing its build logs.
 
 ### Signing
 
-The project is set up for the Telegram team (`6N38VWS5BX`) with bundle identifier
-`ru.keepcoder.Telegram`, an app group `6N38VWS5BX.ru.keepcoder.Telegram` shared with the
-extensions, and iCloud/keychain entitlements tied to that identifier. Building for your
-own team means changing the identifier and team everywhere (see "Forking" below) or
-switching the targets to a personal team with automatic signing and removing the
-entitlements you cannot request.
+Copy `Telegram-Mac/Local.xcconfig.example` to `Telegram-Mac/Local.xcconfig` and fill in
+`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_BUNDLE_ID` and `TELEGRAM_TEAM_ID`.
+Use a distinct bundle ID for local testing. This file is ignored by Git and supplies the
+credentials and identity to both the app and share extension. Without it, direct Xcode builds
+retain the upstream defaults; the local build script requires the file.
+
+`scripts/build-local.sh` signs the Debug build with an Apple Development certificate for
+the configured team. The certificate and its private key must be installed in Keychain.
+The signing team's identifier must match the app group's prefix; ad-hoc signing does not
+satisfy that requirement. See Apple's [app group access documentation](https://developer.apple.com/documentation/xcode/accessing-app-group-containers).
+Keep `DEVELOPMENT_TEAM = $(TELEGRAM_TEAM_ID)` in the local file: the script passes it as
+an Xcode configuration override so workspace dependencies use the same signing team.
+App groups and runtime storage paths derive from the same team and bundle settings.
+
+The local build script sets `TELEGRAM_DISABLE_UPDATES=YES`. The local configuration template
+also sets it so builds launched from Xcode use the same policy. The updater does not check,
+download or install updates, including on quit or during crash recovery, and its UI is hidden.
+Existing local configuration files should include this setting when building directly in Xcode.
+Distribution builds without the local override keep updates enabled. These changes take effect
+after rebuilding; they do not change an already-running app.
 
 ## Build configurations and release channels
 
@@ -331,10 +345,10 @@ cd packages/TGUIKit && swift build
 1. Build the app first, as above.
 2. Obtain your own [API ID](https://core.telegram.org/api/obtaining_api_id). The built-in
    `apiId` is rate-limited and must not be used for anything but verifying binaries.
-3. Put your `apiId`, `apiHash`, `bundleId` and `teamId` into
-   `packages/ApiCredentials/Sources/ApiCredentials/Config.swift`.
-4. Search the project for `ru.keepcoder.Telegram` and `6N38VWS5BX` and replace them with
-   your bundle identifier and team (project settings, entitlements, app group).
+3. Copy `Telegram-Mac/Local.xcconfig.example` to `Telegram-Mac/Local.xcconfig` and set
+   your API credentials, bundle identifier and signing team there (see "Signing" above).
+4. Keep `Local.xcconfig` out of commits. The app, extension and entitlements use its
+   shared identity settings; no personal values need to be added to tracked source files.
 5. Replace or remove `SFEED_URL`, `DSA_PEM_FILE` and `APPCENTER_SECRET` in the xcconfig
    files. They point at Telegram's Sparkle update feeds and AppCenter crash collection.
 6. Follow the rules in the README's "Forking" section: do not call the fork Telegram and

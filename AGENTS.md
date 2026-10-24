@@ -16,6 +16,38 @@ Read the matching document before starting the task.
 | Task | Document |
 |---|---|
 | Creating a new screen or controller | [docs/swift/TemplateController/README.md](docs/swift/TemplateController/README.md), template in [TemplateController.swift](docs/swift/TemplateController/TemplateController.swift) |
+| Building locally or changing build settings | [README.md](README.md), [INSTALL.md](INSTALL.md), [XCODE27.md](XCODE27.md) for Xcode 27 compatibility |
+
+
+## Local Development Builds
+
+Use `scripts/build-local.sh` on macOS with full Xcode. It builds a Debug app without archiving or deploying it.
+
+| Command | Purpose |
+|---|---|
+| `sh scripts/build-local.sh` | Prompt for `arm64`, `x86_64` or `universal`, defaulting to this Mac's architecture |
+| `sh scripts/build-local.sh arm64` | Prepare native frameworks and build the app for Apple Silicon |
+| `sh scripts/build-local.sh arm64 --app-only` | Rebuild the app using existing native frameworks |
+| `sh scripts/build-local.sh arm64 --app-only --dry-run` | Preview the app build command without building or applying compatibility changes |
+
+Replace `arm64` with `x86_64` or `universal` as needed. Prefer `--app-only` for app and Swift changes once native outputs are prepared for the selected architecture. Xcode may still rebuild affected Swift packages and workspace dependencies. Run without `--app-only` when native sources or the required framework architectures change.
+
+Keep `.build/local-<architecture>/DerivedData` for incremental builds. The same directory contains `app.log` and `timings.tsv`; a full run also writes `frameworks.log`. Avoid `clean` or deleting caches as a routine troubleshooting step. The app is at `.build/local-<architecture>/DerivedData/Build/Products/Debug/Telegram.app`.
+
+The script applies Xcode 27 compatibility changes and disables Rust stripping through `CARGO_PROFILE_RELEASE_STRIP=none` and `CARGO_PROFILE_DEV_STRIP=none`. Preserve these settings when changing the build flow. Check the diff before committing: local compatibility changes in project files and submodules are separate from the requested source changes.
+
+### Local Credentials and Signing
+
+- Copy `Telegram-Mac/Local.xcconfig.example` to `Telegram-Mac/Local.xcconfig` if the local file does not exist; preserve an existing file.
+- Put personal API credentials, bundle ID and signing team only in the ignored `Local.xcconfig`, using `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_BUNDLE_ID` and `TELEGRAM_TEAM_ID`.
+- Keep `DEVELOPMENT_TEAM = $(TELEGRAM_TEAM_ID)` in that file. The app, share extension and app groups use the same identity settings. Local builds require an installed Apple Development certificate for the configured team.
+- Do not copy personal values into source files, examples, documentation, tests or commit messages. Inspect the staged diff before committing and keep `Local.xcconfig` untracked.
+
+### Updates in Local Builds
+
+Keep `TELEGRAM_DISABLE_UPDATES=YES` for local builds. The script sets it, and `Local.xcconfig` should include it for builds launched directly from Xcode. It disables checks, downloads, manual update actions, crash recovery updates and installation on quit, and hides the updater UI. Changing the bundle ID or feed alone does not disable updates.
+
+The policy is read from the built app's Info.plist. Source or configuration changes take effect after rebuilding; an already-built or running app retains its previous update behavior. Distribution builds without the local override keep updates enabled.
 
 
 ## Architecture Overview

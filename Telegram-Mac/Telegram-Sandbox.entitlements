@@ -12,8 +12,8 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>6N38VWS5BX.ru.keepcoder.Telegram</string>
-		<string>6N38VWS5BX.ru.keepcoder.Telegram.TelegramShare</string>
+		<string>$(TELEGRAM_TEAM_ID).$(TELEGRAM_BUNDLE_ID)</string>
+		<string>$(TELEGRAM_TEAM_ID).$(TELEGRAM_BUNDLE_ID).TelegramShare</string>
 	</array>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
@@ -31,8 +31,8 @@
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>6N38VWS5BX.ru.keepcoder.Telegram</string>
-		<string>6N38VWS5BX.ru.keepcoder.TelegramShare</string>
+		<string>$(TELEGRAM_TEAM_ID).$(TELEGRAM_BUNDLE_ID)</string>
+		<string>$(TELEGRAM_TEAM_ID).$(TELEGRAM_BUNDLE_ID).TelegramShare</string>
 	</array>
 </dict>
 </plist>

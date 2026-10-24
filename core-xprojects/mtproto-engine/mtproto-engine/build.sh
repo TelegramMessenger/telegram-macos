@@ -3,6 +3,9 @@
 set -e
 set -x
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/../../../scripts/build-architectures.sh"
+
 SOURCE_DIR="$1"
 BUILD_DIR="$2"
 PACKAGE_DIR="$3"
@@ -13,7 +16,7 @@ if [ -z "$SOURCE_DIR" ] || [ -z "$BUILD_DIR" ] || [ -z "$PACKAGE_DIR" ]; then
     exit 1
 fi
 
-DEPLOYMENT_TARGET="10.13"
+DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.13}"
 
 if [ ! -f "$SOURCE_DIR/Cargo.toml" ]; then
     echo "mtproto-engine sources are missing at $SOURCE_DIR"
@@ -47,7 +50,9 @@ mkdir -p "$BUILD_DIR"
 
 cd "$SOURCE_DIR"
 
-for RUST_TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
+RUST_LIBRARIES=()
+for ARCH in $TELEGRAM_BUILD_ARCHS; do
+    RUST_TARGET="$(telegram_rust_target "$ARCH")"
     if [ -x "$RUSTUP_BIN" ]; then
         "$RUSTUP_BIN" target add "$RUST_TARGET" >/dev/null 2>&1 || true
     fi
@@ -56,12 +61,10 @@ for RUST_TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
         --release \
         --locked \
         --target "$RUST_TARGET"
+    RUST_LIBRARIES+=("$BUILD_DIR/lib/$RUST_TARGET/release/libmtproto_engine_ffi.a")
 done
 
-lipo -create \
-    "$BUILD_DIR/lib/aarch64-apple-darwin/release/libmtproto_engine_ffi.a" \
-    "$BUILD_DIR/lib/x86_64-apple-darwin/release/libmtproto_engine_ffi.a" \
-    -output "$BUILD_DIR/libmtproto_engine_ffi.a"
+lipo -create "${RUST_LIBRARIES[@]}" -output "$BUILD_DIR/libmtproto_engine_ffi.a"
 
 HEADERS_DIR="$BUILD_DIR/headers"
 rm -rf "$HEADERS_DIR"

@@ -9,6 +9,12 @@ arraylength=${#libs[@]}
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 ROOT_DIR="$( cd "$SCRIPT_DIR/.." >/dev/null && pwd )"
 
+. "$SCRIPT_DIR/build-architectures.sh"
+FRAMEWORK_BUILD_SETTINGS=("ARCHS=$TELEGRAM_BUILD_ARCHS" "ONLY_ACTIVE_ARCH=NO")
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+    FRAMEWORK_BUILD_SETTINGS+=("MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET")
+fi
+
 python3 "$SCRIPT_DIR/prepare-telegram-api.py"
 
 . "$SCRIPT_DIR/framework-inputs.sh"
@@ -65,7 +71,8 @@ do
         -configuration Release BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
         -scheme "$FWNAME" \
         -derivedDataPath "$STAMP_CACHE/DerivedData-$LIB" \
-        -destination 'generic/platform=macOS'
+        -destination 'generic/platform=macOS' \
+        "${FRAMEWORK_BUILD_SETTINGS[@]}"
 
     if ! framework_outputs_present "$ROOT_DIR" "$LIB" || ! framework_outputs_consistent "$ROOT_DIR" "$LIB"; then
         echo "error: $LIB did not produce complete, consistent outputs" >&2

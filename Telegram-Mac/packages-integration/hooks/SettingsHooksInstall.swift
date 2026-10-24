@@ -374,11 +374,16 @@ func installSettingsUIHooks() {
         #if APP_STORE
             appUpdateState = .single(nil)
         #else
-        appUpdateState = appUpdateStateSignal |> map(Optional.init)
+        if appUpdatesEnabled {
+            appUpdateState = appUpdateStateSignal |> map(Optional.init)
+        } else {
+            appUpdateState = .single(nil)
+        }
         #endif
         return appUpdateState
     }, pushAppUpdate: { navigation in
         #if !APP_STORE
+        guard appUpdatesEnabled else { return }
         navigation.push(AppUpdateViewController(), false)
         #endif
     }, openFaq: { context in

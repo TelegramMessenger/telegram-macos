@@ -28,6 +28,7 @@ public struct CrashRecoveryUpdater {
 }
 
 public enum CrashRecoveryUpdate {
+    case disabled
     case updater(CrashRecoveryUpdater)
     case appStore
     case website
@@ -113,6 +114,8 @@ private func formattedSize(_ bytes: Int) -> String {
 
 private func recoveryContent(update: CrashRecoveryUpdate, state: CrashRecoveryUpdateState, openedExternal: Bool) -> CrashRecoveryContent {
     switch update {
+    case .disabled:
+        return CrashRecoveryContent(symbol: .warning, title: Text.title, detail: Text.upToDateDetail, progress: nil, primaryTitle: Text.quit, primaryEnabled: true, secondaryEnabled: true, showsWebsite: false, showsReset: true)
     case .appStore:
         return CrashRecoveryContent(symbol: .appStore, title: Text.appStore, detail: Text.appStoreDetail, progress: nil, primaryTitle: openedExternal ? Text.quit : Text.openAppStore, primaryEnabled: true, secondaryEnabled: true, showsWebsite: false, showsReset: true)
     case .website:
@@ -226,6 +229,8 @@ private final class CrashRecoveryWindowController: NSObject, NSWindowDelegate {
 
     private var primaryQuits: Bool {
         switch update {
+        case .disabled:
+            return true
         case .appStore, .website:
             return openedExternal
         case .updater:
@@ -268,6 +273,8 @@ private final class CrashRecoveryWindowController: NSObject, NSWindowDelegate {
             return
         }
         switch update {
+        case .disabled:
+            NSApp.terminate(nil)
         case let .updater(updater):
             switch state {
             case .readyToInstall:

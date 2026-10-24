@@ -5,10 +5,11 @@ set -x
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+. "$ROOT_DIR/scripts/build-architectures.sh"
 SOURCE_DIR="$ROOT_DIR/submodules/tlottie"
 ENGINE_TOOLCHAIN_FILE="$ROOT_DIR/submodules/telegram-ios/third-party/mtproto-engine/rust-toolchain.toml"
 BUILD_DIR="$SCRIPT_DIR/build"
-DEPLOYMENT_TARGET="10.13"
+DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.13}"
 
 if [ ! -f "$SOURCE_DIR/Cargo.toml" ]; then
     echo "tlottie sources are missing at $SOURCE_DIR"
@@ -50,7 +51,9 @@ if [ -x "$RUSTUP_BIN" ]; then
     INSTALLED_TARGETS="$("$RUSTUP_BIN" target list --installed --toolchain "$TOOLCHAIN")"
 fi
 
-for RUST_TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
+RUST_LIBRARIES=()
+for ARCH in $TELEGRAM_BUILD_ARCHS; do
+    RUST_TARGET="$(telegram_rust_target "$ARCH")"
     if [ -x "$RUSTUP_BIN" ] && ! printf '%s\n' "$INSTALLED_TARGETS" | grep -qx "$RUST_TARGET"; then
         "$RUSTUP_BIN" target add --toolchain "$TOOLCHAIN" "$RUST_TARGET" >/dev/null 2>&1
     fi
@@ -63,14 +66,12 @@ for RUST_TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
         --crate-type staticlib \
         --target "$RUST_TARGET" \
         --config 'profile.release.lto=false'
+    RUST_LIBRARIES+=("$BUILD_DIR/lib/$RUST_TARGET/release/libtlottie.a")
 done
 
 MERGED_LIBRARY="$(mktemp "$BUILD_DIR/libtlottie.XXXXXX")"
 trap 'rm -f "$MERGED_LIBRARY"' EXIT
-lipo -create \
-    "$BUILD_DIR/lib/aarch64-apple-darwin/release/libtlottie.a" \
-    "$BUILD_DIR/lib/x86_64-apple-darwin/release/libtlottie.a" \
-    -output "$MERGED_LIBRARY"
+lipo -create "${RUST_LIBRARIES[@]}" -output "$MERGED_LIBRARY"
 
 if ! cmp -s "$MERGED_LIBRARY" "$BUILD_DIR/libtlottie.a"; then
     mv "$MERGED_LIBRARY" "$BUILD_DIR/libtlottie.a"
