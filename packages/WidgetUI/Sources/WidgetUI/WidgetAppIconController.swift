@@ -83,9 +83,6 @@ final class WidgetAppIconController<Context: AccountContextProtocol> : TelegramG
                 prem(with: PremiumBoardingController(context: context, source: .settings), for: context.window)
                 return
             }
-            let resourcePath = icon.resourcePath(context)
-            Dock.setCustomAppIcon(path: resourcePath)
-
             _ = updateDockSettings(accountManager: context.sharedContext.accountManager, { settings in
                 return settings.withUpdatedIcon(icon.file.fileName)
             }).startStandalone()

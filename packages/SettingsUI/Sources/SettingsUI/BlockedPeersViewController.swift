@@ -219,6 +219,10 @@ fileprivate func prepareTransition(left:[AppearanceWrapperEntry<BlockedPeerEntry
 
 
 open class BlockedPeersViewController<Context: AccountContextProtocol>: EditableViewController<TableView, Context> {
+
+    open override var defaultBarTitle: String {
+        return strings().privacySettingsBlockedUsers
+    }
     
     
     private let statePromise = ValuePromise(BlockedPeersEditingState(), ignoreRepeated: true)

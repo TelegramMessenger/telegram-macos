@@ -152,6 +152,7 @@ private final class DockIconView : Control {
     
     private let content = SimpleLayer()
     private let selected = SimpleLayer()
+    private let selectionOutline = SimpleLayer()
     
     private var locker: SimpleLayer?
     
@@ -173,21 +174,27 @@ private final class DockIconView : Control {
     
     private let statusDisposable = MetaDisposable()
     private let fetchDisposable = MetaDisposable()
+    private let imageDisposable = MetaDisposable()
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        scaleOnClick = true
         content.frame = NSMakeRect(0, 0, 60, 60)
         self.layer?.addSublayer(content)
+        self.layer?.addSublayer(selectionOutline)
         self.layer?.addSublayer(selected)
         
         
-        selected.frame = NSMakeRect(0, 0, 4, 4)
+        selectionOutline.frame = content.frame.insetBy(dx: 2, dy: 2)
+        selectionOutline.cornerRadius = 14
+        selectionOutline.borderWidth = 2
+        selectionOutline.opacity = 0
+
+        selected.frame = NSMakeRect(0, 0, 6, 6)
         selected.cornerRadius = selected.frame.height / 2.0
-        selected.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        selected.opacity = 0
         
         set(handler: { [weak self] _ in
-            if let rowItem = self?.rowItem, let item = self?.item {
+            if let rowItem = self?.rowItem, let item = self?.item, !item.selected {
                 rowItem.callback(item.icon)
             }
         }, for: .Click)
@@ -199,10 +206,17 @@ private final class DockIconView : Control {
         super.layout()
         self.selected.frame = CGRect(origin: NSMakePoint((frame.width - selected.frame.width) / 2, content.frame.maxY), size: selected.frame.size)
     }
+
+    public override func stateDidUpdate(_ state: ControlState) {
+        scaleOnClick = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        super.stateDidUpdate(state)
+    }
     
     public func set(item: DockIconData, rowItem: DockIconRowItem, context: any AccountContextProtocol, animated: Bool) {
        
-        if self.item?.icon != item.icon {
+        let sameIcon = self.item?.icon == item.icon
+        if !sameIcon {
+            self.imageDisposable.set(nil)
             self.content.contents = nil
         }
         self.item = item
@@ -233,12 +247,37 @@ private final class DockIconView : Control {
             performSublayerRemoval(locker, animated: animated)
             self.locker = nil
         }
-        self.selected.isHidden = self.locker != nil
+        self.updateSelection(item.selected && self.locker == nil, animated: animated && sameIcon)
+    }
+
+    private func updateSelection(_ isSelected: Bool, animated: Bool) {
+        selected.backgroundColor = theme.colors.accent.cgColor
+        selectionOutline.borderColor = theme.colors.accent.cgColor
+
+        let opacity: Float = isSelected ? 1 : 0
+        let previousOpacity = selected.presentation()?.opacity ?? selected.opacity
+        let selectionChanged = selected.opacity != opacity
+        selected.opacity = opacity
+        selectionOutline.opacity = opacity
+
+        if animated && selectionChanged {
+            selected.animateAlpha(from: CGFloat(previousOpacity), to: CGFloat(opacity), duration: 0.18)
+            selectionOutline.animateAlpha(from: CGFloat(previousOpacity), to: CGFloat(opacity), duration: 0.18)
+            if isSelected && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                selectionOutline.animateScale(from: 0.94, to: 1, duration: 0.2, timingFunction: .easeOut)
+            } else {
+                selectionOutline.removeAnimation(forKey: "transform.scale")
+            }
+        } else if !animated {
+            selected.removeAllAnimations()
+            selectionOutline.removeAllAnimations()
+        }
     }
     
     deinit {
         fetchDisposable.dispose()
         statusDisposable.dispose()
+        imageDisposable.dispose()
     }
     
     private func updateItem(_ item: DockIconData, context: any AccountContextProtocol, status: MediaResourceStatus) {
@@ -268,11 +307,6 @@ private final class DockIconView : Control {
         
         self.userInteractionEnabled = progress == nil
         
-        self.selected.opacity = item.selected ? 1.0 : 0.0
-        self.selected.animateOpacity()
-        
-
-        
         if progress == nil {
             let signal: Signal<CGImage?, NoError> = Signal { subscriber in
                 let image = createNSImage(fromIcnsFile: context.account.postbox.mediaBox.resourcePath(item.icon.file.resource), withSize: NSMakeSize(60, 60))?._cgImage
@@ -284,14 +318,17 @@ private final class DockIconView : Control {
             |> deliverOnMainQueue
             
             if self.content.contents == nil {
-                _ = signal.startStandalone(next: { [weak self] image in
-                    self?.content.contents = image
-                    self?.content.animateContents()
-                })
+                imageDisposable.set(signal.start(next: { [weak self] image in
+                    guard let self, self.item?.icon == item.icon else {
+                        return
+                    }
+                    self.content.contents = image
+                    self.content.animateContents()
+                }))
             }
         } else {
+            imageDisposable.set(nil)
             self.content.contents = nil
-            self.selected.opacity = 0
             self.content.animateContents()
         }
     }

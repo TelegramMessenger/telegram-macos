@@ -66,7 +66,7 @@ public final class DockControl {
         self.accountManager = accountManager
         loadResources()
         
-        silence()
+        observeSelection()
     }
     
     private func loadResources() {
@@ -83,17 +83,28 @@ public final class DockControl {
         self.promise.set(icons)
     }
     
-    private func silence() {
-        let signal = combineLatest(engine.resources.applicationIcons(), dockSettings(accountManager: accountManager)) |> deliverOnMainQueue
+    private func observeSelection() {
+        let signal = combineLatest(self.icons, dockSettings(accountManager: accountManager))
+        |> distinctUntilChanged(isEqual: { previous, current in
+            previous.0 == current.0 && previous.1 == current.1
+        })
+        |> deliverOnMainQueue
         update.set(signal.start(next: { [weak self] icons, settings in
-            if let self, let selected = settings.iconSelected, selected != TelegramApplicationIcons.Icon.defaultIconName {
-                if let icon = icons.icons.first(where: { $0.file.fileName == selected }) {
-                    let resource = self.engine.account.postbox.mediaBox.resourceData(icon.file.resource) |> filter { $0.complete } |> take(1) |> deliverOnMainQueue
-                    self.applyResource.set(resource.start(next: { resource in
-                        Dock.setCustomAppIcon(path: resource.path, silence: true)
-                    }))
-                }
-            } 
+            guard let self else {
+                return
+            }
+            self.applyResource.set(nil)
+
+            guard let selected = settings.iconSelected, selected != TelegramApplicationIcons.Icon.defaultIconName else {
+                Dock.setCustomAppIcon(path: nil)
+                return
+            }
+            if let icon = icons.icons.first(where: { $0.file.fileName == selected }) {
+                let resource = self.engine.account.postbox.mediaBox.resourceData(icon.file.resource) |> filter { $0.complete } |> take(1) |> deliverOnMainQueue
+                self.applyResource.set(resource.start(next: { resource in
+                    Dock.setCustomAppIcon(path: resource.path)
+                }))
+            }
         }))
     }
     

@@ -784,9 +784,6 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
             return
         }
         
-        let resourcePath = icon.resourcePath(context)
-        Dock.setCustomAppIcon(path: resourcePath)
-
         _ = updateDockSettings(accountManager: context.sharedContext.accountManager, { settings in
             return settings.withUpdatedIcon(icon.file.fileName)
         }).startStandalone()
