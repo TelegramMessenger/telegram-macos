@@ -81,13 +81,15 @@ public class PeerMediaRowItem: GeneralRowItem {
             
 
             let isCopyProtected = message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: interface.presentation.cachedData) == true
-            if let resourceData = resourceData, resourceData.1.complete, !isCopyProtected {
+            if let resourceData = resourceData, !isCopyProtected {
                 firstBlock.append(ContextMenuItem(strings().contextSaveMedia, handler: {
-                    saveAs(resourceData.0, account: context.account)
+                    saveAs(resourceData.0, account: context.account, context: context, message: message)
                 }, itemImage: MenuAnimation.menu_save_as.value))
-                firstBlock.append(ContextMenuItem(strings().contextShowInFinder, handler: {
-                    showInFinder(resourceData.0, account: context.account)
-                }, itemImage: MenuAnimation.menu_show_in_finder.value))
+                if resourceData.1.complete {
+                    firstBlock.append(ContextMenuItem(strings().contextShowInFinder, handler: {
+                        showInFinder(resourceData.0, account: context.account)
+                    }, itemImage: MenuAnimation.menu_show_in_finder.value))
+                }
             }
             
        

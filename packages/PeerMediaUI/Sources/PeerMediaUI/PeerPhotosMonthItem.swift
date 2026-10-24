@@ -214,6 +214,21 @@ public class PeerPhotosMonthItem: GeneralRowItem {
             items.append(ContextMenuItem(strings().messageContextGoto, handler: { [weak self] in
                 self?.chatInteraction.focusMessageId(nil, .init(messageId: message.id, string: nil), .center(id: 0, innerId: nil, animated: false, focus: .init(focus: true), inset: 0))
             }, itemImage: MenuAnimation.menu_show_message.value))
+
+            let isCopyProtected = message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: self.chatInteraction.presentation.cachedData) == true
+            if !isCopyProtected {
+                if let file = message.media.first(where: { $0 is TelegramMediaFile }) as? TelegramMediaFile {
+                    items.append(ContextMenuItem(strings().contextSaveMedia, handler: { [weak self] in
+                        guard let self else { return }
+                        saveAs(file, account: self.context.account, context: self.context, message: message)
+                    }, itemImage: MenuAnimation.menu_save_as.value))
+                } else if let image = message.media.first(where: { $0 is TelegramMediaImage }) as? TelegramMediaImage {
+                    items.append(ContextMenuItem(strings().contextSaveMedia, handler: { [weak self] in
+                        guard let self else { return }
+                        saveImageAs(image, account: self.context.account, context: self.context, message: message)
+                    }, itemImage: MenuAnimation.menu_save_as.value))
+                }
+            }
             
             if canDeleteMessage(message, account: context.account, chatLocation: self.chatInteraction.chatLocation, mode: .history) {
                 items.append(ContextSeparatorItem())

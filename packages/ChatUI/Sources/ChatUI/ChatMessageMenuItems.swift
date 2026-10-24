@@ -1360,72 +1360,73 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                                 }, completed: {
                                     showModalText(for: context.window, text: strings().chatContextSaveRingtoneRemoveSuccess)
                                 })
-                                
+
                             }, itemImage: MenuAnimation.menu_note_slash.value))
                         }
                     }
-                    if !data.isMediaStory, data.message.pendingProcessingAttribute == nil {
-                        
-                        if isHLSVideo(file: file), let quality = HLSQualitySet(baseFile: FileMediaReference.message(message: .init(message), media: file)) {
-                            
-                            let download = ContextMenuItem(strings().galleryContextSaveVideo, itemImage: MenuAnimation.menu_save_as.value)
-                            let downloadMenu = ContextMenu()
-
-                            let downloadOrShow:(TelegramMediaFile)->Void = { file in
-                                
-                                let status = chatMessageFileStatus(context: context, message: message, file: file)
-                                |> take(1)
-                                |> deliverOnMainQueue
-                                
-                                _ = status.startStandalone(next: { status in
-                                    let text: String
-                                    if status == .Local {
-                                        text = strings().galleryContextAlertDownloaded
-                                    } else {
-                                        _ = messageMediaFileInteractiveFetched(context: context, messageId: message.id, messageReference: .init(message), file: file, userInitiated: true).startStandalone()
-                                        text = strings().galleryContextAlertDownloading
-                                    }
-                                    showModalText(for: context.window, text: text, callback: { _ in
-                                        if status == .Local {
-                                            showInFinder(file, account: context.account)
-                                        } else {
-                                            ChatHistoryUIHooks.shared.makeDownloadSearch(context)
-                                        }
-                                    })
-                                })
-                            }
-                            if context.isPremium {
-                                if let size = file.size {
-                                    downloadMenu.addItem(ContextMenuItem(strings().galleryContextOriginal + " (\(String.prettySized(with: size)))", handler: {
-                                        downloadOrShow(file)
-                                    }))
-                                }
-                            }
-                            let sorted = quality.qualityFiles.sorted(by: { $0.key < $1.key })
-                            for (key, value) in sorted {
-                                let q = "\(ChatNavigationHooks.shared.roundToStandardQuality(key))p"
-                                if let size = value.media.size {
-                                    downloadMenu.addItem(ContextMenuItem(q + " (\(String.prettySized(with: size)))", handler: {
-                                        downloadOrShow(value.media)
-                                    }))
-                                }
-                            }
-                            download.submenu = downloadMenu
-                            thirdBlock.append(download)
-                        } else {
-                            thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
-                                saveAs(file, account: account)
-                            }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
-                        }
-                       
-                    }
-                    
-                    if data.fileFinderPath != nil {
-                    }
                 }
-               
-            } else if data.image != nil, !data.isMediaStory {
-                if resourceData.complete {
+
+                if !data.isMediaStory, data.message.pendingProcessingAttribute == nil {
+
+                    if isHLSVideo(file: file), let quality = HLSQualitySet(baseFile: FileMediaReference.message(message: .init(message), media: file)) {
+
+                        let download = ContextMenuItem(strings().galleryContextSaveVideo, itemImage: MenuAnimation.menu_save_as.value)
+                        let downloadMenu = ContextMenu()
+
+                        let downloadOrShow:(TelegramMediaFile)->Void = { file in
+
+                            let status = chatMessageFileStatus(context: context, message: message, file: file)
+                            |> take(1)
+                            |> deliverOnMainQueue
+
+                            _ = status.startStandalone(next: { status in
+                                let text: String
+                                if status == .Local {
+                                    text = strings().galleryContextAlertDownloaded
+                                } else {
+                                    _ = messageMediaFileInteractiveFetched(context: context, messageId: message.id, messageReference: .init(message), file: file, userInitiated: true).startStandalone()
+                                    text = strings().galleryContextAlertDownloading
+                                }
+                                showModalText(for: context.window, text: text, callback: { _ in
+                                    if status == .Local {
+                                        showInFinder(file, account: context.account)
+                                    } else {
+                                        ChatHistoryUIHooks.shared.makeDownloadSearch(context)
+                                    }
+                                })
+                            })
+                        }
+                        if context.isPremium {
+                            if let size = file.size {
+                                downloadMenu.addItem(ContextMenuItem(strings().galleryContextOriginal + " (\(String.prettySized(with: size)))", handler: {
+                                    downloadOrShow(file)
+                                }))
+                            }
+                        }
+                        let sorted = quality.qualityFiles.sorted(by: { $0.key < $1.key })
+                        for (key, value) in sorted {
+                            let q = "\(ChatNavigationHooks.shared.roundToStandardQuality(key))p"
+                            if let size = value.media.size {
+                                downloadMenu.addItem(ContextMenuItem(q + " (\(String.prettySized(with: size)))", handler: {
+                                    downloadOrShow(value.media)
+                                }))
+                            }
+                        }
+                        download.submenu = downloadMenu
+                        thirdBlock.append(download)
+                    } else {
+                        thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
+                            saveAs(file, account: account, context: context, message: message)
+                        }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
+                    }
+
+                }
+
+                if data.fileFinderPath != nil {
+                }
+
+            } else if let image = data.image, !data.isMediaStory {
+                if let resourceData = data.resourceData, resourceData.complete {
                     let text = strings().chatContextCopyMedia
                     thirdBlock.append(ContextMenuItem(text, handler: {
                         if let path = link(path: resourceData.path, ext: "jpg") {
@@ -1435,10 +1436,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                             showModalText(for: context.window, text: strings().contextAlertCopied)
                         }
                     }, itemImage: MenuAnimation.menu_copy_media.value, keyEquivalent: .cmdc))
-                    thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
-                        savePanel(file: resourceData.path, ext: "jpg", for: context.window)
-                    }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
                 }
+                thirdBlock.append(ContextMenuItem(strings().chatContextSaveMedia, handler: {
+                    saveImageAs(image, account: account, context: context, message: message)
+                }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: .cmds))
             }
         }
         

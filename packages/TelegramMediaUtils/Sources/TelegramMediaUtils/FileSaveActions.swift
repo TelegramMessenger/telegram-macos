@@ -8,30 +8,128 @@ import FilePanels
 import TelegramTheme
 import TelegramUtils
 import FoundationUtils
+import Localization
+import TelegramContext
 
-public func saveAs(_ file:TelegramMediaFile, account:Account) {
-    
-    let name = account.postbox.mediaBox.resourceData(file.resource) |> mapToSignal { data -> Signal< (String, String), NoError> in
-        if data.complete {
-            var ext:String = ""
-            let fileName = file.fileName ?? data.path.nsstring.lastPathComponent
-            if let ext = file.fileName?.nsstring.pathExtension {
-                return .single((data.path, ext))
-            }
-            ext = fileName.nsstring.pathExtension
-            return resourceType(mimeType: file.mimeType) |> mapToSignal { _type -> Signal<(String, String), NoError> in
-                let ext = _type == "*" || _type == nil ? (ext.length == 0 ? "file" : ext) : _type!
-                
-                return .single((data.path, ext))
-            }
-        } else {
-            return .complete()
+public func saveAs(_ file: TelegramMediaFile, account: Account, context: (any AccountContextProtocol)? = nil, message: Message? = nil) {
+    let extSignal: Signal<String, NoError>
+    if let ext = file.fileName?.nsstring.pathExtension, !ext.isEmpty {
+        extSignal = .single(ext)
+    } else {
+        extSignal = resourceType(mimeType: file.mimeType) |> map { _type in
+            return (_type == "*" || _type == nil) ? "file" : _type!
         }
-    } |> deliverOnMainQueue
-    
-    _ = name.start(next: { path, ext in
-        savePanel(file: path, ext: ext, for: mainWindow, defaultName: file.fileName)
+    }
+
+    _ = (extSignal |> deliverOnMainQueue).start(next: { ext in
+        let savePanel: NSSavePanel = NSSavePanel()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        savePanel.nameFieldStringValue = file.fileName ?? "\(dateFormatter.string(from: Date())).\(ext)"
+
+        let window = context?.window ?? mainWindow
+        let wLevel = window.level
+        window.level = .normal
+
+        savePanel.begin { result in
+            if result == NSApplication.ModalResponse.OK, let saveUrl = savePanel.url {
+                let targetPath = saveUrl.path
+
+                let checkComplete = account.postbox.mediaBox.resourceData(file.resource) |> take(1) |> deliverOnMainQueue
+                _ = checkComplete.start(next: { initialData in
+                    if initialData.complete {
+                        try? FileManager.default.removeItem(atPath: targetPath)
+                        try? FileManager.default.copyItem(atPath: initialData.path, toPath: targetPath)
+                        delay(0.3, closure: {
+                            FilePanelsHooks.shared?.showSavedPathSuccess(targetPath)
+                        })
+                    } else {
+                        showModalText(for: window, text: strings().galleryContextAlertDownloading)
+
+                        var fetchDisposable: Disposable? = nil
+                        let dataDisposable = MetaDisposable()
+
+                        dataDisposable.set((account.postbox.mediaBox.resourceData(file.resource) |> deliverOnMainQueue).start(next: { data in
+                            if data.complete {
+                                fetchDisposable?.dispose()
+                                dataDisposable.dispose()
+                                try? FileManager.default.removeItem(atPath: targetPath)
+                                try? FileManager.default.copyItem(atPath: data.path, toPath: targetPath)
+                                delay(0.3, closure: {
+                                    FilePanelsHooks.shared?.showSavedPathSuccess(targetPath)
+                                })
+                            }
+                        }))
+
+                        if let context = context, let message = message {
+                            fetchDisposable = messageMediaFileInteractiveFetched(context: context, messageId: message.id, messageReference: .init(message), file: file, userInitiated: true).start()
+                        } else if let context = context {
+                            fetchDisposable = freeMediaFileInteractiveFetched(context: context, fileReference: .standalone(media: file)).start()
+                        } else {
+                            fetchDisposable = fetchedMediaResource(mediaBox: account.postbox.mediaBox, userLocation: .other, userContentType: .other, reference: FileMediaReference.standalone(media: file).resourceReference(file.resource)).start()
+                        }
+                    }
+                })
+            }
+            window.level = wLevel
+        }
     })
+}
+
+public func saveImageAs(_ image: TelegramMediaImage, account: Account, context: (any AccountContextProtocol)? = nil, message: Message? = nil) {
+    guard let resource = image.representations.last?.resource else { return }
+
+    let savePanel: NSSavePanel = NSSavePanel()
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+    savePanel.nameFieldStringValue = "photo_\(dateFormatter.string(from: Date())).jpg"
+
+    let window = context?.window ?? mainWindow
+    let wLevel = window.level
+    window.level = .normal
+
+    savePanel.begin { result in
+        if result == NSApplication.ModalResponse.OK, let saveUrl = savePanel.url {
+            let targetPath = saveUrl.path
+
+            let checkComplete = account.postbox.mediaBox.resourceData(resource) |> take(1) |> deliverOnMainQueue
+            _ = checkComplete.start(next: { initialData in
+                if initialData.complete {
+                    try? FileManager.default.removeItem(atPath: targetPath)
+                    try? FileManager.default.copyItem(atPath: initialData.path, toPath: targetPath)
+                    delay(0.3, closure: {
+                        FilePanelsHooks.shared?.showSavedPathSuccess(targetPath)
+                    })
+                } else {
+                    showModalText(for: window, text: strings().galleryContextAlertDownloading)
+
+                    var fetchDisposable: Disposable? = nil
+                    let dataDisposable = MetaDisposable()
+
+                    dataDisposable.set((account.postbox.mediaBox.resourceData(resource) |> deliverOnMainQueue).start(next: { data in
+                        if data.complete {
+                            fetchDisposable?.dispose()
+                            dataDisposable.dispose()
+                            try? FileManager.default.removeItem(atPath: targetPath)
+                            try? FileManager.default.copyItem(atPath: data.path, toPath: targetPath)
+                            delay(0.3, closure: {
+                                FilePanelsHooks.shared?.showSavedPathSuccess(targetPath)
+                            })
+                        }
+                    }))
+
+                    let imageReference: ImageMediaReference
+                    if let message = message {
+                        imageReference = .message(message: MessageReference(message), media: image)
+                    } else {
+                        imageReference = .standalone(media: image)
+                    }
+                    fetchDisposable = chatMessagePhotoInteractiveFetched(account: account, imageReference: imageReference).start()
+                }
+            })
+        }
+        window.level = wLevel
+    }
 }
 
 public func showInFinder(_ file:TelegramMediaFile, account:Account)  {
