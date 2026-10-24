@@ -6972,6 +6972,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             if updated.count < urls.count {
                             }
                             let preview = ChatUIHooks.shared.makePreviewSender(updated, self.chatInteraction, asMedia, attributedString)
+                            _ = ChatUIHooks.shared.bindPreviewSendValidation(preview, { [weak self] in
+                                guard let self else { return false }
+                                guard let navigation = self.navigationController else { return true }
+                                return navigation.controller === self
+                            })
                             showModal(with: preview, for: context.window, morphSource: { [weak self] in self?.genericView.inputView.attachView })
                         }
                     } else {
@@ -11188,7 +11193,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         updateBubblesBackButton()
 
         DispatchQueue.main.async { [weak self] in
-            self?.applyCaptureExclusionIfNeeded()
+            guard let self else { return }
+            self.applyCaptureExclusionIfNeeded()
+            if self.genericView.window === self.context.window, self.navigationController?.controller === self, !hasModals(self.context.window) {
+                _ = self.context.window.makeFirstResponder(self.firstResponder())
+            }
         }
 
         let context = self.context
