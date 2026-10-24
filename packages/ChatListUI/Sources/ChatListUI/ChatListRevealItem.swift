@@ -277,7 +277,7 @@ public final class ChatListRevealView : TableStickView {
             let segmentItem = ScrollableSegmentItem(title: title, index: index, uniqueId: Int64(ChatListUIHooks.shared.chatListFilterId(tab)), selected: selected, insets: insets, icon: icon, theme: segmentTheme, equatable: UIEquatable(unreadCount), customTextView: {
                 
                 let attr = NSMutableAttributedString()
-                attr.append(string: title, color: selected ? segmentTheme.activeText : segmentTheme.inactiveText, font: selected && System.edgeToEdgeSidebar ? .semibold(.text) : segmentTheme.textFont)
+                attr.append(string: title, color: selected ? segmentTheme.activeText : segmentTheme.inactiveText, font: selected && System.edgeToEdgeSidebar ? .bold(.text) : segmentTheme.textFont)
                 InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: tab.entities, isPremium: context.isPremium, playPolicy: tab.enableAnimations ? nil : .framesCount(1))
 
                 let layout = TextViewLayout(attr)
