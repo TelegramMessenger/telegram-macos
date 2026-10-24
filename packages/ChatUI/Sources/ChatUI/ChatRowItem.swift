@@ -1721,7 +1721,7 @@ public class ChatRowItem: TableRowItem {
     public var topicLinkLayout: TopicReplyItemLayout? {
         if let value = _topicLinkLayout {
             return value
-        } else if let message = self.message, let threadInfo = message.associatedThreadInfo, chatInteraction.mode == .history, let peer = message.peers[message.id.peerId], TelegramUtilsHooks.shared.peerIsForum(peer), !peer.displayForumAsTabs(splitState: chatInteraction.interactionContext.layout) {
+        } else if let message = self.message, let threadInfo = message.associatedThreadInfo, chatInteraction.mode == .history || (chatInteraction.mode == .preview && chatInteraction.chatLocation.threadId == nil), let peer = message.peers[message.id.peerId], TelegramUtilsHooks.shared.peerIsForum(peer), !peer.displayForumAsTabs(splitState: chatInteraction.interactionContext.layout) {
             var ignore: Bool = false
             
             if renderType == .bubble {
@@ -3494,6 +3494,10 @@ public class ChatRowItem: TableRowItem {
     
     public func openTopic() {
         if let message = message, let threadId = message.threadId {
+            if chatInteraction.mode == .preview {
+                chatInteraction.previewTopic(threadId)
+                return
+            }
             let isLog = chatInteraction.isLogInteraction
             _ = (ChatHistoryUIHooks.shared.openTopic(threadId, chatInteraction.peerId, context, isLog ? nil : message.id) |> take(1)).start()
         }

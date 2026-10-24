@@ -3069,7 +3069,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }
 
         genericView.bubblesView.backHandler = { [weak self] in
-            if self?.mode == .preview {
+            if self?.mode == .preview, (self?.navigationController?.stackCount ?? 0) <= 1 {
                 self?.navigationController?.modal?.close()
             } else {
                 self?.navigationController?.back()
@@ -7817,6 +7817,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         chatInteraction.showToaster = { [weak self] text in
             self?.genericView.showToaster(text: text, timeout: 3.0, animated: true)
         }
+        chatInteraction.previewTopic = { [weak self] threadId in
+            guard let self else { return }
+            let peerId = self.chatInteraction.peerId
+            let threadMessageId = makeThreadIdMessageId(peerId: peerId, threadId: threadId)
+            _ = (fetchAndPreloadReplyThreadInfo(context: context, subject: .groupMessage(threadMessageId), preload: false) |> take(1) |> deliverOnMainQueue).start(next: { [weak self] result in
+                self?.navigationController?.push(ChatController(context: context, chatLocation: .thread(result.message), mode: .preview, chatLocationContextHolder: result.contextHolder))
+            })
+        }
         chatInteraction.removeToaster = { [weak self] in
             self?.genericView.removeToaster(animated: true)
         }
@@ -10254,7 +10262,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         let prev = nav.previousController
         let previousIsEmpty = prev?.isKind(of: ChatHistoryUIHooks.shared.emptyChatControllerType()) ?? false
         let stackHas = nav.stackCount > 1 && !previousIsEmpty
-        let isClose = mode == .preview
+        let isClose = mode == .preview && nav.stackCount <= 1
         genericView.bubblesView.hasBackButton = stackHas || isClose
         genericView.bubblesView.isCloseButton = isClose
     }
