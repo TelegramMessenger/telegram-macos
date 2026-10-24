@@ -297,8 +297,23 @@ final class UpdateTabController: GenericViewController<UpdateTabView> {
 
 
 final class MainController_View: View {
-    private let bgView: View = View()
-    private let glassView: LiquidGlassView
+    private let bgView: View?
+    private let glassView: LiquidGlassView?
+    private let materialView: SidebarMaterialView?
+    private let trailingSeparator: View?
+
+    static var splitInsets: NSEdgeInsets {
+        if System.edgeToEdgeSidebar {
+            return NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        }
+        return NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+    }
+
+    var showsTrailingSeparator: Bool = false {
+        didSet {
+            trailingSeparator?.isHidden = !showsTrailingSeparator
+        }
+    }
 
     /// 20pt on macOS 26+ to match the liquid-glass aesthetic (on macOS 27
     /// the window radius is raised to 28pt through private API, keeping
@@ -330,24 +345,47 @@ final class MainController_View: View {
 
     private func applyCornerRadius() {
         let radius = currentCornerRadius
-        bgView.layer?.cornerRadius = radius
-        glassView.cornerRadius = radius
+        bgView?.layer?.cornerRadius = radius
+        glassView?.cornerRadius = radius
     }
 
     required init(frame frameRect: NSRect) {
-        let cornerRadius = MainController_View.containerCornerRadius
-        glassView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0, customTint: presentation.colors.background, forceBlur: true)
+        if System.edgeToEdgeSidebar {
+            bgView = nil
+            glassView = nil
+            materialView = SidebarMaterialView(frame: frameRect.size.bounds, tintColor: presentation.colors.background)
+            trailingSeparator = View()
+        } else {
+            let cornerRadius = MainController_View.containerCornerRadius
+            let bgView = View()
+            bgView.backgroundColor = presentation.colors.background
+            bgView.layer?.cornerRadius = cornerRadius
+            bgView.layer?.masksToBounds = true
+            self.bgView = bgView
+            glassView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0, customTint: presentation.colors.background, forceBlur: true)
+            materialView = nil
+            trailingSeparator = nil
+        }
         super.init(frame: frameRect)
 
         self.layer?.masksToBounds = false
         self.backgroundColor = .clear
 
-        bgView.backgroundColor = presentation.colors.background
-        bgView.layer?.cornerRadius = cornerRadius
-        bgView.layer?.masksToBounds = true
-
-        addSubview(bgView)
-        addSubview(glassView)
+        if let bgView {
+            addSubview(bgView)
+        }
+        if let glassView {
+            addSubview(glassView)
+        }
+        if let materialView {
+            addSubview(materialView)
+        }
+        if let trailingSeparator {
+            trailingSeparator.backgroundColor = presentation.colors.border
+            trailingSeparator.isEventLess = true
+            trailingSeparator.isHidden = !showsTrailingSeparator
+            addSubview(trailingSeparator)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -356,8 +394,10 @@ final class MainController_View: View {
 
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
-        bgView.backgroundColor = theme.colors.background
-        glassView.customTint = theme.colors.background
+        bgView?.backgroundColor = theme.colors.background
+        glassView?.customTint = theme.colors.background
+        materialView?.tintColor = theme.colors.background
+        trailingSeparator?.backgroundColor = theme.colors.border
     }
 
     override func layout() {
@@ -366,9 +406,23 @@ final class MainController_View: View {
     }
 
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        transition.updateFrame(view: bgView, frame: CGRect(origin: .zero, size: size))
-        transition.updateFrame(view: glassView, frame: CGRect(origin: .zero, size: size))
-        glassView.updateLayout(size: size, transition: transition)
+        let frame = CGRect(origin: .zero, size: size)
+        if let bgView {
+            transition.updateFrame(view: bgView, frame: frame)
+        }
+        if let glassView {
+            transition.updateFrame(view: glassView, frame: frame)
+            glassView.updateLayout(size: size, transition: transition)
+        }
+        if let materialView {
+            transition.updateFrame(view: materialView, frame: frame)
+        }
+        if let trailingSeparator {
+            if subviews.last !== trailingSeparator {
+                addSubview(trailingSeparator)
+            }
+            transition.updateFrame(view: trailingSeparator, frame: CGRect(x: size.width - .borderSize, y: 0, width: .borderSize, height: size.height))
+        }
     }
 }
 
@@ -415,9 +469,21 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
             let bottomInset: CGFloat = updateView.layoutState == .minimisize ? 10 : 60
             updateView.setFrameOrigin(NSMakePoint(updateView.frame.minX, bounds.height - updateView.frame.height - bottomInset))
         }
+        let bottomContentInset: CGFloat = System.edgeToEdgeSidebar && tabController.current === navigation ? tabController.tabBarHeight : 0
         let updateContainer: (ViewController) -> Void = { [weak self, updateView] controller in
             guard controller.isLoaded(), let listView = controller.view as? PeerListContainerView else {
                 return
+            }
+            listView.bottomContentInset = bottomContentInset
+            listView.setBottomPocketContainer(bottomContentInset > 0 ? self?.tabController.tabBarView : nil)
+            if controller === self?.navigation.controller {
+                self?.tabController.pocketTopExtension = bottomContentInset > 0 ? listView.bottomPocketExtension : 0
+                listView.bottomFoldersHeightChanged = { [weak self, weak listView] _ in
+                    guard let self, let listView, self.navigation.controller.view === listView else {
+                        return
+                    }
+                    self.tabController.pocketTopExtension = listView.bottomContentInset > 0 ? listView.bottomPocketExtension : 0
+                }
             }
             listView.layoutBottomOverlay = { [weak self, weak listView, weak updateView] bottomY, transition in
                 guard let self, self.tabController.current === self.navigation, self.navigation.controller.view === listView,
@@ -471,6 +537,9 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
 
         self.bar = .init(height: 0)
         self.tabController.bar = .init(height: 0)
+        self.tabController.extendsContentUnderTabBar = { [weak self] controller in
+            return System.edgeToEdgeSidebar && controller === self?.navigation
+        }
 
         addSubview(self.tabController.view)
 

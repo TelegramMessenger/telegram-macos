@@ -224,7 +224,8 @@ public final class ChatListRevealView : TableStickView {
             let unreadCount:ChatListFilterBadge? = item.counters.count(for: tab)
             let icon: CGImage?
             if let unreadCount = unreadCount, unreadCount.count > 0 {
-                let attributedString = NSAttributedString.initialize(string: "\(unreadCount.count.prettyNumber)", color: item.presentation.colors.background, font: .medium(.short))
+                let selectedBubble = System.edgeToEdgeSidebar && item.selected == tab
+                let attributedString = NSAttributedString.initialize(string: "\(unreadCount.count.prettyNumber)", color: selectedBubble ? item.presentation.colors.accent : item.presentation.colors.background, font: .medium(.short))
                 let textLayout = TextNode.layoutText(maybeNode: nil,  attributedString, nil, 1, .start, NSMakeSize(CGFloat.greatestFiniteMagnitude, CGFloat.greatestFiniteMagnitude), nil, false, .center)
                 var size = NSMakeSize(textLayout.0.size.width + 8, textLayout.0.size.height + 5)
                 size = NSMakeSize(max(size.height,size.width), size.height)
@@ -232,7 +233,9 @@ public final class ChatListRevealView : TableStickView {
                 icon = generateImage(size, rotatedContext: { size, ctx in
                     let rect = NSMakeRect(0, 0, size.width, size.height)
                     ctx.clear(rect)
-                    if item.selected == tab || unreadCount.hasUnmutedUnread {
+                    if selectedBubble {
+                        ctx.setFillColor(item.presentation.colors.underSelectedColor.cgColor)
+                    } else if item.selected == tab || unreadCount.hasUnmutedUnread {
                         ctx.setFillColor(item.presentation.colors.accent.cgColor)
                     } else {
                         ctx.setFillColor(item.presentation.colors.badgeMuted.cgColor)
@@ -257,12 +260,13 @@ public final class ChatListRevealView : TableStickView {
         animated = animated && splitViewState == context.layout
         self.splitViewState = context.layout
         
-        let segmentTheme = ScrollableSegmentTheme(background: .clear, border: item.presentation.colors.border, selector: item.presentation.colors.accent, inactiveText: item.presentation.colors.grayText, activeText: item.presentation.colors.text, textFont: .normal(.text))
+        let segmentTheme = ScrollableSegmentTheme(background: .clear, border: System.edgeToEdgeSidebar ? .clear : item.presentation.colors.border, selector: item.presentation.colors.accent, inactiveText: System.edgeToEdgeSidebar ? item.presentation.colors.text : item.presentation.colors.grayText, activeText: System.edgeToEdgeSidebar ? item.presentation.colors.underSelectedColor : item.presentation.colors.text, textFont: .normal(.text))
 
+        segmentView.bubbles = System.edgeToEdgeSidebar
         segmentView.theme = segmentTheme
 
         var index: Int = 0
-        let insets = NSEdgeInsets(left: 10, right: 10)
+        let insets = System.edgeToEdgeSidebar ? NSEdgeInsets(left: 14, right: 14) : NSEdgeInsets(left: 10, right: 10)
         var items:[ScrollableSegmentItem] = []
         for tab in item.tabs {
             let unreadCount = item.counters.count(for: tab)
@@ -273,7 +277,7 @@ public final class ChatListRevealView : TableStickView {
             let segmentItem = ScrollableSegmentItem(title: title, index: index, uniqueId: Int64(ChatListUIHooks.shared.chatListFilterId(tab)), selected: selected, insets: insets, icon: icon, theme: segmentTheme, equatable: UIEquatable(unreadCount), customTextView: {
                 
                 let attr = NSMutableAttributedString()
-                attr.append(string: title, color: selected ? segmentTheme.activeText : segmentTheme.inactiveText, font: segmentTheme.textFont)
+                attr.append(string: title, color: selected ? segmentTheme.activeText : segmentTheme.inactiveText, font: selected && System.edgeToEdgeSidebar ? .semibold(.text) : segmentTheme.textFont)
                 InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: tab.entities, isPremium: context.isPremium, playPolicy: tab.enableAnimations ? nil : .framesCount(1))
 
                 let layout = TextViewLayout(attr)

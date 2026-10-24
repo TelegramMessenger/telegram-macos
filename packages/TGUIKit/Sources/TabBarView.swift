@@ -28,8 +28,10 @@ public class TabBarView: View {
     public override func draw(_ layer: CALayer, in ctx: CGContext) {
         super.draw(layer, in: ctx)
         
-        ctx.setFillColor(presentation.colors.border.cgColor)
-        ctx.fill(NSMakeRect(0, 0, frame.width, .borderSize))
+        if !System.edgeToEdgeSidebar {
+            ctx.setFillColor(presentation.colors.border.cgColor)
+            ctx.fill(NSMakeRect(0, 0, frame.width, .borderSize))
+        }
 
     }
     

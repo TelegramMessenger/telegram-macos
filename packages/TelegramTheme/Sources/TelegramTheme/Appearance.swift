@@ -2262,12 +2262,12 @@ public func telegramUpdateTheme(_ theme: TelegramPresentationTheme, window: Wind
             appearanceDisposable.set(signal.start())
             
         }
-        window.contentView?.background = theme.colors.background
+        window.contentView?.background = System.edgeToEdgeSidebar ? .clear : theme.colors.background
         window.contentView?.subviews.first?.background = theme.colors.background
         window.appearance = theme.appearance
-        
-        
-        window.backgroundColor = theme.colors.grayBackground
+
+
+        window.backgroundColor = System.edgeToEdgeSidebar ? .windowBackgroundColor : theme.colors.grayBackground
         window.titlebarAppearsTransparent = true
         
     }

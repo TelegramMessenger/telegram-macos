@@ -112,6 +112,17 @@ public struct System {
     /// background instead.
     public static var blurEnabled: Bool = true
 
+    public static let edgeToEdgeSidebar: Bool = {
+        if #available(macOS 27.0, *) {
+            return true
+        }
+        return false
+    }()
+
+    public static let windowControlSize: CGFloat = 38
+    public static let windowEdgeInset: CGFloat = 7
+    public static let windowItemSpacing: CGFloat = 8
+
 }
 
 public var uiLocalizationFunc:((String)->String)?

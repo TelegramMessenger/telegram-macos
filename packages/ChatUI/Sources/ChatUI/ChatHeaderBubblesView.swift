@@ -233,11 +233,11 @@ private final class TitlePillView: Control {
 
 final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
-    static let bubbleHeight: CGFloat = 40
-    static let topInset: CGFloat = 12
-    static let bottomInset: CGFloat = 10
-    static let sideInset: CGFloat = 12
-    static let interBubbleSpacing: CGFloat = 10
+    static let bubbleHeight: CGFloat = System.edgeToEdgeSidebar ? System.windowControlSize : 40
+    static let topInset: CGFloat = System.edgeToEdgeSidebar ? System.windowEdgeInset : 12
+    static let bottomInset: CGFloat = System.edgeToEdgeSidebar ? System.windowItemSpacing : 10
+    static let sideInset: CGFloat = System.edgeToEdgeSidebar ? System.windowEdgeInset : 12
+    static let interBubbleSpacing: CGFloat = System.edgeToEdgeSidebar ? System.windowItemSpacing : 10
 
     private static let menuModeTransition: ContainedViewLayoutTransition = .animated(duration: ChatInputSendButton.fieldMotionDuration, curve: .easeOut)
 

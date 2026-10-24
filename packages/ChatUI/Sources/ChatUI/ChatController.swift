@@ -1017,7 +1017,7 @@ public class ChatControllerView : View, ChatInputDelegate {
             transition.updateFrame(view: view, frame: NSMakeRect(textContainer.minX, textContainer.minY - view.frame.height - gap, textContainer.width, view.frame.height))
         }
         if let currentView = header.currentView {
-            let headerEdge: CGFloat = 12
+            let headerEdge: CGFloat = System.edgeToEdgeSidebar ? System.windowEdgeInset : 12
             var inset: CGFloat = 0
             if let monoforum_VerticalView {
                 inset += 12 + monoforum_VerticalView.frame.width
@@ -1037,7 +1037,7 @@ public class ChatControllerView : View, ChatInputDelegate {
 
         let inputY: CGFloat = themeSelectorView != nil ? frame.height : tableView.frame.maxY - inputHeight
 
-        let inputRect = NSMakeRect(0, inputY, frame.width, max(50, inputHeight))
+        let inputRect = NSMakeRect(0, inputY, frame.width, System.edgeToEdgeSidebar ? inputHeight : max(50, inputHeight))
         transition.updateFrame(view: inputView, frame: inputRect)
         inputView.updateLayout(size: NSMakeSize(frame.width, inputRect.height), transition: transition)
 

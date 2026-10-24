@@ -3,17 +3,41 @@ import AppKit
 
 private class TabBarViewController : View {
     let tabView:TabBarView
+    let pocketArea: ScrollPocketArea?
+    var contentExtendsUnderTabBar: Bool = false
+    var pocketTopExtension: CGFloat = 0 {
+        didSet {
+            if pocketTopExtension != oldValue {
+                needsLayout = true
+            }
+        }
+    }
 
     
     required init(frame frameRect: NSRect) {
         tabView = TabBarView(frame: NSMakeRect(0, frameRect.height - 50, frameRect.width, 50))
+        pocketArea = System.edgeToEdgeSidebar ? ScrollPocketArea(frame: tabView.frame, style: .soft) : nil
         super.init(frame: frameRect)
+        if let pocketArea {
+            addSubview(pocketArea)
+        }
         addSubview(tabView)
     }
     
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         self.background = .clear
+    }
+
+    var tabBarHeight: CGFloat {
+        return tabView.isHidden ? 0 : tabView.frame.height
+    }
+
+    func contentFrame(_ size: NSSize) -> NSRect {
+        if tabView.isHidden || contentExtendsUnderTabBar {
+            return NSMakeRect(0, 0, size.width, size.height)
+        }
+        return NSMakeRect(0, 0, size.width, size.height - tabView.frame.height)
     }
     
     required public init?(coder: NSCoder) {
@@ -26,14 +50,13 @@ private class TabBarViewController : View {
     
     func updateFrame(_ frame: NSRect, transition: ContainedViewLayoutTransition) {
         for subview in subviews {
-            if let subview = subview as? TabBarView {
+            if subview is TabBarView {
                 transition.updateFrame(view: subview, frame: NSMakeRect(0, frame.height - 50, frame.width, 50))
+            } else if subview === pocketArea {
+                let extensionHeight = tabView.isHidden ? 0 : pocketTopExtension
+                transition.updateFrame(view: subview, frame: NSMakeRect(0, frame.height - 50 - extensionHeight, frame.width, 50 + extensionHeight))
             } else {
-                if tabView.isHidden {
-                    transition.updateFrame(view: subview, frame: bounds)
-                } else {
-                    transition.updateFrame(view: subview, frame: NSMakeRect(0, 0, frame.width, frame.height - tabView.frame.height))
-                }
+                transition.updateFrame(view: subview, frame: contentFrame(frame.size))
             }
         }
     }
@@ -63,6 +86,25 @@ public class TabBarController: ViewController, TabViewDelegate {
     
     public override var redirectUserInterfaceCalls: Bool {
         return true
+    }
+
+    public var extendsContentUnderTabBar: (ViewController) -> Bool = { _ in false }
+
+    public var tabBarHeight: CGFloat {
+        return genericView.tabBarHeight
+    }
+
+    public var tabBarView: NSView {
+        return genericView.pocketArea ?? genericView.tabView
+    }
+
+    public var pocketTopExtension: CGFloat {
+        get {
+            return genericView.pocketTopExtension
+        }
+        set {
+            genericView.pocketTopExtension = newValue
+        }
     }
     
     private var genericView:TabBarViewController {
@@ -106,7 +148,8 @@ public class TabBarController: ViewController, TabViewDelegate {
                 }
                 current.viewDidDisappear(false)
             }
-            item.controller._frameRect = NSMakeRect(0, 0, bounds.width, bounds.height - genericView.tabView.frame.height)
+            genericView.contentExtendsUnderTabBar = extendsContentUnderTabBar(item.controller)
+            item.controller._frameRect = genericView.contentFrame(bounds.size)
             item.controller.view.frame = item.controller._frameRect
             item.controller.viewWillAppear(false)
             view.addSubview(item.controller.view, positioned: .below, relativeTo: genericView.tabView)
@@ -129,7 +172,7 @@ public class TabBarController: ViewController, TabViewDelegate {
     
     public func hideTabView(_ hide:Bool) {
         genericView.tabView.isHidden = hide
-        current?.view.frame = hide ? bounds : NSMakeRect(0, 0, bounds.width, bounds.height - genericView.tabView.frame.height)
+        current?.view.frame = genericView.contentFrame(bounds.size)
         
     }
     

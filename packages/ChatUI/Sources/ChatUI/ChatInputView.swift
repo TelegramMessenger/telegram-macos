@@ -282,8 +282,8 @@ public final class ChatInputContainerView: FlippableView {
     }
 
     public func textViewSize(_ width: CGFloat) -> (NSSize, CGFloat) {
-        let edge: CGFloat = 12
-        let gap: CGFloat = 10
+        let edge: CGFloat = ChatInputView.inputEdgeInset
+        let gap: CGFloat = ChatInputView.inputItemSpacing
         var leftInset: CGFloat = attachView.frame.width
         if let botMenu = self.botMenuView {
             leftInset += botMenu.glassFrame.width + gap
@@ -338,8 +338,8 @@ public final class ChatInputContainerView: FlippableView {
         }
         transition.updateFrame(view: bottomView, frame: bottomViewFrame)
 
-        let edge: CGFloat = 12
-        let gap: CGFloat = 10
+        let edge: CGFloat = ChatInputView.inputEdgeInset
+        let gap: CGFloat = ChatInputView.inputItemSpacing
 
         transition.updateFrame(view: contentView, frame: NSMakeRect(0, contentY, size.width, contentHeight))
 
@@ -1003,7 +1003,9 @@ public class ChatInputView: View, Notifable {
         return false
     }
     
-    public static let inputBottomInset: CGFloat = 12
+    public static let inputBottomInset: CGFloat = System.edgeToEdgeSidebar ? System.windowEdgeInset : 12
+    public static let inputEdgeInset: CGFloat = System.edgeToEdgeSidebar ? System.windowEdgeInset : 12
+    public static let inputItemSpacing: CGFloat = System.edgeToEdgeSidebar ? System.windowItemSpacing : 10
 
     public func height(for width: CGFloat) -> CGFloat {
         let contentHeight:CGFloat = contentHeight(for: width)
@@ -1939,7 +1941,7 @@ public class ChatInputView: View, Notifable {
         container.updateLayout(transition: transition)
 
         if let view = recordingPanelView {
-            let edge: CGFloat = 12
+            let edge: CGFloat = ChatInputView.inputEdgeInset
             let sendWidth = sendButton.frame.width
             let sendMinX = size.width - edge - sendWidth
             let recContentY = contentView.frame.origin.y

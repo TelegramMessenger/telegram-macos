@@ -244,6 +244,23 @@ private final class ApplicationContainerView: View {
         set { backgroundView.backgroundMode = newValue }
     }
 
+    var backgroundLeadingInset: CGFloat = 0 {
+        didSet {
+            if backgroundLeadingInset != oldValue {
+                needsLayout = true
+            }
+        }
+    }
+
+    override var backgroundColor: NSColor {
+        get {
+            return super.backgroundColor
+        }
+        set {
+            super.backgroundColor = System.edgeToEdgeSidebar ? .clear : newValue
+        }
+    }
+
     required init?(coder decoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -272,7 +289,9 @@ private final class ApplicationContainerView: View {
     override func layout() {
         super.layout()
         matchSuperviewBounds()
-        backgroundView.frame = bounds
+        let leading = min(max(0, backgroundLeadingInset), bounds.width)
+        backgroundView.frame = NSMakeRect(leading, 0, bounds.width - leading, bounds.height)
+        backgroundView.isHidden = leading >= bounds.width
         splitView.frame = bounds
     }
 }
@@ -530,6 +549,16 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
 
         self.view.splitView.delegate = self
         self.view.splitView.update(false)
+
+        if System.edgeToEdgeSidebar {
+            for observed in [rightController.view, leftController.view] {
+                observed.postsFrameChangedNotifications = true
+                NotificationCenter.default.addObserver(self, selector: #selector(updateBackgroundLeadingInset), name: NSView.frameDidChangeNotification, object: observed)
+            }
+            rightController.controllerDidChange = { [weak self] in
+                self?.updateBackgroundLeadingInset()
+            }
+        }
 
         NotificationCenter.default.addObserver(self, selector: #selector(handleFullScreenWillChange(_:)), name: NSWindow.willEnterFullScreenNotification, object: window)
         NotificationCenter.default.addObserver(self, selector: #selector(handleFullScreenWillChange(_:)), name: NSWindow.willExitFullScreenNotification, object: window)
@@ -1165,9 +1194,10 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         switch state {
         case .single:
             let hasLeftSidebar = !(folders?.isEmpty ?? true) && (folders?.sidebar ?? false)
-            leftController.insets = hasLeftSidebar
+            leftController.insets = hasLeftSidebar && !System.edgeToEdgeSidebar
                 ? NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
                 : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+            leftController.genericView.showsTrailingSeparator = false
 
             if rightController.stackCount == 1, previousState != .none {
                 leftController.viewWillAppear(false)
@@ -1180,7 +1210,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
             }
         case .dual:
             rightController.empty = emptyController
-            leftController.insets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+            leftController.insets = MainController_View.splitInsets
+            leftController.genericView.showsTrailingSeparator = true
             let fixedCount = self.view.splitView.fixedControllerCount
             self.view.splitView.insertController(controller: leftController, proportion: SplitProportion(min: w, max: w), at: fixedCount)
             self.view.splitView.insertController(controller: rightController, proportion: rightProp, at: fixedCount + 1)
@@ -1190,7 +1221,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 self.view.splitView.mustMinimisize = true
             }
             rightController.empty = emptyController
-            leftController.insets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+            leftController.insets = MainController_View.splitInsets
+            leftController.genericView.showsTrailingSeparator = true
             let fixedCount = self.view.splitView.fixedControllerCount
             self.view.splitView.insertController(controller: leftController, proportion: SplitProportion(min: 90, max: 90), at: fixedCount)
             self.view.splitView.insertController(controller: rightController, proportion: rightProp, at: fixedCount + 1)
@@ -1201,6 +1233,28 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         updateMinMaxWindowSize(animated: false)
         context.layout = state
         applyWindowChrome(forState: state)
+        updateBackgroundLeadingInset()
+    }
+
+    @objc private func updateBackgroundLeadingInset() {
+        guard System.edgeToEdgeSidebar else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.applyBackgroundLeadingInset()
+        }
+    }
+
+    private func applyBackgroundLeadingInset() {
+        let leading: CGFloat
+        if view.splitView.state == .single, rightController.stackCount <= 1 {
+            leading = view.bounds.width
+        } else if rightController.isLoaded(), let superview = rightController.view.superview {
+            leading = view.convert(rightController.view.frame, from: superview).minX + rightController.slotLeadingInset
+        } else {
+            leading = 0
+        }
+        view.backgroundLeadingInset = leading
     }
     
 
@@ -1380,6 +1434,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
     }
     
     deinit {
+        NotificationCenter.default.removeObserver(self)
         self.loggedOutDisposable.dispose()
         window.removeAllHandlers(for: self)
         altTabPreloadDisposable.dispose()
@@ -1434,6 +1489,9 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
 
 extension Window {
     func applyCornerRadius(for mode: Window.ChromeMode) {
+        guard !System.edgeToEdgeSidebar else {
+            return
+        }
         if #available(macOS 27.0, *) {
             let selector = Selector(("_setCornerRadius:"))
             if self.responds(to: selector) {
