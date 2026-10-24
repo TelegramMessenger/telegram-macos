@@ -16,6 +16,7 @@ import InAppSettings
 import ShortPeerRow
 import StatisticsUI
 import InlineStickerLayer
+import LocalAnimations
 
 
 
@@ -82,8 +83,13 @@ private func pollResultEntries(_ state: PollResultState, context: any AccountCon
     let attr = NSMutableAttributedString()
     attr.append(string: state.poll.text, color: theme.colors.listGrayText, font: .normal(.huge))
     InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: state.poll.textEntities, isPremium: true)
-    
-    entries.append(.desc(sectionId: sectionId, index: index, text: .attributed(attr), data: InputDataGeneralTextData(color: theme.colors.text, detectBold: true, viewType: .modern(position: .inner, insets: NSEdgeInsetsMake(0, 0, 0, 0)), fontSize: .huge, context: context)))
+
+    let pollQuestionText = state.poll.text
+    entries.append(.desc(sectionId: sectionId, index: index, text: .attributed(attr), data: InputDataGeneralTextData(color: theme.colors.text, detectBold: true, isTextSelectable: true, viewType: .modern(position: .inner, insets: NSEdgeInsetsMake(0, 0, 0, 0)), fontSize: .huge, contextMenu: {
+        return [ContextMenuItem(strings().textCopy, handler: {
+            copyToClipboard(pollQuestionText)
+        }, itemImage: MenuAnimation.menu_copy.value)]
+    }, context: context)))
     index += 1
     
     

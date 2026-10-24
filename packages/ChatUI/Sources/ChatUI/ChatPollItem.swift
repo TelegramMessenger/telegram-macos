@@ -527,7 +527,8 @@ public class ChatPollItem: ChatRowItem {
             optionText.append(string: option.text, color: self.presentation.chat.textColor(isIncoming, renderType == .bubble), font: nameFont)
             InlineStickerItem.apply(to: optionText, associatedMedia: message?.associatedMedia ?? [:], entities: option.entities, isPremium: context.isPremium)
 
-            let nameLayout = TextViewLayout(optionText, alwaysStaticItems: true)
+            let nameLayout = TextViewLayout(optionText, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), alwaysStaticItems: true)
+            nameLayout.interactions = LinkHooks.shared.globalLinkExecutor()
 
             let wrapper = PollOption(option: option, nameText: nameLayout, percent: percent, realPercent: realPercent, voteCount: votedCount, isSelected: isSelected, isIncoming: isIncoming, isBubbled: renderType == .bubble, voted: voted, isLoading: object.additionalData.pollStateData.identifiers.contains(option.opaqueIdentifier) && object.additionalData.pollStateData.isLoading, presentation: self.presentation, isCorrect: isCorrect, isQuiz: poll.isQuiz, isMultipleSelected: object.additionalData.pollStateData.identifiers.contains(option.opaqueIdentifier), isMultipleChoice: poll.isMultiple, optionMedia: option.media, anyOptionHasMedia: anyOptionHasMedia, hideResults: hideResults && (voted || object.additionalData.pollStateData.isLoading), vote: { [weak self] control in
                 self?.voteOption(option, for: control)
@@ -563,8 +564,22 @@ public class ChatPollItem: ChatRowItem {
         if let message = message, !message.text.isEmpty {
             let descAttr = ChatMessageItem.applyMessageEntities(with: message.attributes, for: message.text, message: message, context: context, fontSize: theme.fontSize, openInfo: { [weak chatInteraction] peerId, toChat, postId, action in
                 chatInteraction?.openInfo(peerId, toChat, postId, action)
-            }, textColor: self.presentation.chat.textColor(isIncoming, renderType == .bubble), linkColor: self.presentation.chat.linkColor(isIncoming, renderType == .bubble), isDark: theme.colors.isDark, bubbled: renderType == .bubble).mutableCopy() as! NSMutableAttributedString
-            self.descriptionText = TextViewLayout(descAttr, alwaysStaticItems: true)
+            }, botCommand: { [weak chatInteraction] command in
+                chatInteraction?.sendPlainText(command)
+            }, hashtag: { [weak chatInteraction] tag in
+                chatInteraction?.hashtag(tag)
+            }, applyProxy: { [weak chatInteraction] proxy in
+                chatInteraction?.applyProxy(proxy)
+            }, textColor: self.presentation.chat.textColor(isIncoming, renderType == .bubble), linkColor: self.presentation.chat.linkColor(isIncoming, renderType == .bubble), openBank: { [weak chatInteraction] bank in
+                chatInteraction?.openBank(bank)
+            }, isDark: theme.colors.isDark, bubbled: renderType == .bubble, openPhoneNumber: { [weak chatInteraction] phone in
+                chatInteraction?.openPhoneNumberContextMenu(phone)
+            }, openTonAddress: { [weak chatInteraction] address in
+                chatInteraction?.openTonAddressContextMenu(address)
+            }).mutableCopy() as! NSMutableAttributedString
+            let layout = TextViewLayout(descAttr, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), strokeLinks: renderType == .bubble, alwaysStaticItems: true, disableTooltips: false)
+            layout.interactions = LinkHooks.shared.globalLinkExecutor()
+            self.descriptionText = layout
         }
 
         let titleAttr = NSMutableAttributedString()
@@ -573,7 +588,8 @@ public class ChatPollItem: ChatRowItem {
         InlineStickerItem.apply(to: titleAttr, associatedMedia: message?.associatedMedia ?? [:], entities: poll.textEntities, isPremium: context.isPremium)
 
 
-        self.titleText = TextViewLayout(titleAttr, alwaysStaticItems: true)
+        self.titleText = TextViewLayout(titleAttr, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), alwaysStaticItems: true)
+        self.titleText.interactions = LinkHooks.shared.globalLinkExecutor()
         
         
         let typeText: String = self.isBotQuiz ? strings().chatQuizTextType : poll.title
@@ -1004,17 +1020,28 @@ public final class ChatPollItemView : ChatRowView {
     }
     
     public override func canStartTextSelecting(_ event: NSEvent) -> Bool {
-        
-        let point = contentView.convert(event.locationInWindow, from: nil)
-        return NSPointInRect(point, NSMakeRect(0, contentNode.titleView.frame.minY, contentNode.frame.width, contentNode.titleView.frame.height))
+        for view in selectableTextViews {
+            let point = view.convert(event.locationInWindow, from: nil)
+            if NSPointInRect(point, view.bounds) {
+                return true
+            }
+        }
+        return false
     }
-    
+
     override var textSelectionSources: ChatTextSelectionSources {
         return .views(selectableTextViews)
     }
 
     public override var selectableTextViews: [TextView] {
-        return [contentNode.titleView.textView]
+        var views: [TextView] = [contentNode.titleView.textView]
+        if let descriptionView = contentNode.descriptionView {
+            views.append(descriptionView)
+        }
+        for option in contentNode.options {
+            views.append(option.nameView.textView)
+        }
+        return views
     }
     
     public override func canMultiselectTextIn(_ location: NSPoint) -> Bool {
@@ -1061,7 +1088,7 @@ public final class ChatPollItemView : ChatRowView {
 
 private final class PollOptionView : Control {
     private var percentView: ImageView?
-    private let nameView: InteractiveTextView = InteractiveTextView(frame: .zero)
+    fileprivate let nameView: InteractiveTextView = InteractiveTextView(frame: .zero)
     private var selectingView:ImageView?
     private let progressBackgroundView: View = View(frame: NSZeroRect)
     private let progressView: LinearProgressControl = LinearProgressControl(progressHeight: 5)
@@ -1075,11 +1102,42 @@ private final class PollOptionView : Control {
 
     private var selectedImageView: ImageView?
 
+    private var startMouseDownPoint: NSPoint?
+    private var didDrag: Bool = false
+
+    override func mouseDown(with event: NSEvent) {
+        startMouseDownPoint = convert(event.locationInWindow, from: nil)
+        didDrag = false
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if let start = startMouseDownPoint {
+            let point = convert(event.locationInWindow, from: nil)
+            if abs(point.x - start.x) > 3 || abs(point.y - start.y) > 3 {
+                didDrag = true
+            }
+        }
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let start = startMouseDownPoint {
+            let point = convert(event.locationInWindow, from: nil)
+            if abs(point.x - start.x) > 3 || abs(point.y - start.y) > 3 {
+                didDrag = true
+            }
+        }
+        startMouseDownPoint = nil
+        super.mouseUp(with: event)
+    }
+
     private var option: PollOption?
     private weak var pollItem: ChatPollItem?
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         nameView.userInteractionEnabled = false
+        nameView.textView.isSelectable = true
         progressView.hasMinumimVisibility = true
         progressBackgroundView.layer?.cornerRadius = 2.5
         addSubview(nameView)
@@ -1095,9 +1153,13 @@ private final class PollOptionView : Control {
 
         progressView.isEventLess = true
         progressBackgroundView.isEventLess = true
-                
+
         set(handler: { [weak self] control in
-            self?.option?.vote(control)
+            guard let self = self else { return }
+            if self.didDrag || !selectManager.isEmpty {
+                return
+            }
+            self.option?.vote(control)
         }, for: .Click)
     }
     
@@ -1659,7 +1721,7 @@ private final class PollOptionView : Control {
 
 private final class PollView : Control {
     fileprivate var mediaContentView: ChatMediaContentView?
-    private var descriptionView: TextView?
+    fileprivate var descriptionView: TextView?
     fileprivate let titleView: InteractiveTextView = InteractiveTextView(frame: .zero)
     private let typeView: TextView = TextView()
     private var actionButton: TextButton?

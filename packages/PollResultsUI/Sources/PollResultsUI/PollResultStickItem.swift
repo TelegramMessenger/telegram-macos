@@ -15,6 +15,7 @@ import StatisticsUI
 import SwiftSignalKit
 import TelegramCore
 import Postbox
+import LocalAnimations
 
 public class PollResultStickItem: TableStickItem {
     
@@ -58,6 +59,15 @@ public class PollResultStickItem: TableStickItem {
     
     public override var canBeAnchor: Bool {
         return false
+    }
+
+    public override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
+        let text = self.leftLayout.attributedString.string
+        return .single([
+            ContextMenuItem(strings().textCopy, handler: {
+                copyToClipboard(text)
+            }, itemImage: MenuAnimation.menu_copy.value)
+        ])
     }
     
     public required init(_ initialSize: NSSize) {
@@ -111,8 +121,8 @@ private final class PollResultStickView : TableStickView {
         containerView.addSubview(self.textView)
         containerView.addSubview(self.rightView)
         containerView.addSubview(self.textAdditionView)
-        self.textView.textView.isSelectable = false
-        self.textView.userInteractionEnabled = false
+        self.textView.textView.isSelectable = true
+        self.textView.userInteractionEnabled = true
         
         self.textAdditionView.disableBackgroundDrawing = true
         self.textAdditionView.isSelectable = false
