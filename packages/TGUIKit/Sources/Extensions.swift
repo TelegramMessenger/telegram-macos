@@ -67,21 +67,24 @@ public extension NSAttributedString {
         
         let string:NSMutableAttributedString = self.mutableCopy() as! NSMutableAttributedString
         
-        while true {
-            let range = string.string.nsstring.range(of: "\u{2028}")
-            if range.location != NSNotFound {
-                string.replaceCharacters(in: range, with: "\n")
-            } else {
-                break
+        let originalText = string.string.nsstring
+        let lineSeparatorRange = originalText.range(of: "\u{2028}")
+        let objectReplacementRange = originalText.range(of: "\u{fffc}", options: .literal)
+        if lineSeparatorRange.location != NSNotFound || objectReplacementRange.location != NSNotFound {
+            let mutableString = string.mutableString
+            func replaceSeparator(_ separator: String, options: NSString.CompareOptions, firstRange: NSRange) {
+                var range = firstRange
+                while range.location != NSNotFound {
+                    string.replaceCharacters(in: range, with: "\n")
+                    let nextLocation = NSMaxRange(range)
+                    guard nextLocation < string.length else {
+                        break
+                    }
+                    range = mutableString.range(of: separator, options: options, range: NSRange(location: nextLocation, length: string.length - nextLocation))
+                }
             }
-        }
-        while true {
-            let range = string.string.nsstring.range(of: "\u{fffc}", options: .literal)
-            if range.location != NSNotFound {
-                string.replaceCharacters(in: range, with: "\n")
-            } else {
-                break
-            }
+            replaceSeparator("\u{2028}", options: [], firstRange: lineSeparatorRange)
+            replaceSeparator("\u{fffc}", options: .literal, firstRange: objectReplacementRange)
         }
         var range = string.string.nsstring.rangeOfCharacter(from: NSCharacterSet.whitespacesAndNewlines)
         while !string.string.isEmpty, range.location == 0 {
@@ -116,15 +119,9 @@ public extension NSAttributedString {
     }
     
     func replaceNewlinesWithSpaces(in attributedString: NSAttributedString) -> NSAttributedString {
-        // Create a mutable copy of the input attributed string
         let mutableAttributedString = NSMutableAttributedString(attributedString: attributedString)
-        
-        // Replace all occurrences of newline characters with space characters
         let range = NSRange(location: 0, length: mutableAttributedString.length)
-        let newlineRegex = try! NSRegularExpression(pattern: "\\n")
-        newlineRegex.replaceMatches(in: mutableAttributedString.mutableString, options: [], range: range, withTemplate: " ")
-        
-        // Return the modified attributed string
+        mutableAttributedString.mutableString.replaceOccurrences(of: "\n", with: " ", options: .literal, range: range)
         return mutableAttributedString
     }
     
