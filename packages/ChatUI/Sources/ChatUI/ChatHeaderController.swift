@@ -770,7 +770,7 @@ struct ChatSearchInteractions {
     let results:(String)->Void
     let calendarAction:(Date)->Void
     let cancel:()->Void
-    let searchRequest:(String, PeerId?, SearchMessagesState?, [EmojiTag]) -> Signal<([Message], SearchMessagesState?), NoError>
+    let searchRequest:(String, PeerId?, SearchMessagesState?, [EmojiTag]) -> Signal<([Message], SearchMessagesState?, Int32), NoError>
 }
 
 private class ChatSponsoredModel: ChatAccessoryModel {
