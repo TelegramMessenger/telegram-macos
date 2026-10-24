@@ -263,6 +263,18 @@ struct ChatHeaderState : Identifiable, Equatable {
         return height
     }
 
+    var canDisplayInline: Bool {
+        guard height == primaryHeight else {
+            return false
+        }
+        switch main {
+        case .pinned, .search(_, _, _, nil, _, _):
+            return true
+        default:
+            return false
+        }
+    }
+
     var secondaryHeight:CGFloat {
         var height: CGFloat = 0
         if let _ = voiceChat {
@@ -558,7 +570,7 @@ class ChatHeaderController {
                 if let v = currentView {
                     current = v
                     let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.2, curve: .easeOut) : .immediate
-                    transition.updateFrame(view: current, frame: NSMakeRect(current.frame.origin.x, current.frame.origin.y, view.frame.width - inset - (current.frame.origin.x * 2), state.height))
+                    transition.updateFrame(view: current, frame: NSMakeRect(current.frame.origin.x, current.frame.origin.y, current.frame.width, state.height))
                   
                 } else {
                     current = View(frame: NSMakeRect(inset + edge, ChatHeaderBubblesView.totalHeight, view.frame.width - inset - edge * 2, state.height))
@@ -2642,94 +2654,7 @@ private final class ChatTranslateHeader : Control, ChatHeaderProtocol {
         guard let translate = self._state?.translate else {
             return nil
         }
-        
-        let menu = ContextMenu(betterInside: true)
-        var items: [ContextMenuItem] = []
-
-        if translate.paywall {
-            items.append(ContextMenuItem(strings().chatTranslateMenuHide, handler: { [weak self] in
-                self?.chatInteraction.hideTranslation()
-            }, itemImage: MenuAnimation.menu_clear_history.value))
-            
-            menu.items = items
-            return menu
-        }
-        
-        
-        let other = ContextMenuItem(strings().chatTranslateMenuTo, itemImage: MenuAnimation.menu_translate.value)
-        
-        var codes = Translate.codes.sorted(by: { lhs, rhs in
-            let lhsSelected = lhs.code.contains(translate.to)
-            let rhsSelected = rhs.code.contains(translate.to)
-            if lhsSelected && !rhsSelected {
-                return true
-            } else if !lhsSelected && rhsSelected {
-                return false
-            } else {
-                return lhs.language < rhs.language
-            }
-        })
-        
-        let codeIndex = codes.firstIndex(where: {
-            $0.code.contains(appAppearance.languageCode)
-        })
-        if let codeIndex = codeIndex {
-            codes.move(at: codeIndex, to: 0)
-        }
-        
-        let submenu = ContextMenu(betterInside: true)
-        
-        for code in codes {
-            submenu.addItem(ContextMenuItem(code.language, handler: { [weak self] in
-                if let first = code.code.first {
-                    self?.chatInteraction.translateTo(first)
-                }
-            }, itemImage: code.code.contains(translate.to) ? MenuAnimation.menu_check_selected.value : nil))
-        }
-        other.submenu = submenu
-        
-        items.append(other)
-
-        let toneItem = ContextMenuItem(strings().chatHeaderTone, itemImage: MenuAnimation.menu_tune_fork.value)
-        let toneSubmenu = ContextMenu()
-        let toneNames: [(TranslationTone, String)] = [
-            (.formal, strings().chatHeaderToneFormal),
-            (.neutral, strings().chatHeaderToneNeutral),
-            (.casual, strings().chatHeaderToneCasual)
-        ]
-        for (tone, name) in toneNames {
-            toneSubmenu.addItem(ContextMenuItem(name, handler: { [weak self] in
-                self?.chatInteraction.setTranslateTone(tone)
-            }, state: translate.tone == tone ? .on : nil))
-        }
-        toneItem.submenu = toneSubmenu
-        items.append(toneItem)
-
-        if let from = translate.from, let language = Translate.find(from) {
-            items.append(ContextMenuItem(strings().chatTranslateMenuDoNotTranslate(_NSLocalizedString(language.localizationKey)), handler: { [weak self] in
-                self?.chatInteraction.doNotTranslate(from)
-            }, itemImage: MenuAnimation.menu_restrict.value))
-        }
-        
-        items.append(ContextMenuItem(strings().chatTranslateMenuHide, handler: { [weak self] in
-            self?.chatInteraction.hideTranslation()
-        }, itemImage: MenuAnimation.menu_clear_history.value))
-        
-        
-        items.append(ContextSeparatorItem())
-
-        let item = ContextMenuItem(strings().chatTranslationPoweredByCocoon, handler: { [weak self] in
-            guard let context = self?.chatInteraction.interactionContext else { return }
-            ChatUIHooks.shared.showAboutCocoonModal(context)
-        }, itemImage: MenuAnimation.menu_cocoon.value, removeTail: false, overrideWidth: 200)
-
-        items.append(item)
-        
-        //items.append(ContextMenuItem("Read about transl"))
-        menu.items = items
-        
-        return menu
-        
+        return chatTranslationSettingsMenu(chatInteraction: chatInteraction, translate: translate)
     }
     
     func measure(_ width: CGFloat) {
