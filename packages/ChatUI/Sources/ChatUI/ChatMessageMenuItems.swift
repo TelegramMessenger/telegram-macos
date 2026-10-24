@@ -554,7 +554,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }, messageId: data.message.id, context: context))
         }
         
-        if let layout = textLayout?.0, layout.selectedRange.range.location != NSNotFound, layout.selectedRange.range.length > 0, NSMaxRange(layout.selectedRange.range) <= layout.attributedString.length, mode != .pinned, mode != .scheduled, !mode.isSavedMode, mode.customChatContents == nil, entry?.additionalData.translate == nil {
+        if let layout = textLayout?.0, layout.selectedRange.range.location != NSNotFound, layout.selectedRange.range.length > 0, NSMaxRange(layout.selectedRange.range) <= layout.attributedString.length, mode != .pinned, mode != .scheduled, !mode.isSavedMode, mode.customChatContents == nil, entry?.additionalData.translate == nil, !data.isLogInteraction {
             let selectedRange = layout.selectedRange.range
             let selectedString = layout.attributedString.attributedSubstring(from: selectedRange)
             firstBlock.append(ContextMenuItem(strings().chatMessageContextQuote, handler: {
@@ -576,7 +576,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         if message.attributes.contains(where: { $0 is RichTextMessageAttribute }),
            let quote = selectManager.richSelectedQuote(for: message.id),
            mode != .pinned, mode != .scheduled, !mode.isSavedMode,
-           mode.customChatContents == nil, entry?.additionalData.translate == nil {
+           mode.customChatContents == nil, entry?.additionalData.translate == nil, !data.isLogInteraction {
             firstBlock.append(ContextMenuItem(strings().chatMessageContextQuote, handler: {
                 let maximumLength = context.appConfiguration.getGeneralValue("quote_length_max", orElse: 1024)
                 if quote.text.utf16.count > maximumLength {
