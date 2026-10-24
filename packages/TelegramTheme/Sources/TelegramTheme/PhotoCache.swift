@@ -15,8 +15,20 @@ public enum ThemeSource : Equatable {
 
 private final class WallpaperCachedRecord {
     public let mode:TableBackgroundMode
+    public let cost: Int
     public init(mode:TableBackgroundMode) {
         self.mode = mode
+        switch mode {
+        case let .background(image, _, _, _, _), let .tiled(image):
+            if let bitmap = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                let bytes = bitmap.bytesPerRow.multipliedReportingOverflow(by: bitmap.height)
+                self.cost = bytes.overflow ? Int.max : bytes.partialValue
+            } else {
+                self.cost = 0
+            }
+        default:
+            self.cost = 0
+        }
     }
 }
 
@@ -292,13 +304,20 @@ private class WallpaperCache {
     public let memoryLimit:Int
     private var values:NSCache<NSNumber, WallpaperCachedRecord> = NSCache()
     
-    public init(_ memoryLimit:Int = 100) {
+    public init(_ memoryLimit:Int = 100, byteLimit: Int = 64 * 1024 * 1024) {
         self.memoryLimit = memoryLimit
         self.values.countLimit = memoryLimit
+        self.values.totalCostLimit = byteLimit
     }
     
     fileprivate func cacheImage(_ mode: TableBackgroundMode, for key:PhotoCacheKeyEntry) {
-        self.values.setObject(WallpaperCachedRecord(mode: mode), forKey: .init(value: key.hashValue))
+        let record = WallpaperCachedRecord(mode: mode)
+        let cacheKey = NSNumber(value: key.hashValue)
+        guard record.cost <= self.values.totalCostLimit else {
+            self.values.removeObject(forKey: cacheKey)
+            return
+        }
+        self.values.setObject(record, forKey: cacheKey, cost: record.cost)
     }
     
     public func cachedImage(for key:PhotoCacheKeyEntry) -> TableBackgroundMode? {
