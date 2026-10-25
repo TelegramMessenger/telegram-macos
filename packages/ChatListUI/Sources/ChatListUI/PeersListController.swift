@@ -1326,20 +1326,16 @@ public class PeerListContainerView : Control {
                 current.setAccessibilityLabel(strings().voiceOverNavigationCompose)
             }
             if System.edgeToEdgeSidebar {
-                let glass: LiquidGlassView
-                if let view = self.composeGlass {
-                    glass = view
-                } else {
+                if self.composeGlass == nil {
                     let host = ScrollPocketExcludedView(frame: current.frame)
-                    glass = LiquidGlassView(frame: host.bounds, cornerRadius: System.windowControlSize / 2, customTint: theme.colors.accent)
+                    let glass = LiquidGlassView(frame: host.bounds, cornerRadius: System.windowControlSize / 2)
                     host.addSubview(glass)
                     statusContainer.addSubview(host, positioned: .below, relativeTo: current)
                     self.composeGlassHost = host
                     self.composeGlass = glass
                 }
-                glass.setCustomTint(theme.colors.accent, animated: false)
-                current.set(image: composeImage.highlight(color: theme.colors.underSelectedColor), for: .Normal)
-                current.set(image: composeImage.highlight(color: theme.colors.underSelectedColor), for: .Hover)
+                current.set(image: composeImage.highlight(color: theme.colors.text), for: .Normal)
+                current.set(image: composeImage.highlight(color: theme.colors.text), for: .Hover)
             } else {
                 current.set(image: composeImage, for: .Normal)
                 current.set(image: composeImage, for: .Hover)

@@ -119,8 +119,8 @@ public struct System {
         return false
     }()
 
-    public static let windowControlSize: CGFloat = 38
-    public static let windowEdgeInset: CGFloat = 7
+    public static let windowControlSize: CGFloat = 36
+    public static let windowEdgeInset: CGFloat = 8
     public static let windowItemSpacing: CGFloat = 8
 
 }
