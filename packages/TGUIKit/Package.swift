@@ -19,6 +19,7 @@ let package = Package(
         .package(name: "ColorPalette", path: "../ColorPalette"),
         .package(name: "KeyboardKey", path: "../KeyboardKey"),
         .package(name: "ObjcUtils", path: "../ObjcUtils"),
+        .package(name: "LiquidGlassLens", path: "../LiquidGlassLens"),
         
     ],
     targets: [
@@ -28,6 +29,7 @@ let package = Package(
                            .product(name: "ColorPalette", package: "ColorPalette", condition: nil),
                            .product(name: "KeyboardKey", package: "KeyboardKey", condition: nil),
                            .product(name: "ObjcUtils", package: "ObjcUtils", condition: nil),
+                           .product(name: "LiquidGlassLens", package: "LiquidGlassLens", condition: nil),
                           ],
             path: "Sources"),
         .testTarget(

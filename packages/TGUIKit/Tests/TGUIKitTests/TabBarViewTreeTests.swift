@@ -96,6 +96,135 @@ final class TabBarViewTreeTests: XCTestCase {
         return (bar, items)
     }
 
+    private func enableNativeLens(_ bar: TabBarView) throws {
+        guard System.liquidGlassAvailable else {
+            throw XCTSkip("Native glass is unavailable")
+        }
+        bar.reduceTransparency = { false }
+        System.liquidGlass = true
+        bar.updateLocalizationAndTheme(theme: presentation)
+        XCTAssertNotNil(bar.nativeLens)
+    }
+
+    func testDisabledGlassKeepsTheExistingInteractionWithoutConstructingALens() {
+        let bar = makeBar()
+        var attempts = 0
+        bar.lensFactory = {
+            attempts += 1
+            return nil
+        }
+        bar.beginSelection(at: center(bar, 0))
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertEqual(attempts, 0)
+        XCTAssertEqual(bar.selectionFrame.width, bar.control(for: 0).frame.width + 16)
+        XCTAssertEqual(bar.control(for: 0).layer!.transform.m11, 1.15, accuracy: 0.001)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testNativeLensKeepsTheSameControlsIconsBadgesAndHitTargets() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 2)
+        let control = bar.control(for: 2)
+        let icon = control.subviews[0]
+        let badge = control.subviews[1]
+        try enableNativeLens(bar)
+        let lens = try XCTUnwrap(bar.nativeLens)
+        XCTAssertTrue(control.superview === lens.contentView)
+        bar.beginSelection(at: center(bar, 2))
+        XCTAssertEqual(bar.selectionFrame.width, control.frame.width + 20)
+        XCTAssertEqual(bar.selectionFrame.height, 56)
+        XCTAssertEqual(control.layer!.transform.m11, 1, accuracy: 0.001)
+        XCTAssertTrue(control.subviews[0] === icon)
+        XCTAssertTrue(control.subviews[1] === badge)
+        XCTAssertTrue(bar.hitTest(center(bar, 2)) === control)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testDisablingGlassDuringADragCancelsAndRestoresTheOriginalControls() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 1)
+        let delegate = TabSelectionDelegate()
+        bar.delegate = delegate
+        let controls = (0 ..< bar.count).map { bar.control(for: $0) }
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 1))
+        bar.updateSelection(at: center(bar, 3))
+        System.liquidGlass = false
+        XCTAssertFalse(bar.isTrackingSelection)
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertEqual(bar.selectedIndex, 1)
+        XCTAssertTrue(delegate.changes.isEmpty)
+        XCTAssertTrue(controls.allSatisfy { $0.superview === bar })
+        XCTAssertTrue(bar.control(for: 1).isAccessibilitySelected())
+        XCTAssertEqual(bar.selectionFrame, bar.control(for: 1).frame)
+    }
+
+    func testUnsupportedNativeEffectsKeepTheExistingGlassAndAreNotRetriedEveryLayout() throws {
+        guard System.liquidGlassAvailable else {
+            throw XCTSkip("Native glass is unavailable")
+        }
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        var attempts = 0
+        bar.reduceTransparency = { false }
+        bar.lensFactory = {
+            attempts += 1
+            return nil
+        }
+        System.liquidGlass = true
+        bar.beginSelection(at: center(bar, 0))
+        bar.layout()
+        bar.updateSelection(at: center(bar, 1))
+        XCTAssertEqual(attempts, 1)
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertEqual(bar.selectionFrame.width, bar.control(for: 1).frame.width + 16)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testReducingTransparencyDuringAPressRemovesTheNativeLens() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 2))
+        bar.reduceTransparency = { true }
+        bar.updateLocalizationAndTheme(theme: presentation)
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertFalse(bar.isTrackingSelection)
+        XCTAssertEqual(bar.selectedIndex, 0)
+        bar.reduceTransparency = { false }
+        bar.updateLocalizationAndTheme(theme: presentation)
+        XCTAssertNotNil(bar.nativeLens)
+    }
+
+    func testNativeDragCommitStillPlaysOnlyTheDestinationOnce() throws {
+        defer { System.liquidGlass = false }
+        let (bar, items) = makePlaybackBar()
+        let delegate = TabSelectionDelegate()
+        bar.delegate = delegate
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 0))
+        bar.updateSelection(at: center(bar, 2))
+        bar.updateSelection(at: center(bar, 3))
+        bar.endSelection(at: center(bar, 3))
+        XCTAssertEqual(items.map { $0.animatedSelections }, [0, 0, 0, 1])
+        XCTAssertEqual(delegate.changes, [3])
+    }
+
+    func testNativeLensRespectsReduceMotionWithoutScalingTheOriginalContent() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        try enableNativeLens(bar)
+        bar.reduceMotion = { true }
+        let point = center(bar, 2)
+        bar.beginSelection(at: point)
+        XCTAssertEqual(bar.selectionFrame, bar.control(for: 2).frame)
+        XCTAssertEqual(bar.selectionFrame.height, 40)
+        XCTAssertEqual(bar.control(for: 2).layer!.transform.m11, 1, accuracy: 0.001)
+        XCTAssertNil(bar.control(for: 2).layer?.animation(forKey: "transform"))
+        bar.endSelection(at: point)
+        XCTAssertEqual(bar.selectedIndex, 2)
+    }
+
     func testDragCommitPlaysOnlyTheDestinationOnceOnRelease() {
         for (source, destinations) in [(0, [1, 2, 3]), (3, [2, 1, 0])] {
             let (bar, items) = makePlaybackBar(selected: source)
