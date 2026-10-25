@@ -70,6 +70,7 @@ public final class ReactionsWindowController : NSObject {
             self.shadow = shadow
             self.layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 20, cornerHeight: 20, transform: nil)
             
+            container.isHidden = false
             contentView.layer?.opacity = 1
             let duration: Double = 0.35
             
@@ -112,7 +113,7 @@ public final class ReactionsWindowController : NSObject {
             mask.frame = rect
             mask.cornerRadius = 20
             container.layer?.mask = mask
-
+            container.isHidden = true
         }
         
         override func layout() {

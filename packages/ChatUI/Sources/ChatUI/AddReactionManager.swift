@@ -411,7 +411,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     private let backgroundColorView = View()
     private let shadowLayer = SimpleShapeLayer()
     private let presentation: TelegramPresentationTheme
-    private let hasBubble: Bool
+    private var hasBubble: Bool
     private let aboveText: TextViewLayout?
     public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
         self.list = list
@@ -439,6 +439,8 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         showMore.set(handler: { [weak self] control in
             if let view = self {
+                view.hasBubble = false
+                view.updateLayout(size: view.frame.size, transition: .immediate)
                 revealReactions?(view)
             }
             control.layer?.animateScaleCenter(from: 1, to: 0.1, duration: 0.35, removeOnCompletion: false)
