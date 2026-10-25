@@ -1317,6 +1317,7 @@ private class GiftIconLayer: SimpleLayer {
 }
 
 
+private let pinnedProfileGiftLimit = 6
 private let giftStatusCoverIntroDelay: Double = 0.2
 private let giftStatusTooltipDelay: Double = 0.5
 
@@ -1326,10 +1327,9 @@ private final class SpawnGiftsView: View {
     
     private var giftsDisposable: Disposable?
     private var gifts: [ProfileGiftsContext.State.StarGift] = []
-    private var appliedGiftIds: [Int64] = []
 
     private var iconPositions: [PositionGenerator.Position] = []
-    private let seed = UInt(Date().timeIntervalSince1970)
+    private var appliedLayout: PositionGenerator?
     
     private var iconLayers: [AnyHashable: GiftIconLayer] = [:]
 
@@ -1339,7 +1339,6 @@ private final class SpawnGiftsView: View {
     
     var avatarFrame: CGRect = .zero
     var exclusionRects: [CGRect] = []
-    private var appliedSize: NSSize = .zero
     private var scheduledAnimateIn = false
 
     required init(frame frameRect: NSRect) {
@@ -1415,37 +1414,22 @@ private final class SpawnGiftsView: View {
         }
         
         let iconSize = CGSize(width: 32.0, height: 32.0)
-        let layoutItemSize = CGSize(width: 40.0, height: 40.0)
+        let layoutItemSize = CGSize(width: 44.0, height: 44.0)
         
         let avatarCenter = CGPoint(x: self.avatarFrame.midX, y: self.avatarFrame.midY)
         
-        let giftIds = self.gifts.compactMap { gift in
-            if case let .unique(gift) = gift.gift, peer?.effectiveProfileColor != nil {
-                return gift.id
-            } else {
-                return nil
-            }
+        let layout = PositionGenerator(
+            containerSize: frame.size,
+            centerFrame: self.avatarFrame,
+            exclusionZones: self.exclusionRects,
+            minimumDistance: 44.0,
+            edgePadding: 8.0
+        )
+        if self.appliedLayout != layout {
+            self.iconPositions = layout.generatePositions(count: pinnedProfileGiftLimit, itemSize: layoutItemSize)
+            self.appliedLayout = layout
         }
-        
-        if giftIds.isEmpty {
-            self.appliedGiftIds = giftIds
-        } else if frame.width > 0, frame.height > 0, !self.avatarFrame.isEmpty {
-            if self.iconPositions.isEmpty || self.appliedGiftIds != giftIds || self.appliedSize != frame.size {
-                let positionGenerator = PositionGenerator(
-                    containerSize: frame.size,
-                    centerFrame: self.avatarFrame,
-                    exclusionZones: self.exclusionRects,
-                    minimumDistance: 42.0,
-                    edgePadding: 8.0,
-                    seed: self.seed
-                )
-                self.iconPositions = positionGenerator.generatePositions(count: 12, itemSize: layoutItemSize)
-                self.appliedSize = frame.size
-            }
-            self.appliedGiftIds = giftIds
-        }
-        
-        
+
         if self.giftsDisposable == nil {
             self.giftsDisposable = combineLatest(
                 queue: Queue.mainQueue(),
@@ -1476,9 +1460,10 @@ private final class SpawnGiftsView: View {
             })
         }
         
+        let visibleGifts = peer?.effectiveProfileColor != nil ? Array(self.gifts.prefix(pinnedProfileGiftLimit)) : []
         var validIds = Set<AnyHashable>()
         var index = 0
-        for gift in self.gifts.prefix(12) {
+        for gift in visibleGifts {
             guard index < self.iconPositions.count else {
                 break
             }

@@ -60,7 +60,6 @@ let deps: [(String, String)] = [
     ("DateUtils", "../DateUtils"),
     ("ObjcUtils", "../ObjcUtils"),
     ("Svg", "../Svg"),
-    ("LokiRng", "../../submodules/telegram-ios/submodules/Utils/LokiRng"),
     ("InlineStickerLayer", "../InlineStickerLayer"),
     ("UniqueGiftBackground", "../UniqueGiftBackground"),
     ("InlineMediaGrid", "../InlineMediaGrid"),
