@@ -55,6 +55,7 @@ public final class EmojiScreenEffect {
         let mirror: Bool
         let key: Key
         var onRemove: (() -> Void)? = nil
+        var collapse: (() -> Void)? = nil
     }
     
     private var animations:[Key: Value] = [:]
@@ -432,12 +433,29 @@ public final class EmojiScreenEffect {
         }), forKey: messageId)
     }
 
+    private func collapseLargeReactionCenter(_ key: Key) {
+        guard var value = animations[key], let collapse = value.collapse else {
+            return
+        }
+        value.collapse = nil
+        animations[key] = value
+        collapse()
+    }
+    
     private func deinitAnimation(key: Key, animated: Bool) {
         let value = animations.removeValue(forKey: key)
         value?.onRemove?()
         let view = value?.view.value
         if let view = view {
             performSubviewRemoval(view, animated: animated)
+        }
+        if case let .largeReaction(reaction, _, _) = key.mode, case .custom = reaction {
+            let centers = animations.keys.filter {
+                $0.messageId == key.messageId && $0.mode == .largeReactionCenter(reaction)
+            }
+            for center in centers {
+                collapseLargeReactionCenter(center)
+            }
         }
         enqueuedToServer.removeAll(where: { $0.key == key })
         enqueuedToEnjoy.removeAll(where: { $0.key == key })
@@ -497,10 +515,13 @@ public final class EmojiScreenEffect {
                 chip?.unlockVisibility()
             }
             view.animateContentScale(from: iconScale, to: 1, duration: 0.35, spring: true)
-            lottie.triggerOn = (LottiePlayerTriggerFrame.last, { [weak self, weak view] in
+            value.collapse = { [weak self, weak view] in
                 view?.animateContentScale(from: 1, to: iconScale, duration: 0.25, completion: { _ in
                     self?.deinitAnimation(key: key, animated: false)
                 })
+            }
+            lottie.triggerOn = (LottiePlayerTriggerFrame.last, { [weak self] in
+                self?.collapseLargeReactionCenter(key)
             }, {})
         }
         animations[key] = value
