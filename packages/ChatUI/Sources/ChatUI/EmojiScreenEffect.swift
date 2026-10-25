@@ -28,7 +28,7 @@ public final class EmojiScreenEffect {
         enum Mode : Equatable, Hashable {
             case effect(Bool)
             case reaction(MessageReaction.Reaction)
-            case largeReaction(MessageReaction.Reaction, mirror: Bool)
+            case largeReaction(MessageReaction.Reaction, mirror: Bool, centered: Bool)
             case largeReactionCenter(MessageReaction.Reaction)
         }
         let messageId: MessageId
@@ -38,7 +38,7 @@ public final class EmojiScreenEffect {
         
         var screenMode: ChatRowView.ScreenEffectMode {
             switch self.mode {
-            case let .reaction(value), let .largeReaction(value, _), let .largeReactionCenter(value):
+            case let .reaction(value), let .largeReaction(value, _, _), let .largeReactionCenter(value):
                 return .reaction(value)
             case .effect:
                 return .effect
@@ -118,10 +118,12 @@ public final class EmojiScreenEffect {
                         case .reaction, .largeReactionCenter:
                             point.x-=subSize.width/2
                             point.y-=subSize.height/2
-                        case let .largeReaction(_, mirror):
+                        case let .largeReaction(_, mirror, centered):
                             point.x-=subSize.width/2
                             point.y-=subSize.height/2
-                            point.x += (mirror ? 1 : -1) * animationView.animationSize.width * 0.3
+                            if !centered {
+                                point.x += (mirror ? 1 : -1) * animationView.animationSize.width * 0.3
+                            }
                         }
                        
 
@@ -277,7 +279,7 @@ public final class EmojiScreenEffect {
             let reactionView = (takeTableItem(messageId)?.view as? ChatRowView)?.getScreenEffectView(.reaction(value))
             let reactionFrame = reactionView.flatMap { $0.convert($0.bounds, to: parentView) }
             mirror = (reactionFrame?.midX ?? 0) < parentView.bounds.width / 2
-            mode = .largeReaction(value, mirror: mirror)
+            mode = .largeReaction(value, mirror: mirror, centered: false)
             animationSize = NSMakeSize(initialAnimationSize.width * 4, initialAnimationSize.height * 4)
             addLargeReactionCenter(value, messageId: messageId, animationSize: NSMakeSize(initialAnimationSize.width * 1.5, initialAnimationSize.height * 1.5), viewFrame: viewFrame, for: parentView)
         } else {
@@ -318,7 +320,8 @@ public final class EmojiScreenEffect {
                         let animationSize = isLarge ? animationSize : NSMakeSize(animationSize.width * 2, animationSize.height * 2)
                         let rect = NSMakeSize(animationSize.width, animationSize.height).bounds
                         let view = CustomReactionEffectView(frame: rect, context: context, fileId: fileId, style: .inlinePattern(mirrored: viewFrame.midX < parentView.bounds.width / 2))
-                        self?.initAnimation(.custom(view), mode: mode, emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
+                        let patternMode: Key.Mode = isLarge ? .largeReaction(value, mirror: mirror, centered: true) : mode
+                        self?.initAnimation(.custom(view), mode: patternMode, emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
                     }
                 }
             }), forKey: messageId)
