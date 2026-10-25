@@ -523,7 +523,13 @@ public class TabBarView: View {
                 }
             }
             nativeLens.frame = bounds
-            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor)
+            let sources = itemControls.enumerated().flatMap { index, control in
+                control.subviews.enumerated().map { childIndex, view in
+                    let tint = childIndex == 0 && tabs[index].supportsLensTint(for: view)
+                    return LiquidGlassLensContentSource(view: view, lensedTintColor: tint ? presentation.colors.accentIcon : nil, unlensedTintColor: tint ? presentation.colors.grayIcon : nil)
+                }
+            }
+            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor, contentSources: sources)
             selectionView.layer?.removeAnimation(forKey: "opacity")
             selectionView.alphaValue = 0
             liftedGlass.alphaValue = 0

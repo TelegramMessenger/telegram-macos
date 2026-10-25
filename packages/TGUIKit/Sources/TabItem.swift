@@ -27,6 +27,10 @@ open class TabItem: NSObject {
     open func makeView() -> NSView {
         return ImageView(frame: NSMakeRect(0, 0, image.backingSize.width, image.backingSize.height))
     }
+
+    open func supportsLensTint(for view: NSView) -> Bool {
+        return view is ImageView
+    }
     
     open func setSelected(_ selected: Bool, for view: NSView, animated: Bool) {
         (view as? ImageView)?.image = selected ? selectedImage : image

@@ -36,8 +36,8 @@ final class LiquidGlassLensTests: XCTestCase {
         return source
     }
 
-    private func update(_ lens: LiquidGlassLensView, progress: CGFloat, frame: CGRect = CGRect(x: -6, y: -4, width: 100, height: 56), animation: LiquidGlassLensAnimation = .immediate, restingBlurRadius: CGFloat = 0, restingTintColor: NSColor? = nil) {
-        lens.update(lensFrame: frame, interactionProgress: progress, appearance: NSAppearance(named: .aqua)!, backingScale: 2, animation: animation, restingBlurRadius: restingBlurRadius, restingTintColor: restingTintColor)
+    private func update(_ lens: LiquidGlassLensView, progress: CGFloat, frame: CGRect = CGRect(x: -6, y: -4, width: 100, height: 56), animation: LiquidGlassLensAnimation = .immediate, restingBlurRadius: CGFloat = 0, restingTintColor: NSColor? = nil, contentSources: [LiquidGlassLensContentSource]? = nil) {
+        lens.update(lensFrame: frame, interactionProgress: progress, appearance: NSAppearance(named: .aqua)!, backingScale: 2, animation: animation, restingBlurRadius: restingBlurRadius, restingTintColor: restingTintColor, contentSources: contentSources)
         lens.layoutSubtreeIfNeeded()
         lens.window?.displayIfNeeded()
     }
@@ -51,6 +51,105 @@ final class LiquidGlassLensTests: XCTestCase {
             result += portalSources(child)
         }
         return result
+    }
+
+    private func portals(in layer: CALayer, source: CALayer) -> [CALayer] {
+        var result: [CALayer] = []
+        if layer.responds(to: NSSelectorFromString("sourceLayer")), layer.value(forKey: "sourceLayer") as? CALayer === source {
+            result.append(layer)
+        }
+        for child in layer.sublayers ?? [] {
+            result += portals(in: child, source: source)
+        }
+        return result
+    }
+
+    private func tintMatrix(_ portal: CALayer) throws -> [Float] {
+        let filter = try XCTUnwrap(portal.filters?.first as? NSObject)
+        let value = try XCTUnwrap(filter.value(forKey: "inputColorMatrix") as? NSValue)
+        var matrix = [Float](repeating: 0, count: 20)
+        matrix.withUnsafeMutableBytes { value.getValue($0.baseAddress!, size: $0.count) }
+        return matrix
+    }
+
+    func testTintedIconsUseTheSameLiveLayerAndDoNotTintBadges() throws {
+        let lens = try makeLens()
+        let icon = addContent(to: lens)
+        let badge = addContent(to: lens)
+        let accent = NSColor(srgbRed: 0.2, green: 0.4, blue: 0.8, alpha: 1)
+        let normal = NSColor(srgbRed: 0.6, green: 0.6, blue: 0.6, alpha: 1)
+        update(lens, progress: 1, contentSources: [
+            LiquidGlassLensContentSource(view: icon, lensedTintColor: accent, unlensedTintColor: normal),
+            LiquidGlassLensContentSource(view: badge),
+        ])
+        let root = try XCTUnwrap(lens.layer)
+        let iconPortals = portals(in: root, source: try XCTUnwrap(icon.layer))
+        XCTAssertEqual(iconPortals.count, 2)
+        let lensed = try XCTUnwrap(iconPortals.first { $0.superlayer?.name != "lensUnlensedContent" })
+        let unlensed = try XCTUnwrap(iconPortals.first { $0.superlayer?.name == "lensUnlensedContent" })
+        let accentMatrix = try tintMatrix(lensed)
+        XCTAssertEqual(accentMatrix[3], 0.2, accuracy: 0.0001)
+        XCTAssertEqual(accentMatrix[8], 0.4, accuracy: 0.0001)
+        XCTAssertEqual(accentMatrix[13], 0.8, accuracy: 0.0001)
+        XCTAssertEqual(accentMatrix[18], 1)
+        XCTAssertEqual(accentMatrix[4], 0)
+        XCTAssertEqual(accentMatrix[9], 0)
+        XCTAssertEqual(accentMatrix[14], 0)
+        XCTAssertEqual(accentMatrix[19], 0)
+        XCTAssertEqual(try tintMatrix(unlensed)[3], 0.6, accuracy: 0.0001)
+        XCTAssertNil(icon.layer?.filters)
+        let badgePortals = portals(in: root, source: try XCTUnwrap(badge.layer))
+        XCTAssertEqual(badgePortals.count, 2)
+        XCTAssertTrue(badgePortals.allSatisfy { $0.filters?.isEmpty ?? true })
+        icon.layer?.backgroundColor = NSColor.systemRed.cgColor
+        XCTAssertEqual(portals(in: root, source: try XCTUnwrap(icon.layer)).count, 2)
+        lens.reset()
+        for portal in iconPortals + badgePortals {
+            XCTAssertNil(portal.value(forKey: "sourceLayer"))
+            XCTAssertNil(portal.superlayer)
+        }
+    }
+
+    func testNestedSourcesKeepCanvasCoordinatesAndMagnifyAroundTheirControl() throws {
+        let lens = try makeLens()
+        let control = addContent(to: lens)
+        control.layer?.backgroundColor = nil
+        let badge = NSView(frame: CGRect(x: 60, y: 5, width: 18, height: 18))
+        badge.wantsLayer = true
+        control.addSubview(badge)
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: badge)])
+        let copies = portals(in: try XCTUnwrap(lens.layer), source: try XCTUnwrap(badge.layer))
+        let unlensed = try XCTUnwrap(copies.first { $0.superlayer?.name == "lensUnlensedContent" })
+        let lensed = try XCTUnwrap(copies.first { $0.superlayer?.name != "lensUnlensedContent" })
+        XCTAssertEqual(unlensed.frame, CGRect(x: 64, y: 21, width: 18, height: 18))
+        XCTAssertEqual(lensed.position.x, 81.9, accuracy: 0.001)
+        XCTAssertEqual(lensed.position.y, 34.6, accuracy: 0.001)
+        XCTAssertEqual(lensed.transform.m11, 1.1, accuracy: 0.001)
+        control.frame.origin.x += 20
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: badge)])
+        XCTAssertEqual(unlensed.frame.minX, 84)
+        XCTAssertEqual(lensed.position.x, 101.9, accuracy: 0.001)
+    }
+
+    func testSourceTintVisibilityAndOrderRefreshWithoutChangingTheLensFrame() throws {
+        let lens = try makeLens()
+        let first = addContent(to: lens)
+        let second = addContent(to: lens)
+        let source = LiquidGlassLensContentSource(view: first, lensedTintColor: .red)
+        update(lens, progress: 1, contentSources: [source, LiquidGlassLensContentSource(view: second)])
+        let firstCopies = portals(in: try XCTUnwrap(lens.layer), source: try XCTUnwrap(first.layer))
+        let lensed = try XCTUnwrap(firstCopies.first { $0.superlayer?.name != "lensUnlensedContent" })
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: second), LiquidGlassLensContentSource(view: first, lensedTintColor: .blue)])
+        XCTAssertTrue(lensed.superlayer?.sublayers?.last === lensed)
+        XCTAssertEqual(try tintMatrix(lensed)[3], 0)
+        XCTAssertEqual(try tintMatrix(lensed)[13], 1)
+        first.isHidden = true
+        update(lens, progress: 1, contentSources: [source, LiquidGlassLensContentSource(view: second)])
+        XCTAssertEqual(lens.activePortalCount, 1)
+        XCTAssertNil(lensed.value(forKey: "sourceLayer"))
+        second.removeFromSuperview()
+        update(lens, progress: 1, contentSources: [source, LiquidGlassLensContentSource(view: second)])
+        XCTAssertEqual(lens.activePortalCount, 0)
     }
 
     func testRestingRendererKeepsNoTemporarySurfaces() throws {

@@ -36,8 +36,8 @@ final class LensSurface {
     private let contentField: CALayer
     private let foregroundField: CALayer
     private let runtime: LensRuntime
-    private var portals: [ObjectIdentifier: CALayer] = [:]
-    private var unlensedPortals: [ObjectIdentifier: CALayer] = [:]
+    private var portals: [ObjectIdentifier: LensPortal] = [:]
+    private var unlensedPortals: [ObjectIdentifier: LensPortal] = [:]
 
     var portalCount: Int {
         return portals.count
@@ -153,7 +153,7 @@ final class LensSurface {
         }
     }
 
-    func update(frame: CGRect, progress: CGFloat, canvasSize: CGSize, sources: [NSView], scale: CGFloat, animation: LiquidGlassLensAnimation) {
+    func update(frame: CGRect, progress: CGFloat, canvasSize: CGSize, sources: [LensContentSource], scale: CGFloat, animation: LiquidGlassLensAnimation) {
         let radius = frame.height / 2
         let bounds = CGRect(origin: .zero, size: frame.size)
         let fieldBounds = bounds.insetBy(dx: -Self.renderOutset, dy: -Self.renderOutset)
@@ -197,61 +197,49 @@ final class LensSurface {
         updatePortals(sources: sources, frame: frame, progress: progress, scale: scale, animation: animation)
     }
 
-    private func updatePortals(sources: [NSView], frame: CGRect, progress: CGFloat, scale: CGFloat, animation: LiquidGlassLensAnimation) {
-        let identifiers = Set(sources.compactMap { $0.layer.map(ObjectIdentifier.init) })
+    private func updatePortals(sources: [LensContentSource], frame: CGRect, progress: CGFloat, scale: CGFloat, animation: LiquidGlassLensAnimation) {
+        let identifiers = Set(sources.map { ObjectIdentifier($0.layer) })
         for identifier in Array(portals.keys) where !identifiers.contains(identifier) {
-            portals.removeValue(forKey: identifier)?.setValue(nil, forKey: "sourceLayer")
-            unlensedPortals.removeValue(forKey: identifier)?.setValue(nil, forKey: "sourceLayer")
+            portals.removeValue(forKey: identifier)?.remove()
+            unlensedPortals.removeValue(forKey: identifier)?.remove()
         }
-        for portal in content.sublayers ?? [] where portal !== contentField && !portals.values.contains(where: { $0 === portal }) {
-            portal.removeFromSuperlayer()
-        }
-        for portal in unlensedContent.sublayers ?? [] where !unlensedPortals.values.contains(where: { $0 === portal }) {
-            portal.removeFromSuperlayer()
-        }
-        for source in sources {
-            guard let sourceLayer = source.layer else {
-                continue
-            }
+        for (index, source) in sources.enumerated() {
+            let sourceLayer = source.layer
             let identifier = ObjectIdentifier(sourceLayer)
-            let portal: CALayer
+            let portal: LensPortal
             if let existing = portals[identifier] {
                 portal = existing
             } else {
-                portal = runtime.layer("CAPortalLayer")
-                portal.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-                portal.setValue(sourceLayer, forKey: "sourceLayer")
-                portal.setValue(true, forKey: "hidesSourceLayer")
-                portal.setValue(false, forKey: "matchesPosition")
-                portal.setValue(false, forKey: "matchesTransform")
-                content.addSublayer(portal)
+                portal = LensPortal(source: sourceLayer, runtime: runtime)
                 portals[identifier] = portal
-                let original = runtime.layer("CAPortalLayer")
-                original.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-                original.setValue(sourceLayer, forKey: "sourceLayer")
-                original.setValue(true, forKey: "hidesSourceLayer")
-                original.setValue(false, forKey: "matchesPosition")
-                original.setValue(false, forKey: "matchesTransform")
-                unlensedContent.addSublayer(original)
+                let original = LensPortal(source: sourceLayer, runtime: runtime)
                 unlensedPortals[identifier] = original
             }
-            portal.contentsScale = scale
-            if let original = unlensedPortals[identifier] {
-                original.frame = source.frame
-                original.bounds = source.bounds
-                original.contentsScale = scale
+            if content.sublayers?.indices.contains(index + 1) != true || content.sublayers?[index + 1] !== portal.layer {
+                content.insertSublayer(portal.layer, at: UInt32(index + 1))
             }
-            animation.update(portal, key: "bounds", value: NSValue(rect: source.bounds))
-            animation.update(portal, key: "position", value: NSValue(point: CGPoint(x: source.frame.midX - frame.minX, y: source.frame.midY - frame.minY)))
+            portal.updateTint(source.lensedTintColor)
+            portal.layer.contentsScale = scale
+            if let original = unlensedPortals[identifier] {
+                if unlensedContent.sublayers?.indices.contains(index) != true || unlensedContent.sublayers?[index] !== original.layer {
+                    unlensedContent.insertSublayer(original.layer, at: UInt32(index))
+                }
+                original.updateTint(source.unlensedTintColor)
+                original.layer.frame = source.frame
+                original.layer.bounds = source.bounds
+                original.layer.contentsScale = scale
+            }
             let magnification = 1 + 0.1 * progress
-            animation.update(portal, key: "transform", value: NSValue(caTransform3D: CATransform3DMakeScale(magnification, magnification, 1)))
+            let position = CGPoint(x: source.magnificationCenter.x + (source.frame.midX - source.magnificationCenter.x) * magnification - frame.minX, y: source.magnificationCenter.y + (source.frame.midY - source.magnificationCenter.y) * magnification - frame.minY)
+            animation.update(portal.layer, key: "bounds", value: NSValue(rect: source.bounds))
+            animation.update(portal.layer, key: "position", value: NSValue(point: position))
+            animation.update(portal.layer, key: "transform", value: NSValue(caTransform3D: CATransform3DMakeScale(magnification, magnification, 1)))
         }
     }
 
     func remove() {
         for portal in Array(portals.values) + Array(unlensedPortals.values) {
-            portal.setValue(nil, forKey: "sourceLayer")
-            portal.removeFromSuperlayer()
+            portal.remove()
         }
         portals.removeAll()
         unlensedPortals.removeAll()

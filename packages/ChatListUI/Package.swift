@@ -78,6 +78,7 @@ let package = Package(
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
                 .product(name: "TelegramMedia", package: "TelegramMedia", condition: nil),
                 .product(name: "TLottie", package: "TLottie", condition: nil),
+                .product(name: "LocalAnimations", package: "LocalAnimations", condition: nil),
                 .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil),
                 .product(name: "GeneralRows", package: "GeneralRows", condition: nil),
                 .product(name: "InAppSettings", package: "InAppSettings", condition: nil),

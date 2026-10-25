@@ -184,6 +184,10 @@ public class TabAnimatedItem: TabItem {
         return TabAnimatedIconView(sticker: sticker)
     }
 
+    public override func supportsLensTint(for view: NSView) -> Bool {
+        return view is TabAnimatedIconView
+    }
+
     public override func setSelected(_ selected: Bool, for view: NSView, animated: Bool) {
         if let view = view as? TabAnimatedIconView {
             view.setSelected(selected, animated: animated)

@@ -1,8 +1,9 @@
 import AppKit
 import XCTest
-import TGUIKit
+@testable import TGUIKit
 import TelegramMedia
 import TLottie
+import LocalAnimations
 @testable import ChatListUI
 
 private final class FloatingTabBarTestRow: TableRowItem {
@@ -12,6 +13,19 @@ private final class FloatingTabBarTestRow: TableRowItem {
 }
 
 private final class TabAnimationTestRenderer: TLottieBridge, R_LottieBridge {
+}
+
+private final class LensTestAnimatedItem: TabAnimatedItem {
+    let icon: TabAnimatedIconView
+
+    init(sticker: LocalAnimatedSticker, data: Data, image: CGImage) {
+        icon = TabAnimatedIconView(sticker: sticker, animationData: data)
+        super.init(sticker, image: image, selectedImage: image, controller: ViewController())
+    }
+
+    override func makeView() -> NSView {
+        return icon
+    }
 }
 
 final class FloatingTabBarIntegrationTests: XCTestCase {
@@ -94,6 +108,79 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
         }
         let firstFrame = try XCTUnwrap(player.currentFrame)
         XCTAssertTrue(waitUntil { player.currentFrame.map { $0 > firstFrame } ?? false })
+    }
+
+    func testLottieKeepsPlayingThroughBothTintedLensPortals() throws {
+        guard System.liquidGlassAvailable else {
+            throw XCTSkip("Native glass is unavailable")
+        }
+        let resource = TestImages.catalog.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/tgs/tab_chats.tgs")
+        let data = try Data(contentsOf: resource)
+        let previousRenderer = makeRLottie
+        makeRLottie = { json, _ in TabAnimationTestRenderer(json: json) }
+        System.liquidGlass = true
+        let bar = TabBarView(frame: NSRect(x: 0, y: 0, width: 333, height: 48))
+        bar.reduceMotion = { false }
+        bar.reduceTransparency = { false }
+        let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = bar
+        defer { window.close() }
+        let image = TestImages.named("Icon_SearchField").precomposed()
+        let items = [LocalAnimatedSticker.tab_contacts, .tab_chats, .tab_settings].map {
+            LensTestAnimatedItem(sticker: $0, data: data, image: image)
+        }
+        defer {
+            bar.cancelSelection(animated: false)
+            for item in items {
+                item.icon.set(nil)
+            }
+            System.liquidGlass = false
+            makeRLottie = previousRenderer
+        }
+        for item in items {
+            bar.addTab(item)
+        }
+        bar.setSelectedIndex(0, respondToDelegate: false, animated: false)
+        let player = items[1].icon
+        XCTAssertTrue(waitUntil { player.currentState == .finished })
+        let finalFrame = try XCTUnwrap(player.currentFrame)
+        let frame = bar.control(for: 1).frame
+        let point = NSPoint(x: frame.midX, y: frame.midY)
+        bar.beginSelection(at: point)
+        bar.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let root = try XCTUnwrap(bar.nativeLens?.layer)
+        let source = try XCTUnwrap(player.layer)
+        func portals(_ layer: CALayer) -> [CALayer] {
+            var result: [CALayer] = []
+            if layer.responds(to: NSSelectorFromString("sourceLayer")), layer.value(forKey: "sourceLayer") as? CALayer === source {
+                result.append(layer)
+            }
+            for child in layer.sublayers ?? [] {
+                result += portals(child)
+            }
+            return result
+        }
+        let copies = portals(root)
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertTrue(copies.allSatisfy { $0.filters?.count == 1 })
+        XCTAssertTrue(waitUntil { player.currentFrame.map { $0 < finalFrame } ?? false })
+        let firstFrame = try XCTUnwrap(player.currentFrame)
+        let animation = player.animation
+        bar.updateSelection(at: NSPoint(x: point.x + 10, y: point.y))
+        bar.layout()
+        XCTAssertTrue(waitUntil { player.currentFrame.map { $0 > firstFrame } ?? false })
+        XCTAssertTrue(player.animation === animation)
+        XCTAssertTrue(portals(root).elementsEqual(copies, by: { $0 === $1 }))
+        XCTAssertNil(player.layer?.filters)
+    }
+
+    func testLensTintSupportsAnimatedIconsAndPreservesAvatars() {
+        let image = TestImages.named("Icon_SearchField").precomposed()
+        let item = TabAnimatedItem(.tab_settings, image: image, selectedImage: image, controller: ViewController())
+        XCTAssertTrue(item.supportsLensTint(for: TabAnimatedIconView(sticker: .tab_settings)))
+        XCTAssertFalse(item.supportsLensTint(for: AvatarTabContainer(frame: NSRect(x: 0, y: 0, width: 30, height: 30))))
     }
 
     func testLastRowCanScrollAboveTheFloatingBar() {

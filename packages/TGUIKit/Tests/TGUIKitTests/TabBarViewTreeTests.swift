@@ -82,6 +82,17 @@ final class TabBarViewTreeTests: XCTestCase {
         return NSMakePoint(frame.midX, frame.midY)
     }
 
+    private func portals(in layer: CALayer, source: CALayer) -> [CALayer] {
+        var result: [CALayer] = []
+        if layer.responds(to: NSSelectorFromString("sourceLayer")), layer.value(forKey: "sourceLayer") as? CALayer === source {
+            result.append(layer)
+        }
+        for child in layer.sublayers ?? [] {
+            result += portals(in: child, source: source)
+        }
+        return result
+    }
+
     private func makePlaybackBar(selected: Int = 0) -> (TabBarView, [CustomTabItem]) {
         let bar = TabBarView(frame: NSMakeRect(0, 0, 333, 48))
         bar.reduceMotion = { false }
@@ -161,6 +172,52 @@ final class TabBarViewTreeTests: XCTestCase {
         bar.beginSelection(at: center(bar, 2))
         XCTAssertEqual(background.opacity, 1)
         XCTAssertEqual(background.frame.height, 40)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testNativeLensTintsOverlappingIconsWhileKeepingTheBadgeUntinted() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = bar
+        defer { window.close() }
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 1))
+        bar.updateSelection(at: NSPoint(x: (center(bar, 1).x + center(bar, 2).x) / 2, y: center(bar, 1).y))
+        bar.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let root = try XCTUnwrap(bar.nativeLens?.layer)
+        for index in [1, 2] {
+            let icon = bar.control(for: index).subviews[0]
+            let copies = portals(in: root, source: try XCTUnwrap(icon.layer))
+            XCTAssertEqual(copies.count, 2)
+            XCTAssertTrue(copies.allSatisfy { $0.filters?.count == 1 })
+            XCTAssertNil(icon.layer?.filters)
+        }
+        let badge = bar.control(for: 2).subviews[1]
+        let copies = portals(in: root, source: try XCTUnwrap(badge.layer))
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertTrue(copies.allSatisfy { $0.filters?.isEmpty ?? true })
+        bar.cancelSelection(animated: false)
+        XCTAssertTrue(portals(in: root, source: try XCTUnwrap(badge.layer)).isEmpty)
+    }
+
+    func testNativeLensPreservesCustomIconsWithoutTemplateTinting() throws {
+        defer { System.liquidGlass = false }
+        let (bar, _) = makePlaybackBar()
+        let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = bar
+        defer { window.close() }
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 1))
+        bar.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let icon = bar.control(for: 1).subviews[0]
+        let copies = portals(in: try XCTUnwrap(bar.nativeLens?.layer), source: try XCTUnwrap(icon.layer))
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertTrue(copies.allSatisfy { $0.filters?.isEmpty ?? true })
         bar.cancelSelection(animated: false)
     }
 

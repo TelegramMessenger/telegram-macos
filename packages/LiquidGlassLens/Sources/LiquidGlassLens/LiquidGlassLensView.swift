@@ -13,7 +13,10 @@ public final class LiquidGlassLensView: NSView {
         let layerIdentifier: ObjectIdentifier?
         let frame: CGRect
         let bounds: CGRect
+        let magnificationCenter: CGPoint
         let isHidden: Bool
+        let lensedTintColor: NSColor?
+        let unlensedTintColor: NSColor?
     }
 
     private struct State: Equatable {
@@ -93,13 +96,24 @@ public final class LiquidGlassLensView: NSView {
         }
     }
 
-    public func update(lensFrame: CGRect, interactionProgress: CGFloat, appearance: NSAppearance, backingScale: CGFloat, animation: LiquidGlassLensAnimation, restingBlurRadius: CGFloat = 0, restingTintColor: NSColor? = nil) {
+    public func update(lensFrame: CGRect, interactionProgress: CGFloat, appearance: NSAppearance, backingScale: CGFloat, animation: LiquidGlassLensAnimation, restingBlurRadius: CGFloat = 0, restingTintColor: NSColor? = nil, contentSources: [LiquidGlassLensContentSource]? = nil) {
         guard lensFrame.width.isFinite, lensFrame.height.isFinite, lensFrame.minX.isFinite, lensFrame.minY.isFinite,
               interactionProgress.isFinite, backingScale.isFinite, restingBlurRadius.isFinite else {
             reset()
             return
         }
-        let sources = contentView.subviews
+        let sources = (contentSources ?? contentView.subviews.map { LiquidGlassLensContentSource(view: $0) }).filter {
+            $0.view !== contentView && $0.view.isDescendant(of: contentView)
+        }
+        let sourceStates = sources.map { source -> SourceState in
+            let view = source.view
+            var root = view
+            while let parent = root.superview, parent !== contentView {
+                root = parent
+            }
+            let rootFrame = root.convert(root.bounds, to: contentView)
+            return SourceState(identifier: ObjectIdentifier(view), layerIdentifier: view.layer.map(ObjectIdentifier.init), frame: view.convert(view.bounds, to: contentView), bounds: view.bounds, magnificationCenter: CGPoint(x: rootFrame.midX, y: rootFrame.midY), isHidden: view.isHiddenOrHasHiddenAncestor, lensedTintColor: source.lensedTintColor?.usingColorSpace(.sRGB), unlensedTintColor: source.unlensedTintColor?.usingColorSpace(.sRGB))
+        }
         let next = State(
             frame: lensFrame,
             progress: min(1, max(0, interactionProgress)),
@@ -108,13 +122,19 @@ public final class LiquidGlassLensView: NSView {
             appearance: appearance.name,
             restingBlurRadius: max(0, restingBlurRadius),
             restingTintColor: restingTintColor,
-            sources: sources.map { SourceState(identifier: ObjectIdentifier($0), layerIdentifier: $0.layer.map(ObjectIdentifier.init), frame: $0.frame, bounds: $0.bounds, isHidden: $0.isHidden) }
+            sources: sourceStates
         )
         guard next != state else {
             return
         }
         let previous = state
         state = next
+        let visibleSources = zip(sources, sourceStates).compactMap { source, state -> LensContentSource? in
+            guard !state.isHidden, let layer = source.view.layer else {
+                return nil
+            }
+            return LensContentSource(layer: layer, frame: state.frame, bounds: state.bounds, magnificationCenter: state.magnificationCenter, lensedTintColor: state.lensedTintColor, unlensedTintColor: state.unlensedTintColor)
+        }
         generation += 1
         cleanup?.cancel()
         cleanup = nil
@@ -150,12 +170,12 @@ public final class LiquidGlassLensView: NSView {
             unlensedView.layer?.addSublayer(surface.unlensedContent)
             surfaceView.layer?.addSublayer(surface.surface)
             let initialFrame = previous?.frame ?? next.frame
-            surface.update(frame: initialFrame, progress: 0, canvasSize: next.size, sources: sources.filter { !$0.isHidden }, scale: next.scale, animation: .immediate)
+            surface.update(frame: initialFrame, progress: 0, canvasSize: next.size, sources: visibleSources, scale: next.scale, animation: .immediate)
             contentMask.path = maskPath(frame: initialFrame)
             surface.unlensedContent.mask = contentMask
         }
         if let surface {
-            surface.update(frame: next.frame, progress: next.progress, canvasSize: next.size, sources: sources.filter { !$0.isHidden }, scale: next.scale, animation: animation)
+            surface.update(frame: next.frame, progress: next.progress, canvasSize: next.size, sources: visibleSources, scale: next.scale, animation: animation)
             animation.update(contentMask, key: "path", value: maskPath(frame: next.frame))
         }
         CATransaction.commit()
