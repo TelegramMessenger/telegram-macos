@@ -4,6 +4,8 @@ import XCTest
 import TelegramMedia
 import TLottie
 import LocalAnimations
+import ColorPalette
+import TelegramTheme
 @testable import ChatListUI
 
 private final class FloatingTabBarTestRow: TableRowItem {
@@ -114,6 +116,16 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
         guard System.liquidGlassAvailable else {
             throw XCTSkip("Native glass is unavailable")
         }
+        let previousTheme = theme
+        defer { telegramUpdateTheme(previousTheme, window: nil, animated: false) }
+        for palette in [dayClassicPalette, darkPalette] {
+            let currentTheme = generateTheme(palette: palette, cloudTheme: nil, bubbled: false, fontSize: 13, wallpaper: previousTheme.wallpaper, liquidGlass: true)
+            telegramUpdateTheme(currentTheme, window: nil, animated: false)
+            try assertLottieKeepsPlayingThroughTintedPortals(outsideColor: palette.isDark ? .white : palette.grayIcon, accentColor: palette.accentIcon)
+        }
+    }
+
+    private func assertLottieKeepsPlayingThroughTintedPortals(outsideColor: NSColor, accentColor: NSColor) throws {
         let resource = TestImages.catalog.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/tgs/tab_chats.tgs")
         let data = try Data(contentsOf: resource)
         let previousRenderer = makeRLottie
@@ -165,6 +177,16 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
         let copies = portals(root)
         XCTAssertEqual(copies.count, 2)
         XCTAssertTrue(copies.allSatisfy { $0.filters?.count == 1 })
+        for copy in copies {
+            let color = try XCTUnwrap((copy.superlayer?.name == "lensUnlensedContent" ? outsideColor : accentColor).usingColorSpace(.sRGB))
+            let filter = try XCTUnwrap(copy.filters?.first as? NSObject)
+            let value = try XCTUnwrap(filter.value(forKey: "inputColorMatrix") as? NSValue)
+            var matrix = [Float](repeating: 0, count: 20)
+            matrix.withUnsafeMutableBytes { value.getValue($0.baseAddress!, size: $0.count) }
+            for (index, component) in [(3, color.redComponent), (8, color.greenComponent), (13, color.blueComponent), (18, color.alphaComponent)] {
+                XCTAssertEqual(CGFloat(matrix[index]), component, accuracy: 0.0001)
+            }
+        }
         XCTAssertTrue(waitUntil { player.currentFrame.map { $0 < finalFrame } ?? false })
         let firstFrame = try XCTUnwrap(player.currentFrame)
         let animation = player.animation

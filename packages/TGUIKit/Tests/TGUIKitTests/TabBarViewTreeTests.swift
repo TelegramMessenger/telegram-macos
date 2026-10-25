@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import ColorPalette
 @testable import TGUIKit
 
 private final class TestBadgeNode: Node {
@@ -91,6 +92,17 @@ final class TabBarViewTreeTests: XCTestCase {
             result += portals(in: child, source: source)
         }
         return result
+    }
+
+    private func assertTint(_ portal: CALayer, matches color: NSColor, file: StaticString = #filePath, line: UInt = #line) throws {
+        let filter = try XCTUnwrap(portal.filters?.first as? NSObject, file: file, line: line)
+        let value = try XCTUnwrap(filter.value(forKey: "inputColorMatrix") as? NSValue, file: file, line: line)
+        let color = try XCTUnwrap(color.usingColorSpace(.sRGB), file: file, line: line)
+        var matrix = [Float](repeating: 0, count: 20)
+        matrix.withUnsafeMutableBytes { value.getValue($0.baseAddress!, size: $0.count) }
+        for (index, component) in [(3, color.redComponent), (8, color.greenComponent), (13, color.blueComponent), (18, color.alphaComponent)] {
+            XCTAssertEqual(CGFloat(matrix[index]), component, accuracy: 0.0001, file: file, line: line)
+        }
     }
 
     private func makePlaybackBar(selected: Int = 0) -> (TabBarView, [CustomTabItem]) {
@@ -219,6 +231,40 @@ final class TabBarViewTreeTests: XCTestCase {
         XCTAssertEqual(copies.count, 2)
         XCTAssertTrue(copies.allSatisfy { $0.filters?.isEmpty ?? true })
         bar.cancelSelection(animated: false)
+    }
+
+    func testNativeLensOutsideTintMatchesDarkAndLightThemes() throws {
+        let previousTheme = presentation
+        defer {
+            System.liquidGlass = false
+            updateTheme(previousTheme)
+        }
+        for palette in [darkPalette, nightAccentPalette, whitePalette] {
+            updateTheme(PresentationTheme(colors: palette, search: previousTheme.search, inputTheme: previousTheme.inputTheme))
+            let bar = makeBar()
+            let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = bar
+            defer { window.close() }
+            try enableNativeLens(bar)
+            bar.beginSelection(at: center(bar, 1))
+            bar.updateSelection(at: NSPoint(x: (center(bar, 1).x + center(bar, 2).x) / 2, y: center(bar, 1).y))
+            bar.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let root = try XCTUnwrap(bar.nativeLens?.layer)
+            for index in 0 ..< bar.count {
+                let icon = bar.control(for: index).subviews[0]
+                let copies = portals(in: root, source: try XCTUnwrap(icon.layer))
+                XCTAssertEqual(copies.count, 2)
+                for copy in copies {
+                    let color = copy.superlayer?.name == "lensUnlensedContent" ? (palette.isDark ? NSColor.white : palette.grayIcon) : palette.accentIcon
+                    try assertTint(copy, matches: color)
+                }
+                XCTAssertNil(icon.layer?.filters)
+            }
+            bar.cancelSelection(animated: false)
+            XCTAssertTrue(portals(in: root, source: try XCTUnwrap(bar.control(for: 1).subviews[0].layer)).isEmpty)
+        }
     }
 
     func testDisablingGlassDuringADragCancelsAndRestoresTheOriginalControls() throws {
