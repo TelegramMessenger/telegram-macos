@@ -7579,6 +7579,10 @@ public final class L10n {
   public static var dataAndStorageAutomaticDownload: String  { return L10n.tr("Localizable", "DataAndStorage.AutomaticDownload") }
   /// Download Folder
   public static var dataAndStorageDownloadFolder: String  { return L10n.tr("Localizable", "DataAndStorage.DownloadFolder") }
+  public static var dataAndStorageDownloadFolderCustom: String  { return L10n.tr("Localizable", "DataAndStorage.DownloadFolder.Custom") }
+  public static var dataAndStorageDownloadFolderDefault: String  { return L10n.tr("Localizable", "DataAndStorage.DownloadFolder.Default") }
+  public static var dataAndStorageDownloadFolderTemporary: String  { return L10n.tr("Localizable", "DataAndStorage.DownloadFolder.Temporary") }
+  public static var dataAndStorageDownloadFolderTemporaryInfo: String  { return L10n.tr("Localizable", "DataAndStorage.DownloadFolder.TemporaryInfo") }
   /// Network Usage
   public static var dataAndStorageNetworkUsage: String  { return L10n.tr("Localizable", "DataAndStorage.NetworkUsage") }
   /// Show 18+ Content

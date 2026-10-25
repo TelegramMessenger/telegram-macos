@@ -17,7 +17,6 @@ import AvatarUI
 import FoundationUtils
 import TelegramIconsTheme
 import ProxyUtils
-import FilePanels
 import GraphCore
 
 
@@ -450,12 +449,12 @@ private func entries(state: State, data: DataAndStorageData, proxy: ProxySetting
     entries.append(.photos(sectionId, data.automaticMediaDownloadSettings.categories.photo, data.automaticMediaDownloadSettings.automaticDownload, viewType: .innerItem))
     entries.append(.videos(sectionId, data.automaticMediaDownloadSettings.categories.video, data.automaticMediaDownloadSettings.automaticDownload, data.automaticMediaDownloadSettings.categories.video.fileSize, viewType: .innerItem))
     entries.append(.files(sectionId, data.automaticMediaDownloadSettings.categories.files, data.automaticMediaDownloadSettings.automaticDownload, data.automaticMediaDownloadSettings.categories.files.fileSize, viewType: .innerItem))
-    entries.append(.resetDownloadSettings(sectionId, data.automaticMediaDownloadSettings != AutomaticMediaDownloadSettings.defaultSettings, viewType: .lastItem))
+    entries.append(.resetDownloadSettings(sectionId, data.automaticMediaDownloadSettings.withUpdatedDownloadFolder(AutomaticMediaDownloadSettings.defaultSettings.downloadFolder) != AutomaticMediaDownloadSettings.defaultSettings, viewType: .lastItem))
     
     entries.append(.sectionId(sectionId))
     sectionId += 1
     
-    entries.append(.downloadFolder(sectionId, data.automaticMediaDownloadSettings.downloadFolder, viewType: .singleItem))
+    entries.append(.downloadFolder(sectionId, data.automaticMediaDownloadSettings.usesTemporaryDownloadFolder ? strings().dataAndStorageDownloadFolderTemporary : data.automaticMediaDownloadSettings.downloadFolder, viewType: .singleItem))
 
     
     entries.append(.sectionId(sectionId))
@@ -646,16 +645,14 @@ open class DataAndStorageViewController<Context: AccountContextProtocol>: TableV
             }).start()
         }, resetDownloadSettings: {
             _ = (verifyAlertSignal(for: context.window, header: appName, information: strings().dataAndStorageConfirmResetSettings, ok: strings().modalOK, cancel: strings().modalCancel) |> filter { $0 == .basic } |> mapToSignal { _ -> Signal<Void, NoError> in
-                return updateMediaDownloadSettingsInteractively(postbox: context.account.postbox, { _ -> AutomaticMediaDownloadSettings in
-                    return AutomaticMediaDownloadSettings.defaultSettings
+                return updateMediaDownloadSettingsInteractively(postbox: context.account.postbox, { current -> AutomaticMediaDownloadSettings in
+                    return AutomaticMediaDownloadSettings.defaultSettings.withUpdatedDownloadFolder(current.downloadFolder)
                 })
             }).start()
         }, selectDownloadFolder: {
-            selectFolder(for: context.window, completion: { newPath in
-                _ = updateMediaDownloadSettingsInteractively(postbox: context.account.postbox, { current -> AutomaticMediaDownloadSettings in
-                    return current.withUpdatedDownloadFolder(newPath)
-                }).start()
-            })
+            actionsDisposable.add((automaticDownloadSettings(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+                pushControllerImpl(DownloadFolderController(context: context, settings: settings))
+            }))
             
         }, toggleAutoplayGifs: { enable in
             _ = updateAutoplayMediaSettingsInteractively(postbox: context.account.postbox, {
