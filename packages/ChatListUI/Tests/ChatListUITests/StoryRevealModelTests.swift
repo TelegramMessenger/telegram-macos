@@ -99,6 +99,39 @@ final class StoryRevealModelTests: XCTestCase {
         XCTAssertEqual(model.fraction, 10 / StoryRevealModel.span, accuracy: 1e-9)
     }
 
+    func testPullingDownWhileFullyRevealedHandsTheGestureToTheList() {
+        let model = StoryRevealModel(revealed: true)
+        let decisions = self.drag(model, [10, 10, 10, 10], end: false)
+        XCTAssertEqual(decisions, Array(repeating: .passThrough, count: 4))
+        XCTAssertEqual(model.fraction, 1)
+        XCTAssertFalse(model.isTracking)
+        XCTAssertEqual(model.handle(self.event(.ended, dy: 0), tableOffset: -20), .passThrough)
+        XCTAssertNil(model.spring)
+    }
+
+    func testAnEmptyFirstEventWhileFullyRevealedGoesToTheList() {
+        let model = StoryRevealModel(revealed: true)
+        XCTAssertEqual(model.handle(self.event(.began, dy: 0), tableOffset: 0), .passThrough)
+        XCTAssertEqual(model.handle(self.event(.changed, dy: 10), tableOffset: 0), .passThrough)
+        XCTAssertEqual(model.fraction, 1)
+    }
+
+    func testPullingUpAfterPullingDownStillClosesTheStories() {
+        let model = StoryRevealModel(revealed: true)
+        XCTAssertEqual(model.handle(self.event(.began, dy: 10), tableOffset: 0), .passThrough)
+        XCTAssertEqual(model.handle(self.event(.changed, dy: -30), tableOffset: 0), .consumed)
+        XCTAssertEqual(model.fraction, 1 - 30 / StoryRevealModel.span, accuracy: 1e-9)
+        XCTAssertEqual(model.handle(self.event(.changed, dy: 30), tableOffset: 0), .consumed)
+        XCTAssertEqual(model.fraction, 1, accuracy: 1e-9)
+    }
+
+    func testOpeningStoriesInOneGestureKeepsDrivingTheHeader() {
+        let model = StoryRevealModel()
+        let decisions = self.drag(model, [40, 40, 40, 40], end: false)
+        XCTAssertEqual(decisions, Array(repeating: .consumed, count: 4))
+        XCTAssertEqual(model.fraction, 1)
+    }
+
     func testAGestureThatStartsBelowTheTopNeverReveals() {
         let model = StoryRevealModel()
         var offset: CGFloat = 60

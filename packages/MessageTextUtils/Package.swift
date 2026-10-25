@@ -48,5 +48,9 @@ let package = Package(
                 .product(name: "InlineStickerLayer", package: "InlineStickerLayer", condition: nil),
             ],
             path: "Sources/MessageTextUtils"),
+        .testTarget(
+            name: "MessageTextUtilsTests",
+            dependencies: ["MessageTextUtils", .product(name: "TelegramUtils", package: "TelegramUtils")],
+            path: "Tests/MessageTextUtilsTests"),
     ]
 )

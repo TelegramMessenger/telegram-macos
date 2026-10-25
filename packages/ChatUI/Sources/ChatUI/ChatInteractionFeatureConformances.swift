@@ -34,4 +34,7 @@ extension ChatPresentationInterfaceState: ChatPresentationSnapshot {
     public var snapshotPeer: Peer? {
         return self.peer
     }
+    public var snapshotCachedData: (any CachedPeerData)? {
+        return self.cachedData
+    }
 }

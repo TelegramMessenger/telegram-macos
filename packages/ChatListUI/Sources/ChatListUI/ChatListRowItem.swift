@@ -471,7 +471,7 @@ public class ChatListRowItem: TableRowItem {
     public private(set) var hasActiveGroupCall: Bool = false
     
     private var presenceManager:PeerPresenceStatusManager?
-    private var relativeDateTimer: SwiftSignalKit.Timer?
+    private var relativeDateTimer: RelativeDateUpdateTimer?
 
     public let hideStatus: ItemHideStatus?
     
@@ -487,6 +487,7 @@ public class ChatListRowItem: TableRowItem {
     public let isArchiveItem: Bool
     
     public init(_ initialSize:NSSize, context: any AccountContextProtocol, stableId: UIChatListEntryId, pinnedType: ChatListPinnedType, groupId: EngineChatList.Group, groupItems: [EngineChatList.GroupItem.Item], messages: [Message], unreadCount: Int, activities: [PeerListState.InputActivities.Activity] = [], animateGroup: Bool = false, hideStatus: ItemHideStatus = .normal, hasFailed: Bool = false, filter: ChatListFilter = .allChats, appearMode: PeerListState.AppearMode = .normal, hideContent: Bool = false, getHideProgress:(()->CGFloat?)? = nil, openStory: @escaping(StoryInitialIndex?, Bool, Bool)->Void = { _, _, _ in }, storyState: EngineStorySubscriptions? = nil, isContact: Bool = false) {
+        let relativeDateReferenceTimestamp = Date().timeIntervalSince1970
         self.groupId = groupId
         self.peer = nil
         self.mode = .chat
@@ -579,7 +580,7 @@ public class ChatListRowItem: TableRowItem {
         self.titleMode = .normal
         super.init(initialSize)
 
-        setupRelativeDateTimer()
+        setupRelativeDateTimer(relativeTo: relativeDateReferenceTimestamp)
 
         if case .hidden(true) = hideStatus {
             hideItem(animated: false, reload: false)
@@ -732,6 +733,7 @@ public class ChatListRowItem: TableRowItem {
 
 
     public init(_ initialSize:NSSize, context: any AccountContextProtocol, stableId: UIChatListEntryId, mode: Mode, messages: [Message], index: ChatListIndex? = nil, readState:EnginePeerReadCounters? = nil, draft:EngineChatList.Draft? = nil, pinnedType:ChatListPinnedType = .none, renderedPeer:EngineRenderedPeer, peerPresence: EnginePeer.Presence? = nil, forumTopicData: EngineChatList.ForumTopicData? = nil, forumTopicItems:[EngineChatList.ForumTopicData] = [], activities: [PeerListState.InputActivities.Activity] = [], highlightText: String? = nil, associatedGroupId: EngineChatList.Group = .root, isMuted:Bool = false, hasFailed: Bool = false, hasUnreadMentions: Bool = false, hasUnreadReactions: Bool = false, hasUnreadVotes: Bool = false, showBadge: Bool = true, filter: ChatListFilter = .allChats, hideStatus: ItemHideStatus? = nil, titleMode: TitleMode = .normal, appearMode: PeerListState.AppearMode = .normal, hideContent: Bool = false, getHideProgress:(()->CGFloat?)? = nil, selectedForum: PeerId? = nil, autoremoveTimeout: Int32? = nil, story: EngineChatList.StoryStats? = nil, openStory: @escaping(StoryInitialIndex?, Bool, Bool)->Void = { _, _, _ in }, storyState: EngineStorySubscriptions? = nil, isContact: Bool = false, displayAsTopics: Bool = false, folders: FilterData? = nil, communityCategories: [PeerId: ChatListFilterPeerCategories] = [:], canPreviewChat: Bool = false) {
+        let relativeDateReferenceTimestamp = Date().timeIntervalSince1970
         
         
         if !forumTopicItems.isEmpty {
@@ -1106,7 +1108,7 @@ public class ChatListRowItem: TableRowItem {
         
         super.init(initialSize)
 
-        setupRelativeDateTimer()
+        setupRelativeDateTimer(relativeTo: relativeDateReferenceTimestamp)
 
         if case .hidden(true) = hideStatus {
             hideItem(animated: false, reload: false)
@@ -2305,6 +2307,7 @@ public class ChatListRowItem: TableRowItem {
                                                 peers.removeAll(where: { $0 == peerId })
                                                 folderData.includePeers.setPeers(peers)
                                             } else {
+                                                folderData.excludePeers.removeAll(where: { $0 == peerId })
                                                 folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
                                             }
                                             list[i] = list[i].withUpdatedData(folderData)
@@ -2344,6 +2347,30 @@ public class ChatListRowItem: TableRowItem {
                 }
                 item.submenu = menu
                 secondGroup.append(item)
+            }
+
+            if let peerId = peerId, peerId.namespace != Namespaces.Peer.SecretChat, !isAd, case .chat = mode, case let .filter(filterId, _, _, _) = filter {
+                secondGroup.append(ContextMenuItem(strings().chatListFilterRemoveFromFolder, handler: {
+                    let limit = context.isPremium ? context.premiumLimits.dialog_filters_chats_limit_premium : context.premiumLimits.dialog_filters_chats_limit_default
+                    _ = context.engine.peers.updateChatListFiltersInteractively({ list in
+                        var list = list
+                        if let index = list.firstIndex(where: { $0.id == filterId }), var data = list[index].data {
+                            if data.isShared || data.categories.isEmpty {
+                                _ = data.includePeers.removePeer(peerId)
+                            } else {
+                                if !data.excludePeers.contains(peerId), data.excludePeers.count >= limit {
+                                    Queue.mainQueue().async {
+                                        alert(for: context.window, info: strings().chatListFilterExcludeLimitReachedNew(Int(limit)))
+                                    }
+                                    return list
+                                }
+                                _ = data.addExcludePeer(peerId: peerId)
+                            }
+                            list[index] = list[index].withUpdatedData(data)
+                        }
+                        return list
+                    }).start()
+                }, itemImage: MenuAnimation.menu_unarchive.value))
             }
             
             let blocks:[[ContextMenuItem]] = [headGroup, zeroGroup, firstGroup,
@@ -2530,33 +2557,23 @@ public class ChatListRowItem: TableRowItem {
         return true
     }
 
-    private func setupRelativeDateTimer() {
+    private func setupRelativeDateTimer(relativeTo timestamp: TimeInterval) {
         guard let message = messages.first else { return }
-        var relativeDateUpdatePeriod: Double?
+        var relativeDateTimestamps: [Int32] = []
         for attribute in message.attributes {
             if let attribute = attribute as? TextEntitiesMessageAttribute {
                 for entity in attribute.entities {
                     if case let .FormattedDate(format, timestamp) = entity.type, case .relative = format {
-                        let currentTimestamp = context.timestamp
-                        let value = abs(currentTimestamp - timestamp)
-                        if value < 120 {
-                            relativeDateUpdatePeriod = 1
-                        } else if value <= 60 * 60 {
-                            relativeDateUpdatePeriod = 60
-                        } else {
-                            relativeDateUpdatePeriod = 30 * 60
-                        }
+                        relativeDateTimestamps.append(timestamp)
                     }
                 }
                 break
             }
         }
-        if let period = relativeDateUpdatePeriod {
-            self.relativeDateTimer = SwiftSignalKit.Timer(timeout: period, repeat: true, completion: { [weak self] in
-                self?.updateRelativeDates()
-            }, queue: .mainQueue())
-            self.relativeDateTimer?.start()
-        }
+        relativeDateTimer?.invalidate()
+        relativeDateTimer = RelativeDateUpdateTimer(timestamps: relativeDateTimestamps, relativeTo: timestamp, update: { [weak self] in
+            self?.updateRelativeDates()
+        })
     }
 
     private func updateRelativeDates() {

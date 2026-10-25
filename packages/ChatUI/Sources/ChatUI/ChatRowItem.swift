@@ -446,8 +446,8 @@ public class ChatRowItem: TableRowItem {
                 height += additional
             }
    
-            if replyModel?.isSideAccessory == true {
-                height = max(48, height)
+            if let replyModel, replyModel.isSideAccessory {
+                height = max(48, height, replyOffset + replyModel.size.height + defaultContentTopOffset)
             }
         }
         if let _ = commentsBubbleData {
@@ -1786,8 +1786,8 @@ public class ChatRowItem: TableRowItem {
             if let reactions = reactions, !reactions.reactions.isEmpty, let available = context.reactions.available {
                 let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), openInfo: { peerId in
                     ChatHistoryUIHooks.shared.pushReactionPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, message.id)
-                }, runEffect: { [weak chatInteraction] value in
-                    chatInteraction?.runReactionEffect(value, message.id)
+                }, runEffect: { [weak chatInteraction] value, isLarge in
+                    chatInteraction?.runReactionEffect(value, message.id, isLarge)
                 }, tagAction: { [weak chatInteraction] reaction in
                     if !context.isPremium {
                         prem(with: PremiumBoardingController(context: context, source: .saved_tags, openFeatures: true), for: context.window)
@@ -2712,19 +2712,29 @@ public class ChatRowItem: TableRowItem {
                 }
                 if let attribute = attribute as? ViewCountMessageAttribute {
                     let attr: NSAttributedString = .initialize(string: max(1, attribute.count).prettyNumber, color: isStateOverlayLayout ? stateOverlayTextColor : !hasBubble ? theme.colors.grayText : theme.chat.grayText(isIncoming, object.renderType == .bubble), font: renderType == .bubble ? .normal(.small) : .normal(.short))
-                    
+
                     self.channelViews = TextViewLayout(attr, maximumNumberOfLines: 1)
                     var author: String = ""
-                    loop: for attr in message.attributes {
+                    var forwardCount: Int?
+                    for attr in message.attributes {
                         if let attr = attr as? AuthorSignatureMessageAttribute {
                             author = "\(attr.signature), "
-                            break loop
+                        } else if let attr = attr as? ForwardCountMessageAttribute {
+                            forwardCount = attr.count
                         }
                     }
-                    
-                    
+
+                    var statsParts: [String] = []
                     if attribute.count >= 1000 {
-                        fullDate = "\(author)\(attribute.count.separatedNumber) \(strings().chatMessageTooltipViews), \(fullDate)"
+                        statsParts.append("\(attribute.count.separatedNumber) \(strings().chatMessageTooltipViews)")
+                    }
+                    if let forwardCount = forwardCount, forwardCount > 0 {
+                        let shares = strings().channelStatsSharesCountOther(forwardCount).replacingOccurrences(of: "\(forwardCount)", with: forwardCount.separatedNumber)
+                        statsParts.append(shares)
+                    }
+
+                    if !statsParts.isEmpty {
+                        fullDate = "\(author)\(statsParts.joined(separator: ", ")), \(fullDate)"
                     } else {
                         fullDate = "\(author)\(fullDate)"
                     }
@@ -3181,10 +3191,20 @@ public class ChatRowItem: TableRowItem {
                     replyModel.measureSize(fill_size, sizeToFit: false)
                 }
             } else {
-                if _contentSize.width == 0 {
-                    replyModel.measureSize(200, sizeToFit: true)
-                } else {
-                    replyModel.measureSize(_contentSize.width - bubbleContentInset * 2, sizeToFit: true)
+                let bubbleFrame = ChatRowGeometry.bubbleFrame(.init(
+                    rowWidth: width,
+                    layoutFrame: NSMakeRect(defLeftInset, 0, bubbleFrameWidth, 0),
+                    leftInset: leftInset,
+                    isIncoming: isIncoming,
+                    isCenteredThread: chatInteraction.mode.isThreadMode && chatInteraction.chatLocation.threadMsgId == message?.id
+                ))
+                let contentFrame = ChatRowGeometry.contentFrame(.init(item: self, bubbleFrame: bubbleFrame))
+                let sideFrame = ChatRowGeometry.sideAccessoryFrame(.init(item: self, size: .zero, offset: 0, contentFrame: contentFrame))
+                let availableWidth = max(1, isIncoming ? width - rightInset - sideFrame.minX : sideFrame.maxX - leftInset)
+                let preferredWidth = _contentSize.width == 0 ? 200 : _contentSize.width - bubbleContentInset * 2
+                replyModel.measureSize(min(preferredWidth, availableWidth), sizeToFit: true)
+                if replyModel.size.width > availableWidth {
+                    replyModel.measureSize(availableWidth, sizeToFit: false)
                 }
             }
         }
@@ -4136,7 +4156,7 @@ public class ChatRowItem: TableRowItem {
                 
                 if accessToAll {
                     reveal = { view in
-                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, { sticker, fromRect in
+                        let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
                             let parsedFile = sticker.file._parse()
                             let value: UpdateMessageReaction
                             if let bundle = parsedFile.stickerText {
@@ -4166,9 +4186,14 @@ public class ChatRowItem: TableRowItem {
                                     })
                                 } else {
                                     let updated = ChatHistoryUIHooks.shared.messageNewReactions(message, value, isTags)
-                                    context.reactions.react(message.id, values: updated, fromRect: fromRect, storeAsRecentlyUsed: true)
+                                    context.reactions.react(message.id, values: updated, fromRect: fromRect, storeAsRecentlyUsed: true, isLarge: isLarge)
                                 }
                             }
+                        }
+                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, { sticker, fromRect in
+                            react(sticker, fromRect, false)
+                        }, isTags ? nil : { sticker, fromRect in
+                            react(sticker, fromRect, true)
                         })
 //                        let transition = ContainedViewLayoutTransition.animated(duration: 0.2, curve: .easeOut)
 //                        transition.updateFrame(view: view, frame: CGRect(origin: view.frame.origin, size: NSMakeSize(view.frame.width, 60)))
@@ -4190,6 +4215,8 @@ public class ChatRowItem: TableRowItem {
                             context.reactions.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(), isTags), fromRect: fromRect, storeAsRecentlyUsed: true)
                         }
                     }
+                }, addLarge: isTags ? nil : { value, fromRect in
+                    context.reactions.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(), isTags), fromRect: fromRect, storeAsRecentlyUsed: true, isLarge: true)
                 }, radiusLayer: nil, revealReactions: reveal, aboveText: aboveLayout, message: message)
                 
                 

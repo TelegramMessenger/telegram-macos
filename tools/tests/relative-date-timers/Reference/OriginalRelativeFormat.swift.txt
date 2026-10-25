@@ -1,0 +1,23 @@
+let value = currentTimestamp - date
+        if value > 0 {
+            if value < 60 {
+                return strings().formattedDateSecondsAgoOther(Int(value))
+            } else if value <= 1 * 60 * 60 {
+                return strings().formattedDateMinutesAgoOther(Int(round(Float(value) / 60)))
+            } else if value <= 24 * 60 * 60 {
+                return strings().formattedDateHoursAgoOther(Int(round(Float(value) / (60 * 60))))
+            } else {
+                return strings().formattedDateDaysAgoOther(Int(round(Float(value) / (24 * 60 * 60))))
+            }
+        } else {
+            let value = abs(value)
+            if value < 60 {
+                return strings().formattedDateInSecondsOther(Int(value))
+            } else if value <= 1 * 60 * 60 {
+                return strings().formattedDateInMinutesOther(Int(round(Float(value) / 60)))
+            } else if value <= 24 * 60 * 60 {
+                return strings().formattedDateInHoursOther(Int(round(Float(value) / (60 * 60))))
+            } else {
+                return strings().formattedDateInDaysOther(Int(round(Float(value) / (24 * 60 * 60))))
+            }
+        }

@@ -2173,6 +2173,7 @@ public final class L10n {
   public static var channelEventFilterAdminsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.AdminsHeader") }
   /// EVENTS
   public static var channelEventFilterEventsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.EventsHeader") }
+  public static var channelEventFilterFilters: String  { return L10n.tr("Localizable", "Channel.EventFilter.Filters") }
   /// Empty
   public static var channelEventLogEmpty: String  { return L10n.tr("Localizable", "Channel.EventLog.Empty") }
   /// **No actions found**\n\nNo recent actions that match your query were found.

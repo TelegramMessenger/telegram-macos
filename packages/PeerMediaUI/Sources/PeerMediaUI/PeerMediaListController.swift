@@ -503,6 +503,9 @@ open class PeerMediaListController<Context: AccountContextProtocol>: TableViewCo
                 interactions.showMedia = { message in
                     self?.chatInteraction.focusMessageId(nil, .init(messageId: message.id, string: nil), .none(nil))
                 }
+                interactions.showMessage = { message in
+                    self?.chatInteraction.focusMessageId(nil, .init(messageId: message.id, string: nil), .center(id: 0, innerId: nil, animated: false, focus: .init(focus: true), inset: 0))
+                }
                 showChatGallery(context: context, message: message, self?.genericView, interactions, type: type, chatMode: mode, chatLocation: chatLocation, contextHolder: contextHolder, cachedPeerData: self?.chatInteraction.presentation.cachedData)
             }
         }, music: { message, type in

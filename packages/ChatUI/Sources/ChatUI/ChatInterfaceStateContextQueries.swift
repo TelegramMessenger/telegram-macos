@@ -388,7 +388,7 @@ public enum ContextQueryForSearchMentionFilter {
 }
 
 
-public func chatContextQueryForSearchMention(chatLocations: [ChatLocation], _ inputQuery: ChatPresentationInputQuery, currentQuery: ChatPresentationInputQuery?, context: any AccountContextProtocol, filter: ContextQueryForSearchMentionFilter = .plain(includeNameless: true, includeInlineBots: false))  -> (ChatPresentationInputQuery?, Signal<(ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult?, NoError>)?  {
+public func chatContextQueryForSearchMention(chatLocations: [ChatLocation], _ inputQuery: ChatPresentationInputQuery, currentQuery: ChatPresentationInputQuery?, context: any AccountContextProtocol, filter: ContextQueryForSearchMentionFilter = .plain(includeNameless: true, includeInlineBots: false), includeSelf: Bool = false)  ->(ChatPresentationInputQuery?, Signal<(ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult?, NoError>)?  {
     switch inputQuery {
     case let .mention(query: query, includeRecent: _):
         let normalizedQuery = query.lowercased()
@@ -446,10 +446,16 @@ public func chatContextQueryForSearchMention(chatLocations: [ChatLocation], _ in
         
         let peers = combineLatest(chatLocations.map { context.account.postbox.loadedPeerWithId($0.peerId) })
         
-        let result = combineLatest(participants, peers) |> map { participants, peers -> (ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult? in
-            
+        let selfPeer: Signal<[Peer], NoError> = includeSelf ? context.account.postbox.loadedPeerWithId(context.peerId) |> map { [$0] } : .single([])
+
+        let result = combineLatest(participants, peers, selfPeer) |> map { participants, peers, selfPeer -> (ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult? in
+
             var participants = participants
-            
+
+            for peer in selfPeer where !participants.contains(where: { $0.id == peer.id }) {
+                participants.insert(peer, at: 0)
+            }
+
             for peer in peers {
                 if peer.isSupergroup {
                     participants.append(peer)

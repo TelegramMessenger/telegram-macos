@@ -822,7 +822,16 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         return false
     }
     open func currentControllerDidChange() {
+        controller.updateContainerContentInsets(containerContentInsets, transition: .immediate)
         controllerDidChange?()
+    }
+
+    open override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        enumerateControllers { controller, _ in
+            controller.updateContainerContentInsets(insets, transition: transition)
+            return false
+        }
     }
     
     public override var backgroundColor: NSColor {
@@ -1464,8 +1473,7 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
                     let fullSlide = self.controller.fullSlideAnimation
 
                     
-                    let pInsets = previous.insets
-                    self.setControllerFrame(previous, frame: NSMakeRect(pInsets.left + (fullSlide ?  -self.frame.width : 0), previous.barHeight + pInsets.top, self.frame.width - pInsets.left - pInsets.right, self.frame.height - previous.barHeight - pInsets.top - pInsets.bottom))
+                    self.setControllerFrame(previous, frame: self.controllerFrame(for: previous, baseX: fullSlide ? -self.frame.width : 0))
 
                     self.containerView.addSubview(previousContainer, positioned: .below, relativeTo: self.navigationBar)
 

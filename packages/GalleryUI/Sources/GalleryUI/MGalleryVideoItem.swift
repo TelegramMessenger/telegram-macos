@@ -57,6 +57,20 @@ public class MGalleryVideoItem: MGalleryItem {
         controller = SVideoController(context: context, reference: entry.fileReference(entry.file!), message: entry.message, isProtected: entry.isProtected, isControlsLimited: entry.message?.adAttribute != nil)
         super.init(context, entry, pagerSize)
         
+        rotateDisposable.set((rotate.get() |> deliverOnMainQueue).start(next: { [weak self] orientation in
+            guard let self else {
+                return
+            }
+            let view = self.controller.genericView
+            if orientation != nil {
+                view.layer?.contents = nil
+            }
+            view.rotation = orientation
+            if let magnify = view.superview?.superview as? MagnifyView {
+                magnify.contentSize = self.rotatedContentSize(for: orientation)
+            }
+        }))
+
         controller.togglePictureInPictureImpl = { [weak self] enter, control in
             guard let `self` = self else {return}
             if enter, let viewer = viewer {
@@ -74,7 +88,7 @@ public class MGalleryVideoItem: MGalleryItem {
     
     deinit {
         updateMagnifyDisposable.dispose()
-        
+        rotateDisposable.dispose()
     }
         
     public override func singleView() -> NSView {
@@ -83,6 +97,7 @@ public class MGalleryVideoItem: MGalleryItem {
     }
     private var isPausedGlobalPlayer: Bool = false
     private let updateMagnifyDisposable = MetaDisposable()
+    private let rotateDisposable = MetaDisposable()
     
     public override func appear(for view: NSView?) {
         super.appear(for: view)

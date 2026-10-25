@@ -284,16 +284,26 @@ private enum RecentSessionsEntry: Comparable, Identifiable {
             }))
             
             items.append(.init(strings().timerMonthsOther(1), handler: {
-                arguments.toggleTtl(31)
+                arguments.toggleTtl(30)
             }))
             items.append(.init(strings().timerMonthsOther(3), handler: {
-                arguments.toggleTtl(31 * 3)
+                arguments.toggleTtl(90)
             }))
             items.append(.init(strings().timerMonthsOther(6), handler: {
-                arguments.toggleTtl(31 * 6)
+                arguments.toggleTtl(180)
+            }))
+            items.append(.init(strings().timerYearsOther(1), handler: {
+                arguments.toggleTtl(365)
             }))
             
-            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().recentSessionsTTLText, type: .contextSelector(autoremoveLocalized(Int(ttl * 24 * 60 * 60)), items), viewType: viewType)
+            let ttlText: String
+            if ttl >= 365 {
+                ttlText = strings().timerYearsOther(Int(ttl / 365))
+            } else {
+                ttlText = autoremoveLocalized(Int(ttl * 24 * 60 * 60))
+            }
+            
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().recentSessionsTTLText, type: .contextSelector(ttlText, items), viewType: viewType)
         case .section(sectionId: _):
             return GeneralRowItem(initialSize, height: 20, stableId: stableId, viewType: .separator)
         case .loading:

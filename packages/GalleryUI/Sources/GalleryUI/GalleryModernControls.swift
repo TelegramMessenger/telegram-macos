@@ -276,7 +276,7 @@ public class GalleryModernControlsView: View {
                 if file.isVideo {
                     zoomInControl.isHidden = false
                     zoomOutControl.isHidden = false
-                    rotateControl.isHidden = true
+                    rotateControl.isHidden = false
                     fastSaveControl.isHidden = false
                 }
             }
@@ -299,7 +299,7 @@ public class GalleryModernControlsView: View {
                 if file.isVideo {
                     zoomInControl.isHidden = false
                     zoomOutControl.isHidden = false
-                    rotateControl.isHidden = true
+                    rotateControl.isHidden = false
                     fastSaveControl.isHidden = cantSave || isHLSVideo(file: file)
                 } else if !file.isGraphicFile {
                     zoomInControl.isHidden = false
@@ -340,7 +340,7 @@ public class GalleryModernControlsView: View {
                 rotateControl.isHidden = false
             } else if let file = media as? TelegramMediaFile {
                 if file.isVideo {
-                    rotateControl.isHidden = true
+                    rotateControl.isHidden = false
                 }
             }
         default:

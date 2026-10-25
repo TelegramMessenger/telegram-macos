@@ -4153,7 +4153,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             if !tableView.isFlipped {
                 rowRect.origin = NSZeroPoint
             } else {
-                rowRect.origin = NSMakePoint(0, max(0,documentSize.height - frame.height))
+                rowRect.origin = NSMakePoint(0, max(0, documentSize.height - frame.height + (self is HorizontalTableView ? 0 : contentInsets.bottom)))
             }
         case let .up(_animate):
             animate = _animate
@@ -4177,7 +4177,8 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         innerId = innerId ?? focus.innerId.flatMap(AnyHashable.init)
         
         let bottomInset = self.bottomInset != 0 ? (self.bottomInset) : 0
-        let height:CGFloat = self is HorizontalTableView ? frame.width : frame.height
+        let contentBottomInset: CGFloat = tableView.isFlipped && !(self is HorizontalTableView) ? contentInsets.bottom : 0
+        let height:CGFloat = self is HorizontalTableView ? frame.width : max(0, frame.height - contentBottomInset)
 
         let documentHeight = documentSize.height
         
@@ -4231,7 +4232,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             
             if toVisible  {
                 let view = self.viewNecessary(at: item.index)
-                if let view = view, view.visibleRect.height == item.heightValue {
+                if let view = view, view.visibleRect.height == item.heightValue, contentBottomInset == 0 || self.rectOf(item: item).maxY <= clipView.bounds.maxY - contentBottomInset {
                     if focus.focus {
                         DispatchQueue.main.async {
                             view.focusAnimation(innerId, text: focus.string, range: focus.range)
@@ -4249,7 +4250,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
       
         
         if self.tableView.isFlipped {
-            rowRect.origin.y = min(rowRect.origin.y, documentSize.height - clipView.bounds.height)
+            rowRect.origin.y = min(rowRect.origin.y, documentSize.height - clipView.bounds.height + contentBottomInset)
         }
         
         if let string = focus.string, let item {

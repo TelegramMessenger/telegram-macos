@@ -232,8 +232,8 @@ public func PeerMediaSavedMessagesController<Context: AccountContextProtocol>(co
         let controller = ChatAdditionController(context: context, chatLocation: .peer(focusTarget.messageId.peerId), focusTarget: focusTarget)
         navigation.push(controller)
     }
-    chatInteraction.runReactionEffect = { value, messageId in
-        getScreenEffect?()?.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), viewFrame: context.window.bounds, for: context.window.contentView!)
+    chatInteraction.runReactionEffect = { value, messageId, isLarge in
+        getScreenEffect?()?.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), isLarge: isLarge, viewFrame: context.window.bounds, for: context.window.contentView!)
     }
     chatInteraction.vote = { messageId, opaqueIdentifiers, submit in
         

@@ -549,6 +549,7 @@ public struct InputDataSignalValue {
 
 public final class InputDataView : BackgroundView {
     public let tableView: TableView
+    var contentBottomInset: CGFloat = 0
 
     fileprivate var topView: NSView?
     public fileprivate(set) var bottomView: NSView?
@@ -620,7 +621,7 @@ public final class InputDataView : BackgroundView {
             topHeight = 0
         }
         if let view = self.bottomView {
-            transition.updateFrame(view: view, frame: NSMakeRect(0, size.height - view.frame.height, size.width, view.frame.height))
+            transition.updateFrame(view: view, frame: NSMakeRect(0, size.height - contentBottomInset - view.frame.height, size.width, view.frame.height))
         }
         let tableRect = NSMakeRect(0, topHeight, size.width, size.height - topHeight)
 
@@ -682,6 +683,22 @@ extension InputDataController : PeerMediaSearchable {
 }
 
 public class InputDataController: GenericViewController<InputDataView> {
+
+    private var appliedContainerBottomInset: CGFloat = 0
+
+    public override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        guard isLoaded() else {
+            return
+        }
+        var contentInsets = tableView.contentInsets
+        contentInsets.bottom = max(0, contentInsets.bottom - appliedContainerBottomInset) + insets.bottom
+        tableView.contentInsets = contentInsets
+        tableView.scrollerInsets.bottom = contentInsets.bottom
+        appliedContainerBottomInset = insets.bottom
+        genericView.contentBottomInset = insets.bottom
+        genericView.updateLayout(size: bounds.size, transition: transition)
+    }
 
     fileprivate var modalTransitionHandler:((Bool)->Void)? = nil
     public var prepareAllItems: Bool = false
@@ -960,6 +977,7 @@ public class InputDataController: GenericViewController<InputDataView> {
         if !isModal, bar.height > 0 {
             genericView.tableView.contentInsets = NavigationBarView.contentTopInset
         }
+        updateContainerContentInsets(containerContentInsets, transition: .immediate)
         
         
         self.afterViewDidLoad?()

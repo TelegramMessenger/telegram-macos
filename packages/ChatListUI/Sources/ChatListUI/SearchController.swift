@@ -404,6 +404,7 @@ private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], argume
                                             peers.removeAll(where: { $0 == peerId })
                                             folderData.includePeers.setPeers(peers)
                                         } else {
+                                            folderData.excludePeers.removeAll(where: { $0 == peerId })
                                             folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
                                         }
                                         list[i] = list[i].withUpdatedData(folderData)
@@ -886,6 +887,7 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
     
     public override func viewDidLoad() {
         super.viewDidLoad()
+        updateContainerContentInsets(containerContentInsets, transition: .immediate)
         genericView.delegate = self
         genericView.needUpdateVisibleAfterScroll = true
         //genericView.border = [.Right]
@@ -1900,6 +1902,14 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         }
         
         
+    }
+
+    public override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        if isLoaded() {
+            genericView.contentInsets.bottom = insets.bottom
+            genericView.scrollerInsets.bottom = insets.bottom
+        }
     }
     
     public override func initializer() -> TableView {

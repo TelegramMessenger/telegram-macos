@@ -63,7 +63,7 @@ public protocol SidebarUIEnvironment: AnyObject {
     func titleEntities(_ state: Updated_ChatTextInputState) -> [MessageTextEntity]
     func inputStatesEqual(_ lhs: Updated_ChatTextInputState, _ rhs: Updated_ChatTextInputState) -> Bool
     func makeNameRow(_ size: NSSize, stableId: AnyHashable, state: Updated_ChatTextInputState, rightItem: InputDataRightItem, updateState: @escaping (Updated_ChatTextInputState) -> Void, playAnimation: Bool) -> TableRowItem
-    func makePeerRow(_ size: NSSize, peer: Peer, stableId: AnyHashable, viewType: GeneralViewType, action: @escaping () -> Void, contextMenuItems: @escaping () -> Signal<[ContextMenuItem], NoError>) -> TableRowItem
+    func makePeerRow(_ size: NSSize, peer: Peer, stableId: AnyHashable, viewType: GeneralViewType, action: @escaping () -> Void, remove: @escaping () -> Void, contextMenuItems: @escaping () -> Signal<[ContextMenuItem], NoError>) -> TableRowItem
     func makeAnimatedHeader() -> SidebarAnimatedHeaderView
     func applyInlineStickers(to text: NSMutableAttributedString, entities: [MessageTextEntity], isPremium: Bool, animated: Bool)
     func image(_ image: SidebarImage) -> NSImage

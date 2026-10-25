@@ -980,10 +980,16 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
             }
             var peerIds:[PeerId: SelectivePrivacyPeer] = [:]
             updateState { state in
-                peerIds = state.enableFor
+                switch target {
+                case .main:
+                    peerIds = state.enableFor
+                case .callP2P:
+                    peerIds = state.callP2PEnableFor
+                }
                 return state
             }
-            pushControllerImpl?(SelectivePrivacySettingsPeersController(context, title: title, initialPeers: peerIds, premiumUsers: kind == .groupInvitations ? stateValue.with { $0.enableForPremium } : nil, enableForBots: kind == .gifts ? stateValue.with { $0.enableForBots } : nil, updated: { updatedPeerIds in
+            let isMain = target == .main
+            pushControllerImpl?(SelectivePrivacySettingsPeersController(context, title: title, initialPeers: peerIds, premiumUsers: isMain && kind == .groupInvitations ? stateValue.with { $0.enableForPremium } : nil, enableForBots: isMain && kind == .gifts ? stateValue.with { $0.enableForBots } : nil, updated: { updatedPeerIds in
                 updateState { current in
                     var current = current
                     switch target {
@@ -1037,7 +1043,12 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
             }
             var peerIds:[PeerId: SelectivePrivacyPeer] = [:]
             updateState { state in
-                peerIds = state.disableFor
+                switch target {
+                case .main:
+                    peerIds = state.disableFor
+                case .callP2P:
+                    peerIds = state.callP2PDisableFor
+                }
                 return state
             }
             pushControllerImpl?(SelectivePrivacySettingsPeersController(context, title: title, initialPeers: peerIds, premiumUsers: nil, enableForBots: nil, updated: { updatedPeerIds in

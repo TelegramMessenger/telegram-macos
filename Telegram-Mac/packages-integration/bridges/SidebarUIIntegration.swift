@@ -170,8 +170,10 @@ final class AppSidebarUIEnvironment: SidebarUIEnvironment {
         return InputTextDataRowItem(size, stableId: stableId, context: accountContext, state: state, viewType: .singleItem, placeholder: nil, inputPlaceholder: strings().chatListFilterNamePlaceholder, rightItem: rightItem, filter: { $0 }, updateState: updateState, limit: 12, hasEmoji: true, playAnimation: playAnimation)
     }
 
-    func makePeerRow(_ size: NSSize, peer: Peer, stableId: AnyHashable, viewType: GeneralViewType, action: @escaping () -> Void, contextMenuItems: @escaping () -> Signal<[ContextMenuItem], NoError>) -> TableRowItem {
-        return ShortPeerRowItem(size, peer: peer, account: accountContext.account, context: accountContext, stableId: stableId, height: 44, photoSize: NSMakeSize(30, 30), inset: NSEdgeInsets(left: 20, right: 20), viewType: viewType, action: action, contextMenuItems: contextMenuItems)
+    func makePeerRow(_ size: NSSize, peer: Peer, stableId: AnyHashable, viewType: GeneralViewType, action: @escaping () -> Void, remove: @escaping () -> Void, contextMenuItems: @escaping () -> Signal<[ContextMenuItem], NoError>) -> TableRowItem {
+        let item = ShortPeerRowItem(size, peer: peer, account: accountContext.account, context: accountContext, stableId: stableId, height: 44, photoSize: NSMakeSize(30, 30), inset: NSEdgeInsets(left: 20, right: 20), viewType: viewType, action: action, contextMenuItems: contextMenuItems)
+        item.avatarRemoveAction = remove
+        return item
     }
 
     func makeAnimatedHeader() -> SidebarAnimatedHeaderView {

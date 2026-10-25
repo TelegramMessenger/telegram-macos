@@ -18,6 +18,8 @@ import InlineStickerLayer
 
 
 
+private let largeReactionHoldDuration: Double = 0.8
+
 public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     
@@ -43,7 +45,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         private let parentWindow: Window?
         
-        required init(frame frameRect: NSRect, context: any AccountContextProtocol, reaction: ContextReaction, add: @escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, theme: TelegramPresentationTheme, message: Message?, parentWindow: Window? = nil) {
+        required init(frame frameRect: NSRect, context: any AccountContextProtocol, reaction: ContextReaction, add: @escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)?, theme: TelegramPresentationTheme, message: Message?, parentWindow: Window? = nil) {
             
             let size: NSSize = reaction.isSelected ? NSMakeSize(25, 24) : NSMakeSize(frameRect.width, 30)
             let rect = CGRect(origin: .zero, size: size)
@@ -152,13 +154,32 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             }
             
             set(handler: { control in
-                if let window = control.window {
+                if let window = control.window, (control as? ReactionView)?.largeInvoked != true {
                     let wrect = control.convert(control.frame.size.bounds, to: nil)
                     let srect = window.convertToScreen(wrect)
                     add(reaction.value, true, getWindow().convertFromScreen(srect))
                 }
             }, for: .Click)
             
+            if let addLarge, !reaction.isSelected, reaction.value != .stars {
+                self.handleLongEvent = false
+                self.largeHoldEnabled = true
+                set(handler: { control in
+                    (control as? ReactionView)?.startLargeHold(completion: { control in
+                        if let window = control.window {
+                            let wrect = control.convert(control.frame.size.bounds, to: nil)
+                            let srect = window.convertToScreen(wrect)
+                            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                            addLarge(reaction.value, getWindow().convertFromScreen(srect))
+                            AppMenu.closeAll()
+                        }
+                    })
+                }, for: .Down)
+                set(handler: { control in
+                    (control as? ReactionView)?.cancelLargeHold()
+                }, for: .Up)
+            }
+
             if case .stars = reaction.value, let message {
                 self.set(handler: { _ in
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: getWindow())
@@ -210,6 +231,40 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             return context.isLite(.emoji)
         }
         
+        private var largeHoldTimer: SwiftSignalKit.Timer?
+        private var largeHoldEnabled: Bool = false
+        fileprivate private(set) var largeInvoked: Bool = false
+
+        fileprivate func startLargeHold(completion: @escaping(ReactionView)->Void) {
+            largeHoldTimer?.invalidate()
+            self.layer?.zPosition = 1
+            self.layer?.animateScaleCenter(from: 1, to: 1.5, duration: largeReactionHoldDuration, removeOnCompletion: false)
+            largeHoldTimer = SwiftSignalKit.Timer(timeout: largeReactionHoldDuration, repeat: false, completion: { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.largeHoldTimer = nil
+                if self.mouseInside() {
+                    self.largeInvoked = true
+                    completion(self)
+                } else {
+                    self.cancelLargeHold()
+                }
+            }, queue: .mainQueue())
+            largeHoldTimer?.start()
+        }
+
+        fileprivate func cancelLargeHold() {
+            guard !largeInvoked else {
+                return
+            }
+            largeHoldTimer?.invalidate()
+            largeHoldTimer = nil
+            let current = self.layer?.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
+            self.layer?.animateScaleCenter(from: current, to: 1, duration: 0.2, removeOnCompletion: true)
+            self.layer?.zPosition = 0
+        }
+
         private func apply(_ data: Data, key: String, policy: LottiePlayPolicy) {
             let animation = LottieAnimation(compressed: data, key: LottieAnimationEntryKey(key: .bundle("reaction_\(reaction.value)_\(key)"), size: player.frame.size), type: .lottie, cachePurpose: .none, playPolicy: policy, maximumFps: 60, runOnQueue: Queue(), metalSupport: false)
             player.set(animation, reset: true, saveContext: true, animated: false)
@@ -258,9 +313,9 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
                 break
             }
             
-            if previous == .Hover, state == .Highlight {
+            if !largeHoldEnabled, previous == .Hover, state == .Highlight {
                 self.layer?.animateScaleCenter(from: 1, to: 0.8, duration: 0.2, removeOnCompletion: false)
-            } else if state == .Hover && previous == .Highlight {
+            } else if !largeHoldEnabled, state == .Hover, previous == .Highlight {
                 self.layer?.animateScaleCenter(from: 0.8, to: 1, duration: 0.2, removeOnCompletion: true)
             }
             previous = state
@@ -358,7 +413,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     private let presentation: TelegramPresentationTheme
     private let hasBubble: Bool
     private let aboveText: TextViewLayout?
-    public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
+    public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
         self.list = list
         self.showMore = ShowMore(frame: NSMakeRect(0, 0, 34, 34), theme: presentation)
         self.revealReactions = revealReactions
@@ -464,7 +519,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         for reaction in list {
             let add:(ContextReaction)->Void = { reaction in
                 let itemSize = size.bounds
-                let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, theme: presentation, message: message, parentWindow: parentWindow)
+                let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, addLarge: addLarge, theme: presentation, message: message, parentWindow: parentWindow)
                 
                 self.documentView.addSubview(reaction)
                 x += size.width + 4

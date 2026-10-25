@@ -20,6 +20,7 @@ public final class Reactions {
         public let messageId: MessageId
         public let reaction: MessageReaction.Reaction?
         public let rect: NSRect?
+        public let isLarge: Bool
     }
     public struct InteractiveStatus {
         public let fileId: Int64?
@@ -110,16 +111,16 @@ public final class Reactions {
         messageEffectsState.set(((engine.stickers.availableMessageEffects() |> then(.complete() |> suspendAwareDelay(1 * 60 * 60, queue: .concurrentDefaultQueue()))) |> restart) |> distinctUntilChanged)
     }
     
-    public func react(_ messageId: MessageId, values: [UpdateMessageReaction], fromRect: NSRect? = nil, storeAsRecentlyUsed: Bool = false) {
-        _ = _isInteractive.swap(.init(messageId: messageId, reaction: nil, rect: fromRect))
-        reactable.set(updateMessageReactionsInteractively(account: self.engine.account, messageIds: [messageId], reactions: values, isLarge: false, storeAsRecentlyUsed: storeAsRecentlyUsed).start(), forKey: messageId)
+    public func react(_ messageId: MessageId, values: [UpdateMessageReaction], fromRect: NSRect? = nil, storeAsRecentlyUsed: Bool = false, isLarge: Bool = false) {
+        _ = _isInteractive.swap(.init(messageId: messageId, reaction: nil, rect: fromRect, isLarge: isLarge))
+        reactable.set(updateMessageReactionsInteractively(account: self.engine.account, messageIds: [messageId], reactions: values, isLarge: isLarge, storeAsRecentlyUsed: storeAsRecentlyUsed).start(), forKey: messageId)
     }
     
     public func sendStarsReaction(_ messageId: MessageId, count: Int, privacy: TelegramPaidReactionPrivacy = .default, fromRect: NSRect? = nil) {
         if let signal = checkStarsAmount?(count, messageId.peerId) {
             _ = signal.start(next: { [weak self] value, starsAllowed in
                 if value && starsAllowed {
-                    _ = self?._isInteractive.swap(.init(messageId: messageId, reaction: .stars, rect: fromRect))
+                    _ = self?._isInteractive.swap(.init(messageId: messageId, reaction: .stars, rect: fromRect, isLarge: false))
                     _ = self?.engine.messages.sendStarsReaction(id: messageId, count: count, privacy: privacy).startStandalone()
                     self?.successStarsAmount?(.init(value: -Int64(count), nanos: 0))
                     self?.sentStarReactions?(messageId, count)

@@ -64,5 +64,9 @@ let package = Package(
                                     .product(name: "TelegramContextShare", package: "TelegramContext", condition: nil)],
             path: "Sources/TelegramUtilsShare",
             swiftSettings: [.define("SHARE")]),
+        .testTarget(
+            name: "TelegramUtilsTests",
+            dependencies: ["TelegramUtils"],
+            path: "Tests/TelegramUtilsTests"),
     ]
 )

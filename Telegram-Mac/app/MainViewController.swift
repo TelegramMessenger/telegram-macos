@@ -22,6 +22,8 @@ final class UpdateTabView : Control {
     let imageView: ImageView = ImageView()
     let shimmer = ShimmerEffectView()
     let progressView: ProgressIndicator = ProgressIndicator(frame: NSMakeRect(0, 0, 24, 24))
+    private let glassView = LiquidGlassView(frame: .zero, cornerRadius: 20)
+    private var updateState: UpdateButtonState = .common
     
     var bottomOverlayChanged: (() -> Void)?
 
@@ -37,96 +39,107 @@ final class UpdateTabView : Control {
     
     var isInstalling: Bool = false {
         didSet {
-            shimmer.change(opacity: isInstalling ? 0 : 1)
-            textView.isHidden = isInstalling || layoutState == .minimisize
-            progressView.isHidden = !isInstalling
-            imageView.isHidden = isInstalling || layoutState != .minimisize
-            
-            if layoutState != .minimisize, isInstalling, let superview = self.superview {
-                self.layer?.cornerRadius = frame.height / 2
-                change(size: NSMakeSize(60, frame.height), animated: true, timingFunction: .spring)
-                change(pos: NSMakePoint(superview.bounds.focus(self.frame.size).minX, self.frame.minY), animated: true, timingFunction: .spring)
-                progressView.change(pos: self.bounds.focus(progressView.frame.size).origin, animated: true, timingFunction: .spring)
-            } else {
-                if let superview = self.superview, isChatList {
-                    change(size: NSMakeSize(self.textView.frame.width + 40, frame.height), animated: true, timingFunction: .spring)
-                    change(pos: NSMakePoint(superview.bounds.focus(self.frame.size).minX, self.frame.minY), animated: true, timingFunction: .spring)
-                    imageView.change(pos: self.bounds.focus(imageView.frame.size).origin, animated: true, timingFunction: .spring)
-                }
-            }
-            
+            updateContent(animated: isInstalling != oldValue)
         }
     }
     
     var layoutState: SplitViewState = .dual {
         didSet {
-            let installing = self.isInstalling
-            self.isInstalling = installing
+            updateContent(animated: false)
         }
     }
-    
-    
-    
+
+    var preferredWidth: CGFloat {
+        if layoutState == .minimisize {
+            return 40
+        }
+        return isInstalling ? 60 : textView.frame.width + 40
+    }
+
+    private func updateContent(animated: Bool) {
+        shimmer.change(opacity: isInstalling ? 0 : 1, animated: animated)
+        textView.isHidden = isInstalling || layoutState == .minimisize
+        progressView.isHidden = !isInstalling
+        imageView.isHidden = isInstalling || layoutState != .minimisize
+        if isChatList, let superview, frame.width != preferredWidth {
+            change(size: NSMakeSize(preferredWidth, frame.height), animated: animated, timingFunction: .spring)
+            change(pos: NSMakePoint(superview.bounds.focus(frame.size).minX, frame.minY), animated: animated, timingFunction: .spring)
+        }
+        needsLayout = true
+    }
+
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        backgroundColor = .clear
+        layer?.masksToBounds = false
+        glassView.isEventLess = true
+        addSubview(glassView)
+        interactiveGlassView = glassView
+        scaleOnClick = true
         textView.userInteractionEnabled = false
         textView.isSelectable = false
+        textView.disableBackgroundDrawing = true
+        textView.isAccessibilityDecorative = true
         addSubview(textView)
+        progressView.isEventLess = true
+        progressView.isAccessibilityDecorative = true
         addSubview(progressView)
-        addSubview(imageView)
-        addSubview(shimmer)
-        
-        shimmer.isStatic = true
-        
-        progressView.progressColor = theme.colors.underSelectedColor
-        isInstalling = false
-        
-        let layout = TextViewLayout(.initialize(string: strings().updateUpdateTelegram, color: theme.colors.underSelectedColor, font: .medium(.title)))
-        layout.measure(width: max(280, frame.width))
-        textView.update(layout)
+        imageView.isEventLess = true
         imageView.isAccessibilityDecorative = true
-        setAccessibilityLabel(strings().updateUpdateTelegram)
-        
-        let shadow = NSShadow()
-        shadow.shadowBlurRadius = 5
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
-        shadow.shadowOffset = NSMakeSize(0, 2)
-        self.shadow = shadow
-        
+        addSubview(imageView)
+        shimmer.isEventLess = true
+        shimmer.layer?.masksToBounds = true
+        addSubview(shimmer)
+        shimmer.isStatic = true
+        updateLocalizationAndTheme(theme: theme)
     }
     
     override func cursorUpdate(with event: NSEvent) {
         NSCursor.pointingHand.set()
     }
     
-    override var backgroundColor: NSColor {
-        didSet {
-            textView.backgroundColor = backgroundColor
-        }
+    func update(_ state: UpdateButtonState) {
+        updateState = state
+        updateLocalizationAndTheme(theme: theme)
     }
-    
+
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
-        imageView.image = (theme as! TelegramPresentationTheme).icons.appUpdate
+        let theme = theme as! TelegramPresentationTheme
+        let tint: NSColor
+        switch updateState {
+        case .common:
+            tint = theme.colors.accent
+        case .important:
+            tint = theme.colors.greenUI
+        case .critical:
+            tint = theme.colors.redUI
+        }
+        glassView.customTint = tint
+        let foreground = tint.lightness > 0.8 ? NSColor(0x000000) : NSColor(0xffffff)
+        let layout = TextViewLayout(.initialize(string: strings().updateUpdateTelegram, color: foreground, font: .medium(.title)), maximumNumberOfLines: 1)
+        layout.measure(width: max(280, frame.width))
+        textView.update(layout)
+        imageView.image = generateTintedImage(image: theme.icons.appUpdate, color: foreground)
         imageView.sizeToFit()
-        needsLayout = true
-        shimmer.updateAbsoluteRect(bounds, within: bounds.size)
-        shimmer.update(backgroundColor: .clear, foregroundColor: .clear, shimmeringColor: NSColor.white.withAlphaComponent(0.3), shapes: [.roundedRect(rect: bounds, cornerRadius: bounds.height / 2)], horizontal: true, size: bounds.size)
-        progressView.progressColor = theme.colors.underSelectedColor
+        progressView.progressColor = foreground
+        setAccessibilityLabel(strings().updateUpdateTelegram)
+        updateContent(animated: false)
     }
-    
-    override func setFrameOrigin(_ newOrigin: NSPoint) {
-        super.setFrameOrigin(newOrigin)
-    }
-    
-    
+
     override func layout() {
         super.layout()
-        
-        
-       
+        let cornerRadius: CGFloat = isChatList ? bounds.height / 2 : 0
+        layer?.cornerRadius = cornerRadius
+        glassView.cornerRadius = cornerRadius
+        glassView.frame = bounds
+        glassView.updateLayout(size: bounds.size, transition: .immediate)
         shimmer.frame = bounds
-        shimmer.layer?.cornerRadius = bounds.height / 2
+        shimmer.layer?.cornerRadius = cornerRadius
+        if bounds.width > 0, bounds.height > 0 {
+            shimmer.updateAbsoluteRect(bounds, within: bounds.size)
+            shimmer.update(backgroundColor: .clear, foregroundColor: .clear, shimmeringColor: NSColor.white.withAlphaComponent(0.3), shapes: [.roundedRect(rect: bounds, cornerRadius: cornerRadius)], horizontal: true, size: bounds.size)
+        }
         textView.center()
         progressView.center()
         imageView.center()
@@ -145,14 +158,7 @@ final class UpdateTabController: GenericViewController<UpdateTabView> {
     private let context: SharedAccountContext
     private var state: UpdateButtonState = .common {
         didSet {
-            switch state {
-            case .common:
-                genericView.backgroundColor = theme.colors.accent
-            case .important:
-                genericView.backgroundColor = theme.colors.greenUI
-            case .critical:
-                genericView.backgroundColor = theme.colors.redUI
-            }
+            genericView.update(state)
         }
     }
     private var parentSize: NSSize = .zero
@@ -204,7 +210,7 @@ final class UpdateTabController: GenericViewController<UpdateTabView> {
         let context = self.context
         
         
-        genericView.set(background: theme.colors.grayForeground, for: .Normal)
+        genericView.set(background: .clear, for: .Normal)
         genericView.isHidden = true
         
         #if APP_STORE
@@ -254,20 +260,17 @@ final class UpdateTabController: GenericViewController<UpdateTabView> {
     }
     
     func updateLayout(_ layout: SplitViewState, parentSize: NSSize, isChatList: Bool) {
+        genericView.isChatList = isChatList
         genericView.layoutState = layout
         self.parentSize = parentSize
-        genericView.isChatList = isChatList
         if isChatList && layout == .minimisize {
-            // Icon-only circular button in single-column minimisize mode —
-            // there's no room for the text pill, so render as a 40×40 circle
-            // centered horizontally above the bottom edge.
             let side: CGFloat = 40
             genericView.setFrameSize(NSMakeSize(side, side))
             genericView.layer?.cornerRadius = side / 2
             genericView.centerX(y: parentSize.height - side - 10)
             shakeDisposable.set(nil)
         } else if isChatList {
-            genericView.setFrameSize(NSMakeSize(genericView.textView.frame.width + 40, 40))
+            genericView.setFrameSize(NSMakeSize(genericView.preferredWidth, 40))
             genericView.layer?.cornerRadius = genericView.frame.height / 2
             let bottom = parentSize.height - genericView.frame.height
             genericView.centerX(y: bottom - 60)
@@ -412,7 +415,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         let updateView = updateController.genericView
         let activeController = tabController.current === navigation ? navigation.controller : nil
         if activeController?.isLoaded() != true || !(activeController?.view is PeerListContainerView) {
-            let bottomInset: CGFloat = updateView.layoutState == .minimisize ? 10 : 60
+            let bottomInset: CGFloat = tabController.contentBottomInset + 12
             updateView.setFrameOrigin(NSMakePoint(updateView.frame.minX, bounds.height - updateView.frame.height - bottomInset))
         }
         let updateContainer: (ViewController) -> Void = { [weak self, updateView] controller in
@@ -448,7 +451,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
 
     private func layoutConnectingStatusView() {
         let size = connectingStatusView.frame.size
-        let y = bounds.height - size.height - 40 - 20
+        let y = bounds.height - size.height - tabController.contentBottomInset - 12
         connectingStatusView.setFrameOrigin(NSMakePoint(20, y))
     }
     
@@ -509,6 +512,8 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         
         tabController.updateLocalizationAndTheme(theme: theme)
 
+        updateTabAccessibility()
+
         self.ready.set(combineLatest(queue: prepareQueue, self.chatList.ready.get(), self.settings.ready.get()) |> map { $0 && $1 })
         
         
@@ -523,6 +528,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
             }
             self.updateController.updateLayout(state, parentSize: self.frame.size, isChatList: true)
             self.updateChatListBottomOverlays()
+            self.layoutConnectingStatusView()
         }))
         
         tabController.didChangedIndex = { [weak self] index in
@@ -538,9 +544,12 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
 
     private func showCallsTab() {
         tabController.insert(tab: TabAnimatedItem(.tab_calls, image: theme.icons.tab_calls, selectedImage: theme.icons.tab_calls_active, controller: phoneCalls), at: 1)
+        previousIndex = tabController.selectedIndex
+        updateTabAccessibility()
     }
     private func hideCallsTab() {
         tabController.remove(at: 1)
+        previousIndex = tabController.selectedIndex
     }
     
     override var removeAfterDisapper: Bool {
@@ -732,6 +741,27 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         }
         self.previousTheme = theme
         self.previousIconColor = theme.colors.accentIcon
+        updateTabAccessibility()
+    }
+
+    private func updateTabAccessibility() {
+        for index in 0 ..< tabController.count {
+            let tab = tabController.tab(at: index)
+            let title: String
+            if tab.controller === contacts {
+                title = strings().contactsContacsSeparator
+            } else if tab.controller === phoneCalls {
+                title = strings().telegramLayoutRecentCallsViewController
+            } else if tab.controller === settings {
+                title = strings().telegramLayoutAccountController
+            } else {
+                title = strings().peerMediaSavedMessages
+            }
+            tab.accessibilityTitle = title
+            let control = tabController.control(for: index)
+            control.setAccessibilityLabel(title)
+            control.toolTip = title
+        }
     }
     
     private var previousIndex: Int? = nil

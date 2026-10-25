@@ -299,6 +299,18 @@ public func chatMenuItemsData(for message: Message, textLayout: (TextViewLayout?
     }
 }
 
+private func copyImageToPasteboard(path: String) -> Bool {
+    guard let path = copyToTemp(path: path, ext: "jpg") else {
+        return false
+    }
+    let url = NSURL(fileURLWithPath: path)
+    let image = NSImage(contentsOf: url as URL)
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.writeObjects([url, image].compactMap { $0 })
+    return true
+}
+
 private func copyRichTextMessage(_ message: Message, text: String, page: InstantPage, isTranslated: Bool) {
     copyToClipboard(text)
     guard !isTranslated else {
@@ -387,10 +399,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     }, itemImage: MenuAnimation.menu_copy.value))
                 } else if data.image != nil, let resourceData = data.resourceData, resourceData.complete {
                     items.append(ContextMenuItem(strings().chatContextCopyMedia, handler: {
-                        if let path = link(path: resourceData.path, ext: "jpg") {
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.clearContents()
-                            pasteboard.writeObjects([NSURL(fileURLWithPath: path)])
+                        if copyImageToPasteboard(path: resourceData.path) {
                             showModalText(for: context.window, text: strings().contextAlertCopied)
                         }
                     }, itemImage: MenuAnimation.menu_copy_media.value, keyEquivalent: .cmdc))
@@ -545,7 +554,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }, messageId: data.message.id, context: context))
         }
         
-        if let layout = textLayout?.0, layout.selectedRange.range.location != NSNotFound, layout.selectedRange.range.length > 0, NSMaxRange(layout.selectedRange.range) <= layout.attributedString.length, mode != .pinned, mode != .scheduled, !mode.isSavedMode, mode.customChatContents == nil, entry?.additionalData.translate == nil {
+        if let layout = textLayout?.0, layout.selectedRange.range.location != NSNotFound, layout.selectedRange.range.length > 0, NSMaxRange(layout.selectedRange.range) <= layout.attributedString.length, mode != .pinned, mode != .scheduled, !mode.isSavedMode, mode.customChatContents == nil, entry?.additionalData.translate == nil, !data.isLogInteraction {
             let selectedRange = layout.selectedRange.range
             let selectedString = layout.attributedString.attributedSubstring(from: selectedRange)
             firstBlock.append(ContextMenuItem(strings().chatMessageContextQuote, handler: {
@@ -567,7 +576,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         if message.attributes.contains(where: { $0 is RichTextMessageAttribute }),
            let quote = selectManager.richSelectedQuote(for: message.id),
            mode != .pinned, mode != .scheduled, !mode.isSavedMode,
-           mode.customChatContents == nil, entry?.additionalData.translate == nil {
+           mode.customChatContents == nil, entry?.additionalData.translate == nil, !data.isLogInteraction {
             firstBlock.append(ContextMenuItem(strings().chatMessageContextQuote, handler: {
                 let maximumLength = context.appConfiguration.getGeneralValue("quote_length_max", orElse: 1024)
                 if quote.text.utf16.count > maximumLength {
@@ -1428,10 +1437,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 if resourceData.complete {
                     let text = strings().chatContextCopyMedia
                     thirdBlock.append(ContextMenuItem(text, handler: {
-                        if let path = link(path: resourceData.path, ext: "jpg") {
-                            let pb = NSPasteboard.general
-                            pb.clearContents()
-                            pb.writeObjects([NSURL(fileURLWithPath: path)])
+                        if copyImageToPasteboard(path: resourceData.path) {
                             showModalText(for: context.window, text: strings().contextAlertCopied)
                         }
                     }, itemImage: MenuAnimation.menu_copy_media.value, keyEquivalent: .cmdc))

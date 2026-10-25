@@ -127,7 +127,11 @@ public final class ChatInputSendButton: View {
     private var first: Bool = true
 
     public var isInField: Bool {
-        return activeView === send
+        return isFieldAction(activeView)
+    }
+
+    private func isFieldAction(_ view: View) -> Bool {
+        return view === send || view is StarsSendActionView
     }
 
     public var hasAppliedState: Bool {
@@ -326,6 +330,9 @@ public final class ChatInputSendButton: View {
     }
 
     public var desiredSize: NSSize {
+        if let sendPaidMessages, activeView === sendPaidMessages {
+            return NSMakeSize(sendPaidMessages.frame.width, 40)
+        }
         if case .slowMode = state.kind {
             return NSMakeSize(max(40, slowModeTimeout.frame.width), 40)
         }
@@ -431,17 +438,17 @@ public final class ChatInputSendButton: View {
                 prevView.layer?.opacity = 0.0
             }
             if anim {
-                let isFieldTransition = newView === send || prevView === send
+                let isFieldTransition = isFieldAction(newView) || isFieldAction(prevView)
                 if isFieldTransition {
                     newView.layer?.animateAlpha(from: 0.0, to: 1.0, duration: ChatInputSendButton.fieldFadeDuration)
-                    if newView === send {
-                        animateFieldTransition(send, appearing: true)
-                        if !state.isEditing {
+                    if isFieldAction(newView) {
+                        animateFieldTransition(newView, appearing: true)
+                        if newView === send && !state.isEditing {
                             animatePlaneFlight()
                         }
                     }
-                    if prevView === send {
-                        animateFieldTransition(send, appearing: false)
+                    if isFieldAction(prevView) {
+                        animateFieldTransition(prevView, appearing: false)
                     }
                 } else {
                     newView.layer?.animateAlpha(from: 0.0, to: 1.0, duration: 0.1)

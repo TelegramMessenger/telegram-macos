@@ -600,6 +600,7 @@ private final class HeaderView : GeneralContainableRowView {
                     current.setAccessibilityLabel(strings().voiceOverCommonMore)
                 }
                 current.set(image: TelegramThemeHooks.shared.image(.iconChatActions).precomposed(.white), for: .Normal)
+                current.setGlassEffect(size: NSMakeSize(36, 36))
                 current.sizeToFit(.zero, NSMakeSize(36, 36), thatFit: true)
                 
                 current.contextMenu = {

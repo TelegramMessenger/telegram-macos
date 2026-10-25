@@ -198,7 +198,7 @@ public final class ReactionsWindowController : NSObject {
     private var skipAppearAnimation = false
     
     private let parentWindow: Window
-    public init<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, selectedItems: [EmojiesSectionRowItem.SelectedItem], react: @escaping(StickerPackItem, NSRect?)->Void, onClose:(()->Void)? = nil, presentation: TelegramPresentationTheme = theme, name: String = "", moveTop: Bool = false, mode: EmojiesController.Mode = .reactions, parentWindow: Window? = nil) {
+    public init<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, selectedItems: [EmojiesSectionRowItem.SelectedItem], react: @escaping(StickerPackItem, NSRect?)->Void, reactLarge: ((StickerPackItem, NSRect?)->Void)? = nil, onClose:(()->Void)? = nil, presentation: TelegramPresentationTheme = theme, name: String = "", moveTop: Bool = false, mode: EmojiesController.Mode = .reactions, parentWindow: Window? = nil) {
         self.parentWindow = parentWindow ?? context.window
         self.context = context
         self.presentation = presentation
@@ -214,6 +214,12 @@ public final class ReactionsWindowController : NSObject {
         interactions.sendAnimatedEmoji = { [weak self] sticker, _, _, _, fromRect in
             react(sticker, fromRect)
             self?.close(animated: true)
+        }
+        if let reactLarge {
+            interactions.sendLargeReaction = { [weak self] sticker, fromRect in
+                reactLarge(sticker, fromRect)
+                self?.close(animated: true)
+            }
         }
         emojies.update(with: interactions, chatInteraction: EntertainmentUIHooks.shared.makeChatInteraction(context, peerId))
 

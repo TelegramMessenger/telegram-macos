@@ -302,7 +302,7 @@ public class MGalleryPhotoItem: MGalleryItem {
                 var newSize = self.smallestValue(for: size)
                 if let orientation = orientation {
                     if orientation == .right || orientation == .left {
-                        newSize = NSMakeSize(newSize.height, newSize.width)
+                        newSize = self.rotatedSize(newSize)
                     }
                 }
                 return .single((newSize, orientation))

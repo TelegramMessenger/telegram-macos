@@ -230,7 +230,7 @@ public final class ChatReactionsLayout {
         public let context: any AccountContextProtocol
         public let message: Message
         public let openInfo: (PeerId)->Void
-        public let runEffect:(MessageReaction.Reaction)->Void
+        public let runEffect:(MessageReaction.Reaction, Bool)->Void
         public let canViewList: Bool
         public let avatars:[Avatar]
         public var rect: CGRect = .zero
@@ -256,7 +256,7 @@ public final class ChatReactionsLayout {
             return self.value.value
         }
         
-        public init(value: MessageReaction, recentPeers:[Peer], canViewList: Bool, message: Message, savedMessageTags: SavedMessageTags?, currentTag: MessageReaction.Reaction?, context: any AccountContextProtocol, mode: ChatReactionsLayout.Mode, index: Int, source: Source, presentation: Theme, action:@escaping(MessageReaction.Reaction, Bool)->Void, openInfo: @escaping (PeerId)->Void, runEffect:@escaping(MessageReaction.Reaction)->Void, starReact: @escaping()->Void) {
+        public init(value: MessageReaction, recentPeers:[Peer], canViewList: Bool, message: Message, savedMessageTags: SavedMessageTags?, currentTag: MessageReaction.Reaction?, context: any AccountContextProtocol, mode: ChatReactionsLayout.Mode, index: Int, source: Source, presentation: Theme, action:@escaping(MessageReaction.Reaction, Bool)->Void, openInfo: @escaping (PeerId)->Void, runEffect:@escaping(MessageReaction.Reaction, Bool)->Void, starReact: @escaping()->Void) {
             self.value = value
             self.index = index
             self.message = message
@@ -503,7 +503,7 @@ public final class ChatReactionsLayout {
     public let mode: Mode
     
     
-    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void) {
+    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void) {
         
         var mode: Mode = .full
         if message.id.peerId == context.peerId {
@@ -2468,18 +2468,22 @@ final class ChatReactionsView : ChatLayerSceneView {
                                 let completed: (Bool)->Void = { [weak view, weak self] _ in
                                     view?.unlockVisibility()
                                     DispatchQueue.main.async {
-                                        view?.playEffect()
-                                        selected.runEffect(selected.value.value)
+                                        if !interactive.isLarge {
+                                            view?.playEffect()
+                                        }
+                                        selected.runEffect(selected.value.value, interactive.isLarge)
                                         NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
                                         if selected.value.value == .stars, let window = self?.window as? Window {
                                             PlayConfetti(for: window, stars: true)
                                         }
                                     }
                                 }
-                                parabollicReactionAnimation(layer, fromPoint: from, toPoint: to, window: layout.context.window, completion: completed)
+                                parabollicReactionAnimation(layer, fromPoint: from, toPoint: to, window: layout.context.window, completion: completed, duration: interactive.isLarge ? 0.5 : 0.2)
                             } else {
-                                view.playEffect()
-                                selected.runEffect(selected.value.value)
+                                if !interactive.isLarge {
+                                    view.playEffect()
+                                }
+                                selected.runEffect(selected.value.value, interactive.isLarge)
                             }
                         }
                     }
@@ -2495,9 +2499,10 @@ final class ChatReactionsView : ChatLayerSceneView {
         let layout = currentLayout.message.effectiveReactions(currentLayout.context.peerId, isTags: currentLayout.context.peerId == currentLayout.message.id.peerId)
         let peer = layout?.recentPeers.first(where: { $0.isUnseen || !checkUnseen })
         if let peer = peer, let reaction = reactions.first(where: { $0.value.value == peer.value }) {
-            reaction.runEffect(reaction.value.value)
-            let view = getView(reaction.value.value)
-            view?.playEffect()
+            reaction.runEffect(reaction.value.value, peer.isLarge)
+            if !peer.isLarge {
+                getView(reaction.value.value)?.playEffect()
+            }
         }
     }
     

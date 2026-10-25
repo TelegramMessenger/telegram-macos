@@ -808,8 +808,8 @@ public class NStickersView : View {
     }
     
     
-    public func updateRestricion(_ peer: Peer?, animated: Bool) {
-        if let peer = peer, let text = permissionText(from: peer, for: .banSendStickers) {
+    public func updateRestricion(_ peer: Peer?, cachedData: CachedPeerData?, animated: Bool) {
+        if let peer = peer, let text = permissionText(from: peer, for: .banSendStickers, cachedData: cachedData) {
             let current: RestrictionWrappedView
             if let view = self.restrictedView {
                 current = view
@@ -1212,7 +1212,7 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
         self.chatInteraction = chatInteraction
         chatInteraction.add(observer: self)
         if isLoaded() {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
         self.specificPeerId.set(chatInteraction.peerId)
     }
@@ -1220,11 +1220,11 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
     public func notify(with value: Any, oldValue: Any, animated: Bool) {
         if let value = value as? ChatPresentationSnapshot, let oldValue = oldValue as? ChatPresentationSnapshot {
             if let peer = value.snapshotPeer, let oldPeer = oldValue.snapshotPeer {
-                if permissionText(from: peer, for: .banSendStickers) != permissionText(from: oldPeer, for: .banSendStickers) {
-                    genericView.updateRestricion(peer, animated: animated)
+                if permissionText(from: peer, for: .banSendStickers, cachedData: value.snapshotCachedData) != permissionText(from: oldPeer, for: .banSendStickers, cachedData: oldValue.snapshotCachedData) {
+                    genericView.updateRestricion(peer, cachedData: value.snapshotCachedData, animated: animated)
                 }
             } else if (oldValue.snapshotPeer != nil) != (value.snapshotPeer != nil), let peer = value.snapshotPeer {
-                genericView.updateRestricion(peer, animated: animated)
+                genericView.updateRestricion(peer, cachedData: value.snapshotCachedData, animated: animated)
             }
         }
     }
@@ -1298,14 +1298,14 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         self.genericView.updateSelectionState(animated: false)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     public override func viewDidLoad() {

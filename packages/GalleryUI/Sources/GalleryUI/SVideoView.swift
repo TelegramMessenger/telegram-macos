@@ -1259,6 +1259,22 @@ public class SVideoView: NSView {
     
     public var initialedSize: NSSize = NSZeroSize
     
+    private var playerVisualFrame: NSRect = .zero
+
+    private func rotatedPreviewImage(_ image: CGImage) -> CGImage {
+        guard let rotation = self.rotation, let rotated = image.createMatchingBackingDataWithImage(orienation: rotation, keepColorSpace: true) else {
+            return image
+        }
+        return rotated
+    }
+
+    public var rotation: ImageOrientation? {
+        didSet {
+            if oldValue != rotation {
+                updateLayout(size: frame.size, transition: .immediate)
+            }
+        }
+    }
     
     public var controlsStyle:SVideoControlsStyle = .regular(pip: false, fullScreen: false, hideRewind: false) {
         didSet {
@@ -1416,8 +1432,21 @@ public class SVideoView: NSView {
     }
     
     public func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        transition.updateFrame(view: mediaPlayer, frame: NSRect(origin: .zero, size: size))
-        mediaPlayer.updateLayout(size: size, transition: transition)
+        let isQuarterTurn = rotation?.isQuarterTurn == true
+        var visualSize = size
+        if isQuarterTurn {
+            let videoSize = initialedSize == NSZeroSize ? size : initialedSize
+            visualSize = NSMakeSize(videoSize.height, videoSize.width).aspectFitted(size)
+        }
+        let playerSize = isQuarterTurn ? NSMakeSize(visualSize.height, visualSize.width) : visualSize
+        let center = NSMakePoint(size.width / 2, size.height / 2)
+        mediaPlayer.frameCenterRotation = 0
+        transition.updateFrame(view: mediaPlayer, frame: NSRect(origin: NSMakePoint(floor(center.x - playerSize.width / 2), floor(center.y - playerSize.height / 2)), size: playerSize))
+        mediaPlayer.updateLayout(size: playerSize, transition: transition)
+        mediaPlayer.frameCenterRotation = rotation?.viewRotationDegrees ?? 0
+        playerVisualFrame = NSRect(origin: NSMakePoint(floor(center.x - visualSize.width / 2), floor(center.y - visualSize.height / 2)), size: visualSize)
+        overlayPreview?.frame = playerVisualFrame
+        frameStepOverlay?.frame = playerVisualFrame
 
         self.controlsStyle = self.controlsStyle
             .withUpdatedStyle(compact: size.width < 300)
@@ -1781,11 +1810,12 @@ public class SVideoView: NSView {
                 previewView?.background = .black
                 addSubview(previewView!)
             }
-            previewView?.setFrameSize(initialedSize.aspectFitted(NSMakeSize(150, 150)))
+            let previewBase = rotation?.isQuarterTurn == true ? NSMakeSize(initialedSize.height, initialedSize.width) : initialedSize
+            previewView?.setFrameSize(previewBase.aspectFitted(NSMakeSize(150, 150)))
         }
         if live {
             if self.overlayPreview == nil {
-                self.overlayPreview = ImageView(frame: self.mediaPlayer.frame)
+                self.overlayPreview = ImageView(frame: self.playerVisualFrame)
                 self.overlayPreview?.isAccessibilityDecorative = true
                 self.addSubview(overlayPreview!, positioned: .above, relativeTo: mediaPlayer)
                 self.overlayPreview?.background = theme.colors.blackTransparent
@@ -1815,10 +1845,11 @@ public class SVideoView: NSView {
         if let state = currentPreviewState {
             switch state {
             case let .image(image):
-                previewView?.imageView.image = image
+                let previewImage = rotatedPreviewImage(image)
+                previewView?.imageView.image = previewImage
                 previewView?.imageView.isHidden = false
                 
-                overlayPreview?.image = image
+                overlayPreview?.image = previewImage
                 
             case .waitingForData:
                 break
@@ -1871,12 +1902,12 @@ public class SVideoView: NSView {
 
     public func showFrameStepImage(_ image: CGImage) {
         if frameStepOverlay == nil {
-            frameStepOverlay = ImageView(frame: mediaPlayer.frame)
+            frameStepOverlay = ImageView(frame: playerVisualFrame)
             frameStepOverlay?.isAccessibilityDecorative = true
             addSubview(frameStepOverlay!, positioned: .above, relativeTo: mediaPlayer)
         }
-        frameStepOverlay?.image = image
-        frameStepOverlay?.frame = mediaPlayer.frame
+        frameStepOverlay?.image = rotatedPreviewImage(image)
+        frameStepOverlay?.frame = playerVisualFrame
     }
 
     public func hideFrameStepOverlay() {

@@ -1,0 +1,13 @@
+{
+  "upstream": "35a0182637c683686a1db1d33ef48c8c3adb2e97",
+  "sources": {
+    "ChatListRowItem.swift": "7b005268eccdc9cc207b49dad17cf6836c24f0f7375012f8444035259d1d6fb6",
+    "ChatMessageItem.swift": "7a821036cef4b7bdd4d395a653d21c2756e667349541088d265468c1b3c9ec74",
+    "DateTimeEntityFormat.swift": "23d30c0408c55fdf8368980562bf95e5fbed2654b944e6ae2ca619af13fe3b34"
+  },
+  "fragments_sha256": {
+    "EnglishRelativeStrings.json": "16e1b82ea07e366b37721f464156d449f291ed25806fd23718587e854816b986",
+    "OriginalInterval.swift.txt": "3c0b4420b5de79ee36797f87577678996228d3e037b7e57725bf8898c80cdaa2",
+    "OriginalRelativeFormat.swift.txt": "e3edbdaccdddaf1081d92b43e987059d8cd796468b763188f57fb769d6d3acd8"
+  }
+}

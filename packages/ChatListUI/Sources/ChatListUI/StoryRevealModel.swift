@@ -151,6 +151,7 @@ public final class StoryRevealModel {
     private var lastTime: Double = 0
     public private(set) var axis: Axis = .undecided
     public private(set) var gestureDrivesHeader: Bool = false
+    private var gestureStartedRevealed: Bool = false
 
     private var gestureActive: Bool = false
     private var gestureStartedAtTop: Bool = false
@@ -318,6 +319,7 @@ public final class StoryRevealModel {
         self.axis = .undecided
         self.samples = []
         self.momentumPassesThrough = true
+        self.gestureStartedRevealed = self.fraction >= 1
     }
 
     private func endGesture() {
@@ -352,6 +354,9 @@ public final class StoryRevealModel {
         }
         if self.axis == .undecided {
             if input.deltaX == 0 && input.deltaY == 0 {
+                if self.gestureStartedRevealed && !self.gestureDrivesHeader {
+                    return .passThrough
+                }
                 let mayDrive = atTop && (self.fraction > 0 || self.gestureStartedAtTop)
                 return self.gestureDrivesHeader || mayDrive ? .consumed : .passThrough
             }
@@ -361,6 +366,9 @@ public final class StoryRevealModel {
             return .passThrough
         }
         let delta = input.deltaY
+        if self.gestureStartedRevealed && !self.gestureDrivesHeader && self.fraction >= 1 && delta > 0 {
+            return .passThrough
+        }
         let canDrive = atTop && (self.fraction > 0 || (self.gestureStartedAtTop && delta > 0))
         guard canDrive || self.gestureDrivesHeader else {
             self.collapsedInGesture = false

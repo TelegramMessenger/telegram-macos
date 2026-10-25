@@ -522,7 +522,7 @@ public class ChatControllerView : View, ChatInputDelegate {
             case let .thread(data):
                 location = .peer(peerId: data.peerId, fromId: fromId, tags: nil, reactions: tags.map { $0.tag.reaction }, threadId: data.threadId, minDate: nil, maxDate: nil)
             }
-            return context.engine.messages.searchMessages(location: location, query: query, state: state) |> map {($0.0.messages.filter({ !($0.extendedMedia is TelegramMediaAction) }), $0.1)}
+            return context.engine.messages.searchMessages(location: location, query: query, state: state) |> map {($0.0.messages.filter({ !($0.extendedMedia is TelegramMediaAction) }), $0.1, $0.0.totalCount)}
         })
         
         
@@ -6116,12 +6116,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
         }
         
-        chatInteraction.runReactionEffect = { [weak self] value, messageId in
+        chatInteraction.runReactionEffect = { [weak self] value, messageId, isLarge in
             guard let strongSelf = self else {
                 return
             }
             if strongSelf.isOnScreen {
-                strongSelf.emojiEffects.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), viewFrame: context.window.bounds, for: context.window.contentView!)
+                strongSelf.emojiEffects.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), isLarge: isLarge, viewFrame: context.window.bounds, for: context.window.contentView!)
             }
         }
         
@@ -6975,6 +6975,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             if updated.count < urls.count {
                             }
                             let preview = ChatUIHooks.shared.makePreviewSender(updated, self.chatInteraction, asMedia, attributedString)
+                            _ = ChatUIHooks.shared.bindPreviewSendValidation(preview, { [weak self] in
+                                guard let self else { return false }
+                                guard let navigation = self.navigationController else { return true }
+                                return navigation.controller === self
+                            })
                             showModal(with: preview, for: context.window, morphSource: { [weak self] in self?.genericView.inputView.attachView })
                         }
                     } else {
@@ -11191,7 +11196,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         updateBubblesBackButton()
 
         DispatchQueue.main.async { [weak self] in
-            self?.applyCaptureExclusionIfNeeded()
+            guard let self else { return }
+            self.applyCaptureExclusionIfNeeded()
+            if self.genericView.window === self.context.window, self.navigationController?.controller === self, !hasModals(self.context.window) {
+                _ = self.context.window.makeFirstResponder(self.firstResponder())
+            }
         }
 
         let context = self.context

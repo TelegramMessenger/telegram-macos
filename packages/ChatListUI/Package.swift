@@ -60,6 +60,7 @@ let package = Package(
     ] + deps.map { .package(name: $0.0, path: $0.1) } + [
         .package(name: "ColorPalette", path: "../ColorPalette"),
         .package(name: "ThemeSettings", path: "../ThemeSettings"),
+        .package(name: "TLottie", path: "../TLottie"),
     ],
     targets: [
         .target(
@@ -75,6 +76,8 @@ let package = Package(
             dependencies: [
                 "ChatListUI",
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
+                .product(name: "TelegramMedia", package: "TelegramMedia", condition: nil),
+                .product(name: "TLottie", package: "TLottie", condition: nil),
                 .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil),
                 .product(name: "GeneralRows", package: "GeneralRows", condition: nil),
                 .product(name: "InAppSettings", package: "InAppSettings", condition: nil),

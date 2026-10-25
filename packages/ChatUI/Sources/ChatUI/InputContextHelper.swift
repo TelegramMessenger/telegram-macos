@@ -349,6 +349,7 @@ public class InputContextViewController : GenericViewController<InputContextView
     public var updatedSize:((NSSize, Bool)->Void)?
     public var getHeight: (()->CGFloat)?
     public var onDisappear:(()->Void)?
+    public var onSearchMessageSelected:((Message)->Void)?
     public var getBackground:(()->NSColor)?
     
     fileprivate var result:ChatPresentationInputQueryResult?
@@ -534,6 +535,7 @@ public class InputContextViewController : GenericViewController<InputContextView
                 chatInteraction.sendAppFile(selectedItem.result.results[index].file, false, chatInteraction.presentation.effectiveInput.inputText, false, nil, nil, nil)
                 chatInteraction.clearInput()
             } else if let selectedItem = selectedItem as? ContextSearchMessageItem {
+                onSearchMessageSelected?(selectedItem.message)
                 chatInteraction.focusMessageId(nil, .init(messageId: selectedItem.message.id, string: nil), .CenterEmpty)
             } else if let selectedItem = selectedItem as? (any ChatQuickReplyRow) {
                 chatInteraction.sendMessageShortcut(selectedItem.reply)
@@ -1106,7 +1108,7 @@ public class InputContextHelper: NSObject {
                 case let .stickers(stickers):
                     
                     if let peer = chatInteraction.presentation.peer {
-                        if let text = permissionText(from: peer, for: .banSendStickers) {
+                        if let text = permissionText(from: peer, for: .banSendStickers, cachedData: chatInteraction.presentation.cachedData) {
                             entries.append(.inlineRestricted(text))
                             break
                         }

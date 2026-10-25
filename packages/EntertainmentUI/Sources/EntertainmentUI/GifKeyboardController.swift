@@ -291,8 +291,8 @@ public final class GifKeyboardView : View {
     }
  
     
-    public func updateRestricion(_ peer: Peer?, animated: Bool) {
-        if let peer = peer, let text = permissionText(from: peer, for: .banSendGifs) {
+    public func updateRestricion(_ peer: Peer?, cachedData: CachedPeerData?, animated: Bool) {
+        if let peer = peer, let text = permissionText(from: peer, for: .banSendGifs, cachedData: cachedData) {
             let current: RestrictionWrappedView
             if let view = self.restrictedView {
                 current = view
@@ -449,20 +449,20 @@ public final class GifKeyboardController<Context: AccountContextProtocol> : Tele
         self.interactions = interactions
         self.chatInteraction = chatInteraction
         if isLoaded() {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     
