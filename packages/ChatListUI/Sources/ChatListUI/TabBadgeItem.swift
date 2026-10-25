@@ -13,20 +13,20 @@ import TelegramMedia
 import LocalAnimations
 
 
-private final class AvatarTabContainer : View {
+final class AvatarTabContainer : View {
     private let avatar = AvatarControl(font: .avatar(12))
+    private let disposable = MetaDisposable()
     private var selected: Bool = false
     private let circle: View = View()
+    private var laidOutBounds: NSRect?
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        avatar.setFrameSize(frameRect.size)
         avatar.userInteractionEnabled = false
-        circle.setFrameSize(frameRect.size)
-        circle.layer?.cornerRadius = frameRect.height / 2
         circle.layer?.borderWidth = 1.33
         circle.layer?.borderColor = theme.colors.accentIcon.cgColor
         addSubview(circle)
         addSubview(avatar)
+        setSelected(false, animated: false)
     }
     
     required init?(coder: NSCoder) {
@@ -34,6 +34,16 @@ private final class AvatarTabContainer : View {
     }
     func setPeer(account: Account, peer: Peer?) {
         avatar.setPeer(account: account, peer: peer)
+    }
+
+    func setAccount(_ account: Account) {
+        disposable.set((account.postbox.peerView(id: account.peerId) |> map { $0.peers[$0.peerId] } |> deliverOnMainQueue).start(next: { [weak self] peer in
+            self?.setPeer(account: account, peer: peer)
+        }))
+    }
+
+    deinit {
+        disposable.dispose()
     }
     
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
@@ -44,42 +54,77 @@ private final class AvatarTabContainer : View {
     
     override func layout() {
         super.layout()
-        avatar.center()
+        updateGeometry()
     }
     
     func setSelected(_ selected: Bool, animated: Bool) {
+        updateGeometry()
         self.selected = selected
-        
         circle.change(opacity: selected ? 1 : 0, animated: animated, duration: 0.4, timingFunction: .spring)
-        
-        avatar.setFrameSize(frame.size)
+        updateSelectionScales(animated: animated)
+    }
 
-        let from: CGFloat = selected ? 1 : 24 / frame.height
-        let to: CGFloat = selected ? 24 / frame.height : 1
-        avatar.layer?.animateScaleSpring(from: from, to: to, duration: 0.3, removeOnCompletion: false, bounce: false, completion: { completed in
-            
-        })
-        
-        if animated {
-            if selected {
-                circle.layer?.animateScaleSpring(from: 0.5, to: 1.0, duration: 0.3, bounce: false)
-            } else {
-                circle.layer?.animateScaleSpring(from: 1.0, to: 0.5, duration: 0.3, removeOnCompletion: false, bounce: false)
-            }
+    private func updateGeometry() {
+        guard laidOutBounds != bounds else {
+            return
         }
+        laidOutBounds = bounds
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for view in [avatar, circle] {
+            view.layer?.removeAnimation(forKey: "transform")
+            view.layer?.transform = CATransform3DIdentity
+            view.frame = bounds
+        }
+        circle.layer?.cornerRadius = bounds.height / 2
+        updateSelectionScales(animated: false)
+        CATransaction.commit()
+    }
 
-        needsLayout = true
+    private func updateSelectionScales(animated: Bool) {
+        updateScale(selected && bounds.height > 0 ? 24 / bounds.height : 1, for: avatar.layer, animated: animated)
+        updateScale(selected ? 1 : 0.5, for: circle.layer, animated: animated)
+    }
+
+    private func updateScale(_ scale: CGFloat, for layer: CALayer?, animated: Bool) {
+        guard let layer else {
+            return
+        }
+        let center = NSMakePoint((0.5 - layer.anchorPoint.x) * layer.bounds.width, (0.5 - layer.anchorPoint.y) * layer.bounds.height)
+        var target = CATransform3DMakeTranslation(center.x, center.y, 0)
+        target = CATransform3DScale(target, scale, scale, 1)
+        target = CATransform3DTranslate(target, -center.x, -center.y, 0)
+        if animated && CATransform3DEqualToTransform(layer.transform, target) {
+            return
+        }
+        let animation = layer.animation(forKey: "transform") as? CABasicAnimation
+        let current: CATransform3D
+        if let animation {
+            current = layer.presentation()?.transform ?? (animation.fromValue as? NSValue)?.caTransform3DValue ?? layer.transform
+        } else {
+            current = layer.transform
+        }
+        layer.removeAnimation(forKey: "transform")
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = target
+        CATransaction.commit()
+        if animated && !CATransform3DEqualToTransform(current, target) {
+            layer.animate(from: NSValue(caTransform3D: current), to: NSValue(caTransform3D: target), keyPath: "transform", timingFunction: .spring, duration: 0.3)
+        }
     }
 
 }
 
 
-private final class TabAnimatedIconView : LottiePlayerView {
+final class TabAnimatedIconView : LottiePlayerView {
     private let sticker: LocalAnimatedSticker
+    private let animationData: Data?
     private var selected: Bool = false
 
-    init(sticker: LocalAnimatedSticker) {
+    init(sticker: LocalAnimatedSticker, animationData: Data? = nil) {
         self.sticker = sticker
+        self.animationData = animationData
         super.init(frame: NSMakeRect(0, 0, 48, 48))
         isEventLess = true
     }
@@ -113,12 +158,12 @@ private final class TabAnimatedIconView : LottiePlayerView {
     }
 
     private func apply(playing: Bool) {
-        guard let data = sticker.data else {
+        guard let data = animationData ?? sticker.data else {
             return
         }
         let policy: LottiePlayPolicy = playing ? .toEnd(from: 0) : .toEnd(from: .max)
         let animation = LottieAnimation(compressed: data, key: .init(key: .bundle(sticker.rawValue), size: frame.size), cachePurpose: .none, playPolicy: policy, colors: colors, runOnQueue: .mainQueue())
-        set(animation, saveContext: true)
+        set(animation, reset: playing, saveContext: true)
     }
 }
 
@@ -130,7 +175,9 @@ public class TabAnimatedItem: TabItem {
     }
 
     public override func withUpdatedImages(_ image: CGImage, _ selectedImage: CGImage) -> TabItem {
-        return TabAnimatedItem(sticker, image: image, selectedImage: selectedImage, controller: self.controller, subNode: self.subNode, longHoverHandler: self.longHoverHandler)
+        let item = TabAnimatedItem(sticker, image: image, selectedImage: selectedImage, controller: self.controller, subNode: self.subNode, longHoverHandler: self.longHoverHandler)
+        item.accessibilityTitle = accessibilityTitle
+        return item
     }
 
     public override func makeView() -> NSView {
@@ -148,28 +195,27 @@ public class TabAnimatedItem: TabItem {
 
 public class TabBadgeItem: TabAnimatedItem {
     private let context:any AccountContextProtocol
-    public init(_ context: any AccountContextProtocol, controller:ViewController, image: CGImage, selectedImage: CGImage, longHoverHandler:((Control)->Void)? = nil) {
+    public init(_ context: any AccountContextProtocol, controller:ViewController, image: CGImage, selectedImage: CGImage, longHoverHandler:((Control)->Void)? = nil, subNode: Node? = nil) {
         self.context = context
-        super.init(.tab_chats, image: image, selectedImage: selectedImage, controller: controller, subNode:ChatListUIHooks.shared.makeTabBadgeNode(context), longHoverHandler: longHoverHandler)
+        super.init(.tab_chats, image: image, selectedImage: selectedImage, controller: controller, subNode: subNode ?? ChatListUIHooks.shared.makeTabBadgeNode(context), longHoverHandler: longHoverHandler)
     }
     public override func withUpdatedImages(_ image: CGImage, _ selectedImage: CGImage) -> TabItem {
-        return TabBadgeItem(context, controller: self.controller, image: image, selectedImage: selectedImage, longHoverHandler: self.longHoverHandler)
+        let item = TabBadgeItem(context, controller: self.controller, image: image, selectedImage: selectedImage, longHoverHandler: self.longHoverHandler, subNode: subNode)
+        item.accessibilityTitle = accessibilityTitle
+        return item
     }
 }
 public class TabAllBadgeItem: TabAnimatedItem {
     private let context:any AccountContextProtocol
-    private let disposable = MetaDisposable()
-    private var peer: Peer?
     public init(_ context: any AccountContextProtocol, image: CGImage, selectedImage: CGImage, controller:ViewController, subNode:Node? = nil, longHoverHandler:((Control)->Void)? = nil) {
         self.context = context
-        super.init(.tab_settings, image: image, selectedImage: selectedImage, controller: controller, subNode:ChatListUIHooks.shared.makeTabAllBadgeNode(context), longHoverHandler: longHoverHandler)
-    }
-    deinit {
-        disposable.dispose()
+        super.init(.tab_settings, image: image, selectedImage: selectedImage, controller: controller, subNode: subNode ?? ChatListUIHooks.shared.makeTabAllBadgeNode(context), longHoverHandler: longHoverHandler)
     }
     
     public override func withUpdatedImages(_ image: CGImage, _ selectedImage: CGImage) -> TabItem {
-        return TabAllBadgeItem(context, image: image, selectedImage: selectedImage, controller: self.controller, subNode: self.subNode, longHoverHandler: self.longHoverHandler)
+        let item = TabAllBadgeItem(context, image: image, selectedImage: selectedImage, controller: self.controller, subNode: self.subNode, longHoverHandler: self.longHoverHandler)
+        item.accessibilityTitle = accessibilityTitle
+        return item
     }
     
     public override func makeView() -> NSView {
@@ -194,9 +240,7 @@ public class TabAllBadgeItem: TabAnimatedItem {
          return lhs?.smallProfileImage != rhs?.smallProfileImage
          })
  */
-        disposable.set((context.account.postbox.peerView(id: context.account.peerId) |> map { $0.peers[$0.peerId] } |> deliverOnMainQueue).start(next: { [weak view] peer in
-            view?.setPeer(account: context.account, peer: peer)
-        }))
+        view.setAccount(context.account)
         
         return view
     }

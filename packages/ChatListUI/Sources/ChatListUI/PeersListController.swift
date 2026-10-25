@@ -1055,6 +1055,17 @@ public class PeerListContainerView : Control {
     
     public var layoutBottomOverlay: ((CGFloat, ContainedViewLayoutTransition) -> NSRect?)?
 
+    public var contentBottomInset: CGFloat = 0 {
+        didSet {
+            guard contentBottomInset != oldValue else {
+                return
+            }
+            tableView.contentInsets.bottom = contentBottomInset
+            updateScrollerInset(animated: false)
+            updateBottomControls(size: frame.size, transition: .immediate)
+        }
+    }
+
     private var downloads: DownloadsControl?
     private var removalUndo: ChatRemovalUndoView?
     private var proxy: ProxyView?
@@ -1870,7 +1881,7 @@ public class PeerListContainerView : Control {
             }
             return true
         })
-        tableView.scrollerInsets = .init(left: 0, right: 0, top: top, bottom: 0)
+        tableView.scrollerInsets = .init(left: 0, right: 0, top: top, bottom: contentBottomInset)
         updateTableMask(spaceHeight: top)
     }
 
@@ -1884,10 +1895,11 @@ public class PeerListContainerView : Control {
     }
     
     public func updateBottomControls(size: NSSize, transition: ContainedViewLayoutTransition) {
-        var bottomControlsY = size.height
+        var bottomControlsY = size.height - contentBottomInset
         for view in [downloads as NSView?, removalUndo as NSView?].compactMap({ $0 }) {
             let edge: CGFloat = 12
-            let rect = NSMakeRect(edge, bottomControlsY - view.frame.height - edge, size.width - edge * 2, view.frame.height)
+            let y = bottomControlsY - view.frame.height - edge
+            let rect = view is DownloadsControl ? downloadsFrame(in: size, y: y) : NSMakeRect(edge, y, size.width - edge * 2, view.frame.height)
             transition.updateFrame(view: view, frame: rect)
             bottomControlsY = rect.minY
         }
@@ -1905,6 +1917,11 @@ public class PeerListContainerView : Control {
             }
             transition.updateFrame(view: view, frame: rect)
         }
+    }
+
+    private func downloadsFrame(in size: NSSize, y: CGFloat) -> NSRect {
+        let width = min(500, max(0, size.width - 40))
+        return NSMakeRect(floorToScreenPixels((size.width - width) / 2), y, width, 30)
     }
 
     private var pendingRemovalUndo: (toast: PendingChatRemovalToast, undo: () -> Void)?
@@ -1958,7 +1975,6 @@ public class PeerListContainerView : Control {
 
     fileprivate func applyDownloadsVisibility(animated: Bool) {
         let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.2, curve: .easeInOut) : .immediate
-        let edge: CGFloat = 12
         let allowed: Bool
         if let st = self.state {
             let hideContent = st.splitState == .minimisize || st.appear == .short
@@ -1971,7 +1987,7 @@ public class PeerListContainerView : Control {
             if let view = self.downloads {
                 current = view
             } else {
-                current = DownloadsControl(frame: NSMakeRect(edge, frame.height, frame.width - edge * 2, 30))
+                current = DownloadsControl(frame: downloadsFrame(in: frame.size, y: frame.height))
                 self.downloads = current
                 addSubview(current, positioned: .above, relativeTo: self.tableView)
                 if animated {
@@ -1984,7 +2000,7 @@ public class PeerListContainerView : Control {
             }, for: .Click)
         } else if let view = self.downloads {
             self.downloads = nil
-            transition.updateFrame(view: view, frame: NSRect(origin: NSMakePoint(edge, frame.height), size: view.frame.size), completion: { _ in
+            transition.updateFrame(view: view, frame: downloadsFrame(in: frame.size, y: frame.height), completion: { _ in
                 view.removeFromSuperview()
             })
         }
@@ -2455,6 +2471,7 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     
     open override func viewDidLoad() {
         super.viewDidLoad()
+        updateContainerContentInsets(containerContentInsets, transition: .immediate)
         let context = self.context
         let mode = self.mode
         let isContacts = self.isContacts
@@ -3261,6 +3278,7 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
                 searchSection._frameRect = rect
                 searchSection.navigationController = self.navigationController
                 searchSection.loadViewIfNeeded()
+                searchSection.updateContainerContentInsets(containerContentInsets, transition: .immediate)
                 searchSection.genericView._backgroundColor = .clear
                 searchSection.selectionUpdateHandler = { [weak self] idx in
                     if let searchSection = self?.searchSection {
@@ -3544,6 +3562,15 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
         case .None:
             return genericView.tableView
         }
+    }
+
+    open override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        guard isLoaded() else {
+            return
+        }
+        genericView.contentBottomInset = insets.bottom
+        searchSection?.updateContainerContentInsets(insets, transition: transition)
     }
     
     open override func viewDidAppear(_ animated: Bool) {

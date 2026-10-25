@@ -887,6 +887,7 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
     
     public override func viewDidLoad() {
         super.viewDidLoad()
+        updateContainerContentInsets(containerContentInsets, transition: .immediate)
         genericView.delegate = self
         genericView.needUpdateVisibleAfterScroll = true
         //genericView.border = [.Right]
@@ -1901,6 +1902,14 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         }
         
         
+    }
+
+    public override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        if isLoaded() {
+            genericView.contentInsets.bottom = insets.bottom
+            genericView.scrollerInsets.bottom = insets.bottom
+        }
     }
     
     public override func initializer() -> TableView {

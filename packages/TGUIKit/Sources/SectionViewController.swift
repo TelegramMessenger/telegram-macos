@@ -223,6 +223,7 @@ open class SectionViewController: GenericViewController<SectionControllerView> {
         let controller = sections[index].controller
         controller._frameRect = genericView.bounds
         controller.loadViewIfNeeded()
+        controller.updateContainerContentInsets(containerContentInsets, transition: .immediate)
         controller.view.frame = parked ? genericView.bounds : pageFrame(index)
         controller.view.alphaValue = parked ? 0 : 1
         attached.insert(index)
@@ -235,6 +236,13 @@ open class SectionViewController: GenericViewController<SectionControllerView> {
             genericView.addSubview(controller.view, positioned: .below, relativeTo: selectedView)
         } else {
             genericView.addSubview(controller.view)
+        }
+    }
+
+    open override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        for section in sections {
+            section.controller.updateContainerContentInsets(insets, transition: transition)
         }
     }
 

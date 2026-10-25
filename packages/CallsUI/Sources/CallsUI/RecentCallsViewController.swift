@@ -393,6 +393,8 @@ public class RecentCallsViewController<Context: AccountContextProtocol>: Telegra
     public override func viewDidLoad() {
         super.viewDidLoad()
 
+        updateContainerContentInsets(containerContentInsets, transition: .immediate)
+
         let previous = self.previous
         let initialSize = self.atomicSize
         let context = self.context
@@ -475,6 +477,14 @@ public class RecentCallsViewController<Context: AccountContextProtocol>: Telegra
 
         locationValue.set(.initial(count: 100))
         updateLocalizationAndTheme(theme: theme)
+    }
+
+    public override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        if isLoaded() {
+            genericView.tableView.contentInsets.bottom = insets.bottom
+            genericView.tableView.scrollerInsets.bottom = insets.bottom
+        }
     }
 
     public override func viewWillAppear(_ animated: Bool) {

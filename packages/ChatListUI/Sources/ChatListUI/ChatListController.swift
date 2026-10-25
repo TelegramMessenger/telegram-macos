@@ -1624,13 +1624,9 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
                 }
             } else {
                 if self.genericView.tableView.documentOffset.y == 0 {
-                    if !self.revealStoriesState() {
-                        if self.filterValue.filter == .allChats {
-                            ChatListUIHooks.shared.showFastChatSettings(self.context)
-                        } else {
-                            self.updateFilter {
-                                $0.withUpdatedFilter(nil)
-                            }
+                    if !self.revealStoriesState(), self.filterValue.filter != .allChats {
+                        self.updateFilter {
+                            $0.withUpdatedFilter(nil)
                         }
                     }
                 } else {

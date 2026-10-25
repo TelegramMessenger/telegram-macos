@@ -833,6 +833,15 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
         super.viewDidResized(size)
         self.searchController?.view.frame = bounds
     }
+
+    open override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        if isLoaded() {
+            tableView.contentInsets.bottom = insets.bottom
+            tableView.scrollerInsets.bottom = insets.bottom
+            searchController?.updateContainerContentInsets(insets, transition: transition)
+        }
+    }
     
     
     private func showSearchController(animated: Bool) {
@@ -841,6 +850,7 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
             let searchController = SearchSettingsController(context: context, searchQuery: self.searchState.get(), archivedStickerPacks: .single(nil), privacySettings: self.settings.get() |> map { $0.0 })
             searchController.bar = .init(height: 0)
             searchController._frameRect = rect
+            searchController.updateContainerContentInsets(containerContentInsets, transition: .immediate)
             self.searchController = searchController
             searchController.navigationController = self.navigationController
             searchController.viewWillAppear(true)
@@ -962,6 +972,7 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
     private weak var arguments: AccountInfoArguments<Context>?
     open override func viewDidLoad() {
         super.viewDidLoad()
+        updateContainerContentInsets(containerContentInsets, transition: .immediate)
         tableView.delegate = self
         let context = self.context
         //theme.colors.listBackground

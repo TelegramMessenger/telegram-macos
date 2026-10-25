@@ -822,7 +822,16 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         return false
     }
     open func currentControllerDidChange() {
+        controller.updateContainerContentInsets(containerContentInsets, transition: .immediate)
         controllerDidChange?()
+    }
+
+    open override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        super.updateContainerContentInsets(insets, transition: transition)
+        enumerateControllers { controller, _ in
+            controller.updateContainerContentInsets(insets, transition: transition)
+            return false
+        }
     }
     
     public override var backgroundColor: NSColor {

@@ -13,6 +13,12 @@ private final class ScrollGeometryTableSpy: TGFlipableTableView {
 private final class ScrollGeometryHeader: TableStickItem {}
 private final class ScrollGeometrySecondaryHeader: TableStickItem {}
 
+private final class BottomInsetGeometryRow: TableRowItem {
+    override var height: CGFloat {
+        return 60
+    }
+}
+
 final class TableScrollGeometryTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -41,6 +47,32 @@ final class TableScrollGeometryTests: XCTestCase {
         spy.rangeQueries = 0
         table.updateStickAfterScroll(false)
         XCTAssertEqual(spy.rangeQueries, 0)
+    }
+
+    func testBottomAlignedRowsClearTheContentInsetWithoutShrinkingTheViewport() {
+        let window = NSWindow(contentRect: NSMakeRect(0, 0, 320, 400), styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let table = TableView(frame: window.contentView!.bounds)
+        window.contentView!.addSubview(table)
+        for index in 0 ..< 20 {
+            _ = table.addItem(item: BottomInsetGeometryRow(table.bounds.size, stableId: index))
+        }
+        for inset in [CGFloat(0), 56, 0] {
+            table.contentInsets.bottom = inset
+            table.layoutSubtreeIfNeeded()
+            let states: [TableScrollState] = [.bottom(id: 19, innerId: nil, animated: false, focus: .init(focus: false), inset: 0), .down(false)]
+            for state in states {
+                table.contentView.scroll(to: NSMakePoint(0, table.documentSize.height - table.frame.height))
+                table.layoutSubtreeIfNeeded()
+                table.scroll(to: state, toVisible: true)
+                table.layoutSubtreeIfNeeded()
+                let row = table.rectOf(item: table.item(at: 19))
+                let frame = table.convert(row, from: table.view)
+                XCTAssertEqual(table.frame.height, 400)
+                XCTAssertEqual(frame.maxY, 400 - inset, accuracy: 0.5)
+            }
+        }
     }
 
     func testVisibleRangesMatchOriginalFormulaAcrossInsetsResizeAndRemoval() {

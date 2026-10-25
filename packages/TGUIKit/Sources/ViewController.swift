@@ -539,6 +539,12 @@ open class ViewController : NSObject {
     /// to this property in their init.
     public var insets: NSEdgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
 
+    public private(set) var containerContentInsets: NSEdgeInsets = NSEdgeInsets()
+
+    open func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) {
+        containerContentInsets = insets
+    }
+
     /// When this controller is placed in a `SplitView` that grants it the full
     /// container width (rather than its logical pane width), `slotLeadingInset`
     /// is the x coordinate where the original logical pane began. Controllers

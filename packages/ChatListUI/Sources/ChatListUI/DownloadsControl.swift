@@ -40,7 +40,8 @@ public final class DownloadsControl : Control {
 
         self.layer?.cornerRadius = frameRect.height / 2
 
-        let glass = LiquidGlassView(frame: bounds, cornerRadius: frameRect.height / 2, hasShadow: true, hasBorder: true, tintAlpha: 0.3)
+        let glass = LiquidGlassView(frame: bounds, cornerRadius: frameRect.height / 2, hasShadow: true, hasBorder: true, tintAlpha: 0.15)
+        glass.isEventLess = true
         self.glassView = glass
         addSubview(glass)
         self.stretchReferenceView = glass
@@ -69,7 +70,6 @@ public final class DownloadsControl : Control {
         let theme = theme as! TelegramPresentationTheme
         self.backgroundColor = .clear
         self.border = []
-        glassView.customTint = theme.colors.background
 
         progressView.style = ControlStyle(foregroundColor: theme.colors.accent, backgroundColor: .clear, highlightColor: .clear)
 
@@ -105,9 +105,10 @@ public final class DownloadsControl : Control {
         let progressInset = frame.height / 2
         progressView.frame = NSMakeRect(progressInset, frame.height - progressView.frame.height, frame.width - progressInset * 2, 2)
 
-        titleView.resize(frame.width - 20)
+        let textWidth = max(0, frame.width - 30 - nextView.frame.width)
+        titleView.resize(textWidth)
         titleView.setFrameOrigin(.zero)
-        textContainer.setFrameSize(NSMakeSize(frame.width - 10 - 10, titleView.frame.height))
+        textContainer.setFrameSize(NSMakeSize(textWidth, titleView.frame.height))
         textContainer.centerY(x: 10)
         nextView.centerY(x: frame.width - 10 - nextView.frame.width)
 
