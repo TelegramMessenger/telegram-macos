@@ -431,6 +431,7 @@ public final class ReactionsWindowController : NSObject {
             if let v = panel?.contentView?.subviews.first(where: { $0 is V }) {
                 v.layer?.rasterizationScale = System.backingScale
                 v.layer?.shouldRasterize = true
+                v.layer?.animateScaleCenter(from: 1, to: 0.9, duration: 0.2, removeOnCompletion: false, timingFunction: .easeIn)
             }
             panel?.contentView?.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { _ in
                 panel?.orderOut(nil)
