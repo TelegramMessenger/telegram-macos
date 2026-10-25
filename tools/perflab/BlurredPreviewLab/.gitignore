@@ -4,3 +4,4 @@ __pycache__/
 !Results/runs.jsonl
 !Results/verification.json
 !Results/native-canvases.json
+!Results/revalidation.json

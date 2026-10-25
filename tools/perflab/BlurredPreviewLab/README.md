@@ -48,7 +48,19 @@ All **144 measurement pairs** have equal output dimensions and active-pixel chec
 
 Allocation tests compile a separate `TrackedBlur` copy whose only transformation is replacing `DrawingContext(size:` calls with a recorder function. That function creates and returns a real `TGUIKit.DrawingContext` and records its actual `length`. Performance tests use `NativeBlur`, with no such transformation. Tests are serial because native screen scale and graphics-context settings are process globals.
 
-Address Sanitizer uses `ASAN_OPTIONS=detect_leaks=0` for address/lifetime validation; this is not a leak-free claim. The complete helper source and full TGUIKit compile in the standalone native package. The full Telegram application and an authenticated camera/recording workflow were not built or measured in this task. The result demonstrates lower helper CPU and transient allocation, not an improvement in overall application speed, FPS, battery or total application memory.
+Address Sanitizer uses `ASAN_OPTIONS=detect_leaks=0` for address/lifetime validation; this is not a leak-free claim. The complete helper source and full TGUIKit compile in the standalone native package. The initial benchmark did not build or run the full Telegram application; subsequent client testing is described below. The performance measurements demonstrate lower helper CPU and transient allocation, not an improvement in overall application speed, FPS, battery or total application memory.
+
+## Full-client follow-up and current master, 26 October 2026
+
+I tested the exact production helper from this PR in a full local Debug arm64 client, Telegram Master Test 13.1.0 (283357), on macOS 27.0.1 (26A434), Apple M4 Pro. The client was based on `cdf97a0e316521c72bd606bfb8002487d8fc842c`. I compared it with a control build on the same profile; only `CGImageExtensions.swift` differed between those two variants.
+
+I recorded video messages, opened the paused preview, checked the video image and initial trim thumbnails, and discarded the recordings without sending. Images and thumbnails looked the same in both variants, without black or empty frames. A runtime breakpoint observed the helper five times from `VideoRecorderModalController` and three times from `RecordingTrimScrubberView`; it was removed before control-build testing. This establishes that both callers were exercised, not a performance improvement in the client.
+
+The right trim handle and timeline seeking failed in both variants. These controls are not changed by this PR, and the complete trimming workflow must not be reported as passing for either comparison build. Separate local recording-editor fixes were subsequently tested successfully; they are outside this PR. The later editor test does not replace the controlled before/after preview comparison.
+
+I also checked current upstream master `272d85dd7cc78864549b1d5510a177db79059fc7`. The PR merges without conflicts, and the original helper and both caller files are unchanged from the full-client test base. All six native tests pass again in Debug, Release and Address Sanitizer using the helper and real TGUIKit/native dependencies exported from the merged source tree. The 288 original benchmark samples and all summary statistics were independently rechecked, including all 144 matching output pairs. The original measurements remain the results of the initial benchmark, rather than a new full-client performance measurement.
+
+The latest-master merge result was validated with the native harness; the full application was not rebuilt from that merge result. No successful send/upload/export, app-wide performance measurement or leak-free result is claimed. There are no GitHub Actions workflows or reported CI statuses for this PR at this check; the passing checks above are local. Structured follow-up evidence is in [revalidation.json](Results/revalidation.json); the original measurement files remain unchanged.
 
 ## Reproduce
 

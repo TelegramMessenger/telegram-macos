@@ -1,0 +1,80 @@
+{
+  "checked_at": "2026-10-25T23:13:39.320643+00:00",
+  "pr": 82,
+  "production_head_tested": "7fed6906a1082c7193c9154bba9dc24a17e8b915",
+  "upstream_master": "272d85dd7cc78864549b1d5510a177db79059fc7",
+  "merged_tree_tested": "db0bbcb0f89cd1cb091e5e430f428499fe93ca28",
+  "merge_conflicts": false,
+  "production_change": {
+    "files": 1,
+    "added_lines": 0,
+    "removed_lines": 10
+  },
+  "helper_sha256": "41fe8571260b182a369f90275f102fa4b9af893eb9278158867dadd3c2c31cbc",
+  "environment": {
+    "macos": "27.0.1 (26A434)",
+    "hardware": "Apple M4 Pro, arm64",
+    "xcode": "27.1 (27A9275)",
+    "swift": "6.4"
+  },
+  "native_checks": {
+    "debug": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "aa745afd4130cc1a6ae299aea3cf7d37131ceede1ca1a879b7e78550a15b46b6"
+    },
+    "release": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "c139e493c343ae6fcdedf551cb588b7693884950e4d38957683f6bc82a5dfbb5"
+    },
+    "asan": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "978f3a87e0ab839a0a072fbab6da4407b68ac9f3efe6b436e480c30c746071e6"
+    }
+  },
+  "native_scope": "Complete production helper and real TGUIKit/native dependencies from exported master + PR merge tree; reference helper and pinned SSignalKit from current master. No full application build of this merge tree.",
+  "merged_dependencies_manifest_sha256": "3546e5d24d5c60b1b060bb1d09b2d33c2d10b4111ecac25516482ba7f8fa3687",
+  "original_benchmark_rechecked": {
+    "fresh_process_samples": 288,
+    "matching_output_pairs": 144,
+    "all_summary_statistics_match_raw_samples": true,
+    "execution_orders_balanced": true,
+    "new_performance_matrix_run": false
+  },
+  "full_client_comparison": {
+    "date": "2026-10-26 Europe/Moscow",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "source_base": "cdf97a0e316521c72bd606bfb8002487d8fc842c",
+    "only_file_differing_between_variants": "packages/TelegramMediaUtils/Sources/TelegramMediaUtils/CGImageExtensions.swift",
+    "preview_image_and_initial_thumbnails": "User confirmed normal rendering and equivalent appearance with and without PR; no black or empty frames",
+    "runtime_calls": {
+      "VideoRecorderModalController": 5,
+      "RecordingTrimScrubberView": 3
+    },
+    "recordings": "Discarded without sending",
+    "controls": "Right trim handle and timeline seeking failed with and without PR; full trimming workflow did not pass in this comparison",
+    "later_local_editor_fixes": "Tested successfully later; excluded from PR #82 and from the controlled comparison",
+    "visual_comparison_source": "Direct user confirmations; not an automated screenshot pixel comparison"
+  },
+  "master_compatibility": {
+    "original_helper_unchanged": true,
+    "caller_files_unchanged_since_client_test": true,
+    "rule_documents_match_current_master": true,
+    "github_mergeable": true,
+    "github_mergeable_state": "clean",
+    "github_actions_workflows": 0,
+    "reported_ci_statuses": 0,
+    "github_actions_runs": 0
+  },
+  "limits": [
+    "The latest-master merge result was built and tested as a native harness, not a full application.",
+    "Client comparison used the exact PR helper in an existing master-based local client, not the whole original PR checkout.",
+    "No app-wide FPS, battery, persistent memory or full-client performance claim.",
+    "No successful send/upload/export was tested; recordings were discarded.",
+    "Opaque fixture inputs, dimensions at least 50 pixels, backing scales 1x and 2x.",
+    "Address Sanitizer used detect_leaks=0; no leak-free claim.",
+    "The original benchmark evidence remains frozen and records the earlier native-only testing scope."
+  ]
+}
