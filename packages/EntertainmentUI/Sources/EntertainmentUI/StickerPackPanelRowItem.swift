@@ -536,6 +536,7 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
     }
     
     private var currentDownItem: (InlineStickerItemLayer, TelegramMediaFile, Bool)?
+    private let dragTracker = EntertainmentDragTracker()
     private func updateDown() {
         if isEditing {
             if let (layer, file) = itemUnderMouse, let item = item as? StickerPackPanelRowItem, let window = window {
@@ -546,6 +547,7 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
         }
         if let item = itemUnderMouse {
             self.currentDownItem = (item.0, item.1, true)
+            self.dragTracker.down(in: window)
         }
         if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: 1, to: 0.95, duration: 0.2, removeOnCompletion: false)
@@ -554,6 +556,9 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
     private func updateDragging() {
         if reorderState != nil {
             updateReorder()
+            return
+        }
+        if updateStickerDrag() {
             return
         }
         if let current = self.currentDownItem {
@@ -573,6 +578,12 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
             endReorder(state)
             return
         }
+        if let current = self.currentDownItem, let item = item as? StickerPackPanelRowItem, dragTracker.up(in: window, end: { point in
+            _ = item.arguments.dragSticker?(current.1, nil, .ended(point))
+        }) {
+            self.currentDownItem = nil
+            return
+        }
         if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: 0.95, to: 1, duration: 0.2, removeOnCompletion: true)
             if itemUnderMouse.1 == self.itemUnderMouse?.1 {
@@ -582,6 +593,24 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
         self.currentDownItem = nil
     }
     
+    private func updateStickerDrag() -> Bool {
+        guard let item = item as? StickerPackPanelRowItem, let dragSticker = item.arguments.dragSticker, let current = self.currentDownItem else {
+            return false
+        }
+        return dragTracker.dragged(in: window, begin: { point in
+            let image = current.0.contents.flatMap { CFGetTypeID($0 as CFTypeRef) == CGImage.typeID ? ($0 as! CGImage) : nil }
+            guard dragSticker(current.1, image, .moved(point)) else {
+                return false
+            }
+            if current.2 {
+                current.0.animateScale(from: 0.95, to: 1, duration: 0.2, removeOnCompletion: true)
+            }
+            return true
+        }, move: { point in
+            _ = dragSticker(current.1, nil, .moved(point))
+        })
+    }
+
     private func slotPosition(_ file: TelegramMediaFile, index: Int, item: StickerPackPanelRowItem) -> NSPoint? {
         guard index < item.slots.count else {
             return nil

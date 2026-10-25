@@ -129,15 +129,31 @@ public class EBlockRowView: TableRowView {
     }
     
     private var currentDownItem: (LineLayer, NSAttributedString, Bool)?
+    private let dragTracker = EntertainmentDragTracker()
     private func updateDown() {
         if let item = itemUnderMouse {
             self.currentDownItem = (item.0, item.1, true)
+            self.dragTracker.down(in: window)
         }
         if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: 1, to: 0.85, duration: 0.2, removeOnCompletion: false)
         }
     }
     private func updateDragging() {
+        if let current = self.currentDownItem, let item = item as? EBlockItem, let drag = item.dragHandler, dragTracker.dragged(in: window, begin: { point in
+            guard drag(current.1.string, .moved(point)) else {
+                return false
+            }
+            if current.2 {
+                current.0.animateScale(from: 0.85, to: 1, duration: 0.2, removeOnCompletion: true)
+                self.currentDownItem?.2 = false
+            }
+            return true
+        }, move: { point in
+            _ = drag(current.1.string, .moved(point))
+        }) {
+            return
+        }
         if let current = self.currentDownItem {
             if self.itemUnderMouse?.1 != current.1, current.2  {
                 current.0.animateScale(from: 0.85, to: 1, duration: 0.2, removeOnCompletion: true)
@@ -149,6 +165,12 @@ public class EBlockRowView: TableRowView {
         }
     }
     private func updateUp() {
+        if let current = self.currentDownItem, let item = item as? EBlockItem, dragTracker.up(in: window, end: { point in
+            _ = item.dragHandler?(current.1.string, .ended(point))
+        }) {
+            self.currentDownItem = nil
+            return
+        }
         if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: 0.85, to: 1, duration: 0.2, removeOnCompletion: true)
             if itemUnderMouse.1 == self.itemUnderMouse?.1 {

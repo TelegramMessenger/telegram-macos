@@ -9,6 +9,7 @@ public struct EditImageCanvasStickerAnimation: Equatable {
     public enum Kind: Equatable {
         case lottie
         case webm
+        case video
     }
     public let kind: Kind
     public let path: String
@@ -45,6 +46,14 @@ final class EditImageCanvasStickerFrameSource {
             }
         case .webm:
             guard let reader = EditImageCanvasWebmReader(path: animation.path) else {
+                return nil
+            }
+            self.frameCount = reader.frameCount
+            self.render = { index in
+                return reader.image(at: index)
+            }
+        case .video:
+            guard let reader = EditImageCanvasVideoReader(path: animation.path) else {
                 return nil
             }
             self.frameCount = reader.frameCount
@@ -136,6 +145,92 @@ private final class EditImageCanvasWebmReader {
         }
         let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer), bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
         return context?.makeImage()
+    }
+}
+
+private func editImageCanvasVideoAsset(path: String) -> AVURLAsset {
+    let link = NSTemporaryDirectory() + "edit_canvas_\(UInt(bitPattern: path.hashValue)).mp4"
+    if !FileManager.default.fileExists(atPath: link) {
+        try? FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: path)
+    }
+    return AVURLAsset(url: URL(fileURLWithPath: link))
+}
+
+public func editImageCanvasVideoPreview(path: String) -> CGImage? {
+    let generator = AVAssetImageGenerator(asset: editImageCanvasVideoAsset(path: path))
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = NSMakeSize(1024, 1024)
+    return try? generator.copyCGImage(at: .zero, actualTime: nil)
+}
+
+private final class EditImageCanvasVideoReader {
+    private let asset: AVURLAsset
+    private var reader: AVAssetReader?
+    private var output: AVAssetReaderTrackOutput?
+    private var position: Int = -1
+    private var current: CGImage?
+    private let fps: Double
+    let frameCount: Int
+
+    init?(path: String) {
+        self.asset = editImageCanvasVideoAsset(path: path)
+        guard let track = asset.tracks(withMediaType: .video).first, asset.duration.seconds > 0 else {
+            return nil
+        }
+        let fps = Double(track.nominalFrameRate)
+        self.fps = fps > 0 ? fps : Double(editImageCanvasAnimationFps)
+        self.frameCount = max(1, Int(asset.duration.seconds * Double(editImageCanvasAnimationFps)))
+    }
+
+    private func restart() {
+        reader?.cancelReading()
+        reader = nil
+        output = nil
+        position = -1
+        guard let track = asset.tracks(withMediaType: .video).first, let reader = try? AVAssetReader(asset: asset) else {
+            return
+        }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else {
+            return
+        }
+        reader.add(output)
+        guard reader.startReading() else {
+            return
+        }
+        self.reader = reader
+        self.output = output
+    }
+
+    func image(at index: Int) -> CGImage? {
+        let target = Int(Double(index) * fps / Double(editImageCanvasAnimationFps))
+        if target < position || output == nil {
+            restart()
+        }
+        while position < target, let output = output {
+            guard let sample = output.copyNextSampleBuffer() else {
+                break
+            }
+            position += 1
+            if position == target, let buffer = CMSampleBufferGetImageBuffer(sample) {
+                current = makeImage(buffer)
+            }
+        }
+        return current
+    }
+
+    private func makeImage(_ buffer: CVImageBuffer) -> CGImage? {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer {
+            CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+        }
+        let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer), bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        return context?.makeImage()
+    }
+
+    deinit {
+        reader?.cancelReading()
     }
 }
 

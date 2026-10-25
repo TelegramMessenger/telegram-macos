@@ -11,6 +11,7 @@ import AlertsUI
 import Localization
 import TelegramTheme
 import TelegramUtils
+import TelegramMediaUtils
 
 extension EmojiesController: @retroactive PreviewSenderEmojiesController {
 
@@ -56,6 +57,7 @@ private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
     private let entertainment: EntertainmentViewController
     private let chatInteraction: ChatInteraction
     private let disposable = MetaDisposable()
+    private let dragDisposable = MetaDisposable()
     private let visibilityDisposable = MetaDisposable()
     private var isBound = false
     var visibilityChanged: ((Bool) -> Void)?
@@ -71,31 +73,66 @@ private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
 
     deinit {
         disposable.dispose()
+        dragDisposable.dispose()
         visibilityDisposable.dispose()
     }
 
-    func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void) {
+    func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void, drag: @escaping (EditImageCanvasStickerDrag) -> Void) {
         if !isBound {
             isBound = true
             entertainment.update(with: chatInteraction)
         }
         let interactions = entertainment.interactions
         interactions?.sendSticker = { [weak self] file, _, _, _ in
-            self?.render(file, select: select)
+            self?.pick(.file(file), disposable: self?.disposable, select: select)
             self?.entertainment.closePopover()
         }
         interactions?.sendAnimatedEmoji = { [weak self] item, _, _, _, _ in
-            self?.render(item.file._parse(), select: select)
+            self?.pick(.file(item.file._parse()), disposable: self?.disposable, select: select)
             self?.entertainment.closePopover()
         }
         interactions?.sendEmoji = { [weak self] emoji, _ in
-            if let image = ImageCanvasUIHooks.emojiImage(emoji) {
-                select(EditImageCanvasStickerPick(image: image, fileId: nil))
-            }
+            self?.pick(.emoji(emoji), disposable: self?.disposable, select: select)
             self?.entertainment.closePopover()
         }
-        interactions?.sendGIF = { [weak self] _, _, _ in
+        interactions?.sendGIF = { [weak self] file, _, _ in
+            self?.pick(.file(file), disposable: self?.disposable, select: select)
             self?.entertainment.closePopover()
+        }
+        var dragImage: CGImage?
+        var isDragging = false
+        var lastPoint = NSZeroPoint
+        interactions?.dragItem = { [weak self] item, image, phase in
+            guard let self else {
+                return
+            }
+            switch phase {
+            case let .moved(point):
+                lastPoint = point
+                if let image = image {
+                    dragImage = image
+                }
+                if !isDragging {
+                    isDragging = true
+                    drag(.moved(dragImage, point))
+                    self.pick(item, disposable: self.dragDisposable, select: { pick in
+                        if isDragging {
+                            dragImage = pick.image
+                            drag(.preview(pick))
+                        }
+                    })
+                } else {
+                    drag(.moved(dragImage, point))
+                }
+            case let .ended(point):
+                isDragging = false
+                dragImage = nil
+                self.dragDisposable.set(nil)
+                drag(.ended)
+                self.pick(item, disposable: self.disposable, select: { pick in
+                    drag(.dropped(pick, point))
+                })
+            }
         }
         showPopover(for: control, with: entertainment)
     }
@@ -104,7 +141,41 @@ private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
         entertainment.closePopover()
     }
 
-    private func render(_ file: TelegramMediaFile, select: @escaping (EditImageCanvasStickerPick) -> Void) {
+    private func pick(_ item: EntertainmentDragItem, disposable: MetaDisposable?, select: @escaping (EditImageCanvasStickerPick) -> Void) {
+        switch item {
+        case let .emoji(emoji):
+            if let image = ImageCanvasUIHooks.emojiImage(emoji) {
+                select(EditImageCanvasStickerPick(image: image, fileId: nil))
+            }
+        case let .file(file):
+            if file.isAnimated && file.isVideo && !file.isVideoSticker {
+                renderGif(file, disposable: disposable, select: select)
+            } else {
+                render(file, disposable: disposable, select: select)
+            }
+        }
+    }
+
+    private func renderGif(_ file: TelegramMediaFile, disposable: MetaDisposable?, select: @escaping (EditImageCanvasStickerPick) -> Void) {
+        let fileId = file.fileId.id
+        let fetch = freeMediaFileInteractiveFetched(context: context, fileReference: .standalone(media: file)).start()
+        let signal = context.account.postbox.mediaBox.resourceData(file.resource) |> filter { $0.complete } |> take(1) |> deliverOn(resourcesQueue) |> map { data -> EditImageCanvasStickerPick? in
+            guard let image = editImageCanvasVideoPreview(path: data.path) else {
+                return nil
+            }
+            return EditImageCanvasStickerPick(image: image, fileId: fileId, animation: EditImageCanvasStickerAnimation(kind: .video, path: data.path))
+        }
+        let disposableSet = DisposableSet()
+        disposableSet.add(fetch)
+        disposableSet.add((signal |> deliverOnMainQueue).start(next: { pick in
+            if let pick = pick {
+                select(pick)
+            }
+        }))
+        disposable?.set(disposableSet)
+    }
+
+    private func render(_ file: TelegramMediaFile, disposable: MetaDisposable?, select: @escaping (EditImageCanvasStickerPick) -> Void) {
         let size = NSMakeSize(1024, 1024)
         let aspectSize = file.dimensions?.size.aspectFitted(size) ?? size
         let reference = FileMediaReference.standalone(media: file)
@@ -131,7 +202,7 @@ private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
         } else {
             animation = .single(nil)
         }
-        disposable.set((combineLatest(image, animation) |> take(1) |> deliverOnMainQueue).start(next: { image, animation in
+        disposable?.set((combineLatest(image, animation) |> take(1) |> deliverOnMainQueue).start(next: { image, animation in
             if let image = image {
                 select(EditImageCanvasStickerPick(image: image, fileId: fileId, animation: animation))
             }

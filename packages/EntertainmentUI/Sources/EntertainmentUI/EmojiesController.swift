@@ -209,6 +209,8 @@ private final class Arguments {
     let selectEmojiCategory:(EmojiSearchCategories.Group?)->Void
     var staticEmojiFilter: ((String) -> Bool)?
     var sendLarge: (() -> ((StickerPackItem, NSRect?) -> Void)?)?
+    var drag: ((StickerPackItem, EntertainmentStickerDrag) -> Bool)?
+    var dragEmoji: ((String, EntertainmentStickerDrag) -> Bool)?
     init(context: any AccountContextProtocol, mode: EmojiesController.Mode, ignorePremium: Bool, send:@escaping(StickerPackItem, StickerPackCollectionInfo?, Int32?, NSRect?)->Void, sendEmoji:@escaping(String, NSRect)->Void, selectEmojiSegment:@escaping(EmojiSegment)->Void, viewSet:@escaping(StickerPackCollectionInfo)->Void, showAllItems:@escaping(Int64)->Void, openPremium:@escaping()->Void, installPack:@escaping(StickerPackCollectionInfo,  [StickerPackItem])->Void, clearRecent:@escaping()->Void, selectEmojiCategory:@escaping(EmojiSearchCategories.Group?)->Void) {
         self.context = context
         self.send = send
@@ -567,7 +569,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 index += 1
                 
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("search_e"), equatable: InputDataEquatable(search), comparable: nil, item: { initialSize, stableId in
-                    return EBlockItem(initialSize, stableId: stableId, attrLines: lines, segment: .Recent, account: arguments.context.account, selectHandler: arguments.sendEmoji)
+                    return EBlockItem(initialSize, stableId: stableId, attrLines: lines, segment: .Recent, account: arguments.context.account, selectHandler: arguments.sendEmoji, dragHandler: arguments.dragEmoji)
                 }))
                 index += 1
                 
@@ -620,7 +622,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 for chunk in chunks {
                     let tuple = Tuple(items: chunk, selected: emojiesRowSelection(state.selectedItems, in: chunk), color: state.color)
                     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("search_ae_\(string)"), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                        return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: false, info: nil, items: tuple.items, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, ignorePremium: arguments.ignorePremium)
+                        return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: false, info: nil, items: tuple.items, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, ignorePremium: arguments.ignorePremium)
                     }))
                     index += 1
                     string += "a"
@@ -721,7 +723,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 }
                 let tuple = Tuple(items: reactionsPopular, selected: emojiesRowSelection(state.selectedItems, in: reactionsPopular), color: state.color)
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(EmojiSegment.RecentAnimated.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: reactionsPopular, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, ignorePremium: arguments.ignorePremium)
+                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: reactionsPopular, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, ignorePremium: arguments.ignorePremium)
                 }))
                 index += 1
                 
@@ -745,7 +747,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                     let tuple = Tuple(items: reactionsRecent, selected: emojiesRowSelection(state.selectedItems, in: reactionsRecent), color: state.color)
                     
                     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(-1), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                        return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: reactionsRecent, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, ignorePremium: arguments.ignorePremium)
+                        return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: reactionsRecent, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, ignorePremium: arguments.ignorePremium)
                     }))
                     index += 1
                 }
@@ -801,7 +803,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 let tuple = Tuple(items: shownItems, revealed: state.revealed[-1] ?? false, selected: emojiesRowSelection(state.selectedItems, in: shownItems), color: state.color)
                 
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(EmojiSegment.RecentAnimated.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: tuple.revealed, installed: true, info: nil, items: tuple.items, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, showAllItems: {
+                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: tuple.revealed, installed: true, info: nil, items: tuple.items, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, showAllItems: {
                         arguments.showAllItems(-1)
                     }, ignorePremium: arguments.ignorePremium)
                 }))
@@ -814,7 +816,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             if key == .Recent, !recentAnimated.isEmpty, hasAnimatedRecent {
                 let tuple = Tuple(items: recentAnimated, selected: emojiesRowSelection(state.selectedItems, in: recentAnimated), color: state.color)
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(EmojiSegment.RecentAnimated.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: recentAnimated, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, ignorePremium: arguments.ignorePremium)
+                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: recentAnimated, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, ignorePremium: arguments.ignorePremium)
                 }))
                 index += 1
             }
@@ -849,7 +851,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 }
                 let tuple = Tuple(key: key, lines: lines, selectedOrders: selectedOrders, selectionColor: state.color ?? theme.colors.text)
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(key.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EBlockItem(initialSize, stableId: stableId, attrLines: tuple.lines, segment: tuple.key, account: arguments.context.account, selectHandler: arguments.sendEmoji, selectedOrders: tuple.selectedOrders, selectionColor: tuple.selectionColor)
+                    return EBlockItem(initialSize, stableId: stableId, attrLines: tuple.lines, segment: tuple.key, account: arguments.context.account, selectHandler: arguments.sendEmoji, dragHandler: arguments.dragEmoji, selectedOrders: tuple.selectedOrders, selectionColor: tuple.selectionColor)
                 }))
                 index += 1
             }
@@ -871,7 +873,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         index += 1
         
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("collectibles"), equatable: InputDataEquatable(state.uniqueStarGiftsItems), comparable: nil, item: { initialSize, stableId in
-            return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: items, mode: arguments.mode.itemMode, selectedItems: [], color: theme.colors.text, callback: arguments.send, largeCallback: arguments.sendLarge, openPremium: arguments.openPremium, installPack: arguments.installPack, ignorePremium: arguments.ignorePremium, uniqueGifts: state.uniqueStarGiftsItems.map(\.starGift))
+            return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: items, mode: arguments.mode.itemMode, selectedItems: [], color: theme.colors.text, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, openPremium: arguments.openPremium, installPack: arguments.installPack, ignorePremium: arguments.ignorePremium, uniqueGifts: state.uniqueStarGiftsItems.map(\.starGift))
         }))
         
         
@@ -915,7 +917,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 
         for tuple in tuples {
             entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_section(section.info.id.id, tuple.index), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: tuple.revealed, installed: tuple.section.installed, info: tuple.index == "a" ? section.info : nil, items: tuple.items, isBig: tuple.section.isBig, groupEmojiPack: tuple.section.groupEmojiPack, mode: arguments.mode.itemMode, selectedItems: tuple.selectedItems, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, viewSet: { info in
+                return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: tuple.revealed, installed: tuple.section.installed, info: tuple.index == "a" ? section.info : nil, items: tuple.items, isBig: tuple.section.isBig, groupEmojiPack: tuple.section.groupEmojiPack, mode: arguments.mode.itemMode, selectedItems: tuple.selectedItems, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, viewSet: { info in
                     arguments.viewSet(info)
                 }, showAllItems: {
                     arguments.showAllItems(section.info.id.id)
@@ -2313,6 +2315,20 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
         arguments.staticEmojiFilter = self.staticEmojiFilter
         arguments.sendLarge = { [weak self] in
             return self?.interactions?.sendLargeReaction
+        }
+        arguments.drag = { [weak self] item, drag in
+            guard let dragItem = self?.interactions?.dragItem, context.isPremium || !item.file.isPremiumEmoji else {
+                return false
+            }
+            dragItem(.file(item.file._parse()), nil, drag)
+            return true
+        }
+        arguments.dragEmoji = { [weak self] emoji, drag in
+            guard let dragItem = self?.interactions?.dragItem else {
+                return false
+            }
+            dragItem(.emoji(emoji), nil, drag)
+            return true
         }
         
         genericView.arguments = arguments

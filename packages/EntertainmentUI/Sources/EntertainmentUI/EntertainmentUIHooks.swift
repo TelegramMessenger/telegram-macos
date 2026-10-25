@@ -33,6 +33,7 @@ public final class EntertainmentMediaArguments {
     public let menuItems: (TelegramMediaFile, NSView) -> Signal<[ContextMenuItem], NoError>
     public let openMessage: (Message) -> Void
     public let messageMenuItems: (Message, NSView) -> Signal<[ContextMenuItem], NoError>
+    public var drag: ((ChatContextResult, NSPoint, Bool) -> Bool)?
 
     public init(sendResult: @escaping (ChatContextResultCollection?, ChatContextResult, NSView) -> Void = { _, _, _ in }, menuItems: @escaping (TelegramMediaFile, NSView) -> Signal<[ContextMenuItem], NoError> = { _, _ in return .single([]) }, openMessage: @escaping (Message) -> Void = { _ in }, messageMenuItems: @escaping (Message, NSView) -> Signal<[ContextMenuItem], NoError> = { _, _ in return .single([]) }) {
         self.sendResult = sendResult
