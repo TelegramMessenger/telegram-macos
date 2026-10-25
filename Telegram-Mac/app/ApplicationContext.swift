@@ -1426,21 +1426,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         appliedChromeMode = mode
         leftController.genericView.compactCorners = (mode == .compact)
         window.applyChrome(mode)
-        window.applyCornerRadius(for: mode)
+
         window.clampToScreen()
     }
 
-}
-
-extension Window {
-    func applyCornerRadius(for mode: Window.ChromeMode) {
-        if #available(macOS 27.0, *) {
-            let selector = Selector(("_setCornerRadius:"))
-            if self.responds(to: selector) {
-                typealias SetCornerRadius = @convention(c) (AnyObject, Selector, Double) -> Void
-                let radius: Double = mode == .standard ? 28 : 0
-                unsafeBitCast(self.method(for: selector), to: SetCornerRadius.self)(self, selector, radius)
-            }
-        }
-    }
 }
