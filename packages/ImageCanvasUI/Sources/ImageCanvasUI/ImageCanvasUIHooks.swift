@@ -5,9 +5,11 @@ import TelegramContext
 public struct EditImageCanvasStickerPick {
     public let image: CGImage
     public let fileId: Int64?
-    public init(image: CGImage, fileId: Int64?) {
+    public let animation: EditImageCanvasStickerAnimation?
+    public init(image: CGImage, fileId: Int64?, animation: EditImageCanvasStickerAnimation? = nil) {
         self.image = image
         self.fileId = fileId
+        self.animation = animation
     }
 }
 

@@ -109,18 +109,31 @@ private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
         let aspectSize = file.dimensions?.size.aspectFitted(size) ?? size
         let reference = FileMediaReference.standalone(media: file)
         let signal: Signal<ImageDataTransformation, NoError>
+        let isVideo = file.fileName == "webm-preview" || file.isVideoSticker
+        let animationKind: EditImageCanvasStickerAnimation.Kind?
         if file.mimeType == "image/webp" {
             signal = chatMessageSticker(postbox: context.account.postbox, file: reference, small: false, scale: 1.0, fetched: true, onlyFullSize: true)
+            animationKind = nil
         } else {
-            signal = chatMessageAnimatedSticker(postbox: context.account.postbox, file: reference, small: false, scale: 1.0, size: aspectSize, fetched: true, onlyFullSize: true, thumbAtFrame: 0, isVideo: file.fileName == "webm-preview" || file.isVideoSticker)
+            signal = chatMessageAnimatedSticker(postbox: context.account.postbox, file: reference, small: false, scale: 1.0, size: aspectSize, fetched: true, onlyFullSize: true, thumbAtFrame: 0, isVideo: isVideo)
+            animationKind = isVideo ? .webm : .lottie
         }
         let arguments = TransformImageArguments(corners: ImageCorners(), imageSize: aspectSize, boundingSize: aspectSize, intrinsicInsets: NSEdgeInsets(), scale: 1.0)
         let fileId = file.fileId.id
-        disposable.set((signal |> filter { $0.data.fullSizeComplete } |> map { data -> CGImage? in
+        let image = signal |> filter { $0.data.fullSizeComplete } |> map { data -> CGImage? in
             return data.execute(arguments, data.data)?.generateImage()
-        } |> filter { $0 != nil } |> take(1) |> deliverOnMainQueue).start(next: { image in
+        } |> filter { $0 != nil } |> take(1)
+        let animation: Signal<EditImageCanvasStickerAnimation?, NoError>
+        if let animationKind = animationKind {
+            animation = context.account.postbox.mediaBox.resourceData(file.resource) |> filter { $0.complete } |> take(1) |> map { data in
+                return EditImageCanvasStickerAnimation(kind: animationKind, path: data.path)
+            }
+        } else {
+            animation = .single(nil)
+        }
+        disposable.set((combineLatest(image, animation) |> take(1) |> deliverOnMainQueue).start(next: { image, animation in
             if let image = image {
-                select(EditImageCanvasStickerPick(image: image, fileId: fileId))
+                select(EditImageCanvasStickerPick(image: image, fileId: fileId, animation: animation))
             }
         }))
     }

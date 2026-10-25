@@ -336,11 +336,11 @@ public final class EditImageCanvasController : ModalViewController {
         })
     }
 
-    private func addSticker(_ image: CGImage, fileId: Int64?) {
+    private func addSticker(_ image: CGImage, fileId: Int64?, animation: EditImageCanvasStickerAnimation? = nil) {
         let reference = self.image.size
         let side = max(10.0, min(reference.width, reference.height) * 0.25)
         let baseSize = image.size.aspectFitted(NSMakeSize(side, side))
-        let sticker = EditImageCanvasEntity.Sticker(image: image, baseSize: baseSize, fileId: fileId)
+        let sticker = EditImageCanvasEntity.Sticker(image: image, baseSize: baseSize, fileId: fileId, animation: animation)
         let entity = EditImageCanvasEntity(content: .sticker(sticker), position: newEntityPosition(verticalOnly: false), scale: 1.0 / genericView.canvas.zoom, referenceSize: reference)
         addEntity(entity)
     }
@@ -463,7 +463,7 @@ public final class EditImageCanvasController : ModalViewController {
             finishTextEditing(commit: true)
         }
         stickerPicker?.show(for: control, select: { [weak self] pick in
-            self?.addSticker(pick.image, fileId: pick.fileId)
+            self?.addSticker(pick.image, fileId: pick.fileId, animation: pick.animation)
         })
     }
 
