@@ -55,6 +55,7 @@ final class LensRuntime {
         self.filterClass = filterClass
         guard makeFilter("glassBackground", inputs: LensSurface.backgroundInputs) != nil,
               makeFilter("glassForeground", inputs: LensSurface.foregroundInputs) != nil,
+              makeFilter("gaussianBlur", inputs: ["inputRadius", "inputNormalizeEdges"]) != nil,
               makeFilter("vibrantColorMatrix", inputs: ["inputColorMatrix", "inputClamp"]) != nil,
               makeFilter("displacementMap", inputs: ["inputAmount", "inputSourceSublayerName"]) != nil else {
             return nil

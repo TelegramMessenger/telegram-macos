@@ -523,8 +523,9 @@ public class TabBarView: View {
                 }
             }
             nativeLens.frame = bounds
-            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation)
-            transition.updateAlpha(view: selectionView, alpha: lifted ? 0 : 1)
+            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor)
+            selectionView.layer?.removeAnimation(forKey: "opacity")
+            selectionView.alphaValue = 0
             liftedGlass.alphaValue = 0
             return
         }

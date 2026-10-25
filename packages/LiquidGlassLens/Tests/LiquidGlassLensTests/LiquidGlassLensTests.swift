@@ -36,8 +36,8 @@ final class LiquidGlassLensTests: XCTestCase {
         return source
     }
 
-    private func update(_ lens: LiquidGlassLensView, progress: CGFloat, frame: CGRect = CGRect(x: -6, y: -4, width: 100, height: 56), animation: LiquidGlassLensAnimation = .immediate) {
-        lens.update(lensFrame: frame, interactionProgress: progress, appearance: NSAppearance(named: .aqua)!, backingScale: 2, animation: animation)
+    private func update(_ lens: LiquidGlassLensView, progress: CGFloat, frame: CGRect = CGRect(x: -6, y: -4, width: 100, height: 56), animation: LiquidGlassLensAnimation = .immediate, restingBlurRadius: CGFloat = 0, restingTintColor: NSColor? = nil) {
+        lens.update(lensFrame: frame, interactionProgress: progress, appearance: NSAppearance(named: .aqua)!, backingScale: 2, animation: animation, restingBlurRadius: restingBlurRadius, restingTintColor: restingTintColor)
         lens.layoutSubtreeIfNeeded()
         lens.window?.displayIfNeeded()
     }
@@ -61,6 +61,63 @@ final class LiquidGlassLensTests: XCTestCase {
         XCTAssertEqual(lens.activePortalCount, 0)
         XCTAssertTrue(source.superview === lens.contentView)
         XCTAssertNil(lens.subviews.first?.layer?.mask)
+    }
+
+    func testRestingBackdropBlursBelowContentWithoutCreatingPortals() throws {
+        let lens = try makeLens()
+        let source = addContent(to: lens)
+        let frame = CGRect(x: 4, y: 4, width: 80, height: 40)
+        let tint = NSColor.black.withAlphaComponent(0.08)
+        update(lens, progress: 0, frame: frame, restingBlurRadius: 16, restingTintColor: tint)
+        let background = try XCTUnwrap(lens.subviews.first?.layer?.sublayers?.first)
+        let backdrop = try XCTUnwrap(background.sublayers?.first)
+        XCTAssertEqual(background.name, "lensRestingBackground")
+        XCTAssertEqual(background.frame, frame)
+        XCTAssertEqual(background.cornerRadius, 20)
+        XCTAssertTrue(background.masksToBounds)
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(backdrop.value(forKeyPath: "filters.lensRestingBlur.inputRadius") as? CGFloat, 16)
+        XCTAssertEqual(background.sublayers?.last?.backgroundColor, tint.cgColor)
+        XCTAssertFalse(lens.hasActiveSurface)
+        XCTAssertEqual(lens.activePortalCount, 0)
+        XCTAssertNil(source.layer?.filters)
+    }
+
+    func testRestingBackdropFadesOnLiftAndReturnsAfterRelease() throws {
+        let lens = try makeLens()
+        _ = addContent(to: lens)
+        let restingFrame = CGRect(x: 4, y: 4, width: 80, height: 40)
+        update(lens, progress: 0, frame: restingFrame, restingBlurRadius: 16)
+        let background = try XCTUnwrap(lens.subviews.first?.layer?.sublayers?.first)
+        update(lens, progress: 1, animation: .spring(duration: 0.05), restingBlurRadius: 16)
+        XCTAssertEqual(background.opacity, 0)
+        XCTAssertEqual((background.animation(forKey: "opacity") as? CABasicAnimation)?.fromValue as? Float, 1)
+        update(lens, progress: 1, frame: CGRect(x: 130, y: -4, width: 100, height: 56), restingBlurRadius: 16)
+        XCTAssertEqual(background.opacity, 0)
+        XCTAssertNil(background.animation(forKey: "opacity"))
+        update(lens, progress: 0, frame: restingFrame, animation: .spring(duration: 0.01), restingBlurRadius: 16)
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual((background.animation(forKey: "opacity") as? CABasicAnimation)?.toValue as? Float, 1)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.03))
+        XCTAssertFalse(lens.hasActiveSurface)
+        XCTAssertTrue(background.superlayer === lens.subviews.first?.layer)
+        XCTAssertEqual(background.frame, restingFrame)
+    }
+
+    func testRestingBackdropUpdatesItsTintAndResetsWithoutLosingContent() throws {
+        let lens = try makeLens()
+        let source = addContent(to: lens)
+        update(lens, progress: 0, restingBlurRadius: 16, restingTintColor: .red)
+        let background = try XCTUnwrap(lens.subviews.first?.layer?.sublayers?.first)
+        update(lens, progress: 0, restingBlurRadius: 16, restingTintColor: .blue)
+        XCTAssertEqual(background.sublayers?.last?.backgroundColor, NSColor.blue.cgColor)
+        lens.reset()
+        XCTAssertNil(background.superlayer)
+        XCTAssertTrue(source.superview === lens.contentView)
+        update(lens, progress: 0, restingBlurRadius: 16)
+        XCTAssertEqual(lens.subviews.first?.layer?.sublayers?.first?.name, "lensRestingBackground")
+        update(lens, progress: 0, restingBlurRadius: .nan)
+        XCTAssertTrue(lens.subviews.first?.layer?.sublayers?.isEmpty ?? true)
     }
 
     func testInteractionUsesLiveSourcesAndResetPreservesTheOriginalViews() throws {

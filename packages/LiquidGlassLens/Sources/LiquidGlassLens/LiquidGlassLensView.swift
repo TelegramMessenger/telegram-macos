@@ -22,6 +22,8 @@ public final class LiquidGlassLensView: NSView {
         let size: CGSize
         let scale: CGFloat
         let appearance: NSAppearance.Name
+        let restingBlurRadius: CGFloat
+        let restingTintColor: NSColor?
         let sources: [SourceState]
     }
 
@@ -34,6 +36,7 @@ public final class LiquidGlassLensView: NSView {
     private let runtime: LensRuntime
     private var state: State?
     private var surface: LensSurface?
+    private var restingBackdrop: LensRestingBackdrop?
     private var cleanup: DispatchWorkItem?
     private var generation = 0
 
@@ -90,9 +93,9 @@ public final class LiquidGlassLensView: NSView {
         }
     }
 
-    public func update(lensFrame: CGRect, interactionProgress: CGFloat, appearance: NSAppearance, backingScale: CGFloat, animation: LiquidGlassLensAnimation) {
+    public func update(lensFrame: CGRect, interactionProgress: CGFloat, appearance: NSAppearance, backingScale: CGFloat, animation: LiquidGlassLensAnimation, restingBlurRadius: CGFloat = 0, restingTintColor: NSColor? = nil) {
         guard lensFrame.width.isFinite, lensFrame.height.isFinite, lensFrame.minX.isFinite, lensFrame.minY.isFinite,
-              interactionProgress.isFinite, backingScale.isFinite else {
+              interactionProgress.isFinite, backingScale.isFinite, restingBlurRadius.isFinite else {
             reset()
             return
         }
@@ -103,6 +106,8 @@ public final class LiquidGlassLensView: NSView {
             size: bounds.size,
             scale: max(1, backingScale),
             appearance: appearance.name,
+            restingBlurRadius: max(0, restingBlurRadius),
+            restingTintColor: restingTintColor,
             sources: sources.map { SourceState(identifier: ObjectIdentifier($0), layerIdentifier: $0.layer.map(ObjectIdentifier.init), frame: $0.frame, bounds: $0.bounds, isHidden: $0.isHidden) }
         )
         guard next != state else {
@@ -127,6 +132,17 @@ public final class LiquidGlassLensView: NSView {
         contentView.frame = bounds
         contentMask.frame = bounds
         contentMask.contentsScale = next.scale
+        if next.restingBlurRadius > 0, next.frame.width > 0, next.frame.height > 0 {
+            if restingBackdrop == nil, let backdrop = LensRestingBackdrop(runtime: runtime) {
+                restingBackdrop = backdrop
+                backdropView.layer?.insertSublayer(backdrop.layer, at: 0)
+                backdrop.update(frame: previous?.frame ?? next.frame, progress: previous?.progress ?? next.progress, blurRadius: next.restingBlurRadius, tintColor: next.restingTintColor, scale: next.scale, animation: .immediate)
+            }
+            restingBackdrop?.update(frame: next.frame, progress: next.progress, blurRadius: next.restingBlurRadius, tintColor: next.restingTintColor, scale: next.scale, animation: animation)
+        } else {
+            restingBackdrop?.remove()
+            restingBackdrop = nil
+        }
         if next.progress > 0, surface == nil, next.frame.width > 0, next.frame.height > 0,
            let surface = LensSurface(runtime: runtime) {
             self.surface = surface
@@ -173,6 +189,8 @@ public final class LiquidGlassLensView: NSView {
         generation += 1
         state = nil
         removeSurface()
+        restingBackdrop?.remove()
+        restingBackdrop = nil
     }
 
     private func removeSurface() {

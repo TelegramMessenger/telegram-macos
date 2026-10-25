@@ -140,6 +140,30 @@ final class TabBarViewTreeTests: XCTestCase {
         bar.cancelSelection(animated: false)
     }
 
+    func testNativeRestingIndicatorUsesABlurThatDisappearsDuringDragging() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 2)
+        try enableNativeLens(bar)
+        let lens = try XCTUnwrap(bar.nativeLens)
+        let background = try XCTUnwrap(lens.subviews.first?.layer?.sublayers?.first)
+        XCTAssertEqual(background.name, "lensRestingBackground")
+        XCTAssertEqual(background.frame, bar.selectionFrame)
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(background.sublayers?.first?.value(forKeyPath: "filters.lensRestingBlur.inputRadius") as? CGFloat, 16)
+        XCTAssertEqual(bar.subviews[1].alphaValue, 0)
+        bar.beginSelection(at: center(bar, 2))
+        bar.updateSelection(at: center(bar, 3))
+        XCTAssertEqual(background.opacity, 0)
+        bar.cancelSelection(animated: false)
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(background.frame, bar.control(for: 2).frame)
+        bar.reduceMotion = { true }
+        bar.beginSelection(at: center(bar, 2))
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(background.frame.height, 40)
+        bar.cancelSelection(animated: false)
+    }
+
     func testDisablingGlassDuringADragCancelsAndRestoresTheOriginalControls() throws {
         defer { System.liquidGlass = false }
         let bar = makeBar(selected: 1)
