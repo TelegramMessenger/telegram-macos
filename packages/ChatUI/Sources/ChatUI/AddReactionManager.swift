@@ -524,7 +524,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
                 let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, addLarge: addLarge, theme: presentation, message: message, parentWindow: parentWindow)
                 
                 self.documentView.addSubview(reaction)
-                x += size.width + 4
+                x += size.width + 3
             }
             if x < frame.width {
                 add(reaction)
@@ -644,7 +644,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     public static func width(for count: Int, maxCount: Int = .max, allowToAll: Bool = true) -> CGFloat {
         var width = CGFloat(min(count, maxCount)) * self.size.width
-        width += CGFloat(min(count, maxCount)) * 4
+        width += CGFloat(min(count, maxCount)) * 3
         if maxCount != .max, allowToAll {
             width += self.size.width
         }
