@@ -217,7 +217,12 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public func update(animated:Bool = true, _ f:(ChatPresentationInterfaceState)->ChatPresentationInterfaceState)->Void {
         let oldValue = self.presentation
-        _ = _presentation.swap(f(oldValue))
+        var newValue = f(oldValue)
+        if newValue.sendPaidMessageStars != oldValue.sendPaidMessageStars || newValue.peer?.id != oldValue.peer?.id {
+            let alwaysPaidMessage = newValue.sendPaidMessageStars.flatMap { FastSettings.needConfirmPaid(newValue.peer?.id ?? peerId, price: Int($0.value)) } ?? false
+            newValue = newValue.withUpdatedAlwaysPaidMessage(alwaysPaidMessage)
+        }
+        _ = _presentation.swap(newValue)
         if !chatHasSameDeferredSendState(oldValue, presentation) {
             invalidateDeferredSendActions()
         }

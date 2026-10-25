@@ -1,6 +1,8 @@
 import AlertsUI
 import Dispatch
 import TGUIKit
+import TelegramCore
+import Localization
 
 public func verifyChatSendPayment(for window: Window, header: String, information: String, ok: String, option: String, successHandler: @escaping (ConfirmResult) -> Void, cancelHandler: @escaping () -> Void = {}, dismissed: @escaping () -> Void = {}) {
     var resolved = false
@@ -20,4 +22,12 @@ public func verifyChatSendPayment(for window: Window, header: String, informatio
             }
         }
     })
+}
+
+public func chatPaidMessagePriceIsCurrent(_ chatInteraction: ChatInteraction, _ price: StarsAmount) -> Bool {
+    if chatInteraction.presentation.sendPaidMessageStars == price {
+        return true
+    }
+    alert(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsPriceChangedTitle, info: strings().chatPayStarsPriceChangedText)
+    return false
 }

@@ -4365,6 +4365,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             
                             verifyAlert(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, optionIsSelected: false, successHandler: { [weak chatInteraction] result in
                                 guard let chatInteraction = chatInteraction else { return }
+                                guard chatPaidMessagePriceIsCurrent(chatInteraction, payStars) else { return }
                                 if starsState.balance.value > starsPrice {
                                     chatInteraction.update({ current in
                                         return current
@@ -4372,7 +4373,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                     })
                                     invoke()
                                     if result == .thrid {
-                                        FastSettings.toggleCofirmPaid(peer.id, price: starsPrice)
+                                        FastSettings.toggleCofirmPaid(peer.id, price: Int(payStars.value))
                                     }
                                 } else {
                                     FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, Int64(starsPrice))
@@ -4866,14 +4867,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                     let messageCountText = strings().chatPayStarsConfirmMessagesOther(messagesCount)
                                     
                                     verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, successHandler: { result in
-                                        
+                                        guard chatPaidMessagePriceIsCurrent(chatInteraction, payStars) else { return }
                                         if starsState.balance.value > starsPrice {
                                             chatInteraction.update({ current in
                                                 return current
                                                     .withUpdatedAlwaysPaidMessage(result == .thrid)
                                             })
                                             if result == .thrid {
-                                                FastSettings.toggleCofirmPaid(peer.id, price: starsPrice)
+                                                FastSettings.toggleCofirmPaid(peer.id, price: Int(payStars.value))
                                             }
                                             invoke()
                                         } else {
@@ -5683,14 +5684,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         let messageCountText = strings().chatPayStarsConfirmMessagesOther(messagesCount)
                         
                         verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, successHandler: { result in
-                            
+                            guard chatPaidMessagePriceIsCurrent(chatInteraction, payStars) else { return }
                             if starsState.balance.value > starsPrice {
                                 chatInteraction.update({ current in
                                     return current
                                         .withUpdatedAlwaysPaidMessage(result == .thrid)
                                 })
                                 if result == .thrid {
-                                    FastSettings.toggleCofirmPaid(peer.id, price: starsPrice)
+                                    FastSettings.toggleCofirmPaid(peer.id, price: Int(payStars.value))
                                 }
                                 invoke()
                             } else {
@@ -6767,13 +6768,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         var confirmationResolved = false
                         verifyAlert(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, optionIsSelected: false, successHandler: { result in
                             confirmationResolved = true
+                            guard chatPaidMessagePriceIsCurrent(chatInteraction, payStars) else { return }
                             if starsState.balance.value > starsPrice {
                                 chatInteraction.update({ current in
                                     return current
                                         .withUpdatedAlwaysPaidMessage(result == .thrid)
                                 })
                                 if result == .thrid {
-                                    FastSettings.toggleCofirmPaid(peer.id, price: starsPrice)
+                                    FastSettings.toggleCofirmPaid(peer.id, price: Int(payStars.value))
                                 }
                                 invoke()
                             } else {

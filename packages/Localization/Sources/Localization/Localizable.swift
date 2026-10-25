@@ -4291,6 +4291,10 @@ public final class L10n {
   }
   /// Confirm Payment
   public static var chatPayStarsConfirmTitle: String  { return L10n.tr("Localizable", "Chat.PayStars.Confirm.Title") }
+  /// The price for sending messages to this chat has changed, so your message was not sent. Review the new price and send it again.
+  public static var chatPayStarsPriceChangedText: String  { return L10n.tr("Localizable", "Chat.PayStars.PriceChanged.Text") }
+  /// Price Changed
+  public static var chatPayStarsPriceChangedTitle: String  { return L10n.tr("Localizable", "Chat.PayStars.PriceChanged.Title") }
   /// Pay for %d Medias
   public static func chatPayStarsConfirmPayMediaOther(_ p1: Int) -> String {
     return L10n.tr("Localizable", "Chat.PayStars.Confirm.Pay.Media_other", p1)

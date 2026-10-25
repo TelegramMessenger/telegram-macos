@@ -35,7 +35,7 @@ for name in ["withUpdatedCachedData", "withUpdatedAlwaysPaidMessage", "withUpdat
     method = block(state, f"    public func {name}(").replace("public ", "")
     constructor = re.search(r"return ChatPresentationInterfaceState\(([^\n]+)\)", method).group(1)
     arguments = dict(re.findall(r"(\w+):\s*([^,]+)", constructor))
-    reduced = ", ".join(f"{key}: {arguments[key]}" for key in ["peer", "cachedData", "sendPaidMessageStars"])
+    reduced = ", ".join(f"{key}: {arguments[key]}" for key in ["peer", "cachedData", "alwaysPaidMessage", "sendPaidMessageStars"])
     signature = method[:method.index("{")]
     setup = "let peer = f(self.peer)\n" if name == "updatedPeer" else ""
     methods.append(signature + "{\n" + setup + "return ChatPresentationInterfaceState(" + reduced + ")\n}")
@@ -46,7 +46,15 @@ copy_expressions = ", ".join("{ " + expression + " }" for expression in copies)
 refresh_marker = "            if value.sendPaidMessageStars != oldValue.sendPaidMessageStars {"
 input_view = read("ChatInputView")
 refresh = block(input_view, refresh_marker) if refresh_marker in input_view else ""
+interaction = read("ChatInterfaceInteraction")
+update_start = interaction.index("        let oldValue = self.presentation\n", interaction.index("    public func update(animated:Bool = true"))
+update_end = interaction.index("\n", interaction.index("        _ = _presentation.swap(", update_start)) + 1
+update = interaction[update_start:update_end]
+confirmation = read("ChatSendPaymentConfirmation")
+price_guard_marker = "public func chatPaidMessagePriceIsCurrent("
+price_guard = block(confirmation, price_guard_marker).replace("public ", "") if price_guard_marker in confirmation else ""
 fixture = Path(__file__).with_name("PaidMessageStateTests.swift").read_text()
+fixture = fixture.replace("__UPDATE__", update).replace("__PRICE_GUARD__", price_guard)
 fixture = fixture.replace("__GETTER__", getter).replace("__METHODS__", "\n".join(methods))
 fixture = fixture.replace("__COPIES__", copy_expressions).replace("__REFRESH__", refresh)
 with tempfile.TemporaryDirectory(prefix="paid-message-state-") as directory:
