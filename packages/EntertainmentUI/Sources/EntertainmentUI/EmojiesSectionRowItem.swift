@@ -21,6 +21,20 @@ import InlineStickerLayer
 
 private let largeReactionHoldDuration: Double = 0.8
 
+private func isSameEmojiEntry(_ lhs: EmojiesSectionRowItem.Item?, _ rhs: EmojiesSectionRowItem.Item?) -> Bool {
+    guard let lhs, let rhs, lhs.rect == rhs.rect else {
+        return false
+    }
+    switch (lhs, rhs) {
+    case let (.item(_, lhsItem, _, _), .item(_, rhsItem, _, _)):
+        return lhsItem.file.fileId == rhsItem.file.fileId
+    case (.more, .more):
+        return true
+    default:
+        return false
+    }
+}
+
 public final class EmojiesSectionRowItem : GeneralRowItem {
     
     public enum Item : Equatable {
@@ -631,7 +645,7 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
                 return
             }
             self.largeHoldTimer = nil
-            if self.itemUnderMouse?.1 == current.1, let sticker = current.1.item, let window = self.window, let item = self.item as? EmojiesSectionRowItem {
+            if isSameEmojiEntry(self.itemUnderMouse?.1, current.1), let sticker = current.1.item, let window = self.window, let item = self.item as? EmojiesSectionRowItem {
                 self.largeInvoked = true
                 let wrect = self.contentView.convert(current.1.rect, to: nil)
                 let srect = window.convertToScreen(wrect)
@@ -666,7 +680,7 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
     }
     private func updateDragging() {
         if largeHoldTimer != nil {
-            if self.itemUnderMouse?.1 != self.currentDownItem?.1 {
+            if !isSameEmojiEntry(self.itemUnderMouse?.1, self.currentDownItem?.1) {
                 cancelLargeHold()
                 self.currentDownItem = nil
             }
@@ -690,7 +704,7 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
         }
         if largeHoldTimer != nil {
             cancelLargeHold()
-            if self.currentDownItem?.1 == self.itemUnderMouse?.1 {
+            if isSameEmojiEntry(self.currentDownItem?.1, self.itemUnderMouse?.1) {
                 self.click()
             }
             self.currentDownItem = nil
