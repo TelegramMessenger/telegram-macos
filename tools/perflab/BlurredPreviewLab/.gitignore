@@ -1,0 +1,6 @@
+__pycache__/
+!Results/
+!Results/summary.json
+!Results/runs.jsonl
+!Results/verification.json
+!Results/native-canvases.json
