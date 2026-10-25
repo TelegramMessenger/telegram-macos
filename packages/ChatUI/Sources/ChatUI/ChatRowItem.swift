@@ -49,19 +49,24 @@ public final class ChatHistoryBottomRowItem: GeneralRowItem {
     public static let minimumInputOverlayHeight: CGFloat = 40
     public static let messageInputGap: CGFloat = 20
 
-    public static func height(for inputOverlayHeight: CGFloat) -> CGFloat {
+    public static let compactBottomInset: CGFloat = 12
+
+    public static func bottomInset(showsInput: Bool, inputOverlayHeight: CGFloat) -> CGFloat {
+        guard showsInput else {
+            return compactBottomInset
+        }
         return max(minimumInputOverlayHeight, max(0, inputOverlayHeight)) + messageInputGap
     }
 
-    private let inputOverlayHeight: Atomic<CGFloat>
+    private let bottomInset: Atomic<CGFloat>
 
-    public init(_ initialSize: NSSize, stableId: AnyHashable, inputOverlayHeight: Atomic<CGFloat>) {
-        self.inputOverlayHeight = inputOverlayHeight
+    public init(_ initialSize: NSSize, stableId: AnyHashable, bottomInset: Atomic<CGFloat>) {
+        self.bottomInset = bottomInset
         super.init(initialSize, stableId: stableId, backgroundColor: .clear, ignoreAtInitialization: true)
     }
 
     public override var height: CGFloat {
-        return ChatHistoryBottomRowItem.height(for: inputOverlayHeight.with { $0 })
+        return bottomInset.with { $0 }
     }
 
     public override var accessibilityIsSpacer: Bool {
@@ -2827,7 +2832,7 @@ public class ChatRowItem: TableRowItem {
         case .DateEntry:
             return ChatDateStickItem(initialSize, entry, interaction: interaction, theme: theme)
         case .bottom:
-            return ChatHistoryBottomRowItem(initialSize, stableId: entry.stableId, inputOverlayHeight: interaction.inputOverlayHeight)
+            return ChatHistoryBottomRowItem(initialSize, stableId: entry.stableId, bottomInset: interaction.bottomInset)
         case let .empty(_, theme):
             return GeneralRowItem(initialSize, height: theme.bubbled ? 10 : 20, stableId: entry.stableId, backgroundColor: .clear, ignoreAtInitialization: true)
         case .commentsHeader:

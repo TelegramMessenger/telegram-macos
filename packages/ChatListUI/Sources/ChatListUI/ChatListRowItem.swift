@@ -2682,7 +2682,16 @@ public class ChatListRowItem: TableRowItem {
         let navigation:NavigationViewController = NavigationViewController(controller, context.window)
         navigation._frameRect = NSMakeRect(0, 0, 400, 500)
         
-        showModal(with: navigation, for: context.window)
+        let modalController = ChatPreviewModalController(navigation)
+        showModal(with: modalController, for: context.window)
+        navigation.modal = modalController.modal
     }
     
+}
+
+private final class ChatPreviewModalController: ModalController {
+    override init(_ controller: NavigationViewController) {
+        super.init(controller)
+        self.bar = NavigationBarStyle(height: 0)
+    }
 }

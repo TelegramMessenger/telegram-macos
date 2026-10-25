@@ -184,10 +184,6 @@ func ==(lhs:ChatHistoryState, rhs:ChatHistoryState) -> Bool {
     return lhs.isDownOfHistory == rhs.isDownOfHistory && lhs.replyStack == rhs.replyStack
 }
 
-/// Bottom inset reserved below the last message in a chat PREVIEW (peeked from the chat list). The preview
-/// has no input bar, so this stands in for the input height that normally provides the trailing gap.
-private let previewChatBottomInset: CGFloat = 40
-
 private final class ChatPresentationCacheEntry {
     private let base: TelegramPresentationTheme
     private weak var global: TelegramPresentationTheme?
@@ -269,6 +265,23 @@ public class ChatControllerView : View, ChatInputDelegate {
     private weak var navigationView: NSView?
     
     public let inputView:ChatInputView
+    let showsInput: Bool
+
+    static func showsInput(in mode: ChatMode) -> Bool {
+        return mode != .preview
+    }
+
+    func bottomInset(forInputHeight inputHeight: CGFloat) -> CGFloat {
+        return ChatHistoryBottomRowItem.bottomInset(showsInput: showsInput, inputOverlayHeight: max(0, inputHeight - ChatInputView.inputBottomInset) + transcriptionInset)
+    }
+
+    var floatingPhotosBottomGap: CGFloat {
+        var gap = ChatHistoryBottomRowItem.bottomInset(showsInput: showsInput, inputOverlayHeight: 0)
+        if showsInput, inputView.attachView.isAIVisible {
+            gap += ChatInputAttachButton.expandedHeight - ChatInputAttachButton.collapsedHeight
+        }
+        return gap
+    }
     let inputContextHelper:InputContextHelper
     let bubblesView: ChatHeaderBubblesView
     private(set) var state:ChatControllerViewState = .visible
@@ -459,6 +472,7 @@ public class ChatControllerView : View, ChatInputDelegate {
         bubblesView = ChatHeaderBubblesView(frame: NSMakeRect(0, 0, frameRect.width, ChatHeaderBubblesView.totalHeight), chatInteraction: chatInteraction)
 
         inputView = ChatInputView(frame: NSMakeRect(0,tableView.frame.maxY, frameRect.width,50), chatInteraction: chatInteraction)
+        showsInput = ChatControllerView.showsInput(in: chatInteraction.mode)
         //inputView.autoresizingMask = [.width]
         super.init(frame: frameRect)
         
@@ -487,6 +501,8 @@ public class ChatControllerView : View, ChatInputDelegate {
 
         addSubview(inputView)
         addSubview(bubblesView)
+        inputView.isHidden = !showsInput
+        inputShadowView.isHidden = !showsInput
         header.sharedGlassWrapper = bubblesView.sharedGlassWrapper
         inputView.delegate = self
         self.autoresizesSubviews = false
@@ -2813,10 +2829,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
 
             let ph: CGFloat = 36
-            var gap: CGFloat = 12 + 50
-            if genericView.inputView.attachView.isAIVisible {
-                gap += ChatInputAttachButton.expandedHeight - ChatInputAttachButton.collapsedHeight
-            }
+            let gap = genericView.floatingPhotosBottomGap
             let inset: CGFloat = 3
             
             var isAnchor: Bool = false
@@ -3041,11 +3054,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
         genericView.inputHeightChanged = { [weak self] rawInputHeight in
             guard let self else { return }
-            let inputOverlayHeight = self.mode == .preview
-                ? previewChatBottomInset
-                : max(0, rawInputHeight - ChatInputView.inputBottomInset) + self.genericView.transcriptionInset
-            let previous = self.chatInteraction.inputOverlayHeight.swap(inputOverlayHeight)
-            if ChatHistoryBottomRowItem.height(for: previous) == ChatHistoryBottomRowItem.height(for: inputOverlayHeight) {
+            let bottomInset = self.genericView.bottomInset(forInputHeight: rawInputHeight)
+            let previous = self.chatInteraction.bottomInset.swap(bottomInset)
+            if previous == bottomInset {
                 return
             }
             let table = self.genericView.tableView
@@ -8671,7 +8682,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }.updatedMainPeer(peerView != nil ? peerViewMainPeer(peerView!) : nil).withUpdatedCachedData(peerView?.cachedData).withUpdatedThreadInfo(threadInfo)
                 })
             }
-            self.genericView.inputView.isHidden = self.chatInteraction.presentation.isNotAccessible && !self.canJoinInaccessibleCommunityChat()
+            self.genericView.inputView.isHidden = !self.genericView.showsInput || (self.chatInteraction.presentation.isNotAccessible && !self.canJoinInaccessibleCommunityChat())
             if !animated {
                 self.notify(with: self.chatInteraction.presentation, oldValue: ChatPresentationInterfaceState(chatLocation: self.chatLocation, chatMode: self.mode), animated: animated)
             }
@@ -11276,7 +11287,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             isAdChat = false
         }
         
-        _ = chatInteraction.inputOverlayHeight.swap(mode == .preview ? previewChatBottomInset : ChatHistoryBottomRowItem.minimumInputOverlayHeight)
+        _ = chatInteraction.bottomInset.swap(ChatHistoryBottomRowItem.bottomInset(showsInput: ChatControllerView.showsInput(in: mode), inputOverlayHeight: 0))
                 
         if chatLocation.peerId.namespace == Namespaces.Peer.CloudChannel || chatLocation.peerId.namespace == Namespaces.Peer.CloudUser, mode == .history {
             self.adMessages = .init(context: context, height: sizeValue.get() |> map { $0 .height}, peerId: chatLocation.peerId)

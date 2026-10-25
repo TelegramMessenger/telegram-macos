@@ -88,7 +88,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public let disableSelectAbility: Bool
     public let isGlobalSearchMessage: Bool
     public let isPeerSavedMessages: Bool
-    public let inputOverlayHeight: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.minimumInputOverlayHeight)
+    public let bottomInset: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.bottomInset(showsInput: true, inputOverlayHeight: 0))
     private var mediaReplacementId: UUID?
     private var mediaEditSessionId = UUID()
     private var mediaEditSubmissionId: UUID?
