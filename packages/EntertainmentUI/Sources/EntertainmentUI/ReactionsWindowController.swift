@@ -386,6 +386,7 @@ public final class ReactionsWindowController : NSObject {
             guard let view = view, let initialView = initialView, let `self` = self else {
                 return
             }
+            initialView.revealDidStart()
             CATransaction.begin()
             initialView.removeFromSuperview()
             CATransaction.commit()
