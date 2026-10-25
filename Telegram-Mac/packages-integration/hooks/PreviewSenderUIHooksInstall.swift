@@ -52,20 +52,52 @@ func installPreviewSenderUIHooks() {
     }))
 }
 
+private final class ImageCanvasEntertainment {
+    private static var cached: ImageCanvasEntertainment?
+
+    let entertainment: EntertainmentViewController
+    let chatInteraction: ChatInteraction
+    private weak var context: AccountContext?
+    private let accountsDisposable = MetaDisposable()
+
+    private init(context: AccountContext) {
+        self.context = context
+        self.chatInteraction = ChatInteraction(chatLocation: .peer(PeerId(0)), context: context)
+        self.entertainment = EntertainmentViewController(size: NSMakeSize(350, 350), context: context, mode: .common)
+        self.entertainment.update(with: chatInteraction)
+    }
+
+    deinit {
+        accountsDisposable.dispose()
+    }
+
+    static func get(_ context: AccountContext) -> ImageCanvasEntertainment {
+        if let cached = cached, cached.context === context {
+            return cached
+        }
+        let value = ImageCanvasEntertainment(context: context)
+        cached = value
+        let accountId = context.account.id
+        value.accountsDisposable.set((context.sharedContext.activeAccounts |> deliverOnMainQueue).start(next: { [weak value] accounts in
+            if accounts.primary?.id != accountId, let value, cached === value {
+                cached = nil
+            }
+        }))
+        return value
+    }
+}
+
 private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
     private let context: AccountContext
     private let entertainment: EntertainmentViewController
-    private let chatInteraction: ChatInteraction
     private let disposable = MetaDisposable()
     private let dragDisposable = MetaDisposable()
     private let visibilityDisposable = MetaDisposable()
-    private var isBound = false
     var visibilityChanged: ((Bool) -> Void)?
 
     init(context: AccountContext) {
         self.context = context
-        self.chatInteraction = ChatInteraction(chatLocation: .peer(PeerId(0)), context: context)
-        self.entertainment = EntertainmentViewController(size: NSMakeSize(350, 350), context: context, mode: .common)
+        self.entertainment = ImageCanvasEntertainment.get(context).entertainment
         visibilityDisposable.set((entertainment.viewOnStage |> deliverOnMainQueue).start(next: { [weak self] isShown in
             self?.visibilityChanged?(isShown)
         }))
@@ -75,13 +107,15 @@ private final class ImageCanvasStickerPickerImpl: EditImageCanvasStickerPicker {
         disposable.dispose()
         dragDisposable.dispose()
         visibilityDisposable.dispose()
+        let interactions = entertainment.interactions
+        interactions?.sendSticker = { _, _, _, _ in }
+        interactions?.sendAnimatedEmoji = { _, _, _, _, _ in }
+        interactions?.sendEmoji = { _, _ in }
+        interactions?.sendGIF = { _, _, _ in }
+        interactions?.dragItem = nil
     }
 
     func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void, drag: @escaping (EditImageCanvasStickerDrag) -> Void) {
-        if !isBound {
-            isBound = true
-            entertainment.update(with: chatInteraction)
-        }
         let interactions = entertainment.interactions
         interactions?.sendSticker = { [weak self] file, _, _, _ in
             self?.pick(.file(file), disposable: self?.disposable, select: select)
