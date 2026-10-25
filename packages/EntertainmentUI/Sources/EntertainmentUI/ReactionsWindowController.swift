@@ -68,7 +68,6 @@ public final class ReactionsWindowController : NSObject {
             shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
             shadow.shadowOffset = NSMakeSize(0, 0)
             self.shadow = shadow
-            self.layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 20, cornerHeight: 20, transform: nil)
             
             container.isHidden = false
             contentView.layer?.opacity = 1
@@ -85,6 +84,13 @@ public final class ReactionsWindowController : NSObject {
             self.container.layer?.animateBounds(from: from.size.bounds.offsetBy(dx: offset.x, dy: offset.y), to: to.size.bounds, duration: duration, timingFunction: .spring)
             
             self.container.layer?.animatePosition(from: offset, to: .zero, duration: duration, timingFunction: .spring)
+            
+            let fromRect = NSRect(origin: offset, size: from.size).insetBy(dx: 10, dy: 10)
+            let fromRadius = min(20, fromRect.height / 2)
+            let fromPath = CGPath(roundedRect: fromRect, cornerWidth: fromRadius, cornerHeight: fromRadius, transform: nil)
+            let toPath = CGPath(roundedRect: bounds, cornerWidth: 20, cornerHeight: 20, transform: nil)
+            self.layer?.shadowPath = toPath
+            self.layer?.animate(from: fromPath, to: toPath, keyPath: "shadowPath", timingFunction: .spring, duration: duration)
         }
         
         func initFake(_ from: NSRect, to: NSRect) {
