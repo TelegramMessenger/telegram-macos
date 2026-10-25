@@ -2,6 +2,10 @@ import AppKit
 import XCTest
 @testable import LiquidGlassLens
 
+private final class LensTestSourceView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class LiquidGlassLensTests: XCTestCase {
     private var windows: [NSWindow] = []
 
@@ -150,6 +154,34 @@ final class LiquidGlassLensTests: XCTestCase {
         second.removeFromSuperview()
         update(lens, progress: 1, contentSources: [source, LiquidGlassLensContentSource(view: second)])
         XCTAssertEqual(lens.activePortalCount, 0)
+    }
+
+    func testLensedSourceScaleChangesIndependentlyOfItsLiveSourceAndOutsidePortal() throws {
+        let lens = try makeLens()
+        let control = LensTestSourceView(frame: CGRect(x: 4, y: 16, width: 80, height: 40))
+        lens.contentView.addSubview(control)
+        let icon = LensTestSourceView(frame: CGRect(x: 25, y: 5, width: 30, height: 30))
+        icon.wantsLayer = true
+        control.addSubview(icon)
+        let source = try XCTUnwrap(icon.layer)
+        source.opacity = 0
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: icon, lensedScale: 0.8)])
+        let copies = portals(in: try XCTUnwrap(lens.layer), source: source)
+        let lensed = try XCTUnwrap(copies.first { $0.superlayer?.name != "lensUnlensedContent" })
+        let unlensed = try XCTUnwrap(copies.first { $0.superlayer?.name == "lensUnlensedContent" })
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertEqual(lensed.opacity, 1)
+        XCTAssertEqual(lensed.transform.m11, 0.88, accuracy: 0.0001)
+        XCTAssertEqual(lensed.position, CGPoint(x: 50, y: 40))
+        XCTAssertEqual(unlensed.frame, CGRect(x: 29, y: 21, width: 30, height: 30))
+        XCTAssertTrue(CATransform3DIsIdentity(unlensed.transform))
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: icon, lensedScale: 0.6)])
+        XCTAssertEqual(lensed.transform.m11, 0.66, accuracy: 0.0001)
+        XCTAssertEqual(lensed.position, CGPoint(x: 50, y: 40))
+        XCTAssertEqual(source.opacity, 0)
+        XCTAssertTrue(CATransform3DIsIdentity(source.transform))
+        lens.reset()
+        XCTAssertTrue(copies.allSatisfy { $0.value(forKey: "sourceLayer") == nil })
     }
 
     func testRestingRendererKeepsNoTemporarySurfaces() throws {

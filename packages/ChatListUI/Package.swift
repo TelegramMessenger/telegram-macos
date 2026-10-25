@@ -4,6 +4,7 @@ import PackageDescription
 
 let deps: [(String, String)] = [
     ("TGUIKit", "../TGUIKit"),
+    ("LiquidGlassLens", "../LiquidGlassLens"),
     ("PerfLab", "../PerfLab"),
     ("InAppSettings", "../InAppSettings"),
     ("Localization", "../Localization"),

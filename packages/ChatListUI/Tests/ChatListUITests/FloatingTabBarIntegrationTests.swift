@@ -30,6 +30,19 @@ private final class LensTestAnimatedItem: TabAnimatedItem {
     }
 }
 
+private final class LensTestAvatarItem: TabAnimatedItem {
+    let icon = AvatarTabContainer(frame: NSRect(x: 0, y: 0, width: 30, height: 30))
+
+    override func makeView() -> NSView {
+        return icon
+    }
+
+    override func setSelected(_ selected: Bool, for view: NSView, animated: Bool) {
+        icon.setSelected(selected, animated: animated)
+        super.setSelected(selected, for: view, animated: animated)
+    }
+}
+
 final class FloatingTabBarIntegrationTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -203,6 +216,90 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
         let item = TabAnimatedItem(.tab_settings, image: image, selectedImage: image, controller: ViewController())
         XCTAssertTrue(item.supportsLensTint(for: TabAnimatedIconView(sticker: .tab_settings)))
         XCTAssertFalse(item.supportsLensTint(for: AvatarTabContainer(frame: NSRect(x: 0, y: 0, width: 30, height: 30))))
+    }
+
+    func testAvatarOutlineIsRevealedSpatiallyAcrossTheSelectionMidpoint() throws {
+        guard System.liquidGlassAvailable else {
+            throw XCTSkip("Native glass is unavailable")
+        }
+        System.liquidGlass = true
+        defer { System.liquidGlass = false }
+        let bar = TabBarView(frame: NSRect(x: 0, y: 0, width: 333, height: 48))
+        bar.reduceMotion = { false }
+        bar.reduceTransparency = { false }
+        let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = bar
+        defer { window.close() }
+        let image = TestImages.named("Icon_SearchField").precomposed()
+        for _ in 0 ..< 2 {
+            bar.addTab(TabItem(image: image, selectedImage: image, controller: ViewController()))
+        }
+        let badge = View(frame: NSRect(x: 18, y: 2, width: 12, height: 12))
+        badge.backgroundColor = .systemRed
+        let item = LensTestAvatarItem(.tab_settings, image: image, selectedImage: image, controller: ViewController(), subNode: Node(badge))
+        bar.addTab(item)
+        let ring = try XCTUnwrap(item.icon.subviews.first?.layer)
+        let avatar = try XCTUnwrap(item.icon.subviews.last?.layer)
+        let badgeLayer = try XCTUnwrap(badge.layer)
+        func center(_ index: Int) -> NSPoint {
+            let frame = bar.control(for: index).frame
+            return NSPoint(x: frame.midX, y: frame.midY)
+        }
+        func portals(_ layer: CALayer, source: CALayer) -> [CALayer] {
+            var result: [CALayer] = []
+            if layer.responds(to: NSSelectorFromString("sourceLayer")), layer.value(forKey: "sourceLayer") as? CALayer === source {
+                result.append(layer)
+            }
+            return result + (layer.sublayers ?? []).flatMap { portals($0, source: source) }
+        }
+        for origin in [1, 2] {
+            bar.setSelectedIndex(origin, respondToDelegate: false, animated: false)
+            bar.beginSelection(at: center(origin))
+            bar.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let root = try XCTUnwrap(bar.nativeLens?.layer)
+            let copies = portals(root, source: ring)
+            let inside = try XCTUnwrap(copies.first { $0.superlayer?.name != "lensUnlensedContent" })
+            let outside = try XCTUnwrap(copies.first { $0.superlayer?.name == "lensUnlensedContent" })
+            let mask = try XCTUnwrap(inside.superlayer?.mask as? CAShapeLayer)
+            let positions: [CGFloat] = origin == 1 ? [1.4, 1.49, 1.51, 1.6] : [1.6, 1.51, 1.49, 1.4]
+            for position in positions {
+                let first = center(1)
+                let point = NSPoint(x: first.x + (center(2).x - first.x) * (position - 1), y: first.y)
+                bar.updateSelection(at: point)
+                bar.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                XCTAssertTrue(portals(root, source: ring).elementsEqual(copies, by: { $0 === $1 }))
+                XCTAssertEqual(ring.opacity, position < 1.5 ? 0 : 1)
+                XCTAssertEqual(inside.opacity, 1)
+                XCTAssertEqual(inside.transform.m11, 1.1, accuracy: 0.0001)
+                let filter = try XCTUnwrap(outside.filters?.first as? NSObject)
+                let value = try XCTUnwrap(filter.value(forKey: "inputColorMatrix") as? NSValue)
+                var matrix = [Float](repeating: 1, count: 20)
+                matrix.withUnsafeMutableBytes { value.getValue($0.baseAddress!, size: $0.count) }
+                XCTAssertTrue(matrix.allSatisfy { $0 == 0 })
+                let left = inside.convert(CGPoint(x: 1, y: 15), to: inside.superlayer)
+                let right = inside.convert(CGPoint(x: 29, y: 15), to: inside.superlayer)
+                XCTAssertTrue(try XCTUnwrap(mask.path).contains(left))
+                XCTAssertEqual(try XCTUnwrap(mask.path).contains(right), position == 1.6)
+                let avatarCopies = portals(root, source: avatar)
+                XCTAssertEqual(avatarCopies.count, 2)
+                XCTAssertTrue(avatarCopies.allSatisfy { $0.filters?.isEmpty ?? true })
+                XCTAssertEqual(avatarCopies.first { $0.superlayer?.name != "lensUnlensedContent" }?.transform.m11 ?? 0, 0.88, accuracy: 0.0001)
+                XCTAssertTrue(portals(root, source: badgeLayer).allSatisfy { $0.filters?.isEmpty ?? true })
+            }
+            bar.cancelSelection(animated: false)
+            XCTAssertEqual(ring.opacity, origin == 2 ? 1 : 0)
+            XCTAssertTrue(copies.allSatisfy { $0.value(forKey: "sourceLayer") == nil })
+        }
+        bar.setSelectedIndex(1, respondToDelegate: false, animated: false)
+        bar.beginSelection(at: center(1))
+        bar.updateSelection(at: center(2))
+        bar.endSelection(at: center(2))
+        XCTAssertEqual(bar.selectedIndex, 2)
+        XCTAssertEqual(ring.opacity, 1)
+        XCTAssertEqual(avatar.frame.width, 24, accuracy: 0.0001)
     }
 
     func testLastRowCanScrollAboveTheFloatingBar() {

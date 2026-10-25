@@ -233,7 +233,8 @@ final class LensSurface {
             let position = CGPoint(x: source.magnificationCenter.x + (source.frame.midX - source.magnificationCenter.x) * magnification - frame.minX, y: source.magnificationCenter.y + (source.frame.midY - source.magnificationCenter.y) * magnification - frame.minY)
             animation.update(portal.layer, key: "bounds", value: NSValue(rect: source.bounds))
             animation.update(portal.layer, key: "position", value: NSValue(point: position))
-            animation.update(portal.layer, key: "transform", value: NSValue(caTransform3D: CATransform3DMakeScale(magnification, magnification, 1)))
+            let contentScale = magnification * source.lensedScale
+            animation.update(portal.layer, key: "transform", value: NSValue(caTransform3D: CATransform3DMakeScale(contentScale, contentScale, 1)))
         }
     }
 

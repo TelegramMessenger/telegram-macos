@@ -525,9 +525,11 @@ public class TabBarView: View {
             nativeLens.frame = bounds
             let unlensedIconColor = presentation.colors.isDark ? NSColor.white : presentation.colors.grayIcon
             let sources = itemControls.enumerated().flatMap { index, control in
-                control.subviews.enumerated().map { childIndex, view in
-                    let tint = childIndex == 0 && tabs[index].supportsLensTint(for: view)
-                    return LiquidGlassLensContentSource(view: view, lensedTintColor: tint ? presentation.colors.accentIcon : nil, unlensedTintColor: tint ? unlensedIconColor : nil)
+                control.subviews.enumerated().flatMap { childIndex, view in
+                    if childIndex == 0 {
+                        return tabs[index].lensContentSources(for: view, lensedTintColor: presentation.colors.accentIcon, unlensedTintColor: unlensedIconColor)
+                    }
+                    return [LiquidGlassLensContentSource(view: view)]
                 }
             }
             nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor, contentSources: sources)

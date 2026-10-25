@@ -1,4 +1,5 @@
 import Cocoa
+import LiquidGlassLens
 
 
 
@@ -30,6 +31,11 @@ open class TabItem: NSObject {
 
     open func supportsLensTint(for view: NSView) -> Bool {
         return view is ImageView
+    }
+
+    open func lensContentSources(for view: NSView, lensedTintColor: NSColor, unlensedTintColor: NSColor) -> [LiquidGlassLensContentSource] {
+        let tint = supportsLensTint(for: view)
+        return [LiquidGlassLensContentSource(view: view, lensedTintColor: tint ? lensedTintColor : nil, unlensedTintColor: tint ? unlensedTintColor : nil)]
     }
     
     open func setSelected(_ selected: Bool, for view: NSView, animated: Bool) {
