@@ -1,5 +1,4 @@
 import Cocoa
-import LiquidGlassLens
 
 public protocol TabViewDelegate: AnyObject {
     func didChange(selected item: TabItem, index: Int)

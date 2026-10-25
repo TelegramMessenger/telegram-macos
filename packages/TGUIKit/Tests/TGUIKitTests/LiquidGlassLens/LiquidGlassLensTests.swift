@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import LiquidGlassLens
+@testable import TGUIKit
 
 private final class LensTestSourceView: NSView {
     override var isFlipped: Bool { true }

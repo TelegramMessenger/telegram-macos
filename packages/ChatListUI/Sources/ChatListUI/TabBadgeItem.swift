@@ -1,6 +1,5 @@
 import Cocoa
 import TGUIKit
-import LiquidGlassLens
 import Postbox
 import SwiftSignalKit
 import TelegramCore

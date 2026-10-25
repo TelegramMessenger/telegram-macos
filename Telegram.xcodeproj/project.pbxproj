@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B1A5169E9E014785AC9F1102 /* LiquidGlassLens in Frameworks */ = {isa = PBXBuildFile; productRef = B1A5169E9E014785AC9F1101 /* LiquidGlassLens */; };
 		179E9277EEDF6EE57D278A28 /* MTProtoRustEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 65444FEC9F6C1C634AC14116 /* MTProtoRustEngine */; };
 		00AE230C300112A4002DAD5B /* menu_article.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 00AE230B300112A4002DAD5B /* menu_article.tgs */; };
 		714DAA74A82E31CED3FF114A /* menu_message.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 6DF2B389CBB80EB29FD391E4 /* menu_message.tgs */; };
@@ -1032,7 +1031,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		B1A5169E9E014785AC9F1103 /* LiquidGlassLens */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LiquidGlassLens; path = packages/LiquidGlassLens; sourceTree = "<group>"; };
 		FD784E303A88B94212763B13 /* MTProtoRustEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MTProtoRustEngine; path = "submodules/telegram-ios/submodules/MTProtoRustEngine"; sourceTree = "<group>"; };
 		00AE230B300112A4002DAD5B /* menu_article.tgs */ = {isa = PBXFileReference; lastKnownFileType = file; path = menu_article.tgs; sourceTree = "<group>"; };
 		6DF2B389CBB80EB29FD391E4 /* menu_message.tgs */ = {isa = PBXFileReference; lastKnownFileType = file; path = menu_message.tgs; sourceTree = "<group>"; };
@@ -2177,7 +2175,6 @@
 				CCD1B8E49B25C1FDF7E58B20 /* TelegramTheme in Frameworks */,
 				590406A596A7B20FA77A6D01 /* TelegramMediaResources in Frameworks */,
 				806699C5354386A72184AE84 /* SceneEffects in Frameworks */,
-				B1A5169E9E014785AC9F1102 /* LiquidGlassLens in Frameworks */,
 				27BE52462D9B0A8600F40837 /* libtdutils.a in Frameworks */,
 				27BE52442D9B05D600F40837 /* libtde2e.a in Frameworks */,
 				27C1FF512B74CD2A00B086E3 /* PrivateCallScreen in Frameworks */,
@@ -2744,7 +2741,6 @@
 		27F3B7592739300C00B81F10 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				B1A5169E9E014785AC9F1103 /* LiquidGlassLens */,
 				FD784E303A88B94212763B13 /* MTProtoRustEngine */,
 				7EFAFFDDB86A365C817F7F0A /* PasscodeCore */,
 				DC03D85B85DFD13971D4E5B3 /* GiftCraftingUI */,
@@ -3694,7 +3690,6 @@
 			);
 			name = Telegram;
 			packageProductDependencies = (
-				B1A5169E9E014785AC9F1101 /* LiquidGlassLens */,
 				65444FEC9F6C1C634AC14116 /* MTProtoRustEngine */,
 				C0C39F69D94F71B3D37CE102 /* PasscodeCore */,
 				F685D321C7FA76A9B76D43C9 /* GiftCraftingUI */,
@@ -3947,7 +3942,6 @@
 			);
 			mainGroup = D098C70C1D7E175A007784E4;
 			packageReferences = (
-				B1A5169E9E014785AC9F1104 /* XCLocalSwiftPackageReference "packages/LiquidGlassLens" */,
 				8412CCD8FD1ED53B957DC5A9 /* XCLocalSwiftPackageReference "packages/AvatarUI" */,
 				F0255D56305311A9001994C2 /* XCLocalSwiftPackageReference "packages/TelegramUtils" */,
 			);
@@ -5181,10 +5175,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		B1A5169E9E014785AC9F1104 /* XCLocalSwiftPackageReference "packages/LiquidGlassLens" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = packages/LiquidGlassLens;
-		};
 		8412CCD8FD1ED53B957DC5A9 /* XCLocalSwiftPackageReference "packages/AvatarUI" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = packages/AvatarUI;
@@ -5196,11 +5186,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		B1A5169E9E014785AC9F1101 /* LiquidGlassLens */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = B1A5169E9E014785AC9F1104 /* XCLocalSwiftPackageReference "packages/LiquidGlassLens" */;
-			productName = LiquidGlassLens;
-		};
 		65444FEC9F6C1C634AC14116 /* MTProtoRustEngine */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MTProtoRustEngine;
