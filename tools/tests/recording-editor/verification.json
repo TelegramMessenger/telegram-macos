@@ -1,0 +1,85 @@
+{
+  "source_base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+  "environment": {
+    "macos": "27.0.1 (26A434)",
+    "hardware": "Apple M4 Pro, arm64",
+    "xcode": "27.1",
+    "swift": "6.4"
+  },
+  "independent_from_pr82": true,
+  "pr82_blur_helper_applied_during_native_checks": false,
+  "dictation_implementation_modified": false,
+  "native_tests": {
+    "passed": 15,
+    "failed": 0,
+    "log_sha256": "d4d87d466564b7a14b8f3966a24cf35271eaf3597e28b2f044ad618ceb6a50b4",
+    "coverage": [
+      "Both video grips receive pointer events",
+      "Both boundaries shrink and expand",
+      "Right grip above floating recorder controls",
+      "Pause control receives clicks",
+      "Video Play/Pause control visible",
+      "Seek before player readiness",
+      "Full-video playback and pause",
+      "Selected fragment stops and can replay",
+      "Pause cancels pending playback seek",
+      "Repeated resume cleans old layers",
+      "Modal suspension and duplicate confirmation protection",
+      "Repeated discard cannot resurrect overlay",
+      "Dismissal finishes without animation callback",
+      "Animation and fallback complete only once"
+    ]
+  },
+  "full_build": {
+    "result": "BUILD SUCCEEDED",
+    "base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "configuration": "Debug arm64",
+    "log_sha256": "afad268c1fdadb4296644a8f87a0c8f984784503d38fc63d0cfe83cfe4808ade",
+    "local_configuration": "Prepared Xcode 27 compatibility, isolated test bundle/profile; those build adjustments are excluded from the PR"
+  },
+  "signed_in_workflow": {
+    "status": "pass",
+    "source": "Direct user confirmation",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "base": "cdf97a0e316521c72bd606bfb8002487d8fc842c",
+    "feature_source_hashes_match_this_patch": true,
+    "checks": [
+      "Both trim boundaries and seeking",
+      "Full and trimmed Play/Pause",
+      "Repeated editing with No twice, then Discard",
+      "New recording after discard"
+    ],
+    "confirmation": "Play/Pause works, dialogs close, another recording starts",
+    "latest_master_signed_in_retest": false
+  },
+  "source_sha256": {
+    "packages/ChatUI/Sources/ChatUI/ChatInputRecordingView.swift": "9a1ba43321efc64dc53add3310c30fed1871f3b00b4bd833ebd8210bbacee3a0",
+    "packages/ChatUI/Sources/ChatUI/ChatRecorderOverlayWindow.swift": "d758701e4d05c2cdf80159b8a6d8f1455fd633a7bee36893424aed78d8faf4b3",
+    "packages/ChatUI/Sources/ChatUI/RecordingTrimScrubberView.swift": "f286b84d8c8eaec6b40163f1ec36861eb217f96ab68a81d54a95beb8b02c482b",
+    "packages/ChatUI/Sources/ChatUI/RecordingDismissal.swift": "01c3af30383b07fce1f179e2ff5163eadc53842d0e6f2269eb082fd35d38a741",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalView.swift": "60a92288d36006b40eb3ea1ab5c3487d6f5e835ce17bd69eb1e2828d00d5a262",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalController.swift": "6f7fe8dcecd44b8253654005b1f4a18d8aab042478280bbc494a2ae6d309b0de",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoCameraStructures.swift": "a38ac8c3acbad31eb67dc64b8e7c6af26dc20e87d77d2d560ce001957625999c",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/ChatRecordingState.swift": "8041c67afc5dc0bbd84cc40ff09c1e680fc46c4795c64c1f2b8e61b822fade84",
+    "packages/ChatUI/Tests/ChatUITests/RecordingTrimScrubberInteractionTests.swift": "0b377b0ac78f4e941f0754aef222145cba876ab49d3add849092e4ea3653f1f9",
+    "packages/ChatUI/Tests/ChatUITests/RecordingVideoPreviewTests.swift": "b6af6fcfd00cd1199471fcb1e415fa9912c32495b37634b2b6bddd741749f716",
+    "packages/ChatUI/Tests/ChatUITests/RecordingOverlayLifecycleTests.swift": "0fa2231f0c05ebd67747f435adc6a9948ea2e348066d9940ecc1cc7229d8711e"
+  },
+  "screenshots": {
+    "before": {
+      "sha256": "2b5eaa17de00853fa6b4408456281f35c67f2e3adb318aedfb8e6a234be523e0",
+      "capture_log_sha256": "b19a41003147b607b92391c05b2c9c06dbf52d57d3bd5470cbb1a6daf3e064c8"
+    },
+    "after": {
+      "sha256": "925e85b3466cc403c07ba740cb4326619d2d387a880217eebb135e2c6420cfc6",
+      "capture_log_sha256": "d6a64ccf5ab4b4e88549af8f72972cc86b0d2c2976db7a12952a8b2796a15101"
+    }
+  },
+  "screenshot_scope": "Native AppKit timeline fixture. Same generated placeholder, 10-second duration, 2-8 second selection and 4-second position. Only RecordingTrimScrubberView is switched to baseline source for before. Not screenshots of an authenticated client.",
+  "limits": [
+    "The authenticated editor workflow used an earlier master base with byte-identical feature source files; current master was rebuilt and tested natively without PR82.",
+    "No send/upload/export was tested; recordings were discarded.",
+    "Native fixture screenshots demonstrate visible timeline changes, not an end-to-end camera session.",
+    "No assertion about app-wide performance or official beta builds."
+  ]
+}

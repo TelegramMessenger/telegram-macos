@@ -71,8 +71,16 @@ public class VideoRecorderModalController: ModalViewController {
         pipeline.start()
 
         if let state = self.state as? ChatRecordingVideoState {
+            genericView.previewUpdated = { [weak state] value in
+                state?.previewState.set(value)
+            }
             previewDisposable.set((state.previewCommands.get() |> deliverOnMainQueue).start(next: { [weak self] command in
-                self?.genericView.updatePreview(trimRange: command.trimRange, seekTo: command.seekTo, play: command.play)
+                switch command {
+                case let .update(trimRange, seekTo, play):
+                    self?.genericView.updatePreview(trimRange: trimRange, seekTo: seekTo, play: play)
+                case .togglePlayback:
+                    self?.genericView.togglePreviewPlayback()
+                }
             }))
         }
 
@@ -182,6 +190,10 @@ public class VideoRecorderModalController: ModalViewController {
 
 
     public override func viewWillDisappear(_ animated: Bool) {
+        previewDisposable.set(nil)
+        countdownDisposable.set(nil)
+        disposable.set(nil)
+        genericView.stopPreview()
         super.viewWillDisappear(animated)
     }
 

@@ -15,14 +15,22 @@ import ObjcUtils
 import TGVideoCameraMovie
 import AVFoundation
 
-public struct VideoRecorderPreviewCommand {
-    public let trimRange: Range<Double>?
-    public let seekTo: Double
-    public let play: Bool
+public enum VideoRecorderPreviewCommand {
+    case update(trimRange: Range<Double>?, seekTo: Double, play: Bool)
+    case togglePlayback
+
     public init(trimRange: Range<Double>?, seekTo: Double, play: Bool) {
-        self.trimRange = trimRange
-        self.seekTo = seekTo
-        self.play = play
+        self = .update(trimRange: trimRange, seekTo: seekTo, play: play)
+    }
+}
+
+public struct VideoRecorderPreviewState: Equatable {
+    public let position: Double
+    public let isPlaying: Bool
+
+    public init(position: Double, isPlaying: Bool) {
+        self.position = position
+        self.isPlaying = isPlaying
     }
 }
 

@@ -20,6 +20,12 @@ final class ChatRecorderOverlayWindow: Window {
     private static let margin: CGFloat = 120
 
     private weak var parentHost: Window?
+    private var attachmentRequested = false
+    private(set) var isSuspendedForModal = false
+
+    var acceptsRecordingEvents: Bool {
+        return attachmentRequested && !isSuspendedForModal && parentHost != nil && parent === parentHost
+    }
 
     init(parent: Window) {
         self.parentHost = parent
@@ -39,6 +45,12 @@ final class ChatRecorderOverlayWindow: Window {
     }
 
     func attach() {
+        attachmentRequested = true
+        attachIfRequested()
+    }
+
+    private func attachIfRequested() {
+        guard attachmentRequested, !isSuspendedForModal else { return }
         guard let parent = self.parentHost else {
             return
         }
@@ -48,8 +60,39 @@ final class ChatRecorderOverlayWindow: Window {
         }
     }
 
+    func installControls(_ controls: [NSView], editorControls: [NSView]) {
+        guard let contentView else { return }
+        for view in controls {
+            contentView.addSubview(view, positioned: .above, relativeTo: nil)
+        }
+        for view in editorControls {
+            let screenFrame = view.window.map { $0.convertToScreen(view.convert(view.bounds, to: nil)) }
+            contentView.addSubview(view, positioned: .above, relativeTo: nil)
+            if let screenFrame {
+                view.frame = contentView.convert(convertFromScreen(screenFrame), from: nil)
+            }
+        }
+    }
+
     func detach() {
-        self.parentHost?.removeChildWindow(self)
+        attachmentRequested = false
+        hideFromParent()
+    }
+
+    func suspendForModal() -> Bool {
+        guard acceptsRecordingEvents else { return false }
+        isSuspendedForModal = true
+        hideFromParent()
+        return true
+    }
+
+    func resumeAfterModal() {
+        isSuspendedForModal = false
+        attachIfRequested()
+    }
+
+    private func hideFromParent() {
+        parent?.removeChildWindow(self)
         self.orderOut(nil)
     }
 
