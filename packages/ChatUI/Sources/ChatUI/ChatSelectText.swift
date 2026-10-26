@@ -17,6 +17,20 @@ public struct SelectContainer {
     public var richText: [RichText]? = nil
 }
 
+func copiedMessageHeader(_ message: Message, timeDifference: TimeInterval) -> String {
+    var header: String
+    if let forwardInfo = message.forwardInfo {
+        header = forwardInfo.authorTitle
+    } else {
+        header = message.effectiveAuthor?.displayTitle ?? ""
+    }
+    if message.timestamp != scheduleWhenOnlineTimestamp {
+        let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp) - timeDifference)
+        header += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
+    }
+    return header
+}
+
 public class SelectManager : NSResponder {
     fileprivate weak var chatInteraction: ChatInteraction?
     public override init() {
@@ -314,16 +328,7 @@ public class SelectManager : NSResponder {
                         if !text.isEmpty {
                             text += "\n\n"
                         }
-                        if let forwardInfo = message.forwardInfo {
-                            text += "> " + forwardInfo.authorTitle
-                        } else {
-                            text += "> " + (message.effectiveAuthor?.displayTitle ?? "")
-                        }
-                        if message.timestamp != scheduleWhenOnlineTimestamp {
-                            let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp) - timeDifference)
-                            text += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
-                        }
-                        text += ":"
+                        text += "> " + copiedMessageHeader(message, timeDifference: timeDifference) + ":"
                         text += "\n"
                         text += pullText(from: message).string as String
                     }
