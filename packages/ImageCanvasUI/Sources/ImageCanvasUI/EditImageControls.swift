@@ -302,6 +302,7 @@ public struct EditedImageData : Equatable {
         }
         return video |> mapToSignal { url in
             if let url {
+                EditedPhotoVideos.shared.add(path: url.path)
                 return .single(url)
             }
             return still
