@@ -1,8 +1,0 @@
-{
-  "baseline": "b134e8654",
-  "source": "packages/TGUIKit/Sources/Extensions.swift",
-  "original_sha256": "cfcf20e24f1c3d6ec5535da8f3529939227b6b3fc7eb5d916f753af7df7417e8",
-  "candidate_sha256": "0cad41d42eed0a094d7c49f90336797a95a9171237b6dd7d7f52e5c40c9be36e",
-  "reference_sha256": "646eaec61acc78bf0dd7fcdfaeb536866de33e450d6eff9a3feb0c68b5ce8d00",
-  "append_and_set_font_unchanged": true
-}

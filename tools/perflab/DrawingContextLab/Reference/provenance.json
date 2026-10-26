@@ -1,5 +1,0 @@
-{
-  "original_sha256": "9220f75c03d97e0d352c1d439d49dc6771ebd43e996dbae5d7a4d5f5a1dad77c",
-  "baseline_commit": "6f9c8f71254d4b4630b28b5623513263eeb8d083",
-  "source": "packages/TGUIKit/Sources/DrawingContext.swift"
-}

@@ -1,8 +1,0 @@
-{
-  "packages/TGUIKit/Sources/TextView.swift": "9bfc2e5bb8cae3095cee4c9446de1cb5ddee09b87d8c55c056ccc4d92030835e",
-  "packages/InputTextView/Sources/InputTextView/FoldingTextView.swift": "32757c03fc5318cfc1527711d872db435edad58825e643e2b1f6f9fe40c394b7",
-  "packages/ChatUI/Sources/ChatUI/ChatMessageView.swift": "6201b3c2a354c7fe7aa8660f306f31ae75171e53851ad386bb9c89083efd904b",
-  "tools/perflab/ChatLayerEngineLab/Sources/FoldingViewHarness/ChatTextDependencies.swift": "536dc4a6adde9fd8e69c6faf240b64dee8c863c5d56750e6a0a9592a7d684c74",
-  "tools/perflab/ChatLayerEngineLab/Sources/FoldingBlocksHarness/Dependencies.swift": "701d2a2e37a4ccfa91f8e6213b747e423747ed6692c0ba21b9d74afb978e333a",
-  "packages/TGUIKit/Sources/Control.swift": "f72cad433c53ed467298f3dab58221681b795c8fcead391b9ede8c0b7c9b2f0e"
-}

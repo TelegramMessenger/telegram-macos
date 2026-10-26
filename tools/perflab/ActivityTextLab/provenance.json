@@ -1,9 +1,0 @@
-{
-  "baseline": "d3f4a6235",
-  "source_sha256": "e9e4d682bd2b2c4a126704fb8b67cbb7a506c90c3a11646f39781df232b91ed6",
-  "reference_sha256": "6ed54316d8acde91425b54d9914ea12a4881db554dfbc0d19e69b66a3d60f128",
-  "generated_sha256": "ec3986c0f74d7cb1457168c5ee08feeb9f2704515e6f42b8b5ff9e6640b2f1fb",
-  "geometry_sha256": "7fd0e7a5d113e350128eb0286970d7a3c3f1d5083408eba45b86f23d97b5d958",
-  "theme_sha256": "da1ddbdde77fe21ea53a2de503cf2c39fc4378f131ec8ef17633a12f96894c59",
-  "activity_enum_sha256": "e4eb6c75551d7bbde2e72b3bb6816cff61ca484cd6e872fe8d96492266946c8c"
-}

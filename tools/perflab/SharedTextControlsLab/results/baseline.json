@@ -1,9 +1,0 @@
-{
-  "commit": "c2a11539d8ebbf80481acfbb358c368ec8b1d995",
-  "source_sha256": {
-    "packages/TGUIKit/Sources/TextViewLabel.swift": "1de91bb13948340217012e39c5f666003ac8012feb1bd6722335cfec71258923",
-    "packages/TGUIKit/Sources/TitledBarView.swift": "c47547120d0c85c8a612b4de413d1616e7ef7450fe2a9e61ea5fa3bff53bc566"
-  },
-  "tests": 7,
-  "expected_assertion_failures": 15
-}

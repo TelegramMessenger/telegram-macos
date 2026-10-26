@@ -1,7 +1,0 @@
-{
-  "baseline": "828654359",
-  "source": "packages/InlineStickerLayer/Sources/InlineStickerLayer/InlineStickerItemLayer.swift",
-  "original_sha256": "2727afd86c66ea2df7b30928515648c7eebbc4bf366938d460c8707b830fea12",
-  "candidate_sha256": "748ed04d390cdbff4dcbff8101793f2e99fefbd6353d7e838776d27387eca2ec",
-  "generated_sha256": "c37ff9b6c2952f0cc4c2c9e38d53a86d58258fc47b0cbeb762765a71d7d07511"
-}

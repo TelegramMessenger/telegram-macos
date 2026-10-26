@@ -1,4 +1,0 @@
-        hiddenFwdTooltip = { [weak self] in
-            guard let view = self?.view as? ChatRowView, let forwardName = view.forwardName else { return }
-            tooltip(for: forwardName, text: strings().chatTooltipHiddenForwardName, autoCorner: false)
-        }

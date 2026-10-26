@@ -1,9 +1,0 @@
-{
-  "commit": "c8ef94064c1357ae56a7d8f827257ddd23a6ca5c",
-  "source_sha256": {
-    "packages/ChatUI/Sources/ChatUI/ChatLayerMessageText+Layout.swift": "a5d4e9551b52b68abc29de63f95c03b21ab2ebb62695448916d48502c0e3bb62",
-    "packages/ChatUI/Sources/ChatUI/ChatLayerMessageTextView.swift": "e4ae0d4fb97377e0d9b25e3e530e6e9b3f1d28ddb790c24632e6e6bba5e8ab1f",
-    "packages/ChatUI/Sources/ChatUI/ChatMessageView.swift": "bf80615265b669958d6d448b6d290ae5abd56b36bd5bfbacd80f5af793a18dc8",
-    "packages/ChatUI/Sources/ChatUI/ChatRowView.swift": "2f61210d6a1132cef125e138cd51db0b56d9ab11127c3e89d51f590a9eca66ba"
-  }
-}

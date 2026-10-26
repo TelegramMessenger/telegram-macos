@@ -1,7 +1,0 @@
-{
-  "Package.swift": "241461dc84c8067b59c447fd6ce23ef10067b291bd164d52458294ae167a2121",
-  "Tests/DecodeTests/DecodeBenchmarkTests.swift": "aa1c4dd6764de8cbdff2e69a8894ea8c597e0b8e69a0ff550946cc1136a6f013",
-  "Tests/DecodeTests/DecodeTests.swift": "ea173bc75c3ceefc0dcff902b47d52e0963e2f601c9038eb7c461ee68ac57eb1",
-  "Sources/DecodeReference/StickerThumbnailPath.swift": "208021161168f8402c2d19561109bbfbf79194b1ee26022a819f14b186d63faf",
-  "Sources/DecodeCandidate/StickerThumbnailPath.swift": "75abdf2821ef8c3106394d93068e702e892f4b5f83913e3b9eac8f63c2ab45cf"
-}

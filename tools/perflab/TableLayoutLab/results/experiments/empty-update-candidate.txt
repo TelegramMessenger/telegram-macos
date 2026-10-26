@@ -1,5 +1,0 @@
-        self.beginTableUpdates()
-        NSAnimationContext.current.duration = 0.0
-        NSAnimationContext.current.timingFunction = nil
-        self.endTableUpdates()
-        self.tableView.needsLayout = true

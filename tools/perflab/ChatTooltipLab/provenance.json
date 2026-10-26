@@ -1,9 +1,0 @@
-{
-  "baseline": "9c646ac2a",
-  "production_sha256": {
-    "packages/ChatUI/Sources/ChatUI/ChatRowItem.swift": "8cff50c17de2a60686edee332afd1242da29aa227fe18a7498d7d3179724ffe9",
-    "packages/ChatUI/Sources/ChatUI/ChatRightView.swift": "51683465ce59c66bd7e15e8cc04fd61cc78ef6837286afbee60b235b7988fe0f"
-  },
-  "generated_sha256": "a0241d22e5606df5b7c101bb0806a194ef3525de2426b14dc3d39af43e0ce4f8",
-  "reference_sha256": "f0fdfdc975fa9ac4b0b52623a2b4eefed7e5ff0620c645325fe7f9a7c59f50f6"
-}

@@ -1,1 +1,0 @@
-../AvatarUI/AvatarStoryIndicatorComponent.swift

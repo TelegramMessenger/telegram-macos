@@ -1,6 +1,0 @@
-{
-  "commit": "058cd5cf52239c6eeb0b4592a69311bd001202a5",
-  "text_node_sha256": "a7eb0032f5a2a64ab9349210bfff6537dcdc797d399dc74c58516dd1f23d2b24",
-  "tests": 5,
-  "expected_assertion_failures": 8
-}

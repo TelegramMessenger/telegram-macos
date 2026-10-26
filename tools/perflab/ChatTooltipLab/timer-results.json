@@ -1,9 +1,0 @@
-{
-  "baseline_active_after_detach" : 30,
-  "baseline_fires_after_detach" : 30,
-  "candidate_active_after_detach" : 0,
-  "candidate_fires_after_detach" : 0,
-  "observation_seconds" : 1.3,
-  "reuses" : 30,
-  "timer_interval_seconds" : 1
-}

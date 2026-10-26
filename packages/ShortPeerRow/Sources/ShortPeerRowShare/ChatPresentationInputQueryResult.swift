@@ -1,1 +1,0 @@
-../ShortPeerRow/ChatPresentationInputQueryResult.swift

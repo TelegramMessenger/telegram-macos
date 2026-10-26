@@ -1,7 +1,0 @@
-label noclip1 shimmer
-scroll-warmup0 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.373 main%=19.064 range=16819 wsCores=0.44 gpu%=31
-scroll      0 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.346 main%=17.882 range=16799 wsCores=0.45 gpu%=32
-scroll      1 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.271 main%=17.53 range=16819 wsCores=0.44 gpu%=32
--- medians
-scroll-warmup hitches=0.00 h33=0.00 hitch%=0.00 cpu=0.37 main%=19.06 wsCores=0.44 gpu=30.53
-scroll       hitches=0.00 h33=0.00 hitch%=0.00 cpu=0.31 main%=17.71 wsCores=0.44 gpu=32.30

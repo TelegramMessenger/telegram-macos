@@ -1,9 +1,0 @@
-{
-  "baseline_commit": "6a45ed29f",
-  "source_sha256": {
-    "packages/ChatUI/Sources/ChatUI/ChatRowView.swift": "b812bc031c0e3c8fe0d400848cd3389629dfa8f3d1e0a92c63ca088e6f15bb3f",
-    "packages/TGUIKit/Sources/InterfaceObserver.swift": "e9b643baa4b695e15468a42643d65a42b5f30d5daa92d02d286c7a00c8f95b68"
-  },
-  "generated_sha256": "d5080304cb9d4f5914d9ada65d187093165460eff34ba286cb098b82360fe191",
-  "scope": "Complete production set(item:), notify, window lifecycle, deinit and observer helper; rendering and Telegram models are stand-ins. Actual TGUIKit InterfaceObserver and NSView window attachment."
-}

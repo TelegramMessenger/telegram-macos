@@ -1,8 +1,0 @@
-{
-  "packages/TGUIKit/Sources/TextNode.swift": "7a748d4827ca1b720d5148f2e316761253d21a6200222b3e1e5f0e100757ce55",
-  "tools/perflab/TextNodeReuseLab/Tests/TextNodeReuseTests/ReferenceTextNode.swift": "6fec1cffdbc4acb5e080da6c5ea45803cc611a82a3f5bf124523f3816c2fe4fe",
-  "tools/perflab/TextNodeReuseLab/Tests/TextNodeReuseTests/Bootstrap.swift": "5799744a31629e64c520ebcc89575a2c4e49af91e68267921c29cc2d1a6ead44",
-  "tools/perflab/TextNodeReuseLab/Tests/TextNodeReuseTests/TextNodeReuseTests.swift": "d01f9abbebe1f8e61f07f83435c4e8ce2921f47d4eb3a2a83de844da9aca2061",
-  "tools/perflab/TextNodeReuseLab/Package.swift": "f0c803e8452902e1d4e3bb96a00ef5ae2d8aaf5849110ec8c16fcf2e55ba8f83",
-  "tools/perflab/TextNodeReuseLab/prepare.py": "9409a9874d1a1bd699922136a3e630f477929c387041b33b096a375e2c9e8721"
-}

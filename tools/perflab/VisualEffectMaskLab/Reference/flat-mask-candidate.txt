@@ -1,7 +1,0 @@
-                    let maskLayer = view.layer?.mask ?? CALayer()
-                    CATransaction.begin()
-                    CATransaction.setDisableActions(true)
-                    maskLayer.contents = mask
-                    maskLayer.frame = view.bounds
-                    view.layer?.mask = maskLayer
-                    CATransaction.commit()

@@ -1,8 +1,0 @@
-{
-  "production_sha256": {
-    "packages/InputTextView/Sources/InputTextView/FoldingTextView.swift": "8c465b41079755afda8fc719a40e3b0afedbc00f0cad262b4c476cf43afd247b",
-    "packages/InlineStickerLayer/Sources/InlineStickerLayer/InlineStickerPlayback.swift": "69bc2e5246131a6df5edc6cd441059b0faeed898d7ef231fb6325a157c92d09e",
-    "packages/InlineStickerLayer/Sources/InlineStickerLayer/InlineStickerKeyCollection.swift": "e1851a2bb53c7b4bdf20a80d55e65a77a8b7759b40fc99e049dcfb0d03910da4",
-    "packages/TGUIKit/Sources/AnimatableContentObserver.swift": "3f9e88c589975b2dbe128fbaf6a573cb6dca94d95f5baaf5c6f704705278cfe5"
-  }
-}

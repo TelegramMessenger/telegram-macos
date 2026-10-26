@@ -1,7 +1,0 @@
-{
-  "baseline": "df79cde92",
-  "source": "packages/PremiumStatusUI/Sources/PremiumStatusUI/PremiumStatusControl.swift",
-  "original_sha256": "fded8dc46ce7972f02099c7c8ffe56a9d6ea90833824e819a5c473142378d575",
-  "candidate_sha256": "8e7751f55d27eb8614a18f4954c4687c36024389f89fda12f826ee994de9a49b",
-  "generated_sha256": "4801a7f71bced57a19f5583817d7422f6f77a7c86cb5b71f06c9ebf97b8df51e"
-}

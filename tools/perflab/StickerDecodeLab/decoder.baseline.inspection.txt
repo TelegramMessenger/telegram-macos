@@ -1,4 +1,0 @@
-
-func decodeFallbackForLab(_ data: Data) -> String { decodeStickerThumbnailData(data) }
-func decodeLengthForLab(_ data: Data) -> Int { decodeStickerThumbnailData(data).utf8.count }
-func decodeCommandStorageForLab() -> Int { decodingMap.capacity * MemoryLayout<String>.stride }

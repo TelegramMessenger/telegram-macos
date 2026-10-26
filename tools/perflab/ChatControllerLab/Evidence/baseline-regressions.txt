@@ -1,7 +1,0 @@
-Frozen baseline reproductions, asserted by the passing tests:
-- Empty history: zero completion events; candidate: one remaining transition and one completion.
-- Repeat scroll during fade-out: baseline marks the button hidden before animation completion; candidate waits.
-- Center anchor at either history edge: baseline initial document is shorter than the 720-point viewport despite available rows; candidate fills it.
-- 500-point center: baseline measures 13 rows; candidate measures 5, with identical native viewport pixels.
-- 1,000 unchanged-visibility scroll ticks: baseline invokes 4,000 frame updates; candidate invokes 4.
-- Reveal match in third row of 30: baseline accesses all 30 views; candidate stops at the first match.

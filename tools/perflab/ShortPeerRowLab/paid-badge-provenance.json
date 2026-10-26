@@ -1,9 +1,0 @@
-{
-  "baseline_commit": "007289e39",
-  "production_sha256": {
-    "packages/ShortPeerRow/Sources/ShortPeerRow/ShortPeerRowView.swift": "2052323cf30791a67e64a80f368392e1ccd363425f0b195e449601b50a885711",
-    "packages/ShortPeerRow/Sources/ShortPeerRow/SendPaidMessageBadge.swift": "dc2abb4a28d36532ef751d11ecde905d5e9237bc2429e14a25cb64648c74ea70"
-  },
-  "reference_sha256": "a6bd6ea0867b71e4ccfbb847f5953eca47ca7c907a55c5b935d4f8276d3682e5",
-  "generated_sha256": "5ada0e2501c3cf40fa458b134705f442311b6e251c6a0ebab14852943bd0617a"
-}

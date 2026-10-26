@@ -1,7 +1,0 @@
-{
-  "baseline": "6ecf012c1",
-  "baseline_sha256": "3b1ba4c23f4b284254906b4f19d655695053bd84cce7144b508c863dc02780ed",
-  "source_sha256": "6edb4bd7afff4f631a8ed255d056c57804150d37f63f4460d6905799bd8bc84a",
-  "generated_sha256": "a591d230bee3be1dc83878650c86e9bc453e679d294858954d08e032dd3de3c9",
-  "scope": "Complete native/current TopicReplyItemView with actual TGUIKit rendering; model/context and emoji decoding stand-ins."
-}

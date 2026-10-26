@@ -1,4 +1,0 @@
-                    let maskLayer = CALayer()
-                    maskLayer.contents = mask
-                    maskLayer.frame = view.bounds
-                    view.layer?.mask = maskLayer

@@ -1,8 +1,0 @@
-{
-  "commit": "f8764d2bb",
-  "source_sha256": {
-    "packages/ChatUI/Sources/ChatUI/ChatLayerMessageText.swift": "67ec7e720b6605b3a9af627a9b8df06fea1d544d5edd013e56ab6e374e5480fd",
-    "packages/ChatUI/Sources/ChatUI/ChatLayerMessageText+Layout.swift": "4e8b16ae2441b925503912c3833427996ed80157664430a223ae510b8c6640b0"
-  },
-  "captured_sha256": "4c323604b284a8e24b12d0ab18d8e870884e418860d564091a69f1537bce3baa"
-}

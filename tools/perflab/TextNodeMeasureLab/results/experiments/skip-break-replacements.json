@@ -1,6 +1,0 @@
-[
-  [
-    "                let lineCharacterCount = CTTypesetterSuggestLineBreak(typesetter, lastLineCharacterIndex, Double(lineConstrainedWidth))",
-    "                let isLastAllowedLine = maximumNumberOfLines > 0 && lines.count == maximumNumberOfLines - 1\n                let lineCharacterCount: CFIndex\n                if isLastAllowedLine && lastLineCharacterIndex < attributedString.length && lineConstrainedWidth > 0 && lineConstrainedWidth.isFinite {\n                    lineCharacterCount = 1\n                } else {\n                    lineCharacterCount = CTTypesetterSuggestLineBreak(typesetter, lastLineCharacterIndex, Double(lineConstrainedWidth))\n                }"
-  ]
-]

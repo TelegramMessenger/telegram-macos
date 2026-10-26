@@ -1,1 +1,0 @@
-../TelegramTheme/AppearanceGlobal.swift

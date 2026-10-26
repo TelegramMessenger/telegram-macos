@@ -1,6 +1,0 @@
-[
-  [
-    "        current.root.layer.frame = bounds\n        invalidateHitIndex()",
-    "        if current.root.layer.frame != bounds {\n            current.root.layer.frame = bounds\n            invalidateHitIndex()\n        }"
-  ]
-]

@@ -1,7 +1,0 @@
-.build/
-results/
-Tests/AccessoryTests/Generated.swift
-Tests/AccessoryTests/InlineStickerPlayback.swift
-Tests/AccessoryTests/InlineStickerKeyCollection.swift
-Tests/AccessoryTests/GeneratedFull.swift
-Tests/AccessoryTests/GeneratedTextContent.swift

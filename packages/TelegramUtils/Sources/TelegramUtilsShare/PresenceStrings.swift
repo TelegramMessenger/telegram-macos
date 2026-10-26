@@ -1,1 +1,0 @@
-../TelegramUtils/PresenceStrings.swift

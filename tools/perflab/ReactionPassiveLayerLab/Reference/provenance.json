@@ -1,5 +1,0 @@
-{
-  "source": "packages/ChatUI/Sources/ChatUI/ChatReactionsView.swift",
-  "sha256": "491fbf616cc4427348af137403bba35222049e2fae1490b7f17ea942c578b085",
-  "scope": "Immediate pre-change reaction controls. Full source captured; media and account-dependent binding are not substituted by claims about the isolated painter."
-}

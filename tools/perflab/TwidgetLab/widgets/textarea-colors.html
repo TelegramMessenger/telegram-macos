@@ -1,9 +1,0 @@
-<!doctype html><html><head><meta charset=utf-8><style>
-body{margin:0;padding:20px;background:#171717;color:#eee;font:16px/1.4 system-ui}h1{font-size:22px}textarea{display:block;box-sizing:border-box;width:100%;height:160px;padding:12px;font:18px/28px monospace;color:rgb(240,170,60);border:3px solid currentColor;border-radius:12px;background:#282828;resize:none}button{margin-top:16px;padding:10px 16px;border:0;border-radius:10px;background:#3369c9;color:white;font:16px system-ui}#result{font:14px/1.5 monospace;white-space:pre-wrap}
-</style></head><body><h1>Focused textarea colors</h1><p>Type for green. Add ! for translucent pink. Remove ! to return to green. The border follows the text color.</p><textarea id=entry>Color changes</textarea><button id=reset>Reset orange</button><p id=result></p><script>
-const entry=document.getElementById('entry'),result=document.getElementById('result');
-function report(){result.textContent='Computed color: '+getComputedStyle(entry).color+'\nValue: '+JSON.stringify(entry.value)}
-entry.oninput=()=>{entry.style.color=entry.value.includes('!')?'rgba(240,80,170,0.4)':'rgb(30,210,100)';report()};
-document.getElementById('reset').onclick=()=>{entry.value='Color changes';entry.style.color='rgb(240,170,60)';entry.focus();report()};
-setTimeout(report,100);
-</script></body></html>

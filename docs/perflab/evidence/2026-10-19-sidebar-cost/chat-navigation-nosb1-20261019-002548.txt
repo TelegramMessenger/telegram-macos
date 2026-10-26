@@ -1,7 +1,0 @@
-label nosb1 shimmer
-scroll-warmup0 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.403 main%=17.086 range=16799 wsCores=0.45 gpu%=29
-scroll      0 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.347 main%=15.379 range=16819 wsCores=0.45 gpu%=30
-scroll      1 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.28 main%=15.3 range=16799 wsCores=0.45 gpu%=30
--- medians
-scroll-warmup hitches=0.00 h33=0.00 hitch%=0.00 cpu=0.40 main%=17.09 wsCores=0.45 gpu=29.28
-scroll       hitches=0.00 h33=0.00 hitch%=0.00 cpu=0.31 main%=15.34 wsCores=0.45 gpu=29.96

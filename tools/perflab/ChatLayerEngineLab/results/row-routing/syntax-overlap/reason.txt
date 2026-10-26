@@ -1,1 +1,0 @@
-A syntax-only Swift parse was dispatched while this benchmark driver was still live. Retained as diagnostic; final runs follow after the parser and driver both terminate. No compiler inputs changed.

@@ -1,8 +1,0 @@
-{
-  "Package.swift": "241461dc84c8067b59c447fd6ce23ef10067b291bd164d52458294ae167a2121",
-  "Tests/DecodeTests/DecodeBenchmarkTests.swift": "aa1c4dd6764de8cbdff2e69a8894ea8c597e0b8e69a0ff550946cc1136a6f013",
-  "Tests/DecodeTests/DecodeTests.swift": "4d85eddd30231e548380d72751fcfbdfa497c4d63cd26e3596052db5971fcb1d",
-  "Tests/DecodeTests/DecodeMemoryTests.swift": "569d607a7985288e0bd8dd0307f5b611c22e5fb0557c6f870957a4ccdf5cc92c",
-  "Sources/DecodeReference/StickerThumbnailPath.swift": "208021161168f8402c2d19561109bbfbf79194b1ee26022a819f14b186d63faf",
-  "Sources/DecodeCandidate/StickerThumbnailPath.swift": "72f27947e834c0a6ea4fc98f6c394c998ea7919fc29e0f4910d2367a17ed4ba9"
-}

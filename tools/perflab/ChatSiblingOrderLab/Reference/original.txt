@@ -1,3 +1,0 @@
-        orderedChildren = children.enumerated().sorted {
-            $0.element.zIndex == $1.element.zIndex ? $0.offset < $1.offset : $0.element.zIndex < $1.element.zIndex
-        }.map(\.element)

@@ -1,9 +1,0 @@
-{
-  "baseline": "9c2a08831",
-  "sources": {
-    "packages/ChatUI/Sources/ChatUI/ReplyMarkupNode.swift": "833f1bf0b92bd7f1004a033a887d171152f16db4f55e25270a713c46de6fc624",
-    "packages/GeneralRows/Sources/GeneralRows/InteractiveTextView.swift": "7306bbb629e416bb0dd62f212c5e0d90e228a3f169d0c7b9fc20ca83214a3bb4"
-  },
-  "generated_sha256": "3b0119c70ef0b6cd76d87f286dc2653b6ee06b7a829014c616de6453f33dd04c",
-  "scope": "Complete ReplyMarkupNode and InteractiveTextView with real AppKit/TGUIKit. Button layout model, theme, account and inline renderer are fixtures."
-}

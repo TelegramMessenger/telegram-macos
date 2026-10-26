@@ -1,9 +1,0 @@
-
-import Darwin
-
-extension ChatLayerSceneView {
-    var stateAllocationSizeForLab: Int {
-        guard let state = storedState else { return 0 }
-        return malloc_size(Unmanaged.passUnretained(state).toOpaque())
-    }
-}

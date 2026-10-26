@@ -1,7 +1,0 @@
-
-public extension ShimmerEffectForegroundView {
-    var imageForGradientLab: CGImage? { imageView.image }
-    var imageLayerForGradientLab: CALayer { imageView.layer! }
-    var imageFrameForGradientLab: CGRect { imageView.frame }
-    var containerFrameForGradientLab: CGRect { imageViewContainer.frame }
-}

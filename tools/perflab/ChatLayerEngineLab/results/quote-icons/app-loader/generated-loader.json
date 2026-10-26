@@ -1,5 +1,0 @@
-{
-  "source": "/Users/renoir/Library/Developer/Xcode/DerivedData/Telegram-Mac-flpxozstxolpctcprwwbhcmotveu/Build/Intermediates.noindex/Telegram.build/Debug/Telegram.build/DerivedSources/GeneratedAssetSymbols.swift",
-  "sha256": "0127b36e07a8d3f8996c0c4c01b1aac7b376f68b368b3ae7684e25b31fd13f77",
-  "initializer": "protocol _ACResourceInitProtocol {}\nextension AppKit.NSImage: _ACResourceInitProtocol {}\n\n@available(macOS 10.7, *)\n@available(macCatalyst, unavailable)\nextension _ACResourceInitProtocol {\n\n    /// Initialize a `NSImage` with an image resource.\n    init(resource: ImageResource) {\n        self = resource.bundle.image(forResource: NSImage.Name(resource.name))! as! Self\n    }\n\n}"
-}

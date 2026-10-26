@@ -1,4 +1,0 @@
-COMMENTS_BENCHMARK construct legacy=62.375us current=25.759us change=-58.7%
-COMMENTS_BENCHMARK update_changed legacy=11.847us current=4.246us change=-64.2%
-COMMENTS_BENCHMARK update_same legacy=1.973us current=1.891us change=-4.2%
-COMMENTS_BENCHMARK views legacy=7 current=1

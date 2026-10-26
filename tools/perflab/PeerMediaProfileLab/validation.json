@@ -1,9 +1,0 @@
-{
-  "debug_checks": 94985,
-  "release_checks": 94998,
-  "address_sanitizer_checks": 94985,
-  "controller_syntax_parse": "passed",
-  "full_app_build": false,
-  "account_backed_ui_test": false,
-  "source_hashes_verified": true
-}

@@ -1,4 +1,0 @@
-        hiddenFwdTooltip = { [weak self] in
-            guard let view = self?.view as? ChatRowView else { return }
-            view.showHiddenForwardTooltip()
-        }

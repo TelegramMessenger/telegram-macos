@@ -1,5 +1,0 @@
-        self.beginTableUpdates()
-        let item = TableRowItem(.zero, stableId: arc4random64())
-        let _ = self.addItem(item: item)
-        self.remove(at: self.count - 1)
-        self.endTableUpdates()

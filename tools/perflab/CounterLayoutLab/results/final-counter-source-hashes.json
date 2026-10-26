@@ -1,7 +1,0 @@
-{
-  "packages/TGUIKit/Sources/DynamicCounterTextView.swift": "393f44898b9e04181b208dceb29014a74ecc3bbcb9a8c4a54283c43612834c5f",
-  "tools/perflab/CounterLayoutLab/Package.swift": "38375f7dded64a5d7cf5632550b22cba195cd238b4217edbf41906faced04b06",
-  "tools/perflab/CounterLayoutLab/Tests/CounterLayoutTests/Bootstrap.swift": "5799744a31629e64c520ebcc89575a2c4e49af91e68267921c29cc2d1a6ead44",
-  "tools/perflab/CounterLayoutLab/Tests/CounterLayoutTests/CounterTests.swift": "7c9f0801110164a8b89f66e1ad3124986c2141f35e677c538d1b8809744b4fb2",
-  "tools/perflab/CounterLayoutLab/Tests/CounterLayoutTests/ReferenceCounter.swift": "e04632255f9afe13f645bc029f1f2c3c81966e58ed9b2758dfc8a56914112c35"
-}

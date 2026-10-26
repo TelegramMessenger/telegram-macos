@@ -1,1 +1,0 @@
-../AvatarUI/AvatarLayer.swift

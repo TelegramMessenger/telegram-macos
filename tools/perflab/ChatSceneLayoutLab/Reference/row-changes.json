@@ -1,6 +1,0 @@
-[
-  [
-    "    func layoutForwardHeader(frame: NSRect, transition: ContainedViewLayoutTransition) {",
-    "    override func layout() {\n        if let senderName, senderName.layer.superlayer !== root.layer {\n            invalidateHitIndex()\n        } else if let forwardName, forwardName.layer.superlayer !== root.layer {\n            invalidateHitIndex()\n        }\n        super.layout()\n    }\n\n    func layoutForwardHeader(frame: NSRect, transition: ContainedViewLayoutTransition) {"
-  ]
-]

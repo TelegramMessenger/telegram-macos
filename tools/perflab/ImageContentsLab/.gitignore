@@ -1,5 +1,0 @@
-.build/
-results/
-Tests/ImageContentsTests/ReferenceImageView.swift
-Tests/ImageContentsTests/ReferenceTransformImageView.swift
-Tests/ImageContentsTests/IconLayers.swift

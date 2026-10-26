@@ -1,9 +1,0 @@
-{
-  "base_commit": "6acc18245",
-  "sha256": {
-    "Reference/ChatLayerTextNode.swift": "23123c8a9a7aa688105e2b86b159a421b9e3be9ff45fae565007a1d5cfbbe109",
-    "Candidate/ChatLayerTextNode.swift": "edaaef3f26218beb42211356acf33da0ad7aa7e4d6f65d45bf2f441f49e5fa0e",
-    "Reference/ChatLayerMessageText.swift": "cce3924499142deabacc9d223dea6c86637620764043ad51b7c3d921e9e7a9fb",
-    "Candidate/ChatLayerMessageText.swift": "08c0c3211f50464ee40153a1fc1fde7230efbe6489719bfb47a6943fccf7837e"
-  }
-}

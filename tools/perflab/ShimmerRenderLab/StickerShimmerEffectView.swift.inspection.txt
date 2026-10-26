@@ -1,6 +1,0 @@
-
-public extension StickerShimmerEffectView {
-    var imageForLab: CGImage? { maskView?.image ?? foregroundView.image }
-    var imageLayerForLab: CALayer? { maskView?.layer ?? foregroundView.layer }
-    var maskFrameForLab: CGRect? { maskView?.frame }
-}

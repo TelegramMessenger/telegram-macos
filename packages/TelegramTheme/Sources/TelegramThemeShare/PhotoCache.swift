@@ -1,1 +1,0 @@
-../TelegramTheme/PhotoCache.swift

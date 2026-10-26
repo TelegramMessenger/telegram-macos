@@ -1,9 +1,0 @@
-Starting release-final
-Finished release-final exit 0
-Starting asan-final
-Finished asan-final exit 0
-Starting tsan-final
-Finished tsan-final exit 0
-Starting parse-final
-Finished parse-final exit 0
-All final checks passed; 333 frozen inputs unchanged

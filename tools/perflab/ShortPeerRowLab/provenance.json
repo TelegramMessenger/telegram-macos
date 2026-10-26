@@ -1,8 +1,0 @@
-{
-  "baseline_commit": "b6516131e",
-  "production_sha256": {
-    "packages/ShortPeerRow/Sources/ShortPeerRow/ShortPeerRowItem.swift": "c97be44f8921c34d6ee77b7a7c11fa83816bb3e7eb3fcb3f6bb32028d50c4c2d",
-    "packages/ShortPeerRow/Sources/ShortPeerRow/ShortPeerRowView.swift": "2052323cf30791a67e64a80f368392e1ccd363425f0b195e449601b50a885711"
-  },
-  "generated_sha256": "a6af3d3b5f8cc8fa03a0c285fdef7594ca2f346c6bf1be1cab4888f14919e4c2"
-}

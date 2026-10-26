@@ -1,5 +1,0 @@
-
-public func analysisLabSamplingSize(_ image: CGImage) -> CGSize {
-    guard let context = scaledDrawingContext(image, maxSize: CGSize(width: 128, height: 128)) else { return .zero }
-    return CGSize(width: context.width, height: context.height)
-}

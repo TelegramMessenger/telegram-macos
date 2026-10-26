@@ -1,7 +1,0 @@
-.build/
-Sources/ChatLayerEngine/Generated/
-Sources/ChatRowGeometryHarness/Generated/
-Sources/InputTextView/Generated/
-Sources/FoldingBlocksHarness/Generated/
-Sources/FoldingViewHarness/Generated/
-Sources/ChatRowObserverHarness/Generated/

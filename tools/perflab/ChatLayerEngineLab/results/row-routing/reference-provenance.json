@@ -1,8 +1,0 @@
-{
-  "commit": "8be40ed65",
-  "original_scene_sha256": "70e54017b335d91fc852269eda0ac411d5372b3c95e8cecc71babf98737591f1",
-  "compiled_reference_sha256": "404a623b412f1b5493e10fed20d332ace9e87f750cd1c3dc466f8ae4f0cf4e1a",
-  "full_scene_body_preserved_except_type_renaming": true,
-  "row_routing_methods_preserved_except_type_renaming": true,
-  "text_tooltip_and_selection_dependencies_are_unused_standins": true
-}

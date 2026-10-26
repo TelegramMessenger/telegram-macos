@@ -1,7 +1,0 @@
-{
-  "baseline": "4d6b34ae4",
-  "source_sha256": "de625f0a75b1ffd11966e77372973907496816c1f8d4508e9720b9d5330dc648",
-  "baseline_sha256": "bbc51e1ab863fea676d09166927844754c777a8d6ffbbc89712bcee4e22f947a",
-  "generated_sha256": "0f15ad291dc208a062574a5e712c996d4805d7293fa901438e23151280427b4f",
-  "scope": "Production swipe control, row swipe fields/methods, and layout dispatch. Stand-in row shell/model/theme. Haptic hardware call replaced by a counter."
-}

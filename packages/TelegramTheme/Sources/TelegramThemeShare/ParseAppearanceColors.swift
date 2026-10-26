@@ -1,1 +1,0 @@
-../TelegramTheme/ParseAppearanceColors.swift

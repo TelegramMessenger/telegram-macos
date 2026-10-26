@@ -1,8 +1,0 @@
-
-public enum GradientCacheInspection {
-    public static func reset() { cached.removeAll() }
-    public static var metadataCount: Int { cached.count }
-    public static var liveImages: Int { cached.count }
-    public static var retainedPixelBytes: Int { pixelBytes }
-    public static var pixelBytes: Int { cached.values.reduce(0) { $0 + $1.bytesPerRow * $1.height } }
-}

@@ -1,7 +1,0 @@
-label base2 shimmer
-scroll-warmup0 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.406 main%=21.078 range=16819 wsCores=0.44 gpu%=35
-scroll      0 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.404 main%=20.153 range=16799 wsCores=0.45 gpu%=37
-scroll      1 frames=1729 hitches=0 h33=0 hitch%=0 worst=8.333 cpu=0.321 main%=20.111 range=16799 wsCores=0.47 gpu%=37
--- medians
-scroll-warmup hitches=0.00 h33=0.00 hitch%=0.00 cpu=0.41 main%=21.08 wsCores=0.44 gpu=35.21
-scroll       hitches=0.00 h33=0.00 hitch%=0.00 cpu=0.36 main%=20.13 wsCores=0.46 gpu=36.88

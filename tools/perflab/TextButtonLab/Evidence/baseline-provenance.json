@@ -1,9 +1,0 @@
-{
-  "variant": "baseline",
-  "baselineCommit": "4d3f1f417",
-  "swift": "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0",
-  "sha256": {
-    "TGUIKit/Sources/TitleButton.swift": "781a7b3d16bc4ea64bd9a882564932275208ee9cddead59d29ed92ce938f7cda",
-    "TextButtonLab/Sources/TextButtonLab/main.swift": "49423bbf9d26edfda97f48ef30762e4143eb27bd62ba9059e1f96d06dee2b617"
-  }
-}

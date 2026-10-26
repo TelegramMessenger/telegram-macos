@@ -1,1 +1,0 @@
-../TelegramUtils/ManageSharedAccountInfo.swift

@@ -1,1 +1,0 @@
-../ShortPeerRow/ShortPeerRowView.swift
