@@ -28,6 +28,24 @@ The same selection shows Play/Pause, its six-second duration and the video posit
 
 The images demonstrate the visible timeline change. Pointer routing, seeking, playback boundaries and dismissal are checked separately by the tests and manual workflow below.
 
+## Full-client screenshots: PR #82 and PR #92 together
+
+These additional screenshots are from the signed-in Telegram Master Test 13.1.0 (283357) client on current master with both PRs applied. They show the real recording bar, separate from the native fixture comparison above.
+
+### Playing
+
+The Pause control is visible while the selected fragment plays.
+
+![Full client: selected fragment playing](screenshots/client-playing.png)
+
+### Paused
+
+The Play control is visible while the selected fragment is paused.
+
+![Full client: selected fragment paused](screenshots/client-paused.png)
+
+I confirmed that seeking and the playhead stay within the range selected by the left and right trim handles. Both PRs work together: preview images and thumbnails remain normal, both trim boundaries move in both directions, Play/Pause works for the full recording and selected fragment, and repeated No/Discard confirmations allow another recording to start.
+
 ## Validation
 
 Environment: macOS 27.0.1 (26A434), Apple M4 Pro arm64, Xcode 27.1 / Swift 6.4. Current master base: `272d85dd7cc78864549b1d5510a177db79059fc7`.
@@ -35,7 +53,7 @@ Environment: macOS 27.0.1 (26A434), Apple M4 Pro arm64, Xcode 27.1 / Swift 6.4. 
 - All 15 focused native tests pass: six control/trim tests, five synthetic-video playback/lifetime tests and four overlay/modal lifecycle tests.
 - A full Debug arm64 application build passes on that base with this editor patch, without the PR #82 optimization.
 - The playback-control visibility regression was observed failing before the fix. Both native snapshot cases also check the expected hidden/visible control state.
-- The signed-in Master Test 13.1.0 (283357) workflow passed: both trim boundaries and seeking, full/selected Play/Pause, repeated editing with No twice, Discard, and another recording. That runtime test used source base `cdf97a0e316521c72bd606bfb8002487d8fc842c`; all affected feature source files are byte-identical to this patch. The latest master was rebuilt and tested natively, rather than claiming that older account test ran on the new build.
+- The signed-in Master Test 13.1.0 (283357) workflow now also passes on current master `272d85dd7cc78864549b1d5510a177db79059fc7` with PR #82 (`362ca9f6`) and PR #92 (`5add38a4`) together. The full combined build, signature verification and the same 15 native tests pass. Live testing confirms normal preview/thumbnails, both trim boundaries and seeking within the selected range, full/selected Play/Pause, repeated No/Discard confirmations and another recording. The original independent editor test remains recorded separately in `verification.json`.
 
 The full local build uses the repository's Xcode 27 compatibility adjustments and isolated app/profile configuration. Those adjustments are not part of this PR. Recordings were discarded without sending; successful send/upload/export and app-wide performance were not tested. See [verification.json](verification.json) for source hashes, test/build log hashes and the scope of each check.
 

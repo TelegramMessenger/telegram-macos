@@ -39,18 +39,27 @@
   },
   "signed_in_workflow": {
     "status": "pass",
-    "source": "Direct user confirmation",
+    "source": "Direct user confirmation in chat",
+    "local_test_date": "2026-10-26 Europe/Moscow",
+    "confirmed_at": "2026-10-25T23:58:20.113088+00:00",
     "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
-    "base": "cdf97a0e316521c72bd606bfb8002487d8fc842c",
-    "feature_source_hashes_match_this_patch": true,
+    "base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "tested_pr_heads": {
+      "82": "362ca9f6b1054d391c4c93fd8e5d729175ba75fc",
+      "92": "5add38a4115719fa52e854dbbf13597efa055d37"
+    },
+    "binary_sha256": "b2fb5697d43d5abe4f616c1457d1e79ee31e3fe7a4050364ebdb989e4eed5394",
+    "both_prs_applied": true,
     "checks": [
-      "Both trim boundaries and seeking",
-      "Full and trimmed Play/Pause",
-      "Repeated editing with No twice, then Discard",
-      "New recording after discard"
+      "Existing account and chats present",
+      "Normal video preview and initial thumbnails",
+      "Both trim handles move inward and back",
+      "Click/drag seeking and playhead stay within selected trim range",
+      "Full and selected-fragment Play/Pause",
+      "Repeated editing, No/Discard confirmation, another recording"
     ],
-    "confirmation": "Play/Pause works, dialogs close, another recording starts",
-    "latest_master_signed_in_retest": false
+    "latest_master_signed_in_retest": true,
+    "send_upload_export_tested": false
   },
   "source_sha256": {
     "packages/ChatUI/Sources/ChatUI/ChatInputRecordingView.swift": "9a1ba43321efc64dc53add3310c30fed1871f3b00b4bd833ebd8210bbacee3a0",
@@ -77,9 +86,47 @@
   },
   "screenshot_scope": "Native AppKit timeline fixture. Same generated placeholder, 10-second duration, 2-8 second selection and 4-second position. Only RecordingTrimScrubberView is switched to baseline source for before. Not screenshots of an authenticated client.",
   "limits": [
-    "The authenticated editor workflow used an earlier master base with byte-identical feature source files; current master was rebuilt and tested natively without PR82.",
+    "Current-master signed-in validation was performed with both PR82 and PR92 applied; standalone editor native tests and a full client build without PR82 also pass.",
     "No send/upload/export was tested; recordings were discarded.",
     "Native fixture screenshots demonstrate visible timeline changes, not an end-to-end camera session.",
     "No assertion about app-wide performance or official beta builds."
-  ]
+  ],
+  "earlier_signed_in_workflow": {
+    "status": "pass",
+    "source": "Direct user confirmation",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "base": "cdf97a0e316521c72bd606bfb8002487d8fc842c",
+    "feature_source_hashes_match_this_patch": true,
+    "checks": [
+      "Both trim boundaries and seeking",
+      "Full and trimmed Play/Pause",
+      "Repeated editing with No twice, then Discard",
+      "New recording after discard"
+    ],
+    "confirmation": "Play/Pause works, dialogs close, another recording starts",
+    "latest_master_signed_in_retest": false
+  },
+  "combined_build": {
+    "result": "BUILD SUCCEEDED",
+    "signature_verified": true,
+    "native_tests": {
+      "passed": 15,
+      "failed": 0,
+      "log_sha256": "f5b784d71d97c77ad9439676805f85f581afc201f4ad83af9d392961b80ed9e0"
+    },
+    "build_log_sha256": "c8c0d4ef4a386071a0dc46fb448a7c7952a8b9d559ec8c4317399eaca8d3a3a6",
+    "performance_measurement": false
+  },
+  "client_screenshots": {
+    "client-playing.png": {
+      "sha256": "a71553922d5acd4aaefb41c047d203d86dbd364ffc88c88d60055073f31bd874",
+      "source": "User-provided screenshot of the full signed-in combined client",
+      "unaltered": true
+    },
+    "client-paused.png": {
+      "sha256": "9ea85de46e8d8cdcb35f91fa96fdf5784121d7c914418925dce9a51c576b2f3c",
+      "source": "User-provided screenshot of the full signed-in combined client",
+      "unaltered": true
+    }
+  }
 }
