@@ -186,7 +186,11 @@ final class AccessibilityBaseTests: XCTestCase {
         host(switchView)
         XCTAssertEqual(switchView.accessibilityRole(), .checkBox)
         XCTAssertEqual(switchView.accessibilityValue() as? NSNumber, 0)
+        let committed = expectation(description: "Switch settled")
+        switchView.stateChanged = { committed.fulfill() }
         XCTAssertTrue(switchView.accessibilityPerformPress())
+        XCTAssertEqual(switchView.accessibilityValue() as? NSNumber, 0)
+        wait(for: [committed], timeout: 2)
         XCTAssertEqual(switchView.accessibilityValue() as? NSNumber, 1)
         XCTAssertEqual(AccessibilityAudit.audit(window), [])
     }

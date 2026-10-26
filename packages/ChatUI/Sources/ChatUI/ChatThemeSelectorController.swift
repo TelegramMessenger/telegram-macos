@@ -73,7 +73,7 @@ final class ChatThemeSelectorView : View {
     fileprivate var acceptTheme:(()->Void)? = nil
 
     private let bubblesTitle = TextView()
-    private let bubblesSwitch =  SwitchView(frame: NSMakeRect(0, 0, 32, 20))
+    private let bubblesSwitch = SwitchView()
 
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
