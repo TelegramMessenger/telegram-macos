@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
-@testable import FocusFilterCore
+import FocusFilterCore
+@testable import FocusFilterInfrastructure
 
 final class FocusFilterStoreTests: XCTestCase {
     private var directory: URL!
@@ -18,9 +19,11 @@ final class FocusFilterStoreTests: XCTestCase {
     }
 
     private func makeStore() -> FocusFilterStore {
-        let store = FocusFilterStore()
-        store.configure(directory: directory, notificationName: notificationName)
-        return store
+        FocusFilterStore(
+            persistence: FocusFilterFilePersistence(directory: directory),
+            changes: DistributedFocusFilterChanges(name: notificationName),
+            onReadFailure: { _ in }
+        )
     }
 
     func testTwoStoresPreserveEachOthersConfigurationAndCatalogWrites() throws {
@@ -56,7 +59,6 @@ final class FocusFilterStoreTests: XCTestCase {
         try store.updateConfiguration(configuration)
         try store.updateConfiguration(configuration)
         store.reload()
-        store.configure(directory: directory, notificationName: notificationName)
         XCTAssertEqual(recorder.values.count, 2)
         XCTAssertEqual(recorder.values.last?.configuration, configuration)
 
@@ -153,12 +155,7 @@ final class FocusFilterStoreTests: XCTestCase {
         XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
     }
 
-    func testUnconfiguredStoreRejectsPersistenceAndKeepsCurrentPolicy() {
-        let store = FocusFilterStore()
-        XCTAssertThrowsError(try store.updateConfiguration(.init(accountIds: [10])))
-        XCTAssertThrowsError(try store.updateCatalog(.init(accounts: [.init(id: 10, title: "Work")])))
-        XCTAssertEqual(store.policy, .init())
-    }
+
 }
 
 private final class PolicyRecorder {

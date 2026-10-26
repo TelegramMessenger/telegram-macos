@@ -34,9 +34,36 @@ navigation row retains its normal unread count, with chat titles and message
 previews removed while filtering. Search, quick switching and already open
 conversations remain usable; this feature does not implement an access lock.
 
+## Dependency boundaries
+
+| Boundary | Responsibility | Dependencies |
+| --- | --- | --- |
+| `FocusFilterCore` | Identifiers, configuration, catalogue values, selection rules and repository/source contracts | Swift standard library |
+| `FocusFilterInfrastructure` | JSON persistence, cross-process change delivery, storage location and native notification predicate/criteria | Core and Foundation |
+| Application adapters | Postbox catalogue projection/publication and live notification membership | Injected Core contracts, Telegram/Postbox adapters |
+| Chat-list presentation | Query composition, archive/pin preservation and visible results | Core policies supplied through `ChatListFocusHooks` |
+| App Intents presentation | Native parameters and searchable entities | Core values; infrastructure is created in extension composition |
+
+AppDelegate creates the process repository once and injects it into catalogue and
+notification adapters. It installs the chat-list policy stream before creating
+those screens. The extension has its own composition point. Consumers do not
+resolve paths or access a mutable shared store.
+
+The repository coordinates injected persistence and change-delivery adapters.
+Observer callbacks, read-failure reporting and cross-process posting execute
+outside the state lock. Pending deliveries preserve order during reentrant
+updates. Missing files use defaults; unreadable or corrupt files are reported and
+recover independently, preserving the valid component of the state.
+
+Catalogue publication and delivery-time membership are separate operations. The
+notification resolver consumes a policy source and live-lookup dependency, returns
+a named decision, and retries if the configuration changes while lookup is pending.
+Native entity queries accept a catalogue provider; enum mappings are exhaustive.
+Archive query scope requires its membership set, preventing a partially configured
+archive-only query.
+
 ## Data and lifecycle
 
-`FocusFilterCore` holds the policy, notification predicate and shared storage.
 The extension alone declares `TelegramFocusFilter`; it atomically persists the
 parameters delivered by the system. The application reads them at startup, on
 activation and after a distributed notification. The shared directory is
@@ -70,6 +97,7 @@ swift test --package-path packages/FocusFilterCore --disable-sandbox
 python3 tools/tests/focus-chat-list/run.py
 python3 tools/tests/focus-catalog/run.py
 python3 tools/tests/focus-notification-membership/run.py
+python3 tools/tests/focus-intents/run.py
 python3 tools/tests/focus-filters/build_extension.py
 python3 tools/tests/focus-filters/build_extension.py --configuration Release
 ```
@@ -80,6 +108,12 @@ test uses lightweight transaction fixtures around the production projection.
 The notification test combines the production live adapter and folder mapper with
 the pinned Postbox predicate and mute resolver, checking a newly unread chat
 against both selection rules without waiting for catalogue publication.
+Injected resolver checks cover a configuration change during a pending lookup,
+fallbacks and avoiding unnecessary lookups. Native-query checks compile actual
+extension sources against isolated providers and verify search, stale identifiers,
+enum mappings, configuration and persistence failures. Repository checks inject
+memory persistence/change delivery, verify callback execution outside the lock,
+and distinguish missing files from permission failures.
 These checks do not replace complete application compilation or a device test.
 
 The extension build check extracts the real `FocusIntents` target and its local

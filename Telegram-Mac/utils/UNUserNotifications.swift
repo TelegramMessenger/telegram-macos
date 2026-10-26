@@ -20,7 +20,7 @@ class UNUserNotifications : NSObject {
     }
     fileprivate let manager: SharedNotificationManager
     fileprivate let queue:Queue = Queue(name: "org.telegram.notifies")
-    internal required init(manager: SharedNotificationManager) {
+    internal required init(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
         self.manager = manager
         super.init()
         
@@ -36,11 +36,11 @@ class UNUserNotifications : NSObject {
        
     }
     static var _current:UNUserNotifications?
-    static func initialize(manager: SharedNotificationManager) {
+    static func initialize(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
         if #available(macOS 10.14, *) {
-            _current = UNUserNotificationsNew(manager: manager)
+            _current = UNUserNotificationsNew(manager: manager, focusPolicySource: focusPolicySource)
         } else {
-            _current = UNUserNotificationsOld(manager: manager)
+            _current = UNUserNotificationsOld(manager: manager, focusPolicySource: focusPolicySource)
         }
     }
     static var current:UNUserNotifications? {
@@ -172,8 +172,8 @@ final class UNUserNotificationsOld : UNUserNotifications, NSUserNotificationCent
         }
     }
     
-    required init(manager: SharedNotificationManager) {
-        super.init(manager: manager)
+    required init(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
+        super.init(manager: manager, focusPolicySource: focusPolicySource)
         NSUserNotificationCenter.default.delegate = self
     }
     
@@ -254,46 +254,17 @@ final class UNUserNotificationsNew : UNUserNotifications, UNUserNotificationCent
         return nil
     }
 
-    private func resolveNotificationFocus(userInfo: [AnyHashable: Any], completion: @escaping (FocusChatIdentifier?, FocusFilterPolicy) -> Void) {
-        if !Thread.isMainThread {
-            DispatchQueue.main.async {
-                self.resolveNotificationFocus(userInfo: userInfo, completion: completion)
-            }
-            return
-        }
-        let currentPolicy = FocusFilterStore.shared.policy
-        guard #available(macOS 13.0, *), let identifier = focusChatIdentifier(userInfo: userInfo) else {
-            completion(nil, currentPolicy)
-            return
-        }
-        guard currentPolicy.configuration.effect.contains(.notifications),
-              currentPolicy.configuration.accountIds.contains(identifier.accountId),
-              currentPolicy.configuration.folderIds.contains(where: { $0.accountId == identifier.accountId }),
-              let account = manager.activeAccounts.accounts.first(where: { $0.0.int64 == identifier.accountId })?.1 else {
-            completion(identifier, currentPolicy)
-            return
-        }
-        _ = (focusNotificationPolicy(account: account, peerId: PeerId(identifier.peerId)) |> deliverOnMainQueue).start(next: { policy in
-            guard FocusFilterStore.shared.policy.configuration == policy.configuration else {
-                self.resolveNotificationFocus(userInfo: userInfo, completion: completion)
-                return
-            }
-            completion(identifier, policy)
-        })
-    }
+    private let focusResolver: FocusNotificationResolver
 
-    required init(manager: SharedNotificationManager) {
-        super.init(manager: manager)
+    required init(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
+        self.focusResolver = FocusNotificationResolver(policySource: focusPolicySource, accounts: { manager.activeAccounts.accounts })
+        super.init(manager: manager, focusPolicySource: focusPolicySource)
         UNUserNotificationCenter.current().delegate = self
     }
-    
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        resolveNotificationFocus(userInfo: notification.request.content.userInfo) { identifier, policy in
-            if let identifier = identifier, !policy.includes(accountId: identifier.accountId, peerId: identifier.peerId, effect: .notifications) {
-                completionHandler([])
-            } else {
-                completionHandler([.alert, .sound])
-            }
+        focusResolver.resolve(identifier: focusChatIdentifier(userInfo: notification.request.content.userInfo)) { decision in
+            completionHandler(decision.allowsNotification ? [.alert, .sound] : [])
         }
     }
     
@@ -333,15 +304,13 @@ final class UNUserNotificationsNew : UNUserNotifications, UNUserNotificationCent
     }
     override func add(_ notification: NSUserNotification) -> Void {
         let userInfo = notification.userInfo ?? [:]
-        resolveNotificationFocus(userInfo: userInfo) { [weak self] identifier, policy in
-            if let identifier = identifier, !policy.includes(accountId: identifier.accountId, peerId: identifier.peerId, effect: .notifications) {
-                return
-            }
-            self?.addNotification(notification, userInfo: userInfo, focusIdentifier: identifier, focusPolicy: policy)
+        focusResolver.resolve(identifier: focusChatIdentifier(userInfo: userInfo)) { [weak self] decision in
+            guard decision.allowsNotification else { return }
+            self?.addNotification(notification, userInfo: userInfo, focusDecision: decision)
         }
     }
 
-    private func addNotification(_ notification: NSUserNotification, userInfo: [AnyHashable: Any], focusIdentifier: FocusChatIdentifier?, focusPolicy: FocusFilterPolicy) {
+    private func addNotification(_ notification: NSUserNotification, userInfo: [AnyHashable: Any], focusDecision: ResolvedFocusNotification) {
         let content = UNMutableNotificationContent()
         content.title = notification.title ?? ""
         content.body = notification.informativeText ?? ""
@@ -357,8 +326,8 @@ final class UNUserNotificationsNew : UNUserNotifications, UNUserNotificationCent
             }
         }
         content.userInfo = userInfo
-        if #available(macOS 13.0, *), let identifier = focusIdentifier {
-            content.filterCriteria = focusPolicy.notificationFilterCriteria(for: identifier)
+        if #available(macOS 13.0, *), let criteria = focusDecision.filterCriteria {
+            content.filterCriteria = criteria
         }
         let soundSettings = self.soundSettings
         

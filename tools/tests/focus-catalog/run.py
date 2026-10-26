@@ -4,8 +4,9 @@ import tempfile
 
 
 root = Path(__file__).resolve().parents[3]
-source = (root / "Telegram-Mac/account/FocusFilterCoordinator.swift").read_text()
-source = source[source.index("private func focusCatalogTitle"):source.index("private final class FocusAccountCatalogContext")].replace("private func ", "func ")
+source = (root / "Telegram-Mac/account/FocusCatalogProjection.swift").read_text()
+source = "\n".join(line for line in source.splitlines() if not line.startswith("import "))
+core = sorted((root / "packages/FocusFilterCore/Sources/FocusFilterCore").glob("*.swift"))
 
 with tempfile.TemporaryDirectory(prefix="focus-catalog-tests-") as directory:
     directory = Path(directory)
@@ -14,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="focus-catalog-tests-") as directory:
     executable = directory / "FocusCatalogTests"
     subprocess.run([
         "xcrun", "swiftc", "-module-cache-path", str(directory / "ModuleCache"),
-        str(root / "packages/FocusFilterCore/Sources/FocusFilterCore/FocusFilterPolicy.swift"),
+        *(str(path) for path in core),
         str(adapter), str(Path(__file__).with_name("FocusCatalogTests.swift")),
         "-o", str(executable),
     ], check=True)

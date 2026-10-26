@@ -188,10 +188,17 @@ private enum Tests {
 
     static func policy(_ transaction: Transaction, _ data: ChatListFilterData?, mode: FocusFilterMode = .allowSelected, explicitPeers: Set<FocusChatIdentifier> = [], effect: FocusFilterEffect = .both, categories: [PeerId: ChatListFilterPeerCategories] = [:]) -> FocusFilterPolicy {
         focusNotificationPolicy(
-            transaction: transaction, accountId: account, peerId: transaction.peer?.id ?? peer.id,
-            filters: [.init(id: folder.folderId, title: "Projects", data: data)], communityCategories: categories,
-            configuration: .init(accountIds: [account], chatIds: explicitPeers, folderIds: [folder], mode: mode, effect: effect)
+            transaction: transaction,
+            request: .init(chat: .init(accountId: account, peerId: (transaction.peer?.id ?? peer.id).toInt64()), configuration: .init(accountIds: [account], chatIds: explicitPeers, folderIds: [folder], mode: mode, effect: effect), filters: [.init(id: folder.folderId, title: "Projects", data: data)], communityCategories: categories)
         )
+    }
+
+    static func criteria(_ policy: FocusFilterPolicy, for identifier: FocusChatIdentifier) -> String {
+        FocusNotificationFilter(configuration: policy.configuration).criteria(for: identifier, catalog: policy.catalog)
+    }
+
+    static func predicate(_ policy: FocusFilterPolicy) -> NSPredicate {
+        FocusNotificationFilter(configuration: policy.configuration).predicate
     }
 
     static func assertMembership(_ expected: Bool, transaction: Transaction, data: ChatListFilterData?, categories: [PeerId: ChatListFilterPeerCategories] = [:]) {
@@ -200,8 +207,8 @@ private enum Tests {
             let live = policy(transaction, data, mode: mode, categories: categories)
             let allows = mode == .allowSelected ? expected : !expected
             precondition(live.includes(accountId: account, peerId: peerId.toInt64(), effect: .notifications) == allows)
-            let criteria = live.notificationFilterCriteria(for: .init(accountId: account, peerId: peerId.toInt64()))
-            precondition(live.notificationPredicate.evaluate(with: criteria) == allows)
+            let criteria = criteria(live, for: .init(accountId: account, peerId: peerId.toInt64()))
+            precondition(predicate(live).evaluate(with: criteria) == allows)
         }
     }
 
@@ -218,11 +225,11 @@ private enum Tests {
             let identifier = FocusChatIdentifier(accountId: account, peerId: peer.id.toInt64())
             precondition(staleRead.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications) != firstUnread.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications))
             precondition(firstUnread.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications) == (mode == .allowSelected))
-            precondition(staleRead.notificationPredicate.evaluate(with: firstUnread.notificationFilterCriteria(for: identifier)) == (mode == .allowSelected))
+            precondition(predicate(staleRead).evaluate(with: criteria(firstUnread, for: identifier)) == (mode == .allowSelected))
             transaction.isUnread = false
             let readAgain = policy(transaction, unreadFolder, mode: mode)
             precondition(readAgain.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications) == (mode == .excludeSelected))
-            precondition(staleRead.notificationPredicate.evaluate(with: readAgain.notificationFilterCriteria(for: identifier)) == (mode == .excludeSelected))
+            precondition(predicate(staleRead).evaluate(with: criteria(readAgain, for: identifier)) == (mode == .excludeSelected))
         }
         print("PASS first read-to-unread notification uses live membership before allow/deny gate and system criteria")
 
@@ -292,7 +299,7 @@ private enum Tests {
         data.includePeers.peers = [peer.id]
         assertMembership(true, transaction: secretTransaction, data: data)
         let secretPolicy = policy(secretTransaction, data)
-        precondition(secretPolicy.notificationFilterCriteria(for: .init(accountId: account, peerId: secret.id.toInt64())).hasPrefix(FocusChatIdentifier(accountId: account, peerId: secret.id.toInt64()).notificationFilterCriteria))
+        precondition(criteria(secretPolicy, for: .init(accountId: account, peerId: secret.id.toInt64())).hasPrefix("telegram-focus:\(account):\(secret.id.toInt64());"))
         precondition(!secretPolicy.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications))
         print("PASS associated peer folder rules retain the actual namespaced notification chat identity")
 
@@ -300,7 +307,7 @@ private enum Tests {
         let explicitPolicy = policy(transaction, unreadFolder, explicitPeers: [explicit])
         precondition(explicitPolicy.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications))
         precondition(explicitPolicy.includes(accountId: account + 1, peerId: peer.id.toInt64(), effect: .notifications))
-        let deletedFolder = focusNotificationPolicy(transaction: transaction, accountId: account, peerId: peer.id, filters: [], communityCategories: [:], configuration: explicitPolicy.configuration)
+        let deletedFolder = focusNotificationPolicy(transaction: transaction, request: .init(chat: explicit, configuration: explicitPolicy.configuration, filters: [], communityCategories: [:]))
         precondition(deletedFolder.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications))
         let listOnly = policy(transaction, unreadFolder, effect: .chatList)
         precondition(listOnly.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications))
@@ -320,5 +327,7 @@ private enum Tests {
         assertMembership(true, transaction: communityTransaction, data: data, categories: [community.id: [.channels]])
         assertMembership(false, transaction: communityTransaction, data: data, categories: [community.id: [.groups]])
         print("PASS personal chats, groups, channels and community categories use the production folder mapper")
+
+        FocusNotificationResolverTests.run()
     }
 }
