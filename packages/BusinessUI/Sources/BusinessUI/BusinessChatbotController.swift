@@ -298,6 +298,23 @@ private struct State : Equatable {
     var excludeIds: [PeerId] = []
     var disableIds: [PeerId] = []
 
+    var excludedChatIds: [PeerId] {
+        if access == .all {
+            return excludeIds + disableIds.filter { !excludeIds.contains($0) }
+        }
+        return excludeIds
+    }
+
+    mutating func updateExcludedChats(_ ids: [PeerId]) {
+        let selected = Set(ids)
+        disableIds.removeAll { !selected.contains($0) }
+        if access == .all {
+            excludeIds = ids.filter { !disableIds.contains($0) || excludeIds.contains($0) }
+        } else {
+            excludeIds = ids
+        }
+    }
+
     var includePeers: [EnginePeer] = []
     var excludePeers: [EnginePeer] = []
     
@@ -515,7 +532,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         }
         
         let makePeers:(Bool)->[Peer] = { include in
-            let ids = !include ? state.excludeIds : state.includeIds
+            let ids = !include ? state.excludedChatIds : state.includeIds
             let peers = !include ? state.excludePeers : state.includePeers
             
             var selectedPeers: [Peer] = []
@@ -562,7 +579,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                         //arguments.openInfo(peer.id)
                     }, contextMenuItems: {
                         return .single([ContextMenuItem(strings().contextRemove, handler: {
-                            if state.access == .all {
+                            if !tuple.include {
                                 arguments.removeSelected(.exclude, tuple.peer.id)
                             } else {
                                 arguments.removeSelected(.include, tuple.peer.id)
@@ -580,7 +597,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().businessMessageRecepientsExcludeTitle), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
             index += 1
             
-            entries.append(.general(sectionId: sectionId, index: 0, value: .none, error: nil, identifier: _id_exclude_chats, data: .init(name: strings().businessMessageRecepientsExclude, color: theme.colors.accent, icon: theme.icons.chat_filter_add, type: .none, viewType: state.excludeIds.isEmpty ? .singleItem : .firstItem, action: {
+            entries.append(.general(sectionId: sectionId, index: 0, value: .none, error: nil, identifier: _id_exclude_chats, data: .init(name: strings().businessMessageRecepientsExclude, color: theme.colors.accent, icon: theme.icons.chat_filter_add, type: .none, viewType: state.excludedChatIds.isEmpty ? .singleItem : .firstItem, action: {
                 arguments.selectChats(.exclude)
             })))
             
@@ -745,7 +762,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
         }
     }))
     
-    let excludedPeers: Signal<[EnginePeer], NoError> = statePromise.get() |> map { $0.excludeIds } |> distinctUntilChanged |> mapToSignal { peerIds in
+    let excludedPeers: Signal<[EnginePeer], NoError> = statePromise.get() |> map { $0.excludedChatIds } |> distinctUntilChanged |> mapToSignal { peerIds in
         return context.account.postbox.transaction { transaction -> [EnginePeer] in
             return peerIds.compactMap {
                 transaction.getPeer($0)
@@ -910,7 +927,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
         let selected: Set<PeerId>
         switch type {
         case .exclude:
-            selected = stateValue.with { Set($0.excludeIds) }
+            selected = stateValue.with { Set($0.excludedChatIds) }
         case .include:
             selected = stateValue.with { Set($0.includeIds) }
         }
@@ -921,7 +938,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
                 var current = current
                 switch type {
                 case .exclude:
-                    current.excludeIds = Array(peerIds)
+                    current.updateExcludedChats(Array(peerIds))
                 case .include:
                     current.includeIds = Array(peerIds)
                 }
@@ -997,7 +1014,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
             var current = current
             switch type {
             case .exclude:
-                current.excludeIds.removeAll(where: { $0 == peerId })
+                current.updateExcludedChats(current.excludedChatIds.filter { $0 != peerId })
             case .include:
                 current.includeIds.removeAll(where: { $0 == peerId })
             }
@@ -1041,7 +1058,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
         return .none
     }
     
-    controller.validateData = { data in
+    controller.validateData = { [weak controller] data in
         let state = stateValue.with { $0 }
         guard !state.isLoading && !state.isSaving else {
             return .none
@@ -1053,7 +1070,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
         guard state.hasChanges else {
             return .none
         }
-        return .fail(.doSomething { complete in
+        return .fail(.doSomething { [weak controller] complete in
             updateState { current in
                 var current = current
                 current.isSaving = true
@@ -1063,26 +1080,35 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
             let signal = context.engine.accountData.updateAccountConnectedBot(bot: requestedBot)
             |> mapToSignal { bot in resolveBot(bot) |> castError(AccountConnectedBotError.self) }
             |> deliverOnMainQueue
-            actionsDisposable.add(signal.start(next: { bot, peer in
+            _ = signal.startStandalone(next: { [weak controller] bot, peer in
                 applyBot(bot, peer: peer)
+                guard let controller, controller.navigationController?.controller === controller else {
+                    return
+                }
                 if bot?.id == requestedBot?.id && bot?.rights == requestedBot?.rights && bot?.recipients == requestedBot?.recipients {
                     showModalText(for: context.window, text: strings().businessBotUpdated)
                 }
                 complete(.success(.navigationBack))
-            }, error: { error in
+            }, error: { [weak controller] error in
                 updateState { current in
                     var current = current
                     current.isSaving = false
                     return current
                 }
+                guard let controller else {
+                    return
+                }
                 loadBot()
+                guard controller.navigationController?.controller === controller else {
+                    return
+                }
                 switch error {
                 case .generic:
                     complete(.fail(.alert(strings().unknownError)))
                 case let .server(text):
                     complete(.fail(.alert(text)))
                 }
-            }))
+            })
         })
     }
 

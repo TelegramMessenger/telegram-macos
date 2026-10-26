@@ -1,4 +1,5 @@
 import XCTest
+import SwiftSignalKit
 
 __RIGHTS__
 
@@ -63,6 +64,8 @@ struct TestStrings {
 
 func strings() -> TestStrings { TestStrings() }
 
+enum SelectChatType { case include, exclude }
+
 __MAKE_PERMISSIONS__
 
 final class PermissionEditor {
@@ -81,6 +84,28 @@ final class PermissionEditor {
     }
 
     func with<T>(_ f: (State) -> T) -> T { f(state) }
+
+    func selectedExclusions() -> Set<PeerId> {
+        let stateValue = self
+        return stateValue.with { Set(__SELECTED_EXCLUSIONS__) }
+    }
+
+    func selectExclusions(_ ids: Set<PeerId>) {
+        let type = SelectChatType.exclude
+        let updateState: ((State) -> State) -> Void = { self.state = $0(self.state) }
+        let callback: (Set<PeerId>) -> Signal<Never, NoError> = __SELECT_CHATS_CALLBACK__
+        _ = callback(ids)
+    }
+
+    func removeExclusion(_ peerId: PeerId) {
+        let updateState: ((State) -> State) -> Void = { self.state = $0(self.state) }
+        struct MenuArguments { var removeSelected: (SelectChatType, PeerId) -> Void }
+        let arguments = MenuArguments(removeSelected: __REMOVE_SELECTED__)
+        let state = self.state
+        let tuple = (include: false, peer: EnginePeer(id: peerId))
+        let action: () -> Void = __REMOVE_MENU__
+        action()
+    }
 
     func toggle(_ id: String) {
         let stateValue = self
@@ -245,6 +270,78 @@ final class BusinessBotRestorationTests: XCTestCase {
         XCTAssertTrue(editor.state.disableIds.isEmpty)
         XCTAssertFalse(editor.state.hasChanges)
         XCTAssertFalse(editor.state.isSaving)
+    }
+
+    func testAllChatsPickerIncludesBothExclusionLists() {
+        let editor = PermissionEditor()
+        editor.restore(bot(exclude: true))
+        XCTAssertTrue(editor.selectedExclusions().isSuperset(of: [id(3), id(4)]))
+    }
+
+    func testRemovingServerExclusionClearsItFromSavedRecipients() {
+        let editor = PermissionEditor()
+        editor.restore(bot(exclude: true))
+        editor.removeExclusion(id(4))
+        XCTAssertEqual(editor.state.mapped?.recipients.additionalPeers, [id(3)])
+        XCTAssertEqual(editor.state.mapped?.recipients.excludePeers, [])
+        XCTAssertTrue(editor.state.hasChanges)
+        let saved = editor.state.mapped
+        editor.restore(saved)
+        XCTAssertFalse(editor.selectedExclusions().contains(id(4)))
+        XCTAssertFalse(editor.state.hasChanges)
+    }
+
+    func testRemovingOverlappingExclusionClearsBothLists() {
+        let editor = PermissionEditor()
+        var saved = bot(exclude: true)
+        saved.recipients.excludePeers = [id(3)]
+        editor.restore(saved)
+        editor.removeExclusion(id(3))
+        XCTAssertEqual(editor.state.mapped?.recipients.additionalPeers, [])
+        XCTAssertEqual(editor.state.mapped?.recipients.excludePeers, [])
+    }
+
+    func testSelectedChatsMenuRemovesExclusionWithoutChangingIncludedChats() {
+        let editor = PermissionEditor()
+        let saved = bot(exclude: false)
+        editor.restore(saved)
+        editor.removeExclusion(id(4))
+        XCTAssertEqual(editor.state.mapped?.recipients.excludePeers, [])
+        XCTAssertEqual(editor.state.mapped?.recipients.additionalPeers, saved.recipients.additionalPeers)
+        XCTAssertEqual(editor.state.mapped?.recipients.categories, saved.recipients.categories)
+    }
+
+    func testPickerCanRemoveAllExclusions() {
+        for exclude in [true, false] {
+            let editor = PermissionEditor()
+            let saved = bot(exclude: exclude)
+            editor.restore(saved)
+            editor.selectExclusions([])
+            XCTAssertEqual(editor.state.mapped?.recipients.excludePeers, [])
+            XCTAssertEqual(editor.state.mapped?.recipients.additionalPeers, exclude ? [] : saved.recipients.additionalPeers)
+        }
+    }
+
+    func testRemovedExclusionsDoNotReturnWhenChangingAccessMode() {
+        let editor = PermissionEditor()
+        editor.restore(bot(exclude: false))
+        editor.selectExclusions([])
+        editor.state.access = .all
+        XCTAssertFalse(editor.selectedExclusions().contains(id(4)))
+        XCTAssertEqual(editor.state.mapped?.recipients.excludePeers, [])
+    }
+
+    func testPickerPreservesServerSourcesWhenAddingAndRemovingPeers() {
+        let editor = PermissionEditor()
+        let saved = bot(exclude: true)
+        editor.restore(saved)
+        editor.selectExclusions(editor.selectedExclusions())
+        XCTAssertEqual(editor.state.mapped?.recipients, saved.recipients)
+        XCTAssertFalse(editor.state.hasChanges)
+        editor.selectExclusions(editor.selectedExclusions().union([id(5)]).subtracting([id(3)]))
+        XCTAssertEqual(editor.state.mapped?.recipients.additionalPeers, [id(5)])
+        XCTAssertEqual(editor.state.mapped?.recipients.excludePeers, [id(4)])
+        XCTAssertEqual(editor.state.mapped?.recipients.categories, saved.recipients.categories)
     }
 
 
