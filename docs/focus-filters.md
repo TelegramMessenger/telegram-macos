@@ -40,9 +40,9 @@ conversations remain usable; this feature does not implement an access lock.
 | --- | --- | --- |
 | `FocusFilterCore` | Identifiers, configuration, catalogue values, selection rules and repository/source contracts | Swift standard library |
 | `FocusFilterInfrastructure` | JSON persistence, cross-process change delivery, storage location and native notification predicate/criteria | Core and Foundation |
-| Application adapters | Postbox catalogue projection/publication and live notification membership | Injected Core contracts, Telegram/Postbox adapters |
+| Application adapters | Postbox catalogue projection/publication and live notification membership | Injected Core contracts, Telegram/Postbox adapters; Infrastructure formats native notification criteria |
 | Chat-list presentation | Query composition, archive/pin preservation and visible results | Core policies supplied through `ChatListFocusHooks` |
-| App Intents presentation | Native parameters and searchable entities | Core values; infrastructure is created in extension composition |
+| App Intents presentation | Native parameters and searchable entities | Core values; Infrastructure creates the native notification predicate and the repository in extension composition |
 
 AppDelegate creates the process repository once and injects it into catalogue and
 notification adapters. It installs the chat-list policy stream before creating
