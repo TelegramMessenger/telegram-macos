@@ -95,11 +95,12 @@ public final class ChatMenuItemsData {
     public let notifications: NotificationSoundList?
     public let cachedData: CachedPeerData?
     public let groupped:[Message]?
-    public let folders: [(ChatListFilter, [Peer])]
+    public let folders: [ChatListFilter]
+    public let folderPeers: (ChatListFilter) -> Signal<[Peer], NoError>
     public let isMediaStory: Bool
     public let isRead: Bool
     public let canViewAuthor: Bool
-    public init(chatInteraction: ChatInteraction, message: Message, accountPeer: Peer, resourceData: MediaResourceData?, chatState: ChatState, chatMode: ChatMode, chatLocation: ChatLocation, disableSelectAbility: Bool, isLogInteraction: Bool, canPinMessage: Bool, pinnedMessage: ChatPinnedMessage?, peer: Peer?, peerId: PeerId, fileFinderPath: String?, isStickerSaved: Bool?, dialogs: [Peer], recentUsedPeers: [Peer], favoritePeers: [Peer], recentMedia: [RecentMediaItem], updatingMessageMedia: [MessageId: ChatUpdatingMessageMedia], additionalData: MessageEntryAdditionalData, file: TelegramMediaFile?, image: TelegramMediaImage?, textLayout: (TextViewLayout?, LinkType?)?, availableReactions: AvailableReactions?, notifications: NotificationSoundList?, cachedData: CachedPeerData?, savedStickersCount: Int, savedGifsCount: Int, groupped: [Message]?, folders: [(ChatListFilter, [Peer])], isMediaStory: Bool, isRead: Bool, canViewAuthor: Bool) {
+    public init(chatInteraction: ChatInteraction, message: Message, accountPeer: Peer, resourceData: MediaResourceData?, chatState: ChatState, chatMode: ChatMode, chatLocation: ChatLocation, disableSelectAbility: Bool, isLogInteraction: Bool, canPinMessage: Bool, pinnedMessage: ChatPinnedMessage?, peer: Peer?, peerId: PeerId, fileFinderPath: String?, isStickerSaved: Bool?, dialogs: [Peer], recentUsedPeers: [Peer], favoritePeers: [Peer], recentMedia: [RecentMediaItem], updatingMessageMedia: [MessageId: ChatUpdatingMessageMedia], additionalData: MessageEntryAdditionalData, file: TelegramMediaFile?, image: TelegramMediaImage?, textLayout: (TextViewLayout?, LinkType?)?, availableReactions: AvailableReactions?, notifications: NotificationSoundList?, cachedData: CachedPeerData?, savedStickersCount: Int, savedGifsCount: Int, groupped: [Message]?, folders: [ChatListFilter], folderPeers: @escaping (ChatListFilter) -> Signal<[Peer], NoError>, isMediaStory: Bool, isRead: Bool, canViewAuthor: Bool) {
         self.chatInteraction = chatInteraction
         self.message = message
         self.accountPeer = accountPeer
@@ -131,6 +132,7 @@ public final class ChatMenuItemsData {
         self.savedGifsCount = savedGifsCount
         self.groupped = groupped
         self.folders = folders
+        self.folderPeers = folderPeers
         self.isMediaStory = isMediaStory
         self.isRead = isRead
         self.canViewAuthor = canViewAuthor
@@ -215,15 +217,18 @@ public func chatMenuItemsData(for message: Message, textLayout: (TextViewLayout?
 
     let _dialogs: Signal<[Peer], NoError> = request(nil)
     
-    let _folders: Signal<[(ChatListFilter, [Peer])], NoError> = combineLatest(
-        chatListFilterPreferences(engine: context.engine),
-        ChatHistoryUIHooks.shared.communityFilterCategories(account)
-    ) |> mapToSignal { value, communityCategories in
-        return combineLatest(value.list.filter { !ChatHistoryUIHooks.shared.chatListFilterIsAllChats($0) }.map { item in
-            return request(ChatHistoryUIHooks.shared.chatListFilterPredicate(item, communityCategories)) |> map {
-                (item, $0)
-            }
-        })
+    let _folders: Signal<[ChatListFilter], NoError> = chatListFilterPreferences(engine: context.engine)
+    |> take(1)
+    |> map { value in
+        return value.list.filter { !ChatHistoryUIHooks.shared.chatListFilterIsAllChats($0) }
+    }
+
+    let folderPeers: (ChatListFilter) -> Signal<[Peer], NoError> = { item in
+        return ChatHistoryUIHooks.shared.communityFilterCategories(account)
+        |> take(1)
+        |> mapToSignal { communityCategories in
+            return request(ChatHistoryUIHooks.shared.chatListFilterPredicate(item, communityCategories))
+        }
     }
     
     
@@ -295,7 +300,7 @@ public func chatMenuItemsData(for message: Message, textLayout: (TextViewLayout?
     
     
     return combined |> map { dialogs, recentUsedPeers, favoritePeers, accountPeer, resourceData, fileFinderPath, isStickerSaved, recentMedia, updatingMessageMedia, availableReactions, notifications, cachedData, savedStickersCount, savedGifsCount, groupped, folders in
-        return .init(chatInteraction: chatInteraction, message: message, accountPeer: accountPeer, resourceData: resourceData, chatState: chatState, chatMode: chatMode, chatLocation: chatLocation, disableSelectAbility: disableSelectAbility, isLogInteraction: isLogInteraction, canPinMessage: canPinMessage, pinnedMessage: pinnedMessage, peer: peer, peerId: peerId, fileFinderPath: fileFinderPath, isStickerSaved: isStickerSaved, dialogs: dialogs, recentUsedPeers: recentUsedPeers, favoritePeers: favoritePeers, recentMedia: recentMedia, updatingMessageMedia: updatingMessageMedia, additionalData: additionalData, file: file, image: image, textLayout: textLayout, availableReactions: availableReactions, notifications: notifications, cachedData: cachedData, savedStickersCount: savedStickersCount, savedGifsCount: savedGifsCount, groupped: groupped, folders: folders, isMediaStory: isMediaStory, isRead: isRead, canViewAuthor: canViewAuthor)
+        return .init(chatInteraction: chatInteraction, message: message, accountPeer: accountPeer, resourceData: resourceData, chatState: chatState, chatMode: chatMode, chatLocation: chatLocation, disableSelectAbility: disableSelectAbility, isLogInteraction: isLogInteraction, canPinMessage: canPinMessage, pinnedMessage: pinnedMessage, peer: peer, peerId: peerId, fileFinderPath: fileFinderPath, isStickerSaved: isStickerSaved, dialogs: dialogs, recentUsedPeers: recentUsedPeers, favoritePeers: favoritePeers, recentMedia: recentMedia, updatingMessageMedia: updatingMessageMedia, additionalData: additionalData, file: file, image: image, textLayout: textLayout, availableReactions: availableReactions, notifications: notifications, cachedData: cachedData, savedStickersCount: savedStickersCount, savedGifsCount: savedGifsCount, groupped: groupped, folders: folders, folderPeers: folderPeers, isMediaStory: isMediaStory, isRead: isRead, canViewAuthor: canViewAuthor)
     }
 }
 
@@ -1239,11 +1244,12 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     
                     let folderSubmenu = ContextMenu()
                     for folder in data.folders {
-                        let item = ContextMenuItem(ChatHistoryUIHooks.shared.chatListFilterTitle(folder.0), itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(folder.0).emoticon).value)
+                        let item = ContextMenuItem(ChatHistoryUIHooks.shared.chatListFilterTitle(folder), itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(folder).emoticon).value)
                         let submenu = ContextMenu()
-                        
-                        for peer in folder.1 {
-                            submenu.addItem(makeItem(peer))
+                        submenu.asyncItemsProvider = { completion in
+                            return (data.folderPeers(folder) |> deliverOnMainQueue).start(next: { peers in
+                                completion(peers.map { makeItem($0) })
+                            })
                         }
                         item.submenu = submenu
                         folderSubmenu.addItem(item)
