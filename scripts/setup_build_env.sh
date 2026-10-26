@@ -59,7 +59,6 @@ BREW_PACKAGES=(
   meson        # dav1d
   nasm         # OpenH264 (x86_64 assembly)
   yasm         # ffmpeg / libvpx assembly
-  openssl@1.1  # used by several configure steps
   zlib
   autoconf
   libtool
