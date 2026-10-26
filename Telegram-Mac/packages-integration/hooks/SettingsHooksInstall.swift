@@ -145,7 +145,7 @@ private func makeSettingsWalletHooks() -> Any? {
     }
 }
 
-private final class QrStudioShareObject: ShareObject {
+final class QrStudioShareObject: ShareObject {
     private let path: String
     private let link: String
     private let image = TelegramMediaImage(imageId: MediaId(namespace: Namespaces.Media.LocalImage, id: 0), representations: [], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])

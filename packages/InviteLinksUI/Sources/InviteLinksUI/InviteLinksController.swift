@@ -368,7 +368,8 @@ private final class InviteLinksArguments {
     let newLink:()->Void
     let open:(_ExportedInvitation)->Void
     let openAdminLinks:(ExportedInvitationCreator)->Void
-    init(context: any AccountContextProtocol, shareLink: @escaping(String)->Void, copyLink: @escaping(String)->Void, revokeLink: @escaping(_ExportedInvitation)->Void, editLink:@escaping(_ExportedInvitation)->Void, newLink:@escaping()->Void, deleteLink:@escaping(_ExportedInvitation)->Void, deleteAll:@escaping()->Void, open:@escaping(_ExportedInvitation)->Void, openAdminLinks: @escaping(ExportedInvitationCreator)->Void) {
+    let showQrCode:(String)->Void
+    init(context: any AccountContextProtocol, shareLink: @escaping(String)->Void, copyLink: @escaping(String)->Void, showQrCode: @escaping(String)->Void, revokeLink: @escaping(_ExportedInvitation)->Void, editLink:@escaping(_ExportedInvitation)->Void, newLink:@escaping()->Void, deleteLink:@escaping(_ExportedInvitation)->Void, deleteAll:@escaping()->Void, open:@escaping(_ExportedInvitation)->Void, openAdminLinks: @escaping(ExportedInvitationCreator)->Void) {
         self.context = context
         self.shareLink = shareLink
         self.copyLink = copyLink
@@ -379,6 +380,7 @@ private final class InviteLinksArguments {
         self.deleteAll = deleteAll
         self.open = open
         self.openAdminLinks = openAdminLinks
+        self.showQrCode = showQrCode
     }
 }
 
@@ -449,6 +451,9 @@ private func entries(_ state: InviteLinksState, arguments: InviteLinksArguments)
                     items.append(ContextMenuItem(strings().manageLinksContextCopy, handler: {
                         arguments.copyLink(permanent.link)
                     }, itemImage: MenuAnimation.menu_copy.value))
+                    items.append(ContextMenuItem(strings().manageLinksContextQrCode, handler: {
+                        arguments.showQrCode(permanent.link)
+                    }, image: inviteLinkQrMenuIcon()))
                     if state.adminPeer?.peer.isBot == true {
                         
                     } else {
@@ -529,6 +534,9 @@ private func entries(_ state: InviteLinksState, arguments: InviteLinksArguments)
                                 items.append(ContextMenuItem(strings().manageLinksContextShare, handler: {
                                     arguments.shareLink(link.link)
                                 }, itemImage: MenuAnimation.menu_share.value))
+                                items.append(ContextMenuItem(strings().manageLinksContextQrCode, handler: {
+                                    arguments.showQrCode(link.link)
+                                }, image: inviteLinkQrMenuIcon()))
                             }
                             if !link.isPermanent {
                                 items.append(ContextMenuItem(strings().manageLinksContextEdit, handler: {
@@ -658,6 +666,8 @@ public func InviteLinksController(context: any AccountContextProtocol, peerId: P
     }, copyLink: { link in
         showModalText(for: context.window, text: strings().shareLinkCopied)
         copyToClipboard(link)
+    }, showQrCode: { link in
+        showModal(with: InviteLinkQrController(context: context, link: link, isChannel: isChannel), for: context.window)
     }, revokeLink: { [weak manager] link in
         verifyAlert_button(for: context.window, header: strings().channelRevokeLinkConfirmHeader, information: strings().channelRevokeLinkConfirmText, ok: strings().channelRevokeLinkConfirmOK, cancel: strings().modalCancel, successHandler: { _ in
             if let manager = manager {
