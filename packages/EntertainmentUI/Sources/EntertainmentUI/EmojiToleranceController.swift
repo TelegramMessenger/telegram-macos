@@ -11,33 +11,28 @@ private class EmojiTolerance : View {
         super.init(frame: frameRect)
         
         
-        let modifiers = emoji.emojiSkinToneModifiers
-        var x:CGFloat = 2
-        
-        let add:(String, String, String?)->Void = { [weak self] emoji, notModified, modifier in
+        let variants: [(String, String?)] = [(emoji, nil)] + emoji.emojiSkinToneModifiers.map {
+            (emoji.emojiWithSkinModifier($0), $0)
+        }
+
+        for (index, variant) in variants.enumerated() {
+            let title = variant.0.normalizedEmoji
+            let modifier = variant.1
             let button: TextButton = TextButton()
             button.set(font: .normal(.header), for: .Normal)
-            button.set(text: emoji, for: .Normal)
-            button.setAccessibilityLabel(emoji)
+            button.set(text: title, for: .Normal)
+            button.setAccessibilityLabel(title)
             button.setFrameSize(NSMakeSize(30, 30))
-            button.centerY(x: x, addition: 0)
+            button.centerY(x: 2 + CGFloat(index) * button.frame.width, addition: 0)
             button.set(background: .clear, for: .Normal)
             button.set(background: theme.colors.grayForeground, for: .Highlight)
             button.layer?.cornerRadius = .cornerRadius
-            self?.addSubview(button)
-            x += button.frame.width
-            
+            addSubview(button)
+
             button.set(handler: { _ in
-                handle(notModified, modifier)
+                handle(emoji, modifier)
             }, for: .Click)
         }
-        
-        add(emoji, emoji, nil)
-        
-        for modifier in modifiers {
-           add(emoji.emojiWithSkinModifier(modifier), emoji, modifier)
-        }
-        
     }
     
     

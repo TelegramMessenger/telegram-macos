@@ -45,6 +45,43 @@ public struct EmojiSkinModifier : Codable, Equatable {
     }
 }
 
+private func recentEmojiLineWidth(_ string: String) -> CGFloat {
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: [.font: NSFont.systemFont(ofSize: 26)]))
+    return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+}
+
+private let recentSingleEmojiWidth = recentEmojiLineWidth("😀")
+
+public extension String {
+    var recentEmojiCandidates: [String] {
+        return self.map { String($0) }.filter { $0.isRecentEmojiCandidate }
+    }
+}
+
+private extension String {
+    var rendersAsSingleEmoji: Bool {
+        guard count == 1, containsEmoji else {
+            return false
+        }
+        if glyphCount == 1 {
+            return true
+        }
+        return recentEmojiLineWidth(self) <= recentSingleEmojiWidth * 1.5
+    }
+    
+    var withoutTrailingVariationSelectors: String {
+        var scalars = String.UnicodeScalarView(unicodeScalars)
+        while scalars.last == "\u{fe0f}" {
+            scalars.removeLast()
+        }
+        return String(scalars)
+    }
+    
+    var isRecentEmojiCandidate: Bool {
+        return rendersAsSingleEmoji && unicodeScalars.contains { $0.value > 0x7f && !$0.properties.isVariationSelector }
+    }
+}
+
 public class RecentUsedEmoji: Codable, Equatable {
     private let _emojies:[String]
     public let skinModifiers:[EmojiSkinModifier]
@@ -60,31 +97,23 @@ public class RecentUsedEmoji: Codable, Equatable {
     }
     
     public var emojies: [String] {
-        var isset:[String: String] = [:]
+        var isset = Set<String>()
         var list:[String] = []
         for emoji in _emojies {
-            if isset[emoji] == nil, !emoji.emojiSkinToneModifiers.contains(emoji), emoji != "️" {
-                var emoji = emoji
-                isset[emoji] = emoji
-                for skin in skinModifiers {
-                    if skin.emoji == emoji {
-                        emoji = skin.modify
-                    }
-                }
-                list.append(emoji.nsstring.substring(with: NSMakeRange(0, min(emoji.length, 8))))
+            var value = emoji
+            if value.emojiHasSkinTone, !value.rendersAsSingleEmoji {
+                value = String(String.UnicodeScalarView(value.unicodeScalars.filter { !$0.properties.isEmojiModifier }))
+            }
+            guard let first = value.first else {
+                continue
+            }
+            value = String(first)
+            let key = value.strippedEmoji
+            if !key.isEmpty, !value.emojiSkinToneModifiers.contains(value), isset.insert(key).inserted {
+                list.append(value)
             }
         }
-        return list.reduce([], { current, value in
-            var value = value
-            if let modifier = value.emojiSkinToneModifiers.first(where: { value.contains($0) }), value.glyphCount > 1 {
-                value = value.replacingOccurrences(of: modifier, with: "")
-            }
-            if let first = value.first {
-                return current + [String(first)]
-            } else {
-                return current
-            }
-        })
+        return list
     }
     
     public required init(from decoder: Decoder) throws {
@@ -94,24 +123,17 @@ public class RecentUsedEmoji: Codable, Equatable {
         self.skinModifiers = try container.decode([EmojiSkinModifier].self, forKey: "sm_new")
         let emojies = try container.decode([String].self, forKey: "e")
 
-        var isset:[String: String] = [:]
+        var isset = Set<String>()
         var list:[String] = []
         for emoji in emojies {
-            if isset[emoji] == nil, emoji != "�", !emoji.emojiSkinToneModifiers.contains(emoji), emoji != "️" {
-                var emoji = emoji
-                isset[emoji] = emoji
-                for skin in skinModifiers {
-                    if skin.emoji == emoji {
-                        emoji = skin.modify
-                    }
-                }
-                if emoji.isSingleEmoji {
-                    let updated = emoji + "\u{fe0f}"
-                    if updated.glyphCount == 1 {
-                        list.append(updated)
-                    } else {
-                        list.append(emoji)
-                    }
+            let key = emoji.strippedEmoji
+            if !key.isEmpty, emoji != "�", !emoji.emojiSkinToneModifiers.contains(emoji), isset.insert(key).inserted {
+                let emoji = emoji.withoutTrailingVariationSelectors
+                let updated = emoji + "\u{fe0f}"
+                if updated.isRecentEmojiCandidate {
+                    list.append(updated)
+                } else if emoji.isRecentEmojiCandidate {
+                    list.append(emoji)
                 }
             }
         }
@@ -132,7 +154,7 @@ public class RecentUsedEmoji: Codable, Equatable {
 }
 
 public func ==(lhs: RecentUsedEmoji, rhs: RecentUsedEmoji) -> Bool {
-    return lhs.emojies == rhs.emojies && lhs.skinModifiers == rhs.skinModifiers
+    return lhs.emojies == rhs.emojies && lhs.skinModifiers == rhs.skinModifiers && lhs.animated == rhs.animated
 }
 
 
@@ -142,14 +164,14 @@ public func saveUsedEmoji(_ list:[String], postbox:Postbox) -> Signal<Void, NoEr
             var emojies: [String]
             let value: RecentUsedEmoji = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
             emojies = value.emojies.filter {
-                $0.isSingleEmoji
+                $0.isRecentEmojiCandidate
             }
             
             for emoji in list.reversed() {
-                if emoji.isSingleEmoji {
-                    let emoji = emoji.emojiString.emojiUnmodified
-                    if !emoji.isEmpty && emoji.count == 1 {
-                        if let index = emojies.firstIndex(of: emoji) {
+                if emoji.isRecentEmojiCandidate {
+                    let key = emoji.strippedEmoji
+                    if !key.isEmpty && emoji.count == 1 {
+                        if let index = emojies.firstIndex(where: { $0.strippedEmoji == key }) {
                             emojies.remove(at: index)
                         }
                         emojies.insert(emoji, at: 0)
