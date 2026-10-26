@@ -270,6 +270,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     private(set) var appEncryption: AppEncryptionParameters!
     private var memoryPressureMonitor: MemoryPressureMonitor?
     private var rustEngineCrash: CrashedRun?
+    private var focusFilterCoordinator: FocusFilterCoordinator?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         TGUIKitAccessibility.isEnabled = FastSettings.accessibilityTreeEffective
@@ -832,6 +833,9 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 let networkArguments = NetworkInitializationArguments(apiId: ApiEnvironment.apiId, apiHash: ApiEnvironment.apiHash, languagesCategory: ApiEnvironment.language, appVersion: ApiEnvironment.version, voipMaxLayer: OngoingCallContext.maxLayer, voipVersions: voipVersions, appData: appData, externalRequestVerificationStream: .single([:]), externalRecaptchaRequestVerification: { _, _ in return .complete() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: deviceModelPretty(), useBetaFeatures: useBetaFeatures, isICloudEnabled: false, networkEngineFactory: RustNetworkEngineFactory())
                 
                 let sharedContext = SharedAccountContext(accountManager: accountManager, networkArguments: networkArguments, rootPath: rootPath, encryptionParameters: encryptionParameters, appEncryption: appEncryption, displayUpgradeProgress: displayUpgrade)
+                if #available(macOS 13.0, *) {
+                    self.focusFilterCoordinator = FocusFilterCoordinator(sharedContext: sharedContext)
+                }
                 
                 self.hangKeybind(sharedContext)
                 
@@ -1498,6 +1502,9 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationDidBecomeActive(_ notification: Notification) {
+        if #available(macOS 13.0, *) {
+            focusFilterCoordinator?.refresh()
+        }
         updatePeerPresence()
     }
     
