@@ -1,5 +1,6 @@
 import Cocoa
 import XCTest
+import SwiftSignalKit
 @testable import TGUIKit
 
 final class ContextMenuItemsTests: XCTestCase {
@@ -111,5 +112,81 @@ final class ContextMenuItemsTests: XCTestCase {
 
         XCTAssertNil(menu.itemsProvider)
         assertNativeItems(menu, are: items)
+    }
+
+    func testAsyncItemsProviderStartsOnceAndFillsMenuWhenLoaded() {
+        let menu = ContextMenu()
+        let items = makeItems(3)
+        var calls = 0
+        var complete: (([NSMenuItem]) -> Void)?
+        menu.asyncItemsProvider = { completion in
+            calls += 1
+            complete = completion
+            return EmptyDisposable
+        }
+
+        XCTAssertEqual(calls, 0)
+
+        menu.loadAsyncItems()
+        menu.loadAsyncItems()
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(menu.asyncItemsProvider)
+        XCTAssertTrue(menu.isLoadingAsyncItems)
+        XCTAssertEqual(menu.numberOfItems, 0)
+
+        var loadedCalls = 0
+        menu.asyncItemsLoaded = {
+            loadedCalls += 1
+        }
+        complete?(items)
+
+        XCTAssertFalse(menu.isLoadingAsyncItems)
+        XCTAssertEqual(loadedCalls, 1)
+        XCTAssertNil(menu.asyncItemsLoaded)
+        assertNativeItems(menu, are: items)
+    }
+
+    func testAsyncItemsProviderCompletingSynchronouslyIsNotLoading() {
+        let menu = ContextMenu()
+        let items = makeItems(2)
+        menu.asyncItemsProvider = { completion in
+            completion(items)
+            return EmptyDisposable
+        }
+
+        menu.loadAsyncItems()
+
+        XCTAssertFalse(menu.isLoadingAsyncItems)
+        assertNativeItems(menu, are: items)
+    }
+
+    func testAsyncItemsProviderLoadsImmediatelyForNativeMenus() {
+        System.legacyMenu = true
+        let menu = ContextMenu()
+        var calls = 0
+
+        menu.asyncItemsProvider = { _ in
+            calls += 1
+            return EmptyDisposable
+        }
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(menu.asyncItemsProvider)
+    }
+
+    func testAsyncItemsLoadingIsDisposedWithMenu() {
+        var disposed = false
+        autoreleasepool {
+            let menu = ContextMenu()
+            menu.asyncItemsProvider = { _ in
+                ActionDisposable {
+                    disposed = true
+                }
+            }
+            menu.loadAsyncItems()
+            XCTAssertFalse(disposed)
+        }
+        XCTAssertTrue(disposed)
     }
 }

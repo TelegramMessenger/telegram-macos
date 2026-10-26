@@ -851,6 +851,19 @@ final class AppMenuController : NSObject  {
             return
         }
         menu.loadProvidedItems()
+        menu.loadAsyncItems()
+        if menu.isLoadingAsyncItems {
+            menu.asyncItemsLoaded = { [weak self, weak parentView, weak menu] in
+                guard let self, let parentView, let menu, !self.isClosed, !menu.contextItems.isEmpty else {
+                    return
+                }
+                guard parentView.view.item(for: id)?.view?.mouseInside() == true else {
+                    return
+                }
+                self.presentSubmenu(menu, parentView: parentView, for: id)
+            }
+            return
+        }
         
         let view = self.getView(for: menu, screen: screen, parentView: parentView, submenuId: id)
         guard let parentItem = parentView.view.item(for: id), let parentItemView = parentItem.view else {

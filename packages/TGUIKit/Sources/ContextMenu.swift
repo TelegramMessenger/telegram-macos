@@ -212,6 +212,36 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
         self.itemsProvider = nil
         self.items = itemsProvider()
     }
+
+    public var asyncItemsProvider: ((@escaping ([NSMenuItem]) -> Void) -> Disposable)? {
+        didSet {
+            if System.legacyMenu {
+                loadAsyncItems()
+            }
+        }
+    }
+
+    private let asyncItemsDisposable = MetaDisposable()
+    private(set) var isLoadingAsyncItems = false
+    var asyncItemsLoaded: (() -> Void)?
+
+    func loadAsyncItems() {
+        guard let asyncItemsProvider else {
+            return
+        }
+        self.asyncItemsProvider = nil
+        self.isLoadingAsyncItems = true
+        asyncItemsDisposable.set(asyncItemsProvider({ [weak self] items in
+            guard let self else {
+                return
+            }
+            self.isLoadingAsyncItems = false
+            self.items = items
+            let loaded = self.asyncItemsLoaded
+            self.asyncItemsLoaded = nil
+            loaded?()
+        }))
+    }
     
     public override var items: [NSMenuItem] {
         get {
@@ -265,6 +295,7 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
     }
     deinit {
         NotificationCenter.default.removeObserver(self)
+        asyncItemsDisposable.dispose()
     }
     
 }
