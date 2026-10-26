@@ -64,6 +64,10 @@ I subsequently rebuilt the full Debug arm64 client from current master `272d85dd
 
 The full-client check used the prepared local source tree with Xcode 27 compatibility and isolated app/profile configuration, not an official beta binary. It does not establish a successful send/upload/export, app-wide performance improvement or leak-free result. There are no GitHub Actions workflows or reported CI statuses for this PR at this check; the passing checks above are local. Structured follow-up evidence is in [revalidation.json](Results/revalidation.json); the original measurement files remain unchanged.
 
+### Combined full-client test with PR #92
+
+I also tested PR #82 (`362ca9f6`) and [PR #92](https://github.com/TelegramMessenger/telegram-macos/pull/92) (`5add38a4`) together on master `272d85dd`. The combined full Debug arm64 build, signature verification and all 15 editor tests pass. The signed-in workflow passes: normal video preview/thumbnails, both trim handles, seeking and a playhead constrained to the selected range, full/selected Play/Pause, repeated No/Discard confirmations and another recording. Additional real-client screenshots are included with #92. This is functional integration validation, not a new performance measurement; the original standalone checks remain valid.
+
 ## Reproduce
 
 From this checkout, initialize telegram-ios according to the repository instructions, or supply a path to an existing telegram-ios Git checkout. The generator reads SwiftSignalKit from the exact pinned Git commit, ignoring local changes in that checkout. All generated packages and build products stay in the chosen output directory.

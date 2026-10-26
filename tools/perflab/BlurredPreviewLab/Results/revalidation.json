@@ -97,5 +97,39 @@
       "requested_scenario": "Record an 8-10 second locked video, pause, inspect image and timeline thumbnails, discard without sending and repeat once"
     },
     "limitations": "Prepared local source tree with Xcode 27 and isolated app/profile adjustments; not an official beta binary. User-reported visual confirmation, not automated pixel comparison or performance measurement."
+  },
+  "combined_editor_full_client": {
+    "local_test_date": "2026-10-26 Europe/Moscow",
+    "base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "tested_pr_heads": {
+      "82": "362ca9f6b1054d391c4c93fd8e5d729175ba75fc",
+      "92": "5add38a4115719fa52e854dbbf13597efa055d37"
+    },
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "binary_sha256": "b2fb5697d43d5abe4f616c1457d1e79ee31e3fe7a4050364ebdb989e4eed5394",
+    "build_result": "BUILD SUCCEEDED",
+    "build_log_sha256": "c8c0d4ef4a386071a0dc46fb448a7c7952a8b9d559ec8c4317399eaca8d3a3a6",
+    "signature_verified": true,
+    "editor_native_tests": {
+      "passed": 15,
+      "failed": 0,
+      "log_sha256": "f5b784d71d97c77ad9439676805f85f581afc201f4ad83af9d392961b80ed9e0"
+    },
+    "manual_validation": {
+      "status": "pass",
+      "source": "Direct user confirmation",
+      "confirmed_at": "2026-10-25T23:58:20.113088+00:00",
+      "checks": [
+        "Existing account and chats present",
+        "Video image and initial thumbnails render normally",
+        "Both trim boundaries move inward and back",
+        "Seeking and playhead constrained to selected trim range",
+        "Full and selected-fragment Play/Pause",
+        "Repeated No/Discard confirmation and another recording"
+      ]
+    },
+    "client_screenshots": "Additional real client images are included in PR #92",
+    "performance_measurement": false,
+    "send_upload_export_tested": false
   }
 }
