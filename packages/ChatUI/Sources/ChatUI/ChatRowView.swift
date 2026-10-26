@@ -283,7 +283,11 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     
     public var header: String? {
         if let item = item as? ChatRowItem, let message = item.message {
-            return copiedMessageHeader(message, timeDifference: item.context.timeDifference) + ":"
+            var header = copiedMessageHeader(message, timeDifference: item.context.timeDifference) + ":"
+            if let replyLine = copiedMessageReplyLine(message) {
+                header += "\n" + replyLine
+            }
+            return header
         }
         return nil
     }

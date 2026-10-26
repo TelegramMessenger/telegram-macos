@@ -9,6 +9,8 @@ import InputTextView
 import MessageTextUtils
 import TelegramTheme
 import TelegramUtils
+import Localization
+import MessageUtils
 public struct SelectContainer {
     public let text:NSAttributedString
     public let range:NSRange
@@ -29,6 +31,22 @@ func copiedMessageHeader(_ message: Message, timeDifference: TimeInterval) -> St
         header += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
     }
     return header
+}
+
+func copiedMessageReplyLine(_ message: Message) -> String? {
+    guard let attribute = message.replyAttribute, let replied = message.associatedMessages[attribute.messageId] else {
+        return nil
+    }
+    let quote = attribute.isQuote ? attribute.quote : nil
+    var author = replied.effectiveAuthor?.displayTitle ?? ""
+    if let forwardInfo = replied.forwardInfo, quote == nil {
+        author = forwardInfo.authorTitle
+    }
+    let title = quote != nil ? strings().chatReplyQuotePanelTitle(author) : strings().chatReplyMessagePanelTitle(author)
+    let source = quote.map { messageReplyQuoteText($0).text } ?? (pullText(from: replied).string as String)
+    let firstLine = source.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+    let snippet = firstLine.count > 100 ? String(firstLine.prefix(100)) + "…" : firstLine
+    return snippet.isEmpty ? title : title + ": " + snippet
 }
 
 public class SelectManager : NSResponder {
@@ -330,6 +348,9 @@ public class SelectManager : NSResponder {
                         }
                         text += "> " + copiedMessageHeader(message, timeDifference: timeDifference) + ":"
                         text += "\n"
+                        if let replyLine = copiedMessageReplyLine(message) {
+                            text += "> " + replyLine + "\n"
+                        }
                         text += pullText(from: message).string as String
                     }
                     copyToClipboard(text)
