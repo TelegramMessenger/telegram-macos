@@ -323,7 +323,7 @@ public class InputContextView : LiquidGlassView {
     }
     public override func layout() {
         super.layout()
-        tableView.frame = bounds.insetBy(dx: 1, dy: 1)
+        tableView.frame = bounds
     }
 
     public override func setFrameSize(_ newSize: NSSize) {

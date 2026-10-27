@@ -103,10 +103,13 @@ final class EditImageCanvasEntitiesView: View {
         didSet {
             if oldValue != entities {
                 cache.prune(Set(entities.map { $0.id }))
+                animator.update(entities: entities)
                 needsDisplay = true
             }
         }
     }
+    private let animator = EditImageCanvasStickerAnimator()
+    private var stickerFrames: [Int64: CGImage] = [:]
     var excluding: Int64? {
         didSet {
             if oldValue != excluding {
@@ -119,10 +122,31 @@ final class EditImageCanvasEntitiesView: View {
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEventLess = true
+        animator.updated = { [weak self] frames in
+            self?.applyStickerFrames(frames)
+        }
+    }
+
+    private func applyStickerFrames(_ frames: [Int64: CGImage]) {
+        let ids = Set(frames.keys).union(stickerFrames.keys)
+        stickerFrames = frames
+        for entity in entities where ids.contains(entity.id) {
+            guard let sticker = entity.sticker else {
+                continue
+            }
+            let scale = bounds.width / max(1, entity.referenceSize.width)
+            let rect = CGRect(x: -sticker.baseSize.width / 2.0, y: -sticker.baseSize.height / 2.0, width: sticker.baseSize.width, height: sticker.baseSize.height)
+            layer?.setNeedsDisplay(rect.applying(entity.localTransform.concatenating(CGAffineTransform(scaleX: scale, y: scale))).insetBy(dx: -2, dy: -2))
+        }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        animator.isActive = window != nil
     }
 
     override func layout() {
@@ -132,7 +156,7 @@ final class EditImageCanvasEntitiesView: View {
 
     override func draw(_ layer: CALayer, in ctx: CGContext) {
         super.draw(layer, in: ctx)
-        applyEntities(entities, for: ctx, size: bounds.size, excluding: excluding, cache: cache)
+        applyEntities(entities, for: ctx, size: bounds.size, excluding: excluding, cache: cache, stickerFrames: stickerFrames)
     }
 }
 

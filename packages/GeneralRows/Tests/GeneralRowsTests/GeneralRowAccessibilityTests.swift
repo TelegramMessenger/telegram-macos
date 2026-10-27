@@ -23,8 +23,8 @@ final class GeneralRowAccessibilityTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeRow(_ type: GeneralInteractedType, description: String? = nil, enabled: Bool = true, action: @escaping () -> Void = {}) -> (GeneralInteractedRowItem, GeneralInteractedRowView) {
-        let item = GeneralInteractedRowItem(NSMakeSize(width, 50), stableId: 0, name: "Notifications", description: description, type: type, viewType: .singleItem, action: action, enabled: enabled)
+    private func makeRow(_ type: GeneralInteractedType, description: String? = nil, enabled: Bool = true, autoswitch: Bool = true, switchAction: (() -> Void)? = nil, action: @escaping () -> Void = {}) -> (GeneralInteractedRowItem, GeneralInteractedRowView) {
+        let item = GeneralInteractedRowItem(NSMakeSize(width, 50), stableId: 0, name: "Notifications", description: description, type: type, viewType: .singleItem, action: action, enabled: enabled, autoswitch: autoswitch, switchAction: switchAction)
         _ = item.makeSize(width, oldWidth: 0)
         let row = GeneralInteractedRowView(frame: NSMakeRect(0, 0, width, item.height))
         row.set(item: item, animated: false)
@@ -58,6 +58,10 @@ final class GeneralRowAccessibilityTests: XCTestCase {
         XCTAssertEqual(row.accessibilityRole(), .checkBox)
         XCTAssertEqual(row.accessibilityValue() as? NSNumber, 0)
         XCTAssertTrue(row.accessibilityPerformPress())
+        let deadline = Date().addingTimeInterval(2)
+        while calls == 0 && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         XCTAssertEqual(calls, 1)
         XCTAssertEqual(item.accessibilityToggleState, true)
         XCTAssertEqual(row.accessibilityValue() as? NSNumber, 1)
@@ -77,4 +81,55 @@ final class GeneralRowAccessibilityTests: XCTestCase {
         _ = row.accessibilityPerformPress()
         XCTAssertEqual(calls, 0)
     }
+
+    func testDirectSwitchActivationUpdatesTheRowAtRest() {
+        var calls = 0
+        let committed = expectation(description: "Switch settled")
+        let (item, row) = makeRow(.switchable(false), action: {
+            calls += 1
+            committed.fulfill()
+        })
+        row.switchView?.performToggle()
+        XCTAssertEqual(calls, 0)
+        XCTAssertEqual(item.accessibilityToggleState, false)
+        wait(for: [committed], timeout: 2)
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(item.accessibilityToggleState, true)
+        XCTAssertEqual(row.accessibilityValue() as? NSNumber, 1)
+    }
+
+    func testDedicatedSwitchActionKeepsRowNavigationSeparate() {
+        var navigations = 0
+        let committed = expectation(description: "Dedicated switch settled")
+        let (item, row) = makeRow(.switchable(false), switchAction: { committed.fulfill() }, action: { navigations += 1 })
+        row.invokeAction(item)
+        XCTAssertEqual(navigations, 1)
+        XCTAssertEqual(row.switchView?.isOn, false)
+        row.switchView?.performToggle()
+        wait(for: [committed], timeout: 2)
+        XCTAssertEqual(navigations, 1)
+        XCTAssertEqual(row.switchView?.isOn, true)
+    }
+
+    func testOwnerControlledRowDoesNotCommitBeforeConfirmation() {
+        let requested = expectation(description: "Owner change requested")
+        let (item, row) = makeRow(.switchable(false), autoswitch: false, action: { requested.fulfill() })
+        row.invokeAction(item)
+        XCTAssertEqual(item.accessibilityToggleState, false)
+        wait(for: [requested], timeout: 2)
+        XCTAssertEqual(row.switchView?.isOn, false)
+        XCTAssertEqual(item.accessibilityToggleState, false)
+    }
+
+    func testReusingARowCancelsTheOldAction() {
+        var calls = 0
+        let (item, row) = makeRow(.switchable(false), action: { calls += 1 })
+        row.invokeAction(item)
+        let replacement = GeneralInteractedRowItem(NSMakeSize(width, 50), stableId: 1, name: "Replacement", type: .switchable(false), viewType: .singleItem)
+        row.set(item: replacement, animated: false)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.2))
+        XCTAssertEqual(calls, 0)
+        XCTAssertEqual(row.switchView?.isOn, false)
+    }
+
 }

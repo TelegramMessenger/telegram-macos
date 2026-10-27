@@ -779,7 +779,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             self.leftStatusControl = nil
         }
 
-        if let threadInfo = presentation.threadInfo, presentation.isTopicMode {
+        if let threadInfo = presentation.threadInfo, isTopicMode(presentation) {
             let size = NSMakeSize(30, 30)
             let info = threadInfo.info
             let fallbackFile = TelegramUtilsHooks.shared.topicFile!(info.title, info.iconColor, presentation.chatLocation.threadId == 1)
@@ -869,7 +869,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             result = result.withUpdatedTitle(strings().chatTitlePinnedMessagesOther(presentation.pinnedMessageId?.totalCount ?? 0)).withUpdatedStatus("")
         } else if chatInteraction.mode == .scheduled {
             result = result.withUpdatedTitle(strings().chatTitleScheduledMessages).withUpdatedStatus("")
-        } else if let threadInfo = presentation.threadInfo, presentation.isTopicMode {
+        } else if let threadInfo = presentation.threadInfo, isTopicMode(presentation) {
             if let count = counters.replies, count > 0 {
                 result = result.withUpdatedTitle(threadInfo.info.title).withUpdatedStatus(strings().chatTitleTopicOther(Int(count)))
             } else {
@@ -954,6 +954,10 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         if let presence = result.presence {
             self.presenceManager?.reset(presence: presence, timeDifference: Int32(chatInteraction.interactionContext.timeDifference))
         }
+    }
+
+    private func isTopicMode(_ presentation: ChatPresentationInterfaceState) -> Bool {
+        return presentation.isTopicMode || (chatInteraction.mode == .preview && presentation.chatLocation.threadId != nil)
     }
 
     private func sideInsetForCenterContent() -> CGFloat {

@@ -364,6 +364,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     public class ShowMore : Control {
         private let imageView = ImageView()
+        private var loadingViews: [ImageView] = []
         public required init(frame frameRect: NSRect, theme: TelegramPresentationTheme) {
             super.init(frame: frameRect)
             self.backgroundColor = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
@@ -379,6 +380,47 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         public override func layout() {
             super.layout()
             imageView.center()
+            for view in loadingViews {
+                view.frame = imageView.frame
+            }
+        }
+        
+        func startLoading() {
+            guard loadingViews.isEmpty else {
+                return
+            }
+            self.userInteractionEnabled = false
+            for _ in 0 ..< 2 {
+                let view = ImageView()
+                view.isAccessibilityDecorative = true
+                view.image = imageView.image
+                view.frame = imageView.frame
+                addSubview(view, positioned: .below, relativeTo: imageView)
+                loadingViews.append(view)
+            }
+            let views = loadingViews + [imageView]
+            let step: CGFloat = 4
+            let now = CACurrentMediaTime()
+            for (i, view) in views.enumerated() {
+                guard let layer = view.layer else {
+                    continue
+                }
+                let offset = (CGFloat(i) - 1) * step
+                layer.opacity = 0.4 + 0.3 * Float(i)
+                layer.transform = CATransform3DMakeTranslation(0, offset, 0)
+                layer.animate(from: NSNumber(value: Float(-offset)), to: NSNumber(value: 0), keyPath: "transform.translation.y", timingFunction: .spring, duration: 0.25, additive: true)
+                
+                let bounce = CAKeyframeAnimation(keyPath: "transform.translation.y")
+                bounce.values = [0, 3, 0]
+                bounce.keyTimes = [0, 0.5, 1]
+                bounce.timingFunctions = [CAMediaTimingFunction(name: .easeInEaseOut), CAMediaTimingFunction(name: .easeInEaseOut)]
+                bounce.duration = 0.7
+                bounce.repeatCount = .infinity
+                bounce.isAdditive = true
+                bounce.beginTime = now + 0.25 + Double(i) * 0.08
+                bounce.fillMode = .backwards
+                layer.add(bounce, forKey: "loading")
+            }
         }
         
         public required init?(coder: NSCoder) {
@@ -411,7 +453,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     private let backgroundColorView = View()
     private let shadowLayer = SimpleShapeLayer()
     private let presentation: TelegramPresentationTheme
-    private let hasBubble: Bool
+    private var hasBubble: Bool
     private let aboveText: TextViewLayout?
     public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
         self.list = list
@@ -439,10 +481,11 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         showMore.set(handler: { [weak self] control in
             if let view = self {
+                view.hasBubble = false
+                view.updateLayout(size: view.frame.size, transition: .immediate)
+                view.showMore.startLoading()
                 revealReactions?(view)
             }
-            control.layer?.animateScaleCenter(from: 1, to: 0.1, duration: 0.35, removeOnCompletion: false)
-            control.layer?.animateAlpha(from: 1, to: 0, duration: 0.35, removeOnCompletion: false)
         }, for: .Click)
         
         shadowLayer.shadowColor = NSColor.black.cgColor
@@ -522,7 +565,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
                 let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, addLarge: addLarge, theme: presentation, message: message, parentWindow: parentWindow)
                 
                 self.documentView.addSubview(reaction)
-                x += size.width + 4
+                x += size.width + 3
             }
             if x < frame.width {
                 add(reaction)
@@ -551,6 +594,21 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             view?.playAppearAnimation()
         }
         updateScroll()
+    }
+    
+    public func revealDidStart() {
+        guard let superview = self.superview else {
+            return
+        }
+        let button = self.showMore
+        let frame = button.convert(button.bounds, to: superview)
+        button.removeFromSuperview()
+        button.frame = frame
+        superview.addSubview(button)
+        button.layer?.animateScaleCenter(from: 1, to: 0.1, duration: 0.2, removeOnCompletion: false)
+        button.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { [weak button] _ in
+            button?.removeFromSuperview()
+        })
     }
     
     public func collect() -> [Int : LottiePlayerView] {
@@ -642,7 +700,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     public static func width(for count: Int, maxCount: Int = .max, allowToAll: Bool = true) -> CGFloat {
         var width = CGFloat(min(count, maxCount)) * self.size.width
-        width += CGFloat(min(count, maxCount)) * 4
+        width += CGFloat(min(count, maxCount)) * 3
         if maxCount != .max, allowToAll {
             width += self.size.width
         }

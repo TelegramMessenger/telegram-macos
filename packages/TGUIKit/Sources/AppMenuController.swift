@@ -850,6 +850,7 @@ final class AppMenuController : NSObject  {
         if parentView.view.dismissed {
             return
         }
+        menu.loadProvidedItems()
         
         let view = self.getView(for: menu, screen: screen, parentView: parentView, submenuId: id)
         guard let parentItem = parentView.view.item(for: id), let parentItemView = parentItem.view else {

@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import ColorPalette
 @testable import TGUIKit
 
 private final class TestBadgeNode: Node {
@@ -82,6 +83,28 @@ final class TabBarViewTreeTests: XCTestCase {
         return NSMakePoint(frame.midX, frame.midY)
     }
 
+    private func portals(in layer: CALayer, source: CALayer) -> [CALayer] {
+        var result: [CALayer] = []
+        if layer.responds(to: NSSelectorFromString("sourceLayer")), layer.value(forKey: "sourceLayer") as? CALayer === source {
+            result.append(layer)
+        }
+        for child in layer.sublayers ?? [] {
+            result += portals(in: child, source: source)
+        }
+        return result
+    }
+
+    private func assertTint(_ portal: CALayer, matches color: NSColor, file: StaticString = #filePath, line: UInt = #line) throws {
+        let filter = try XCTUnwrap(portal.filters?.first as? NSObject, file: file, line: line)
+        let value = try XCTUnwrap(filter.value(forKey: "inputColorMatrix") as? NSValue, file: file, line: line)
+        let color = try XCTUnwrap(color.usingColorSpace(.sRGB), file: file, line: line)
+        var matrix = [Float](repeating: 0, count: 20)
+        matrix.withUnsafeMutableBytes { value.getValue($0.baseAddress!, size: $0.count) }
+        for (index, component) in [(3, color.redComponent), (8, color.greenComponent), (13, color.blueComponent), (18, color.alphaComponent)] {
+            XCTAssertEqual(CGFloat(matrix[index]), component, accuracy: 0.0001, file: file, line: line)
+        }
+    }
+
     private func makePlaybackBar(selected: Int = 0) -> (TabBarView, [CustomTabItem]) {
         let bar = TabBarView(frame: NSMakeRect(0, 0, 333, 48))
         bar.reduceMotion = { false }
@@ -94,6 +117,239 @@ final class TabBarViewTreeTests: XCTestCase {
         }
         bar.setSelectedIndex(selected, respondToDelegate: false, animated: false)
         return (bar, items)
+    }
+
+    private func enableNativeLens(_ bar: TabBarView) throws {
+        guard System.liquidGlassAvailable else {
+            throw XCTSkip("Native glass is unavailable")
+        }
+        bar.reduceTransparency = { false }
+        System.liquidGlass = true
+        bar.updateLocalizationAndTheme(theme: presentation)
+        XCTAssertNotNil(bar.nativeLens)
+    }
+
+    func testDisabledGlassKeepsTheExistingInteractionWithoutConstructingALens() {
+        let bar = makeBar()
+        var attempts = 0
+        bar.lensFactory = {
+            attempts += 1
+            return nil
+        }
+        bar.beginSelection(at: center(bar, 0))
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertEqual(attempts, 0)
+        XCTAssertEqual(bar.selectionFrame.width, bar.control(for: 0).frame.width + 16)
+        XCTAssertEqual(bar.control(for: 0).layer!.transform.m11, 1.15, accuracy: 0.001)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testNativeLensKeepsTheSameControlsIconsBadgesAndHitTargets() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 2)
+        let control = bar.control(for: 2)
+        let icon = control.subviews[0]
+        let badge = control.subviews[1]
+        try enableNativeLens(bar)
+        let lens = try XCTUnwrap(bar.nativeLens)
+        XCTAssertTrue(control.superview === lens.contentView)
+        bar.beginSelection(at: center(bar, 2))
+        XCTAssertEqual(bar.selectionFrame.width, control.frame.width + 20)
+        XCTAssertEqual(bar.selectionFrame.height, 56)
+        XCTAssertEqual(control.layer!.transform.m11, 1, accuracy: 0.001)
+        XCTAssertTrue(control.subviews[0] === icon)
+        XCTAssertTrue(control.subviews[1] === badge)
+        XCTAssertTrue(bar.hitTest(center(bar, 2)) === control)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testNativeRestingIndicatorUsesABlurThatDisappearsDuringDragging() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 2)
+        try enableNativeLens(bar)
+        let lens = try XCTUnwrap(bar.nativeLens)
+        let background = try XCTUnwrap(lens.subviews.first?.layer?.sublayers?.first)
+        XCTAssertEqual(background.name, "lensRestingBackground")
+        XCTAssertEqual(background.frame, bar.selectionFrame)
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(background.sublayers?.first?.value(forKeyPath: "filters.lensRestingBlur.inputRadius") as? CGFloat, 16)
+        XCTAssertEqual(bar.subviews[1].alphaValue, 0)
+        bar.beginSelection(at: center(bar, 2))
+        bar.updateSelection(at: center(bar, 3))
+        XCTAssertEqual(background.opacity, 0)
+        bar.cancelSelection(animated: false)
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(background.frame, bar.control(for: 2).frame)
+        bar.reduceMotion = { true }
+        bar.beginSelection(at: center(bar, 2))
+        XCTAssertEqual(background.opacity, 1)
+        XCTAssertEqual(background.frame.height, 40)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testNativeLensTintsOverlappingIconsWhileKeepingTheBadgeUntinted() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = bar
+        defer { window.close() }
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 1))
+        bar.updateSelection(at: NSPoint(x: (center(bar, 1).x + center(bar, 2).x) / 2, y: center(bar, 1).y))
+        bar.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let root = try XCTUnwrap(bar.nativeLens?.layer)
+        for index in [1, 2] {
+            let icon = bar.control(for: index).subviews[0]
+            let copies = portals(in: root, source: try XCTUnwrap(icon.layer))
+            XCTAssertEqual(copies.count, 2)
+            XCTAssertTrue(copies.allSatisfy { $0.filters?.count == 1 })
+            XCTAssertNil(icon.layer?.filters)
+        }
+        let badge = bar.control(for: 2).subviews[1]
+        let copies = portals(in: root, source: try XCTUnwrap(badge.layer))
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertTrue(copies.allSatisfy { $0.filters?.isEmpty ?? true })
+        bar.cancelSelection(animated: false)
+        XCTAssertTrue(portals(in: root, source: try XCTUnwrap(badge.layer)).isEmpty)
+    }
+
+    func testNativeLensPreservesCustomIconsWithoutTemplateTinting() throws {
+        defer { System.liquidGlass = false }
+        let (bar, _) = makePlaybackBar()
+        let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = bar
+        defer { window.close() }
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 1))
+        bar.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let icon = bar.control(for: 1).subviews[0]
+        let copies = portals(in: try XCTUnwrap(bar.nativeLens?.layer), source: try XCTUnwrap(icon.layer))
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertTrue(copies.allSatisfy { $0.filters?.isEmpty ?? true })
+        bar.cancelSelection(animated: false)
+    }
+
+    func testNativeLensOutsideTintMatchesDarkAndLightThemes() throws {
+        let previousTheme = presentation
+        defer {
+            System.liquidGlass = false
+            updateTheme(previousTheme)
+        }
+        for palette in [darkPalette, nightAccentPalette, whitePalette] {
+            updateTheme(PresentationTheme(colors: palette, search: previousTheme.search, inputTheme: previousTheme.inputTheme))
+            let bar = makeBar()
+            let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = bar
+            defer { window.close() }
+            try enableNativeLens(bar)
+            bar.beginSelection(at: center(bar, 1))
+            bar.updateSelection(at: NSPoint(x: (center(bar, 1).x + center(bar, 2).x) / 2, y: center(bar, 1).y))
+            bar.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let root = try XCTUnwrap(bar.nativeLens?.layer)
+            for index in 0 ..< bar.count {
+                let icon = bar.control(for: index).subviews[0]
+                let copies = portals(in: root, source: try XCTUnwrap(icon.layer))
+                XCTAssertEqual(copies.count, 2)
+                for copy in copies {
+                    let color = copy.superlayer?.name == "lensUnlensedContent" ? (palette.isDark ? NSColor.white : palette.grayIcon) : palette.accentIcon
+                    try assertTint(copy, matches: color)
+                }
+                XCTAssertNil(icon.layer?.filters)
+            }
+            bar.cancelSelection(animated: false)
+            XCTAssertTrue(portals(in: root, source: try XCTUnwrap(bar.control(for: 1).subviews[0].layer)).isEmpty)
+        }
+    }
+
+    func testDisablingGlassDuringADragCancelsAndRestoresTheOriginalControls() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 1)
+        let delegate = TabSelectionDelegate()
+        bar.delegate = delegate
+        let controls = (0 ..< bar.count).map { bar.control(for: $0) }
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 1))
+        bar.updateSelection(at: center(bar, 3))
+        System.liquidGlass = false
+        XCTAssertFalse(bar.isTrackingSelection)
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertEqual(bar.selectedIndex, 1)
+        XCTAssertTrue(delegate.changes.isEmpty)
+        XCTAssertTrue(controls.allSatisfy { $0.superview === bar })
+        XCTAssertTrue(bar.control(for: 1).isAccessibilitySelected())
+        XCTAssertEqual(bar.selectionFrame, bar.control(for: 1).frame)
+    }
+
+    func testUnsupportedNativeEffectsKeepTheExistingGlassAndAreNotRetriedEveryLayout() throws {
+        guard System.liquidGlassAvailable else {
+            throw XCTSkip("Native glass is unavailable")
+        }
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        var attempts = 0
+        bar.reduceTransparency = { false }
+        bar.lensFactory = {
+            attempts += 1
+            return nil
+        }
+        System.liquidGlass = true
+        bar.beginSelection(at: center(bar, 0))
+        bar.layout()
+        bar.updateSelection(at: center(bar, 1))
+        XCTAssertEqual(attempts, 1)
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertEqual(bar.selectionFrame.width, bar.control(for: 1).frame.width + 16)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testReducingTransparencyDuringAPressRemovesTheNativeLens() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 2))
+        bar.reduceTransparency = { true }
+        bar.updateLocalizationAndTheme(theme: presentation)
+        XCTAssertNil(bar.nativeLens)
+        XCTAssertFalse(bar.isTrackingSelection)
+        XCTAssertEqual(bar.selectedIndex, 0)
+        bar.reduceTransparency = { false }
+        bar.updateLocalizationAndTheme(theme: presentation)
+        XCTAssertNotNil(bar.nativeLens)
+    }
+
+    func testNativeDragCommitStillPlaysOnlyTheDestinationOnce() throws {
+        defer { System.liquidGlass = false }
+        let (bar, items) = makePlaybackBar()
+        let delegate = TabSelectionDelegate()
+        bar.delegate = delegate
+        try enableNativeLens(bar)
+        bar.beginSelection(at: center(bar, 0))
+        bar.updateSelection(at: center(bar, 2))
+        bar.updateSelection(at: center(bar, 3))
+        bar.endSelection(at: center(bar, 3))
+        XCTAssertEqual(items.map { $0.animatedSelections }, [0, 0, 0, 1])
+        XCTAssertEqual(delegate.changes, [3])
+    }
+
+    func testNativeLensRespectsReduceMotionWithoutScalingTheOriginalContent() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        try enableNativeLens(bar)
+        bar.reduceMotion = { true }
+        let point = center(bar, 2)
+        bar.beginSelection(at: point)
+        XCTAssertEqual(bar.selectionFrame, bar.control(for: 2).frame)
+        XCTAssertEqual(bar.selectionFrame.height, 40)
+        XCTAssertEqual(bar.control(for: 2).layer!.transform.m11, 1, accuracy: 0.001)
+        XCTAssertNil(bar.control(for: 2).layer?.animation(forKey: "transform"))
+        bar.endSelection(at: point)
+        XCTAssertEqual(bar.selectedIndex, 2)
     }
 
     func testDragCommitPlaysOnlyTheDestinationOnceOnRelease() {

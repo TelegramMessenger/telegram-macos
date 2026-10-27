@@ -1,0 +1,24 @@
+{
+  "featureSource": "d492dca2eaa412b67f81a27dc45761a6f4fa6169",
+  "files": {
+    "ChatPhotoSaveAction.swift": {
+      "sourceMatchesFeature": true,
+      "sha256": "d4d173dbc444e094855cfa2d2f2b42f0757efcab67367f1f7a53c3c20d3e4220"
+    },
+    "ChatPhotoBatchWriter.swift": {
+      "sourceMatchesFeature": true,
+      "sha256": "7efc81b4050f0bdef1947a2688281bfc0bb39a6a3a91250b29edbeb001587d39"
+    },
+    "ChatRowView.swift": {
+      "sourceMatchesFeature": true,
+      "sha256": "2ce6104f81e70098fa9aeea2ee5ebf1fd8771f1993d08789f8a74aa02cc3bc03"
+    },
+    "ChatMessageMenuItems.swift": {
+      "afterSourceMatchesFeature": true,
+      "sha256": "648299a126f0021d0d27e488183b74914f634f240d638889b2286f2539653d16"
+    }
+  },
+  "beforeMenuSource": "df90450c",
+  "menuRenderer": "native system context menu",
+  "bothCompleteClientBuildsSucceeded": true
+}

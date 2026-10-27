@@ -88,7 +88,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public let disableSelectAbility: Bool
     public let isGlobalSearchMessage: Bool
     public let isPeerSavedMessages: Bool
-    public let inputOverlayHeight: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.minimumInputOverlayHeight)
+    public let bottomInset: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.bottomInset(showsInput: true, inputOverlayHeight: 0))
     private var mediaReplacementId: UUID?
     private var mediaEditSessionId = UUID()
     private var mediaEditSubmissionId: UUID?
@@ -319,6 +319,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public var clearMentions:()->Void = {}
     public var reactionPressed:()->Void = {}
     public var showToaster:(NSAttributedString)->Void = { _ in }
+    public var previewTopic:(Int64)->Void = { _ in }
     public var removeToaster:()->Void = {}
     public var clearReactions:()->Void = {}
     public var attachFile:(Bool)->Void = { _ in }
@@ -1234,6 +1235,7 @@ public final class ChatInteraction : InterfaceObserver  {
         self.clearMentions = { }
         self.reactionPressed = { }
         self.showToaster = { _ in }
+        self.previewTopic = { _ in }
         self.removeToaster = { }
         self.clearReactions = { }
         self.attachFile = { _ in }

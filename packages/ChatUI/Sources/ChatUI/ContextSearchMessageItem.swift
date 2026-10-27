@@ -218,6 +218,13 @@ public class ContextSearchMessageItem: GeneralRowItem {
         return ContextSearchMessageView.self
     }
 
+    public var isFirst: Bool {
+        if let table = table {
+            return table.firstItem == self
+        }
+        return index == 0
+    }
+
     public override var accessibilityLabel: String? {
         return displayTextLayout.attributedString.string
     }
@@ -271,6 +278,11 @@ private class ContextSearchMessageView : GeneralRowView {
 
 
         super.init(frame: frameRect)
+        selectionView.userInteractionEnabled = false
+        selectionView.isEventLess = true
+        if #available(macOS 10.15, *) {
+            selectionView.layer?.cornerCurve = .continuous
+        }
         addSubview(selectionView)
         addSubview(separator)
         photo.userInteractionEnabled = false
@@ -293,8 +305,19 @@ private class ContextSearchMessageView : GeneralRowView {
     override func layout() {
         super.layout()
         guard let item = item as? ContextSearchMessageItem else {return}
-        selectionView.frame = bounds.insetBy(dx: 1, dy: 1)
+        selectionView.frame = bounds
+        var mask: CACornerMask = []
+        if item.isFirst && item.isLast {
+            mask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        } else if item.isFirst {
+            mask = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        } else if item.isLast {
+            mask = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        }
+        selectionView.layer?.cornerRadius = InputContextHelper.containerCornerRadius
+        selectionView.layer?.maskedCorners = mask
         separator.frame = NSMakeRect(item.leftInset, frame.height - .borderSize, frame.width - item.leftInset, .borderSize)
+        separator.isHidden = item.isSelected || item.isHighlighted || item.isLast
         photo.centerY(x: 8)
         titleView.setFrameOrigin(NSMakePoint(item.leftInset, item.margin - 1))
         let dateX = frame.width - dateView.frame.width - 8
@@ -314,7 +337,8 @@ private class ContextSearchMessageView : GeneralRowView {
         dateView.backgroundColor = .clear
         selectionView.backgroundColor = selectionColor
         if let item = item as? ContextSearchMessageItem {
-            separator.backgroundColor = item.isSelected ? .clear : theme.colors.border
+            separator.backgroundColor = theme.colors.border
+            separator.isHidden = item.isSelected || item.isHighlighted || item.isLast
         } else {
             separator.backgroundColor = theme.colors.border
         }
@@ -325,6 +349,18 @@ private class ContextSearchMessageView : GeneralRowView {
         super.set(item: item, animated: animated)
 
         guard let item = item as? ContextSearchMessageItem else {return}
+
+        var mask: CACornerMask = []
+        if item.isFirst && item.isLast {
+            mask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        } else if item.isFirst {
+            mask = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        } else if item.isLast {
+            mask = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        }
+        selectionView.layer?.cornerRadius = InputContextHelper.containerCornerRadius
+        selectionView.layer?.maskedCorners = mask
+        separator.isHidden = item.isSelected || item.isHighlighted || item.isLast
 
         photo.setState(account: item.context.account, state: item.photo)
         titleView.update(item.ctxDisplayTextLayout)

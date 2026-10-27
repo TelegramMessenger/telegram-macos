@@ -37,6 +37,7 @@ public final class StickerPanelArguments {
     public let mode: EntertainmentViewController.Mode
     public let canSchedule:()->Bool
     public var createSticker: ((Control)->Void)?
+    public var dragSticker: ((TelegramMediaFile, CGImage?, EntertainmentStickerDrag) -> Bool)?
     public init(context: any AccountContextProtocol, sendMedia: @escaping(Media, NSView, Bool, Bool, ItemCollectionId?)->Void, showPack: @escaping(StickerPackReference)->Void, addPack: @escaping(StickerPackReference)->Void, navigate: @escaping(ItemCollectionViewEntryIndex)->Void, clearRecent:@escaping()->Void, removePack:@escaping(StickerPackCollectionId)->Void, closeInlineFeatured:@escaping(Int64)->Void, openFeatured:@escaping(FeaturedStickerPackItem)->Void, selectEmojiCategory:@escaping(EmojiSearchCategories.Group?)->Void, mode: EntertainmentViewController.Mode, canSchedule:@escaping()->Bool) {
         self.context = context
         self.sendMedia = sendMedia
@@ -1462,6 +1463,14 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
             return self?.chatInteraction?.presentationSendPaidMessageStars == nil
         })
         
+        arguments.dragSticker = { [weak self] file, image, drag in
+            guard let dragItem = self?.interactions?.dragItem, !file.isPremiumSticker || context.isPremium else {
+                return false
+            }
+            dragItem(.file(file), image, drag)
+            return true
+        }
+
         if #available(macOS 14.0, *), mode == .common {
             arguments.createSticker = { [weak self] _ in
                 guard let self else { return }

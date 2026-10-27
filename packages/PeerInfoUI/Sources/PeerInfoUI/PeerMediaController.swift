@@ -73,8 +73,8 @@
  private let sectionOffset: CGFloat = 0
  
  public final class PeerMediaContainerView : View {
-    
-    private let actionsPanelView:MessageActionsPanelView = MessageActionsPanelView(frame: NSMakeRect(0,0,0, 50))
+
+    private let actionsPanelView:MessageActionsPanelView = MessageActionsPanelView(frame: NSMakeRect(0,0,0, 52))
     
     fileprivate let view: PeerMediaControllerView
     fileprivate var emptyView: PeerMediaEmptyRowView?
@@ -129,8 +129,8 @@
         
         view.frame = NSMakeRect(floorToScreenPixels(backingScaleFactor, (frame.width - blockWidth) / 2), sectionOffset, blockWidth, frame.height - sectionOffset)
         
-        let inset:CGFloat = view.isSelectionState ? 50 : 0
-        actionsPanelView.frame = NSMakeRect(0, frame.height - inset, frame.width, 50)
+        let inset:CGFloat = view.isSelectionState ? 54 : 0
+        actionsPanelView.frame = NSMakeRect(0, frame.height - inset, frame.width, 52)
         actionsPanelView.isHidden = !view.isSelectionState
         emptyView?.frame = bounds
     }
@@ -209,7 +209,7 @@
     func changeState(selectState:Bool, animated:Bool) {
         self.view.changeState(selectState: selectState, animated: animated)
         actionsPanelView.isHidden = !selectState
-        let inset:CGFloat = selectState ? 50 : 0
+        let inset:CGFloat = selectState ? 54 : 0
         actionsPanelView.change(pos: NSMakePoint(0, frame.height - inset), animated: animated)
     }
     
@@ -276,6 +276,8 @@
         } else if let view = self.mainView as? InputDataView {
             return view.tableView
         } else if let view = self.mainView as? StoryMediaView {
+            return view.tableView
+        } else if let view = self.mainView as? PeerMediaGifsView {
             return view.tableView
         }
         return nil
@@ -381,7 +383,7 @@
     }
     
     private var contentHeight: CGFloat {
-        return max(0, frame.height - (isSelectionState ? 50 : 0) - contentTop)
+        return max(0, frame.height - (isSelectionState ? 70 : 0) - contentTop)
     }
     
     private var tabsFrame: NSRect {
@@ -527,17 +529,19 @@
         CATransaction.commit()
     }
     
-    private func layoutPages() {
+    private func layoutPages(transition: ContainedViewLayoutTransition = .immediate) {
         let bounds = contentView.bounds
-        mainView?.frame = bounds.offsetBy(dx: swipeOffset, dy: 0)
+        if let mainView = mainView {
+            transition.updateFrame(view: mainView, frame: bounds.offsetBy(dx: swipeOffset, dy: 0))
+        }
         let visibleNeighbor = swipeOffset > 0 ? previousPage : (swipeOffset < 0 ? nextPage : nil)
         for view in contentView.subviews where view !== mainView {
             if view === visibleNeighbor {
                 view.alphaValue = 1
-                view.frame = bounds.offsetBy(dx: swipeOffset + (view === previousPage ? -bounds.width : bounds.width), dy: 0)
+                transition.updateFrame(view: view, frame: bounds.offsetBy(dx: swipeOffset + (view === previousPage ? -bounds.width : bounds.width), dy: 0))
             } else if view.layer?.animation(forKey: "position") == nil {
                 view.alphaValue = 0
-                view.frame = bounds
+                transition.updateFrame(view: view, frame: bounds)
                 if let mainView = mainView, let index = contentView.subviews.firstIndex(of: view), let mainIndex = contentView.subviews.firstIndex(of: mainView), index > mainIndex {
                     contentView.addSubview(view, positioned: .below, relativeTo: mainView)
                 }
@@ -637,9 +641,11 @@
     
     func changeState(selectState:Bool, animated:Bool) {
         assert(mainView != nil)
-    
+
         self.isSelectionState = selectState
-    
+        let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.2, curve: .easeInOut) : .immediate
+        transition.updateFrame(view: contentView, frame: NSMakeRect(0, contentTop, frame.width, contentHeight))
+        layoutPages(transition: transition)
     }
     
     var activePanel: View {

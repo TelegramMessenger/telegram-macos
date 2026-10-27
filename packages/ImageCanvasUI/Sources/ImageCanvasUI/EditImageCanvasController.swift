@@ -5,6 +5,7 @@ import ColorPalette
 import Localization
 import TelegramContext
 import TextRecognizing
+import TelegramMedia
 
 public final class EditImageDrawTouch : Equatable {
 
@@ -161,6 +162,9 @@ public final class EditImageCanvasController : ModalViewController {
         }
         let picker = ImageCanvasUIHooks.shared.makeStickerPicker(context)
         picker?.visibilityChanged = { [weak self] isShown in
+            if !isShown, NSEvent.pressedMouseButtons & 1 != 0 {
+                self?.cancelStickerDrag()
+            }
             self?.updateState(false, { state in
                 state.isStickerPickerShown = isShown
             })
@@ -188,6 +192,8 @@ public final class EditImageCanvasController : ModalViewController {
 
     deinit {
         cutoutDisposable.dispose()
+        stickerDragPlayerDisposable.dispose()
+        stickerDragView?.removeFromSuperview()
     }
 
     public override var containerBackground: NSColor {
@@ -336,13 +342,129 @@ public final class EditImageCanvasController : ModalViewController {
         })
     }
 
-    private func addSticker(_ image: CGImage, fileId: Int64?) {
+    private var stickerBaseSide: CGFloat {
         let reference = self.image.size
-        let side = max(10.0, min(reference.width, reference.height) * 0.25)
+        return max(10.0, min(reference.width, reference.height) * 0.25)
+    }
+
+    private func addSticker(_ image: CGImage, fileId: Int64?, animation: EditImageCanvasStickerAnimation? = nil, position: CGPoint? = nil) {
+        let reference = self.image.size
+        let side = stickerBaseSide
         let baseSize = image.size.aspectFitted(NSMakeSize(side, side))
-        let sticker = EditImageCanvasEntity.Sticker(image: image, baseSize: baseSize, fileId: fileId)
-        let entity = EditImageCanvasEntity(content: .sticker(sticker), position: newEntityPosition(verticalOnly: false), scale: 1.0 / genericView.canvas.zoom, referenceSize: reference)
+        let sticker = EditImageCanvasEntity.Sticker(image: image, baseSize: baseSize, fileId: fileId, animation: animation)
+        let entity = EditImageCanvasEntity(content: .sticker(sticker), position: position ?? newEntityPosition(verticalOnly: false), scale: 1.0 / genericView.canvas.zoom, referenceSize: reference)
         addEntity(entity)
+    }
+
+    private var stickerDragView: ImageView?
+    private var stickerDragAnimator: EditImageCanvasStickerAnimator?
+    private var stickerDragPlayer: LottiePlayerView?
+    private var stickerDragImageSize: CGSize?
+    private let stickerDragPlayerDisposable = MetaDisposable()
+    private var isStickerDragCancelled = false
+
+    private func cancelStickerDrag() {
+        guard stickerDragView != nil else {
+            return
+        }
+        isStickerDragCancelled = true
+        updateStickerDrag(.ended)
+    }
+
+    private func stickerDropPosition(_ point: NSPoint) -> CGPoint? {
+        let canvas = genericView.canvas
+        let local = canvas.convert(point, from: nil)
+        guard let contentView = canvas.window?.contentView, let hit = contentView.hitTest(contentView.superview?.convert(point, from: nil) ?? point), hit.isDescendant(of: canvas), canvas.contentFrame.contains(local) else {
+            return nil
+        }
+        return canvas.toReference(local)
+    }
+
+    private func updateStickerDrag(_ drag: EditImageCanvasStickerDrag) {
+        switch drag {
+        case let .moved(image, point):
+            guard !isStickerDragCancelled, let contentView = genericView.window?.contentView else {
+                return
+            }
+            let view: ImageView
+            if let current = stickerDragView {
+                view = current
+            } else {
+                view = ImageView()
+                view.isEventLess = true
+                contentView.addSubview(view)
+                stickerDragView = view
+            }
+            if let image = image, stickerDragPlayer == nil, stickerDragAnimator == nil {
+                view.image = image
+                stickerDragImageSize = image.size
+            }
+            let canvas = genericView.canvas
+            let side = stickerBaseSide * canvas.viewScale / canvas.zoom
+            let size = (stickerDragImageSize ?? NSMakeSize(side, side)).aspectFitted(NSMakeSize(side, side))
+            let location = contentView.convert(point, from: nil)
+            view.frame = CGRect(x: location.x - size.width / 2.0, y: location.y - size.height / 2.0, width: size.width, height: size.height)
+            view.layer?.opacity = stickerDropPosition(point) != nil ? 1.0 : 0.5
+        case let .preview(pick):
+            guard let view = stickerDragView else {
+                return
+            }
+            view.image = pick.image
+            stickerDragImageSize = pick.image.size
+            stickerDragAnimator = nil
+            stickerDragPlayerDisposable.set(nil)
+            stickerDragPlayer?.removeFromSuperview()
+            stickerDragPlayer = nil
+            guard let animation = pick.animation else {
+                return
+            }
+            if animation.kind != .video {
+                let data = animation.kind == .webm ? animation.path.data(using: .utf8) : try? Data(contentsOf: URL(fileURLWithPath: animation.path))
+                guard let data = data else {
+                    return
+                }
+                let canvas = genericView.canvas
+                let side = stickerBaseSide * canvas.viewScale / canvas.zoom
+                let size = pick.image.size.aspectFitted(NSMakeSize(side, side))
+                let player = LottiePlayerView(frame: view.bounds)
+                player.autoresizingMask = [.width, .height]
+                view.addSubview(player)
+                stickerDragPlayer = player
+                stickerDragPlayerDisposable.set((player.state |> deliverOnMainQueue).start(next: { [weak view] state in
+                    if state == .playing {
+                        view?.image = nil
+                    }
+                }))
+                player.set(LottieAnimation(compressed: data, key: LottieAnimationEntryKey(key: .bundle("edit_canvas_drag_\(animation.path)"), size: size), type: animation.kind == .webm ? .webm : .lottie, cachePurpose: .none))
+                return
+            }
+            let sticker = EditImageCanvasEntity.Sticker(image: pick.image, baseSize: pick.image.size, fileId: pick.fileId, animation: animation)
+            let animator = EditImageCanvasStickerAnimator()
+            animator.updated = { [weak view] images in
+                if let image = images.values.first {
+                    view?.image = image
+                }
+            }
+            animator.update(entities: [EditImageCanvasEntity(content: .sticker(sticker), position: .zero, referenceSize: pick.image.size)])
+            animator.isActive = true
+            stickerDragAnimator = animator
+        case .ended:
+            stickerDragAnimator = nil
+            stickerDragPlayerDisposable.set(nil)
+            stickerDragPlayer = nil
+            stickerDragImageSize = nil
+            stickerDragView?.removeFromSuperview()
+            stickerDragView = nil
+        case let .dropped(pick, point):
+            guard !isStickerDragCancelled, !isClosing, let position = stickerDropPosition(point) else {
+                return
+            }
+            if state.editingEntityId != nil {
+                finishTextEditing(commit: true)
+            }
+            addSticker(pick.image, fileId: pick.fileId, animation: pick.animation, position: position)
+            stickerPicker?.close()
+        }
     }
 
     private enum ShapeKind {
@@ -462,8 +584,11 @@ public final class EditImageCanvasController : ModalViewController {
         if state.editingEntityId != nil {
             finishTextEditing(commit: true)
         }
+        isStickerDragCancelled = false
         stickerPicker?.show(for: control, select: { [weak self] pick in
-            self?.addSticker(pick.image, fileId: pick.fileId)
+            self?.addSticker(pick.image, fileId: pick.fileId, animation: pick.animation)
+        }, drag: { [weak self] drag in
+            self?.updateStickerDrag(drag)
         })
     }
 
@@ -971,6 +1096,7 @@ public final class EditImageCanvasController : ModalViewController {
 
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        cancelStickerDrag()
         stickerPicker?.close()
         window?.removeAllHandlers(for: self)
     }

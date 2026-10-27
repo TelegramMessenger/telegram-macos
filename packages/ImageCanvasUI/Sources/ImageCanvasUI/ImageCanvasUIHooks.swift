@@ -5,15 +5,24 @@ import TelegramContext
 public struct EditImageCanvasStickerPick {
     public let image: CGImage
     public let fileId: Int64?
-    public init(image: CGImage, fileId: Int64?) {
+    public let animation: EditImageCanvasStickerAnimation?
+    public init(image: CGImage, fileId: Int64?, animation: EditImageCanvasStickerAnimation? = nil) {
         self.image = image
         self.fileId = fileId
+        self.animation = animation
     }
+}
+
+public enum EditImageCanvasStickerDrag {
+    case moved(CGImage?, NSPoint)
+    case preview(EditImageCanvasStickerPick)
+    case ended
+    case dropped(EditImageCanvasStickerPick, NSPoint)
 }
 
 public protocol EditImageCanvasStickerPicker: AnyObject {
     var visibilityChanged: ((Bool) -> Void)? { get set }
-    func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void)
+    func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void, drag: @escaping (EditImageCanvasStickerDrag) -> Void)
     func close()
 }
 

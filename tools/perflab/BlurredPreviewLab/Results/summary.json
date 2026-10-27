@@ -1,0 +1,1401 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "repetitions": 12,
+  "iterations": 100,
+  "measurements": 288,
+  "order": "Alternating baseline/current and current/baseline; a fresh process for each variant/workload/repetition.",
+  "scope": "Real complete TGUIKit, native DrawingContext, FastBlur, CoreGraphics and the production CGImage extension. Opaque generated image fixtures, no camera capture, video decoding or Telegram account/UI.",
+  "memory": "getrusage.ru_maxrss is the whole-process RSS high-water mark, including fixture creation and warmup; task_vm_info.phys_footprint is sampled after warmup and the measured loop. Native bitmap budget tests separately record DrawingContext.length.",
+  "binary_sha256": "eb21a183e82b7c7c40f44fb80d068f1179e949412601dae798c17cf7a08f55ef",
+  "provenance": {
+    "baseline": "deffa9c1926317a9d66a0d41bd9b1de8fcb7ca7d",
+    "production_file": "packages/TelegramMediaUtils/Sources/TelegramMediaUtils/CGImageExtensions.swift",
+    "production_sha256": "41fe8571260b182a369f90275f102fa4b9af893eb9278158867dadd3c2c31cbc",
+    "reference_sha256": "b027406c1bb49785c37fc74f158cff81e295f3c42b4cc57fdd8800d5b205f9fb",
+    "dependencies_sha256": {
+      "packages/TGUIKit/.gitignore": "1eccc11b08e13de00d15452b1a4b2a4fed318ad0f8c60b87c31684f787115f40",
+      "packages/TGUIKit/Package.swift": "1436c0314bdcbe6a631563fcbdd31684314922b79f7bc5bff6a6842f5958c4f4",
+      "packages/TGUIKit/Sources/AnimatableContentObserver.swift": "e240eec2996d7b266f1bb7d53c2415c2da89f57887d2ddd83b15a1fceb48b95f",
+      "packages/TGUIKit/Sources/AnimatableProperty.swift": "f3148f671f274e88804fb3de53791bb4961316e78ea57b10edb6704cef9a06ed",
+      "packages/TGUIKit/Sources/AnimationStyle.swift": "2dca9f761b30be4ac68c0f19f166a2069c260e6db41b97c3132dff8d60782783",
+      "packages/TGUIKit/Sources/AppKitExtensions.swift": "da3a48f1e635efb1a2e472fa7f354487e224db868a4754e03e10b54dcc6d8a9b",
+      "packages/TGUIKit/Sources/AppMenu.swift": "f39f84cd92f62ffd7e05bde9498139b9dbdd62c2ed1a521195de70599731f79b",
+      "packages/TGUIKit/Sources/AppMenuController.swift": "39945da394b53b27ffe7232f59adb2bc9ce4857e0c366de2baacde4427f0a267",
+      "packages/TGUIKit/Sources/AppMenuRowItem.swift": "6b792c8e9ce0af566db521f7d14bb73c45598d1cc462e7545df646a960331b3e",
+      "packages/TGUIKit/Sources/ApplyMergedRows.swift": "97b1516159d3b8a574afdbb4a519db76e2fa19404f5e2c9009764a2ece90e187",
+      "packages/TGUIKit/Sources/AvatarPlaceholder.swift": "fc68c7b55b8767bfab78b46aaa83e9c0cdf5b9d87d427edd92baacfa3bb2978b",
+      "packages/TGUIKit/Sources/BackNavigationBar.swift": "134573c42be707b81044b73d9d79896282f66f9a9bbb0435dbc23f75e998f603",
+      "packages/TGUIKit/Sources/BadgeNode.swift": "e895d71ffd79276532b67ac077ccfd8d85a4e8acbd92f1b1769c1b91268ff8f0",
+      "packages/TGUIKit/Sources/BarView.swift": "e0a8e610f2589064773789bfbcef7244d34bdf2d0e6c879b83f095ede6e2fb27",
+      "packages/TGUIKit/Sources/BaseTextView.swift": "73c7cab1811c5235661c6353a7c5a89945379b3319fe5ef6d55df257dccf4754",
+      "packages/TGUIKit/Sources/BlobPoints.swift": "fc4d39e546f87983a2660af7530d52b4346c33c687dfbcf8cedf2f7f08444996",
+      "packages/TGUIKit/Sources/BlockQuoteLine.swift": "03e8002da04f505e3e16f73d85d0b21fb9990a27e09f12fd7dc265e243ed5239",
+      "packages/TGUIKit/Sources/BlurEdgeView.swift": "410b045335c97c3c44b67b89b17a5f5fd4bb8fa8250b275b8b2b474f493e332c",
+      "packages/TGUIKit/Sources/BubbleCornersPath.swift": "05ed7487bc9174cbd1990c69dfaa86187457abd2a8705e3acb206730741a0fb4",
+      "packages/TGUIKit/Sources/Button.swift": "d0fd55e3dac29435102706577c937efcf0860a72457b1f8f80c7848b7be6d669",
+      "packages/TGUIKit/Sources/CAAnimationUtils.swift": "d23eb01ea60c4160fc2b8d2737dc66d475306caec837e2bdbf8de86c2f7c133d",
+      "packages/TGUIKit/Sources/CGGradient+EvenlySpaced.swift": "1de106501b6eaa68622822c23ee228d45d78863c18b358f3b7b357249a451c7d",
+      "packages/TGUIKit/Sources/CGImageData.swift": "d9356559f0c2b5f1dc66409f970dfd91a701c40e85ecdba9ec7fc2ce50737cfc",
+      "packages/TGUIKit/Sources/CallReceptionControl.swift": "a74bfcd6b6da47a4b97d34fabd07e73562d29aee44c046f71a0a26a9894bfeea",
+      "packages/TGUIKit/Sources/CatalinaStyledSegmentController.swift": "8ef3d6dd52e5359aea10d580a423cccb52a6c850a1b6c44cd1abb28ae155fbae",
+      "packages/TGUIKit/Sources/CodeEntryControl.swift": "c3f9ab02d093a44b45d33b68f8d43cd97574cbdca5564dd29f8aa51be7370e43",
+      "packages/TGUIKit/Sources/ColorSwatchView.swift": "8f0daa33aa2d585974752811115606cd41aabf20709b0eed1bbd2cb61691a340",
+      "packages/TGUIKit/Sources/ContainableController.swift": "5456a72ac5e677d517e73c652cec1060dcc74534aa2e1eb0f079ce7503b2dcf7",
+      "packages/TGUIKit/Sources/ContentParticle.swift": "e182396a092dfb699fec515c692feda34538efcbfe68edb316f51e497d908f6b",
+      "packages/TGUIKit/Sources/ContextMenu.swift": "1a81ce5ef4f753e6498f71a646f4d0a66c5ebcae8ca5703c388f702e36396212",
+      "packages/TGUIKit/Sources/Control.swift": "39e9b768c803f4979e4f6ab535c1aef66890a4ea8465cd02823f81c1407cfe23",
+      "packages/TGUIKit/Sources/CounterView.swift": "e1259acf21fb0a2928d5c8bbc645ade7e85a8ab2aa638e1454823be8026a1cb6",
+      "packages/TGUIKit/Sources/DatePicker.swift": "49008762984a9069fae4c5f41400f85dd1829aa642a1718fa5eb3b8ec64c5e7e",
+      "packages/TGUIKit/Sources/DisplayLinkAnimator.swift": "8ae089c8e9ece6ee17a48cc21ed2ab0a9c82a72fd80122371ec819082ec792c3",
+      "packages/TGUIKit/Sources/DraggingView.swift": "e9b5c0448fddcaad1d350fc8c77b7c0edae999cd1777c55f48792ad5c59d4cbe",
+      "packages/TGUIKit/Sources/DrawBackgroundMode.swift": "b652a8b01e3625a05e3edabcfcc94ac3e93752e9afe90df03fac5ed2a7b31a44",
+      "packages/TGUIKit/Sources/DrawSquareMarker.swift": "421f55ec68ab078b3afc95c0c99631cf9549ebae82df82f6a977f04402fb5a8c",
+      "packages/TGUIKit/Sources/DrawingContext.swift": "804d2490d5c8cce9bf3c3147a9584e0441a97ec10258a9d9e6dfc2eeb996fda8",
+      "packages/TGUIKit/Sources/DynamicCounterTextView.swift": "c62dd0872a0e3a0a7ac74c0f664c63a6c93e14315ed51172cedb2c0e20e8bd00",
+      "packages/TGUIKit/Sources/EdgeEffectView.swift": "2712f1fb1fc7898f1e7a7bdc393d28d3eee333260f81473ea0fd47a9b5785e25",
+      "packages/TGUIKit/Sources/EmojiFitzModifier.swift": "1cb5ba9f99385c62c895a6aba4746a4904622c8db1409963f338bacc8b16b53c",
+      "packages/TGUIKit/Sources/Extensions.swift": "ae6c1b067d8f194cb3a5d5a4b62bc88721fbd956d9e42c87a27373735f7f5da8",
+      "packages/TGUIKit/Sources/FilledCircleImage.swift": "62150385c831927d1f5b1e8aa78ccc0d476b585d9f346f6ef0bb017df15c9f15",
+      "packages/TGUIKit/Sources/FireTimerControl.swift": "abdffe5979240b1a7318a3453e264e274b6cb62def629f2cce018ce63d2cbf22",
+      "packages/TGUIKit/Sources/FlippedGlassEffectContainerView.swift": "4019dd3e96403e284746e790f1ad90e05e5c9b5f6c6db0a920f26aa691867e86",
+      "packages/TGUIKit/Sources/GenerateSvgThumb.swift": "45f04f89c0daa4ed6089ee0ffe839e0d03e8ea8b01b74cf580363f0be13160c4",
+      "packages/TGUIKit/Sources/GlassContainerView.swift": "b8fd0fdc4d6b9f8769936e895f6f02032eb4837b70eacab1e11e43776a60992c",
+      "packages/TGUIKit/Sources/GlassSegmentView.swift": "23ec1c22a3e9d84a888c94ae729a9202d8e808a57caeed887565271d7e1cbc01",
+      "packages/TGUIKit/Sources/GlassTouchEffect.swift": "6a1655e45e5fc3b4f848adc010262afd1aab23ee6b3c2d2c26ebb131f6786447",
+      "packages/TGUIKit/Sources/HorizontalRowView.swift": "bf6544e68b82466bbb9d94c261b285ce0c65ca9f10811a75fb95de8af0e43752",
+      "packages/TGUIKit/Sources/HorizontalScrollView.swift": "307b48a27dcec1494cf000f30952374c1151260736a1a24d2d2136e28046ab28",
+      "packages/TGUIKit/Sources/HorizontalSliderControl.swift": "b2add3f1812a9f78cc120d3dabcd3861e290a4523587c6fff08aacebb7caee6a",
+      "packages/TGUIKit/Sources/HorizontalTableView.swift": "b4534d19929a748a24e5e8329bf7dafd1401b305dd2279cae7304f3caa414028",
+      "packages/TGUIKit/Sources/Image.swift": "a63091c3c74509aca36ca3142b84ef870189e42402445546c4169a77517aed74",
+      "packages/TGUIKit/Sources/ImageBarView.swift": "91ec8850a3b0d21a39b2342bc78ba4157f4ce24716bafbcb80f0e2331bbe8272",
+      "packages/TGUIKit/Sources/ImageButton.swift": "c3ade4b900ce69a6bb1b302065c10e2866469fc2efe4ede74fc329ea8dcd8d3e",
+      "packages/TGUIKit/Sources/ImageDrawing.swift": "6785315c2894c44ab29944a95765f00b66e9e780149883d7910e10b90da92005",
+      "packages/TGUIKit/Sources/ImageTransparency.swift": "a1eea68bcbf02a8110c934a1d87b0ea5e5f96dc8c131cfec4c2a4121318e8e74",
+      "packages/TGUIKit/Sources/ImageView.swift": "ed5befd9d5fe7d2fb6e578a8ef8eae9515e825955cc8f654a1282600cb4d7ca1",
+      "packages/TGUIKit/Sources/InfiniteProgressView.swift": "803da143cb2196dcfdf21be38464784a064020bf275f9dd25c5b6fba864790ac",
+      "packages/TGUIKit/Sources/InterfaceObserver.swift": "e9b643baa4b695e15468a42643d65a42b5f30d5daa92d02d286c7a00c8f95b68",
+      "packages/TGUIKit/Sources/InternalBattery.swift": "c39fc3fea7a2a7e3a79482ba2b68954fc97737ec87c121b22cec7ca85dd195aa",
+      "packages/TGUIKit/Sources/InternalFinder.swift": "f9f4e15e21cdf965db5836e2eb7649a625a6ff5dd696687550ff467822e2fd19",
+      "packages/TGUIKit/Sources/InvalidFrameDetector.swift": "b741cb021164ed67712d6144a1da7a77855dc09194efc390d381f09a32a01f37",
+      "packages/TGUIKit/Sources/InvisibleInkDustView.swift": "1a1cf38250fab1d4a995b40bd14c9dabac21b27d900119e6f00c4800a0748720",
+      "packages/TGUIKit/Sources/Layer.swift": "c81fe75fa815f4e923bc3d1fb6bc92f638a6191a6aa69083c996f484992d5a3f",
+      "packages/TGUIKit/Sources/LayerPlaybackGate.swift": "551ac4a83becaef4805bc37eb694af9b151e595f5c9afb7141fefff512804d0c",
+      "packages/TGUIKit/Sources/LinearProgressControl.swift": "8275281b5a5f8c170e3e76a84c02ec0e1c3a3f99ca7451986a396eeb91cc7c89",
+      "packages/TGUIKit/Sources/LiquidGlassView.swift": "e28a6422d50cdf589813ec67ac76d50a28beaa80bdbe8a1c7a5575f0b63b8522",
+      "packages/TGUIKit/Sources/LoginErrorStateView.swift": "ef17c6d28f0a33fcf0f23b3422032f69273f6bc116c12485e3b279f9ef2f424c",
+      "packages/TGUIKit/Sources/MagnifyView.swift": "a37dc1e982e9b6f00f2dd8507cd88fca502c08045997b6d31c9c57f91b3f89ec",
+      "packages/TGUIKit/Sources/MajorNavigationController.swift": "b0d39c956bfc25b0f9be12250fba9efdcb6c08299730e88a07576f8a639ef205",
+      "packages/TGUIKit/Sources/Markdown.swift": "5fe365c1a547cdfdbca69e406b0e89eda49ffb76b6f7ecb25aa94a45bd0df37c",
+      "packages/TGUIKit/Sources/MergeLists.swift": "80916df48e2ba882e911d90306f96e6c96485217bc6ed8dd1524262860e9582a",
+      "packages/TGUIKit/Sources/Modal.swift": "a1a3161a7d05720cd2153503f93bbdc269b86c60f7cfbebce9378e8d48ce92a3",
+      "packages/TGUIKit/Sources/ModalMorphTransition.swift": "ae252f8edaf750b8a319b84d1fa1e0f23a86e7b20b1917f70b14f466a3a5e614",
+      "packages/TGUIKit/Sources/NavigationBarView.swift": "9584d3e894a40cf1fad0cb6c5119789b637a1a995f32249466b819e6bbc888c0",
+      "packages/TGUIKit/Sources/NavigationModalAction.swift": "6de6d377775c99e98a6fecc0d18f74667bcbffe312cb9bf3050acc0b4d7c13d0",
+      "packages/TGUIKit/Sources/NavigationModalView.swift": "188bf7fca2f66e16a2a834efa71649f0bb317f7f910b0d76e7f6638b1a3c81e5",
+      "packages/TGUIKit/Sources/NavigationViewController.swift": "af96bff660fc9ef71f5c3968a94ef6fb59c1cb80acb2f7938a3af07da02f2a5d",
+      "packages/TGUIKit/Sources/NinePathImage.swift": "31e708836a31b84c3536f08b4e7f9dc318ccc2acc97a01fa96c667e5f623e0e4",
+      "packages/TGUIKit/Sources/Node.swift": "c2cec501710cb53c24b7bad53ff5f25232042d68a9be3dd9cfc668be23cfdbd5",
+      "packages/TGUIKit/Sources/OpticalCenter.swift": "83b7f838175ce1c300b3f856f98709d83e40085c3f52bbf9ae455770ba071542",
+      "packages/TGUIKit/Sources/OptionsListView.swift": "e0cea5c5c42d7cf298d086bc4fd04db837d131ca053a2005316c1e1945e49650",
+      "packages/TGUIKit/Sources/OverlayControl.swift": "d38dddac78205412b722fb35682848606ed095ffa881cd4b522241e4439b9538",
+      "packages/TGUIKit/Sources/ParabollicAnimation.swift": "b381a1990157830f6943375dd2f4a37471b4061f701bd4d05266f4d35d585cad",
+      "packages/TGUIKit/Sources/Pasteboard.swift": "a214e4a144c3597519d975643bcc13760613353ec839d34091c95ca562605307",
+      "packages/TGUIKit/Sources/PathDataReader.swift": "cbf93409ad3fc5cac7c6b42ee74f8672e4c7f414f7f6416baeeaeabc6ca96a91",
+      "packages/TGUIKit/Sources/PeerMediaIconSize.swift": "28c15eaddcfb19ec0765f71d4e96a9adcd2bfe85b4029670521a580ca8691bb7",
+      "packages/TGUIKit/Sources/PeerMediaPlayerAnimationView.swift": "b867df10a20020734e732305995a1fc2e4bafdb4ebda2d96cfe227c14b6ebeec",
+      "packages/TGUIKit/Sources/PieChart.swift": "1193f21e42bf5276fb67b8caf8aa2f14f06591ab825f1b56d8de128e51da4eb9",
+      "packages/TGUIKit/Sources/PinchToZoom.swift": "650d16ce3c79592118c782df056c97a0bec268b0570865b003dc0edf7029b952",
+      "packages/TGUIKit/Sources/PlaybackRateImage.swift": "34be184096a158c379d03f43599dd784f0d0a993ef8a6eca6c57e0849d8a1570",
+      "packages/TGUIKit/Sources/PollTimerView.swift": "989353ea4f2451327897419d00219de162945a60c94c5441abac5115dff558e1",
+      "packages/TGUIKit/Sources/Popover.swift": "5195f0c73ef0280bbfb5e81ef9478ef9c2016effb544dcb8cfe00fe5aad3e41e",
+      "packages/TGUIKit/Sources/PresentationResourceCache.swift": "09062b3757af34db6472c5f6bdfb0051f9d1e70ba8a9cf0d93517cc59f7ec008",
+      "packages/TGUIKit/Sources/PresentationTheme.swift": "9467d684e353476232244944245b82f31e3bd566cb5728d9effa4bf2b1f73490",
+      "packages/TGUIKit/Sources/ProgressIndicator.swift": "4a526201c0723acdce1e6a49903ce9530d64bfdfeee715e0bd1bff4052f9fc2b",
+      "packages/TGUIKit/Sources/ProgressModal.swift": "bf73fdce69ed5a5ba2d3231b9b14dac3afce2f74120f8dba6707dc1f0339d4a2",
+      "packages/TGUIKit/Sources/RadialGradientView.swift": "84948b40c16ff14c7e6e6e8177df4218a8f9ee525051e004505840e38091dee9",
+      "packages/TGUIKit/Sources/RadialProgressContainerView.swift": "8b7b271654dc1743e6d1ecfc84cfcc0e5cfd0548c12c41fb927a6e035768a460",
+      "packages/TGUIKit/Sources/RadialProgressView.swift": "942ca6acc9479f76eaa0ebe1b19157370a2090c5b7f49eb91508c2c673fb19bc",
+      "packages/TGUIKit/Sources/RemainingTableHeight.swift": "2f2c8057f3a1d02decde864ae424a7c683b156444420cb07816de7e8a5fefa01",
+      "packages/TGUIKit/Sources/SImageView.swift": "3d7f3d054fcfb9d5a07319b18bbed438095b966d5cbd7a383b615f80233409e4",
+      "packages/TGUIKit/Sources/SPopoverRowItem.swift": "caebe1cd514f34b2955da5ed0adda0b8792c4be659e1fa77dd48987cfc87be46",
+      "packages/TGUIKit/Sources/SPopoverViewController.swift": "a95e5b9c3b390e1303e5e4f074f520d92a77b3fd0ba5a83dff8bd03f2ed23f95",
+      "packages/TGUIKit/Sources/ScopedImageCache.swift": "bb94b484517a12575ddd74f00bd9b28d0426b1a1f9a3cf4856bbf21e862bdc37",
+      "packages/TGUIKit/Sources/ScreenSleepAssertion.swift": "a515e9221608c83be61257f74cf726aab8adbdfd1713af3185fe1b770a9ea73d",
+      "packages/TGUIKit/Sources/ScrollView.swift": "57887a8bed17725b1a6a666b896677ed619e0321028f8916db231fdf84366617",
+      "packages/TGUIKit/Sources/ScrollableSegmentView.swift": "b226ee595d421ecf14bcf117824b312b1f2a18a3d1b50e90f1f7758e162c56c7",
+      "packages/TGUIKit/Sources/SearchUtils.swift": "a4c0ac69c46afcdc77f5233d5b10b0c1e5a70012c7313db7f9f98b61f74c0a83",
+      "packages/TGUIKit/Sources/SearchView.swift": "e3ff633059874fc2d24b6f042be33ff8d44eb0e6758710234791b19ecb12a918",
+      "packages/TGUIKit/Sources/SectionViewController.swift": "6422df4810e45269d4815c4c5a2074285799f51bf06aa06e1448b10b56b57540",
+      "packages/TGUIKit/Sources/SelectingControl.swift": "7d29a69cba513562543de221fe6d1a56e8d500ea323af0adc6eb4c9a5cff128c",
+      "packages/TGUIKit/Sources/SelectionRectView.swift": "e01b868331d53f6e928f6d6f53e2b4e8a79d22ed8135304a4b600f46aec38c91",
+      "packages/TGUIKit/Sources/SeparatorView.swift": "3142f3a69afece8fc990142a67933fa294726c7d843a26b7c0825dc13df7a4c2",
+      "packages/TGUIKit/Sources/ShadowView.swift": "588ad5378300c93fbc3aad9664fd7fcc5b12d9361f4d3cd6753bec528ef1ac01",
+      "packages/TGUIKit/Sources/ShimmerEffect.swift": "79f1e3ad252d32f46c874af9b2f8eb10b4c60c28c2aa4bd282a7e07f974481e6",
+      "packages/TGUIKit/Sources/ShimmerLayer.swift": "eca28daeb1d5741393eb0903ad47cfbb0cbcc5dd276848998aee4b86c77f7f70",
+      "packages/TGUIKit/Sources/ShimmerTooltipView.swift": "b6db39bcd244c3a2b044c24851b620abd723ceed8663333cbdf6d6f9adc922a8",
+      "packages/TGUIKit/Sources/SimpleLayer.swift": "e850bbbcf0501d6367201517d7a66f6ff4c35a806de78b46ac5ca6bc084b991d",
+      "packages/TGUIKit/Sources/SliderView.swift": "f134bd0d72f7941ee9c6776d39c4e18cefec0410fe7a25474af437daafbcd0da",
+      "packages/TGUIKit/Sources/SoftwareGradientBackground.swift": "5b8a13d68914ace5c0d838c8021ac4bd15bbb03bd39bc21856e29ff2b0f0e89a",
+      "packages/TGUIKit/Sources/SpinningProgressView.swift": "be234bbb2f1382edabc0584afe65751fb490b06373d7c40022bf3b40e22525fe",
+      "packages/TGUIKit/Sources/StackedBarView.swift": "840110f70d7d2adc7c642f07df15685ecc54c79b8d2db23930a1292085964874",
+      "packages/TGUIKit/Sources/StickerShimmerEffectView.swift": "d310ce6d6fa061dc45a11fd2399f3b591ca8fdd41b3a8f373178055128ada8f3",
+      "packages/TGUIKit/Sources/StickerThumbnailPath.swift": "7ee8c39b58067d25de018c0634e06c9a955b6e730980315e46a64a7ddacc69fc",
+      "packages/TGUIKit/Sources/Style.swift": "85930445668abbe80555d7f14c50510fa01ba95ba043386c722b6891c1ac35da",
+      "packages/TGUIKit/Sources/SwitchView.swift": "9b00c8d7d9564d2fc738e7bb201250d5c2568cc49f1982bebabb6d0232340ecf",
+      "packages/TGUIKit/Sources/System.swift": "5fe5be07df65e27e16ead2e39c24bcbb0295932913e3fc26eee01c6d5a593725",
+      "packages/TGUIKit/Sources/TGClipView.swift": "c223122e5b21b184ce87c36f34d56d6778fd3563c435becf15d21a02e423f9ac",
+      "packages/TGUIKit/Sources/TGColor.swift": "d989d8f3c0a24c85fcef05118f2d167515762da4d7f90df65f0ee1bd78ec7ae1",
+      "packages/TGUIKit/Sources/TGFont.swift": "5799cb368165d840ad44f7d349e95cbe0845827ebb86e739f757ffc40a668de3",
+      "packages/TGUIKit/Sources/TGSplitView.swift": "d591000de0fc962c0bfaeebab3b5ddc3bbe8274bd3edfb8fef63f00f301535ad",
+      "packages/TGUIKit/Sources/TGUIKit.swift": "e63bef442b49b49024308966906d586e1d14394109908122c1f6437e10c75c11",
+      "packages/TGUIKit/Sources/TGUIKitAccessibility.swift": "0651ac8810efb9a7f3cf3565559c5dbbf505f085c4bdf47697670bce39e51247",
+      "packages/TGUIKit/Sources/TabBarController.swift": "827f63e3130042a5332c7758d6883bd9fb960a0770f1c7a3f7e97217fa4a3851",
+      "packages/TGUIKit/Sources/TabBarView.swift": "d688b5eb0f77e7789ac7e3c1dce49a40478781aedd2a4225622ff4430324488d",
+      "packages/TGUIKit/Sources/TabItem.swift": "0a5b4d4e03769e0e292ddba157560a86cab2896371f01b58c72facebefdbc399",
+      "packages/TGUIKit/Sources/TableAnimationInterface.swift": "e2ba0aa91e4ab5ec246cd8436795e7e46e2511631782b767c3b591da1a4dc391",
+      "packages/TGUIKit/Sources/TableRowItem.swift": "018c71b98f124ac28da4a8c76382200916e3fd42c3995ba733b1ae87848440eb",
+      "packages/TGUIKit/Sources/TableRowResizeAnchor.swift": "b5faece3e8819dc5e8b838de6917edbbe3d1bbe17d9c3298cad8e6c4a6250c76",
+      "packages/TGUIKit/Sources/TableRowView.swift": "60961ba328de070eae2a743073139d9db430f3002a84378c852426dfda58c3c9",
+      "packages/TGUIKit/Sources/TableStickItem.swift": "590c6e5f0616146ddf41d6f29e79e3635f6cdbdb5e560b7da6b675179d4b351e",
+      "packages/TGUIKit/Sources/TableStickView.swift": "dae907ddebb587896ec550181c2346c55a6938d99abeaf65dcc13bfe83ab247d",
+      "packages/TGUIKit/Sources/TableView.swift": "1139f75c12843999d94dbf884d70a33ad0a1f92469c9731f2d75225efe7a7259",
+      "packages/TGUIKit/Sources/TextButtonBarView.swift": "3b80e565d4f58392c6059347756790381fc0ab9f08f906e6a497e17bf7c81e56",
+      "packages/TGUIKit/Sources/TextFieldAccessibility.swift": "4b7f854011cb26b8de29c143b8c4819d4bcade9b34599cae4888c1512247e1c1",
+      "packages/TGUIKit/Sources/TextIconBadge.swift": "42cb6ea445ee4938eed1b23609dbfc157496b9b84ba7e776a0e180978adf76e6",
+      "packages/TGUIKit/Sources/TextLabelNode.swift": "a20bbe87c6f909af0c152f718220dcfafc94ef3a20c04b230f07b1e509298d85",
+      "packages/TGUIKit/Sources/TextNode.swift": "9c7c9023c346750b5ea9157af4849c9765f7e771e7c29597cad4c273e7f7ac29",
+      "packages/TGUIKit/Sources/TextRunDrawing.swift": "fc8be08c9252ecdafd18f1ff53681fb7fe766dd2034b07935c50e8a49ea02a04",
+      "packages/TGUIKit/Sources/TextView.swift": "edc4d009cbbd17e2cb9ce2f7bfcfab14ceddda29cd3db3fffdb9c0d0768f43db",
+      "packages/TGUIKit/Sources/TextViewLabel.swift": "2f1ecd9d28d4873ca55007341688a60798df43aa1c55e975a2d4790d6198d6eb",
+      "packages/TGUIKit/Sources/TextViewPreparedText.swift": "fd2e05bf11771dbd7002e6f55f4ea1b6038d76f64c900e7e15c6729d32f29ce9",
+      "packages/TGUIKit/Sources/TimableProgressView.swift": "f2048b7893e3695222d4b1eb05fd72d19d92d39f84f8b91f7456758a5e47dd40",
+      "packages/TGUIKit/Sources/TitleButton.swift": "57944c257ecad9e4fb77b57f7bc9becc6152dc05c9ff3a51396f195b510ecf2a",
+      "packages/TGUIKit/Sources/TitledBarView.swift": "7cd964ad5ab056755df9f711fa224b90db64f1a92a0ff790ec1ced170a944cd0",
+      "packages/TGUIKit/Sources/TokenizedView.swift": "cbb1b2ebc302d69c95b08e193be6338663556319fb6124d46d81d425eb9c310a",
+      "packages/TGUIKit/Sources/TooltipController.swift": "698cb4fa7dcdb5f4861b41348f2caebc8a1f136a4f3b95bc99be9f1d7a7a5b66",
+      "packages/TGUIKit/Sources/TransactionHandler.swift": "7d0a4af721e40ed3536bad05a7a1058f8e3cda994758a52a6e4373ecf235b43b",
+      "packages/TGUIKit/Sources/TransformImageArguments.swift": "f856f8199b917a69c4a9e9a6d8c51b83343584f1c293890074524ab8f3f3bc6b",
+      "packages/TGUIKit/Sources/TransformImageView.swift": "2862c4635e0201b08ab36e58b6c781d277a36bdb3e44fcd9242fcd85d7066fef",
+      "packages/TGUIKit/Sources/UIUtils.swift": "d16bdf6165add62ff79c882c2b8e12b1b93367252f3009bac7afae8f6129f4ce",
+      "packages/TGUIKit/Sources/VerticalParticleListControl.swift": "9cb987b6dd170560a99a32fafa945fda3ef37a551eefc88235508fd4b3ebc5f8",
+      "packages/TGUIKit/Sources/View.swift": "482adf707da6de6e5480aed31ed0480b080682e144433776a48941e6f64ed1d1",
+      "packages/TGUIKit/Sources/ViewController.swift": "92d2cc572cfe339f4e0c51aa649f21103d6ed1ac159332a90e1523d70b030ecb",
+      "packages/TGUIKit/Sources/VisualEffectView.swift": "5a00d31a1d1a746f42500bb36ee27c3b00819b4336666a6fc258143639c7df84",
+      "packages/TGUIKit/Sources/VoiceBlobView.swift": "c2bb4d1df89bdaf3fc8e0cf68e0a5a129420f33e1b8e827bb84270374f2521d6",
+      "packages/TGUIKit/Sources/VolumeControllerPopover.swift": "2b477bd71d19e70155bb5f079f5855a936275bd4ba57519d6d5cc66e1eae13e9",
+      "packages/TGUIKit/Sources/VolumeMenuItemView.swift": "fdcd7151451f957310c73c4a08a94544478ef17c34812c1b8331b833896af30c",
+      "packages/TGUIKit/Sources/WallpaperColorPicker.swift": "4f4c7e1b8916ad9ff0c281baa2ef34ef92fe3c47a57d41b7ceb69078d20bae5f",
+      "packages/TGUIKit/Sources/WeakReference.swift": "cf96b35a8957073541439b51c91a2b211fda9fefe91c182453d78ebd61094dbe",
+      "packages/TGUIKit/Sources/WeakScriptMessageHandler.swift": "14dc3108c64688fc3ef2b08f84226d7101e68be39e8584311732e083aa36e438",
+      "packages/TGUIKit/Sources/WeatherFormat.swift": "39092b7a141204b519d08a7449eab962ad3b09f371a1a5bd22d4a80cda323dc9",
+      "packages/TGUIKit/Sources/Window.swift": "d6b2047bcad607520921c83df160dfb4219072a6fa46ab6c70fd69fe29e2be3b",
+      "packages/TGUIKit/Sources/WindowAttachment.swift": "e39ac81dba6fc3581e50b3446fadc658ff2e4a2f12768f9502a15ddb04aca1e4",
+      "packages/TGUIKit/Sources/WindowSaver.swift": "ee7aeba61d7db7ce3e5c544d1f75ae55e172082ed25f8b4e582a88e6b722078c",
+      "packages/TGUIKit/Sources/XAttr.swift": "00e39a226d527735e60b0a136a4b9c87c08c29505c5f17bbb7b87913d5b05d58",
+      "packages/TGUIKit/Tests/TGUIKitTests/AccessibilityBaseTests.swift": "0639b916ced0b31e6cf9ecaf953b95111613c119251ef7ccdc9eea49fb8acd17",
+      "packages/TGUIKit/Tests/TGUIKitTests/AccessibilityRowParentTests.swift": "c34f7788117a7b7104b0d1b2402161c632edc8f46aa9aec1a2dfcc47e2226495",
+      "packages/TGUIKit/Tests/TGUIKitTests/AccessibilityTableReproTests.swift": "4973d5deb225a33702012e56fd7474048165d6a94727553b5ca1b14d947acd72",
+      "packages/TGUIKit/Tests/TGUIKitTests/AnimatableContentObserverTests.swift": "11559ca02bf80338cdf02cfe1760fba8e31698522b67a09992e949f566dc9856",
+      "packages/TGUIKit/Tests/TGUIKitTests/AnimationObserverLifecycleTests.swift": "27c7933443cf63e52686305ef9d83950818d7bceeed531f5d75d17a4800e8226",
+      "packages/TGUIKit/Tests/TGUIKitTests/AnimationObserverWorkBenchmarkTests.swift": "5a63f6cc7124882fe131009a040cc0f273a8dddaa16f13947fb9ad5378f805fc",
+      "packages/TGUIKit/Tests/TGUIKitTests/AnimationObserverWorkTests.swift": "40e6c4dd32cfc6d874bb29d3185c533960d1dcfdef00cc5ad28cf63ec2df46e5",
+      "packages/TGUIKit/Tests/TGUIKitTests/AppMenuBubbleAnimationTests.swift": "b7403a6f07747bc6425efbb36dc8980348461c14e306c0886b50186c0965919a",
+      "packages/TGUIKit/Tests/TGUIKitTests/BaselineCompactObserver.swift": "080434a8467465d72bf54e12e05014783fbeb5dc060fc2d85281d8bc0c2077d2",
+      "packages/TGUIKit/Tests/TGUIKitTests/ControlHoverBenchmarkTests.swift": "f528712af70d7758da649f33d7f82a18d15a4f481fc0f073f20d1703bc217648",
+      "packages/TGUIKit/Tests/TGUIKitTests/ControlHoverTests.swift": "d748d948ee383625efc388cfe120b73ed10a8fa4e5c52391410c340e62d1cbf2",
+      "packages/TGUIKit/Tests/TGUIKitTests/ControlStateApplyTests.swift": "0a93fc078c9b706a2480686a12e5eab23e371c0a7db4d8b8d532dd8addd9d503",
+      "packages/TGUIKit/Tests/TGUIKitTests/DeferredInteractionTests.swift": "4aaa7ff2e6a64b2f8513db8474eafdffdecea236702b9f3adb5c475923895907",
+      "packages/TGUIKit/Tests/TGUIKitTests/DisplayLinkRateTests.swift": "cdfbfbccafd0169a70d8b31d5f165d7a6e484447b86705dd8e7ffe178af4eed0",
+      "packages/TGUIKit/Tests/TGUIKitTests/GradientBackgroundTests.swift": "d090d16d74ada26f83eab515a8db899ca4fd298ec7e2d6499e2dfbd1c99b7aae",
+      "packages/TGUIKit/Tests/TGUIKitTests/ImageAlphaAnalysisTests.swift": "22dfcef37fa62343cea1be787a521c098b7b61c839c244d4468635d731b5e1ce",
+      "packages/TGUIKit/Tests/TGUIKitTests/ImageButtonTreeTests.swift": "3c32af7fe37cf9690bfb4d38aa0ae662270be6ca8251653ac0b7b4cfa4d3663b",
+      "packages/TGUIKit/Tests/TGUIKitTests/ImageDownsamplingTests.swift": "85301eeee4787642ca8cbd349b62dba097347ca831c3a2725154e2e76304c3d7",
+      "packages/TGUIKit/Tests/TGUIKitTests/LayerActionTests.swift": "47631359ca222f79f933fb7e30a7f8e64f60e67bb22a0c24ba455c190972b324",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyAnimatableContentObserver.swift": "fc1b4ce7e320494f73c5955b7f9360f14761266db836781a1c57f8839cffe481",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyHoverControl.swift": "9d9f084351cfe24ac31d9b9337d312e50691ac9b511b1c7da64a24a2eadee5c1",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyImageAssignmentView.swift": "dbb93978e339f9321ccddff015fd2037f9d57319abb34c3c2324c39e5ab223a0",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyImageRenderView.swift": "1e4d11110cf70dec2f5e8e143ce84f8037770f8e4c438d433288854e0429cb6b",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyImageSignalView.swift": "44f0f04fa3e83eb9af21ce9edc6001e5abc40149bdfe400f331ae08df303e9d2",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyRadialProgressView.swift": "01949bcedc09b51459d753dd6bb0f1c1e9c8bc9f6161e9e039782d9ed1b8b757",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacySelectingControl.swift": "3e1346b0963122535ddacd0ab8bf432b35324bef5f804e38fbea272e45ec0092",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacySpoilerGeometry.swift": "79e0063057db4821821ac2cfd6f341cbedbba5a4cb8af47150b04b6e66162361",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyTextBlock.swift": "8fdfa722dadf64f6d595ad2ffc0ade10c64495d313ace845bcf12ca57ba96f82",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyTextButton.swift": "e79d5120b8fcd197b34f4f612d9120ff16288c4349b6f4d63b4c79800f5299e1",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyTextHitTesting.swift": "7fe54bbc032c915679961fc28b2fef8ec6e5513e7d36a92c8f685780f889cf0d",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyTextRunDrawing.swift": "1513a431de860c4b554e68f220d9df63aeb742a4bc7615426d19558c84809fad",
+      "packages/TGUIKit/Tests/TGUIKitTests/LegacyTransformImageView.swift": "34e7d31a0de15a7a15f27a80813e497aefeb3e8d02759bef70d144b068e84915",
+      "packages/TGUIKit/Tests/TGUIKitTests/LiquidGlassTreeTests.swift": "ff124b872bb7aa684f683f9167cac3602274ff7880a34e001769aca09b8b4ad3",
+      "packages/TGUIKit/Tests/TGUIKitTests/MergeListsReference.swift": "ecc87fe6e93dae2ac66a715e342fecf82d79d4508e8e2529c25575a3bc8b8cbd",
+      "packages/TGUIKit/Tests/TGUIKitTests/MergeListsTests.swift": "7a509a30a4a261b5ade84215b83b2dcce29137916c32a303f69096094098b9a0",
+      "packages/TGUIKit/Tests/TGUIKitTests/ModalMorphSourceTests.swift": "8621abc392a838a553442b8c80e38ec408ad90ec826be847b24cd4118c7ad220",
+      "packages/TGUIKit/Tests/TGUIKitTests/ModalMorphTransitionTests.swift": "e90619f5f1efaf85e8c8e12e8d6a668112eeef9160952ae965dc70809b359af3",
+      "packages/TGUIKit/Tests/TGUIKitTests/PremeasuredRowTests.swift": "7bd3a2e4cd5e0060cf05f3f67515ec1d293f51491dafe59ad97c86fdd09b2cf7",
+      "packages/TGUIKit/Tests/TGUIKitTests/ProgressIndicatorHiddenTests.swift": "2f453522ec80bed832d3a7460054ecfdd7ecd9f553f3bd88b826cd026d07fcfc",
+      "packages/TGUIKit/Tests/TGUIKitTests/RadialProgressTransitionTests.swift": "f717be6d3e657f624e4aabf407591d8242c43cbd624773bda35bf99985448cb9",
+      "packages/TGUIKit/Tests/TGUIKitTests/ReferenceSpinningProgressView.swift": "d11eeae612d5690f3f0988d3e5e985b13ecec8f94e0063751d46fd94004b31c7",
+      "packages/TGUIKit/Tests/TGUIKitTests/ScopedImageCacheTests.swift": "fafe5cca9141ebd668e297174bb2e90bfa054696cf4091baf97380939d460470",
+      "packages/TGUIKit/Tests/TGUIKitTests/ScrollPositionSnapshotTests.swift": "76ca3d327d8fffe578f58aacddede8f7ea06cf47cf019378fe4030bdd809d99f",
+      "packages/TGUIKit/Tests/TGUIKitTests/SelectingControlTests.swift": "6fad90c8217d748c91e5c00ec146e87654e493c0f406a734ee8c57b2e79d2ead",
+      "packages/TGUIKit/Tests/TGUIKitTests/SpinnerLifecycleTests.swift": "4696954e20d7b6b793fbca62876095f66d6de8f898f88837f6917d102a624d2a",
+      "packages/TGUIKit/Tests/TGUIKitTests/SpoilerDustPlaybackTests.swift": "e8b983dabe030a9c69b38057afff19ffc56830caf277fd427b05a3d09188dbc4",
+      "packages/TGUIKit/Tests/TGUIKitTests/SpoilerDustRevealGenerationTests.swift": "a7393d3564b7336d11f1c274c1227db34f5df277f24a17a75df7d27d3e9fe56e",
+      "packages/TGUIKit/Tests/TGUIKitTests/SpoilerGeometryTests.swift": "d29004c91b92deefa5d4318ac217bbff65148e867ba8a523879c6cf78423f447",
+      "packages/TGUIKit/Tests/TGUIKitTests/TGUIKitTestBootstrap.swift": "140ce5192bf47218ace9d79ee5c668cb44a370ad2647f40279cf058429dfe089",
+      "packages/TGUIKit/Tests/TGUIKitTests/TabBarViewTreeTests.swift": "e2f4028ae6acd8507d4be43cb5778f5908640a7e654319b980b1ff92bf5050f3",
+      "packages/TGUIKit/Tests/TGUIKitTests/TableFocusCompletionTests.swift": "c6b08f31543c96a485e6a234383865670467030610eb92c02a6ec3593abc7797",
+      "packages/TGUIKit/Tests/TGUIKitTests/TableRowMenuLifecycleTests.swift": "992634f8a8c58a2a289eb6aaf89e1ab4a836bf339b7f4e27f7ff1956d96bf430",
+      "packages/TGUIKit/Tests/TGUIKitTests/TableRowResizeAnchorTests.swift": "f6d1fdb567a95537176cd7424ef47938c80e096a2ffba89aa5c643d7e073947d",
+      "packages/TGUIKit/Tests/TGUIKitTests/TableScrollGeometryTests.swift": "1f038a4c4ece601afb7ecba77dc28010fb458da49a02cdccd135aa60de8939ef",
+      "packages/TGUIKit/Tests/TGUIKitTests/TableStickyLayoutTests.swift": "6cef26e858a37217459a299d587213814fc2b18b9fc7873b42f503e4991f19bb",
+      "packages/TGUIKit/Tests/TGUIKitTests/TableVisibleEnumerationTests.swift": "cb2229954d0dfb614426cb553f211407b7e54a5e42f15692062e6aa58ada9afc",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextBlockTests.swift": "5d30ab5c0d08e4516a3c162338a77916c6c882189e042c44fa60a5da18529f52",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextButtonBarViewTreeTests.swift": "84b80c06f2bce02b8b1ff396c7387d735e4fa278fc113e87071932f755cd9a54",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextButtonLayoutTests.swift": "4c9c009e3aee6e9ad90f53af414c5cc2f2ce7f1b52b3831ec95edc5e03c2fc5f",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextHitTestingTests.swift": "d7b0397dfc2ca3d584e95a8b5b34ea39334c7d8e32345d24f9db198601383d53",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextNodeLineLimitTests.swift": "94d6039d5ad8bcd90e6b00ade6537e04e7bfc1f00812e18c67b9d6cb95166cca",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextQuoteAttributeTests.swift": "3ae886cddc19d0dee17c8882bd9380bf19a05eca071b611d0c5c1af05d449d73",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextQuoteMeasurementTests.swift": "449e5bd735ffa5e5a1ea01b7a8887f8417fad68ebcf21d55e2ee7a0cc33e3af5",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextRunDrawingTests.swift": "af6f8e0e77a4938be706133e4bf233e336907a17e3e58d10044f81bc2159f9de",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewEmbeddedContainerTests.swift": "e8f9effc1467772d088f8978299f8c6b1e21ad3d39b6cfa40a5e7d46a49c780f",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewLayerTests.swift": "156df82ba8692ee6cf510d2aed8d2905cbc6db4aff5fa79237a58dfbb1a7a18d",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewLinkHoverTests.swift": "32406baed226a1c6e91f94cb9a01efa8cf4fd784509953315cdbf340e483b7c7",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewMenuLifecycleTests.swift": "8c9254aa73d9223e4a7c00f320fd67a20120ceff06150057cfdcad2ae68eaa30",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewReuseTests.swift": "b22a2008c1f4b8d3b85a21b069f8d4574b1deec00bfd967b061f75ff7037297e",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewSpoilerReentryTests.swift": "5e8ea5298b41fb4c885fc16a0fda861c22d4ea23df816e0889eaf215e2265878",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewUpdateRegressionTests.swift": "fca93533febbca8003439397d7a66bb36f95027eedd50841dfbe1f893756c7b8",
+      "packages/TGUIKit/Tests/TGUIKitTests/TextViewUpdateTests.swift": "fd0c9fde55915992f71658dfda4f0ef7969688de49dbcdcaae805b954458bda8",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageArgumentsTests.swift": "66c5e94c2f4f961c6dbfad053bd854d4fa121a841baeca8e1eaceff236a78594",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageAssignmentBenchmarkTests.swift": "b8e9ef337d51f385a147d4b628e4ef9a9f1b8513f5eb990754143653b8a05394",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageAssignmentTests.swift": "f661d4112153d234fbbaf1f04a29178f312ae2ea554ccde4b74905f8aee2e8ae",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageBenchmarkTests.swift": "8044d92da4fd554d3eef44d05007c4bc5ca67e1f3f5b8ad6c1bd441b94be0f5b",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageLayerTests.swift": "255b8cbd983a9e3f20e20862bbd895f5e3a63a14287e72a53ff78017dd33b132",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageRenderBenchmarkTests.swift": "89171a76e1c30449ac097599318ef1e8078d1920817075c76dea5b65c1d2aa38",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageRenderCancellationTests.swift": "53a6ef7a60be5566d027e972d1a8d2404e9d8849dc5b65e002a27f21c21d9d99",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageSignalBenchmarkTests.swift": "fb2245fb860c03e84f6687f08536ea33f7969bcc9f5d199829344f7b3253d613",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageSignalTests.swift": "f56c2aed8a38ed5cb6e00556da939579225952fd92ddf748f84cf9962b3d3ac7",
+      "packages/TGUIKit/Tests/TGUIKitTests/TransformImageViewTests.swift": "3b7d94c8e1ac62c8f3e40e56140a64e5655615251479e4e73b71becc1b755da3",
+      "packages/TGUIKit/Tests/TGUIKitTests/ViewConstructionTests.swift": "cf348c9d5593735c1f8c9483f6c72332d4693869bf188fadcd4297f9b141d2ad",
+      "packages/TGUIKit/Tests/TGUIKitTests/ViewSnapshot.swift": "c5e64e47f21e37124aeb421e1d9ccaaba4a7997df79d1bab2f45133f74c1abcb",
+      "packages/TGUIKit/Tests/TGUIKitTests/WindowFrameEventTests.swift": "417fc1ab81c105b599522109df60165f1813b03a64db7282feda608a6ce844fa",
+      "packages/TGUIKit/Tests/TGUIKitTests/WindowResponderTests.swift": "a2c0789c52477930729de9276f551c6074d9eca7c9385e2902e90eb9d2aa1871",
+      "packages/FastBlur/.gitignore": "1eccc11b08e13de00d15452b1a4b2a4fed318ad0f8c60b87c31684f787115f40",
+      "packages/FastBlur/Package.swift": "eee3e63227b47fc67a36b3d8433aad04a48b8be94a591b4c00e78011ba9ae61c",
+      "packages/FastBlur/Sources/FastBlur/FastBlur.h": "63f50bef4025402623b8c656b00b70c9a6193e61419746209e9a6c5fafd9aeb2",
+      "packages/FastBlur/Sources/FastBlur/FastBlur.m": "6620cdd3df7ce6e1dc1b7078d3d3eb11d169b2504e10ca248ed8b665313d83d2",
+      "packages/ObjcUtils/.gitignore": "1eccc11b08e13de00d15452b1a4b2a4fed318ad0f8c60b87c31684f787115f40",
+      "packages/ObjcUtils/Package.swift": "b3264aada3fd7dc74a015cde627a82a4df07ac2e3b4254d40fc53069dd297624",
+      "packages/ObjcUtils/Sources/ObjcUtils/ObjcUtils.h": "5843d7ec4736a79e0e57b29d9a36c87a23d00c42537b974c14cc467ba81ca506",
+      "packages/ObjcUtils/Sources/ObjcUtils/ObjcUtils.m": "44b630afbbe01cbae88722188c6fa868bddfd2c75b014e9e8bbce41934d3df17",
+      "packages/ColorPalette/.gitignore": "1eccc11b08e13de00d15452b1a4b2a4fed318ad0f8c60b87c31684f787115f40",
+      "packages/ColorPalette/Package.swift": "3c12415fbf41c9bb7fd8b7a00cd9ff712044e7a6095a1223d466a38f58b06180",
+      "packages/ColorPalette/Sources/ColorPalette/ColorPalette.swift": "003d544c6ceaeaa70f9e927bca04aff0c29cd2d236499c22991705beb34863f3",
+      "packages/ColorPalette/Sources/ColorPalette/PeerNamesColor.swift": "43c30287f1ed1bc340f9a2fe121bb4d0971a73ef18a8bfb0649fd718857ac0d3",
+      "packages/Colors/.gitignore": "1eccc11b08e13de00d15452b1a4b2a4fed318ad0f8c60b87c31684f787115f40",
+      "packages/Colors/Package.swift": "4a8760a533b90ba1dcc4b0ffc422ae2345a39cacb68805ff93591abeb81b7dbf",
+      "packages/Colors/Sources/Colors/Colors.swift": "05393a4f16b7039a7346a9040ecd974d9783172c36ee65e92b39d92f3b244b18",
+      "packages/KeyboardKey/.gitignore": "1eccc11b08e13de00d15452b1a4b2a4fed318ad0f8c60b87c31684f787115f40",
+      "packages/KeyboardKey/Package.swift": "e3c12b8f42d50ca6a54e7c33f8838ee769fd36ce6896dc99c14835ef3489d1d3",
+      "packages/KeyboardKey/Sources/KeyboardKey/KeyboardKey.swift": "f22c22b9cfe76d39a9c3949b1ea66ffe4936b74c3d37b427f93fe76e205fd72c"
+    },
+    "telegram_ios_commit": "fb0e62ba8a147f0821da6aa63c09da7d79a10111",
+    "signal_sources_sha256": {
+      "submodules/SSignalKit/Package.swift": "2a09c327a917d8f6baf60dbe5056d05280b379ebe028aed52ea66726bf76ab43",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SAtomic.h": "99b22eef6a59e5379e0cd20337bef75bdf1fd1264eb95f55c43e22325ac2d895",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SAtomic.m": "f0c38a55d59cd3aa620e2e508119df7fc956a7cecaed367e8777c57e48c63516",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SBag.h": "7b54c2cc3dd606a56ddc8fac665955ca0ce60c74961136c56039902148807f0e",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SBag.m": "8f971070355adb8a52e808cf5915db9a24ba9a987cf00f896d4d35d51176d53a",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SBlockDisposable.h": "885b511f37077fad288b8c866ac1c959b116f968d1814f5eb9d76ee4679c0252",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SBlockDisposable.m": "cc7955e5f517d79817bb29ef60c3a1021036b311df7cbeb02bd223b883da7c87",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SDisposable.h": "af99f31d3e202bd1376fbfb8d25dc7fcfd414687e788efbae73c170063e1c612",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SDisposableSet.h": "b8824b06f6172b23f3b1dfb6e8ec3c638a903c61ff03a52621f20b0aea8c40a0",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SDisposableSet.m": "20560e34b9df05a5674e3a89b2998cf38497ecaa5d580e02871f8c02395d94ac",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SMetaDisposable.h": "0b7930608aa3f76e50d15c308c0422ab76c05d05c6592a22c7514124385bc615",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SMetaDisposable.m": "8033a79b28c713adc87b2ccec53d2b330aacffaa72ff1d208ef641b287c2b68a",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SQueue.h": "7cd97b9fab39f4432cf99ef79a1a3410e4a5447e95904477772f839ae5b34757",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SQueue.m": "60bc0f49c25c2a4f0b7533fba0ebe56b3de5dd78a844d5df9ba7d2f8487cf504",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SQueueLocalObject.h": "50d169b6c0ddc10a63fc830f3aa61976f123edf96e14cf436085538bea58db5a",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SQueueLocalObject.m": "6e0b88ac972c6a798ff81daddc879b12d6582d600639fb956e92ba0e6e12737e",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Catch.h": "c5f308009b967c1f0c281eeacf562c02a00aec3dd97705849d746e64df24be35",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Catch.m": "b64a50d657199b7ada3cb279f1670d1cfe2673c718e4ee41f18e9252c2fcd60a",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Combine.h": "3fc038baca3b8767e53c62dd114121ca869929b7aaf68797aeaa1caf4f734684",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Combine.m": "c36ebaabfe6d74512f15976217bc66f5a749ce9ad6c6f2f9044411bf55d9f4e2",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Dispatch.h": "cc100aee6bc3fc6ce82c5a4c8b4717e8386fb3a46295169549e4bbd7f90e9fb0",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Dispatch.m": "edab82a59df4cf3d15db87df07ac16b9ccb736cfa1ef54ed7d74b027ff39d30d",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Mapping.h": "2492568367f62ac7ac1360bd4b2db8e8080506223002d102bffebe661b56de95",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Mapping.m": "b6ff6a8037e3c67a0ba4e61b6b285ce782dad2e4400d751319077c8785e6194a",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Meta.h": "3a20971b78e6ae7db29af428c4de3e3c2deb3a10f13f045c9ce875ff2cdc1845",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Meta.m": "89e2a32b6f7d395aaf0dee8d492beceafd5ab1520d25027351f1170fc13877b7",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Pipe.h": "5174291aebe7a663e3389e815bdbdc4276ee94c00f015bde97b9d7f5c97a503d",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Pipe.m": "36c06b514871b1aabe6101b7bcf52db6c544a3722adc6e030900c87d48f3fd29",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+SideEffects.h": "23a8a9385f10bed4fd9e95aeb3093468b8780be40e614f57b9c42df28933f5ac",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+SideEffects.m": "57efdac918640bb8dccd5b9cd793e1633150b7e32c7bb6f72162d00d789c251d",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Single.h": "440479ce8cba4a6d1723c9eb872460dbb136958ad984e3b244048d9814d4e606",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Single.m": "a593c2eb8eede7059d3335db18264ecc8872c6f6d1780a1b5df20dcc72cf987d",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Take.h": "f105ebc8b96677096ac1a9a730d3304e4309034c1588c07b2ad84c9c9d8b769c",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Take.m": "887730ddf9ea8c949e16161223a4bd1ba2a878b4fc10a91f9bd319c260095930",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Timing.h": "b84c0a6952a136791a7085027c0b333b8cf571bc1b9161fa03670c85c6be85c8",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal+Timing.m": "0b62bfe822e35206e277f86b1c02e47d344f54f9f5697afc9548f6f3a2696ab6",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal.h": "a99122f92ae4951ddb0faf8e4f96d2e4f28c5f0323e3f05c57e3bb7b01952da3",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignal.m": "e230c7eb5e4bcc077b4646a9db1f20b621aff7226573de1961991c1708c3dba1",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSignalKit.h": "5d2d0a2695e0eabd43f3fc075cc4fad119d10b76f72f0ecb058ee53c90aaef97",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSubscriber.h": "ee54151f01cdd8b66905874cd362cb32baface8a7470e578edb19b55b1dd71b8",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SSubscriber.m": "44fd84b95c8c9b21d8404a8d0c8c60ac90e4e93f797a3f9b65c9a06de920a354",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SThreadPool.h": "84bdc184bffb641caca119b791033acc42a10c54da6b1185f7307c0a5e61c81f",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SThreadPool.m": "a831107816fab001bd738fa28424cfdd1637083cdd1770aa98527116e5e5dc50",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SThreadPoolQueue.h": "a38ff51fcb78955a3d740d6c97b7fa001df62125e2a61a4754aec33202321490",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SThreadPoolQueue.m": "32190e98950a931e0d02484b9c7324ad59d2df2587f40d06284b8126876599f5",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SThreadPoolTask.h": "c0d50fe6193d09def2d596550c9c125f8b237c627a4ed5d366f38bd6bf6b7994",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SThreadPoolTask.m": "74922ec319e2e0e9797355a6075405bf16e43025a155b3c2bc5b5131a42f2f25",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/STimer.h": "cc6fb30f530b8b3449d404a17830ef44d8016b81f59bbc9f7f3b1f2ca01fa84b",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/STimer.m": "2bf933e2c23dbb6f222edd64e4e180b195e8213de2c8b67dc04f301dafbf883e",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SVariable.h": "5aefe1bcea714924960040fd70be9d13c8938a12580783d4ec9a036516053719",
+      "submodules/SSignalKit/SSignalKit/Source/SSignalKit/SVariable.m": "510aa14ead9fc006df2c011fa79870823d93b6bf9dcbb9309b2a1bd68aa11211",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Atomic.swift": "ad76eb0a708bdf77301d7d11787a06f33029c67412e6485616534c4faf2e8a9d",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Bag.swift": "01675a040b4653a9d3f4235f7b6d7a7dbfde05b1004a9b087b7a6d39da56e495",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Disposable.swift": "60e53d9fa32a1b1ba47897467077cf22fcdc0458c20b646a35c75fb76484209b",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Lock.swift": "f9127cbfa51d793a420bf8c9352e23aae822325e4c35b5581ae70a841617d8be",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Multicast.swift": "7b5713fcc51db47bbaa9e4efac0941ed9519a3c96fee7e4af50a0184a018b226",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Promise.swift": "e691338e89b656e5d272f70e6c97f5d07990d57badfd7e1d7e1dae86f9a3693a",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Queue.swift": "ac7db4cdf6b9728f0936bf35998cee3f6b8d7824abbc07e71e679e068315b31b",
+      "submodules/SSignalKit/SwiftSignalKit/Source/QueueLocalObject.swift": "1a95a4716a1eed728fe677d98d7938f812cc554c516ab0c99fa66433823a6be4",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal.swift": "c1fee825012eace4710eab53f32faa1d49efe38b01e7ad709054f26695494cb6",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Catch.swift": "da304f997aa514dffd836987562da5f377e2a30471be1de187f8983b826079b9",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Combine.swift": "994f52d6459d2251a2880f7d0827f853e74c4bd20ab7896386f4152215723450",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Dispatch.swift": "136f325211fca4cf75d193a3f273d092a32ed9304c3442095b707c6b1639fc38",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Loop.swift": "393b3ffeae937d926013a887e2462c64156ebae9bf0b768b2803eb0fe83fbb75",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Mapping.swift": "4740a3a616679ad0f65c6341a0498bf42e120dcaddd2c281694188b47e075017",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Materialize.swift": "29da62a7b98a510595bd7e14605dc85e1b61bad1fe3dd92c7575080477b043bb",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Merge.swift": "4423aea9e8115e3d1729718bcbe433e0c97cfb2483ce8297c8f289d0ec0a466b",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Meta.swift": "12778c0abb3608d73ed2630d9b2de426a2bf96ddd61d45216e5537ac26ab4770",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Reduce.swift": "e056252571f6164d503f6bcfd515a89e091af2f50d0602ae03608d3ca76dc772",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_SideEffects.swift": "5ffa6c37fa07a3519ccce596c7f6ab631168a9e15c00daf2733758a9c22ac8f1",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Single.swift": "3e9edb07a7c0031f2098bbbb7ee06105e9c3c36c3b77ab7de9af79928320d2e9",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Take.swift": "f7edb85f3327c4263c6f9ebe9f4e9339661eaebf85ab062acb92faf0f3bce999",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Signal_Timing.swift": "5f8105ef52da49f159bb26be469e5fce464acd5c1e8e014bc05e524a554e45a2",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Subscriber.swift": "eb28ad26bda8b4a8ff1aad73b949d4c3d24132db3aebdd1f5a4c67a5962718ee",
+      "submodules/SSignalKit/SwiftSignalKit/Source/ThreadPool.swift": "a7535ebc525a9651b1f0b757f1061ef5d7c2ae05fbaacdb93b41277fb4c1fb6a",
+      "submodules/SSignalKit/SwiftSignalKit/Source/Timer.swift": "08630c786e0410459543d7cc2d56a02228345f4bb4996bcc4a79ce569b04474c",
+      "submodules/SSignalKit/SwiftSignalKit/Source/ValuePipe.swift": "3573de667fbc42819b409d4941cf588ab565503c3caf8d48f3190cb265a32331",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Atomic.swift": "efed4d48871e59dc61a10f34f8e22eed6e7a950091ae1483b921340a0739e172",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Bag.swift": "04d0ee5a3c5bf483299cf165d1f80f46d665e71a73128a5ced46a2f43c104273",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Disposable.swift": "86b55d39e809cf16a26cb3224006281b525489c86a816fbdbe4a659181733de3",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Lock.swift": "f9127cbfa51d793a420bf8c9352e23aae822325e4c35b5581ae70a841617d8be",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Multicast.swift": "00d3a7a64e509c2cb29e6a30f5b27d33b73de56d98cc1c682045a2c2879d14e9",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Promise.swift": "4b1270e384db69556b1938b129b972b38a7fe952c32d5344aa7624d4954c45e2",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Queue.swift": "8597b71428979284ea86d0044fc746568db19619677b630400b917aa1e5a2b22",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/QueueLocalObject.swift": "1a95a4716a1eed728fe677d98d7938f812cc554c516ab0c99fa66433823a6be4",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal.swift": "1d5700152ca2cf93441ddb00e3fdfb6e6cd09d73abd4f16ec65220f397bd88b3",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Catch.swift": "da304f997aa514dffd836987562da5f377e2a30471be1de187f8983b826079b9",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Combine.swift": "4bec95692eeb77aae4727407a09564cc5efb838e9bd97ad6eee5d707ea0d902c",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Dispatch.swift": "95dfe8f7e019e1370eb80e6bbf0bb9e03e4e99de2b48334b40b08db5a93e61d2",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Loop.swift": "06419626057f43553f0008dd41fcd6c6d9e42fa1f08302d1e002d4de6afe1b05",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Mapping.swift": "4740a3a616679ad0f65c6341a0498bf42e120dcaddd2c281694188b47e075017",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Materialize.swift": "29da62a7b98a510595bd7e14605dc85e1b61bad1fe3dd92c7575080477b043bb",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Merge.swift": "4423aea9e8115e3d1729718bcbe433e0c97cfb2483ce8297c8f289d0ec0a466b",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Meta.swift": "fac3444263fb4ada7ec3dd64768bd39ada9be4367af1bc1dd71d16828decd791",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Reduce.swift": "e056252571f6164d503f6bcfd515a89e091af2f50d0602ae03608d3ca76dc772",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_SideEffects.swift": "5ffa6c37fa07a3519ccce596c7f6ab631168a9e15c00daf2733758a9c22ac8f1",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Single.swift": "3e9edb07a7c0031f2098bbbb7ee06105e9c3c36c3b77ab7de9af79928320d2e9",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Take.swift": "f7edb85f3327c4263c6f9ebe9f4e9339661eaebf85ab062acb92faf0f3bce999",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Signal_Timing.swift": "7849385453a2200126cdcc530ba40b4a95339175875e3566bd634c9ed24720ba",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Subscriber.swift": "2fc1c954a21d288301599e9fcc2d00c6fc81d63dd569b9875da2b14d09a94bef",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/ThreadPool.swift": "a7535ebc525a9651b1f0b757f1061ef5d7c2ae05fbaacdb93b41277fb4c1fb6a",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/Timer.swift": "403a2295e9c126b879b3fc0c9ddf89e6b3f21bafc4d9808b7d0de104da565f1c",
+      "submodules/SSignalKit/SwiftSignalKit2/Source/ValuePipe.swift": "68c07d6d286e5030442a89183f29a50d8d361e770b541669671d7f295dfbbc86",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreAtomicLockBagTests.swift": "eb799c702acab6cb85ef57425e72ddd0a6eb2b66f13a5f7da0072384825c60b7",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreDisposableTests.swift": "da4ec232ebe94e85d795c1c34639c6cbe1d57a422c0b162d196e0c1f98c3c8ba",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CorePromiseTests.swift": "7f9859ba165b6e938a6697343378cd4e606dfc503900bd36cd1df863af381b0d",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreQueueLocalObjectTests.swift": "8445a7cba3fd4dd41940ad807ba32e85c4cb3258175c67715960c9f1797584c9",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreQueueTests.swift": "d7b4fef7054d15ded541153675cb2f1b28f8117b0be80bf1390efd401a5d5c91",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreSignalTests.swift": "e25d96204f029b694e8d0736e4d10e573fbab9ff52433bd9aa433ddd2fce0b3b",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreSubscriberLifetimeTests.swift": "f6d822a80dbfa019b8dfd61cf6e02c846c85b50f63fa54dde43f8bf1335a224d",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreSubscriberTests.swift": "fbb3a12d3a607e0cd53d278cfe47a391e2ea417cb03b9b336d8d55421177f260",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreTestSupport.swift": "fb8197e521b120eb4abddef844527282dc3aaedbe692c38d943df2f494b57d5b",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/CoreThreadPoolTimerTests.swift": "1e35dc32d382665e795dfae0f54e07e9603cdfd8f5dcca553fbfeb0a972dda11",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorCatchTests.swift": "4874af5e47065085271d35a0e6926e8f003bf5b93e4922b808ca8980feeaa4ce",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorCombineLatestTests.swift": "75dc87cb896cba972b5006f91433ba969ba19a57bc29dce132bb10cfd6a6086d",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorConcurrencyTests.swift": "08d1d428fbadacfdb5aaabc81052ab2c58d4d91a6915d9639f2410157473b977",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorDispatchTests.swift": "3c1da49a1cb23d15e8716544beddb1e453efad448d2d6ebcfab31b2fe209ff7c",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorMappingTests.swift": "0f1a4ba6c99b08b80923fe871d8e33413393612feb8394827f26411663370308",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorMetaTests.swift": "c0af89df19c57d087bb1db9a8054369877fb20b61fee77954bf61de1f34f5329",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorReduceTests.swift": "e85e6a40614ddc815df502c24162238f7454c66a68167b54e863a3c7c1a71d2a",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorReentrancyTests.swift": "5aefd1e13b71d0d0ae4154c1dbe4a29ff7f31c2b6198f48455d20587b15ee00a",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorSideEffectsTests.swift": "55c2bfca1243100388d45827a5a7f7bab22843637aaa3af76bfc3ed27c578141",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorTakeTests.swift": "7ad693f1554d0f326c4d042c68901d7d15069c6077fb17fced9a2e99a0abae5b",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorTestSupport.swift": "c1249df483f385140e9f459540fb3a4d0f3eb623e9183d5ee6721fb723b1a7d4",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Behavior/OperatorTimingTests.swift": "b566110662265a552ac520a50d1208c29fe417b753b52f965b2079c4aa564ff1",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Bench/main.swift": "b115aa3835978638c9ce1f35366dbd58c3543cdbe41cee02a75c6d6fb09ba956",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Package.swift": "f0e171356e8d33a5a2da94d86d4f1a3e2ebdc19d71aa70ca1c7ffa3be74da5c2",
+      "submodules/SSignalKit/SwiftSignalKitTesting/ParityTests/DumpSeed.swift": "2b3f6ed7269b9afddf060fe46a8fe23b2d7d676622dc74be87450ebe2764f7fd",
+      "submodules/SSignalKit/SwiftSignalKitTesting/ParityTests/FuzzParityTests.swift": "5efc89b3daaf06c3e74071084e32f4af9fe2a21a54a6231f1c3a39776ecd9302",
+      "submodules/SSignalKit/SwiftSignalKitTesting/ParityTests/ReleaseOrderTests.swift": "6e19485695d5f4d3d0758bc4a78266195992730986fb197e8eb8ed1e0b1cfc10",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Scenarios/Fuzz.swift": "329f2489fe234133ab4bca76e04974df499ed3cbc03d71d9cfaf1880d3653fe5",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Scenarios/ReleaseOrderProbe.swift": "cb589c25a64f691b115772ca597cc6a97cff3ddbc601fb67f585e819b366e97d",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Scenarios/Workloads.swift": "d1e2f2bdb69bca5e13bdff124cc203c98cc5a4e6f9bb0ada3c530d787f6c29cb",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Scenarios/World.swift": "de836c35441f947a35724c87cec25f01f6373a963dfb6202bea42a45902cbca7",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Stress/IdleWakeupTests.swift": "b98639420cc5ec337259711e633cd55b63b4a115367e3a4005559932cf3dd1e0",
+      "submodules/SSignalKit/SwiftSignalKitTesting/Stress/StressTests.swift": "76c404c701014136c9090013df3f4b45749c9dda39d3b93d5bcd73fbad0c77f0",
+      "submodules/SSignalKit/SwiftSignalKitTesting/V2Tests/FixesTests.swift": "53136e7fbc60e3f873fbe32df1b220500794b435da72c4cb7d2e2e140f38a7b5"
+    },
+    "test_instrumentation": "TrackedBlur replaces only DrawingContext constructor calls with a recorder that returns a real TGUIKit.DrawingContext; NativeBlur and benchmarks use the unmodified production source.",
+    "lab_sources_sha256": {
+      "BlurBench/Bench.swift": "d0712b9f05a39df5b468c762121cd7fcd5e11b250b6d1e89ab34dd425ce9ebe6",
+      "BlurTests/PixelParityTests.swift": "dd157ff5866e30ac244901c9e1d533563b72e54431ce9a81e0b7f7ab064021b9",
+      "BlurTests/ResourceBudgetTests.swift": "b0c848a968eba614c5b786a5a16184c119932ab8c5f30ce0d64c6b5b70966455",
+      "Fixtures.swift": "18470906ce9364e9cc5ec60b8ec768d2e8859d228d9458e503824326f2a1567a",
+      "Tracking.swift": "8beb366d54b61742a16583be0c18820e2f38ac1c17f818f90ea10881200925e8",
+      "measure.py": "abf6242b0c35bba4eb17316319d56491f778fce6d3bf35e54d2bed39a240c723",
+      "prepare.py": "a62cef0ff0b2057cb1642ef6d5d8b58dd0d6c584dd298753ba8072725d013f80"
+    }
+  },
+  "summary": [
+    {
+      "width": 50,
+      "height": 50,
+      "scale": 1,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.0011725000000000004,
+          "min": 0.001103999999999999,
+          "max": 0.0013369999999999996
+        },
+        "p50Microseconds": {
+          "median": 10.9585,
+          "min": 10.042,
+          "max": 11.792
+        },
+        "p95Microseconds": {
+          "median": 13.958,
+          "min": 11.375,
+          "max": 17.833
+        },
+        "coldMicroseconds": {
+          "median": 214.60399999999998,
+          "min": 179.042,
+          "max": 263.959
+        },
+        "physicalFootprintBefore": {
+          "median": 2720224.0,
+          "min": 2621920,
+          "max": 2867728
+        },
+        "physicalFootprintAfter": {
+          "median": 2834936.0,
+          "min": 2638304,
+          "max": 3048000
+        },
+        "maximumResidentSetBytes": {
+          "median": 10862592.0,
+          "min": 10682368,
+          "max": 11026432
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0008064999999999995,
+          "min": 0.0007639999999999991,
+          "max": 0.0008570000000000001
+        },
+        "p50Microseconds": {
+          "median": 7.7705,
+          "min": 6.958,
+          "max": 7.917
+        },
+        "p95Microseconds": {
+          "median": 10.0835,
+          "min": 7.792,
+          "max": 15.125
+        },
+        "coldMicroseconds": {
+          "median": 213.688,
+          "min": 191.709,
+          "max": 234.541
+        },
+        "physicalFootprintBefore": {
+          "median": 2752992.0,
+          "min": 2687456,
+          "max": 2933240
+        },
+        "physicalFootprintAfter": {
+          "median": 2769376.0,
+          "min": 2703840,
+          "max": 2949624
+        },
+        "maximumResidentSetBytes": {
+          "median": 10805248.0,
+          "min": 10747904,
+          "max": 10977280
+        }
+      }
+    },
+    {
+      "width": 50,
+      "height": 50,
+      "scale": 2,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.0019569999999999995,
+          "min": 0.0017549999999999996,
+          "max": 0.002110999999999999
+        },
+        "p50Microseconds": {
+          "median": 18.041,
+          "min": 16.875,
+          "max": 19.041
+        },
+        "p95Microseconds": {
+          "median": 23.104,
+          "min": 18.167,
+          "max": 35.375
+        },
+        "coldMicroseconds": {
+          "median": 221.6875,
+          "min": 177.459,
+          "max": 251.333
+        },
+        "physicalFootprintBefore": {
+          "median": 2818552.0,
+          "min": 2687480,
+          "max": 3015184
+        },
+        "physicalFootprintAfter": {
+          "median": 2982416.0,
+          "min": 2769376,
+          "max": 3228200
+        },
+        "maximumResidentSetBytes": {
+          "median": 10977280.0,
+          "min": 10797056,
+          "max": 11206656
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0009285000000000001,
+          "min": 0.0008960000000000001,
+          "max": 0.0011780000000000002
+        },
+        "p50Microseconds": {
+          "median": 9.1665,
+          "min": 8.959,
+          "max": 9.875
+        },
+        "p95Microseconds": {
+          "median": 11.3335,
+          "min": 9.375,
+          "max": 26.583
+        },
+        "coldMicroseconds": {
+          "median": 195.66649999999998,
+          "min": 164.583,
+          "max": 254
+        },
+        "physicalFootprintBefore": {
+          "median": 2662892.0,
+          "min": 2540000,
+          "max": 2949600
+        },
+        "physicalFootprintAfter": {
+          "median": 2736632.0,
+          "min": 2638304,
+          "max": 3310216
+        },
+        "maximumResidentSetBytes": {
+          "median": 10756096.0,
+          "min": 10665984,
+          "max": 11223040
+        }
+      }
+    },
+    {
+      "width": 64,
+      "height": 64,
+      "scale": 1,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.0013804999999999998,
+          "min": 0.0013099999999999995,
+          "max": 0.0015049999999999994
+        },
+        "p50Microseconds": {
+          "median": 13.2295,
+          "min": 12.5,
+          "max": 13.792
+        },
+        "p95Microseconds": {
+          "median": 14.521,
+          "min": 13.542,
+          "max": 22.667
+        },
+        "coldMicroseconds": {
+          "median": 207.6245,
+          "min": 184.416,
+          "max": 239.541
+        },
+        "physicalFootprintBefore": {
+          "median": 2793964.0,
+          "min": 2539976,
+          "max": 2949648
+        },
+        "physicalFootprintAfter": {
+          "median": 2834936.0,
+          "min": 2556360,
+          "max": 3031568
+        },
+        "maximumResidentSetBytes": {
+          "median": 10862592.0,
+          "min": 10616832,
+          "max": 11042816
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.00081,
+          "min": 0.0007549999999999996,
+          "max": 0.0009439999999999995
+        },
+        "p50Microseconds": {
+          "median": 7.812,
+          "min": 6.916,
+          "max": 8.042
+        },
+        "p95Microseconds": {
+          "median": 9.4585,
+          "min": 7.917,
+          "max": 15.834
+        },
+        "coldMicroseconds": {
+          "median": 203.1255,
+          "min": 171.5,
+          "max": 312.375
+        },
+        "physicalFootprintBefore": {
+          "median": 2728428.0,
+          "min": 2556360,
+          "max": 2933264
+        },
+        "physicalFootprintAfter": {
+          "median": 2802156.0,
+          "min": 2572744,
+          "max": 2949648
+        },
+        "maximumResidentSetBytes": {
+          "median": 10838016.0,
+          "min": 10633216,
+          "max": 10960896
+        }
+      }
+    },
+    {
+      "width": 64,
+      "height": 64,
+      "scale": 2,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.0024015,
+          "min": 0.0022849999999999997,
+          "max": 0.0025639999999999994
+        },
+        "p50Microseconds": {
+          "median": 22.8125,
+          "min": 22.333,
+          "max": 23.708
+        },
+        "p95Microseconds": {
+          "median": 30.5625,
+          "min": 24.916,
+          "max": 32.833
+        },
+        "coldMicroseconds": {
+          "median": 208.95850000000002,
+          "min": 186.709,
+          "max": 272.042
+        },
+        "physicalFootprintBefore": {
+          "median": 2818552.0,
+          "min": 2654712,
+          "max": 3113488
+        },
+        "physicalFootprintAfter": {
+          "median": 3047988.0,
+          "min": 2687456,
+          "max": 3359368
+        },
+        "maximumResidentSetBytes": {
+          "median": 11026432.0,
+          "min": 10715136,
+          "max": 11288576
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0009524999999999998,
+          "min": 0.000902,
+          "max": 0.0010120000000000007
+        },
+        "p50Microseconds": {
+          "median": 9.125,
+          "min": 8.791,
+          "max": 9.292
+        },
+        "p95Microseconds": {
+          "median": 11.229,
+          "min": 9.209,
+          "max": 15.833
+        },
+        "coldMicroseconds": {
+          "median": 197.187,
+          "min": 183.625,
+          "max": 234.167
+        },
+        "physicalFootprintBefore": {
+          "median": 2728416.0,
+          "min": 2572768,
+          "max": 2884088
+        },
+        "physicalFootprintAfter": {
+          "median": 2744800.0,
+          "min": 2589152,
+          "max": 2900472
+        },
+        "maximumResidentSetBytes": {
+          "median": 10772480.0,
+          "min": 10616832,
+          "max": 10911744
+        }
+      }
+    },
+    {
+      "width": 500,
+      "height": 500,
+      "scale": 1,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.017095,
+          "min": 0.016699,
+          "max": 0.017339
+        },
+        "p50Microseconds": {
+          "median": 164.7495,
+          "min": 163.334,
+          "max": 166
+        },
+        "p95Microseconds": {
+          "median": 206.04149999999998,
+          "min": 183.791,
+          "max": 242.708
+        },
+        "coldMicroseconds": {
+          "median": 406.3125,
+          "min": 359.083,
+          "max": 587.375
+        },
+        "physicalFootprintBefore": {
+          "median": 5849628.0,
+          "min": 4932088,
+          "max": 7094824
+        },
+        "physicalFootprintAfter": {
+          "median": 8241764.0,
+          "min": 4948472,
+          "max": 9421400
+        },
+        "maximumResidentSetBytes": {
+          "median": 16195584.0,
+          "min": 12976128,
+          "max": 17383424
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0007985000000000002,
+          "min": 0.0007490000000000005,
+          "max": 0.0008549999999999999
+        },
+        "p50Microseconds": {
+          "median": 7.792,
+          "min": 7.291,
+          "max": 8.292
+        },
+        "p95Microseconds": {
+          "median": 8.6045,
+          "min": 7.833,
+          "max": 10.417
+        },
+        "coldMicroseconds": {
+          "median": 196.14600000000002,
+          "min": 162.208,
+          "max": 233.333
+        },
+        "physicalFootprintBefore": {
+          "median": 4809244.0,
+          "min": 4637152,
+          "max": 4915776
+        },
+        "physicalFootprintAfter": {
+          "median": 4841976.0,
+          "min": 4653536,
+          "max": 4932160
+        },
+        "maximumResidentSetBytes": {
+          "median": 12869632.0,
+          "min": 12697600,
+          "max": 12943360
+        }
+      }
+    },
+    {
+      "width": 500,
+      "height": 500,
+      "scale": 2,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.08473599999999999,
+          "min": 0.083367,
+          "max": 0.086909
+        },
+        "p50Microseconds": {
+          "median": 821.375,
+          "min": 807.916,
+          "max": 837.375
+        },
+        "p95Microseconds": {
+          "median": 1063.2705,
+          "min": 957.125,
+          "max": 1197.083
+        },
+        "coldMicroseconds": {
+          "median": 1044.5415,
+          "min": 978.125,
+          "max": 1106.5
+        },
+        "physicalFootprintBefore": {
+          "median": 4841988.0,
+          "min": 4653560,
+          "max": 5276344
+        },
+        "physicalFootprintAfter": {
+          "median": 5440136.0,
+          "min": 5210712,
+          "max": 5784272
+        },
+        "maximumResidentSetBytes": {
+          "median": 37388288.0,
+          "min": 33226752,
+          "max": 45760512
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0009745000000000001,
+          "min": 0.0008710000000000002,
+          "max": 0.0010739999999999994
+        },
+        "p50Microseconds": {
+          "median": 9.125,
+          "min": 8.541,
+          "max": 9.458
+        },
+        "p95Microseconds": {
+          "median": 11.687999999999999,
+          "min": 9.042,
+          "max": 18.917
+        },
+        "coldMicroseconds": {
+          "median": 194.3955,
+          "min": 165.417,
+          "max": 355.667
+        },
+        "physicalFootprintBefore": {
+          "median": 4743696.0,
+          "min": 4686328,
+          "max": 4866576
+        },
+        "physicalFootprintAfter": {
+          "median": 4801028.0,
+          "min": 4702712,
+          "max": 5063232
+        },
+        "maximumResidentSetBytes": {
+          "median": 12804096.0,
+          "min": 12713984,
+          "max": 13025280
+        }
+      }
+    },
+    {
+      "width": 720,
+      "height": 720,
+      "scale": 1,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.0447795,
+          "min": 0.043174000000000004,
+          "max": 0.0455
+        },
+        "p50Microseconds": {
+          "median": 428.97900000000004,
+          "min": 416.333,
+          "max": 449.084
+        },
+        "p95Microseconds": {
+          "median": 559.8965,
+          "min": 480.916,
+          "max": 600.792
+        },
+        "coldMicroseconds": {
+          "median": 653.937,
+          "min": 589.125,
+          "max": 801.25
+        },
+        "physicalFootprintBefore": {
+          "median": 4989468.0,
+          "min": 4784632,
+          "max": 5210784
+        },
+        "physicalFootprintAfter": {
+          "median": 5358192.0,
+          "min": 5145152,
+          "max": 5882552
+        },
+        "maximumResidentSetBytes": {
+          "median": 23707648.0,
+          "min": 21446656,
+          "max": 30425088
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0008405000000000001,
+          "min": 0.0007789999999999993,
+          "max": 0.000961
+        },
+        "p50Microseconds": {
+          "median": 7.8125,
+          "min": 7.084,
+          "max": 8.291
+        },
+        "p95Microseconds": {
+          "median": 9.687999999999999,
+          "min": 7.959,
+          "max": 15.625
+        },
+        "coldMicroseconds": {
+          "median": 212.60399999999998,
+          "min": 178.125,
+          "max": 281.125
+        },
+        "physicalFootprintBefore": {
+          "median": 4825616.0,
+          "min": 4702688,
+          "max": 5522056
+        },
+        "physicalFootprintAfter": {
+          "median": 4874744.0,
+          "min": 4719072,
+          "max": 5538440
+        },
+        "maximumResidentSetBytes": {
+          "median": 14974976.0,
+          "min": 14843904,
+          "max": 15548416
+        }
+      }
+    },
+    {
+      "width": 720,
+      "height": 720,
+      "scale": 2,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.1754675,
+          "min": 0.174726,
+          "max": 0.17824800000000002
+        },
+        "p50Microseconds": {
+          "median": 1729.3955,
+          "min": 1715.292,
+          "max": 1772.666
+        },
+        "p95Microseconds": {
+          "median": 2079.9375,
+          "min": 1960.916,
+          "max": 2596.25
+        },
+        "coldMicroseconds": {
+          "median": 1894.562,
+          "min": 1760.291,
+          "max": 1969.791
+        },
+        "physicalFootprintBefore": {
+          "median": 5095976.0,
+          "min": 4899368,
+          "max": 5259840
+        },
+        "physicalFootprintAfter": {
+          "median": 5628564.0,
+          "min": 5538464,
+          "max": 6079184
+        },
+        "maximumResidentSetBytes": {
+          "median": 65470464.0,
+          "min": 57262080,
+          "max": 82477056
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0009194999999999993,
+          "min": 0.0008940000000000007,
+          "max": 0.0010120000000000007
+        },
+        "p50Microseconds": {
+          "median": 9.083,
+          "min": 8.583,
+          "max": 9.375
+        },
+        "p95Microseconds": {
+          "median": 10.292,
+          "min": 9.042,
+          "max": 15.333
+        },
+        "coldMicroseconds": {
+          "median": 200.75,
+          "min": 189.375,
+          "max": 243.333
+        },
+        "physicalFootprintBefore": {
+          "median": 4858384.0,
+          "min": 4801040,
+          "max": 5014056
+        },
+        "physicalFootprintAfter": {
+          "median": 4899332.0,
+          "min": 4817424,
+          "max": 5046800
+        },
+        "maximumResidentSetBytes": {
+          "median": 14983168.0,
+          "min": 14876672,
+          "max": 15122432
+        }
+      }
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "scale": 1,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.0779475,
+          "min": 0.072385,
+          "max": 0.078764
+        },
+        "p50Microseconds": {
+          "median": 753.1875,
+          "min": 716,
+          "max": 763.208
+        },
+        "p95Microseconds": {
+          "median": 989.5625,
+          "min": 809.042,
+          "max": 1019.833
+        },
+        "coldMicroseconds": {
+          "median": 950.1455000000001,
+          "min": 831.458,
+          "max": 1029.5
+        },
+        "physicalFootprintBefore": {
+          "median": 6529624.0,
+          "min": 6373904,
+          "max": 6832728
+        },
+        "physicalFootprintAfter": {
+          "median": 6963836.0,
+          "min": 6816344,
+          "max": 7291624
+        },
+        "maximumResidentSetBytes": {
+          "median": 33349632.0,
+          "min": 29622272,
+          "max": 40976384
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0005744999999999995,
+          "min": 0.0005430000000000001,
+          "max": 0.0007189999999999992
+        },
+        "p50Microseconds": {
+          "median": 5.3335,
+          "min": 5.125,
+          "max": 6.042
+        },
+        "p95Microseconds": {
+          "median": 7.25,
+          "min": 5.709,
+          "max": 13.042
+        },
+        "coldMicroseconds": {
+          "median": 203.16649999999998,
+          "min": 188.375,
+          "max": 257.916
+        },
+        "physicalFootprintBefore": {
+          "median": 6480412.0,
+          "min": 6341160,
+          "max": 6668888
+        },
+        "physicalFootprintAfter": {
+          "median": 6513156.0,
+          "min": 6373928,
+          "max": 6685272
+        },
+        "maximumResidentSetBytes": {
+          "median": 18219008.0,
+          "min": 18071552,
+          "max": 18350080
+        }
+      }
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "scale": 2,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.223763,
+          "min": 0.217622,
+          "max": 0.224442
+        },
+        "p50Microseconds": {
+          "median": 2232.5415000000003,
+          "min": 2166,
+          "max": 2243.667
+        },
+        "p95Microseconds": {
+          "median": 2374.209,
+          "min": 2264.125,
+          "max": 2437.958
+        },
+        "coldMicroseconds": {
+          "median": 3089.5005,
+          "min": 2967.458,
+          "max": 3389.667
+        },
+        "physicalFootprintBefore": {
+          "median": 21430860.0,
+          "min": 21168632,
+          "max": 21578376
+        },
+        "physicalFootprintAfter": {
+          "median": 22094604.0,
+          "min": 21742216,
+          "max": 22332232
+        },
+        "maximumResidentSetBytes": {
+          "median": 33619968.0,
+          "min": 33357824,
+          "max": 33849344
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0006350000000000001,
+          "min": 0.0005929999999999998,
+          "max": 0.0006939999999999984
+        },
+        "p50Microseconds": {
+          "median": 6.2915,
+          "min": 5.708,
+          "max": 6.375
+        },
+        "p95Microseconds": {
+          "median": 6.6665,
+          "min": 6.334,
+          "max": 10.708
+        },
+        "coldMicroseconds": {
+          "median": 193.8755,
+          "min": 175.541,
+          "max": 265.875
+        },
+        "physicalFootprintBefore": {
+          "median": 6431212.0,
+          "min": 6275552,
+          "max": 6685272
+        },
+        "physicalFootprintAfter": {
+          "median": 6472184.0,
+          "min": 6291936,
+          "max": 6701656
+        },
+        "maximumResidentSetBytes": {
+          "median": 18178048.0,
+          "min": 18022400,
+          "max": 18350080
+        }
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.17498750000000002,
+          "min": 0.15789599999999998,
+          "max": 0.177176
+        },
+        "p50Microseconds": {
+          "median": 1715.6245,
+          "min": 1543.125,
+          "max": 1746.292
+        },
+        "p95Microseconds": {
+          "median": 2068.6040000000003,
+          "min": 1913.625,
+          "max": 2136.833
+        },
+        "coldMicroseconds": {
+          "median": 1848.4995,
+          "min": 1779.25,
+          "max": 2097.333
+        },
+        "physicalFootprintBefore": {
+          "median": 11256384.0,
+          "min": 11092472,
+          "max": 11420272
+        },
+        "physicalFootprintAfter": {
+          "median": 11764396.0,
+          "min": 11452992,
+          "max": 12059344
+        },
+        "maximumResidentSetBytes": {
+          "median": 69517312.0,
+          "min": 52658176,
+          "max": 86392832
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0005814999999999996,
+          "min": 0.0005439999999999993,
+          "max": 0.0006750000000000003
+        },
+        "p50Microseconds": {
+          "median": 5.458,
+          "min": 5.209,
+          "max": 5.75
+        },
+        "p95Microseconds": {
+          "median": 6.75,
+          "min": 5.625,
+          "max": 12.875
+        },
+        "coldMicroseconds": {
+          "median": 212.91649999999998,
+          "min": 186.25,
+          "max": 287.417
+        },
+        "physicalFootprintBefore": {
+          "median": 11108904.0,
+          "min": 10945040,
+          "max": 11305536
+        },
+        "physicalFootprintAfter": {
+          "median": 11133468.0,
+          "min": 10961424,
+          "max": 11321920
+        },
+        "maximumResidentSetBytes": {
+          "median": 27435008.0,
+          "min": 27279360,
+          "max": 27607040
+        }
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 2,
+      "baseline": {
+        "cpuSeconds": {
+          "median": 0.7096119999999999,
+          "min": 0.639907,
+          "max": 0.7342869999999999
+        },
+        "p50Microseconds": {
+          "median": 7120.791499999999,
+          "min": 6391.917,
+          "max": 7206.959
+        },
+        "p95Microseconds": {
+          "median": 7516.166,
+          "min": 7213.291,
+          "max": 10689.334
+        },
+        "coldMicroseconds": {
+          "median": 7033.603999999999,
+          "min": 6742.083,
+          "max": 7284.75
+        },
+        "physicalFootprintBefore": {
+          "median": 11543164.0,
+          "min": 11387504,
+          "max": 11813608
+        },
+        "physicalFootprintAfter": {
+          "median": 12034816.0,
+          "min": 11666056,
+          "max": 12682104
+        },
+        "maximumResidentSetBytes": {
+          "median": 61358080.0,
+          "min": 61063168,
+          "max": 61915136
+        }
+      },
+      "current": {
+        "cpuSeconds": {
+          "median": 0.0006619999999999994,
+          "min": 0.0005780000000000004,
+          "max": 0.0008310000000000001
+        },
+        "p50Microseconds": {
+          "median": 6.2705,
+          "min": 5.5,
+          "max": 6.583
+        },
+        "p95Microseconds": {
+          "median": 7.979,
+          "min": 5.959,
+          "max": 14.292
+        },
+        "coldMicroseconds": {
+          "median": 219.77100000000002,
+          "min": 201.958,
+          "max": 281.625
+        },
+        "physicalFootprintBefore": {
+          "median": 11125288.0,
+          "min": 10945040,
+          "max": 11190848
+        },
+        "physicalFootprintAfter": {
+          "median": 11149864.0,
+          "min": 10961424,
+          "max": 11371120
+        },
+        "maximumResidentSetBytes": {
+          "median": 27443200.0,
+          "min": 27262976,
+          "max": 27607040
+        }
+      }
+    }
+  ]
+}

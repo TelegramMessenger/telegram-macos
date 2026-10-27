@@ -22,6 +22,9 @@ let deps: [(String, String)] = [
     ("InputView", "../InputView"),
     ("InputTextView", "../InputTextView"),
     ("InlineStickerLayer", "../InlineStickerLayer"),
+    ("TelegramMedia", "../TelegramMedia"),
+    ("QRCodeUtils", "../QRCodeUtils"),
+    ("FilePanels", "../FilePanels"),
 
 ]
 

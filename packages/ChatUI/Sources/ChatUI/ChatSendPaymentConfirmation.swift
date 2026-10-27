@@ -2,7 +2,6 @@ import AlertsUI
 import Dispatch
 import TGUIKit
 import TelegramCore
-import Localization
 
 public func verifyChatSendPayment(for window: Window, header: String, information: String, ok: String, option: String, successHandler: @escaping (ConfirmResult) -> Void, cancelHandler: @escaping () -> Void = {}, dismissed: @escaping () -> Void = {}) {
     var resolved = false
@@ -28,6 +27,6 @@ public func chatPaidMessagePriceIsCurrent(_ chatInteraction: ChatInteraction, _ 
     if chatInteraction.presentation.sendPaidMessageStars == price {
         return true
     }
-    alert(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsPriceChangedTitle, info: strings().chatPayStarsPriceChangedText)
+    alert(for: chatInteraction.interactionContext.window, header: "Price Changed", info: "The price for sending messages to this chat has changed, so your message was not sent. Review the new price and send it again.") //TODOLANG
     return false
 }

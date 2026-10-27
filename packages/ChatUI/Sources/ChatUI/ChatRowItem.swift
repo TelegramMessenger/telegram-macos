@@ -49,19 +49,24 @@ public final class ChatHistoryBottomRowItem: GeneralRowItem {
     public static let minimumInputOverlayHeight: CGFloat = 40
     public static let messageInputGap: CGFloat = 20
 
-    public static func height(for inputOverlayHeight: CGFloat) -> CGFloat {
+    public static let compactBottomInset: CGFloat = 12
+
+    public static func bottomInset(showsInput: Bool, inputOverlayHeight: CGFloat) -> CGFloat {
+        guard showsInput else {
+            return compactBottomInset
+        }
         return max(minimumInputOverlayHeight, max(0, inputOverlayHeight)) + messageInputGap
     }
 
-    private let inputOverlayHeight: Atomic<CGFloat>
+    private let bottomInset: Atomic<CGFloat>
 
-    public init(_ initialSize: NSSize, stableId: AnyHashable, inputOverlayHeight: Atomic<CGFloat>) {
-        self.inputOverlayHeight = inputOverlayHeight
+    public init(_ initialSize: NSSize, stableId: AnyHashable, bottomInset: Atomic<CGFloat>) {
+        self.bottomInset = bottomInset
         super.init(initialSize, stableId: stableId, backgroundColor: .clear, ignoreAtInitialization: true)
     }
 
     public override var height: CGFloat {
-        return ChatHistoryBottomRowItem.height(for: inputOverlayHeight.with { $0 })
+        return bottomInset.with { $0 }
     }
 
     public override var accessibilityIsSpacer: Bool {
@@ -1032,8 +1037,17 @@ public class ChatRowItem: TableRowItem {
         return false
     }
     
+    private var reactionPermissionPeer: Peer? {
+        guard let message = firstMessage else { return nil }
+        return chatInteraction.peer.flatMap { $0.id == message.id.peerId ? $0 : nil } ?? message.peers[message.id.peerId]
+    }
+
     public var canReact: Bool {
         if let message = firstMessage {
+
+            guard let peer = reactionPermissionPeer, canSendReactionsToPeer(EnginePeer(peer)) else {
+                return false
+            }
 
             if message.activeEphemeralReplacementMessage != nil {
                 return false
@@ -1250,6 +1264,13 @@ public class ChatRowItem: TableRowItem {
         return false
     }
     
+    static func hidesReply(to attribute: ReplyMessageAttribute, in message: Message, threadId: Int64?) -> Bool {
+        if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
+            return true
+        }
+        return message.media.first is TelegramMediaGiveawayResults
+    }
+
     private static func canFillAuthorName(_ message: Message, chatInteraction: ChatInteraction, renderType: ChatItemRenderType, isIncoming: Bool, hasBubble: Bool) -> Bool {
         var canFillAuthorName: Bool = true
         var disable: Bool = false
@@ -1721,7 +1742,7 @@ public class ChatRowItem: TableRowItem {
     public var topicLinkLayout: TopicReplyItemLayout? {
         if let value = _topicLinkLayout {
             return value
-        } else if let message = self.message, let threadInfo = message.associatedThreadInfo, chatInteraction.mode == .history, let peer = message.peers[message.id.peerId], TelegramUtilsHooks.shared.peerIsForum(peer), !peer.displayForumAsTabs(splitState: chatInteraction.interactionContext.layout) {
+        } else if let message = self.message, let threadInfo = message.associatedThreadInfo, chatInteraction.mode == .history || (chatInteraction.mode == .preview && chatInteraction.chatLocation.threadId == nil), let peer = message.peers[message.id.peerId], TelegramUtilsHooks.shared.peerIsForum(peer), !peer.displayForumAsTabs(splitState: chatInteraction.interactionContext.layout) {
             var ignore: Bool = false
             
             if renderType == .bubble {
@@ -1784,7 +1805,9 @@ public class ChatRowItem: TableRowItem {
             let context = self.context
             let chatInteraction = self.chatInteraction
             if let reactions = reactions, !reactions.reactions.isEmpty, let available = context.reactions.available {
-                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), openInfo: { peerId in
+                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), reactionPeer: { [weak self] in
+                    self?.reactionPermissionPeer
+                }, openInfo: { peerId in
                     ChatHistoryUIHooks.shared.pushReactionPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, message.id)
                 }, runEffect: { [weak chatInteraction] value, isLarge in
                     chatInteraction?.runReactionEffect(value, message.id, isLarge)
@@ -1794,7 +1817,8 @@ public class ChatRowItem: TableRowItem {
                     } else {
                         chatInteraction?.setLocationTag(.customTag(ReactionsMessageAttribute.messageTag(reaction: reaction), nil))
                     }
-                }, starReact: {
+                }, starReact: { [weak self] in
+                    guard self?.canReact == true else { return }
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: context.window)
                 })
                 
@@ -2677,15 +2701,7 @@ public class ChatRowItem: TableRowItem {
             for attribute in message.attributes {
                 if let attribute = attribute as? ReplyMessageAttribute, let replyMessage = message.associatedMessages[attribute.messageId] {
                     
-                    var ignore: Bool = false
-                    if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
-                        ignore = true
-                    }
-                    
-                    if message.media.first is TelegramMediaGiveawayResults {
-                        ignore = true
-                    }
-                    if !ignore {
+                    if !ChatRowItem.hidesReply(to: attribute, in: message, threadId: threadId) {
                         
                         let isQuote = attribute.isQuote
                         
@@ -2827,7 +2843,7 @@ public class ChatRowItem: TableRowItem {
         case .DateEntry:
             return ChatDateStickItem(initialSize, entry, interaction: interaction, theme: theme)
         case .bottom:
-            return ChatHistoryBottomRowItem(initialSize, stableId: entry.stableId, inputOverlayHeight: interaction.inputOverlayHeight)
+            return ChatHistoryBottomRowItem(initialSize, stableId: entry.stableId, bottomInset: interaction.bottomInset)
         case let .empty(_, theme):
             return GeneralRowItem(initialSize, height: theme.bubbled ? 10 : 20, stableId: entry.stableId, backgroundColor: .clear, ignoreAtInitialization: true)
         case .commentsHeader:
@@ -3504,6 +3520,10 @@ public class ChatRowItem: TableRowItem {
     
     public func openTopic() {
         if let message = message, let threadId = message.threadId {
+            if chatInteraction.mode == .preview {
+                chatInteraction.previewTopic(threadId)
+                return
+            }
             let isLog = chatInteraction.isLogInteraction
             _ = (ChatHistoryUIHooks.shared.openTopic(threadId, chatInteraction.peerId, context, isLog ? nil : message.id) |> take(1)).start()
         }
@@ -3963,8 +3983,65 @@ public class ChatRowItem: TableRowItem {
             }
             
             
-            let signal = combineLatest(queue: .mainQueue(), builtin, peerAllowed, reactions, maximumReactionsLimit, starsAllowed)
+            let tagsThreadId = chatInteraction.chatLocation.threadId
+            let orderedReactions: Signal<[RecentReactionItem], NoError>
+            if isTags {
+                orderedReactions = reactions |> mapToSignal { defaults -> Signal<[RecentReactionItem], NoError> in
+                    return context.engine.data.get(TelegramEngine.EngineData.Item.Messages.SavedMessageTagStats(peerId: context.peerId, threadId: tagsThreadId))
+                    |> mapToSignal { stats -> Signal<[RecentReactionItem], NoError> in
+                        let used = stats.filter { $0.value > 0 }.sorted(by: { lhs, rhs in
+                            if lhs.value != rhs.value {
+                                return lhs.value > rhs.value
+                            }
+                            return lhs.key < rhs.key
+                        }).map(\.key)
+                        var fileIds: [Int64] = []
+                        for reaction in used {
+                            if case let .custom(fileId) = reaction, !fileIds.contains(fileId) {
+                                fileIds.append(fileId)
+                            }
+                        }
+                        return context.engine.stickers.resolveInlineStickers(fileIds: fileIds)
+                        |> map { files -> [RecentReactionItem] in
+                            var result: [RecentReactionItem] = []
+                            for reaction in used {
+                                switch reaction {
+                                case let .builtin(emoji):
+                                    result.append(RecentReactionItem(.builtin(emoji)))
+                                case let .custom(fileId):
+                                    if let file = files[fileId] {
+                                        result.append(RecentReactionItem(.custom(TelegramMediaFile.Accessor(file))))
+                                    }
+                                case .stars:
+                                    break
+                                }
+                            }
+                            let reactionKey:(RecentReactionItem) -> String = { item in
+                                switch item.content {
+                                case let .builtin(emoji):
+                                    return "b" + emoji
+                                case let .custom(file):
+                                    return "c\(file.fileId.id)"
+                                case .stars:
+                                    return "s"
+                                }
+                            }
+                            var existing = Set(result.map(reactionKey))
+                            for item in defaults where existing.insert(reactionKey(item)).inserted {
+                                result.append(item)
+                            }
+                            return result
+                        }
+                    }
+                }
+            } else {
+                orderedReactions = reactions
+            }
+
+            let signal = combineLatest(queue: .mainQueue(), builtin, peerAllowed, orderedReactions, maximumReactionsLimit, starsAllowed)
             |> take(1)
+
+            let canApplyReaction: () -> Bool = { [weak self] in self?.canReact == true }
 
             return (signal) |> map { builtin, peerAllowed, reactions, maximumReactionsLimit, starsAllowed in
                 let enabled = builtin?.enabled ?? []
@@ -4154,9 +4231,12 @@ public class ChatRowItem: TableRowItem {
                     }
                 }
                 
+                let orderedTagItems: [RecentReactionItem]? = isTags ? reactions : nil
+
                 if accessToAll {
                     reveal = { view in
                         let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
+                            guard isTags || canApplyReaction() else { return }
                             let parsedFile = sticker.file._parse()
                             let value: UpdateMessageReaction
                             if let bundle = parsedFile.stickerText {
@@ -4190,7 +4270,7 @@ public class ChatRowItem: TableRowItem {
                                 }
                             }
                         }
-                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, { sticker, fromRect in
+                        let window = ChatHistoryUIHooks.shared.makeReactionsWindow(context, message.id.peerId, selectedItems, orderedTagItems, { sticker, fromRect in
                             react(sticker, fromRect, false)
                         }, isTags ? nil : { sticker, fromRect in
                             react(sticker, fromRect, true)
@@ -4206,6 +4286,7 @@ public class ChatRowItem: TableRowItem {
                 
                 
                 let view = ContextAddReactionsListView(frame: rect, context: context, list: available, add: { value, checkPrem, fromRect in
+                    guard isTags || canApplyReaction() else { return }
                     if isTags, !context.isPremium {
                         openSavedTagsPremium()
                     } else {
@@ -4216,6 +4297,7 @@ public class ChatRowItem: TableRowItem {
                         }
                     }
                 }, addLarge: isTags ? nil : { value, fromRect in
+                    guard isTags || canApplyReaction() else { return }
                     context.reactions.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(), isTags), fromRect: fromRect, storeAsRecentlyUsed: true, isLarge: true)
                 }, radiusLayer: nil, revealReactions: reveal, aboveText: aboveLayout, message: message)
                 

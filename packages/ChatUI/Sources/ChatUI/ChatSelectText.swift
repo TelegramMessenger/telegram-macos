@@ -9,12 +9,47 @@ import InputTextView
 import MessageTextUtils
 import TelegramTheme
 import TelegramUtils
+import Localization
+import MessageUtils
 public struct SelectContainer {
     public let text:NSAttributedString
     public let range:NSRange
     public let index: Int
     public let header:String?
     public var richText: [RichText]? = nil
+}
+
+func copiedMessageHeader(_ message: Message, timeDifference: TimeInterval) -> String {
+    var header: String
+    if let forwardInfo = message.forwardInfo {
+        header = forwardInfo.authorTitle
+    } else {
+        header = message.effectiveAuthor?.displayTitle ?? ""
+    }
+    if message.timestamp != scheduleWhenOnlineTimestamp {
+        let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp) - timeDifference)
+        header += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
+    }
+    return header
+}
+
+func copiedMessageReplyLine(_ message: Message, threadId: Int64?) -> String? {
+    guard let attribute = message.replyAttribute, let replied = message.associatedMessages[attribute.messageId] else {
+        return nil
+    }
+    if ChatRowItem.hidesReply(to: attribute, in: message, threadId: threadId) {
+        return nil
+    }
+    let quote = attribute.isQuote ? attribute.quote : nil
+    var author = replied.effectiveAuthor?.displayTitle ?? ""
+    if let forwardInfo = replied.forwardInfo, quote == nil {
+        author = forwardInfo.authorTitle
+    }
+    let title = quote != nil ? strings().chatReplyQuotePanelTitle(author) : strings().chatReplyMessagePanelTitle(author)
+    let source = quote.map { messageReplyQuoteText($0).text } ?? (pullText(from: replied).string as String)
+    let firstLine = source.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+    let snippet = firstLine.count > 100 ? String(firstLine.prefix(100)) + "…" : firstLine
+    return snippet.isEmpty ? title : title + ": " + snippet
 }
 
 public class SelectManager : NSResponder {
@@ -308,23 +343,18 @@ public class SelectManager : NSResponder {
         } else if let chatInteraction = self.chatInteraction {
             if let selectionState = chatInteraction.presentation.selectionState {
                 let timeDifference = chatInteraction.interactionContext.timeDifference
+                let threadId = chatInteraction.chatLocation.threadId
                 _ = chatInteraction.interactionContext.account.postbox.messagesAtIds(Array(selectionState.selectedIds.sorted(by: <))).start(next: { messages in
                     var text: String = ""
                     for message in messages {
                         if !text.isEmpty {
                             text += "\n\n"
                         }
-                        if let forwardInfo = message.forwardInfo {
-                            text += "> " + forwardInfo.authorTitle
-                        } else {
-                            text += "> " + (message.effectiveAuthor?.displayTitle ?? "")
-                        }
-                        if message.timestamp != scheduleWhenOnlineTimestamp {
-                            let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp) - timeDifference)
-                            text += ", [" + DateSelectorUtil.chatFullDateFormatter.string(from: date) + "]"
-                        }
-                        text += ":"
+                        text += "> " + copiedMessageHeader(message, timeDifference: timeDifference) + ":"
                         text += "\n"
+                        if let replyLine = copiedMessageReplyLine(message, threadId: threadId) {
+                            text += "> " + replyLine + "\n"
+                        }
                         text += pullText(from: message).string as String
                     }
                     copyToClipboard(text)

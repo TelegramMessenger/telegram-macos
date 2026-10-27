@@ -21,14 +21,16 @@ class MediaGroupPreviewRowItem: TableRowItem {
     fileprivate let reorder:(Int, Int)->Void
     fileprivate let urls: [URL]
     fileprivate let editedData: [URL: EditedImageData]
+    fileprivate let renderingPreviews: [URL: CGImage]
     fileprivate let edit:(URL)->Void
     fileprivate let paint:(URL)->Void
     fileprivate let delete:(URL)->Void
     fileprivate let parameters:[ChatMediaLayoutParameters]
     fileprivate let payAmount: Int64?
-    init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], isSpoiler: Bool, payAmount: Int64?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(Int, Int)->Void) {
+    init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], isSpoiler: Bool, payAmount: Int64?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(Int, Int)->Void) {
         layout = GroupedLayout(messages)
         self.editedData = editedData
+        self.renderingPreviews = renderingPreviews
         self.edit = edit
         self.paint = paint
         self.delete = delete
@@ -148,6 +150,7 @@ class MediaGroupPreviewRowView : TableRowView, ModalPreviewRowViewProtocol {
         
         for i in 0 ..< item.layout.count {
             contents[i].update(with: item.layout.messages[i].media[0], size: item.layout.frame(at: i).size, context: item.context, parent: nil, table: item.table, parameters: item.parameters[i], animated: false, positionFlags: nil)
+            updateMediaPreviewRendering(i < item.urls.count ? item.renderingPreviews[item.urls[i]] : nil, in: contents[i], animated: animated)
         }
         super.set(item: item, animated: animated)
         

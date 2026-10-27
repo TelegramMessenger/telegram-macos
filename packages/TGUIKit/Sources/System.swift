@@ -102,6 +102,9 @@ public struct System {
             if liquidGlass && !liquidGlassAvailable {
                 liquidGlass = false
             }
+            if liquidGlass != oldValue {
+                NotificationCenter.default.post(name: systemLiquidGlassDidChange, object: nil)
+            }
         }
     }
 
@@ -113,6 +116,8 @@ public struct System {
     public static var blurEnabled: Bool = true
 
 }
+
+let systemLiquidGlassDidChange = Notification.Name("TGUIKitLiquidGlassDidChange")
 
 public var uiLocalizationFunc:((String)->String)?
 
