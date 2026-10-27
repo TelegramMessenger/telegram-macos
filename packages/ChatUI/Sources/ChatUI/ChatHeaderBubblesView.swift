@@ -261,6 +261,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     private let backGhost: LiquidGlassView
     private let windowControlsGhost: LiquidGlassView
     private let windowControls = DetachedWindowControlsView(frame: .zero)
+    private let windowControlsDivider = View()
     private var detachedWindowControlsVisible = false
     private var compactDetachedHeader: Bool {
         return chatInteraction.interactionContext.isExternal && windowControls.showsControls
@@ -465,6 +466,8 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         glassWrapper.addGhost(windowControlsGhost)
         windowControlsGhost.isHidden = true
         addSubview(windowControls)
+        addSubview(windowControlsDivider)
+        windowControlsDivider.isHidden = true
         windowControls.visibilityChanged = { [weak self] in
             self?.needsLayout = true
         }
@@ -586,6 +589,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         callButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
         windowControlsGhost.updateLocalizationAndTheme(theme: theme)
+        windowControlsDivider.backgroundColor = theme.colors.grayIcon.withAlphaComponent(0.3)
         backGhost.updateLocalizationAndTheme(theme: theme)
         centerGhost.updateLocalizationAndTheme(theme: theme)
         rightGhost.updateLocalizationAndTheme(theme: theme)
@@ -1043,6 +1047,10 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         transition.updateFrame(view: windowControls, frame: leadingLayout.controlsFrame)
         windowControls.layout()
         syncGhost(windowControlsGhost, frame: leadingLayout.leadingPillFrame, hidden: !showsWindowControls, transition: transition)
+        if let dividerFrame = leadingLayout.dividerFrame {
+            transition.updateFrame(view: windowControlsDivider, frame: dividerFrame)
+        }
+        windowControlsDivider.isHidden = leadingLayout.dividerFrame == nil
         if showsWindowControls {
             leftX = hasBackButton ? leadingLayout.backButtonFrame.minX : leadingLayout.contentMinX
         }

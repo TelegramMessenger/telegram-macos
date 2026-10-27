@@ -386,6 +386,7 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     let navigationBarView = NavigationBarView(frame: .zero)
     private let navBgView = View()
     private let windowControls = DetachedWindowControlsView(frame: .zero)
+    private let windowControlsDivider = View()
     private let windowControlsGlass = GlassContainerView(frame: .zero, flipped: true, spacing: 5)
     private let windowControlsGhost = LiquidGlassView(frame: .zero, cornerRadius: DetachedWindowHeaderLayout.height / 2, hasShadow: false, hasBorder: false, tintAlpha: 0.4)
     private var detachedWindowControlsVisible = false
@@ -400,6 +401,8 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         addSubview(windowControlsGlass)
         addSubview(navigationBarView)
         addSubview(windowControls)
+        addSubview(windowControlsDivider)
+        windowControlsDivider.isHidden = true
         windowControlsGlass.addGhost(windowControlsGhost)
         windowControlsGlass.isHidden = true
         windowControls.isHidden = true
@@ -438,6 +441,7 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         windowControlsGhost.customTint = detachedWindowControlsTint ?? theme.colors.background.withAlphaComponent(0.4)
+        windowControlsDivider.backgroundColor = theme.colors.grayIcon.withAlphaComponent(0.3)
     }
 
     func setDetachedWindowControlsVisible(_ visible: Bool) {
@@ -494,6 +498,10 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         windowControlsGlass.isHidden = !showsControls
         windowControlsGhost.isHidden = !showsControls
         windowControls.isHidden = !showsControls
+        if let dividerFrame = leadingLayout.dividerFrame {
+            transition.updateFrame(view: windowControlsDivider, frame: dividerFrame.offsetBy(dx: 0, dy: navigationOverflow))
+        }
+        windowControlsDivider.isHidden = leadingLayout.dividerFrame == nil
         (leftBar as? BackNavigationBar)?.button.setGlassEffectHidden(showsControls)
         transition.updateFrame(view: tableView, frame: NSMakeRect(0, 0, size.width, size.height))
     }

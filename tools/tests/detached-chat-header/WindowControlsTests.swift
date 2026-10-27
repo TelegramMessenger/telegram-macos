@@ -174,10 +174,16 @@ private func testLeadingHeaderLayout() {
             check(layout.backButtonFrame.width == (hasBackButton ? 40 : 0), "back button retains a 40-point hit area")
             check(layout.backButtonFrame.minX == layout.controlsFrame.maxX, "back button directly follows traffic lights inside shared pill")
             check(layout.contentMinX == layout.leadingPillFrame.maxX + (expectedWidth > 0 ? 6 : 0), "consistent six-point gap after leading pill")
+            check((layout.dividerFrame != nil) == (showsControls && hasBackButton), "divider only separates traffic lights from a back button")
             if showsControls && hasBackButton {
                 check(layout.leadingPillFrame.contains(layout.controlsFrame), "traffic lights contained in shared pill")
                 check(layout.leadingPillFrame.contains(layout.backButtonFrame), "back button contained in shared pill")
                 check(layout.leadingPillFrame.width == 112, "shared pill avoids a separate back-button gap")
+                if let divider = layout.dividerFrame {
+                    check(divider.midX == layout.controlsFrame.maxX, "divider sits on the traffic-light/back-button boundary")
+                    check(divider.width == 1 && divider.height == 18, "divider is a short hairline")
+                    check(divider.midY == layout.leadingPillFrame.midY, "divider is vertically centered in the pill")
+                }
             }
         }
     }

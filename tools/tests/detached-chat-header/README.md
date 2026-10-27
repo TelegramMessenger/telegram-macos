@@ -12,7 +12,7 @@ The eight checks cover repeated attachment, traffic-light hover state, native bu
 
 This harness does not build Telegram, render the glass header, or replace visual verification of a chat opened through **Open in New Window**.
 
-The leading pill keeps a 72-point native-control area and a 40-point back-button target on one surface, with a six-point gap to the rest of the header. Chat and profile views use the same layout values.
+The leading pill keeps a 72-point native-control area and a 40-point back-button target on one surface, with a six-point gap to the rest of the header. A centered 18-point hairline separates the traffic lights from the back button. Chat and profile views use the same layout values.
 
 Below 650 points the detached header uses compact glass controls. At 650 points and wider it returns the buttons to the standard titlebar and restores the original window chrome. The resize check crosses this boundary repeatedly in both directions.
 
