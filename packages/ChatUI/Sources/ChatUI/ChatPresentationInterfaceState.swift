@@ -463,6 +463,14 @@ public class ChatPresentationInterfaceState: Equatable {
         return self.interfaceState.messageEffect?.effect
     }
     
+    public func canSendReactions(to peer: Peer) -> Bool {
+        var ignoreDefault = false
+        if peer.id == self.peer?.id, let cachedData = cachedData as? CachedChannelData, let boostsToUnrestrict = cachedData.boostsToUnrestrict, boostsToUnrestrict > 0, let appliedBoosts = cachedData.appliedBoosts, appliedBoosts >= boostsToUnrestrict {
+            ignoreDefault = true
+        }
+        return canSendReactionsToPeer(EnginePeer(peer), ignoreDefault: ignoreDefault)
+    }
+    
     public var boostNeed: Int32 {
         if let cachedData = cachedData as? CachedChannelData, peer?.isAdmin == false {
             if let boostsToUnrestrict = cachedData.boostsToUnrestrict, slowMode?.timeout != nil {
