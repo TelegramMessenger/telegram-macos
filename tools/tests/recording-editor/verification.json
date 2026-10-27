@@ -1,11 +1,12 @@
 {
   "latest_verification": {
     "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
-    "code_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
-    "native_cases_passed": 22,
+    "code_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+    "native_cases_passed": 29,
     "full_debug_build": "PASS",
-    "manual_new_limit_workflow": "PASS, direct account-owner confirmation",
-    "details": "recording_limit_review"
+    "manual_send_after_limit": "PASS, direct account-owner confirmation",
+    "manual_resume_after_trim": "PASS, direct account-owner confirmation",
+    "details": "pause_finalization_and_real_resume_review"
   },
   "source_base": "272d85dd7cc78864549b1d5510a177db79059fc7",
   "environment": {
@@ -286,6 +287,93 @@
       "packages/ChatUI/Sources/ChatUI/ChatInputRecordingView.swift": "0633c61ad05b533cf3ac088519564a23e927c416ec696d84d0bec159139fef16",
       "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalController.swift": "67937f9167d24e1e73c69a8f612a3e0ca121d944e0c2eb60d4ffb28654059460",
       "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "9fd0088d180c319f0e492b00c008db72f2f8c1685e7f0f795f53e14076c44373"
+    }
+  },
+  "pause_finalization_and_real_resume_review": {
+    "date": "2026-10-27",
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "code_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+    "parent_commit": "a4148a003be829b3496721c271dd18027842d7df",
+    "changes": {
+      "pending_pause_send": "Send records its stopping intent and waits for the current native writer to finish before composing the complete recording. Repeated Send does not finalize the writer again. Discard, writer failure and obsolete writer callbacks cannot complete that pending segment.",
+      "real_resume_regression": "The manually primed controller resume test was removed. Its replacement uses the actual pipeline, real trim/export of a generated 60-second video to 10 seconds, and real resume. It observes the retained duration before the recording status."
+    },
+    "before_regression": {
+      "existing_tests_passed": 22,
+      "new_test_cases_failed": 1,
+      "failed_assertions": 3,
+      "observed": "Send while the first paused segment was finalizing emitted stopped and no finished video; expected [60], observed [].",
+      "log_sha256": "dd155d3da607579024ee23463aae1b39c9df76f6829b68ef495ce4c06d710962"
+    },
+    "after": {
+      "cases_passed": 29,
+      "cases_failed": 0,
+      "log_sha256": "c983efba62286b4df80f898352b13a7e0e7e46d42ce33da017eea04b7687b192",
+      "real_pipeline_cases": 8,
+      "coverage": [
+        "Send waits for first paused segment finalization",
+        "Real trim/export and resume publish 10 seconds before recording status",
+        "Ordinary Send still finishes",
+        "Repeated Send finalizes the writer once",
+        "Send waits for second segment and includes both segments: 2 + 3 seconds = 5 seconds",
+        "Discard during finalization ignores late completion",
+        "Resume cannot replace a writer still finalizing",
+        "Writer failure remains terminal despite late completion"
+      ]
+    },
+    "resume_mutation": {
+      "mutation": "Remove the duration publication from the production resume method",
+      "result": "EXPECTED FAILURE",
+      "observed_seconds": 60,
+      "expected_seconds": 10,
+      "source_restored": true,
+      "final_suite_after_restore": "29 passed, 0 failed",
+      "log_sha256": "0e0710173614f1404e3e256c354fe8cd3fbb0856e3a4a0d86b8d118a5d1b0403"
+    },
+    "full_debug_arm64_build": {
+      "result": "BUILD SUCCEEDED",
+      "configuration": "Debug arm64",
+      "log_sha256": "9ac64826453aa40763a6f253504e9bdcda7e324a88371af9c16bb2434f52754d",
+      "source_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+      "strict_signature_verified": true,
+      "installed_debug_library_sha256": "2fccc2a25f712d3a88638183a5cc0b668835521c3edd96ac17e5409654ae78d0"
+    },
+    "manual_validation": {
+      "source": "Direct account-owner confirmation",
+      "date": "2026-10-27",
+      "source_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+      "built_before_commit": true,
+      "verified_source_sha256": {
+        "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "c9fbb2b031a3e70ae66c2042e357c5a3cb2983b3585ebd955e33222dcb848d0d",
+        "packages/ChatUI/Tests/ChatUITests/RecordingPipelineTests.swift": "dd1177458e177bff3ccb0beb654ada4a8604c503cb8c6ac66636223cb3f9a07d",
+        "tools/tests/recording-editor/CameraLifecycleTests.swift": "d5df0013f3576bb793a8adfd439673f9e375d51c7a4c3be24f736ad22a37f68c",
+        "tools/tests/recording-editor/run.py": "264f2a07af19390fe4eefe57adf817a3081754333f1ffff9e60c64f2245d8611",
+        "packages/ChatUI/Package.swift": "1ea3cf85fb563f10f550423e0a916710c7ba85854f397ba40477331fc7886fd6"
+      },
+      "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+      "result": "PASS",
+      "checks": [
+        "Send after the 60-second limit",
+        "Continue recording after trimming"
+      ],
+      "media_send_guard_enabled": false,
+      "local_patch_sha256": "ea156079c45654a183dc3c1952f29dd01dc4957e0a8714d4e45f4390e5140698",
+      "installed_debug_library_sha256": "2fccc2a25f712d3a88638183a5cc0b668835521c3edd96ac17e5409654ae78d0"
+    },
+    "test_method": "Tests instantiate the actual VideoRecorderPipeline with capture setup disabled and a controlled native-writer subclass that delays completion. Generated local video files pass through the real composition, trim/export and resume methods. No real camera, microphone, account or network is used in the automated tests. Controller cleanup tests compile current production controller code with capture/view probes.",
+    "limitations": [
+      "The latest manual confirmation covers Send after 60 seconds and continuation after trimming; it does not measure the probability of hitting the native finalization race.",
+      "Physical camera-off and phone-playback observations belong to the earlier d33bf763 manual workflow recorded under recording_limit_review, not a new automated hardware check.",
+      "A separate held-gesture release run and device-disconnect/error scenarios were not newly confirmed in the live client.",
+      "Tests and the full build were local, not GitHub CI. No app-wide performance result is claimed.",
+      "Local Xcode, signing and isolated-profile changes are excluded from the PR."
+    ],
+    "source_sha256": {
+      "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "c9fbb2b031a3e70ae66c2042e357c5a3cb2983b3585ebd955e33222dcb848d0d",
+      "packages/ChatUI/Tests/ChatUITests/RecordingPipelineTests.swift": "dd1177458e177bff3ccb0beb654ada4a8604c503cb8c6ac66636223cb3f9a07d",
+      "tools/tests/recording-editor/CameraLifecycleTests.swift": "d5df0013f3576bb793a8adfd439673f9e375d51c7a4c3be24f736ad22a37f68c",
+      "tools/tests/recording-editor/run.py": "264f2a07af19390fe4eefe57adf817a3081754333f1ffff9e60c64f2245d8611",
+      "packages/ChatUI/Package.swift": "1ea3cf85fb563f10f550423e0a916710c7ba85854f397ba40477331fc7886fd6"
     }
   }
 }

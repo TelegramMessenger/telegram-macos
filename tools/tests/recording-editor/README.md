@@ -1,5 +1,25 @@
 # Recording editor controls and preview playback
 
+## Latest verification: Send during finalization and real resume, 27 October 2026
+
+On master `e1883098` plus code `1a6e4032`, Send waits for a pending native-writer completion before composing the recording. This prevents a complete first take from being discarded, or the newest resumed segment from being omitted, when Send arrives during pause finalization. Repeated Send requests do not finalize the writer again. Discard, writer failure and obsolete writer callbacks reject late completion.
+
+| Scenario | Before this follow-up | After |
+|---|---|---|
+| Send during first paused-segment finalization | Stopped with no finished video | One complete 60-second result |
+| Send while a resumed segment finishes | Could use only earlier completed segments | Waits for both segments; the test checks 2 + 3 = 5 seconds |
+| Resume after trimming 60 seconds to 10 | Old test manually published 10 seconds and could hide a regression | Actual trim/export and resume must publish 10 before recording status |
+
+All **29 focused native tests pass**, including eight actual-pipeline cases. The first new race test failed before the fix on three assertions while the old 22 tests passed. Removing the production duration publication from `resume()` makes the real resume test fail with 60 seconds instead of 10; restoring it returns the final suite to green. The old manually primed resume case was removed.
+
+The pipeline tests instantiate the production class. Only capture setup and writer I/O are controlled; composition, trim/export, pause, stop and resume run in the real implementation with generated local video files. The full Debug arm64 application build and installed signature verification pass. The installed production source matches this code commit by SHA-256; it was built before the commit was created.
+
+The account owner confirmed **Send after 60 seconds** and **continuation after trimming** in that installed client. This is a manual result, separate from deterministic delayed-writer tests. It does not establish how often the race occurs on real hardware. The earlier limit-to-editor, phone playback and camera-off observations remain recorded under the earlier code version below. A separate held-gesture release run and device-disconnect/error paths were not newly confirmed. Local tests do not use a camera, microphone, account or network; no GitHub CI or app-wide performance result is claimed.
+
+Environment: macOS 27.0.1 (26A434), Apple M4 Pro arm64, Xcode 27.1 / Swift 6.4; Telegram Master Test 13.1.0 (283357), Debug arm64. Sending and recording pre-upload were enabled. See `pause_finalization_and_real_resume_review` in [verification.json](verification.json) for source and log hashes. Reproduction commands are below.
+
+Earlier checks are retained below with their original code versions and scope.
+
 ## Review at the 60-second limit, 27 October 2026
 
 Reaching the video-message duration limit now pauses recording in the existing editor instead of automatically sending it. The user can play, seek, trim or discard the recording and explicitly choose Send. This is an intentional change to the previous macOS behavior, which submitted the video and closed the recorder at 60 seconds.
@@ -8,9 +28,9 @@ This protects users from accidental sends caused by reaching the limit and gives
 
 The limit requests hands-free mode so releasing the original recording gesture does not submit the video. Record More is disabled while the effective selection remains at the limit; trimming it shorter enables continuation. The pipeline publishes the retained duration on resume so the timer does not immediately react to the old pre-trim duration.
 
-All 22 focused native tests pass on master `e1883098` plus code `d33bf763`. A full Debug arm64 application build and strict signature verification also pass. The new controller test failed before the change: one submission callback and one recording reset occurred, with no paused editor. After the fix, the editor opens, submission/reset counts stay zero, and hands-free mode is requested. Additional checks cover 59.99 seconds, repeated limit events and reaching the limit again after a shorter resumed duration. These tests inject duration events into the current production controller compiled with capture/view probes; they do not record a physical minute of footage or access a Telegram account.
+At this earlier stage, all 22 focused native tests passed on master `e1883098` plus code `d33bf763`. A full Debug arm64 application build and strict signature verification also pass. The new controller test failed before the change: one submission callback and one recording reset occurred, with no paused editor. After the fix, the editor opens, submission/reset counts stay zero, and hands-free mode is requested. Additional checks cover 59.99 seconds, repeated limit events and reaching the limit again after a shorter resumed duration. These tests inject duration events into the current production controller compiled with capture/view probes; they do not record a physical minute of footage or access a Telegram account.
 
-Separately, the account owner confirmed ordinary and trimmed video sending and the previous automatic completion behavior in the full unguarded client on master `e1883098` plus the earlier PR code (`3749a4a8`). After installing `d33bf763`, the account owner also confirmed the new limit-to-editor workflow: at 60 seconds no video was sent automatically, the editor allowed Play/Pause and trimming, explicit Send delivered the video for playback on the phone, and the recording window closed with the camera indicator off. This is a user-confirmed manual result; it is not an automated end-to-end run. Record More after trimming, a separate held-gesture release run and hardware-error paths were not independently confirmed in this latest client check. See `current_client_sending_validation` and `recording_limit_review` in [verification.json](verification.json).
+Separately, the account owner confirmed ordinary and trimmed video sending and the previous automatic completion behavior in the full unguarded client on master `e1883098` plus the earlier PR code (`3749a4a8`). After installing `d33bf763`, the account owner also confirmed the new limit-to-editor workflow: at 60 seconds no video was sent automatically, the editor allowed Play/Pause and trimming, explicit Send delivered the video for playback on the phone, and the recording window closed with the camera indicator off. This is a user-confirmed manual result; it is not an automated end-to-end run. Record More after trimming, a separate held-gesture release run and hardware-error paths were not independently confirmed in that client check. The newer Record More check is recorded above. See `current_client_sending_validation` and `recording_limit_review` in [verification.json](verification.json).
 
 For a manual check, record in Saved Messages until 60 seconds: no outgoing message should appear, the paused editor should remain usable, and releasing the recording gesture should not send. Check playback and trim boundaries, then explicitly Send or Discard. Confirm delivery/playback after Send and camera/window cleanup after Send or Discard. Also verify that trimming the selection shorter enables Record More. Sending and recording pre-upload remain enabled; the local guard used in earlier checks is excluded from this PR.
 
@@ -60,9 +80,9 @@ The Play control is visible while the selected fragment is paused.
 
 I confirmed that seeking and the playhead stay within the range selected by the left and right trim handles. Both PRs work together: preview images and thumbnails remain normal, both trim boundaries move in both directions, Play/Pause works for the full recording and selected fragment, and repeated No/Discard confirmations allow another recording to start.
 
-## Validation
+## Earlier editor validation
 
-Environment: macOS 27.0.1 (26A434), Apple M4 Pro arm64, Xcode 27.1 / Swift 6.4. Current master base: `272d85dd7cc78864549b1d5510a177db79059fc7`.
+Environment: macOS 27.0.1 (26A434), Apple M4 Pro arm64, Xcode 27.1 / Swift 6.4. Master base for this earlier check: `272d85dd7cc78864549b1d5510a177db79059fc7`.
 
 - All 15 focused native tests pass: six control/trim tests, five synthetic-video playback/lifetime tests and four overlay/modal lifecycle tests.
 - A full Debug arm64 application build passes on that base with this editor patch, without the PR #82 optimization.
