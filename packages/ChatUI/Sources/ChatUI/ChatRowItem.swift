@@ -1264,6 +1264,13 @@ public class ChatRowItem: TableRowItem {
         return false
     }
     
+    static func hidesReply(to attribute: ReplyMessageAttribute, in message: Message, threadId: Int64?) -> Bool {
+        if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
+            return true
+        }
+        return message.media.first is TelegramMediaGiveawayResults
+    }
+
     private static func canFillAuthorName(_ message: Message, chatInteraction: ChatInteraction, renderType: ChatItemRenderType, isIncoming: Bool, hasBubble: Bool) -> Bool {
         var canFillAuthorName: Bool = true
         var disable: Bool = false
@@ -2694,15 +2701,7 @@ public class ChatRowItem: TableRowItem {
             for attribute in message.attributes {
                 if let attribute = attribute as? ReplyMessageAttribute, let replyMessage = message.associatedMessages[attribute.messageId] {
                     
-                    var ignore: Bool = false
-                    if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
-                        ignore = true
-                    }
-                    
-                    if message.media.first is TelegramMediaGiveawayResults {
-                        ignore = true
-                    }
-                    if !ignore {
+                    if !ChatRowItem.hidesReply(to: attribute, in: message, threadId: threadId) {
                         
                         let isQuote = attribute.isQuote
                         
