@@ -386,7 +386,7 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     let navigationBarView = NavigationBarView(frame: .zero)
     private let navBgView = View()
     private let windowControls = DetachedWindowControlsView(frame: .zero)
-    private let windowControlsGlass = GlassContainerView(frame: .zero)
+    private let windowControlsGlass = GlassContainerView(frame: .zero, flipped: true, spacing: 5)
     private let windowControlsGhost = LiquidGlassView(frame: .zero, cornerRadius: DetachedWindowHeaderLayout.height / 2, hasShadow: false, hasBorder: false, tintAlpha: 0.4)
     private var detachedWindowControlsVisible = false
     private weak var leftBar: BarView?
