@@ -1,4 +1,5 @@
 import Cocoa
+import ComponentsUI
 import TGUIKit
 import UniqueGiftBackground
 import AvatarEditorUI
@@ -409,6 +410,18 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
 }
 
 class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
+    var usesCompactDetachedHeader: Bool {
+        return context.isExternal && !editing && DetachedWindowHeaderLayout.usesCompactLayout(width: width)
+    }
+
+    override var inset: NSEdgeInsets {
+        return usesCompactDetachedHeader ? NSEdgeInsets() : super.inset
+    }
+
+    override var blockWidth: CGFloat {
+        return usesCompactDetachedHeader ? width : super.blockWidth
+    }
+
     override var height: CGFloat {
         let insets = self.viewType.innerInset
         var height: CGFloat = 0
@@ -806,15 +819,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         statusLayout = TextViewLayout(result.status, maximumNumberOfLines: 1, alignment: threadData != nil ? .center : .left, alwaysStaticItems: true)
         
         
-        let fullBleed = context.isExternal && !editing
-        let headerViewType: GeneralViewType
-        if fullBleed, case let .modern(_, insets) = viewType {
-            headerViewType = .modern(position: .last, insets: insets)
-        } else {
-            headerViewType = viewType
-        }
-        let headerInset = fullBleed ? NSEdgeInsets() : NSEdgeInsets(left: 8, right: 8, top: 8)
-        super.init(initialSize, stableId: stableId, viewType: headerViewType, inset: headerInset, fullSize: fullBleed)
+        super.init(initialSize, stableId: stableId, viewType: viewType, inset: NSEdgeInsets(left: 8, right: 8, top: 8))
         
         
         if let cachedData = peerView.cachedData as? CachedChannelData, threadData == nil, let peer = peer, peer.isGroup || peer.isSupergroup || peer.isGigagroup {
@@ -1613,6 +1618,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     
 
     private let actionsView = View()
+    private var actionsLayoutWidth: CGFloat?
     private weak var giftTooltip: ShimmerTooltipView?
     private var didRunGiftStatusIntro = false
     private var photoEditableView: PeerInfoPhotoEditableView?
@@ -1849,9 +1855,18 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     }
     
     
+    override var maxBlockWidth: CGFloat {
+        if let item = item as? PeerInfoHeadItem<Context>, item.usesCompactDetachedHeader {
+            return frame.width
+        }
+        return super.maxBlockWidth
+    }
+
     override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         super.updateLayout(size: size, transition: transition)
-        
+        if let item = item as? PeerInfoHeadItem<Context>, item.usesCompactDetachedHeader {
+            containerView.setCorners([], animated: transition.isAnimated, frame: containerView.frame)
+        }
         
         let statusContainerSize: NSSize
         statusContainerSize = NSMakeSize(statusContainer.subviewsWidthSize.width + 4, statusContainer.subviewsWidthSize.height)
@@ -1866,6 +1881,9 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
 
+        if actionsLayoutWidth != containerView.frame.width {
+            layoutActionItems(item.items, animated: false)
+        }
         transition.updateFrame(view: photoContainer, frame: photoContainer.centerFrameX(y: 20))
         if let uniqueBackground, let content = uniqueBackgroundContent {
             let backgroundFrame = NSRect(x: 0, y: -110, width: containerView.frame.width, height: containerView.frame.height + 110)
@@ -2025,13 +2043,16 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         }
 
         let actionItemInset = ActionItem.actionItemInsetWidth(isColorfull: item.nameColor != nil)
-        let sideInset: CGFloat = 14
+        let isDetachedProfile = item.usesCompactDetachedHeader
+        let sideInset: CGFloat = isDetachedProfile ? DetachedWindowHeaderLayout.sideInset * 2 : 14
         let width = (item.blockWidth - sideInset - item.inset.left - item.inset.right - (actionItemInset * CGFloat(items.count - 1)))
+        let buttonWidth = width / CGFloat(items.count)
 
-        return min(170, width / CGFloat(items.count))
+        return isDetachedProfile ? buttonWidth : min(170, buttonWidth)
     }
     
     private func layoutActionItems(_ items: [ActionItem], animated: Bool) {
+        actionsLayoutWidth = containerView.frame.width
         
         if !items.isEmpty, let rowItem = self.item as? PeerInfoHeadItem<Context> {
             let maxActionSize: NSSize = items.max(by: { $0.size.height < $1.size.height })!.size

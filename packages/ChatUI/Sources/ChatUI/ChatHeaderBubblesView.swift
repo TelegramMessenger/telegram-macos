@@ -262,6 +262,10 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     private let windowControlsGhost: LiquidGlassView
     private let windowControls = DetachedWindowControlsView(frame: .zero)
     private var detachedWindowControlsVisible = false
+    private var compactDetachedHeader: Bool {
+        return chatInteraction.interactionContext.isExternal && DetachedWindowHeaderLayout.usesCompactLayout(width: window?.frame.width ?? frame.width)
+    }
+
     private let centerGhost: LiquidGlassView
     private let rightGhost: LiquidGlassView
 
@@ -575,7 +579,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         updateBackButtonIcon()
         backButton.setGlassEffect(size: buttonSize)
-        backButton.setGlassEffectHidden(chatInteraction.interactionContext.isExternal)
+        backButton.setGlassEffectHidden(compactDetachedHeader)
         if chatInteraction.interactionContext.isExternal {
             backButton.interactiveGlassView = backButton
         }
@@ -1025,7 +1029,15 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         let bubbleHeight = Self.bubbleHeight
         let bubbleY = Self.topInset
-        let spacing = chatInteraction.interactionContext.isExternal ? DetachedWindowHeaderLayout.spacing : Self.interBubbleSpacing
+        let compactHeader = compactDetachedHeader
+        let spacing = compactHeader ? DetachedWindowHeaderLayout.spacing : Self.interBubbleSpacing
+        if chatInteraction.interactionContext.isExternal {
+            for ghost in [backGhost, centerGhost, rightGhost] {
+                ghost.hasBorder = !compactHeader
+                ghost.hasShadow = !compactHeader
+            }
+            backButton.setGlassEffectHidden(compactHeader)
+        }
 
         let totalHeight = size.height + extendedContentHeight
         let wrapperFrame = NSRect(x: 0, y: 0, width: size.width, height: totalHeight)
@@ -1079,8 +1091,8 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         let avatarSize: CGFloat = max(32, avatarControl.frame.width)
         let horizontalContentPadding: CGFloat = 4
-        let avatarTextSpacing: CGFloat = chatInteraction.interactionContext.isExternal ? 4 : 8
-        let textRightPadding: CGFloat = chatInteraction.interactionContext.isExternal ? 10 : 14
+        let avatarTextSpacing: CGFloat = compactHeader ? 4 : 8
+        let textRightPadding: CGFloat = compactHeader ? 10 : 14
 
         let centerRect = NSRect(x: centerAvailableMinX, y: bubbleY, width: centerWidth, height: bubbleHeight)
         transition.updateFrame(view: centerBubble, frame: centerRect)

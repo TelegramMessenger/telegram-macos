@@ -1,6 +1,12 @@
 import Cocoa
 
 public struct DetachedWindowHeaderLayout {
+    public static let standardLayoutWidth: CGFloat = 650
+
+    public static func usesCompactLayout(width: CGFloat) -> Bool {
+        return width < standardLayoutWidth
+    }
+
     public static let controlsWidth: CGFloat = 72
     public static let height: CGFloat = 40
     public static let spacing: CGFloat = 6

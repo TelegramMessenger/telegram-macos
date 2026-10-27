@@ -7,6 +7,8 @@ public final class DetachedWindowControlsView: View {
     private var originalChrome: (fullSize: Bool, transparent: Bool, visibility: NSWindow.TitleVisibility)?
     private var observers: [NSObjectProtocol] = []
     private var enteringFullScreen = false
+    private var compactChromeApplied = false
+    private var updatingPresentation = false
     public var visibilityChanged: (() -> Void)?
 
     public var showsControls: Bool {
@@ -18,44 +20,77 @@ public final class DetachedWindowControlsView: View {
         detach()
         attachedWindow = window
         originalChrome = (window.styleMask.contains(.fullSizeContentView), window.titlebarAppearsTransparent, window.titleVisibility)
-        window.styleMask.insert(.fullSizeContentView)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
         let notifications = NotificationCenter.default
         observers.append(notifications.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
             self?.enteringFullScreen = true
-            self?.restoreButtons()
-            self?.visibilityChanged?()
+            self?.updatePresentation()
         })
         observers.append(notifications.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
             self?.enteringFullScreen = false
-            self?.installButtons()
+            self?.updatePresentation()
         })
         for name in [NSWindow.didUpdateNotification, NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
             observers.append(notifications.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                self?.positionButtons()
+                self?.updatePresentation()
             })
         }
-        installButtons()
+        updatePresentation()
     }
 
     public func detach() {
+        guard attachedWindow != nil || !observers.isEmpty || !buttons.isEmpty else { return }
+        let window = attachedWindow
+        let chrome = originalChrome
+        let restoreChrome = compactChromeApplied
+        attachedWindow = nil
+        originalChrome = nil
+        compactChromeApplied = false
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
         }
         observers.removeAll()
         restoreButtons()
-        if let window = attachedWindow, let chrome = originalChrome {
-            if !chrome.fullSize {
-                window.styleMask.remove(.fullSizeContentView)
-            }
-            window.titlebarAppearsTransparent = chrome.transparent
-            window.titleVisibility = chrome.visibility
+        if restoreChrome, let window, let chrome {
+            applyOriginalChrome(chrome, to: window)
         }
-        attachedWindow = nil
-        originalChrome = nil
         enteringFullScreen = false
         visibilityChanged?()
+    }
+
+    private func applyOriginalChrome(_ chrome: (fullSize: Bool, transparent: Bool, visibility: NSWindow.TitleVisibility), to window: NSWindow) {
+        if !chrome.fullSize {
+            window.styleMask.remove(.fullSizeContentView)
+        }
+        window.titlebarAppearsTransparent = chrome.transparent
+        window.titleVisibility = chrome.visibility
+    }
+
+    private func updatePresentation() {
+        guard let window = attachedWindow, !updatingPresentation else { return }
+        updatingPresentation = true
+        defer { updatingPresentation = false }
+        let hadControls = showsControls
+        if window.styleMask.contains(.fullScreen) || enteringFullScreen {
+            restoreButtons()
+        } else if DetachedWindowHeaderLayout.usesCompactLayout(width: window.frame.width) {
+            if !compactChromeApplied {
+                compactChromeApplied = true
+                window.styleMask.insert(.fullSizeContentView)
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+            }
+            installButtons()
+            positionButtons()
+        } else {
+            restoreButtons()
+            if compactChromeApplied, let chrome = originalChrome {
+                compactChromeApplied = false
+                applyOriginalChrome(chrome, to: window)
+            }
+        }
+        if hadControls != showsControls {
+            visibilityChanged?()
+        }
     }
 
     private func installButtons() {
@@ -67,22 +102,21 @@ public final class DetachedWindowControlsView: View {
                 addSubview(button)
             }
         }
-        positionButtons()
-        visibilityChanged?()
     }
 
     private func restoreButtons() {
-        for entry in buttons {
+        let previousButtons = buttons
+        buttons.removeAll()
+        for entry in previousButtons {
             entry.parent.addSubview(entry.button)
             entry.button.frame = entry.frame
             entry.button.autoresizingMask = entry.autoresizingMask
         }
-        buttons.removeAll()
     }
 
     public override func layout() {
         super.layout()
-        positionButtons()
+        updatePresentation()
     }
 
     private func positionButtons() {

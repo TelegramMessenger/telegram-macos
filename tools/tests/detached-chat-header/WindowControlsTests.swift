@@ -82,7 +82,7 @@ private func testRepeatedAttachmentAndResize() {
                 check(themeFrame.hitTest(point) === button, "native button receives hit tests")
             }
         }
-        for width: CGFloat in [380, 700, 500] {
+        for width: CGFloat in [380, 600, 500] {
             fixture.window.setContentSize(NSSize(width: width, height: 600))
             fixture.window.layoutIfNeeded()
             NotificationCenter.default.post(name: NSWindow.didResizeNotification, object: fixture.window)
@@ -205,9 +205,38 @@ private func testChatToProfileHandoff() {
     print("PASS: repeated chat/profile native-control handoff")
 }
 
+private func testResponsiveCompactAndStandardChrome() {
+    let fixture = WindowFixture()
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    fixture.root.addSubview(controls)
+    controls.attach(to: fixture.window)
+    for _ in 0..<3 {
+        for width: CGFloat in [500, 649, 650, 900, 480] {
+            fixture.window.setContentSize(NSSize(width: width, height: 600))
+            fixture.window.layoutIfNeeded()
+            NotificationCenter.default.post(name: NSWindow.didResizeNotification, object: fixture.window)
+            controls.layout()
+            let compact = width < 650
+            check(controls.showsControls == compact, "responsive native-control visibility matches 650-point cutoff")
+            check(fixture.window.styleMask.contains(.fullSizeContentView) == compact, "window content style switches with width")
+            check(fixture.window.titleVisibility == (compact ? .hidden : .visible), "native title restored for standard layout")
+            for (index, button) in fixture.buttons.enumerated() {
+                check(button.superview === (compact ? controls : fixture.parents[index]), "native buttons return to the correct parent on resize")
+                check(button.frame.size == fixture.frames[index].size, "responsive layout preserves native button size")
+                check(button.action == fixture.actions[index], "responsive layout preserves native actions")
+            }
+        }
+    }
+    controls.detach()
+    fixture.checkRestored()
+    check(!DetachedWindowHeaderLayout.usesCompactLayout(width: 650), "cutoff uses standard layout")
+    check(DetachedWindowHeaderLayout.usesCompactLayout(width: 649), "narrow window uses compact layout")
+    print("PASS: repeated compact/standard width changes restore native controls and window chrome at 650 points")
+}
+
 let app = NSApplication.shared
-private let tests: [() -> Void] = [testRepeatedAttachmentAndResize, testAppKitRepositioningAndFullScreenNotifications, testWindowSwitchAndExistingChrome, testDeinitializationRestoresChrome, testLeadingHeaderLayout, testChatToProfileHandoff]
+private let tests: [() -> Void] = [testRepeatedAttachmentAndResize, testAppKitRepositioningAndFullScreenNotifications, testWindowSwitchAndExistingChrome, testDeinitializationRestoresChrome, testLeadingHeaderLayout, testChatToProfileHandoff, testResponsiveCompactAndStandardChrome]
 for test in tests {
     test()
 }
-print("All 6 detached-window header checks passed")
+print("All 7 detached-window header checks passed")
