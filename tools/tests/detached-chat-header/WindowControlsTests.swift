@@ -1,10 +1,12 @@
 import AppKit
 
-class View: NSView {
-    override var isFlipped: Bool { true }
+public class View: NSView {
+    public override var isFlipped: Bool { true }
 }
 
 __WINDOW_CONTROLS__
+
+__HEADER_LAYOUT__
 
 func check(_ condition: @autoclosure () -> Bool, _ message: String) {
     guard condition() else {
@@ -56,7 +58,7 @@ final class WindowFixture {
 
 private func testRepeatedAttachmentAndResize() {
     let fixture = WindowFixture()
-    let controls = DetachedChatWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
     fixture.root.addSubview(controls)
     for _ in 0..<3 {
         controls.attach(to: fixture.window)
@@ -100,7 +102,7 @@ private func testRepeatedAttachmentAndResize() {
 private func testAppKitRepositioningAndFullScreenNotifications() {
     let fixture = WindowFixture()
     let otherWindow = WindowFixture()
-    let controls = DetachedChatWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
     fixture.root.addSubview(controls)
     controls.attach(to: fixture.window)
     for name in [NSWindow.didUpdateNotification, NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
@@ -132,7 +134,7 @@ private func testWindowSwitchAndExistingChrome() {
     let second = WindowFixture(fullSize: true)
     second.window.titleVisibility = .hidden
     second.window.titlebarAppearsTransparent = true
-    let controls = DetachedChatWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
     controls.attach(to: first.window)
     controls.attach(to: second.window)
     first.checkRestored()
@@ -149,7 +151,7 @@ private func testDeinitializationRestoresChrome() {
     let fixture = WindowFixture()
     weak var releasedControls: NSView?
     autoreleasepool {
-        let controls = DetachedChatWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+        let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
         releasedControls = controls
         controls.attach(to: fixture.window)
     }
@@ -161,9 +163,51 @@ private func testDeinitializationRestoresChrome() {
     print("PASS: deinitialization restores native buttons and window chrome")
 }
 
+private func testLeadingHeaderLayout() {
+    for showsControls in [false, true] {
+        for hasBackButton in [false, true] {
+            let origin = NSPoint(x: 12, y: 12)
+            let layout = DetachedWindowHeaderLayout(origin: origin, showsControls: showsControls, hasBackButton: hasBackButton)
+            let expectedWidth: CGFloat = (showsControls ? 80 : 0) + (hasBackButton ? 40 : 0)
+            check(layout.leadingPillFrame == NSRect(x: 12, y: 12, width: expectedWidth, height: 40), "leading pill sized to visible controls")
+            check(layout.controlsFrame.width == (showsControls ? 80 : 0), "native controls retain their width")
+            check(layout.backButtonFrame.width == (hasBackButton ? 40 : 0), "back button retains a 40-point hit area")
+            check(layout.backButtonFrame.minX == layout.controlsFrame.maxX, "back button directly follows traffic lights inside shared pill")
+            check(layout.contentMinX == layout.leadingPillFrame.maxX + (expectedWidth > 0 ? 8 : 0), "consistent eight-point gap after leading pill")
+            if showsControls && hasBackButton {
+                check(layout.leadingPillFrame.contains(layout.controlsFrame), "traffic lights contained in shared pill")
+                check(layout.leadingPillFrame.contains(layout.backButtonFrame), "back button contained in shared pill")
+                check(layout.leadingPillFrame.width == 120, "shared pill avoids a separate back-button gap")
+            }
+        }
+    }
+    print("PASS: shared profile/chat leading-pill geometry and back-button spacing")
+}
+
+private func testChatToProfileHandoff() {
+    let fixture = WindowFixture()
+    let chatControls = DetachedWindowControlsView(frame: .zero)
+    let profileControls = DetachedWindowControlsView(frame: .zero)
+    let layout = DetachedWindowHeaderLayout(origin: NSPoint(x: 12, y: 12), showsControls: true, hasBackButton: true)
+    for _ in 0..<3 {
+        for controls in [chatControls, profileControls] {
+            fixture.root.addSubview(controls)
+            controls.frame = layout.controlsFrame
+            controls.attach(to: fixture.window)
+            controls.layout()
+            check(fixture.buttons.allSatisfy { $0.superview === controls && controls.bounds.contains($0.frame) }, "native controls move between chat and profile hosts")
+            controls.detach()
+            controls.removeFromSuperview()
+            fixture.checkRestored()
+            check(!fixture.window.styleMask.contains(.fullSizeContentView), "handoff restores window chrome before next host attaches")
+        }
+    }
+    print("PASS: repeated chat/profile native-control handoff")
+}
+
 let app = NSApplication.shared
-private let tests: [() -> Void] = [testRepeatedAttachmentAndResize, testAppKitRepositioningAndFullScreenNotifications, testWindowSwitchAndExistingChrome, testDeinitializationRestoresChrome]
+private let tests: [() -> Void] = [testRepeatedAttachmentAndResize, testAppKitRepositioningAndFullScreenNotifications, testWindowSwitchAndExistingChrome, testDeinitializationRestoresChrome, testLeadingHeaderLayout, testChatToProfileHandoff]
 for test in tests {
     test()
 }
-print("All 4 detached-chat native window-control checks passed")
+print("All 6 detached-window header checks passed")

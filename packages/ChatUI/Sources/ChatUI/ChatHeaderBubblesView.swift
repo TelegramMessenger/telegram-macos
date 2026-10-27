@@ -12,122 +12,7 @@ import ShortPeerRow
 import TelegramTheme
 import TelegramUtils
 import InlineStickerLayer
-
-
-private final class DetachedChatWindowControlsView: View {
-    private var buttons: [(button: NSButton, parent: NSView, frame: NSRect, autoresizingMask: NSView.AutoresizingMask)] = []
-    private weak var attachedWindow: NSWindow?
-    private var originalChrome: (fullSize: Bool, transparent: Bool, visibility: NSWindow.TitleVisibility)?
-    private var observers: [NSObjectProtocol] = []
-    private var enteringFullScreen = false
-    var visibilityChanged: (() -> Void)?
-
-    var showsControls: Bool {
-        return !buttons.isEmpty
-    }
-
-    func attach(to window: NSWindow) {
-        guard attachedWindow !== window else { return }
-        detach()
-        attachedWindow = window
-        originalChrome = (window.styleMask.contains(.fullSizeContentView), window.titlebarAppearsTransparent, window.titleVisibility)
-        window.styleMask.insert(.fullSizeContentView)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        let notifications = NotificationCenter.default
-        observers.append(notifications.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
-            self?.enteringFullScreen = true
-            self?.restoreButtons()
-            self?.visibilityChanged?()
-        })
-        observers.append(notifications.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
-            self?.enteringFullScreen = false
-            self?.installButtons()
-        })
-        for name in [NSWindow.didUpdateNotification, NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
-            observers.append(notifications.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                self?.positionButtons()
-            })
-        }
-        installButtons()
-    }
-
-    func detach() {
-        for observer in observers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        observers.removeAll()
-        restoreButtons()
-        if let window = attachedWindow, let chrome = originalChrome {
-            if !chrome.fullSize {
-                window.styleMask.remove(.fullSizeContentView)
-            }
-            window.titlebarAppearsTransparent = chrome.transparent
-            window.titleVisibility = chrome.visibility
-        }
-        attachedWindow = nil
-        originalChrome = nil
-        enteringFullScreen = false
-        visibilityChanged?()
-    }
-
-    private func installButtons() {
-        guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen, buttons.isEmpty else { return }
-        for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-            if let button = window.standardWindowButton(kind), let parent = button.superview {
-                buttons.append((button, parent, button.frame, button.autoresizingMask))
-                button.autoresizingMask = []
-                addSubview(button)
-            }
-        }
-        positionButtons()
-        visibilityChanged?()
-    }
-
-    private func restoreButtons() {
-        for entry in buttons {
-            entry.parent.addSubview(entry.button)
-            entry.button.frame = entry.frame
-            entry.button.autoresizingMask = entry.autoresizingMask
-        }
-        buttons.removeAll()
-    }
-
-    override func layout() {
-        super.layout()
-        positionButtons()
-    }
-
-    private func positionButtons() {
-        guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen else { return }
-        let spacing: CGFloat = 6
-        let width = buttons.reduce(CGFloat(0)) { $0 + $1.frame.width } + CGFloat(max(0, buttons.count - 1)) * spacing
-        var x = floor((bounds.width - width) / 2)
-        for entry in buttons {
-            let size = entry.frame.size
-            if entry.button.superview !== self {
-                addSubview(entry.button)
-            }
-            let frame = NSRect(x: x, y: floor((bounds.height - size.height) / 2), width: size.width, height: size.height)
-            if entry.button.frame != frame {
-                entry.button.frame = frame
-            }
-            x += size.width + spacing
-        }
-    }
-
-    override var mouseDownCanMoveWindow: Bool {
-        return true
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
-    }
-
-    deinit {
-        detach()
-    }
-}
+import ComponentsUI
 
 
 private final class RightActionsCluster: Control {
@@ -375,7 +260,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     private let glassWrapper: GlassContainerView
     private let backGhost: LiquidGlassView
     private let windowControlsGhost: LiquidGlassView
-    private let windowControls = DetachedChatWindowControlsView(frame: .zero)
+    private let windowControls = DetachedWindowControlsView(frame: .zero)
     private var detachedWindowControlsVisible = false
     private let centerGhost: LiquidGlassView
     private let rightGhost: LiquidGlassView
@@ -690,6 +575,10 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         updateBackButtonIcon()
         backButton.setGlassEffect(size: buttonSize)
+        backButton.setGlassEffectHidden(chatInteraction.interactionContext.isExternal)
+        if chatInteraction.interactionContext.isExternal {
+            backButton.interactiveGlassView = backButton
+        }
         backButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
         searchButton.set(image: theme.icons.chat_header_search, for: .Normal)
@@ -1136,7 +1025,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         let bubbleHeight = Self.bubbleHeight
         let bubbleY = Self.topInset
-        let spacing = Self.interBubbleSpacing
+        let spacing = chatInteraction.interactionContext.isExternal ? DetachedWindowHeaderLayout.spacing : Self.interBubbleSpacing
 
         let totalHeight = size.height + extendedContentHeight
         let wrapperFrame = NSRect(x: 0, y: 0, width: size.width, height: totalHeight)
@@ -1146,17 +1035,20 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         var leftX: CGFloat = leftSideInset
         let showsWindowControls = windowControls.showsControls
         windowControls.isHidden = !showsWindowControls
-        let controlsFrame = NSRect(x: leftX, y: bubbleY, width: 80, height: bubbleHeight)
-        transition.updateFrame(view: windowControls, frame: controlsFrame)
+        let leadingLayout = DetachedWindowHeaderLayout(origin: NSPoint(x: leftX, y: bubbleY), showsControls: showsWindowControls, hasBackButton: hasBackButton)
+        transition.updateFrame(view: windowControls, frame: leadingLayout.controlsFrame)
         windowControls.layout()
-        syncGhost(windowControlsGhost, frame: controlsFrame, hidden: !showsWindowControls, transition: transition)
+        syncGhost(windowControlsGhost, frame: leadingLayout.leadingPillFrame, hidden: !showsWindowControls, transition: transition)
         if showsWindowControls {
-            leftX += controlsFrame.width + spacing
+            leftX = hasBackButton ? leadingLayout.backButtonFrame.minX : leadingLayout.contentMinX
+        }
+        if chatInteraction.interactionContext.isExternal {
+            backButton.additionalGlassEffectView = showsWindowControls ? windowControlsGhost : backGhost
         }
         if hasBackButton {
             let backFrame = NSRect(x: leftX, y: bubbleY, width: bubbleHeight, height: bubbleHeight)
             transition.updateFrame(view: backButton, frame: backFrame)
-            syncGhost(backGhost, frame: backFrame, hidden: false, transition: transition)
+            syncGhost(backGhost, frame: backFrame, hidden: showsWindowControls, transition: transition)
             leftX += bubbleHeight + spacing
             leftEdgeHandle.isHidden = true
         } else {
@@ -1187,8 +1079,8 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         let avatarSize: CGFloat = max(32, avatarControl.frame.width)
         let horizontalContentPadding: CGFloat = 4
-        let avatarTextSpacing: CGFloat = 8
-        let textRightPadding: CGFloat = 14
+        let avatarTextSpacing: CGFloat = chatInteraction.interactionContext.isExternal ? 6 : 8
+        let textRightPadding: CGFloat = chatInteraction.interactionContext.isExternal ? 12 : 14
 
         let centerRect = NSRect(x: centerAvailableMinX, y: bubbleY, width: centerWidth, height: bubbleHeight)
         transition.updateFrame(view: centerBubble, frame: centerRect)

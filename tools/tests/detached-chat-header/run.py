@@ -4,11 +4,12 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[3]
-source = (root / 'packages/ChatUI/Sources/ChatUI/ChatHeaderBubblesView.swift').read_text()
-start = source.index('private final class DetachedChatWindowControlsView:')
-end = source.index('private final class RightActionsCluster:', start)
+source = (root / 'packages/ComponentsUI/Sources/ComponentsUI/DetachedWindowControlsView.swift').read_text()
+start = source.index('public final class DetachedWindowControlsView:')
 fixture = Path(__file__).with_name('WindowControlsTests.swift').read_text()
-fixture = fixture.replace('__WINDOW_CONTROLS__', source[start:end])
+fixture = fixture.replace('__WINDOW_CONTROLS__', source[start:])
+layout = (root / 'packages/ComponentsUI/Sources/ComponentsUI/DetachedWindowHeaderLayout.swift').read_text()
+fixture = fixture.replace('__HEADER_LAYOUT__', layout)
 with tempfile.TemporaryDirectory(prefix='detached-chat-header-') as directory:
     directory = Path(directory)
     source_path = directory / 'main.swift'
