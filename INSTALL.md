@@ -38,8 +38,7 @@ OpenSSL sources, Rust toolchains and Cargo dependencies.
 ## 1. Clone with submodules
 
 ```
-git clone --branch feature/macos-focus-chat-filters --recurse-submodules \
-  https://github.com/zkelo/telegram-macos.git
+git clone --recurse-submodules https://github.com/TelegramMessenger/telegram-macos.git
 cd telegram-macos
 ```
 
