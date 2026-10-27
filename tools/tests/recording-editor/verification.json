@@ -1,4 +1,12 @@
 {
+  "latest_verification": {
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "code_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+    "native_cases_passed": 22,
+    "full_debug_build": "PASS",
+    "manual_new_limit_workflow": "PASS, direct account-owner confirmation",
+    "details": "recording_limit_review"
+  },
   "source_base": "272d85dd7cc78864549b1d5510a177db79059fc7",
   "environment": {
     "macos": "27.0.1 (26A434)",
@@ -86,10 +94,11 @@
   },
   "screenshot_scope": "Native AppKit timeline fixture. Same generated placeholder, 10-second duration, 2-8 second selection and 4-second position. Only RecordingTrimScrubberView is switched to baseline source for before. Not screenshots of an authenticated client.",
   "limits": [
-    "Current-master signed-in validation was performed with both PR82 and PR92 applied; standalone editor native tests and a full client build without PR82 also pass.",
-    "No send/upload/export was tested; recordings were discarded.",
-    "Native fixture screenshots demonstrate visible timeline changes, not an end-to-end camera session.",
-    "No assertion about app-wide performance or official beta builds."
+    "Earlier fixture and combined-client checks on master 272d85dd are preserved as historical evidence.",
+    "Ordinary and trimmed video sending were manually confirmed on master e1883098 plus earlier PR code 3749a4a8, before changing the duration-limit behavior.",
+    "The new limit-to-editor workflow has passing native controller tests and a full build; its manual full-client check passed, confirmed by the account owner.",
+    "Native fixtures do not establish end-to-end camera or message delivery behavior.",
+    "No app-wide performance improvement is claimed."
   ],
   "earlier_signed_in_workflow": {
     "status": "pass",
@@ -190,6 +199,93 @@
       "master": "605ade9e0e467f88da6de7c209a874a439139e21",
       "code_commit": "feb84919ea41f30e024927d28c963eb57bd053d6",
       "actual": "Existing account remained available and Saved Messages opened. No further recordings or media actions were performed."
+    }
+  },
+  "current_client_sending_validation": {
+    "date": "2026-10-27",
+    "source": "Direct user confirmation in this conversation",
+    "tested_source": "3749a4a8e4b17dbed3fb91d3f32cbe5b7efa82df",
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "pr92_head": "b4dbd90fe655c82ca941ab85863ad6dffb2cb7eb",
+    "ordinary_video_sending": "PASS",
+    "trimmed_video_sending": "PASS",
+    "original_60_second_automatic_submission": "PASS",
+    "new_60_second_editor_behavior": "NOT YET TESTED",
+    "media_send_guard_enabled": false,
+    "confirmation": "Ок, обычное и обрезанное видео отправляются, завершение по лимиту тоже работает."
+  },
+  "recording_limit_review": {
+    "date": "2026-10-27",
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "code_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+    "intentional_behavior_change": {
+      "before": "At 60 seconds the video was automatically submitted and the recording UI closed.",
+      "after": "At 60 seconds recording pauses in the existing editor. Playback, trimming, discard and explicit Send remain available. No automatic submission occurs."
+    },
+    "resume_behavior": "Record More is disabled while the effective video selection is at the limit; shortening the selection enables it. On resume, the duration signal starts with the retained duration instead of the stale pre-trim value.",
+    "before_regression": {
+      "new_test_cases_failed": 1,
+      "failed_assertions": 4,
+      "existing_tests_passed": 18,
+      "observed_submission_callbacks": 1,
+      "observed_recording_resets": 1,
+      "paused_editor_updates": 0,
+      "log_sha256": "931200927bf0882ed2b56c1cda0fc46f375e7427a564dbdcf6b9f5a5b1996389"
+    },
+    "after": {
+      "cases_passed": 22,
+      "cases_failed": 0,
+      "new_duration_cases": 4,
+      "log_sha256": "7aa8e1b6107754ba03bf27579fa265ad782ee56ed4442def43d080e9f126b6bc",
+      "coverage": [
+        "Duration below 60 seconds keeps recording",
+        "At 60 seconds paused preview opens without submission or reset, and hands-free mode is requested",
+        "Repeated limit updates pause only once",
+        "A resumed duration stream can reach the limit again"
+      ]
+    },
+    "test_method": "The runner compiles the current modal controller source with capture/view probes. A recorder-state test subclass emits a synthetic submission payload; it never accesses an account or network. Actual time values are injected; tests do not wait for or record 60 seconds of camera footage.",
+    "full_debug_arm64_build": {
+      "result": "BUILD SUCCEEDED",
+      "source_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+      "log_sha256": "6fe0b334d945708c9e1f1d34386e2244298f342e7f28be75fd1aec446efa7d6d",
+      "strict_signature_verified": true,
+      "installed_debug_library_sha256": "54809d15c9be88a797c014dfd45069e093aa2f882b7698f0f91fa71d7191f305"
+    },
+    "manual_new_limit_workflow": {
+      "date": "2026-10-27",
+      "source": "Direct user confirmation in this conversation",
+      "code_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+      "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+      "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+      "installed_debug_library_sha256": "54809d15c9be88a797c014dfd45069e093aa2f882b7698f0f91fa71d7191f305",
+      "media_send_guard_enabled": false,
+      "result": "PASS",
+      "checks": [
+        "At 60 seconds recording remains in the editor without automatic submission",
+        "Play/Pause works",
+        "Trim boundaries work",
+        "Explicit Send delivers the video and it plays on the phone",
+        "Recorder window closes and camera indicator switches off after sending"
+      ],
+      "confirmation": "Да, всё получилось",
+      "not_claimed": [
+        "Manual Record More after trimming a full-limit recording",
+        "A separate held-mouse-release limit run",
+        "Hardware error or disconnected-device scenarios"
+      ]
+    },
+    "limitations": [
+      "The previous real-client sending check confirms original and trimmed sending before this new limit behavior.",
+      "Native controller tests do not establish full-client camera, composition, trimming/export or delivery behavior at the limit.",
+      "Pause uses the existing pipeline path; capture cleanup remains on send or discard.",
+      "No app-wide performance improvement is claimed.",
+      "Manual Record More after trimming, held-gesture release and hardware-error paths were not independently confirmed in the latest client check."
+    ],
+    "production_source_sha256": {
+      "packages/ChatUI/Sources/ChatUI/ChatInputRecordingView.swift": "0633c61ad05b533cf3ac088519564a23e927c416ec696d84d0bec159139fef16",
+      "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalController.swift": "67937f9167d24e1e73c69a8f612a3e0ca121d944e0c2eb60d4ffb28654059460",
+      "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "9fd0088d180c319f0e492b00c008db72f2f8c1685e7f0f795f53e14076c44373"
     }
   }
 }

@@ -1,5 +1,19 @@
 # Recording editor controls and preview playback
 
+## Review at the 60-second limit, 27 October 2026
+
+Reaching the video-message duration limit now pauses recording in the existing editor instead of automatically sending it. The user can play, seek, trim or discard the recording and explicitly choose Send. This is an intentional change to the previous macOS behavior, which submitted the video and closed the recorder at 60 seconds.
+
+This protects users from accidental sends caused by reaching the limit and gives them a chance to trim the video and send only the selected fragment, instead of immediately submitting the entire unedited recording.
+
+The limit requests hands-free mode so releasing the original recording gesture does not submit the video. Record More is disabled while the effective selection remains at the limit; trimming it shorter enables continuation. The pipeline publishes the retained duration on resume so the timer does not immediately react to the old pre-trim duration.
+
+All 22 focused native tests pass on master `e1883098` plus code `d33bf763`. A full Debug arm64 application build and strict signature verification also pass. The new controller test failed before the change: one submission callback and one recording reset occurred, with no paused editor. After the fix, the editor opens, submission/reset counts stay zero, and hands-free mode is requested. Additional checks cover 59.99 seconds, repeated limit events and reaching the limit again after a shorter resumed duration. These tests inject duration events into the current production controller compiled with capture/view probes; they do not record a physical minute of footage or access a Telegram account.
+
+Separately, the account owner confirmed ordinary and trimmed video sending and the previous automatic completion behavior in the full unguarded client on master `e1883098` plus the earlier PR code (`3749a4a8`). After installing `d33bf763`, the account owner also confirmed the new limit-to-editor workflow: at 60 seconds no video was sent automatically, the editor allowed Play/Pause and trimming, explicit Send delivered the video for playback on the phone, and the recording window closed with the camera indicator off. This is a user-confirmed manual result; it is not an automated end-to-end run. Record More after trimming, a separate held-gesture release run and hardware-error paths were not independently confirmed in this latest client check. See `current_client_sending_validation` and `recording_limit_review` in [verification.json](verification.json).
+
+For a manual check, record in Saved Messages until 60 seconds: no outgoing message should appear, the paused editor should remain usable, and releasing the recording gesture should not send. Check playback and trim boundaries, then explicitly Send or Discard. Confirm delivery/playback after Send and camera/window cleanup after Send or Discard. Also verify that trimming the selection shorter enables Record More. Sending and recording pre-upload remain enabled; the local guard used in earlier checks is excluded from this PR.
+
 ## Change
 
 Paused video recordings now accept both trim handles, timeline seeking and Play/Pause. The selected fragment stops at its end and can be replayed. Discard/resume confirmations yield pointer events, cannot open twice, and cannot bring back a dismissed recording overlay.
