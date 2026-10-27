@@ -1476,6 +1476,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         _ = chatInteraction?.appendText(attr)
                     }, itemImage: MenuAnimation.menu_atsign.value))
 
+                    if let chatPeer = chatInteraction?.peer, (chatPeer.isGroup || chatPeer.isSupergroup), !chatPeer.isMonoForum, chatInteraction?.isLogInteraction == false, let mode = chatInteraction?.mode, mode == .history || mode.isThreadMode || mode.isTopicMode {
+                        menu.addItem(ContextMenuItem(strings().shortcutsControllerChatSearchMessages, handler: {
+                            chatInteraction?.searchPeerMessages(peer)
+                        }, itemImage: MenuAnimation.menu_search.value))
+                    }
+
                     if let channel = chatInteraction?.peer as? TelegramChannel, let context = chatInteraction?.interactionContext, peer.id != context.peerId {
                         
                         menu.addItem(ContextSeparatorItem())
@@ -2217,7 +2223,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     public override func rightMouseDown(with event: NSEvent) {
         if let item = self.item as? ChatRowItem {
             if item.chatInteraction.presentation.state == .selecting {
-                return
+                let selectedIds = item.chatInteraction.presentation.selectionState?.selectedIds ?? []
+                guard selectedIds.count > 1, item.messages.contains(where: { message in
+                    selectedIds.contains(message.id) && message.media.contains(where: { $0 is TelegramMediaImage })
+                }) else {
+                    return
+                }
             }
         }
         super.rightMouseDown(with: event)

@@ -64,6 +64,14 @@ final class AvatarTabContainer : View {
         updateSelectionScales(animated: animated)
     }
 
+    func lensContentSources(tintColor: NSColor) -> [LiquidGlassLensContentSource] {
+        updateGeometry()
+        return [
+            LiquidGlassLensContentSource(view: circle, lensedTintColor: tintColor, unlensedTintColor: .clear),
+            LiquidGlassLensContentSource(view: avatar, lensedScale: bounds.height > 0 ? 24 / bounds.height : 1),
+        ]
+    }
+
     private func updateGeometry() {
         guard laidOutBounds != bounds else {
             return
@@ -182,6 +190,17 @@ public class TabAnimatedItem: TabItem {
 
     public override func makeView() -> NSView {
         return TabAnimatedIconView(sticker: sticker)
+    }
+
+    public override func supportsLensTint(for view: NSView) -> Bool {
+        return view is TabAnimatedIconView
+    }
+
+    public override func lensContentSources(for view: NSView, lensedTintColor: NSColor, unlensedTintColor: NSColor) -> [LiquidGlassLensContentSource] {
+        if let avatar = view as? AvatarTabContainer {
+            return avatar.lensContentSources(tintColor: lensedTintColor)
+        }
+        return super.lensContentSources(for: view, lensedTintColor: lensedTintColor, unlensedTintColor: unlensedTintColor)
     }
 
     public override func setSelected(_ selected: Bool, for view: NSView, animated: Bool) {

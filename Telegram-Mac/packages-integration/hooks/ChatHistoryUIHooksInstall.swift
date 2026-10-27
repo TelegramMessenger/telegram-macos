@@ -382,8 +382,8 @@ func installChatHistoryUIHooks() {
         return (context as! AccountContext).giftStickers
     }, messageNewReactions: { message, reaction, isTags in
         return message.newReactions(with: reaction, isTags: isTags)
-    }, makeReactionsWindow: { context, peerId, selectedItems, react, reactLarge in
-        return ReactionsWindowController(context as! AccountContext, peerId: peerId, selectedItems: selectedItems.map(mapChatHistoryEmojiSelectedItem), react: react, reactLarge: reactLarge)
+    }, makeReactionsWindow: { context, peerId, selectedItems, orderedTags, react, reactLarge in
+        return ReactionsWindowController(context as! AccountContext, peerId: peerId, selectedItems: selectedItems.map(mapChatHistoryEmojiSelectedItem), react: react, reactLarge: reactLarge, orderedTags: orderedTags)
     }, currencyAmount: { context, amount, comission in
         return (context as! AccountContext).amount(amount: amount, comission: comission)
     }, currentCountriesConfiguration: { context in

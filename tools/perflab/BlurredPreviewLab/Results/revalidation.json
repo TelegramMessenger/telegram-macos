@@ -1,0 +1,135 @@
+{
+  "checked_at": "2026-10-25T23:13:39.320643+00:00",
+  "pr": 82,
+  "production_head_tested": "7fed6906a1082c7193c9154bba9dc24a17e8b915",
+  "upstream_master": "272d85dd7cc78864549b1d5510a177db79059fc7",
+  "merged_tree_tested": "db0bbcb0f89cd1cb091e5e430f428499fe93ca28",
+  "merge_conflicts": false,
+  "production_change": {
+    "files": 1,
+    "added_lines": 0,
+    "removed_lines": 10
+  },
+  "helper_sha256": "41fe8571260b182a369f90275f102fa4b9af893eb9278158867dadd3c2c31cbc",
+  "environment": {
+    "macos": "27.0.1 (26A434)",
+    "hardware": "Apple M4 Pro, arm64",
+    "xcode": "27.1 (27A9275)",
+    "swift": "6.4"
+  },
+  "native_checks": {
+    "debug": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "aa745afd4130cc1a6ae299aea3cf7d37131ceede1ca1a879b7e78550a15b46b6"
+    },
+    "release": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "c139e493c343ae6fcdedf551cb588b7693884950e4d38957683f6bc82a5dfbb5"
+    },
+    "asan": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "978f3a87e0ab839a0a072fbab6da4407b68ac9f3efe6b436e480c30c746071e6"
+    }
+  },
+  "native_scope": "Complete production helper and real TGUIKit/native dependencies from exported master + PR merge tree; reference helper and pinned SSignalKit from current master. Current-master full-client testing is recorded separately in current_master_full_client.",
+  "merged_dependencies_manifest_sha256": "3546e5d24d5c60b1b060bb1d09b2d33c2d10b4111ecac25516482ba7f8fa3687",
+  "original_benchmark_rechecked": {
+    "fresh_process_samples": 288,
+    "matching_output_pairs": 144,
+    "all_summary_statistics_match_raw_samples": true,
+    "execution_orders_balanced": true,
+    "new_performance_matrix_run": false
+  },
+  "full_client_comparison": {
+    "date": "2026-10-26 Europe/Moscow",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "source_base": "cdf97a0e316521c72bd606bfb8002487d8fc842c",
+    "only_file_differing_between_variants": "packages/TelegramMediaUtils/Sources/TelegramMediaUtils/CGImageExtensions.swift",
+    "preview_image_and_initial_thumbnails": "User confirmed normal rendering and equivalent appearance with and without PR; no black or empty frames",
+    "runtime_calls": {
+      "VideoRecorderModalController": 5,
+      "RecordingTrimScrubberView": 3
+    },
+    "recordings": "Discarded without sending",
+    "controls": "Right trim handle and timeline seeking failed with and without PR; full trimming workflow did not pass in this comparison",
+    "later_local_editor_fixes": "Tested successfully later; excluded from PR #82 and from the controlled comparison",
+    "visual_comparison_source": "Direct user confirmations; not an automated screenshot pixel comparison"
+  },
+  "master_compatibility": {
+    "original_helper_unchanged": true,
+    "caller_files_unchanged_since_client_test": true,
+    "rule_documents_match_current_master": true,
+    "github_mergeable": true,
+    "github_mergeable_state": "clean",
+    "github_actions_workflows": 0,
+    "reported_ci_statuses": 0,
+    "github_actions_runs": 0
+  },
+  "limits": [
+    "Full-client verification now includes current master plus the exact PR production helper, using local build/profile adjustments; see current_master_full_client.",
+    "Client comparison used the exact PR helper in an existing master-based local client, not the whole original PR checkout.",
+    "No app-wide FPS, battery, persistent memory or full-client performance claim.",
+    "No successful send/upload/export was tested; recordings were discarded.",
+    "Opaque fixture inputs, dimensions at least 50 pixels, backing scales 1x and 2x.",
+    "Address Sanitizer used detect_leaks=0; no leak-free claim.",
+    "The original benchmark evidence remains frozen and records the earlier native-only testing scope."
+  ],
+  "current_master_full_client": {
+    "source_base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "pr_production_head": "302047c182b9fffae0c57bfb37679dde0d2f6b7c",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "built_at": "2026-10-25T23:26:17.510382+00:00",
+    "build_result": "BUILD SUCCEEDED",
+    "build_log_sha256": "13a05b0d3763f0e6f0021198120d433c0e67b73c6a3ebd12e58de9bbf53b75be",
+    "binary_sha256": "97fee0759e5b3eca4707845c09b5d58ef28d4bbfdaa9f2bc4c4bdf61ddf6579a",
+    "signature_verified": true,
+    "production_helper_sha256": "41fe8571260b182a369f90275f102fa4b9af893eb9278158867dadd3c2c31cbc",
+    "separate_local_editor_fixes_excluded": true,
+    "manual_validation": {
+      "status": "pass",
+      "source": "Direct user confirmation",
+      "confirmed_at": "2026-10-25T23:28:48.171302+00:00",
+      "existing_account_and_chats": "present",
+      "video_preview_and_initial_timeline_thumbnails": "normal",
+      "requested_scenario": "Record an 8-10 second locked video, pause, inspect image and timeline thumbnails, discard without sending and repeat once"
+    },
+    "limitations": "Prepared local source tree with Xcode 27 and isolated app/profile adjustments; not an official beta binary. User-reported visual confirmation, not automated pixel comparison or performance measurement."
+  },
+  "combined_editor_full_client": {
+    "local_test_date": "2026-10-26 Europe/Moscow",
+    "base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "tested_pr_heads": {
+      "82": "362ca9f6b1054d391c4c93fd8e5d729175ba75fc",
+      "92": "5add38a4115719fa52e854dbbf13597efa055d37"
+    },
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "binary_sha256": "b2fb5697d43d5abe4f616c1457d1e79ee31e3fe7a4050364ebdb989e4eed5394",
+    "build_result": "BUILD SUCCEEDED",
+    "build_log_sha256": "c8c0d4ef4a386071a0dc46fb448a7c7952a8b9d559ec8c4317399eaca8d3a3a6",
+    "signature_verified": true,
+    "editor_native_tests": {
+      "passed": 15,
+      "failed": 0,
+      "log_sha256": "f5b784d71d97c77ad9439676805f85f581afc201f4ad83af9d392961b80ed9e0"
+    },
+    "manual_validation": {
+      "status": "pass",
+      "source": "Direct user confirmation",
+      "confirmed_at": "2026-10-25T23:58:20.113088+00:00",
+      "checks": [
+        "Existing account and chats present",
+        "Video image and initial thumbnails render normally",
+        "Both trim boundaries move inward and back",
+        "Seeking and playhead constrained to selected trim range",
+        "Full and selected-fragment Play/Pause",
+        "Repeated No/Discard confirmation and another recording"
+      ]
+    },
+    "client_screenshots": "Additional real client images are included in PR #92",
+    "performance_measurement": false,
+    "send_upload_export_tested": false
+  }
+}

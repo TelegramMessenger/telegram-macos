@@ -30,7 +30,9 @@ class MediaPreviewRowItem: TableRowItem {
     fileprivate let editedData: EditedImageData?
     fileprivate let theme: TelegramPresentationTheme
     fileprivate let payAmount: Int64?
-    init(_ initialSize: NSSize, media: Media, context: any AccountContextProtocol, theme: TelegramPresentationTheme, editedData: EditedImageData? = nil, isSpoiler: Bool, payAmount: Int64?, edit:@escaping()->Void = {}, paint:@escaping()->Void = {}, delete: (()->Void)? = nil) {
+    fileprivate let renderingPreview: CGImage?
+    init(_ initialSize: NSSize, media: Media, context: any AccountContextProtocol, theme: TelegramPresentationTheme, editedData: EditedImageData? = nil, isSpoiler: Bool, payAmount: Int64?, renderingPreview: CGImage? = nil, edit:@escaping()->Void = {}, paint:@escaping()->Void = {}, delete: (()->Void)? = nil) {
+        self.renderingPreview = renderingPreview
         self.edit = edit
         self.paint = paint
         self.delete = delete
@@ -242,7 +244,9 @@ fileprivate class MediaPreviewRowView : TableRowView, ModalPreviewRowViewProtoco
         }, editedData: item.editedData)
         
         self.contentNode?.update(with: item.media, size: item.contentSize, context: item.context, parent: nil, table: item.table, parameters: item.parameters, animated: animated)
-        
+        if let contentNode {
+            updateMediaPreviewRendering(item.renderingPreview, in: contentNode, animated: animated)
+        }
     }
     
     override func layout() {
@@ -280,6 +284,52 @@ fileprivate class MediaPreviewRowView : TableRowView, ModalPreviewRowViewProtoco
         }
     }
     
+}
+
+final class MediaPreviewRenderingView: View {
+    private let imageView = ImageView()
+    private let progressBackground = View(frame: NSMakeRect(0, 0, 48, 48))
+    private let progress = ProgressIndicator(frame: NSMakeRect(0, 0, 28, 28))
+
+    required init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        imageView.contentGravity = .resizeAspectFill
+        addSubview(imageView)
+        progressBackground.backgroundColor = NSColor.black.withAlphaComponent(0.5)
+        progressBackground.layer?.cornerRadius = progressBackground.frame.height / 2
+        progress.progressColor = .white
+        progressBackground.addSubview(progress)
+        addSubview(progressBackground)
+        autoresizingMask = [.width, .height]
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(image: CGImage) {
+        imageView.image = image
+    }
+
+    override func layout() {
+        super.layout()
+        imageView.frame = bounds
+        progressBackground.center()
+        progress.center()
+    }
+}
+
+func updateMediaPreviewRendering(_ image: CGImage?, in view: NSView, animated: Bool) {
+    let current = view.subviews.compactMap { $0 as? MediaPreviewRenderingView }.first
+    if let image {
+        let overlay = current ?? MediaPreviewRenderingView(frame: view.bounds)
+        overlay.frame = view.bounds
+        overlay.update(image: image)
+        view.addSubview(overlay)
+    } else if let current {
+        performSubviewRemoval(current, animated: animated)
+    }
 }
 
 func previewSenderAccessibilityLabel(for media: Media) -> String {

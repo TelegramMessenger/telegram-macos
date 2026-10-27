@@ -172,8 +172,21 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
     
     public var loadMore: (()->Void)? = nil
 
+    public var itemsProvider: (() -> [NSMenuItem])? {
+        didSet {
+            if System.legacyMenu {
+                loadProvidedItems()
+            }
+        }
+    }
+
+    private var isAppendingItem = false
+
     @objc dynamic internal var _items:[NSMenuItem] = [] {
         didSet {
+            guard !isAppendingItem else {
+                return
+            }
             self.removeAllItems()
             for item in _items {
                 super.addItem(item)
@@ -186,7 +199,18 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
     }
     
     public override func addItem(_ newItem: NSMenuItem) {
+        super.addItem(newItem)
+        isAppendingItem = true
+        defer { isAppendingItem = false }
         _items.append(newItem)
+    }
+
+    func loadProvidedItems() {
+        guard let itemsProvider else {
+            return
+        }
+        self.itemsProvider = nil
+        self.items = itemsProvider()
     }
     
     public override var items: [NSMenuItem] {

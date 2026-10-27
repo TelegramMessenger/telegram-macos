@@ -352,9 +352,10 @@ public struct EditImageCanvasEntity: Equatable {
         public var image: CGImage
         public var baseSize: CGSize
         public var fileId: Int64?
+        public var animation: EditImageCanvasStickerAnimation? = nil
 
         public static func == (lhs: Sticker, rhs: Sticker) -> Bool {
-            return lhs.image === rhs.image && lhs.baseSize == rhs.baseSize && lhs.fileId == rhs.fileId
+            return lhs.image === rhs.image && lhs.baseSize == rhs.baseSize && lhs.fileId == rhs.fileId && lhs.animation == rhs.animation
         }
     }
 
@@ -473,6 +474,13 @@ public struct EditImageCanvasEntity: Equatable {
     var text: Text? {
         if case let .text(text) = content {
             return text
+        }
+        return nil
+    }
+
+    var sticker: Sticker? {
+        if case let .sticker(sticker) = content {
+            return sticker
         }
         return nil
     }

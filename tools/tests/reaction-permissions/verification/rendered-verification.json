@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-26",
+  "system": "macOS 27.0.1 (26A434)",
+  "xcode": "27.1 (27A9275)",
+  "app": "13.1.0 (283357), Debug arm64",
+  "method": "Full native client running production ChatRowItem/menuAdditionView and TelegramCore/Postbox/ChatInteraction objects with a controlled local group member and banSendReactions. The actual returned picker content view is attached above the production row in a diagnostic window. No reconstruction of the picker and no server permission change.",
+  "before": "Integration d159d0b2 with only the canReact permission guard removed, matching the original eligibility getter. Later picker-send guards remain installed but no reaction is selected.",
+  "after": "Integration d159d0b2 plus the open-picker permission follow-up; production canReact guard is installed.",
+  "captured_via": "CUA app screenshots, same 820x560-point diagnostic window",
+  "screenshots": {
+    "before-restricted.png": "6a54dd465102492c87ab9cf8db3c5ae9bd0ac6d47a04c3fae204c63544d8a387",
+    "after-restricted.png": "7366067491d26792543d1e6427e8173150ef4eaaaa9668a2685821613f0f521b"
+  },
+  "limitations": [
+    "Controlled permissions and message; not a live server-restricted chat.",
+    "The picker view is hosted directly; a physical context-menu gesture and server rejection are not established by these captures.",
+    "No reaction was sent from the controlled model.",
+    "SDK compatibility, isolated-profile and diagnostic hook changes are excluded from the feature."
+  ]
+}

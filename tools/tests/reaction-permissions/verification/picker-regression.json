@@ -1,0 +1,19 @@
+{
+  "beforeRef": "9aba9188",
+  "beforePassed": 28,
+  "afterPassed": 31,
+  "total": 31,
+  "newFailuresReproduced": [
+    "ordinary/stars picker callback after a live restriction",
+    "large reaction callback after a live restriction",
+    "expanded reaction picker callback after a live restriction"
+  ],
+  "quickReactionCases": [
+    "restriction denies sending",
+    "allowed member sends once",
+    "revoked rights deny a subsequent gesture"
+  ],
+  "renderedRestrictedPickerBefore": true,
+  "renderedRestrictedPickerAfter": false,
+  "controlledModel": true
+}

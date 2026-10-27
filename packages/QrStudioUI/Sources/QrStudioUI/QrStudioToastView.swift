@@ -134,6 +134,8 @@ final class QrStudioToastView: View {
             return "menu_copy_link"
         case "download":
             return "menu_save_as"
+        case "image":
+            return "menu_copy_media"
         case "check":
             return "menu_check_selected"
         default:

@@ -1,0 +1,22 @@
+{
+  "actionFound" : false,
+  "case" : "album",
+  "photoMessageCount" : 2,
+  "requestedAction" : "Save All Photos...",
+  "titles" : [
+    "Reply",
+    "",
+    "Copy Text",
+    "Copy Media",
+    "Save As...",
+    "",
+    "Edit",
+    "Pin",
+    "Forward",
+    "Select",
+    "",
+    "Delete",
+    "",
+    "Copy Media Id (dev)"
+  ]
+}

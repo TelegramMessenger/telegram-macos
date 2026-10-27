@@ -767,16 +767,18 @@ public class EditImageModalController: ModalViewController {
     private let closedDisposable = DisposableSet()
     private let context: any AccountContextProtocol
     private let canCutOut: Bool
+    private let allowsAnimation: Bool
     
     public var onClose: () -> Void = {}
     public var onCancelled: (() -> Void)?
     private let confirm: ((Signal<URL, NoError>, @escaping()->Void)->Void)?
     
-    public init?(_ path: URL, context: any AccountContextProtocol, defaultData: EditedImageData? = nil, settings: EditControllerSettings = .plain, doneString: String? = nil, confirm: ((Signal<URL, NoError>, @escaping()->Void)->Void)? = nil, canCutOut: Bool = false) {
+    public init?(_ path: URL, context: any AccountContextProtocol, defaultData: EditedImageData? = nil, settings: EditControllerSettings = .plain, doneString: String? = nil, confirm: ((Signal<URL, NoError>, @escaping()->Void)->Void)? = nil, canCutOut: Bool = false, allowsAnimation: Bool = false) {
         self.canReset = defaultData != nil
         self.context = context
         self.confirm = confirm
         self.canCutOut = canCutOut
+        self.allowsAnimation = allowsAnimation
         self.doneString = doneString
         let initial = EditedImageData(originalUrl: path, selectedRect: .zero, dimensions: .none, isHorizontalFlipped: false, paintings: [], images: [])
         editState = Atomic(value: defaultData ?? initial)
@@ -844,7 +846,7 @@ public class EditImageModalController: ModalViewController {
         guard !markAsClosed else { return .invoked }
         
         let currentData = self.editState.modify {$0}
-        let dataSignal = EditedImageData.generateNewUrl(data: currentData, selectedRect: self.genericView.selectedRect) |> map { ($0, $0 == currentData.originalUrl ? nil : currentData)}
+        let dataSignal = EditedImageData.generateNewUrl(data: currentData, selectedRect: self.genericView.selectedRect, allowsAnimation: allowsAnimation) |> map { ($0, $0 == currentData.originalUrl ? nil : currentData)}
         
         let promise: Promise<(URL, EditedImageData?)> = Promise()
         promise.set(dataSignal)

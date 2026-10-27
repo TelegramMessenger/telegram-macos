@@ -930,7 +930,14 @@ open class ShortPeerRowView: TableRowView, Notifable, ViewDisplayDelegate {
                 switchView = SwitchView()
                 containerView.addSubview(switchView!)
             }
-            switchView?.stateChanged = item.action
+            switchView?.presentation = item.customTheme?.switchAppearance ?? switchViewAppearance
+            switchView?.stateChanged = { [weak self, weak item] in
+                guard let self, let item, self.item === item else { return }
+                if let switchView = self.switchView {
+                    item.type = .switchable(switchView.isOn)
+                }
+                item.action()
+            }
             switchView?.setIsOn(stateback,animated:animated)
             switchView?.isEnabled = item.enabled
         case let .context(stateback), let .nextContext(stateback):
@@ -1187,6 +1194,8 @@ open class ShortPeerRowView: TableRowView, Notifable, ViewDisplayDelegate {
                     showContextMenu(event)
                 } else if case .nextContext = item.type, let event = NSApp.currentEvent {
                     showContextMenu(event)
+                } else if case .switchable = item.type, let switchView {
+                    switchView.performToggle()
                 } else {
                     item.action()
                 }

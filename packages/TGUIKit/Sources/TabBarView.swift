@@ -39,7 +39,7 @@ struct FloatingTabBarLayout {
         return CGFloat(max(0, itemFrames.count - 1))
     }
 
-    func selectionFrame(at position: CGFloat, lifted: Bool) -> NSRect {
+    func selectionFrame(at position: CGFloat, lifted: Bool, nativeLens: Bool = false) -> NSRect {
         guard !itemFrames.isEmpty else {
             return .zero
         }
@@ -50,7 +50,7 @@ struct FloatingTabBarLayout {
         let first = itemFrames[lower]
         let second = itemFrames[upper]
         let frame = NSMakeRect(first.minX + (second.minX - first.minX) * progress, first.minY, first.width + (second.width - first.width) * progress, first.height)
-        return lifted ? frame.insetBy(dx: -8, dy: -8) : frame
+        return lifted ? frame.insetBy(dx: nativeLens ? -10 : -8, dy: -8) : frame
     }
 }
 
@@ -118,6 +118,12 @@ public class TabBarView: View {
     private var resignObserver: NSObjectProtocol?
     private var contentScales: [CGFloat] = []
     var reduceMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    var reduceTransparency: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency }
+    var lensFactory: () -> LiquidGlassLensView? = { LiquidGlassLensView.make() }
+    private(set) var nativeLens: LiquidGlassLensView?
+    private var requestedLensMode: Bool?
+    private var glassSettingObserver: NSObjectProtocol?
+    private var displayOptionsObserver: NSObjectProtocol?
 
     private var itemLayout: FloatingTabBarLayout {
         return FloatingTabBarLayout(size: bounds.size, count: tabs.count)
@@ -146,6 +152,13 @@ public class TabBarView: View {
         selectionView.addSubview(liftedGlass)
         liftedGlass.alphaValue = 0
         updateLocalizationAndTheme(theme: presentation)
+        glassSettingObserver = NotificationCenter.default.addObserver(forName: systemLiquidGlassDidChange, object: nil, queue: .main) { [weak self] _ in
+            self?.updateLocalizationAndTheme(theme: presentation)
+        }
+        displayOptionsObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.cancelSelection(animated: false)
+            self?.updateLocalizationAndTheme(theme: presentation)
+        }
     }
 
     required public init?(coder: NSCoder) {
@@ -158,6 +171,12 @@ public class TabBarView: View {
         }
         if let resignObserver {
             NotificationCenter.default.removeObserver(resignObserver)
+        }
+        if let glassSettingObserver {
+            NotificationCenter.default.removeObserver(glassSettingObserver)
+        }
+        if let displayOptionsObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(displayOptionsObserver)
         }
     }
 
@@ -240,7 +259,7 @@ public class TabBarView: View {
         updateMetadata(for: control, tab: tab)
         itemControls.insert(control, at: index)
         contentScales.insert(1, at: index)
-        addSubview(control)
+        (nativeLens?.contentView ?? self).addSubview(control)
         tab.subNode?.update()
         updateLayout()
         updateSelection(animated: false)
@@ -311,7 +330,11 @@ public class TabBarView: View {
         selectionView.backgroundColor = theme.colors.text.withAlphaComponent(theme.colors.isDark ? 0.12 : 0.08)
         for (tab, control) in zip(tabs, itemControls) {
             updateMetadata(for: control, tab: tab)
+            if nativeLens != nil {
+                control.updateLocalizationAndTheme(theme: theme)
+            }
         }
+        updateSelection(animated: false)
     }
 
     public override func setFrameSize(_ newSize: NSSize) {
@@ -327,9 +350,16 @@ public class TabBarView: View {
         updateLayout()
     }
 
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateLens(transition: .immediate)
+    }
+
     private func updateLayout() {
+        let modeChanged = updateLensMode()
         glass.frame = bounds
         glass.updateLayout(size: bounds.size, transition: .immediate)
+        nativeLens?.frame = bounds
         for (index, frame) in itemLayout.itemFrames.enumerated() {
             let control = itemControls[index]
             if control.frame != frame {
@@ -338,7 +368,11 @@ public class TabBarView: View {
                 tabs[index].subNode?.update()
             }
         }
-        updateLens(transition: .immediate)
+        if modeChanged {
+            updateSelection(animated: false)
+        } else {
+            updateLens(transition: .immediate)
+        }
     }
 
     public func setSelectedIndex(_ index: Int, respondToDelegate: Bool, animated: Bool) {
@@ -362,6 +396,7 @@ public class TabBarView: View {
     }
 
     func beginSelection(at point: NSPoint) {
+        _ = updateLensMode()
         guard !isHidden, let index = itemLayout.index(at: point) else {
             return
         }
@@ -437,8 +472,9 @@ public class TabBarView: View {
     }
 
     private func updateSelection(animated: Bool, playSelectedItem: Bool = false) {
+        let modeChanged = updateLensMode()
         let reduceMotion = self.reduceMotion()
-        let animated = animated && !reduceMotion
+        let animated = animated && !reduceMotion && !modeChanged
         let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.4, curve: .spring) : .immediate
         let previewIndex = gesture.map { Int($0.position.rounded()) } ?? selectedIndex
         for (index, control) in itemControls.enumerated() {
@@ -448,7 +484,7 @@ public class TabBarView: View {
                 control.isSelected = selected
                 tabs[index].setSelected(selected, for: icon, animated: animated)
             }
-            let scale: CGFloat = gesture != nil && selected && !reduceMotion ? 1.15 : 1
+            let scale: CGFloat = nativeLens == nil && gesture != nil && selected && !reduceMotion ? 1.15 : 1
             if contentScales[index] != scale, let layer = control.layer {
                 let previous = layer.presentation()?.transform ?? layer.transform
                 var transform = CATransform3DMakeTranslation(control.bounds.midX, control.bounds.midY, 0)
@@ -470,13 +506,73 @@ public class TabBarView: View {
         selectionView.isHidden = tabs.isEmpty
         let position = gesture?.position ?? CGFloat(selectedIndex)
         let lifted = gesture != nil && !reduceMotion()
-        let frame = itemLayout.selectionFrame(at: position, lifted: lifted)
+        let frame = itemLayout.selectionFrame(at: position, lifted: lifted, nativeLens: nativeLens != nil)
         selectionView.layer?.cornerRadius = frame.height / 2
         updateSelectionFrame(frame, transition: transition)
+        if let nativeLens {
+            let animation: LiquidGlassLensAnimation
+            switch transition {
+            case .immediate:
+                animation = .immediate
+            case let .animated(duration, curve):
+                if case .spring = curve {
+                    animation = .spring(duration: duration)
+                } else {
+                    animation = .animated(duration: duration, timingFunction: curve.timingFunction)
+                }
+            }
+            nativeLens.frame = bounds
+            let unlensedIconColor = presentation.colors.isDark ? NSColor.white : presentation.colors.grayIcon
+            let sources = itemControls.enumerated().flatMap { index, control in
+                control.subviews.enumerated().flatMap { childIndex, view in
+                    if childIndex == 0 {
+                        return tabs[index].lensContentSources(for: view, lensedTintColor: presentation.colors.accentIcon, unlensedTintColor: unlensedIconColor)
+                    }
+                    return [LiquidGlassLensContentSource(view: view)]
+                }
+            }
+            nativeLens.update(lensFrame: frame, interactionProgress: lifted ? 1 : 0, appearance: presentation.appearance, backingScale: window?.backingScaleFactor ?? System.backingScale, animation: animation, restingBlurRadius: 16, restingTintColor: selectionView.backgroundColor, contentSources: sources)
+            selectionView.layer?.removeAnimation(forKey: "opacity")
+            selectionView.alphaValue = 0
+            liftedGlass.alphaValue = 0
+            return
+        }
+        selectionView.alphaValue = 1
         transition.updateFrame(view: liftedGlass, frame: frame.size.bounds)
         liftedGlass.cornerRadius = frame.height / 2
         liftedGlass.updateLayout(size: frame.size, transition: transition)
         transition.updateAlpha(view: liftedGlass, alpha: lifted ? 1 : 0)
+    }
+
+    private func updateLensMode() -> Bool {
+        let enabled: Bool
+        if #available(macOS 26.0, *) {
+            enabled = System.liquidGlass && !reduceTransparency()
+        } else {
+            enabled = false
+        }
+        guard requestedLensMode != enabled else {
+            return false
+        }
+        requestedLensMode = enabled
+        finishGesture()
+        if let nativeLens {
+            nativeLens.reset()
+            for control in itemControls {
+                addSubview(control)
+            }
+            nativeLens.removeFromSuperview()
+            self.nativeLens = nil
+        }
+        if enabled, let lens = lensFactory() {
+            nativeLens = lens
+            addSubview(lens)
+            lens.frame = bounds
+            for control in itemControls {
+                lens.contentView.addSubview(control)
+            }
+        }
+        return true
     }
 
     private func updateSelectionFrame(_ frame: NSRect, transition: ContainedViewLayoutTransition) {

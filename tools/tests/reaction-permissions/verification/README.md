@@ -1,0 +1,23 @@
+# Native permission model verification
+
+Tested on macOS 27.0.1 (26A434), Xcode 27.1 (27A9275), Telegram 13.1.0 (283357), arm64 Debug.
+
+A local validation hook inside the authenticated full client constructed actual TelegramGroup and TelegramChannel peers, Postbox Message objects, ChatInteraction state and production ChatRowItem instances. It evaluated the real canReact getter and TelegramCore permission helper. These 13 checks do not replace those types or the permission helper with fixture collaborators. They make no server writes and do not render a synthetic chat.
+
+Baseline: deffa9c1 production row code, 7/13 pass (`before.json`). Patched: integration at 6bb2e154, 13/13 pass (`after.json`). Local SDK, profile-isolation and validation-hook changes are excluded from the feature PRs.
+
+The six reproduced failures concern group default bans, supergroup default and individual bans, a live restriction while the message retains an older peer snapshot, and restricted-message fallback when the current presentation peer is missing or unrelated. Allowed members and administrator/creator exemptions continue to work.
+
+The separate 21/21 Swift regression checks compile the production getter, existing-chip callback and paid-reaction chooser guard with fixture collaborators. They additionally cover Saved Messages tag filtering, paid-reaction entry points and existing chips after live permission changes. Saved-peer tag updates retain their existing behavior even where the picker itself is disabled. The chip now uses the same live permission peer as the picker. Before this follow-up, four added live-chip checks fail (17/21): a stale message peer can incorrectly allow a newly banned reaction or reject one after permission restoration. The recorded 13 native model checks above cover the unchanged eligibility getter; they predate this callback follow-up.
+
+## Rendered follow-up, 26 October 2026
+
+The Before/After images now show the production reaction picker returned by the actual `ChatRowItem.menuAdditionView` inside the complete native client. A diagnostic window hosts the actual picker content above the production message row. Its TelegramCore group/member, Postbox message and ChatInteraction are controlled local objects, with `banSendReactions` set. The heading explicitly identifies this controlled model. No picker UI is reconstructed and no account permissions are changed on the server.
+
+Before removes only the original eligibility guard from native integration d159d0b2, matching the upstream getter. It incorrectly returns and renders a picker for the restricted member. After retains the permission guard and returns no picker for the same model and window size. Changing the presentation peer to an allowed member returns a picker while the message retains its restricted snapshot. Reinstating the restriction returns nil. See `before-observations.json`, `after-observations.json` and `rendered-verification.json` for the exact method and capture hashes.
+
+`RenderedPickerHarness.swift` records the diagnostic scene. To reproduce, temporarily copy it into ChatUI, call `codexInstallReactionEvidence(source: chatInteraction, parent: genericView)` after `ChatController.viewDidAppear` calls super, build the native app, and open the diagnostic button in an authenticated chat. Its reports are written to the temporary `telegram-reaction-ui` directory. Remove the helper and hook after the check; neither is part of the app change. The capture run also had separate private window-layout controls; those do not alter this scene or the permission models.
+
+The follow-up additionally guards selections from a picker that was opened before the member lost permission, including ordinary/stars, large, and expanded picker callbacks. The runner compiles the actual callback bodies and weak eligibility closure. It passes 31/31 checks; the preceding head 9aba9188 passes 28/31, failing each of the three newly restricted picker callbacks. Three checks execute the actual `reactAction` method for restricted, allowed and subsequently restricted members, covering the common quick-reaction send path. The existing double-click handler in this source replies to the message; the configurable Force Touch reaction path calls this guarded `reactAction` method. No new gesture preference is introduced.
+
+Limits: these captures verify rendered production components with controlled native permission models, not physical context-menu opening or server rejection in a real restricted chat. A suitable live restricted chat remains unavailable. The full native arm64 builds pass; SDK/profile overrides and the diagnostic hook remain outside the feature patch.

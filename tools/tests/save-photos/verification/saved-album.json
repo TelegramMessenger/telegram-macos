@@ -1,0 +1,32 @@
+[
+  {
+    "file": "photo_2026-10-25_15-13-23_662.jpg",
+    "bytes": 7603,
+    "sha256": "86feec508280f33bacd9b5b35f77fd997eb2c52036c16acd19301ba68ff32acb",
+    "format": "JPEG",
+    "dimensions": [
+      640,
+      480
+    ],
+    "sample_rgb": [
+      48,
+      142,
+      214
+    ]
+  },
+  {
+    "file": "photo_2026-10-25_15-13-23_663.jpg",
+    "bytes": 5780,
+    "sha256": "a2f36c8cfbc8d4d39fe5a8f61937a9839a2607505f1f4b8065b4b5e597150ed2",
+    "format": "JPEG",
+    "dimensions": [
+      640,
+      480
+    ],
+    "sample_rgb": [
+      212,
+      129,
+      49
+    ]
+  }
+]

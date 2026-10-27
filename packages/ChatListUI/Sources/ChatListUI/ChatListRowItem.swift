@@ -21,6 +21,8 @@ import PremiumStatusUI
 import CommunityUI
 import WebAppUI
 import ChatUI
+import ChatHistoryModel
+import ChatModeTypes
 import InlineStickerLayer
 
 
@@ -1955,6 +1957,12 @@ public class ChatListRowItem: TableRowItem {
                 }, itemImage: MenuAnimation.menu_read.value))
             }
             
+            if !peer.hasSensitiveContent(platform: "ios") {
+                items.append(ContextMenuItem(strings().chatListContextPreview, handler: {
+                    ChatListRowItem.previewTopic(peerId: peer.id, threadId: threadId, context: context)
+                }, itemImage: MenuAnimation.menu_eye.value))
+            }
+
             if peer.hasPermission(.pinMessages) {
                 items.append(ContextMenuItem(!isPinned ? strings().chatListContextPin : strings().chatListContextUnpin, handler: togglePin, itemImage: !isPinned ? MenuAnimation.menu_pin.value : MenuAnimation.menu_unpin.value))
             }
@@ -2645,7 +2653,11 @@ public class ChatListRowItem: TableRowItem {
             return
         }
         if let peer = self.peer, !peer.hasSensitiveContent(platform: "ios") {
-            ChatListRowItem.previewChat(peerId: peerId, peer: peer, context: context)
+            if case let .topic(threadId, _) = mode {
+                ChatListRowItem.previewTopic(peerId: peerId, threadId: threadId, context: context)
+            } else {
+                ChatListRowItem.previewChat(peerId: peerId, peer: peer, context: context)
+            }
         }
     }
     
@@ -2655,11 +2667,31 @@ public class ChatListRowItem: TableRowItem {
             return
         }
 
-        let controller = ChatListUIHooks.shared.makeChatControllerWithMode(context, .peer(peerId), .preview)
+        showPreview(context: context, chatLocation: .peer(peerId), holder: nil)
+    }
+
+    public static func previewTopic(peerId: PeerId, threadId: Int64, context: any AccountContextProtocol) {
+        let threadMessageId = makeThreadIdMessageId(peerId: peerId, threadId: threadId)
+        _ = (fetchAndPreloadReplyThreadInfo(context: context, subject: .groupMessage(threadMessageId), preload: false) |> take(1) |> deliverOnMainQueue).start(next: { result in
+            showPreview(context: context, chatLocation: .thread(result.message), holder: result.contextHolder)
+        })
+    }
+
+    private static func showPreview(context: any AccountContextProtocol, chatLocation: ChatLocation, holder: Atomic<ChatLocationContextHolder?>?) {
+        let controller = ChatListUIHooks.shared.makeChatControllerWithMode(context, chatLocation, .preview, holder)
         let navigation:NavigationViewController = NavigationViewController(controller, context.window)
         navigation._frameRect = NSMakeRect(0, 0, 400, 500)
         
-        showModal(with: navigation, for: context.window)
+        let modalController = ChatPreviewModalController(navigation)
+        showModal(with: modalController, for: context.window)
+        navigation.modal = modalController.modal
     }
     
+}
+
+private final class ChatPreviewModalController: ModalController {
+    override init(_ controller: NavigationViewController) {
+        super.init(controller)
+        self.bar = NavigationBarStyle(height: 0)
+    }
 }

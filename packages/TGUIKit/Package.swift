@@ -32,7 +32,7 @@ let package = Package(
             path: "Sources"),
         .testTarget(
             name: "TGUIKitTests",
-            dependencies: ["TGUIKit", .product(name: "ObjcUtils", package: "ObjcUtils")],
+            dependencies: ["TGUIKit", .product(name: "ObjcUtils", package: "ObjcUtils"), .product(name: "ColorPalette", package: "ColorPalette")],
             path: "Tests/TGUIKitTests"),
     ]
 )
