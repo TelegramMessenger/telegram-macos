@@ -1803,8 +1803,8 @@ public class ChatListRowItem: TableRowItem {
                     alert(for: context.window, info: strings().unknownError)
                 }
             })
-        case .savedMessages:
-            let signal = context.engine.peers.toggleForumChannelTopicPinned(id: context.peerId, threadId: peerId.toInt64()) |> deliverOnMainQueue
+        case let .savedMessages(threadId):
+            let signal = context.engine.peers.toggleForumChannelTopicPinned(id: context.peerId, threadId: threadId) |> deliverOnMainQueue
             _ = signal.start(error: { error in
                 switch error {
                 case let .limitReached(count):
