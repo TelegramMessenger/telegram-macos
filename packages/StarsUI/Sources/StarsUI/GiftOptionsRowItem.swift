@@ -45,6 +45,8 @@ extension StarGift.Gift {
     }
 }
 
+private let giftTileCornerRadius: CGFloat = 16
+
 private func ribbonOutlineImage(color: NSColor) -> CGImage? {
     let image = TelegramThemeHooks.shared.image(.giftRibbon)
     return generateScaledImage(image: image._cgImage, size: CGSize(width: image.size.width + 8, height: image.size.height + 8), opaque: true, color: color)
@@ -694,7 +696,7 @@ public final class GiftOptionsRowView:  GeneralContainableRowView {
                         
             (sticker as? View)?.userInteractionEnabled = false
 
-            surfaceView.cornerRadius = 10
+            surfaceView.cornerRadius = giftTileCornerRadius
             
             scaleOnClick = true
             set(handler: { _ in
@@ -1020,7 +1022,7 @@ public final class GiftOptionsRowView:  GeneralContainableRowView {
                     current = View()
                     addSubview(current)
                     self.selectionView = current
-                    current.layer?.cornerRadius = 10
+                    current.layer?.cornerRadius = giftTileCornerRadius - 2
                 }
                 current.layer?.borderColor = theme.colors.background.cgColor
                 current.layer?.borderWidth = 3
@@ -1044,7 +1046,7 @@ public final class GiftOptionsRowView:  GeneralContainableRowView {
                     current = View()
                     addSubview(current, positioned: .below, relativeTo: badgeView)
                     self.premiumSelectView = current
-                    current.layer?.cornerRadius = 10
+                    current.layer?.cornerRadius = giftTileCornerRadius
                 }
                 current.layer?.borderColor = badge.colors[0].cgColor
                 current.layer?.borderWidth = 1
@@ -1144,7 +1146,7 @@ public final class GiftOptionsRowView:  GeneralContainableRowView {
             }
             if let uniqueBackground, let content = uniqueBackgroundContent, let context = uniqueBackgroundContext {
                 uniqueBackground.frame = bounds.insetBy(dx: 1, dy: 1)
-                uniqueBackground.update(context: context, content: content, style: .item(giftCenterY: sticker.frame.midY - uniqueBackground.frame.minY, cornerRadius: 10))
+                uniqueBackground.update(context: context, content: content, style: .item(giftCenterY: sticker.frame.midY - uniqueBackground.frame.minY, cornerRadius: giftTileCornerRadius))
             }
             
             surfaceView.frame = bounds.insetBy(dx: 1, dy: 1)
