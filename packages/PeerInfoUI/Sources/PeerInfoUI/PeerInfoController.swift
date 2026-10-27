@@ -624,6 +624,10 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
         return 0
     }
 
+    public override var containerCornerRadius: CGFloat {
+        return context.isExternal ? 0 : super.containerCornerRadius
+    }
+
     public override func updateNavigationHeaderOverflow(_ overflow: CGFloat, transition: ContainedViewLayoutTransition) {
         super.updateNavigationHeaderOverflow(overflow, transition: transition)
         if isLoaded() {

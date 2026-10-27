@@ -806,7 +806,15 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         statusLayout = TextViewLayout(result.status, maximumNumberOfLines: 1, alignment: threadData != nil ? .center : .left, alwaysStaticItems: true)
         
         
-        super.init(initialSize, stableId: stableId, viewType: viewType, inset: NSEdgeInsets(left: 8, right: 8, top: 8))
+        let fullBleed = context.isExternal && !editing
+        let headerViewType: GeneralViewType
+        if fullBleed, case let .modern(_, insets) = viewType {
+            headerViewType = .modern(position: .last, insets: insets)
+        } else {
+            headerViewType = viewType
+        }
+        let headerInset = fullBleed ? NSEdgeInsets() : NSEdgeInsets(left: 8, right: 8, top: 8)
+        super.init(initialSize, stableId: stableId, viewType: headerViewType, inset: headerInset, fullSize: fullBleed)
         
         
         if let cachedData = peerView.cachedData as? CachedChannelData, threadData == nil, let peer = peer, peer.isGroup || peer.isSupergroup || peer.isGigagroup {
