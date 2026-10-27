@@ -206,6 +206,7 @@ final class LensSurface {
         for (index, source) in sources.enumerated() {
             let sourceLayer = source.layer
             let identifier = ObjectIdentifier(sourceLayer)
+            let portalAnimation: LiquidGlassLensAnimation = portals[identifier] == nil ? .immediate : animation
             let portal: LensPortal
             if let existing = portals[identifier] {
                 portal = existing
@@ -231,10 +232,10 @@ final class LensSurface {
             }
             let magnification = 1 + 0.1 * progress
             let position = CGPoint(x: source.magnificationCenter.x + (source.frame.midX - source.magnificationCenter.x) * magnification - frame.minX, y: source.magnificationCenter.y + (source.frame.midY - source.magnificationCenter.y) * magnification - frame.minY)
-            animation.update(portal.layer, key: "bounds", value: NSValue(rect: source.bounds))
-            animation.update(portal.layer, key: "position", value: NSValue(point: position))
+            portalAnimation.update(portal.layer, key: "bounds", value: NSValue(rect: source.bounds))
+            portalAnimation.update(portal.layer, key: "position", value: NSValue(point: position))
             let contentScale = magnification * source.lensedScale
-            animation.update(portal.layer, key: "transform", value: NSValue(caTransform3D: CATransform3DMakeScale(contentScale, contentScale, 1)))
+            portalAnimation.update(portal.layer, key: "transform", value: NSValue(caTransform3D: CATransform3DMakeScale(contentScale, contentScale, 1)))
         }
     }
 

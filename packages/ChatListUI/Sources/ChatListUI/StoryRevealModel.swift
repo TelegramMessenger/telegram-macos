@@ -76,15 +76,17 @@ public struct StoryRevealGlide: Equatable {
     public var fromFraction: CGFloat
     public var fromOffset: CGFloat
     public var speed: Double
+    public var span: CGFloat
 
     public static let timeConstant: Double = -0.001 / log(0.998)
     public static let stopSpeed: Double = 15
 
-    public init(start: Double, fromFraction: CGFloat, fromOffset: CGFloat, speed: Double) {
+    public init(start: Double, fromFraction: CGFloat, fromOffset: CGFloat, speed: Double, span: CGFloat = StoryRevealModel.span) {
         self.start = start
         self.fromFraction = fromFraction
         self.fromOffset = fromOffset
         self.speed = speed
+        self.span = span
     }
 
     public var duration: Double {
@@ -101,11 +103,11 @@ public struct StoryRevealGlide: Equatable {
     }
 
     public func fraction(at time: Double) -> CGFloat {
-        return max(0, self.fromFraction - self.distance(at: time) / StoryRevealModel.span)
+        return max(0, self.fromFraction - self.distance(at: time) / self.span)
     }
 
     public func tableOffset(at time: Double) -> CGFloat {
-        return self.fromOffset + max(0, self.distance(at: time) - self.fromFraction * StoryRevealModel.span)
+        return self.fromOffset + max(0, self.distance(at: time) - self.fromFraction * self.span)
     }
 
     public func isFinished(at time: Double) -> Bool {
@@ -159,8 +161,11 @@ public final class StoryRevealModel {
     private var momentumPassesThrough: Bool = true
     private var samples: [(time: Double, delta: CGFloat)] = []
 
-    public init(revealed: Bool = false) {
+    public let span: CGFloat
+
+    public init(revealed: Bool = false, span: CGFloat = StoryRevealModel.span) {
         self.fraction = revealed ? 1 : 0
+        self.span = span
     }
 
     public var isAnimating: Bool {
@@ -382,7 +387,7 @@ public final class StoryRevealModel {
         self.gestureDrivesHeader = true
         self.caughtTarget = nil
         self.record(delta, time: input.time)
-        let next = self.fraction + delta / StoryRevealModel.span
+        let next = self.fraction + delta / self.span
         if next <= 0 {
             self.fraction = 0
             self.gestureDrivesHeader = false
@@ -425,7 +430,7 @@ public final class StoryRevealModel {
             return .consumed
         }
         if self.fraction != target {
-            self.startSpring(target: target, velocity: velocity / Double(StoryRevealModel.span), time: input.time)
+            self.startSpring(target: target, velocity: velocity / Double(self.span), time: input.time)
         }
         return .consumed
     }
@@ -442,7 +447,7 @@ public final class StoryRevealModel {
         }
         if self.fraction > 0 {
             if input.deltaY < 0 && atTop {
-                let next = self.fraction + input.deltaY / StoryRevealModel.span
+                let next = self.fraction + input.deltaY / self.span
                 self.fraction = max(0, next)
                 return .consumed
             }
@@ -485,7 +490,7 @@ public final class StoryRevealModel {
     private func startGlide(speed: Double, tableOffset: CGFloat, time: Double) {
         self.spring = nil
         self.caughtTarget = nil
-        self.glide = StoryRevealGlide(start: time, fromFraction: self.fraction, fromOffset: tableOffset, speed: speed)
+        self.glide = StoryRevealGlide(start: time, fromFraction: self.fraction, fromOffset: tableOffset, speed: speed, span: self.span)
         self.glideOffset = tableOffset
         self.pendingTableDelta = 0
     }

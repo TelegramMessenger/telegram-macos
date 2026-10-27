@@ -969,12 +969,18 @@ private final class TitleForumView : Control {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    private func titleWidth(for size: NSSize) -> CGFloat {
+        let hasSidebar = state.map { $0.filterData.sidebar && !$0.filterData.isEmpty } ?? false
+        let leading: CGFloat = hasSidebar ? 0 : Window.controlsInset + 15
+        return max(0, size.width - 90 - leading)
+    }
     
     func update(_ state: PeerListState, forumData: PeerListState.ForumData, arguments: Arguments) {
         self.state = state
         let size = self.frame.size
         _ = state.filterData.sidebar && !state.filterData.isEmpty
-        let text_w = size.width - 80 - 10 - 30
+        let text_w = titleWidth(for: size)
 
         
         let t_layout = TextViewLayout(.initialize(string: forumData.peer.displayTitle, color: theme.colors.text, font: .medium(.text)), maximumNumberOfLines: 1)
@@ -1003,7 +1009,7 @@ private final class TitleForumView : Control {
         guard self.state != nil else {
             return
         }
-        let text_w = frame.size.width - 80 - 10 - 40
+        let text_w = titleWidth(for: frame.size)
 
         title.resize(text_w)
         status.resize(text_w)
@@ -1021,10 +1027,10 @@ private final class TitleForumView : Control {
         let minX = !hasSidebar ? Window.controlsInset + 15 : 0
         
         var title_r = title.centerFrameX(y: 10)
-        title_r.origin.x = max(title_r.minX, minX)
+        title_r.origin.x = max(min(title_r.minX, size.width - 90 - title_r.width), minX)
         
         var status_r = status.centerFrameX(y: title_r.maxY + 1)
-        status_r.origin.x = max(status_r.minX, minX)
+        status_r.origin.x = max(min(status_r.minX, size.width - 90 - status_r.width), minX)
 
         transition.updateFrame(view: title, frame: title_r)
         transition.updateFrame(view: status, frame: status_r)
@@ -1072,6 +1078,11 @@ public class PeerListContainerView : Control {
     private var compose:ImageButton?
     private var backButton: ImageButton?
     private var glassContainer: NSView?
+    private var searchBackground: View?
+    private let headerPocketArea = ScrollPocketArea(frame: .zero, style: .soft)
+    var searchRevealFraction: CGFloat = 0
+    private static let searchFieldHeight: CGFloat = 28
+    private static let searchBlockHeight: CGFloat = 38
 
     private var contactsSort: TextButton?
 
@@ -1118,6 +1129,7 @@ public class PeerListContainerView : Control {
     private let borderView = View()
     private let forumSeparatorView = View()
     private let tableMaskLayer = CALayer()
+    private let tableOutlineMaskLayer = CAShapeLayer()
     private var layoutSize: NSSize?
 
     public override func setFrameSize(_ newSize: NSSize) {
@@ -1136,8 +1148,12 @@ public class PeerListContainerView : Control {
         tableView.wantsLayer = true
         tableView.layer?.masksToBounds = true
         tableMaskLayer.backgroundColor = NSColor.black.cgColor
+        tableOutlineMaskLayer.fillColor = NSColor.black.cgColor
         tableMaskLayer.disableActions()
         tableView.layer?.mask = tableMaskLayer
+        if System.liquidGlassAvailable {
+            tableView.registerScrollPocketContainer(containerView, edge: .top)
+        }
 
         addSubview(backgroundView)
         addSubview(tableView)
@@ -1162,6 +1178,7 @@ public class PeerListContainerView : Control {
         containerView.addSubview(statusContainer)
         
         containerView.addSubview(searchView)
+        containerView.addSubview(headerPocketArea, positioned: .below, relativeTo: nil)
         
         
         tableView.getBackgroundColor = {
@@ -1185,6 +1202,24 @@ public class PeerListContainerView : Control {
     
     private var foldersItem: ChatListRevealItem?
     private var foldersView: ChatListRevealView?
+    fileprivate weak var forumHeader: PeerListContainerView? {
+        didSet {
+            guard System.liquidGlassAvailable, oldValue !== forumHeader else {
+                return
+            }
+            tableView.unregisterScrollPocketContainer(oldValue?.containerView ?? containerView, edge: .top)
+            tableView.registerScrollPocketContainer(forumHeader?.containerView ?? containerView, edge: .top)
+        }
+    }
+
+    fileprivate func moveHeader(to host: NSView) {
+        guard containerView.superview !== host else {
+            return
+        }
+        let frame = host.convert(containerView.bounds, from: containerView)
+        host.addSubview(containerView)
+        containerView.frame = frame
+    }
     
 
     
@@ -1258,19 +1293,19 @@ public class PeerListContainerView : Control {
                 current.scaleOnClick = true
                 statusContainer.addSubview(current)
             }
+            let composeImage: CGImage
             if state.isContacts {
-                current.set(image: theme.icons.contactsNewContact, for: .Normal)
-                current.set(image: theme.icons.contactsNewContact, for: .Hover)
+                composeImage = theme.icons.contactsNewContact
                 current.setAccessibilityLabel(strings().voiceOverContactsAddContact)
             } else if state.mode.groupId == .archive || state.mode.isSavedMessages || state.mode.isCommunity {
-                current.set(image: theme.icons.chatActions.highlight(color: theme.colors.accent), for: .Normal)
-                current.set(image: theme.icons.chatActions.highlight(color: theme.colors.accent), for: .Hover)
+                composeImage = theme.icons.chatActions.highlight(color: theme.colors.accent)
                 current.setAccessibilityLabel(strings().voiceOverCommonMore)
             } else {
-                current.set(image: theme.icons.composeNewChat, for: .Normal)
-                current.set(image: theme.icons.composeNewChat, for: .Hover)
+                composeImage = theme.icons.composeNewChat
                 current.setAccessibilityLabel(strings().voiceOverNavigationCompose)
             }
+            current.set(image: composeImage, for: .Normal)
+            current.set(image: composeImage, for: .Hover)
             current.contextMenu = { [weak arguments] in
                 return arguments?.contextMenu()
             }
@@ -1517,10 +1552,11 @@ public class PeerListContainerView : Control {
         self.backgroundColor = .clear
         self.backgroundView.backgroundColor = .clear
 
-        searchView.searchTheme = .init(theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
+        updateSearchBackground()
+        searchView.searchTheme = .init(searchBackground != nil ? .clear : theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
             return strings().chatListSearchPlaceholder
         }, theme.search.textColor, theme.search.placeholderColor)
-        searchView.layer?.borderWidth = 1
+        searchView.layer?.borderWidth = searchBackground != nil ? 0 : 1
         searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
 
         self.containerView.backgroundColor = .clear
@@ -1587,13 +1623,17 @@ public class PeerListContainerView : Control {
             return NSMakeRect(10, 10, 30, 30)
         }
         let hasLeftSidebar = state.filterData.sidebar && !state.filterData.isEmpty
-        let inlineBackButton = !hasLeftSidebar && state.splitState != .minimisize && state.splitState != .single
+        let inlineBackButton = !hasLeftSidebar && state.splitState != .minimisize && state.splitState != .single && forumTitle == nil
         let edge: CGFloat = 10
         let componentHeight: CGFloat = 30
 
         if state.splitState == .minimisize {
             // Single-column: button is horizontally centered, 30pt from the top.
             return NSMakeRect(floorToScreenPixels(backingScaleFactor, (size.width - componentHeight) / 2), 30, componentHeight, componentHeight)
+        }
+
+        if forumTitle != nil {
+            return NSMakeRect(size.width - 80, 10, componentHeight, componentHeight)
         }
 
         if state.mode.isCommunity || state.mode.isFullForum {
@@ -1612,6 +1652,45 @@ public class PeerListContainerView : Control {
         } else {
             return NSMakeRect(edge, 10, 30, componentHeight)
         }
+    }
+
+    private func updateSearchBackground() {
+        if System.liquidGlassAvailable {
+            if searchBackground == nil {
+                let fill = View(frame: searchView.frame)
+                fill.isEventLess = true
+                containerView.addSubview(fill, positioned: .below, relativeTo: searchView)
+                searchBackground = fill
+            }
+            searchBackground?.backgroundColor = theme.colors.text.withAlphaComponent(theme.colors.isDark ? 0.1 : 0.075)
+        } else if let searchBackground {
+            searchBackground.removeFromSuperview()
+            self.searchBackground = nil
+        }
+    }
+
+    var pullDownSearch: Bool {
+        guard System.liquidGlassAvailable, let state = self.state else {
+            return false
+        }
+        return state.splitState != .minimisize && (state.mode.isPlain || state.mode.isCommunity) && !state.mode.isForumLike
+    }
+
+    private var searchReveal: CGFloat {
+        guard pullDownSearch, let state = self.state else {
+            return 1
+        }
+        if state.searchState != .None {
+            return 1
+        }
+        return searchRevealFraction
+    }
+
+    private var searchSpace: CGFloat {
+        guard pullDownSearch else {
+            return 40
+        }
+        return PeerListContainerView.searchBlockHeight * searchReveal
     }
 
     public func updateLayout(_ size: NSSize, transition: ContainedViewLayoutTransition) {
@@ -1642,7 +1721,13 @@ public class PeerListContainerView : Control {
         
         let containerSize = NSMakeSize(state.splitState == .minimisize ? 90 : size.width, offset)
                 
-        transition.updateFrame(view: self.containerView, frame: NSMakeRect(0, inset, containerSize.width, offset))
+        var headerFrame = NSMakeRect(0, inset, containerSize.width, offset)
+        if let host = containerView.superview, host !== self {
+            headerFrame = convert(headerFrame, to: host)
+        }
+        transition.updateFrame(view: self.containerView, frame: headerFrame)
+        transition.updateFrame(view: headerPocketArea, frame: NSMakeRect(0, 0, containerSize.width, offset))
+        headerPocketArea.isHidden = !System.liquidGlassAvailable
         
         
         transition.updateFrame(view: self.statusContainer, frame: NSMakeRect(0, 0, containerSize.width, statusHeight))
@@ -1656,9 +1741,11 @@ public class PeerListContainerView : Control {
 
         transition.updateFrame(view: self.borderView, frame: CGRect(origin: CGPoint(x: 0, y: navigationHeight_ - .borderSize), size: CGSize(width: size.width, height: .borderSize)))
         transition.updateAlpha(view: borderView, alpha: state.searchState == .Focus ? 0 : 1)
+        borderView.isHidden = System.liquidGlassAvailable
 
         forumSeparatorView.isHidden = !mode.isForumLike || displaysFullForumHeader
-        transition.updateFrame(view: forumSeparatorView, frame: NSMakeRect(0, 0, .borderSize, size.height))
+        let forumSeparatorTop = forumHeader != nil ? offset : 0
+        transition.updateFrame(view: forumSeparatorView, frame: NSMakeRect(0, forumSeparatorTop, .borderSize, max(0, size.height - forumSeparatorTop)))
 
         let statusHeight: CGFloat = self.statusHeight
 
@@ -1675,21 +1762,43 @@ public class PeerListContainerView : Control {
 
         let edge: CGFloat = 10
         let hasLeftSidebar = state.filterData.sidebar && !state.filterData.isEmpty
-        let inlineBackButton = self.backButton != nil && !hasLeftSidebar && state.splitState != .minimisize && state.splitState != .single && !state.mode.isCommunity && !displaysFullForumHeader
+        let inlineBackButton = self.backButton != nil && !hasLeftSidebar && state.splitState != .minimisize && state.splitState != .single && !state.mode.isCommunity && !displaysFullForumHeader && forumTitle == nil
         let inlineBackButtonGap: CGFloat = 10
         let searchLeading: CGFloat = inlineBackButton ? backRect(size: size).maxX + inlineBackButtonGap : edge
-        let searchRect = NSMakeRect(searchLeading, searchY, size.width - searchLeading - edge, componentSize.height)
+        let searchHeight: CGFloat = pullDownSearch ? PeerListContainerView.searchFieldHeight : componentSize.height
+        let searchRect = NSMakeRect(searchLeading, searchY, size.width - searchLeading - edge, searchHeight)
+        let reveal = searchReveal
 
 
         let bottomInset: CGFloat = 0
 
         transition.updateFrame(view: searchView, frame: searchRect)
         searchView.updateLayout(size: searchRect.size, transition: transition)
-        searchView.isHidden = state.splitState == .minimisize || (mode.isForumLike && !displaysFullForumHeader)
+        let searchHidden = state.splitState == .minimisize || (mode.isForumLike && !displaysFullForumHeader)
+        searchView.isHidden = searchHidden || (pullDownSearch && reveal <= 0.75)
+        if pullDownSearch {
+            transition.updateAlpha(view: searchView, alpha: max(0, min(1, (reveal - 0.75) / 0.25)))
+        } else {
+            searchView.alphaValue = 1
+        }
+        if let searchBackground {
+            let backgroundHeight = min(searchRect.height, PeerListContainerView.searchBlockHeight * reveal - (PeerListContainerView.searchBlockHeight - searchRect.height))
+            let backgroundRect = NSMakeRect(searchRect.minX, searchRect.minY, searchRect.width, max(1, backgroundHeight))
+            transition.updateFrame(view: searchBackground, frame: backgroundRect)
+            searchBackground.layer?.cornerRadius = min(searchRect.height, backgroundRect.height) / 2
+            searchBackground.isHidden = searchHidden || backgroundHeight < 1
+            transition.updateAlpha(view: searchBackground, alpha: max(0, min(1, backgroundHeight / searchRect.height)))
+        }
         
 
 
         ContainedViewLayoutTransition.immediate.updateFrame(view: tableView, frame: NSMakeRect(0, 0, size.width, size.height - bottomInset))
+        if System.liquidGlassAvailable {
+            let compact = state.splitState == .single && !hasLeftSidebar
+            tableView.layer?.cornerRadius = compact ? 0 : 20
+        } else {
+            tableView.layer?.cornerRadius = 0
+        }
         updateTableMask(spaceHeight: navigationHeight)
 
         updateBottomControls(size: size, transition: transition)
@@ -1699,12 +1808,10 @@ public class PeerListContainerView : Control {
         controlPoint.x -= componentSize.width
         
         if let compose = compose {
-            transition.updateFrame(view: compose, frame: CGRect(origin: controlPoint, size: componentSize))
-            if state.splitState == .minimisize {
-                transition.updateAlpha(view: compose, alpha: 1)
-            } else {
-                transition.updateAlpha(view: compose, alpha: progress)
-            }
+            let composeFrame = CGRect(origin: controlPoint, size: componentSize)
+            let composeAlpha: CGFloat = state.splitState == .minimisize ? 1 : progress
+            transition.updateFrame(view: compose, frame: composeFrame)
+            transition.updateAlpha(view: compose, alpha: composeAlpha)
         }
         
         if let view = forumTitle {
@@ -1827,7 +1934,7 @@ public class PeerListContainerView : Control {
         }
 
         if case .forum = state.mode, state.splitState != .minimisize, !state.mode.isFullForum {
-            return 0
+            return forumHeader?.navigationHeight ?? 0
         }
         if state.splitState == .minimisize, state.filterData.sidebar {
             return 0
@@ -1838,7 +1945,7 @@ public class PeerListContainerView : Control {
 
         if state.splitState != .minimisize, state.mode.isPlain || state.mode.isCommunity {
 
-            offset += 40
+            offset += searchSpace
 
             if let storiesItem = self.storiesItem {
                 offset += storiesItem.navigationHeight
@@ -1886,6 +1993,26 @@ public class PeerListContainerView : Control {
     }
 
     public func updateTableMask(spaceHeight: CGFloat) {
+        if System.liquidGlassAvailable {
+            let radius = tableView.layer?.cornerRadius ?? 0
+            guard radius > 0 else {
+                tableView.layer?.mask = nil
+                return
+            }
+            let scale = window?.backingScaleFactor ?? System.backingScale
+            let inset = 1 / scale
+            let rect = tableView.bounds.insetBy(dx: inset, dy: inset)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            tableOutlineMaskLayer.frame = tableView.bounds
+            tableOutlineMaskLayer.contentsScale = scale
+            tableOutlineMaskLayer.path = CGPath(roundedRect: rect, cornerWidth: max(0, radius - inset), cornerHeight: max(0, radius - inset), transform: nil)
+            tableView.layer?.mask = tableOutlineMaskLayer
+            CATransaction.commit()
+            return
+        } else if tableView.layer?.mask !== tableMaskLayer {
+            tableView.layer?.mask = tableMaskLayer
+        }
         let tableHeight = tableView.frame.height
         guard tableHeight > 0 else { return }
         CATransaction.begin()
@@ -2506,6 +2633,7 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
                 
         genericView.tableView._scrollDidEndLiveScrolling = { [weak self] in
             self?.storyRevealDriver.finishIfPartial()
+            self?.searchRevealDriver.finishIfPartial()
         }
         
         revealListener = .init(dispatchWhenVisibleRangeUpdated: false, { [weak self] _ in
@@ -3731,6 +3859,12 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     }
     open override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if System.liquidGlassAvailable, case .forum(_, false, _) = mode, let nav = navigationController, let parent = nav.previousController as? PeersListController<Context>, parent !== self {
+            let header = parent.genericView.forumHeader ?? parent.genericView
+            header.moveHeader(to: nav.view)
+            genericView.forumHeader = header
+            relayoutStoryReveal()
+        }
         switch mode {
         case let .forum(peerId, _, _):
             context.globalForumId.set(peerId)
@@ -3742,13 +3876,27 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
         self.searchSection?.view.isHidden = false
         self.searchSection?.view._change(opacity: 1, animated: true)
     }
+
+    open override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if let header = genericView.forumHeader {
+            let next = navigationController?.controller as? PeersListController<Context>
+            if next?.genericView.forumHeader !== header {
+                header.moveHeader(to: header)
+            }
+            genericView.forumHeader = nil
+        }
+    }
     
     open override var stake: StakeSettings {
         switch mode {
         case let .forum(_, isFull, parentIsArchive):
             if !isFull {
                 return .init(keepLeft: 70, keepTop: { [weak self] in
-                    guard let state = self?.state else {
+                    guard let self, let state = self.state else {
+                        return 0
+                    }
+                    if System.liquidGlassAvailable {
                         return 0
                     }
                     var height: CGFloat = 90
@@ -3829,6 +3977,27 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
         return self.state?.hasStories == true && self.canStoryOverscroll && self.searchSection == nil
     }
 
+    private let searchReveal = StoryRevealModel(span: 30)
+    private lazy var searchRevealDriver: StoryRevealDriver = {
+        let driver = StoryRevealDriver(table: self.genericView.tableView, model: self.searchReveal)
+        driver.didChange = { [weak self] previous, tracking in
+            self?.searchRevealDidChange(from: previous, tracking: tracking)
+        }
+        return driver
+    }()
+
+    private var searchRevealAllowed: Bool {
+        return self.genericView.pullDownSearch && self.canStoryOverscroll && self.searchSection == nil
+    }
+
+    private func searchRevealDidChange(from previous: CGFloat, tracking: Bool) {
+        if tracking, self.searchReveal.fraction >= 1, previous < 1 {
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .drawCompleted)
+        }
+        self.genericView.searchRevealFraction = self.searchReveal.fraction
+        self.relayoutStoryReveal()
+    }
+
     private func storyRevealDidChange(from previous: CGFloat, tracking: Bool) {
         if tracking, self.storyReveal.fraction >= 1, previous < 1 {
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .drawCompleted)
@@ -3856,6 +4025,9 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     }
 
     private func setStoriesRevealed(_ revealed: Bool, animated: Bool) {
+        if revealed, self.searchRevealAllowed {
+            self.searchRevealDriver.setRevealed(true, animated: animated)
+        }
         self.storyRevealDriver.setRevealed(revealed, animated: animated)
     }
     
@@ -3881,6 +4053,9 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     }
 
     private func processScroll() {
+        if self.searchRevealAllowed {
+            self.searchRevealDriver.tableDidScroll()
+        }
         guard self.storyRevealAllowed else {
             return
         }
@@ -3898,11 +4073,19 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
         #endif
         let allowed = self.storyRevealAllowed
         self.storyRevealDriver.setEnabled(allowed)
-        guard allowed else {
+        let searchAllowed = self.searchRevealAllowed
+        self.searchRevealDriver.setEnabled(searchAllowed)
+        guard allowed || searchAllowed else {
             return false
         }
         let input = StoryRevealModel.input(event, time: StoryRevealDriver.eventTime(event, now: CACurrentMediaTime()))
-        let consumed = self.storyRevealDriver.handle(input)
+        let consumed: Bool
+        if searchAllowed {
+            let storiesFirst = allowed && (self.searchReveal.isSettledRevealed || self.storyReveal.fraction > 0 || self.storyReveal.isAnimating)
+            consumed = (storiesFirst && self.storyRevealDriver.handle(input)) || self.searchRevealDriver.handle(input)
+        } else {
+            consumed = self.storyRevealDriver.handle(input)
+        }
         #if DEBUG
         StoryRevealLabRegistry.record(input, consumed: consumed)
         #endif

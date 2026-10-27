@@ -115,8 +115,10 @@ public class ChatListRevealItem: TableStickItem {
         return "ChatListRevealView"
     }
     
+    public static let folderBarHeight: CGFloat = 40
+
     public override var height: CGFloat {
-        return 30
+        return System.liquidGlassAvailable ? ChatListRevealItem.folderBarHeight + 10 : 30
     }
     
     static func accessibilityTabTitle(_ title: String, unreadCount: Int?) -> String {
@@ -151,9 +153,10 @@ public class ChatListRevealItem: TableStickItem {
 }
 
 
-public final class ChatListRevealView : TableStickView {
+public final class ChatListRevealView : TableStickView, AppearanceViewProtocol {
     private let containerView = View()
     private var animated: Bool = false
+    private var presentationTheme: TelegramPresentationTheme = theme
     public let segmentView: ScrollableSegmentView = ScrollableSegmentView(frame: NSZeroRect)
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -200,7 +203,48 @@ public final class ChatListRevealView : TableStickView {
 
     public override func updateColors() {
         super.updateColors()
+        updateLocalizationAndTheme(theme: theme)
         needsDisplay = true
+    }
+
+    private func segmentTheme(for presentation: TelegramPresentationTheme) -> ScrollableSegmentTheme {
+        return ScrollableSegmentTheme(background: .clear, border: System.liquidGlassAvailable ? .clear : presentation.colors.border, selector: presentation.colors.accent, inactiveText: System.liquidGlassAvailable ? presentation.colors.text : presentation.colors.grayText, activeText: System.liquidGlassAvailable ? presentation.colors.underSelectedColor : presentation.colors.text, textFont: System.liquidGlassAvailable ? NSFont.systemFont(ofSize: .text, weight: .semibold) : .normal(.text))
+    }
+
+    public func updateLocalizationAndTheme(theme: PresentationTheme) {
+        guard let theme = theme as? TelegramPresentationTheme else {
+            return
+        }
+        presentationTheme = theme
+        appearance = theme.appearance
+        containerView.updateLocalizationAndTheme(theme: theme)
+        segmentView.theme = segmentTheme(for: theme)
+    }
+
+    private func generateIcon(_ tab: ChatListFilter?, item: ChatListRevealItem, presentation: TelegramPresentationTheme) -> CGImage? {
+        guard let unreadCount = item.counters.count(for: tab), unreadCount.count > 0 else {
+            return nil
+        }
+        let selectedBubble = System.liquidGlassAvailable && item.selected == tab
+        let attributedString = NSAttributedString.initialize(string: "\(unreadCount.count.prettyNumber)", color: selectedBubble ? presentation.colors.accent : presentation.colors.background, font: .medium(.short))
+        let textLayout = TextNode.layoutText(maybeNode: nil, attributedString, nil, 1, .start, NSMakeSize(CGFloat.greatestFiniteMagnitude, CGFloat.greatestFiniteMagnitude), nil, false, .center)
+        var size = NSMakeSize(textLayout.0.size.width + 8, textLayout.0.size.height + 5)
+        size = NSMakeSize(max(size.height, size.width), size.height)
+        return generateImage(size, rotatedContext: { size, ctx in
+            let rect = NSMakeRect(0, 0, size.width, size.height)
+            ctx.clear(rect)
+            if selectedBubble {
+                ctx.setFillColor(presentation.colors.underSelectedColor.cgColor)
+            } else if item.selected == tab || unreadCount.hasUnmutedUnread {
+                ctx.setFillColor(presentation.colors.accent.cgColor)
+            } else {
+                ctx.setFillColor(presentation.colors.badgeMuted.cgColor)
+            }
+            ctx.round(size, size.height / 2.0)
+            ctx.fill(rect)
+            let focus = rect.focus(textLayout.0.size)
+            textLayout.1.draw(focus.offsetBy(dx: 0, dy: -1), in: ctx, backingScaleFactor: 2.0, backgroundColor: .white)
+        })!
     }
     
     private var splitViewState: SplitViewState?
@@ -220,60 +264,33 @@ public final class ChatListRevealView : TableStickView {
             return
         }
         
-        let generateIcon:(ChatListFilter?)->CGImage? = { tab in
-            let unreadCount:ChatListFilterBadge? = item.counters.count(for: tab)
-            let icon: CGImage?
-            if let unreadCount = unreadCount, unreadCount.count > 0 {
-                let attributedString = NSAttributedString.initialize(string: "\(unreadCount.count.prettyNumber)", color: item.presentation.colors.background, font: .medium(.short))
-                let textLayout = TextNode.layoutText(maybeNode: nil,  attributedString, nil, 1, .start, NSMakeSize(CGFloat.greatestFiniteMagnitude, CGFloat.greatestFiniteMagnitude), nil, false, .center)
-                var size = NSMakeSize(textLayout.0.size.width + 8, textLayout.0.size.height + 5)
-                size = NSMakeSize(max(size.height,size.width), size.height)
-                
-                icon = generateImage(size, rotatedContext: { size, ctx in
-                    let rect = NSMakeRect(0, 0, size.width, size.height)
-                    ctx.clear(rect)
-                    if item.selected == tab || unreadCount.hasUnmutedUnread {
-                        ctx.setFillColor(item.presentation.colors.accent.cgColor)
-                    } else {
-                        ctx.setFillColor(item.presentation.colors.badgeMuted.cgColor)
-                    }
-                    
-                    
-                    ctx.round(size, size.height/2.0)
-                    ctx.fill(rect)
-                    
-                    let focus = rect.focus(textLayout.0.size)
-                    textLayout.1.draw(focus.offsetBy(dx: 0, dy: -1), in: ctx, backingScaleFactor: 2.0, backgroundColor: .white)
-                    
-                })!
-            } else if let _ = tab {
-                icon = nil
-            } else {
-                icon = nil
-            }
-            return icon
-        }
-        
         animated = animated && splitViewState == context.layout
         self.splitViewState = context.layout
         
-        let segmentTheme = ScrollableSegmentTheme(background: .clear, border: item.presentation.colors.border, selector: item.presentation.colors.accent, inactiveText: item.presentation.colors.grayText, activeText: item.presentation.colors.text, textFont: .normal(.text))
+        presentationTheme = item.presentation
+        let segmentTheme = self.segmentTheme(for: presentationTheme)
 
+        segmentView.bubbles = System.liquidGlassAvailable
         segmentView.theme = segmentTheme
 
         var index: Int = 0
-        let insets = NSEdgeInsets(left: 10, right: 10)
+        let insets = System.liquidGlassAvailable ? NSEdgeInsets(left: 14, right: 14) : NSEdgeInsets(left: 10, right: 10)
         var items:[ScrollableSegmentItem] = []
         for tab in item.tabs {
             let unreadCount = item.counters.count(for: tab)
-            let icon: CGImage? = generateIcon(tab)
             let title: String = tab.title
             let selected = item.selected == tab
 
-            let segmentItem = ScrollableSegmentItem(title: title, index: index, uniqueId: Int64(ChatListUIHooks.shared.chatListFilterId(tab)), selected: selected, insets: insets, icon: icon, theme: segmentTheme, equatable: UIEquatable(unreadCount), customTextView: {
+            let segmentItem = ScrollableSegmentItem(title: title, index: index, uniqueId: Int64(ChatListUIHooks.shared.chatListFilterId(tab)), selected: selected, insets: insets, icon: nil, theme: segmentTheme, equatable: UIEquatable(unreadCount), iconProvider: { [weak self] in
+                guard let self else {
+                    return nil
+                }
+                return self.generateIcon(tab, item: item, presentation: self.presentationTheme)
+            }, customTextView: { [weak segmentView = self.segmentView] in
+                let currentTheme = segmentView?.theme ?? segmentTheme
                 
                 let attr = NSMutableAttributedString()
-                attr.append(string: title, color: selected ? segmentTheme.activeText : segmentTheme.inactiveText, font: segmentTheme.textFont)
+                attr.append(string: title, color: selected ? currentTheme.activeText : currentTheme.inactiveText, font: currentTheme.textFont)
                 InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: tab.entities, isPremium: context.isPremium, playPolicy: tab.enableAnimations ? nil : .framesCount(1))
 
                 let layout = TextViewLayout(attr)
@@ -366,8 +383,12 @@ public final class ChatListRevealView : TableStickView {
         super.layout()
 
         containerView.frame = bounds
-        segmentView.frame = NSMakeRect(0, -10, containerView.bounds.width, containerView.bounds.height
-         + 10)
+        if segmentView.bubbles {
+            segmentView.frame = NSMakeRect(0, 0, containerView.bounds.width, ChatListRevealItem.folderBarHeight)
+        } else {
+            segmentView.frame = NSMakeRect(0, -10, containerView.bounds.width, containerView.bounds.height
+             + 10)
+        }
     }
     
     public required init?(coder: NSCoder) {

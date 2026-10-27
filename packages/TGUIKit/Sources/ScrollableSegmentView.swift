@@ -124,13 +124,14 @@ public final class ScrollableSegmentItem : Equatable, Comparable, Identifiable {
     let theme: ScrollableSegmentTheme
     let insets: NSEdgeInsets
     let icon: CGImage?
+    fileprivate let iconProvider: (() -> CGImage?)?
     let equatable: UIEquatable?
     public let index: Int
     public let uniqueId: Int64
     fileprivate var customTextView: (()->NSView?)?
     public var accessibilityLabel: (()->String?)?
     
-    public init(title: String, index: Int, uniqueId: Int64, selected: Bool, insets: NSEdgeInsets, icon: CGImage?, theme: ScrollableSegmentTheme, equatable: UIEquatable?, customTextView: (()->NSView?)? = nil) {
+    public init(title: String, index: Int, uniqueId: Int64, selected: Bool, insets: NSEdgeInsets, icon: CGImage?, theme: ScrollableSegmentTheme, equatable: UIEquatable?, iconProvider: (() -> CGImage?)? = nil, customTextView: (()->NSView?)? = nil) {
         self.title = title
         self.index = index
         self.uniqueId = uniqueId
@@ -138,6 +139,7 @@ public final class ScrollableSegmentItem : Equatable, Comparable, Identifiable {
         self.theme = theme
         self.insets = insets
         self.icon = icon
+        self.iconProvider = iconProvider
         self.equatable = equatable
         self.customTextView = customTextView
     }
@@ -155,8 +157,8 @@ public final class ScrollableSegmentItem : Equatable, Comparable, Identifiable {
     fileprivate weak var view:SegmentItemView?
 }
 
-private func buildText(for item: ScrollableSegmentItem) -> TextViewLayout {
-    let layout = TextViewLayout.init(.initialize(string: item.title, color: item.selected ? item.theme.activeText : item.theme.inactiveText, font: item.theme.textFont))
+private func buildText(for item: ScrollableSegmentItem, theme: ScrollableSegmentTheme) -> TextViewLayout {
+    let layout = TextViewLayout.init(.initialize(string: item.title, color: item.selected ? theme.activeText : theme.inactiveText, font: item.theme.textFont))
     layout.measure(width: .greatestFiniteMagnitude)
     return layout
 }
@@ -170,13 +172,31 @@ private final class SegmentItemView : Control {
     private let callback: (ScrollableSegmentItem)->Void
     private let menuItems:(ScrollableSegmentItem)->Signal<[ContextMenuItem], NoError>
     private let startDraggingIfNeeded: (ScrollableSegmentItem, Control)->Void
-    init(item: ScrollableSegmentItem, theme: ScrollableSegmentTheme, callback: @escaping(ScrollableSegmentItem)->Void, startDraggingIfNeeded: @escaping(ScrollableSegmentItem, Control)->Void, menuItems:@escaping(ScrollableSegmentItem)->Signal<[ContextMenuItem], NoError>) {
+    private let bubbleHost: ScrollPocketExcludedView?
+    private let bubbleGlass: LiquidGlassView?
+    static let bubbleHeight: CGFloat = 30
+    static let bubbleSpacing: CGFloat = 8
+    init(item: ScrollableSegmentItem, theme: ScrollableSegmentTheme, bubbles: Bool, callback: @escaping(ScrollableSegmentItem)->Void, startDraggingIfNeeded: @escaping(ScrollableSegmentItem, Control)->Void, menuItems:@escaping(ScrollableSegmentItem)->Signal<[ContextMenuItem], NoError>) {
+        if bubbles {
+            let host = ScrollPocketExcludedView(frame: .zero)
+            let glass = LiquidGlassView(frame: .zero, cornerRadius: SegmentItemView.bubbleHeight / 2, hasShadow: false, hasBorder: false, tintAlpha: 0)
+            glass.isEventLess = true
+            host.addSubview(glass)
+            self.bubbleHost = host
+            self.bubbleGlass = glass
+        } else {
+            self.bubbleHost = nil
+            self.bubbleGlass = nil
+        }
         self.item = item
         self.callback = callback
         self.menuItems = menuItems
-        self.textLayout = buildText(for: item)
+        self.textLayout = buildText(for: item, theme: theme)
         self.startDraggingIfNeeded = startDraggingIfNeeded
         super.init(frame: NSZeroRect)
+        if let bubbleHost {
+            addSubview(bubbleHost)
+        }
         self.handleLongEvent = true
         self.updateItem(item, theme: theme, animated: false)
         
@@ -214,8 +234,7 @@ private final class SegmentItemView : Control {
             }
             self.callback(self.item)
         }, for: .Click)
-        
-        
+
         set(handler: { [weak self] control in
             guard let `self` = self else {
                 return
@@ -277,6 +296,10 @@ private final class SegmentItemView : Control {
     override func scrollWheel(with event: NSEvent) {
         super.scrollWheel(with: event)
     }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return super.hitTest(point) == nil ? nil : self
+    }
     
     var size: NSSize {
         var width: CGFloat = item.insets.left + item.insets.right
@@ -297,7 +320,7 @@ private final class SegmentItemView : Control {
     
     func updateItem(_ item: ScrollableSegmentItem, theme: ScrollableSegmentTheme, animated: Bool) {
         self.item = item
-        self.textLayout = buildText(for: item)
+        self.textLayout = buildText(for: item, theme: theme)
         
         if let customTextView = item.customTextView?() {
             self.customTextView?.removeFromSuperview()
@@ -328,7 +351,13 @@ private final class SegmentItemView : Control {
             current.update(textLayout)
         }
         
-        if let image = item.icon {
+        let icon: CGImage?
+        if let iconProvider = item.iconProvider {
+            icon = iconProvider()
+        } else {
+            icon = item.icon
+        }
+        if let image = icon {
             if imageView == nil {
                 imageView = ImageView()
                 imageView?.isAccessibilityDecorative = true
@@ -354,15 +383,32 @@ private final class SegmentItemView : Control {
            
         }
         
+        if let bubbleGlass {
+            bubbleGlass.updateLocalizationAndTheme(theme: presentation)
+            bubbleGlass.hasBorder = !System.liquidGlass
+            bubbleGlass.customTint = item.selected ? theme.selector : nil
+            if #available(macOS 26.0, *), let glass = bubbleGlass.effectView as? NSGlassEffectView {
+                glass.tintColor = item.selected ? theme.selector : nil
+            }
+        }
         change(size: size, animated: animated, duration: duration)
         self.backgroundColor = .clear
         textView?.backgroundColor = .clear
         customTextView?.background = .clear
         needsLayout = true
+        if bubbleHost != nil {
+            layoutSubtreeIfNeeded()
+        }
     }
     
     override func layout() {
         super.layout()
+        if let bubbleHost, let bubbleGlass {
+            let inset = SegmentItemView.bubbleSpacing / 2
+            bubbleHost.frame = NSMakeRect(inset, floorToScreenPixels(backingScaleFactor, (frame.height - SegmentItemView.bubbleHeight) / 2), max(0, frame.width - inset * 2), SegmentItemView.bubbleHeight)
+            bubbleGlass.frame = bubbleHost.bounds
+            bubbleGlass.updateLayout(size: bubbleHost.bounds.size, transition: .immediate)
+        }
         let textView = self.textView ?? self.customTextView
         guard let textView else {
             return
@@ -458,6 +504,8 @@ public class ScrollableSegmentView: View {
     
     private let documentView = View()
     private var boundsObserver: NSObjectProtocol?
+    private var glassSettingObserver: NSObjectProtocol?
+    private var displayOptionsObserver: NSObjectProtocol?
     private var items: [ScrollableSegmentItem] = []
     private var selected:Int = 0
     
@@ -465,7 +513,19 @@ public class ScrollableSegmentView: View {
 
     
     public var fitToWidth: Bool = false
-    
+
+    public var bubbles: Bool = false {
+        didSet {
+            if bubbles != oldValue {
+                updateBubbleMode()
+            }
+        }
+    }
+
+    private var leadingInset: CGFloat {
+        return bubbles ? 10 - SegmentItemView.bubbleSpacing / 2 : 0
+    }
+
     public var didChangeSelectedItem:((ScrollableSegmentItem)->Void)?
     
     public var theme: ScrollableSegmentTheme = ScrollableSegmentTheme(background: presentation.colors.background, border: presentation.colors.border, selector: presentation.colors.accent, inactiveText: presentation.colors.grayText, activeText: presentation.colors.accent, textFont: .medium(.title))
@@ -501,6 +561,16 @@ public class ScrollableSegmentView: View {
         boundsObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.clipView, queue: OperationQueue.main, using: { [weak self] notification  in
             self?.needsLayout = true
         })
+        glassSettingObserver = NotificationCenter.default.addObserver(forName: systemLiquidGlassDidChange, object: nil, queue: .main) { [weak self] _ in
+            if let self, self.bubbles {
+                self.updateBubbleMode()
+            }
+        }
+        displayOptionsObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            if let self, self.bubbles {
+                self.updateBubbleMode()
+            }
+        }
         layout()
         redraw()
         
@@ -510,7 +580,20 @@ public class ScrollableSegmentView: View {
         if let boundsObserver {
             NotificationCenter.default.removeObserver(boundsObserver)
         }
+        if let glassSettingObserver {
+            NotificationCenter.default.removeObserver(glassSettingObserver)
+        }
+        if let displayOptionsObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(displayOptionsObserver)
+        }
         NotificationCenter.default.removeObserver(self)
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            needsLayout = true
+        }
     }
     
     public override func mouseUp(with event: NSEvent) {
@@ -533,6 +616,7 @@ public class ScrollableSegmentView: View {
     }
     
     public override func updateLocalizationAndTheme(theme presentation: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: presentation)
         self.theme = ScrollableSegmentTheme(background: presentation.colors.background, border: presentation.colors.border, selector: presentation.colors.accent, inactiveText: presentation.colors.grayText, activeText: presentation.colors.accent, textFont: .normal(.title))
     }
     
@@ -563,7 +647,18 @@ public class ScrollableSegmentView: View {
         self.selectorView.change(pos: selectorFrame.origin, animated: animated)
         self.selectorView.change(size: selectorFrame.size, animated: animated)
     }
-    
+
+    private func updateBubbleMode() {
+        selectorView.isHidden = bubbles
+        borderView.isHidden = bubbles
+        redraw()
+        needsLayout = true
+    }
+
+    @objc func _shouldDescendantsContributeToScrollPocket() -> Bool {
+        return !bubbles
+    }
+
     private var insetBetween: CGFloat {
         var insetBetween: CGFloat = 0
         
@@ -591,7 +686,7 @@ public class ScrollableSegmentView: View {
         let insetBetween: CGFloat = self.insetBetween
 
         
-        var x: CGFloat = insetBetween
+        var x: CGFloat = insetBetween + leadingInset
         
         for item in self.items {
             if let view = item.view {
@@ -599,6 +694,7 @@ public class ScrollableSegmentView: View {
                 x += view.size.width + insetBetween
             }
         }
+        x += leadingInset
         documentView.frame = CGRect(origin: .zero, size: NSMakeSize(max(x, frame.width), frame.height))
         selectorView.frame = selectorFrame
     }
@@ -661,16 +757,17 @@ public class ScrollableSegmentView: View {
         self.items[index] = item
     }
     private func insertItem(_ item: ScrollableSegmentItem, theme: ScrollableSegmentTheme, at index: Int, animated: Bool, callback: @escaping(ScrollableSegmentItem)->Void, menuItems: @escaping(ScrollableSegmentItem)->Signal<[ContextMenuItem], NoError>) {
-        let view = SegmentItemView(item: item, theme: theme, callback: callback, startDraggingIfNeeded: { [weak self] item, view in
+        let view = SegmentItemView(item: item, theme: theme, bubbles: bubbles, callback: callback, startDraggingIfNeeded: { [weak self] item, view in
             self?.startDraggingIfNeeded(item, view)
         }, menuItems: menuItems)
         view.setFrameSize(NSMakeSize(view.frame.width, frame.height))
         item.view = view
         
-        var subviews = self.documentView.subviews
+        let host = documentView
+        var subviews = host.subviews
         
-        subviews.insert(view, at: index)
-        self.documentView.subviews = subviews
+        subviews.insert(view, at: min(index, subviews.count))
+        host.subviews = subviews
         self.items.insert(item, at: index)
         
         for (i, item) in self.items.enumerated() {
@@ -780,7 +877,7 @@ public class ScrollableSegmentView: View {
         let insetBetween: CGFloat = self.insetBetween
         
        
-        x += insetBetween
+        x += insetBetween + leadingInset
         for (i, item) in items.enumerated() {
             if let view = item.view {
                 view._change(pos: NSMakePoint(x, 0), animated: animated, completion: { [weak self] completed in
@@ -792,7 +889,7 @@ public class ScrollableSegmentView: View {
             }
         }
         
-        documentView.change(size: NSMakeSize(max(x, frame.width), frame.height), animated: animated)
+        documentView.change(size: NSMakeSize(max(x + leadingInset, frame.width), frame.height), animated: animated)
         selectorView.change(pos: selectorFrame.origin, animated: animated)
     }
     

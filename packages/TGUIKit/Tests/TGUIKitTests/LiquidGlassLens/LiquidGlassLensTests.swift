@@ -290,6 +290,25 @@ final class LiquidGlassLensTests: XCTestCase {
         XCTAssertTrue(sources.contains { $0 === replacement.layer })
     }
 
+    func testReplacementSourceStartsAtItsFinalGeometryDuringAnAnimatedTransition() throws {
+        let lens = try makeLens()
+        let original = addContent(to: lens)
+        update(lens, progress: 1)
+        original.removeFromSuperview()
+        let replacement = addContent(to: lens)
+        replacement.frame = CGRect(x: 140, y: 16, width: 54, height: 16)
+        update(lens, progress: 1, frame: CGRect(x: 120, y: -4, width: 100, height: 56), animation: .spring(duration: 0.4))
+        let copies = portals(in: try XCTUnwrap(lens.layer), source: try XCTUnwrap(replacement.layer))
+        let lensed = try XCTUnwrap(copies.first { $0.superlayer?.name != "lensUnlensedContent" })
+        XCTAssertEqual(lensed.position, CGPoint(x: 47, y: 28))
+        XCTAssertEqual(lensed.bounds, replacement.bounds)
+        for key in ["position", "bounds", "transform"] {
+            XCTAssertNil(lensed.animation(forKey: key), key)
+        }
+        let surface = try XCTUnwrap(lens.subviews.last?.layer?.sublayers?.first)
+        XCTAssertNotNil(surface.animation(forKey: "position"))
+    }
+
     func testRedundantLayoutPreservesTheRunningTransitionAndReleaseCleansUp() throws {
         let lens = try makeLens()
         _ = addContent(to: lens)
