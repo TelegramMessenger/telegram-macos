@@ -411,7 +411,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
 
 class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     var usesCompactDetachedHeader: Bool {
-        return context.isExternal && !editing && DetachedWindowHeaderLayout.usesCompactLayout(width: width)
+        return context.isExternal && !editing && table?.window?.styleMask.contains(.fullScreen) != true && DetachedWindowHeaderLayout.usesCompactLayout(width: width)
     }
 
     override var inset: NSEdgeInsets {

@@ -234,9 +234,34 @@ private func testResponsiveCompactAndStandardChrome() {
     print("PASS: repeated compact/standard width changes restore native controls and window chrome at 650 points")
 }
 
+private func testTrafficLightHoverGroup() {
+    let fixture = WindowFixture()
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    fixture.root.addSubview(controls)
+    controls.attach(to: fixture.window)
+    let selector = NSSelectorFromString("_mouseInGroup:")
+    check(controls.responds(to: selector), "controls answer the native hover-group query")
+    let inGroup: () -> Bool = {
+        typealias Query = @convention(c) (AnyObject, Selector, NSButton) -> Bool
+        let query = unsafeBitCast(controls.method(for: selector), to: Query.self)
+        return query(controls, selector, fixture.buttons[0])
+    }
+    let event: (NSEvent.EventType) -> NSEvent = { type in
+        NSEvent.enterExitEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: fixture.window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil)!
+    }
+    check(!inGroup(), "hover group starts inactive")
+    controls.mouseEntered(with: event(.mouseEntered))
+    check(inGroup(), "hovering the pill activates native glyphs")
+    controls.mouseExited(with: event(.mouseExited))
+    check(!inGroup(), "leaving the pill clears native glyphs")
+    controls.detach()
+    fixture.checkRestored()
+    print("PASS: traffic-light hover group")
+}
+
 let app = NSApplication.shared
-private let tests: [() -> Void] = [testRepeatedAttachmentAndResize, testAppKitRepositioningAndFullScreenNotifications, testWindowSwitchAndExistingChrome, testDeinitializationRestoresChrome, testLeadingHeaderLayout, testChatToProfileHandoff, testResponsiveCompactAndStandardChrome]
+private let tests: [() -> Void] = [testRepeatedAttachmentAndResize, testAppKitRepositioningAndFullScreenNotifications, testWindowSwitchAndExistingChrome, testDeinitializationRestoresChrome, testLeadingHeaderLayout, testChatToProfileHandoff, testResponsiveCompactAndStandardChrome, testTrafficLightHoverGroup]
 for test in tests {
     test()
 }
-print("All 7 detached-window header checks passed")
+print("All 8 detached-window header checks passed")

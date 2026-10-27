@@ -947,8 +947,8 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     
     public override func viewWillDisappear(_ animated: Bool) {
         _userArguments?.setEmojiPermissionRequestsActive(false)
-        genericView.setDetachedWindowControlsVisible(false)
         super.viewWillDisappear(animated)
+        genericView.setDetachedWindowControlsVisible(false)
         window?.removeAllHandlers(for: self)
     }
     

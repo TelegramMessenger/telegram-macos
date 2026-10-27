@@ -263,7 +263,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     private let windowControls = DetachedWindowControlsView(frame: .zero)
     private var detachedWindowControlsVisible = false
     private var compactDetachedHeader: Bool {
-        return chatInteraction.interactionContext.isExternal && DetachedWindowHeaderLayout.usesCompactLayout(width: window?.frame.width ?? frame.width)
+        return chatInteraction.interactionContext.isExternal && windowControls.showsControls
     }
 
     private let centerGhost: LiquidGlassView
@@ -467,14 +467,6 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         addSubview(windowControls)
         windowControls.visibilityChanged = { [weak self] in
             self?.needsLayout = true
-        }
-        if chatInteraction.interactionContext.isExternal {
-            centerGhost.hasShadow = false
-            centerGhost.hasBorder = false
-            rightGhost.hasShadow = false
-            rightGhost.hasBorder = false
-            backGhost.hasShadow = false
-            backGhost.hasBorder = false
         }
 
         rightCluster.additionalGlassEffectView = rightGhost

@@ -9,6 +9,8 @@ public final class DetachedWindowControlsView: View {
     private var enteringFullScreen = false
     private var compactChromeApplied = false
     private var updatingPresentation = false
+    private var mouseInGroup = false
+    private var hoverTrackingArea: NSTrackingArea?
     public var visibilityChanged: (() -> Void)?
 
     public var showsControls: Bool {
@@ -107,6 +109,7 @@ public final class DetachedWindowControlsView: View {
     private func restoreButtons() {
         let previousButtons = buttons
         buttons.removeAll()
+        mouseInGroup = false
         for entry in previousButtons {
             entry.parent.addSubview(entry.button)
             entry.button.frame = entry.frame
@@ -116,11 +119,43 @@ public final class DetachedWindowControlsView: View {
 
     public override func layout() {
         super.layout()
-        updatePresentation()
+        positionButtons()
+    }
+
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    public override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        setMouseInGroup(true)
+    }
+
+    public override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setMouseInGroup(false)
+    }
+
+    @objc func _mouseInGroup(_ button: NSButton) -> Bool {
+        return mouseInGroup
+    }
+
+    private func setMouseInGroup(_ value: Bool) {
+        guard mouseInGroup != value else { return }
+        mouseInGroup = value
+        for entry in buttons {
+            entry.button.needsDisplay = true
+        }
     }
 
     private func positionButtons() {
-        guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen else { return }
+        guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen, !buttons.isEmpty else { return }
         let spacing: CGFloat = 6
         let width = buttons.reduce(CGFloat(0)) { $0 + $1.frame.width } + CGFloat(max(0, buttons.count - 1)) * spacing
         var x = floor((bounds.width - width) / 2)
