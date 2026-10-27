@@ -4470,7 +4470,6 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             .withUpdatedInputState(ChatTextInputState())
                     }
                     value = value.withUpdatedReplyMessageId(nil)
-                        .withUpdatedInputState(ChatTextInputState())
                         .withUpdatedForwardMessageIds([])
                         .withUpdatedComposeDisableUrlPreview(nil)
                         .withUpdatedMessageEffect(nil)
