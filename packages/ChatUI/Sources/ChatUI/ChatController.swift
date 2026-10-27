@@ -4720,25 +4720,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if let date {
                         attributes.append(OutgoingScheduleInfoMessageAttribute(scheduleTime: Int32(min(date.timeIntervalSince1970, Double(scheduleWhenOnlineTimestamp))), repeatPeriod: repeatPeriod))
                     }
-                    let message: EnqueueMessage = .message(text: "", attributes: attributes, inlineStickers: [:],
-                                                           mediaReference: nil, threadId: ci.chatLocation.threadId,
-                                                           replyToMessageId: richTextThreadReplySubject(chatInteraction: ci), replyToStoryId: nil, localGroupingKey: nil,
-                                                           correlationId: nil, bubbleUpEmojiOrStickersets: [])
-                    if let customChatContents = ci.mode.customChatContents {
-                        _ = (customChatContents.enqueueMessages(messages: [message])).start()
-                    } else {
-                        _ = (enqueueMessages(account: context.account, peerId: ci.peerId, messages: [message])).start(next: { ids in
-                        }, completed: {
-                        })
-                    }
+                    richTextEnqueue(chatInteraction: ci, text: "", attributes: attributes)
                 }
                 if let atDate {
                     applyRichDraft(atDate.date, atDate.repeatPeriod)
-                    if strongSelf.mode != .scheduled {
-                        delay(0.1, closure: { [weak strongSelf] in
-                            strongSelf?.openScheduledChat()
-                        })
-                    }
                 } else if strongSelf.mode == .scheduled, let peer = ci.peer {
                     DispatchQueue.main.async {
                         showModal(with: chatDateSelector(context: context, mode: .schedule(peer.id), selectedAt: { date, repeatPeriod in

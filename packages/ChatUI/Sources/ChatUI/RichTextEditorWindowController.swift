@@ -78,7 +78,7 @@ func richTextThreadReplySubject(chatInteraction: ChatInteraction) -> EngineMessa
     return .init(messageId: MessageId(peerId: chatInteraction.peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId)), quote: nil, innerSubject: nil)
 }
 
-private func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute]) {
+func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute]) {
     let context = chatInteraction.interactionContext
     let message: EnqueueMessage = .message(text: text, attributes: attributes, inlineStickers: [:],
                                            mediaReference: nil, threadId: chatInteraction.chatLocation.threadId,
