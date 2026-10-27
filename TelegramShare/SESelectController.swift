@@ -9,40 +9,30 @@ import InputView
 import ObjcUtils
 
 
+
+private func shareFolderPreferences(context: AccountContext) -> Signal<ChatListFolders, NoError> {
+    let request = context.engine.peers.requestChatListFilters()
+    let interval = Signal<[ChatListFilter], NoError>.complete() |> delay(20, queue: .concurrentDefaultQueue())
+    let refresh = (request |> then(interval)) |> restart
+    let remote: Signal<[ChatListFilter]?, NoError> = .single(nil) |> then(refresh |> map { Optional($0) })
+    return combineLatest(chatListFilterPreferences(engine: context.engine), remote)
+    |> map { cached, remote in
+        return ChatListFolders(list: remote ?? cached.list, sidebar: cached.sidebar, showTags: cached.showTags)
+    }
+    |> distinctUntilChanged
+}
+
 private final class Container : Control {
-    private let visualEffect = NSVisualEffectView()
+    private let glass = LiquidGlassView(frame: .zero, cornerRadius: 16, hasShadow: false, hasBorder: false)
     private let container = View()
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        addSubview(visualEffect)
+        addSubview(glass)
         addSubview(container)
-        wantsLayer = true
-        visualEffect.state = .active
-        visualEffect.material = theme.colors.isDark ? .dark : .light
-        visualEffect.blendingMode = .behindWindow
-        
-        visualEffect.layer?.cornerRadius = 10
-        self.container.layer?.cornerRadius = 10
-        
-        self.layer?.cornerRadius = 10
-//        self.layer?.masksToBounds = false
-        
-        let shadow = NSShadow()
-        shadow.shadowBlurRadius = 8
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
-        shadow.shadowOffset = NSMakeSize(0, 0)
-        //self.shadow = shadow
-        
-        self.layer?.isOpaque = false
-        self.layer?.shouldRasterize = true
-        self.layer?.rasterizationScale = backingScaleFactor
-        self.backgroundColor = NSColor.black.withAlphaComponent(0.001)
-        self.container.backgroundColor = theme.colors.background.withAlphaComponent(0.6)
-
-//        
-        
+        container.backgroundColor = .clear
+        backgroundColor = .clear
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -50,7 +40,7 @@ private final class Container : Control {
     func update(_ accounts: [AccountWithInfo], primary: AccountRecordId, switchAccount: @escaping(AccountRecordId) -> Void, frame: NSRect) {
         
         while container.subviews.count > accounts.count {
-            subviews.last?.removeFromSuperview()
+            container.subviews.last?.removeFromSuperview()
         }
         while container.subviews.count < accounts.count {
             let view = AccountContainer(frame: NSMakeRect(0, 0, 200, 28))
@@ -71,7 +61,8 @@ private final class Container : Control {
     
     override func layout() {
         super.layout()
-        visualEffect.frame = bounds
+        glass.frame = bounds
+        glass.updateLayout(size: bounds.size, transition: .immediate)
         container.frame = bounds
     }
 }
@@ -223,14 +214,19 @@ class ShareModalView : View {
     let backButton:ImageButton = ImageButton()
 
     private var photoView: AvatarControl?
-    private var control: Control = Control()
-    private let borderView:View = View()
+    private let headerGlass = GlassContainerView(frame: .zero, spacing: 8)
+    private let headerControls = View()
+    private let navigationGlass = LiquidGlassView(frame: .zero, cornerRadius: 18, hasShadow: false, hasBorder: false)
+    private let searchGlass = LiquidGlassView(frame: .zero, cornerRadius: 18, hasShadow: false, hasBorder: false)
+    private let composerGlass = GlassContainerView(frame: .zero, spacing: 8)
+    private let composerControls = View()
+    private let commentGlass = LiquidGlassView(frame: .zero, cornerRadius: 20, hasShadow: false, hasBorder: false)
+    private let sendGlass = LiquidGlassView(frame: .zero, cornerRadius: 20, hasShadow: false, hasBorder: false)
     
     fileprivate let sendButton = ImageButton()
     fileprivate let textView:SE_UITextView = SE_UITextView(frame: NSMakeRect(0, 0, 100, 50))
     fileprivate let actionsContainerView: Control = Control()
     fileprivate let textContainerView: View = View()
-    fileprivate let bottomSeparator: View = View()
 
     
     
@@ -238,19 +234,27 @@ class ShareModalView : View {
         super.init(frame: frameRect)
         
         
-        addSubview(cancelView)
-        addSubview(backButton)
-        addSubview(searchView)
         addSubview(tableView)
-        addSubview(borderView)
-        addSubview(control)
-        
-        self.backgroundColor = theme.colors.background
-        borderView.backgroundColor = theme.colors.border
-        
-        
+        addSubview(headerGlass)
+        addSubview(composerGlass)
+        addSubview(headerControls)
+        addSubview(composerControls)
+        headerControls.backgroundColor = .clear
+        composerControls.backgroundColor = .clear
+        headerGlass.addGhost(navigationGlass)
+        headerGlass.addGhost(searchGlass)
+        headerControls.addSubview(cancelView)
+        headerControls.addSubview(backButton)
+        headerControls.addSubview(searchView)
+        composerGlass.addGhost(commentGlass)
+        composerGlass.addGhost(sendGlass)
+        composerControls.addSubview(textContainerView)
+        composerControls.addSubview(actionsContainerView)
+        for glass in [navigationGlass, searchGlass, commentGlass, sendGlass] {
+            glass.isEventLess = true
+        }
+
         sendButton.setAccessibilityLabel(L10n.voiceOverMessageContextSend)
-        control.isAccessibilityDecorative = true
         actionsContainerView.isAccessibilityDecorative = true
         sendButton.autohighlight = false
         sendButton.scaleOnClick = true
@@ -262,21 +266,16 @@ class ShareModalView : View {
         actionsContainerView.setFrameSize(sendButton.frame.width + 20, 50)
 
         textView.interactions.max_height = 180
-        textView.interactions.min_height = 50
+        textView.interactions.min_height = 28
         
         textContainerView.addSubview(textView)
 
-        addSubview(textContainerView)
-        addSubview(actionsContainerView)
-        addSubview(bottomSeparator)
-        
-        
-        
         backgroundColor = theme.colors.background
-        textContainerView.backgroundColor = theme.colors.background
-        actionsContainerView.backgroundColor = theme.colors.background
-        bottomSeparator.backgroundColor = theme.colors.border
-        
+        textContainerView.backgroundColor = .clear
+        actionsContainerView.backgroundColor = .clear
+        textView.backgroundColor = .clear
+        searchView.backgroundColor = .clear
+
         textView.placeholder = strings().previewSenderCommentPlaceholder
         textView.inputTheme = theme.inputTheme
         
@@ -293,13 +292,21 @@ class ShareModalView : View {
         backButton.scaleOnClick = true
         _ = backButton.sizeToFit(.zero, NSMakeSize(30, 30), thatFit: true)
 
-        cancelView.change(opacity: 1, animated: false)
-        backButton.change(opacity: 0, animated: false)
+        updateNavigationButtons()
 
 
 
     }
     
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        backgroundColor = theme.colors.background
+        searchView.backgroundColor = .clear
+        textContainerView.backgroundColor = .clear
+        actionsContainerView.backgroundColor = .clear
+        textView.backgroundColor = .clear
+    }
+
     var inDestinationMode: Bool {
         return communityChatsView != nil || forumTopicsView != nil
     }
@@ -493,14 +500,14 @@ class ShareModalView : View {
     }
 
     private func updateNavigationButtons() {
-        backButton.change(opacity: inDestinationMode ? 1 : 0, animated: true)
-        cancelView.change(opacity: inDestinationMode ? 0 : 1, animated: true)
+        backButton.isHidden = !inDestinationMode
+        cancelView.isHidden = inDestinationMode
     }
 
 
     
     var textWidth: CGFloat {
-        return frame.width - 10 - actionsContainerView.frame.width
+        return max(1, frame.width - 88)
     }
     
     func textViewSize() -> (NSSize, CGFloat) {
@@ -510,7 +517,7 @@ class ShareModalView : View {
     }
     
     var additionHeight: CGFloat {
-        return textViewSize().0.height + 16 + searchView.frame.height + 20
+        return textViewSize().0.height + 80
     }
     
     func updateWithAccounts(_ accounts: (primary: AccountRecordId?, accounts: [AccountWithInfo]), context: AccountContext) -> Void {
@@ -518,7 +525,7 @@ class ShareModalView : View {
             if photoView == nil {
                 photoView = AvatarControl(font: .avatar(12))
                 photoView?.setFrameSize(NSMakeSize(30, 30))
-                addSubview(photoView!)
+                headerControls.addSubview(photoView!)
             }
             if let account = accounts.accounts.first(where: {$0.account.id == primary}) {
                 photoView?.setPeer(account: account.account, peer: account.peer)
@@ -547,32 +554,40 @@ class ShareModalView : View {
     
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         
-        transition.updateFrame(view: actionsContainerView, frame: CGRect.init(origin: CGPoint(x: size.width - actionsContainerView.frame.width, y: size.height - actionsContainerView.frame.height), size: CGSize(width: sendButton.frame.width + 20, height: 50)))
-        transition.updateFrame(view: sendButton, frame: sendButton.centerFrameY(x: 10))
-
         let (textSize, textHeight) = textViewSize()
-        
-        let textContainerRect = NSMakeRect(0, size.height - textSize.height, size.width, textSize.height)
-        transition.updateFrame(view: textContainerView, frame: textContainerRect)
-        
-        transition.updateFrame(view: textView, frame: CGRect(origin: CGPoint(x: 10, y: 0), size: textSize))
-        textView.updateLayout(size: textSize, textHeight: textHeight, transition: transition)
-        
-        transition.updateFrame(view: bottomSeparator, frame: NSMakeRect(0, size.height - textContainerView.frame.height, size.width, .borderSize))
-        
-        
-        transition.updateFrame(view: cancelView, frame: CGRect(origin: NSMakePoint(10, 10), size: cancelView.frame.size))
-        transition.updateFrame(view: backButton, frame: CGRect(origin: NSMakePoint(10, 10), size: backButton.frame.size))
+        let composerHeight = textSize.height + 12
+        let composerFrame = NSMakeRect(10, size.height - composerHeight - 10, max(0, size.width - 20), composerHeight)
+        transition.updateFrame(view: composerGlass, frame: composerFrame)
+        composerGlass.updateLayout(size: composerFrame.size, transition: transition)
+        transition.updateFrame(view: composerControls, frame: composerFrame)
 
-        if let photoView = photoView {
-            transition.updateFrame(view: photoView, frame: CGRect(origin: NSMakePoint(frame.width - photoView.frame.width - 10, 10), size: photoView.frame.size))
-            transition.updateFrame(view: searchView, frame: NSMakeRect(cancelView.frame.maxX + 10, 10, frame.width - 10 - photoView.frame.width - 10 - (cancelView.frame.maxX + 10), 30))
-        } else {
-            transition.updateFrame(view: searchView, frame: NSMakeRect(cancelView.frame.maxX + 10, 10, frame.width - 10 - (cancelView.frame.maxX + 10), 30))
+        let commentFrame = NSMakeRect(0, 0, max(0, composerFrame.width - 48), composerHeight)
+        let sendFrame = NSMakeRect(max(0, composerFrame.width - 40), composerHeight - 40, 40, 40)
+        composerGlass.setGhostFrame(commentGlass, frame: commentFrame, transition: transition)
+        composerGlass.setGhostFrame(sendGlass, frame: sendFrame, transition: transition)
+        transition.updateFrame(view: textContainerView, frame: commentFrame)
+        transition.updateFrame(view: textView, frame: NSMakeRect(10, 6, textSize.width, textSize.height))
+        textView.updateLayout(size: textSize, textHeight: textHeight, transition: transition)
+        transition.updateFrame(view: actionsContainerView, frame: sendFrame)
+        transition.updateFrame(view: sendButton, frame: NSMakeRect(floor((40 - sendButton.frame.width) / 2), floor((40 - sendButton.frame.height) / 2), sendButton.frame.width, sendButton.frame.height))
+
+        let headerSize = NSMakeSize(size.width, 56)
+        transition.updateFrame(view: headerGlass, frame: headerSize.bounds)
+        headerGlass.updateLayout(size: headerSize, transition: transition)
+        transition.updateFrame(view: headerControls, frame: headerSize.bounds)
+        let navigationFrame = NSMakeRect(10, 10, 36, 36)
+        let searchFrame = NSMakeRect(54, 10, max(0, size.width - 64 - (photoView == nil ? 0 : 44)), 36)
+        headerGlass.setGhostFrame(navigationGlass, frame: navigationFrame, transition: transition)
+        headerGlass.setGhostFrame(searchGlass, frame: searchFrame, transition: transition)
+        transition.updateFrame(view: cancelView, frame: navigationFrame)
+        transition.updateFrame(view: backButton, frame: navigationFrame)
+        transition.updateFrame(view: searchView, frame: searchFrame)
+        if let photoView {
+            let accountFrame = NSMakeRect(size.width - 46, 10, 36, 36)
+            transition.updateFrame(view: photoView, frame: accountFrame.focus(photoView.frame.size).offsetBy(dx: accountFrame.minX, dy: accountFrame.minY))
         }
-        transition.updateFrame(view: control, frame: NSMakeRect(frame.width - 30 - 30, 10, 30, 30))
-        
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, 50, frame.width, frame.height - 50 - 50))
+
+        transition.updateFrame(view: tableView, frame: NSMakeRect(0, 56, size.width, max(0, composerFrame.minY - 62)))
 
         if let communityChatsView {
             transition.updateFrame(view: communityChatsView, frame: tableView.frame)
@@ -598,13 +613,15 @@ class ShareModalView : View {
 class ShareObject {
     let context: AccountContext
     let shareContext:NSExtensionContext
+    private let requestFinished: () -> Void
     
     var threadIds: [PeerId : Int32] = [:]
 
     
-    init(_ context: AccountContext, _ shareContext:NSExtensionContext) {
+    init(_ context: AccountContext, _ shareContext:NSExtensionContext, requestFinished: @escaping () -> Void) {
         self.context = context
         self.shareContext = shareContext
+        self.requestFinished = requestFinished
     }
     
     private let progressView = SEModalProgressView()
@@ -645,6 +662,7 @@ class ShareObject {
                      }, completed: {
                          self.progressView.markComplete()
                          delay(2.0, closure: {
+                             self.requestFinished()
                              self.shareContext.completeRequest(returningItems: nil, completionHandler: nil)
                          })
                      })
@@ -780,6 +798,7 @@ class ShareObject {
     }
     
     func cancel() {
+        requestFinished()
         let cancelError = NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError, userInfo: nil)
         shareContext.cancelRequest(withError: cancelError)
     }
@@ -1209,19 +1228,21 @@ class SESelectController: GenericViewController<ShareModalView>, Notifable, Tabl
         let filter = ValuePromise<FilterData>(ignoreRepeated: true)
         let filterValue = Atomic<FilterData>(value: FilterData(filter: .allChats, tabs: []))
         
+        weak var weakController = self
         func updateFilter(_ f:(FilterData)->FilterData) {
             let previous = filterValue.with { $0 }
             let data = filterValue.modify(f)
             if previous.filter != data.filter {
-                self.genericView.tableView.scroll(to: .up(true))
+                weakController?.genericView.tableView.scroll(to: .up(true))
             }
             filter.set(data)
         }
         
         var first = true
         
-        let filterView = chatListFilterPreferences(engine: context.engine) |> deliverOnMainQueue
-        filterDisposable.set(filterView.start(next: { filters in
+        let filterView = shareFolderPreferences(context: context) |> deliverOnMainQueue
+        filterDisposable.set(filterView.start(next: { [weak self] filters in
+            guard self != nil else { return }
             updateFilter( { current in
                 var current = current
                 current.tabs = filters.list
@@ -1257,7 +1278,8 @@ class SESelectController: GenericViewController<ShareModalView>, Notifable, Tabl
             self.inputDidUpdateLayout(animated: true)
         }
         
-        self.genericView.textView.interactions.processEnter = { event in
+        self.genericView.textView.interactions.processEnter = { [weak self] event in
+            guard let self else { return false }
             if !selectInteraction.presentation.selected.isEmpty {
                 self.share.perform(to: Array(selectInteraction.presentation.selected), view: self.view, comment: selectInteraction.presentation.comment.string)
                 return true
@@ -1397,13 +1419,14 @@ class SESelectController: GenericViewController<ShareModalView>, Notifable, Tabl
             self?.readyOnce()
         }))
         
-        self.genericView.searchView.searchInteractions = SearchInteractions({ state, _ in
-            self.search.set(SearchState(state: state.state, request: state.request))
-        }, { state in
-            self.search.set(SearchState(state: state.state, request: state.request))
+        self.genericView.searchView.searchInteractions = SearchInteractions({ [weak self] state, _ in
+            self?.search.set(SearchState(state: state.state, request: state.request))
+        }, { [weak self] state in
+            self?.search.set(SearchState(state: state.state, request: state.request))
         })
         
-        self.genericView.sendButton.set(handler: { _ in
+        self.genericView.sendButton.set(handler: { [weak self] _ in
+            guard let self else { return }
             self.share.perform(to: Array(selectInteraction.presentation.selected), view: self.view, comment: selectInteraction.presentation.comment.string)
         }, for: .Click)
         

@@ -108,6 +108,8 @@ class SharedAccountContext {
     }
     
     private let managedAccountDisposables = DisposableDict<AccountRecordId>()
+    private let accountRecordsDisposable = MetaDisposable()
+    private let accountDifferenceDisposable = MetaDisposable()
     
     
     private let appEncryption: Atomic<AppEncryptionParameters>
@@ -272,12 +274,12 @@ class SharedAccountContext {
         #endif
         
         
-        self.batteryLevelTimer = .init(timeout: 1 * 60, repeat: true, completion: {
+        self.batteryLevelTimer = .init(timeout: 1 * 60, repeat: true, completion: { [weak self] in
             let internalFinder = InternalFinder()
             if let internalBattery = internalFinder.getInternalBattery() {
                 let batteryLevel = internalBattery.charge ?? 100
                 DispatchQueue.main.async {
-                    self.batteryLevel = batteryLevel
+                    self?.batteryLevel = batteryLevel
                 }
             }
         }, queue: .concurrentDefaultQueue())
@@ -286,8 +288,8 @@ class SharedAccountContext {
         self.batteryLevelTimer?.start()
         
 
-        let differenceDisposable = MetaDisposable()
-        let _ = (accountManager.accountRecords()
+        let differenceDisposable = self.accountDifferenceDisposable
+        self.accountRecordsDisposable.set((accountManager.accountRecords()
             |> map { view -> (AccountRecordId?, [AccountRecordId: AccountAttributes], (AccountRecordId, Bool)?) in
                 var result: [AccountRecordId: AccountAttributes] = [:]
                 for record in view.records {
@@ -350,7 +352,8 @@ class SharedAccountContext {
                 }
                 return true
             })
-            |> deliverOnMainQueue).start(next: { primaryId, records, authRecord in
+            |> deliverOnMainQueue).start(next: { [weak self] primaryId, records, authRecord in
+                guard let self else { return }
                 var addedSignals: [Signal<AddedAccountResult, NoError>] = []
                 var addedAuthSignal: Signal<UnauthorizedAccount?, NoError> = .single(nil)
                 for (id, attributes) in records {
@@ -409,7 +412,8 @@ class SharedAccountContext {
                         }
                 }
                 
-                differenceDisposable.set(combineLatest(queue: .mainQueue(), mappedAddedAccounts, addedAuthSignal).start(next: { mappedAddedAccounts, authAccount in
+                differenceDisposable.set(combineLatest(queue: .mainQueue(), mappedAddedAccounts, addedAuthSignal).start(next: { [weak self] mappedAddedAccounts, authAccount in
+                    guard let self else { return }
                     var addedAccounts: [(AccountRecordId, Account?, Int32)] = []
                     switch mappedAddedAccounts {
                     case let .upgrading(progress):
@@ -509,7 +513,7 @@ class SharedAccountContext {
                         let _ = managedCleanupAccounts(networkArguments: networkArguments, accountManager: self.accountManager, rootPath: rootPath, auxiliaryMethods: telegramAccountAuxiliaryMethods, encryptionParameters: encryptionParameters).start()
                     }
                 }))
-            })
+            }))
         
 
         
@@ -793,6 +797,9 @@ class SharedAccountContext {
     #endif
     
     deinit {
+        accountRecordsDisposable.dispose()
+        accountDifferenceDisposable.dispose()
+        managedAccountDisposables.dispose()
         batteryLevelTimer?.invalidate()
     }
     
