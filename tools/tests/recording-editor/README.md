@@ -67,3 +67,12 @@ python3 tools/tests/recording-editor/render-comparison.py --derived-data /tmp/te
 ```
 
 The comparison script temporarily swaps the timeline source and adds its fixture to the existing test target, then restores both. Do not edit those files concurrently with the capture. The fixture uses only generated image data and does not access a Telegram account, camera or microphone.
+
+
+## Camera shutdown regression, 27 October 2026
+
+The pipeline status subscription now survives `viewWillDisappear`, so late completion, discard and failure events can still call `stopCapture()`. The subscription is disposed in `deinit`; preview-player and countdown cleanup are unchanged.
+
+The runner compiles the current modal controller source into a temporary test fixture, replacing only its class name, capture-pipeline type and preview-view type with probes. Controller lifecycle and subscription code are taken from the production file on every run. The probes do not open a camera, microphone or Telegram account. Generated test files are removed when the runner exits; do not edit those fixture paths concurrently.
+
+Before the fix, all three late-terminal-event tests failed while the controller remained retained; the existing 15 editor tests passed. After the one-line fix, all 18 tests pass on master `e537320b28d79cecc1baf716bcbf822b02f93b7a`. This verifies requests to stop capture before controller deallocation, not physical camera shutdown. Full-client build and physical-camera checks are pending and are recorded separately.

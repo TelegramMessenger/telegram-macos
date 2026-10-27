@@ -128,5 +128,27 @@
       "source": "User-provided screenshot of the full signed-in combined client",
       "unaltered": true
     }
+  },
+  "camera_shutdown_revalidation": {
+    "date": "2026-10-27",
+    "master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+    "change": "Keep the pipeline status subscription after viewWillDisappear; disposal still occurs in deinit. Preview and countdown cleanup remain unchanged.",
+    "before": {
+      "regression_cases_failed": 3,
+      "existing_editor_cases_passed": 15,
+      "controller_sha256": "6f7fe8dcecd44b8253654005b1f4a18d8aab042478280bbc494a2ae6d309b0de"
+    },
+    "after": {
+      "cases_passed": 18,
+      "cases_failed": 0,
+      "controller_sha256": "0e3abd76cec0ba8f5343ecce56d3c55b09b4f24e35ddb0cb905107a3e8cf957e"
+    },
+    "test_method": "Current controller source compiled with capture/view probes. Physical camera shutdown is not established by these tests.",
+    "log_hashes": {
+      "before": "4b95498084c03dcf5e908798db7c11bf8e4e7d30f43d82e68327a5c064bef492",
+      "after": "8846a221bd20aca42a9ad601c2c475f84c06401df390aa70f7d6e5957f96c23b"
+    },
+    "full_client_build": "pending",
+    "physical_camera_verification": "pending"
   }
 }

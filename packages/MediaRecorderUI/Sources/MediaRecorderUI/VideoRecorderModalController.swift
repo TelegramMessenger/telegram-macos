@@ -192,7 +192,6 @@ public class VideoRecorderModalController: ModalViewController {
     public override func viewWillDisappear(_ animated: Bool) {
         previewDisposable.set(nil)
         countdownDisposable.set(nil)
-        disposable.set(nil)
         genericView.stopPreview()
         super.viewWillDisappear(animated)
     }
