@@ -320,7 +320,7 @@ public func chatTextAttributes(from attributedText: NSAttributedString) -> [Chat
             } else if key == TextInputAttributes.monospace {
                 parsedAttributes.append(.code(range))
             } else if key == TextInputAttributes.textMention, let value = value as? ChatTextInputTextMentionAttribute {
-                parsedAttributes.append(.uid(range, value.peerId.toInt64()))
+                parsedAttributes.append(.uid(range, value.peerId.id._internalGetInt64Value()))
 
             } else if key == TextInputAttributes.textUrl, let value = value as? TextInputTextUrlAttribute {
                 parsedAttributes.append(.url(range, value.url))
@@ -518,7 +518,7 @@ public final class ChatTextInputState: Codable, Equatable {
             case .pre(_, _):
                 break
             case let .uid(_, id):
-                result.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: PeerId(id)), range: range)
+                result.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(id))), range: range)
             case let .url(_, url):
                 result.addAttribute(TextInputAttributes.textUrl, value: TextInputTextUrlAttribute(url: url), range: range)
             case let .animated(_, emoji, fileId, file, collectionId):

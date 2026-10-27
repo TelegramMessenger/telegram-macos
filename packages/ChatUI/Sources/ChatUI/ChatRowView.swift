@@ -1472,8 +1472,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         if let addressName = peer.addressName {
                             attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
                         } else {
-                            attr.append(string: peer.compactDisplayTitle + " ", font: .normal(theme.fontSize))
+                            attr.append(string: peer.compactDisplayTitle, font: .normal(theme.fontSize))
                             attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
+                            attr.append(string: " ", font: .normal(theme.fontSize))
                         }
                         _ = chatInteraction?.appendText(attr)
                     }, itemImage: MenuAnimation.menu_atsign.value))
