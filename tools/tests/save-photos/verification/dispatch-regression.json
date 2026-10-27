@@ -1,0 +1,18 @@
+{
+  "method": "Extract the production ChatRowView.rightMouseDown override into a native AppKit fixture and record whether it reaches the superclass menu dispatch. Saving checks use the production saver/batch writer, SwiftSignalKit, filesystem and resource collaborators.",
+  "beforeSource": "6ad8cddabdeb42aa3f9ea104f5840ffd1a038a02",
+  "afterSource": "d492dca2",
+  "before": {
+    "passed": 39,
+    "total": 41,
+    "failures": [
+      "selected album right click reaches the batch photo menu",
+      "selected standalone photo right click reaches the batch menu"
+    ]
+  },
+  "after": {
+    "passed": 41,
+    "total": 41,
+    "failures": []
+  }
+}

@@ -185,4 +185,36 @@ final class AvatarTabContainerTests: XCTestCase {
         XCTAssertEqual(layers.first?.cornerRadius, 20)
         XCTAssertEqual(layers.last!.frame.width, 24, accuracy: 0.0001)
     }
+
+    func testLensSourcesRevealOnlyTheOutlineAndPreserveAvatarColors() throws {
+        let container = makeContainer()
+        let item = TabAnimatedItem(.tab_settings, image: TestImages.named("Icon_SearchField").precomposed(), selectedImage: TestImages.named("Icon_SearchField").precomposed(), controller: ViewController())
+        for selected in [false, true] {
+            container.setSelected(selected, animated: true)
+            let layers = try layers(container)
+            let animations = layers.map { $0.animation(forKey: "transform") }
+            let sources = item.lensContentSources(for: container, lensedTintColor: .systemPurple, unlensedTintColor: .white)
+            XCTAssertEqual(sources.count, 2)
+            XCTAssertTrue(sources[0].view === container.subviews[0])
+            XCTAssertEqual(sources[0].lensedTintColor, .systemPurple)
+            XCTAssertEqual(sources[0].unlensedTintColor, .clear)
+            XCTAssertEqual(sources[0].lensedScale, 1)
+            XCTAssertTrue(sources[1].view === container.subviews[1])
+            XCTAssertNil(sources[1].lensedTintColor)
+            XCTAssertNil(sources[1].unlensedTintColor)
+            XCTAssertEqual(sources[1].lensedScale, 0.8, accuracy: 0.0001)
+            XCTAssertEqual(layers[0].opacity, selected ? 1 : 0)
+            for (index, layer) in layers.enumerated() {
+                if let animation = animations[index] {
+                    XCTAssertTrue(layer.animation(forKey: "transform")?.isEqual(animation) == true)
+                } else {
+                    XCTAssertNil(layer.animation(forKey: "transform"))
+                }
+                XCTAssertNil(layer.filters)
+            }
+        }
+        container.setFrameSize(NSSize(width: 40, height: 40))
+        let resized = container.lensContentSources(tintColor: .systemBlue)
+        XCTAssertEqual(resized[1].lensedScale, 0.6, accuracy: 0.0001)
+    }
 }

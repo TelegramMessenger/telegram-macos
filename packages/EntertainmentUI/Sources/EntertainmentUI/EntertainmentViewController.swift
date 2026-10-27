@@ -28,6 +28,16 @@ public enum ESearchCommand {
 
 
 
+public enum EntertainmentStickerDrag {
+    case moved(NSPoint)
+    case ended(NSPoint)
+}
+
+public enum EntertainmentDragItem {
+    case file(TelegramMediaFile)
+    case emoji(String)
+}
+
 public final class EntertainmentInteractions {
     
     public var current:EntertainmentState = .emoji
@@ -37,6 +47,7 @@ public final class EntertainmentInteractions {
     public var sendLargeReaction:((StickerPackItem, NSRect?) ->Void)?
     public var sendSticker:(TelegramMediaFile, Bool, Bool, ItemCollectionId?) ->Void = { _, _, _, _ in}
     public var sendGIF:(TelegramMediaFile, Bool, Bool) ->Void = { _, _, _ in}
+    public var dragItem: ((EntertainmentDragItem, CGImage?, EntertainmentStickerDrag) -> Void)?
     
     public var showEntertainment:(EntertainmentState, Bool)->Void = { _,_  in}
     public var close:()->Void = {}

@@ -1,0 +1,77 @@
+{
+  "baseline": "deffa9c1926317a9d66a0d41bd9b1de8fcb7ca7d",
+  "production_file": "packages/TelegramMediaUtils/Sources/TelegramMediaUtils/CGImageExtensions.swift",
+  "production_sha256": "41fe8571260b182a369f90275f102fa4b9af893eb9278158867dadd3c2c31cbc",
+  "baseline_production_sha256": "9f51b9c06f947ac4dc8b102f7d6774b1cc16c222fbb08bc719caa8407fad0b47",
+  "production_change": {
+    "files": 1,
+    "added_lines": 0,
+    "removed_lines": 10
+  },
+  "checks": {
+    "debug": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "40b89b86504fd43e3db5bff9e3e9134239f9b5f9dfb48e0ec863be68d4887c81"
+    },
+    "release": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "5e19a2a3282ef9289ff8de7d8855b46cfa735c8b2b59efc4919be3c0c4491780"
+    },
+    "asan": {
+      "tests": 6,
+      "failures": 0,
+      "log_sha256": "e55c8f6c1ae322e8679ff4e90f32eac32e0a6fe1aabc1976161e33edf01cad66"
+    }
+  },
+  "red_regression": {
+    "tests": 1,
+    "expected_failures": 1,
+    "observed_largest_canvas_bytes": 4000000,
+    "thumbnail_budget_bytes": 11200,
+    "log_sha256": "c359e899959f67164732494ba866535dc7ab4718a668599b953a36708e05e286"
+  },
+  "measurements": 288,
+  "workloads": 12,
+  "repetitions": 12,
+  "iterations_per_process": 100,
+  "matching_pixel_checksum_pairs": 144,
+  "balanced_orders": true,
+  "all_current_cpu_ranges_below_baseline": true,
+  "all_current_p95_medians_lower": true,
+  "opaque_pixel_configurations": 42,
+  "baseline_repeat_controls": 42,
+  "lazy_jpeg_configurations": 2,
+  "native_canvas_configurations": 12,
+  "sanitizer_options": "ASAN_OPTIONS=detect_leaks=0; address/lifetime validation, no leak-free claim",
+  "rules_sha256": {
+    "README.md": "34e75758f7a67bcccd7c6a6919cf2c941785ab09a79f8d998811eb4dde3f7599",
+    "AGENTS.md": "1823e6337d3d4b379825c5bbcb3214d25fc84e2622e4101c101595944d5b28d2",
+    "CONTRIBUTING.md": "34f87b80a36d4f1e89dcfb879c0b842a9c851a0a9defa3c98c95eee380e85139",
+    ".github/pull_request_template.md": "7e6aaa5b4c00b373ead651954ddd102ce8c66ee4cadb91585724636fa94cd739"
+  },
+  "limits": "Native helper, complete real TGUIKit and FastBlur, generated opaque inputs. No authenticated Telegram session, real camera/device dimensions, full app build, FPS/battery or whole-Telegram memory measurement. Canvas recorder is test-only; benchmark production has no instrumentation. RSS high-water mark sampled through the render loop includes fixtures and warmup.",
+  "publication_preflight": {
+    "source_and_dependency_hashes_match_measured_binary": true,
+    "all_raw_summary_fields_recomputed": true,
+    "checks": {
+      "debug": {
+        "tests": 6,
+        "failures": 0,
+        "log_sha256": "c41c52ed6d8c9b69e2a100d94ed41d359b4ae287cd0c74cd9c3bfa89968671ff"
+      },
+      "release": {
+        "tests": 6,
+        "failures": 0,
+        "log_sha256": "dfca3b73318028e02b36a63736d426809f93926e29e1d96cdac5cf30df75f82d"
+      },
+      "asan": {
+        "tests": 6,
+        "failures": 0,
+        "log_sha256": "636f76667eebdb3850a5bcfba26390987ec84658debda47eafdcdb028baf0915"
+      }
+    },
+    "upstream_base": "deffa9c1926317a9d66a0d41bd9b1de8fcb7ca7d"
+  }
+}

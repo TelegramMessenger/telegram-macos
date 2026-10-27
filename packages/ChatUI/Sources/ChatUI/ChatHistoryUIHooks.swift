@@ -332,7 +332,7 @@ public struct ChatHistoryUIHooks {
     public let storyLayoutViewSize: () -> NSSize
     public let giftStickers: (any AccountContextProtocol) -> Signal<[TelegramMediaFile], NoError>
     public let messageNewReactions: (Message, UpdateMessageReaction, Bool) -> [UpdateMessageReaction]
-    public let makeReactionsWindow: (any AccountContextProtocol, PeerId, [ChatHistoryEmojiSelectedItem], @escaping (StickerPackItem, NSRect?) -> Void, ((StickerPackItem, NSRect?) -> Void)?) -> ChatHistoryReactionsWindow
+    public let makeReactionsWindow: (any AccountContextProtocol, PeerId, [ChatHistoryEmojiSelectedItem], [RecentReactionItem]?, @escaping (StickerPackItem, NSRect?) -> Void, ((StickerPackItem, NSRect?) -> Void)?) -> ChatHistoryReactionsWindow
     public let currencyAmount: (any AccountContextProtocol, CurrencyAmount, Double) -> CurrencyAmount
     public let currentCountriesConfiguration: (any AccountContextProtocol) -> Atomic<CountriesConfiguration>
     public let reactionSettings: (any AccountContextProtocol) -> ReactionSettings
@@ -384,7 +384,7 @@ public struct ChatHistoryUIHooks {
                 storyLayoutViewSize: @escaping () -> NSSize,
                 giftStickers: @escaping (any AccountContextProtocol) -> Signal<[TelegramMediaFile], NoError>,
                 messageNewReactions: @escaping (Message, UpdateMessageReaction, Bool) -> [UpdateMessageReaction],
-                makeReactionsWindow: @escaping (any AccountContextProtocol, PeerId, [ChatHistoryEmojiSelectedItem], @escaping (StickerPackItem, NSRect?) -> Void, ((StickerPackItem, NSRect?) -> Void)?) -> ChatHistoryReactionsWindow,
+                makeReactionsWindow: @escaping (any AccountContextProtocol, PeerId, [ChatHistoryEmojiSelectedItem], [RecentReactionItem]?, @escaping (StickerPackItem, NSRect?) -> Void, ((StickerPackItem, NSRect?) -> Void)?) -> ChatHistoryReactionsWindow,
                 currencyAmount: @escaping (any AccountContextProtocol, CurrencyAmount, Double) -> CurrencyAmount,
                 currentCountriesConfiguration: @escaping (any AccountContextProtocol) -> Atomic<CountriesConfiguration>,
                 reactionSettings: @escaping (any AccountContextProtocol) -> ReactionSettings,

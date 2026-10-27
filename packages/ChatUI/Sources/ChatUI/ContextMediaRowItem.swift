@@ -22,6 +22,7 @@ public final class ContextMediaArguments {
     public let menuItems: (TelegramMediaFile, NSView) -> Signal<[ContextMenuItem], NoError>
     public let openMessage: (Message) -> Void
     public let messageMenuItems: (Message, NSView) -> Signal<[ContextMenuItem], NoError>
+    public var drag: ((ChatContextResult, NSPoint, Bool) -> Bool)?
 
     public init(sendResult: @escaping(ChatContextResultCollection?, ChatContextResult, NSView) -> Void = { _, _, _ in }, menuItems: @escaping(TelegramMediaFile, NSView) -> Signal<[ContextMenuItem], NoError> = { _, _ in return .single([]) }, openMessage: @escaping(Message) -> Void = { _ in }, messageMenuItems:@escaping (Message, NSView) -> Signal<[ContextMenuItem], NoError> = { _, _ in return .single([]) }) {
         self.sendResult = sendResult
@@ -135,6 +136,8 @@ public class ContextMediaRowView: TableRowView, ModalPreviewRowViewProtocol {
     
     private let stickerFetchedDisposable:MetaDisposable = MetaDisposable()
     private let longDisposable = MetaDisposable()
+    private var dragStart: (NSPoint, Int)?
+    private var isDraggingResult = false
     deinit {
         stickerFetchedDisposable.dispose()
         longDisposable.dispose()
@@ -153,6 +156,13 @@ public class ContextMediaRowView: TableRowView, ModalPreviewRowViewProtocol {
         let signal = Signal<NoValue, NoError>.complete() |> delay(0.2, queue: .mainQueue())
         
         let downIndex = self.index(at: convert(event.locationInWindow, to: nil))
+
+        isDraggingResult = false
+        if let item = item as? ContextMediaRowItem, item.result.messages.isEmpty, let index = self.index(at: convert(event.locationInWindow, from: nil)) {
+            dragStart = (event.locationInWindow, index)
+        } else {
+            dragStart = nil
+        }
         
         longDisposable.set(signal.start(completed: { [weak self] in
             guard let `self` = self, let window = self.window else {
@@ -370,10 +380,37 @@ public class ContextMediaRowView: TableRowView, ModalPreviewRowViewProtocol {
         return nil
     }
     
+    public override func mouseDragged(with event: NSEvent) {
+        super.mouseDragged(with: event)
+        guard let item = item as? ContextMediaRowItem, let drag = item.arguments.drag, let (start, index) = dragStart, index < item.result.results.count else {
+            return
+        }
+        let location = event.locationInWindow
+        if isDraggingResult {
+            _ = drag(item.result.results[index], location, false)
+        } else if hypot(location.x - start.x, location.y - start.y) > 6 {
+            isDraggingResult = drag(item.result.results[index], location, false)
+            if isDraggingResult {
+                longDisposable.set(nil)
+            } else {
+                dragStart = nil
+            }
+        }
+    }
+
     public override func mouseUp(with event: NSEvent) {
         super.mouseUp(with: event)
         
         longDisposable.set(nil)
+        if isDraggingResult {
+            isDraggingResult = false
+            if let item = item as? ContextMediaRowItem, let (_, index) = dragStart, index < item.result.results.count {
+                _ = item.arguments.drag?(item.result.results[index], event.locationInWindow, true)
+            }
+            dragStart = nil
+            return
+        }
+        dragStart = nil
 //        
         if let item = item as? ContextMediaRowItem, event.clickCount == 1  {
             let point = convert(event.locationInWindow, from: nil)
