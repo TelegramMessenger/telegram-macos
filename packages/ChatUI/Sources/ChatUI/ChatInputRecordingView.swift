@@ -87,6 +87,12 @@ public class ChatInputRecordingView: View {
     private var acceptsPreviewEdits: Bool {
         return isPaused && preview != nil && !isResuming && !isDismissing && !recorder.isCancelled && !recorder.isPreparingSubmission
     }
+
+    private var canResumeRecording: Bool {
+        guard isVideoRecorder, let preview else { return true }
+        let range = recorder.pendingTrimRange ?? 0 ..< preview.duration
+        return range.upperBound - range.lowerBound < VideoRecorderPipeline.videoMessageMaxDuration
+    }
     private var columnAnchor: NSPoint?
 
     private let deleteButton: ImageButton = ImageButton()
@@ -211,6 +217,9 @@ public class ChatInputRecordingView: View {
         disposable.set(combineLatest(recorder.status |> deliverOnMainQueue, recorder.holdpromise.get() |> deliverOnMainQueue).start(next: { [weak self] state, hold in
             guard let self, !self.isDismissing, !self.recorder.isCancelled else {
                 return
+            }
+            if hold, self.state != .fixed {
+                self.hold()
             }
             switch state {
             case let .recording(duration):
@@ -348,7 +357,7 @@ public class ChatInputRecordingView: View {
         } else if state == .fixed {
             lockControl.change(opacity: 0, animated: true)
             if recorder.canPause {
-                pauseControl.kind = .pause
+                pauseControl.kind = isPaused ? .recordMore : .pause
                 pauseControl.layer?.opacity = 1
                 pauseControl.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
                 showPauseTooltip()
@@ -682,11 +691,11 @@ public class ChatInputRecordingView: View {
 
     private func hold() {
         guard let parent else { return }
+        self.state = .fixed
         recorder.holdpromise.set(true)
 
         overlayView.updateInside()
 
-        self.state = .fixed
         overlayView.updateState(.fixed)
 
         parent.remove(object: self, for: .leftMouseDown)
@@ -853,6 +862,7 @@ public class ChatInputRecordingView: View {
             startBlinking()
         }
         pauseControl.kind = paused ? .recordMore : .pause
+        updatePauseControl()
         overlayView.updatePaused(paused)
         layoutFloatingControls(transition: .animated(duration: 0.3, curve: .spring))
         needsLayout = true
@@ -898,6 +908,7 @@ public class ChatInputRecordingView: View {
         self.preview = preview
         self.trimRange = RecordingTrimState(duration: preview.duration, range: recorder.trimRange).range
         recorder.updateTrimRange(self.trimRange, duration: preview.duration)
+        updatePauseControl()
 
         if isVideoRecorder {
             scrubber.setVideo(path: preview.path, placeholder: preview.thumb)
@@ -919,6 +930,7 @@ public class ChatInputRecordingView: View {
         let range = RecordingTrimState(duration: preview.duration, range: range).range
         self.trimRange = range
         recorder.updateTrimRange(range)
+        updatePauseControl()
         recorder.updatePreviewTrim(range, updatedEnd: updatedEnd, applied: applied)
         if let previewPlayer {
             previewPlayer.updateTrim(range, updatedEnd: updatedEnd, applied: applied)
@@ -942,7 +954,7 @@ public class ChatInputRecordingView: View {
     }
 
     private func resumeRecording() {
-        guard preview != nil, isPaused, !isResuming, !recorder.isPreparingSubmission, !isDismissing, !recorder.isCancelled else {
+        guard preview != nil, isPaused, canResumeRecording, !isResuming, !recorder.isPreparingSubmission, !isDismissing, !recorder.isCancelled else {
             return
         }
         if recorder.isTrimmed {
@@ -958,7 +970,7 @@ public class ChatInputRecordingView: View {
     }
 
     private func resumeAfterConfirm() {
-        guard let preview, isPaused, !isResuming, !recorder.isPreparingSubmission, !isDismissing, !recorder.isCancelled else { return }
+        guard let preview, isPaused, canResumeRecording, !isResuming, !recorder.isPreparingSubmission, !isDismissing, !recorder.isCancelled else { return }
         previewGeneration = UUID()
         let generation = previewGeneration
         previewDisposable.set(nil)
@@ -982,8 +994,12 @@ public class ChatInputRecordingView: View {
 
     private func setResuming(_ value: Bool) {
         isResuming = value
-        pauseControl.isEnabled = !value && !recorder.isPreparingSubmission
+        updatePauseControl()
         scrubber.userInteractionEnabled = !value && !recorder.isPreparingSubmission
+    }
+
+    private func updatePauseControl() {
+        pauseControl.isEnabled = !isResuming && !recorder.isPreparingSubmission && (!isPaused || canResumeRecording)
     }
 
     private func updateSubmissionState(_ state: ChatRecordingSubmissionState) {

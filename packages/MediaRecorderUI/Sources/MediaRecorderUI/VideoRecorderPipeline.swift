@@ -433,6 +433,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
             
             self.isPaused = false
             self.renderingEnabled = true
+            self.powerAndDuration.set(.single((0, self.completedDuration)))
             self.status = .recording
         }
     }
