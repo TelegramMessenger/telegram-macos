@@ -1,9 +1,9 @@
 import Cocoa
 
 public struct DetachedWindowHeaderLayout {
-    public static let controlsWidth: CGFloat = 80
+    public static let controlsWidth: CGFloat = 72
     public static let height: CGFloat = 40
-    public static let spacing: CGFloat = 8
+    public static let spacing: CGFloat = 6
     public static let sideInset: CGFloat = 12
 
     public let controlsFrame: NSRect

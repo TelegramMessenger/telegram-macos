@@ -58,7 +58,7 @@ final class WindowFixture {
 
 private func testRepeatedAttachmentAndResize() {
     let fixture = WindowFixture()
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
     fixture.root.addSubview(controls)
     for _ in 0..<3 {
         controls.attach(to: fixture.window)
@@ -102,7 +102,7 @@ private func testRepeatedAttachmentAndResize() {
 private func testAppKitRepositioningAndFullScreenNotifications() {
     let fixture = WindowFixture()
     let otherWindow = WindowFixture()
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
     fixture.root.addSubview(controls)
     controls.attach(to: fixture.window)
     for name in [NSWindow.didUpdateNotification, NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
@@ -134,7 +134,7 @@ private func testWindowSwitchAndExistingChrome() {
     let second = WindowFixture(fullSize: true)
     second.window.titleVisibility = .hidden
     second.window.titlebarAppearsTransparent = true
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
     controls.attach(to: first.window)
     controls.attach(to: second.window)
     first.checkRestored()
@@ -151,7 +151,7 @@ private func testDeinitializationRestoresChrome() {
     let fixture = WindowFixture()
     weak var releasedControls: NSView?
     autoreleasepool {
-        let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 80, height: 40))
+        let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
         releasedControls = controls
         controls.attach(to: fixture.window)
     }
@@ -168,16 +168,16 @@ private func testLeadingHeaderLayout() {
         for hasBackButton in [false, true] {
             let origin = NSPoint(x: 12, y: 12)
             let layout = DetachedWindowHeaderLayout(origin: origin, showsControls: showsControls, hasBackButton: hasBackButton)
-            let expectedWidth: CGFloat = (showsControls ? 80 : 0) + (hasBackButton ? 40 : 0)
+            let expectedWidth: CGFloat = (showsControls ? 72 : 0) + (hasBackButton ? 40 : 0)
             check(layout.leadingPillFrame == NSRect(x: 12, y: 12, width: expectedWidth, height: 40), "leading pill sized to visible controls")
-            check(layout.controlsFrame.width == (showsControls ? 80 : 0), "native controls retain their width")
+            check(layout.controlsFrame.width == (showsControls ? 72 : 0), "native controls retain their width")
             check(layout.backButtonFrame.width == (hasBackButton ? 40 : 0), "back button retains a 40-point hit area")
             check(layout.backButtonFrame.minX == layout.controlsFrame.maxX, "back button directly follows traffic lights inside shared pill")
-            check(layout.contentMinX == layout.leadingPillFrame.maxX + (expectedWidth > 0 ? 8 : 0), "consistent eight-point gap after leading pill")
+            check(layout.contentMinX == layout.leadingPillFrame.maxX + (expectedWidth > 0 ? 6 : 0), "consistent six-point gap after leading pill")
             if showsControls && hasBackButton {
                 check(layout.leadingPillFrame.contains(layout.controlsFrame), "traffic lights contained in shared pill")
                 check(layout.leadingPillFrame.contains(layout.backButtonFrame), "back button contained in shared pill")
-                check(layout.leadingPillFrame.width == 120, "shared pill avoids a separate back-button gap")
+                check(layout.leadingPillFrame.width == 112, "shared pill avoids a separate back-button gap")
             }
         }
     }

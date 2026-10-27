@@ -12,4 +12,4 @@ The six checks cover repeated attachment, native button dimensions/actions/targe
 
 This harness does not build Telegram, render the glass header, or replace visual verification of a chat opened through **Open in New Window**.
 
-The leading pill keeps an 80-point native-control area and a 40-point back-button target on one surface, with an eight-point gap to the rest of the header. Chat and profile views use the same layout values.
+The leading pill keeps an 72-point native-control area and a 40-point back-button target on one surface, with an six-point gap to the rest of the header. Chat and profile views use the same layout values.

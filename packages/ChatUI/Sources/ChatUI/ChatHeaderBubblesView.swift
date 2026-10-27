@@ -1079,8 +1079,8 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         let avatarSize: CGFloat = max(32, avatarControl.frame.width)
         let horizontalContentPadding: CGFloat = 4
-        let avatarTextSpacing: CGFloat = chatInteraction.interactionContext.isExternal ? 6 : 8
-        let textRightPadding: CGFloat = chatInteraction.interactionContext.isExternal ? 12 : 14
+        let avatarTextSpacing: CGFloat = chatInteraction.interactionContext.isExternal ? 4 : 8
+        let textRightPadding: CGFloat = chatInteraction.interactionContext.isExternal ? 10 : 14
 
         let centerRect = NSRect(x: centerAvailableMinX, y: bubbleY, width: centerWidth, height: bubbleHeight)
         transition.updateFrame(view: centerBubble, frame: centerRect)
