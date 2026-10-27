@@ -33,8 +33,11 @@ func copiedMessageHeader(_ message: Message, timeDifference: TimeInterval) -> St
     return header
 }
 
-func copiedMessageReplyLine(_ message: Message) -> String? {
+func copiedMessageReplyLine(_ message: Message, threadId: Int64?) -> String? {
     guard let attribute = message.replyAttribute, let replied = message.associatedMessages[attribute.messageId] else {
+        return nil
+    }
+    if ChatRowItem.hidesReply(to: attribute, in: message, threadId: threadId) {
         return nil
     }
     let quote = attribute.isQuote ? attribute.quote : nil
@@ -340,6 +343,7 @@ public class SelectManager : NSResponder {
         } else if let chatInteraction = self.chatInteraction {
             if let selectionState = chatInteraction.presentation.selectionState {
                 let timeDifference = chatInteraction.interactionContext.timeDifference
+                let threadId = chatInteraction.chatLocation.threadId
                 _ = chatInteraction.interactionContext.account.postbox.messagesAtIds(Array(selectionState.selectedIds.sorted(by: <))).start(next: { messages in
                     var text: String = ""
                     for message in messages {
@@ -348,7 +352,7 @@ public class SelectManager : NSResponder {
                         }
                         text += "> " + copiedMessageHeader(message, timeDifference: timeDifference) + ":"
                         text += "\n"
-                        if let replyLine = copiedMessageReplyLine(message) {
+                        if let replyLine = copiedMessageReplyLine(message, threadId: threadId) {
                             text += "> " + replyLine + "\n"
                         }
                         text += pullText(from: message).string as String
