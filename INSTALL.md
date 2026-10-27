@@ -6,9 +6,6 @@ from `packages/` and `submodules/telegram-ios/submodules/`. Swift packages resol
 from local paths. Initial native preparation still needs network access to download
 OpenSSL sources, Rust toolchains and Cargo dependencies.
 
-For this fork's Focus-filter branch, see the [Russian local-build guide](docs/build-macos-ru.md),
-including development signing for the application and its extensions.
-
 ## Requirements
 
 - macOS on Apple Silicon or Intel. On Apple Silicon, Rosetta 2 is needed: the `tde2e`
