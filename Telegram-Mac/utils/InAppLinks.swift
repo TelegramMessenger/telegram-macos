@@ -472,7 +472,7 @@ private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: C
                 |> deliverOnMainQueue
                 _ = (signal).start(next: { result in
                     if case let .result(messages) = result, let threadId = messages.first?.threadId {
-                        let ready = ForumUI.openTopic(threadId, peerId: peer.id, context: context, messageId: nil, animated: true, addition: true)
+                        let ready = ForumUI.openTopic(threadId, peerId: peer.id, context: context, messageId: messageId, animated: true, addition: true)
                         _ = (ready |> take(1)).start(next: { opened in
                             if !opened {
                                 ForumUI.open(peer.id, addition: true, context: context)
