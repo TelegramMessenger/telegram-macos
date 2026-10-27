@@ -547,6 +547,14 @@ public func chatContextQueryForSearchMention(chatLocations: [ChatLocation], _ in
 
 private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.link]).rawValue)
 
+private func firstDetectedUrl(_ text: String) -> String? {
+    let text = String(text.prefix(4096))
+    guard let match = dataDetector?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) else {
+        return nil
+    }
+    return (text as NSString).substring(with: match.range)
+}
+
  public func urlPreviewStateForChatInterfacePresentationState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: any AccountContextProtocol, currentQuery: String?, disableEditingPreview: ((String)->Void)? = nil) -> Signal<(String?, Signal<(TelegramMediaWebpage?) -> TelegramMediaWebpage?, NoError>)?, NoError> {
     
     return Signal { subscriber in
@@ -569,7 +577,7 @@ private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.Check
         }
         
         if chatPresentationInterfaceState.state == .editing, let media = chatPresentationInterfaceState.interfaceState.editState?.message.anyMedia {
-            if let media = media as? TelegramMediaWebpage {
+            if let media = media as? TelegramMediaWebpage, firstDetectedUrl(chatPresentationInterfaceState.effectiveInput.inputText) == firstDetectedUrl(chatPresentationInterfaceState.interfaceState.editState?.message.text ?? "") {
                 let url: String?
                 switch media.content {
                 case let .Loaded(content):
