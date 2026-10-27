@@ -341,9 +341,14 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
     var items:[ContextMenuItem] = []
 
-    items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
-        ChatListUIHooks.shared.openPeerInNewWindow(arguments.context, chatPeerId ?? peer.id)
-    }, itemImage: MenuAnimation.menu_open_with.value))
+    switch arguments.target {
+    case .common, .community:
+        items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+            ChatListUIHooks.shared.openPeerInNewWindow(arguments.context, chatPeerId ?? peer.id)
+        }, itemImage: MenuAnimation.menu_open_with.value))
+    case .forum, .savedMessages:
+        break
+    }
     
     let togglePin:(Peer) -> Void = { peer in
         let updatePeer = arguments.context.account.postbox.transaction { transaction -> Void in
