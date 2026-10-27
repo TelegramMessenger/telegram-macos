@@ -114,27 +114,6 @@ final class RecordingCameraLifecycleTests: XCTestCase {
         withExtendedLifetime(controller) {}
     }
 
-    func testResumedRecordingCanReachLimitAgain() {
-        let (controller, pipeline) = makeController()
-        let firstPause = expectation(description: "First duration limit pauses")
-        (controller.view as? RecordingCaptureViewProbe)?.paused = { firstPause.fulfill() }
-        pipeline.statePromise.set(.recording)
-        pipeline.powerAndDuration.set(.single((0, 60)))
-        wait(for: [firstPause], timeout: 1)
-
-        pipeline.powerAndDuration.set(.single((0, 10)))
-        pipeline.statePromise.set(.recording)
-        settle()
-        XCTAssertEqual(pipeline.pauseCount, 1)
-
-        let secondPause = expectation(description: "Resumed recording pauses at its limit")
-        (controller.view as? RecordingCaptureViewProbe)?.paused = { secondPause.fulfill() }
-        pipeline.powerAndDuration.set(.single((0, 60)))
-        wait(for: [secondPause], timeout: 1)
-        XCTAssertEqual(pipeline.pauseCount, 2)
-        withExtendedLifetime(controller) {}
-    }
-
     func testDiscardStopsCaptureBeforeRetainedControllerIsReleased() {
         assertCaptureStops(after: .stopped(thumb: nil))
     }

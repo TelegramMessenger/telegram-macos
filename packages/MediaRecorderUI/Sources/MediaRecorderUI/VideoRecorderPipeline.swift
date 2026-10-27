@@ -47,6 +47,7 @@ private func roundVideoDecoration() -> (watermark: CGImage, planeFrames: CGImage
 }
 
 public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, TGVideoCameraMovieRecorderDelegate, AVCaptureAudioDataOutputSampleBufferDelegate  {
+    typealias RecorderFactory = (URL, TGVideoCameraMovieRecorderDelegate, DispatchQueue) -> TGVideoCameraMovieRecorder
     
     
     public func movieRecorderDidFinishPreparing(_ recorder: TGVideoCameraMovieRecorder!) {
@@ -54,11 +55,15 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
     }
     
     public func movieRecorder(_ recorder: TGVideoCameraMovieRecorder!, didFailWithError error: Error!) {
+        guard self.recorder === recorder, !isDiscarded else { return }
+        isFinishingSegment = false
         status = .failed
     }
     
     public func movieRecorderDidFinishRecording(_ recorder: TGVideoCameraMovieRecorder!) {
         VideoRecorderPipeline.queue.async {
+            guard self.recorder === recorder, self.isFinishingSegment, !self.isDiscarded else { return }
+            self.isFinishingSegment = false
             self.segments.append(self.currentURL)
             self.completedDuration += self.lastSegmentDuration
             self.lastSegmentDuration = 0
@@ -123,6 +128,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
     private var renderingEnabled: Bool = false
 
     private var recorder: TGVideoCameraMovieRecorder!
+    private let makeRecorder: RecorderFactory
     
     
     private let path: String
@@ -137,6 +143,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
     private var completedDuration: Double = 0
     private var lastSegmentDuration: Double = 0
     private var isPaused: Bool = false
+    private var isFinishingSegment: Bool = false
     private let composeDisposable = MetaDisposable()
     
     private var currentSegmentDuration: Double {
@@ -156,16 +163,24 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
     public static let videoMessageMaxDuration: Double = 60
 
     private var liveUploading: PreUploadManager?
-    public init(path: String, config: VideoMessageConfig, liveUploading: PreUploadManager?) {
+    public convenience init(path: String, config: VideoMessageConfig, liveUploading: PreUploadManager?) {
+        self.init(path: path, config: config, liveUploading: liveUploading, initializeCapture: true, makeRecorder: { url, delegate, queue in
+            TGVideoCameraMovieRecorder(url: url, delegate: delegate, callbackQueue: queue)
+        })
+    }
+
+    init(path: String, config: VideoMessageConfig, liveUploading: PreUploadManager?, initializeCapture: Bool, makeRecorder: @escaping RecorderFactory) {
         self.path = path
         let url = URL(fileURLWithPath: path)
         self.url = url
         self.currentURL = url
         self.liveUploading = liveUploading
         self.config = config
+        self.makeRecorder = makeRecorder
         super.init()
         
-        recorder = TGVideoCameraMovieRecorder(url: url, delegate: self, callbackQueue: VideoRecorderPipeline.queue.queue)
+        recorder = makeRecorder(url, self, VideoRecorderPipeline.queue.queue)
+        guard initializeCapture else { return }
         
         renderer.orientation = .portrait
         renderer.mirror = true
@@ -337,10 +352,8 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
             recorder.appendAudioSampleBuffer(sampleBuffer)
             
             if renderingEnabled {
-                lastSegmentDuration = currentSegmentDuration
-                let duration = completedDuration + lastSegmentDuration
                 let power = connection.audioChannels.map { Float(mappingRange(Double($0.averagePowerLevel), -60, 0, 0, 1)) }.max() ?? 0
-                powerAndDuration.set(.single((power, duration)))
+                updatePowerAndDuration(power)
             }
         }
         liveUploading?.fileDidChangedSize(false)
@@ -376,7 +389,15 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
 
 
 
-    private func startRecording() {
+    func updatePowerAndDuration(_ power: Float) {
+        lastSegmentDuration = currentSegmentDuration
+        powerAndDuration.set(.single((power, completedDuration + lastSegmentDuration)))
+    }
+
+    func startRecording(audioFormat: CMFormatDescription? = nil) {
+        if let audioFormat {
+            outputAudioFormatDescription = audioFormat
+        }
         
         if renderingEnabled {
             return
@@ -412,13 +433,14 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
             self.lastSegmentDuration = self.currentSegmentDuration
             self.isPaused = true
             self.renderingEnabled = false
+            self.isFinishingSegment = true
             self.recorder.finishRecording()
         }
     }
     
     public func resume() {
         VideoRecorderPipeline.queue.async {
-            guard self.isPaused else {
+            guard self.isPaused, !self.isFinishingSegment, !self.isDiscarded else {
                 return
             }
             self.clearComposedURL()
@@ -428,7 +450,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
             self.derivedFiles.append(next)
             let nextURL = URL(fileURLWithPath: next)
             self.currentURL = nextURL
-            self.recorder = TGVideoCameraMovieRecorder(url: nextURL, delegate: self, callbackQueue: VideoRecorderPipeline.queue.queue)
+            self.recorder = self.makeRecorder(nextURL, self, VideoRecorderPipeline.queue.queue)
             self.configureRecorderTracks()
             
             self.isPaused = false
@@ -614,6 +636,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
             self.status = .stoppingRecording
             self.videoOutput.setSampleBufferDelegate(nil, queue: nil)
             self.audioOutput.setSampleBufferDelegate(nil, queue: nil)
+            guard !self.isFinishingSegment else { return }
             if self.isPaused {
                 if self.completedDuration >= 0.5 {
                     self.finishWithComposedResult()
@@ -625,6 +648,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
             
             self.lastSegmentDuration = self.currentSegmentDuration
             if self.completedDuration + self.lastSegmentDuration >= 0.5 {
+                self.isFinishingSegment = true
                 self.recorder.finishRecording()
             } else {
                 self.dispose()
@@ -641,6 +665,7 @@ public class VideoRecorderPipeline : NSObject, AVCaptureVideoDataOutputSampleBuf
     public func dispose() {
         VideoRecorderPipeline.queue.async {
             self.isDiscarded = true
+            self.isFinishingSegment = false
             self.sentPath = nil
             if case .finishRecording = self.status {
                 return
