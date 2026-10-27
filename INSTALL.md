@@ -18,7 +18,7 @@ package dependencies, so once the submodules are checked out the build is offlin
   ```
 - Homebrew and these packages:
   ```
-  brew install cmake ninja meson nasm yasm zlib autoconf libtool automake pkg-config
+  brew install cmake ninja meson nasm yasm openssl@1.1 zlib autoconf libtool automake pkg-config
   ```
 - A Rust toolchain via rustup. The TON wallet engine (`wallet-engine`) and the tlottie
   sticker renderer are Rust libraries; their build scripts pick up `cargo` from `PATH` or
