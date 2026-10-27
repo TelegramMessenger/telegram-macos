@@ -1754,7 +1754,11 @@ public class ChatListRowItem: TableRowItem {
     
     public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?) {
         if isMuted {
-            _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).start()
+            if let threadId {
+                _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).start()
+            } else {
+                _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: nil).start()
+            }
         } else {
             var options:[ModalOptionSet] = []
             
