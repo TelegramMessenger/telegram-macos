@@ -11,21 +11,21 @@ public struct InputTextViewHooks {
     public let checkSendingAbility: (NSEvent) -> Bool
     public let showDateSelector: (any AccountContextProtocol, Window, Date, @escaping (Date) -> Void) -> Void
     public let showPremiumBoarding: (any AccountContextProtocol, Window) -> Void
-    public let showTranslate: (any AccountContextProtocol, Window, String?, String, @escaping (NSAttributedString) -> Void) -> Void
+    public let showTranslate: (any AccountContextProtocol, Window, String?, String, [MessageTextEntity], @escaping (NSAttributedString) -> Void) -> Void
     public let showURLFormatter: (Window, String, String?, [String], @escaping (String, String?) -> Void) -> Void
     public let makeInlineAvatarLayer: (any AccountContextProtocol, NSRect, EnginePeer) -> any InputInlineAvatarLayer
 
-    public var showTranslateWithContext: ((any AccountContextProtocol, Window, String?, String, @escaping (NSAttributedString) -> Void) -> Void)?
+    public var showTranslateWithContext: ((any AccountContextProtocol, Window, String?, String, [MessageTextEntity], @escaping (NSAttributedString) -> Void) -> Void)?
     public var showPremiumBoardingWithContext: ((any AccountContextProtocol, Window) -> Void)?
 
-    public func showTranslateObserved(_ context: any AccountContextProtocol, _ window: Window, _ from: String?, _ text: String, onUse: @escaping (NSAttributedString) -> Void) {
+    public func showTranslateObserved(_ context: any AccountContextProtocol, _ window: Window, _ from: String?, _ text: String, _ entities: [MessageTextEntity], onUse: @escaping (NSAttributedString) -> Void) {
         let completion: (NSAttributedString) -> Void = { translated in
             onUse(translated)
         }
         if let showTranslateWithContext {
-            showTranslateWithContext(context, window, from, text, completion)
+            showTranslateWithContext(context, window, from, text, entities, completion)
         } else {
-            showTranslate(context, window, from, text, completion)
+            showTranslate(context, window, from, text, entities, completion)
         }
     }
 
@@ -40,7 +40,7 @@ public struct InputTextViewHooks {
     public init(checkSendingAbility: @escaping (NSEvent) -> Bool,
                 showDateSelector: @escaping (any AccountContextProtocol, Window, Date, @escaping (Date) -> Void) -> Void,
                 showPremiumBoarding: @escaping (any AccountContextProtocol, Window) -> Void,
-                showTranslate: @escaping (any AccountContextProtocol, Window, String?, String, @escaping (NSAttributedString) -> Void) -> Void,
+                showTranslate: @escaping (any AccountContextProtocol, Window, String?, String, [MessageTextEntity], @escaping (NSAttributedString) -> Void) -> Void,
                 showURLFormatter: @escaping (Window, String, String?, [String], @escaping (String, String?) -> Void) -> Void,
                 makeInlineAvatarLayer: @escaping (any AccountContextProtocol, NSRect, EnginePeer) -> any InputInlineAvatarLayer) {
         self.checkSendingAbility = checkSendingAbility
