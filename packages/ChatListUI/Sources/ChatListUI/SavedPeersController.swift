@@ -233,7 +233,6 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
                
                 return item.isFixedItem || item.groupId != .root
             }
-            items.move(at: from - offset, to: to - offset)
             let signal = context.engine.peers.setForumChannelPinnedTopics(id: context.peerId, threadIds: items) |> deliverOnMainQueue
             reorderDisposable.set(signal.start())
 
