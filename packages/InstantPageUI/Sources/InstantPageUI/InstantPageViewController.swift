@@ -18,6 +18,23 @@ import TelegramMediaUtils
 import TelegramMedia
 import ChatModeTypes
 
+private final class InstantPageScrollView: ScrollView {
+    private var didAlignMagnification = false
+
+    override func magnify(with event: NSEvent) {
+        if event.phase == .began {
+            didAlignMagnification = false
+        }
+        let previousMagnification = magnification
+        super.magnify(with: event)
+        if !didAlignMagnification, event.phase != .cancelled, event.magnification < 0,
+           previousMagnification > minMagnification, magnification <= minMagnification {
+            didAlignMagnification = true
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .drawCompleted)
+        }
+    }
+}
+
 public class InstantPageViewController: GenericViewController<ScrollView> {
     public let context: (any AccountContextProtocol)
     
@@ -94,6 +111,10 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
         noticeResizeWhenLoaded = false
     }
     
+    public override func initializer() -> ScrollView {
+        return InstantPageScrollView(frame: initializationRect)
+    }
+
     public override var defaultBarTitle: String {
         switch webPage.content {
         case .Loaded(let content):
@@ -433,7 +454,8 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
                     frame = self.effectiveFrameForItem(item)
                 }
                 
-                let targetY = min(containerOffset + frame.minY + (reference ? -5 : lineOffset), self.documentView.frame.height - self.genericView.frame.height)
+                let maxY = max(0, self.documentView.frame.height - self.genericView.contentView.bounds.height)
+                let targetY = max(0, min(containerOffset + frame.minY + (reference ? -5 : lineOffset), maxY))
                 genericView.clipView.scroll(to: CGPoint(x: 0.0, y: targetY), animated: animated)
             } else if case let .Loaded(content) = webPage.content, let instantPage = content.instantPage, !instantPage.isComplete {
                // self.loadProgress.set(0.5)
@@ -501,11 +523,14 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
         
         
         genericView.deltaCorner = -1
+        genericView.minMagnification = 1.0
+        genericView.maxMagnification = 3.0
+        genericView.allowsMagnification = true
         genericView.documentView = View(frame: genericView.bounds)
         self.boundsObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: genericView.contentView, queue: nil, using: { [weak self] _ in
             guard let `self` = self else { return }
             self.updateVisibleItems(visibleBounds: self.genericView.contentView.bounds, animated: false)
-			self.pageDidScrolled?((documentSize: self.genericView.frame.size, position: self.genericView.scrollPosition().current))
+			self.pageDidScrolled?((documentSize: self.genericView.contentView.bounds.size, position: self.genericView.scrollPosition().current))
             self.saveArticleProgress()
         })
         genericView.hasVerticalScroller = true
@@ -581,7 +606,7 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
     
     public func containerLayoutUpdated(animated: Bool) {
         if visibleItemsWithViews.isEmpty && visibleTiles.isEmpty {
-            genericView.contentView.bounds = NSZeroRect
+            genericView.contentView.setBoundsOrigin(NSZeroPoint)
         }
         self.updateVisibleItems(visibleBounds: self.genericView.contentView.bounds, animated: animated)
     }
@@ -828,7 +853,7 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
     
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        pageDidScrolled?((documentSize: genericView.frame.size, position: genericView.scrollPosition().current))
+        pageDidScrolled?((documentSize: genericView.contentView.bounds.size, position: genericView.scrollPosition().current))
     }
     
     public var scrollState: IVReadState? {
@@ -875,16 +900,17 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
         self.updateVisibleItems(visibleBounds: self.genericView.contentView.bounds, animated: false)
 		
 		var newOrigin = genericView.clipView.bounds.origin
+        let step = 50 / genericView.magnification
 		switch direction {
 		case .up:
             // without *2 we will stay at current position
-            newOrigin.y -= 50
+            newOrigin.y -= step
 			if newOrigin.y < 0 {
 				newOrigin.y = 0
 			}
 		case .down:
-			newOrigin.y += 50
-			let maxY = genericView.documentSize.height - genericView.clipView.frame.height
+			newOrigin.y += step
+			let maxY = max(0, genericView.documentSize.height - genericView.clipView.bounds.height)
 			if newOrigin.y > maxY {
 				newOrigin.y = maxY
 			}
@@ -892,7 +918,7 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
 		
 		genericView.clipView.scroll(to: newOrigin, animated: true)
 		genericView.reflectScrolledClipView(genericView.clipView)
-		pageDidScrolled?((documentSize: genericView.frame.size, position: genericView.scrollPosition().current))
+		pageDidScrolled?((documentSize: genericView.contentView.bounds.size, position: genericView.scrollPosition().current))
 	}
 	
     private func saveArticleProgress() {
