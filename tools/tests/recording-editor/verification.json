@@ -131,24 +131,65 @@
   },
   "camera_shutdown_revalidation": {
     "date": "2026-10-27",
-    "master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+    "master": "605ade9e0e467f88da6de7c209a874a439139e21",
     "change": "Keep the pipeline status subscription after viewWillDisappear; disposal still occurs in deinit. Preview and countdown cleanup remain unchanged.",
     "before": {
       "regression_cases_failed": 3,
       "existing_editor_cases_passed": 15,
-      "controller_sha256": "6f7fe8dcecd44b8253654005b1f4a18d8aab042478280bbc494a2ae6d309b0de"
+      "controller_sha256": "6f7fe8dcecd44b8253654005b1f4a18d8aab042478280bbc494a2ae6d309b0de",
+      "master": "e537320b28d79cecc1baf716bcbf822b02f93b7a"
     },
     "after": {
       "cases_passed": 18,
       "cases_failed": 0,
-      "controller_sha256": "0e3abd76cec0ba8f5343ecce56d3c55b09b4f24e35ddb0cb905107a3e8cf957e"
+      "controller_sha256": "0e3abd76cec0ba8f5343ecce56d3c55b09b4f24e35ddb0cb905107a3e8cf957e",
+      "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+      "final_test_log_sha256": "b21682a82fafb886bcc1fe1dc6a33f7e9ba63f4bf2fbc0678b5e692007b05c2b"
     },
     "test_method": "Current controller source compiled with capture/view probes. Physical camera shutdown is not established by these tests.",
     "log_hashes": {
       "before": "4b95498084c03dcf5e908798db7c11bf8e4e7d30f43d82e68327a5c064bef492",
       "after": "8846a221bd20aca42a9ad601c2c475f84c06401df390aa70f7d6e5957f96c23b"
     },
-    "full_client_build": "pending",
-    "physical_camera_verification": "pending"
+    "full_client_build": {
+      "result": "PASS",
+      "configuration": "Debug arm64",
+      "code_commit": "feb84919ea41f30e024927d28c963eb57bd053d6",
+      "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+      "strict_signature_verification": "PASS",
+      "initial_e537_builds": {
+        "master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+        "code_commit": "39b2e33519795a9da41e89fb54d01c9f6af47b57",
+        "unguarded_log_sha256": "73b9d69b133b7012c57f474b7a1eb446a7c97a457a4e11014c844b87978514c9",
+        "guarded_log_sha256": "739787fe2741bb985c7db14c93c3bc316558e4cea066d634093fe50761fa1940"
+      },
+      "final_guarded_log_sha256": "184c725c79b8779f6cce710c016923ae0ebd51fb0465035cfa0cb7355dcf04f3"
+    },
+    "physical_camera_verification": {
+      "result": "PASS with manual assistance and local sending guard",
+      "session_cycles_observed": 6,
+      "manual_user_confirmation": "Recording window closed and camera indicator switched off after pause/discard.",
+      "capture_log_sha256": "e7649a47058570149dbb9dedf119a392f2d43c6bd2c8ef3b64c95bdb6d6045cb",
+      "limitations": [
+        "Recording lifetime values are not camera-shutdown latency measurements.",
+        "The retained-controller guarantee is verified by three source-derived regression tests; physical notifications do not establish object lifetime.",
+        "Normal send/upload/export behavior was not validated with the local sending guard enabled."
+      ],
+      "automation_limitation": "UI automation did not expose the separate recording window. Pause/discard actions were performed by the user; automation alone is not marked passing.",
+      "initial_unguarded_attempt": "Separate recording window was not exposed by automation; recordings reached automatic completion and test videos appeared in Saved Messages. This attempt is not counted as a passing manual cancellation test.",
+      "all_start_notifications_report_running": true,
+      "all_stop_notifications_report_not_running": true,
+      "live_test_master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+      "live_test_code_commit": "39b2e33519795a9da41e89fb54d01c9f6af47b57",
+      "final_source_equivalence": "Recorder controller, capture pipeline, modal preview and recording controls are byte-identical between the live-tested source and final master + fix. The local guarded ChatController is also byte-identical."
+    },
+    "local_test_guard": "Local-only media-send and recording-pre-upload gate; excluded from PR. Temporary capture observers removed and debugger detached after validation.",
+    "initial_regression_master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+    "final_client_startup": {
+      "result": "PASS",
+      "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+      "code_commit": "feb84919ea41f30e024927d28c963eb57bd053d6",
+      "actual": "Existing account remained available and Saved Messages opened. No further recordings or media actions were performed."
+    }
   }
 }
