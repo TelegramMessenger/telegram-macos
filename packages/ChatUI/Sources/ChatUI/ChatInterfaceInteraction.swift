@@ -718,9 +718,7 @@ public final class ChatInteraction : InterfaceObserver  {
                     case .automatic:
                         invoke = true
                     default:
-                        if let count = presentation.historyCount, count > 1 {
-                            invoke = true
-                        }
+                        break
                     }
                 }
                 if invoke {
