@@ -71,5 +71,56 @@ private enum DeveloperAppResetTests {
             try require(try Data(contentsOf: invalidAccount) == Data("preserve".utf8), "An invalid target must not delete its parent")
             print("Passed: \(action.title) with missing or inaccessible postbox")
         }
+
+        let opener = root.appendingPathComponent("fixture opener.sh")
+        let record = root.appendingPathComponent("relaunch-arguments")
+        let bundle = root.appendingPathComponent("Telegram's $HOME \"fixture\".app")
+        let script = """
+        #!/bin/sh
+        printf '%s\n' "$@" >> "$DEVELOPER_RELAUNCH_RECORD"
+        if /bin/kill -0 "$DEVELOPER_RELAUNCH_PARENT" 2>/dev/null; then
+            printf 'alive\n' >> "$DEVELOPER_RELAUNCH_RECORD"
+        else
+            printf 'exited\n' >> "$DEVELOPER_RELAUNCH_RECORD"
+        fi
+        """
+        try Data(script.utf8).write(to: opener)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: opener.path)
+
+        let parent = Process()
+        parent.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        parent.arguments = ["30"]
+        try parent.run()
+        defer {
+            if parent.isRunning {
+                parent.terminate()
+                parent.waitUntilExit()
+            }
+        }
+
+        let relaunch = DeveloperAppReset.relaunchProcess(bundleURL: bundle, parentProcessIdentifier: parent.processIdentifier, openerURL: opener)
+        relaunch.environment = ["DEVELOPER_RELAUNCH_RECORD": record.path, "DEVELOPER_RELAUNCH_PARENT": String(parent.processIdentifier)]
+        try relaunch.run()
+        defer {
+            if relaunch.isRunning {
+                relaunch.terminate()
+                relaunch.waitUntilExit()
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        try require(!fileManager.fileExists(atPath: record.path), "Relaunch must wait until the old process exits")
+        parent.terminate()
+        parent.waitUntilExit()
+
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while relaunch.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        try require(!relaunch.isRunning, "Relaunch must open the app after the old process exits")
+        relaunch.waitUntilExit()
+        try require(relaunch.terminationStatus == 0, "Relaunch helper must finish successfully")
+        let arguments = try String(contentsOf: record, encoding: .utf8)
+        try require(arguments == "-n\n" + bundle.path + "\nexited\n", "Relaunch must preserve the bundle path and open exactly once after exit")
+        print("Passed: relaunch waits for exit and preserves the app bundle path")
     }
 }

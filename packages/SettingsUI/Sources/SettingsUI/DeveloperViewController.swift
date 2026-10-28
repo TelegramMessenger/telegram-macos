@@ -432,7 +432,11 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
         }
     }, resetApp: { action in
         confirmDeveloperAppReset(for: context.window, action: action) {
-            action.perform(accountBasePath: context.account.basePath)
+            do {
+                try action.performAndRelaunch(accountBasePath: context.account.basePath)
+            } catch {
+                alert(for: context.window, header: "Reset App", info: "Could not prepare to restart Telegram. Please try again.")
+            }
         }
     })
 
