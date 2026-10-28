@@ -79,7 +79,7 @@ public struct ForumUI {
                     return ready.get() |> take(1)
                 }
                 
-                if displayAsTabs == true || context.layout == .minimisize {
+                if (displayAsTabs == true && peerId != context.peerId) || context.layout == .minimisize {
                     return insertChat(true)
                 } else if let value = value {
                     if !value {

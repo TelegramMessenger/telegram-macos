@@ -3641,6 +3641,9 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     }
     
     open override var fullSlideAnimation: Bool {
+        if case .savedMessagesChats = self.mode {
+            return true
+        }
         return !self.mode.isForumLike || self.mode.isFullForum
     }
     
