@@ -57,7 +57,7 @@ public struct ForumUI {
     
     
 
-    public static func open(_ peerId: PeerId, addition: Bool, context: any AccountContextProtocol, threadId: Int64? = nil, fullWidth: Bool = false) {
+    public static func open(_ peerId: PeerId, addition: Bool, context: any AccountContextProtocol, threadId: Int64? = nil, fullWidth: Bool = false, initialAction: ChatInitialAction? = nil) {
 
 
         let signal: Signal<Bool, NoError>
@@ -71,9 +71,10 @@ public struct ForumUI {
             |> take(1)
             
             signal = (viewAsMessages) |> mapToSignal { value, displayAsTabs in
+                let chatInitialAction = displayAsTabs == true || value == true ? initialAction : nil
                 let insertChat:(Bool)->Signal<Bool, NoError> = { displayAsTabs in
                     let ready = Promise<Bool>()
-                    ChatListUIHooks.shared.navigateToChatObserved(context.bindings.rootNavigation(), context, .peer(peerId), .history, nil, nil, nil, addition, nil, callback: { controller in
+                    ChatListUIHooks.shared.navigateToChatObserved(context.bindings.rootNavigation(), context, .peer(peerId), .history, nil, chatInitialAction, nil, addition, nil, callback: { controller in
                         ready.set(controller.ready.get() |> map { displayAsTabs ? false : context.layout == .single ? false : $0 })
                     })
                     return ready.get() |> take(1)

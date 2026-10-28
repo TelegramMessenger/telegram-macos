@@ -460,11 +460,17 @@ private func openNoPaidMessagesPeer(_ peer: EnginePeer, token: String, context: 
 
 private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: ChatInitialAction?, forceProfile: Bool, context: AccountContext, window: Window, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
     do {
-        var joinsVoiceChat = false
+        var joinVoiceChatAction: ChatInitialAction?
         if case .joinVoiceChat = action {
-            joinsVoiceChat = true
+            joinVoiceChatAction = action
         }
-        if peer.isForum, !joinsVoiceChat {
+        if peer.isForum, messageId == nil, let joinVoiceChatAction, let current = context.bindings.rootNavigation().controller as? ChatController, current.chatLocation.peerId == peer.id, current.mode == .history || current.mode.isTopicMode {
+            closeAllModals(window: window)
+            context.window.makeKeyAndOrderFront(nil)
+            current.chatInteraction.invokeInitialAction(action: joinVoiceChatAction)
+            return
+        }
+        if peer.isForum {
             closeAllModals(window: window)
             if let messageId {
                 let signal = context.engine.messages.getMessagesLoadIfNecessary([messageId])
@@ -486,7 +492,7 @@ private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: C
                     }
                 })
             } else {
-                ForumUI.open(peer.id, addition: true, context: context)
+                ForumUI.open(peer.id, addition: true, context: context, initialAction: joinVoiceChatAction)
             }
         } else {
             let openChat: Bool
