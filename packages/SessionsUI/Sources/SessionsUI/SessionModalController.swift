@@ -177,15 +177,6 @@ private func sessionDetailEntry(sectionId: Int32, index: Int32, identifier: Inpu
     })
 }
 
-private func sessionVerifiedIcon() -> CGImage {
-    return generateImage(NSMakeSize(16, 16), contextGenerator: { size, context in
-        context.clear(CGRect(origin: .zero, size: size))
-        context.setFillColor(theme.colors.underSelectedColor.cgColor)
-        context.fillEllipse(in: NSMakeRect(4, 4, size.width - 8, size.height - 8))
-        context.draw(TelegramThemeHooks.shared.image(.iconVerifyDialog).precomposed(theme.colors.accent), in: CGRect(origin: .zero, size: size))
-    })!
-}
-
 private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
     
@@ -218,7 +209,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     index += 1
 
     let isOfficial = state.session.flags.contains(.isOfficial)
-    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("application"), name: strings().sessionPreviewApp, value: state.session.appName, viewType: .firstItem, accessoryImage: isOfficial ? sessionVerifiedIcon() : nil, accessoryTooltip: isOfficial ? "This session is from the official Telegram app" : nil)) //TODOLANG
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("application"), name: strings().sessionPreviewApp, value: state.session.appName, viewType: .firstItem, accessoryImage: isOfficial ? theme.icons.verifyDialog : nil, accessoryTooltip: isOfficial ? "This session is from the official Telegram app" : nil)) //TODOLANG
     index += 1
 
     entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("version"), data: InputDataGeneralData(name: "Version", color: theme.colors.text, type: .context(state.session.appVersion), viewType: .innerItem, enabled: true))) //TODOLANG
@@ -250,7 +241,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     }
 
     let dateFormatter = DateFormatter()
-    dateFormatter.locale = .current
+    dateFormatter.locale = appAppearance.locale
     dateFormatter.timeZone = .current
     dateFormatter.dateStyle = .medium
     dateFormatter.timeStyle = .medium
@@ -259,7 +250,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("first_signed_at"), name: "First Signed At", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.creationDate))), viewType: ip.isEmpty && location.isEmpty ? .firstItem : .innerItem)) //TODOLANG
     index += 1
 
-    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("last_signed_at"), name: "Last Signed At", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.activityDate))), viewType: .lastItem)) //TODOLANG
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("last_active"), name: "Last Active", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.activityDate))), viewType: .lastItem)) //TODOLANG
     index += 1
 
     if !location.isEmpty {
