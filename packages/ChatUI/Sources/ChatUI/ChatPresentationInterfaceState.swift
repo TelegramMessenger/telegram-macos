@@ -868,7 +868,13 @@ public class ChatPresentationInterfaceState: Equatable {
                 if let peer = peer, peer.isBot {
                     return .action(strings().chatInputRestart, { chatInteraction in
                         chatInteraction.unblock()
-                        chatInteraction.startBot()
+                        var hasPendingStart = false
+                        if case .start? = chatInteraction.presentation.initialAction {
+                            hasPendingStart = true
+                        }
+                        if !hasPendingStart {
+                            chatInteraction.startBot()
+                        }
                     }, right: nil, left: nil)
                 }
                 
