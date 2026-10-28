@@ -171,6 +171,7 @@ private struct State : Equatable {
     var customPrompt: String = ""
     var translatedRich: InstantPage? = nil
     var richCache: [ComposeKey: InstantPage] = [:]
+    var canCopy: Bool = true
 
     var cacheKey: ComposeKey {
         return ComposeKey(mode: mode, toLang: to, styleId: styleId, emojify: emojify, toneId: toneId, prompt: styleId == "prompt" ? customPrompt : "")
@@ -815,7 +816,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                     toneLabel: nil,
                     toneName: nil,
                     toneMenu: nil
-                ), richPage: arguments.richPage, viewType: .firstItem, reveal: arguments.revealFrom)
+                ), richPage: arguments.richPage, viewType: .firstItem, canCopy: state.canCopy, reveal: arguments.revealFrom)
             }))
             index += 1
         }
@@ -936,9 +937,9 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("translated"), equatable: .init(state), comparable: nil, item: { initialSize, stableId in
             let translatedViewType: GeneralViewType = (showOriginal || isStyleMode) ? .lastItem : .singleItem
             let showPreviousWhileLoading = state.isTranslating && state.translated != nil
-            return TranslateTableRowItem(initialSize, stableId: stableId, context: arguments.context, text: state.translated ?? "", entities: state.translatedEntities, revealed: state.toIsRevealed, headerData: translatedHeader, isLoading: state.translated == nil || state.isTranslating, originalText: showPreviousWhileLoading ? state.translated : state.text, originalEntities: showPreviousWhileLoading ? state.translatedEntities : state.textEntities, richPage: state.translatedRich, viewType: translatedViewType, copyTranslation: {
+            return TranslateTableRowItem(initialSize, stableId: stableId, context: arguments.context, text: state.translated ?? "", entities: state.translatedEntities, revealed: state.toIsRevealed, headerData: translatedHeader, isLoading: state.translated == nil || state.isTranslating, originalText: showPreviousWhileLoading ? state.translated : state.text, originalEntities: showPreviousWhileLoading ? state.translatedEntities : state.textEntities, richPage: state.translatedRich, viewType: translatedViewType, copyTranslation: state.canCopy ? {
                 arguments.copyTranslation()
-            }, reveal: arguments.revealTo)
+            } : nil, canCopy: state.canCopy, reveal: arguments.revealTo)
         }))
         index += 1
 
@@ -955,12 +956,14 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     }
 
     if state.translated != nil, arguments.translateEntireChat != nil {
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("copy_translation"), data: .init(name: strings().translateCopyToClipboard, color: theme.colors.accent, viewType: .firstItem, action: {
-            arguments.copyTranslation()
-        })))
-        index += 1
+        if state.canCopy {
+            entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("copy_translation"), data: .init(name: strings().translateCopyToClipboard, color: theme.colors.accent, viewType: .firstItem, action: {
+                arguments.copyTranslation()
+            })))
+            index += 1
+        }
 
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("translate_chat"), data: .init(name: strings().translateTranslateEntireChat, color: theme.colors.accent, viewType: .lastItem, action: {
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("translate_chat"), data: .init(name: strings().translateTranslateEntireChat, color: theme.colors.accent, viewType: state.canCopy ? .lastItem : .singleItem, action: {
             arguments.translateEntireChat?()
         })))
         index += 1
@@ -1044,6 +1047,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     let configTones = translationStyles(from: context)
     var initialState = State(text: text, textEntities: entities, from: from, to: Translate.normalizeLanguageCode(toLang), fromIsRevealed: !canBreak, toIsRevealed: true)
     initialState.tones = configTones
+    initialState.canCopy = messageId == nil
     initialState.mode = isInputMode ? .style : .translate
     initialState.styleId = ""
     if isInputMode {
@@ -1056,6 +1060,28 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
         statePromise.set(stateValue.modify (f))
+    }
+
+    if let messageId {
+        let isCopyProtected = context.account.postbox.transaction { transaction -> Bool in
+            guard let message = transaction.getMessage(messageId) else {
+                return true
+            }
+            if message.containsSecretMedia || message.isCopyProtected() {
+                return true
+            }
+            if let cachedData = transaction.getPeerCachedData(peerId: messageId.peerId) as? CachedUserData {
+                return cachedData.flags.contains(.copyProtectionEnabled) || cachedData.flags.contains(.myCopyProtectionEnabled)
+            }
+            return false
+        }
+        actionsDisposable.add((isCopyProtected |> deliverOnMainQueue).start(next: { isCopyProtected in
+            updateState { current in
+                var current = current
+                current.canCopy = !isCopyProtected
+                return current
+            }
+        }))
     }
 
     let reloadStyles: ValuePromise<Int32> = ValuePromise(0, ignoreRepeated: false)
