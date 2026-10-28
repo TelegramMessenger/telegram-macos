@@ -4460,9 +4460,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         let _afterSentTransition:(Bool)->Void = { [weak self] flushInput in
             self?.chatInteraction.update({ presentation in
-                let keepsInput = !flushInput && !presentation.interfaceState.inputState.inputText.isEmpty
-                return presentation.updatedInputQueryResult {_ in
-                    return nil
+                let keepsInput = !flushInput && presentation.interfaceState.editState == nil && !presentation.interfaceState.inputState.inputText.isEmpty
+                return presentation.updatedInputQueryResult { current in
+                    return keepsInput ? current : nil
                 }.updatedInterfaceState { current in
                 
                     var value: ChatInterfaceState = current
