@@ -77,6 +77,8 @@ private final class DownloadedMediaStoreContext {
                 storeAsset()
 
                 completed()
+            }, completed: {
+                completed()
             })
         } else {
             completed()

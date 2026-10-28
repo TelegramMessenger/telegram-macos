@@ -65,10 +65,9 @@ public class PeerMediaRowItem: GeneralRowItem {
         let messageId = self.message.id
         let mode = self.galleryType
                 
-        return resourceData
-        |> take(1)
+        return combineLatest(resourceData |> take(1), isMessageCopyProtected(messageId, postbox: context.account.postbox))
         |> deliverOnMainQueue
-        |> map { resourceData in
+        |> map { resourceData, isStoredCopyProtected in
             
             var items:[ContextMenuItem] = []
             
@@ -80,7 +79,7 @@ public class PeerMediaRowItem: GeneralRowItem {
             
             
 
-            let isCopyProtected = message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: interface.presentation.cachedData) == true
+            let isCopyProtected = isStoredCopyProtected || message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: interface.presentation.cachedData) == true
             if let resourceData = resourceData, !isCopyProtected {
                 firstBlock.append(ContextMenuItem(strings().contextSaveMedia, handler: {
                     saveAs(resourceData.0, context: context, message: message)
