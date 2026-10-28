@@ -5503,7 +5503,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                         if let action = action {
                             strongSelf.chatInteraction.update({ $0.updatedInitialAction(action) })
-                            strongSelf.chatInteraction.invokeInitialAction()
+                            if !strongSelf.chatInteraction.waitsForBotStart(action) {
+                                strongSelf.chatInteraction.invokeInitialAction()
+                            }
                         }
                     } else {
                         if mode.isSavedMessagesThread {
@@ -8689,6 +8691,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             
             if !botStartCheckedOnPeer, self.chatInteraction.peer != nil {
                 botStartCheckedOnPeer = true
+                if let peer = self.chatInteraction.peer, !peer.isBot, case .start? = self.chatInteraction.presentation.initialAction {
+                    self.chatInteraction.update({ $0.withoutInitialAction() })
+                }
                 if self.historyTransitionApplied {
                     self.updateEmptyBotStartAction()
                 }

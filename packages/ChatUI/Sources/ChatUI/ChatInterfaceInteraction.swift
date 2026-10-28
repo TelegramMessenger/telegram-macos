@@ -708,6 +708,13 @@ public final class ChatInteraction : InterfaceObserver  {
         
     }
     
+    public func waitsForBotStart(_ action: ChatInitialAction) -> Bool {
+        if case let .start(_, behavior) = action, behavior != .automatic, presentation.peer?.isBot == true {
+            return true
+        }
+        return false
+    }
+
     public func invokeInitialAction(includeAuto:Bool = false, animated: Bool = true, action: ChatInitialAction? = nil) {
         if let action = action ?? presentation.initialAction {
             switch action {
@@ -718,7 +725,11 @@ public final class ChatInteraction : InterfaceObserver  {
                     case .automatic:
                         invoke = true
                     default:
-                        break
+                        if let peer = presentation.peer, !peer.isBot {
+                            update({
+                                $0.withoutInitialAction()
+                            })
+                        }
                     }
                 }
                 if invoke {

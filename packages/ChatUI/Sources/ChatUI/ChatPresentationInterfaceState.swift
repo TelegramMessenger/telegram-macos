@@ -574,7 +574,7 @@ public class ChatPresentationInterfaceState: Equatable {
     
     public var state:ChatState {
         if self.selectionState == nil {
-            if let initialAction = initialAction, case .start = initialAction  {
+            if let initialAction = initialAction, case .start = initialAction, peer?.isBot == true, isBlocked != true {
                 return .botStart(strings().chatInputStartBot, { chatInteraction in
                     chatInteraction.invokeInitialAction()
                 })

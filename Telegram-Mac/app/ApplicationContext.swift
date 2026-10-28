@@ -41,7 +41,13 @@ func navigateToChat(navigation: NavigationViewController?, context: AccountConte
         
         if current?.chatLocation == location, additional {
             current?.scrollup(force: true)
-            current?.chatInteraction.invokeInitialAction(action: initialAction)
+            if let initialAction, let chatInteraction = current?.chatInteraction {
+                if chatInteraction.waitsForBotStart(initialAction) {
+                    chatInteraction.update({ $0.updatedInitialAction(initialAction) })
+                } else {
+                    chatInteraction.invokeInitialAction(action: initialAction)
+                }
+            }
             return
         }
         let controller: ChatController = chatNavigationChild() {
