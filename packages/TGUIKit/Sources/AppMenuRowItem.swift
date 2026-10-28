@@ -370,6 +370,7 @@ open class AppMenuRowView: AppMenuBasicItemView {
     public let contentView = View()
     
     private let hoverDisposable = MetaDisposable()
+    private let submenuDisposable = MetaDisposable()
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -392,7 +393,16 @@ open class AppMenuRowView: AppMenuBasicItemView {
             guard let item = self?.item as? AppMenuRowItem, CheckWindow() else {
                 return
             }
-            item.interaction?.presentSubmenu(item.item)
+            guard item.item.submenu != nil else {
+                item.interaction?.presentSubmenu(item.item)
+                return
+            }
+            self?.submenuDisposable.set(delaySignal(0.157).start(completed: {
+                guard let item = self?.item as? AppMenuRowItem, self?.containerView.controlState == .Hover, CheckWindow() else {
+                    return
+                }
+                item.interaction?.presentSubmenu(item.item)
+            }))
         }, for: .Hover)
         
         
@@ -429,6 +439,10 @@ open class AppMenuRowView: AppMenuBasicItemView {
                 self?.updateState(.Highlight)
             }
             self?.hoverDisposable.set(nil)
+            self?.submenuDisposable.set(nil)
+            if item.item.submenu != nil {
+                item.interaction?.presentSubmenu(item.item)
+            }
         }, for: .Highlight)
         containerView.set(handler: { [weak self] _ in
             if !CheckWindow() {
@@ -437,6 +451,7 @@ open class AppMenuRowView: AppMenuBasicItemView {
             self?.drawable?.updateState(.Normal)
             self?.updateState(.Normal)
             self?.hoverDisposable.set(nil)
+            self?.submenuDisposable.set(nil)
         }, for: .Normal)
         containerView.set(handler: { [weak self] _ in
             if !CheckWindow() {
