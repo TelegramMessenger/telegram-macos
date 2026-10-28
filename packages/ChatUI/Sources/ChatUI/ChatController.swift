@@ -4468,11 +4468,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if flushInput {
                         value = value
                             .withUpdatedInputState(ChatTextInputState())
+                            .withUpdatedComposeDisableUrlPreview(nil)
+                            .withUpdatedMessageEffect(nil)
                     }
                     value = value.withUpdatedReplyMessageId(nil)
                         .withUpdatedForwardMessageIds([])
-                        .withUpdatedComposeDisableUrlPreview(nil)
-                        .withUpdatedMessageEffect(nil)
                         .withUpdatedSuggestPost(nil)
                         .withoutEditMessage()
                 
@@ -4482,7 +4482,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                     }
                     return value
-                }.updatedUrlPreview(nil).updateBotMenu({ current in
+                }.updatedUrlPreview(flushInput ? nil : presentation.urlPreview).updateBotMenu({ current in
                     var current = current
                     current?.revealed = false
                     return current
