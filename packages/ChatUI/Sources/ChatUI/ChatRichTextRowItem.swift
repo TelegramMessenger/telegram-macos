@@ -1352,6 +1352,10 @@ public final class RichTextDraftPreviewView: View {
 
     /// True while the live inline editor is shown (vs the read-only preview).
     public var isInlineEditing: Bool { isEditable }
+    private var reseedsEditor = false
+    public func reseedEditorOnNextUpdate() {
+        reseedsEditor = true
+    }
 
     /// Undo / redo on the inline editor (host wires ⌘Z / ⌘⇧Z to these).
     public func undoInline() { if #available(macOS 12, *) { richEditor?.undo() } }
@@ -1522,7 +1526,8 @@ public final class RichTextDraftPreviewView: View {
         // user is actively editing, the editor is the live source of truth — re-seeding (e.g. from our own
         // draft-sync round-trip) would reset the caret.
         let focused = (window?.firstResponder as? NSView).map { $0 === editor || $0.isDescendant(of: editor) } ?? false
-        if isNew || !focused {
+        if isNew || !focused || reseedsEditor {
+            reseedsEditor = false
             let (blocks, media) = richTextOutgoing(from: instantPage)
             self.mediaCache = media
             editor.setOutgoingBlocks(blocks)

@@ -496,22 +496,28 @@ public final class ChatInteraction : InterfaceObserver  {
     // survives a relaunch. (Cross-device sync is a follow-up.)
     private static let globalRichTextDrafts = ChatRichTextDraftStore<InstantPage>()
     private var richTextDraftKey: ChatRichTextDraftKey {
+        return richTextDraftKey(threadId: chatLocation.threadId)
+    }
+    private func richTextDraftKey(threadId: Int64?) -> ChatRichTextDraftKey {
         let isWelcome: Bool
         if case .welcomeMessages = mode.customChatContents?.kind {
             isWelcome = true
         } else {
             isWelcome = false
         }
-        return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: chatLocation.threadId, isWelcome: isWelcome)
+        return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: threadId, isWelcome: isWelcome)
     }
     private let richTextDraftPromise = ValuePromise<InstantPage?>(nil, ignoreRepeated: false)
     private var persistentRichTextDraftId: EngineDataBuffer? {
-        guard mode.customChatContents == nil else {
+        return persistentRichTextDraftId(threadId: chatLocation.threadId)
+    }
+    private func persistentRichTextDraftId(threadId: Int64?) -> EngineDataBuffer? {
+        guard mode.customChatContents == nil, mode.customChatLink == nil else {
             return nil
         }
         let id = EngineDataBuffer(length: 16)
         id.setInt64(0, value: peerId.toInt64())
-        id.setInt64(8, value: chatLocation.threadId ?? 0)
+        id.setInt64(8, value: threadId ?? 0)
         return id
     }
     public var richTextDraft: InstantPage? { ChatInteraction.globalRichTextDrafts.value(for: richTextDraftKey) }
@@ -523,14 +529,16 @@ public final class ChatInteraction : InterfaceObserver  {
         }
         richTextDraftPromise.set(page)
         if persist {
-            storePersistentRichTextDraft(page)
+            storePersistentRichTextDraft(page, threadId: chatLocation.threadId)
         }
     }
-    public func storeRichTextDraftSnapshot(_ page: InstantPage) {
-        if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey) {
-            invalidateDeferredSendActions()
+    public func storeRichTextDraftSnapshot(_ page: InstantPage, threadId: Int64?) {
+        let key = richTextDraftKey(threadId: threadId)
+        guard ChatInteraction.globalRichTextDrafts.value(for: key) != nil, ChatInteraction.globalRichTextDrafts.set(page, for: key) else {
+            return
         }
-        storePersistentRichTextDraft(page)
+        invalidateDeferredSendActions()
+        storePersistentRichTextDraft(page, threadId: threadId)
     }
     public func reloadRichTextDraft() {
         richTextDraftPromise.set(richTextDraft)
@@ -555,10 +563,10 @@ public final class ChatInteraction : InterfaceObserver  {
         })
     }
     public func removePersistentRichTextDraft() {
-        storePersistentRichTextDraft(nil)
+        storePersistentRichTextDraft(nil, threadId: chatLocation.threadId)
     }
-    private func storePersistentRichTextDraft(_ page: InstantPage?) {
-        guard let id = persistentRichTextDraftId else {
+    private func storePersistentRichTextDraft(_ page: InstantPage?, threadId: Int64?) {
+        guard let id = persistentRichTextDraftId(threadId: threadId) else {
             return
         }
         if let page {

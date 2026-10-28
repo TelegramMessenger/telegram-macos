@@ -830,8 +830,9 @@ public class ChatInputView: View, Notifable {
 
     private func scheduleInlineRichDraftStore() {
         hasPendingInlineRichDraftStore = true
+        let threadId = chatInteraction.chatLocation.threadId
         inlineRichDraftStoreDisposable.set((Signal<Void, NoError>.single(Void()) |> delay(0.5, queue: .mainQueue())).start(completed: { [weak self] in
-            self?.storeInlineRichDraft()
+            self?.storeInlineRichDraft(threadId: threadId)
         }))
     }
 
@@ -840,13 +841,13 @@ public class ChatInputView: View, Notifable {
         inlineRichDraftStoreDisposable.set(nil)
     }
 
-    private func storeInlineRichDraft() {
+    private func storeInlineRichDraft(threadId: Int64?) {
         hasPendingInlineRichDraftStore = false
-        guard chatInteraction.richTextDraft != nil, let preview = container.richDraftPreview, preview.isInlineEditing, let blocks = preview.currentOutgoing() else {
+        guard let preview = container.richDraftPreview, preview.isInlineEditing, let blocks = preview.currentOutgoing() else {
             return
         }
         if let page = richTextInstantPage(from: blocks, media: preview.currentMedia()) {
-            chatInteraction.storeRichTextDraftSnapshot(page)
+            chatInteraction.storeRichTextDraftSnapshot(page, threadId: threadId)
         }
     }
 
@@ -1253,7 +1254,11 @@ public class ChatInputView: View, Notifable {
         if let value = value as? ChatPresentationInterfaceState {
             if let oldValue = oldValue as? ChatPresentationInterfaceState, value.chatLocation != oldValue.chatLocation {
                 self.bindIncomingTypingDraft(for: value.chatLocation, animated: animated)
+                if self.hasPendingInlineRichDraftStore {
+                    self.storeInlineRichDraft(threadId: oldValue.chatLocation.threadId)
+                }
                 self.cancelInlineRichDraftStore()
+                self.container.richDraftPreview?.reseedEditorOnNextUpdate()
                 self.deletedRichDraft = nil
                 self.chatInteraction.reloadRichTextDraft()
                 self.chatInteraction.loadPersistentRichTextDraft()
@@ -2166,7 +2171,7 @@ public class ChatInputView: View, Notifable {
     
     deinit {
         if self.hasPendingInlineRichDraftStore {
-            self.storeInlineRichDraft()
+            self.storeInlineRichDraft(threadId: self.chatInteraction.chatLocation.threadId)
         }
         self.inlineRichDraftStoreDisposable.dispose()
         self.accessoryDisposable.dispose()
