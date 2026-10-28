@@ -213,10 +213,8 @@ public final class ChatInputContainerView: FlippableView {
 
     fileprivate var richDraftSlotHeight: CGFloat {
         let minHeight = CGFloat(textView.min_height)
-        if richDraftPreviewHeight - RichTextDraftPreviewView.vInset * 2 <= minHeight {
-            return minHeight
-        }
-        return richDraftPreviewHeight
+        let draftHeight = richDraftPreviewHeight - RichTextDraftPreviewView.vInset * 2
+        return max(minHeight, min(richDraftPreviewHeight, draftHeight * 2 - minHeight))
     }
 
     public func contentHeight(for width: CGFloat) -> CGFloat {
@@ -527,7 +525,7 @@ public final class ChatInputContainerView: FlippableView {
             let sendColumnMidX = containerWidth - ChatInputSendButton.fieldInset - sendWidth / 2
             let stackedY = accessoryHeight + 8
             let frame: NSRect
-            if sendButton.isInField, stackedY + bs.height > contentHeight - sendSize.height {
+            if richDraftPreview != nil, sendButton.isInField, stackedY + bs.height > contentHeight - sendSize.height {
                 let slot = actionsView.entertaiments.frame.size
                 frame = NSMakeRect(fieldContentWidth - (slot.width + bs.width) / 2, contentHeight - (slot.height + bs.height) / 2, bs.width, bs.height)
             } else {
