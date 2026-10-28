@@ -2173,6 +2173,7 @@ public final class L10n {
   public static var channelEventFilterAdminsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.AdminsHeader") }
   /// EVENTS
   public static var channelEventFilterEventsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.EventsHeader") }
+  public static var channelEventFilterFilters: String  { return L10n.tr("Localizable", "Channel.EventFilter.Filters") }
   /// Empty
   public static var channelEventLogEmpty: String  { return L10n.tr("Localizable", "Channel.EventLog.Empty") }
   /// **No actions found**\n\nNo recent actions that match your query were found.
@@ -3495,6 +3496,8 @@ public final class L10n {
   public static var chatContextReturnMessageFee: String  { return L10n.tr("Localizable", "Chat.Context.ReturnMessageFee") }
   /// Save As...
   public static var chatContextSaveMedia: String  { return L10n.tr("Localizable", "Chat.Context.SaveMedia") }
+  public static var chatContextSaveSelectedPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveSelectedPhotos") }
+  public static var chatContextSaveAllPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveAllPhotos") }
   /// Shared Media
   public static var chatContextSharedMedia: String  { return L10n.tr("Localizable", "Chat.Context.SharedMedia") }
   /// Summarize
@@ -10329,6 +10332,22 @@ public final class L10n {
   public static var inviteLinkShareLink: String  { return L10n.tr("Localizable", "InviteLink.ShareLink") }
   /// Link created and copied to clipboard.
   public static var inviteLinkCreateCopied: String  { return L10n.tr("Localizable", "InviteLink.Create.Copied") }
+  /// Everyone on Telegram can scan this code to join your channel.
+  public static var inviteLinkQrCodeInfoChannel: String  { return L10n.tr("Localizable", "InviteLink.QrCode.InfoChannel") }
+  /// Everyone on Telegram can scan this code to join your group.
+  public static var inviteLinkQrCodeInfoGroup: String  { return L10n.tr("Localizable", "InviteLink.QrCode.InfoGroup") }
+  /// Copy Image
+  public static var inviteLinkQrCodeMenuCopyImage: String  { return L10n.tr("Localizable", "InviteLink.QrCode.MenuCopyImage") }
+  /// Copy Link
+  public static var inviteLinkQrCodeMenuCopyLink: String  { return L10n.tr("Localizable", "InviteLink.QrCode.MenuCopyLink") }
+  /// Save Image
+  public static var inviteLinkQrCodeMenuSaveImage: String  { return L10n.tr("Localizable", "InviteLink.QrCode.MenuSaveImage") }
+  /// Share…
+  public static var inviteLinkQrCodeMenuShare: String  { return L10n.tr("Localizable", "InviteLink.QrCode.MenuShare") }
+  /// Share QR Code
+  public static var inviteLinkQrCodeShare: String  { return L10n.tr("Localizable", "InviteLink.QrCode.Share") }
+  /// Invite by QR Code
+  public static var inviteLinkQrCodeTitle: String  { return L10n.tr("Localizable", "InviteLink.QrCode.Title") }
   ///  • expired
   public static var inviteLinkStickerExpired: String  { return L10n.tr("Localizable", "InviteLink.Sticker.Expired") }
   ///  • limit reached
@@ -10875,6 +10894,8 @@ public final class L10n {
   public static var manageLinksContextCopy: String  { return L10n.tr("Localizable", "ManageLinks.Context.Copy") }
   /// Edit Link
   public static var manageLinksContextEdit: String  { return L10n.tr("Localizable", "ManageLinks.Context.Edit") }
+  /// Get QR Code
+  public static var manageLinksContextQrCode: String  { return L10n.tr("Localizable", "ManageLinks.Context.QrCode") }
   /// Revoke Link
   public static var manageLinksContextRevoke: String  { return L10n.tr("Localizable", "ManageLinks.Context.Revoke") }
   /// Share Link

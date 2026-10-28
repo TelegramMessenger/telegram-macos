@@ -15,8 +15,45 @@ public enum ThemeSource : Equatable {
 
 private final class WallpaperCachedRecord {
     public let mode:TableBackgroundMode
+    public let cost: Int
     public init(mode:TableBackgroundMode) {
         self.mode = mode
+        switch mode {
+        case let .background(image, _, _, _, _), let .tiled(image):
+            if let bitmap = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                let bytes = bitmap.bytesPerRow.multipliedReportingOverflow(by: bitmap.height)
+                self.cost = bytes.overflow ? Int.max : bytes.partialValue
+            } else {
+                self.cost = 0
+            }
+        default:
+            self.cost = 0
+        }
+    }
+}
+
+private final class WeakWallpaperCachedRecord {
+    public let restoreMode: () -> TableBackgroundMode?
+
+    public init?(mode: TableBackgroundMode) {
+        switch mode {
+        case let .background(image, intensity, colors, rotation, metadata):
+            self.restoreMode = { [weak image] in
+                guard let image = image else {
+                    return nil
+                }
+                return .background(image: image, intensity: intensity, colors: colors, rotation: rotation, metadata: metadata)
+            }
+        case let .tiled(image):
+            self.restoreMode = { [weak image] in
+                guard let image = image else {
+                    return nil
+                }
+                return .tiled(image: image)
+            }
+        default:
+            return nil
+        }
     }
 }
 
@@ -291,22 +328,52 @@ public enum PhotoCacheKeyEntry : Hashable {
 private class WallpaperCache {
     public let memoryLimit:Int
     private var values:NSCache<NSNumber, WallpaperCachedRecord> = NSCache()
+    private let weakValues = NSCache<NSNumber, WeakWallpaperCachedRecord>()
+    private let lock = NSLock()
     
-    public init(_ memoryLimit:Int = 100) {
+    public init(_ memoryLimit:Int = 100, byteLimit: Int = 64 * 1024 * 1024) {
         self.memoryLimit = memoryLimit
         self.values.countLimit = memoryLimit
+        self.values.totalCostLimit = byteLimit
+        self.weakValues.countLimit = memoryLimit
     }
     
     fileprivate func cacheImage(_ mode: TableBackgroundMode, for key:PhotoCacheKeyEntry) {
-        self.values.setObject(WallpaperCachedRecord(mode: mode), forKey: .init(value: key.hashValue))
+        let record = WallpaperCachedRecord(mode: mode)
+        let cacheKey = NSNumber(value: key.hashValue)
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        if let weakRecord = WeakWallpaperCachedRecord(mode: mode) {
+            self.weakValues.setObject(weakRecord, forKey: cacheKey)
+        } else {
+            self.weakValues.removeObject(forKey: cacheKey)
+        }
+        guard record.cost <= self.values.totalCostLimit else {
+            self.values.removeObject(forKey: cacheKey)
+            return
+        }
+        self.values.setObject(record, forKey: cacheKey, cost: record.cost)
     }
     
     public func cachedImage(for key:PhotoCacheKeyEntry) -> TableBackgroundMode? {
-        return self.values.object(forKey: .init(value: key.hashValue))?.mode
+        let cacheKey = NSNumber(value: key.hashValue)
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        if let mode = self.values.object(forKey: cacheKey)?.mode {
+            return mode
+        }
+        if let mode = self.weakValues.object(forKey: cacheKey)?.restoreMode() {
+            return mode
+        }
+        self.weakValues.removeObject(forKey: cacheKey)
+        return nil
     }
     
     public func clearAll() {
+        self.lock.lock()
+        defer { self.lock.unlock() }
         self.values.removeAllObjects()
+        self.weakValues.removeAllObjects()
     }
 }
 

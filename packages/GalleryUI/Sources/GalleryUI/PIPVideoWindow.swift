@@ -79,8 +79,10 @@ fileprivate class ModernPictureInPictureVideoWindow: NSPanel {
     private let saver: WindowSaver
     fileprivate let __window: Window
     fileprivate let control: PictureInPictureControl
-    private let rect:NSRect
+    private var rect:NSRect
     private let restoreRect: NSRect
+    private var isQuarterTurn: Bool = false
+    private let rotateDisposable = MetaDisposable()
     fileprivate var forcePaused: Bool = false
     fileprivate let item: MGalleryItem
     fileprivate weak var _delegate: InteractionContentViewProtocol?
@@ -189,9 +191,32 @@ fileprivate class ModernPictureInPictureVideoWindow: NSPanel {
             }))
         }
         
+        rotateDisposable.set((item.rotate.get() |> deliverOnMainQueue).start(next: { [weak self] orientation in
+            self?.updateQuarterTurn(orientation?.isQuarterTurn == true)
+        }))
+
         self.control.setMode(.pip, animated: true)
     }
     
+    private func updateQuarterTurn(_ quarter: Bool) {
+        guard quarter != isQuarterTurn else {
+            return
+        }
+        isQuarterTurn = quarter
+        rect = NSMakeRect(rect.minX, rect.minY, rect.height, rect.width)
+        guard isVisible, let screen = NSScreen.main else {
+            return
+        }
+        let savedRect = NSMakeSize(screen.frame.width * 0.3, screen.frame.width * 0.3)
+        self.aspectRatio = self.rect.size.fitted(savedRect)
+        self.minSize = self.rect.size.aspectFitted(savedRect).aspectFilled(NSMakeSize(120, 120))
+        self.maxSize = self.rect.size.aspectFitted(screen.frame.size)
+        let current = self.frame
+        let size = NSMakeSize(current.height, current.width)
+        let origin = NSMakePoint(current.midX - size.width / 2, current.midY - size.height / 2)
+        self.setFrame(NSMakeRect(origin.x, origin.y, size.width, size.height), display: true, animate: true)
+    }
+
     public func hide() {
         
 
@@ -229,6 +254,7 @@ fileprivate class ModernPictureInPictureVideoWindow: NSPanel {
 
     deinit {
         lookAtMessageDisposable.dispose()
+        rotateDisposable.dispose()
         if control.isPictureInPicture {
             control.pause()
         }

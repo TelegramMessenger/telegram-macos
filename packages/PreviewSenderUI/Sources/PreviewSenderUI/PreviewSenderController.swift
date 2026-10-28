@@ -120,6 +120,7 @@ fileprivate class PreviewSenderView : Control {
     fileprivate let textView:UITextView
     fileprivate let sendButton = ImageButton()
     fileprivate let emojiButton = ImageButton()
+    private var renderCancelButton: ImageButton?
     fileprivate let actionsContainerView: View = View()
     fileprivate let headerView: View = View()
     fileprivate let draggingView = DraggingView(frame: NSZeroRect)
@@ -537,6 +538,33 @@ fileprivate class PreviewSenderView : Control {
         needsLayout = true
     }
     
+    func updateRenderCancel(_ cancel: (() -> Void)?) {
+        if let cancel {
+            let current: ImageButton
+            if let view = renderCancelButton {
+                current = view
+            } else {
+                current = ImageButton()
+                current.autohighlight = false
+                current.scaleOnClick = true
+                current.set(image: theme.icons.chatInlineDismiss, for: .Normal)
+                current.frame = emojiButton.frame
+                current.setAccessibilityLabel(strings().voiceOverCommonCancel)
+                inputBox.addSubview(current)
+                renderCancelButton = current
+            }
+            current.removeAllHandlers()
+            current.set(handler: { _ in
+                cancel()
+            }, for: .Click)
+            emojiButton.isHidden = true
+        } else if let view = renderCancelButton {
+            performSubviewRemoval(view, animated: true, scale: true)
+            renderCancelButton = nil
+            emojiButton.isHidden = false
+        }
+    }
+
     private static let fieldEdge: CGFloat = 8
     private static let textInsetX: CGFloat = 12
 
@@ -582,6 +610,9 @@ fileprivate class PreviewSenderView : Control {
 
         let emojiFrame = NSMakeRect(actionsFrame.minX - ChatInputSendButton.fieldTextGap - emojiButton.frame.width, inputBoxFrame.height - emojiButton.frame.height, emojiButton.frame.width, emojiButton.frame.height)
         transition.updateFrame(view: emojiButton, frame: emojiFrame)
+        if let renderCancelButton {
+            transition.updateFrame(view: renderCancelButton, frame: emojiFrame)
+        }
 
         let textInsetX = PreviewSenderView.textInsetX
         let textBoxWidth = max(0, emojiFrame.minX - textInsetX)
@@ -768,15 +799,20 @@ private struct PreviewState : Equatable {
     let medias:[Media]
     let currentState: PreviewSendingState
     let editedData: [URL : EditedImageData]
-    init(urls: [URL], medias: [Media], currentState: PreviewSendingState, editedData: [URL : EditedImageData]) {
+    let renderingPreviews: [URL : CGImage]
+    init(urls: [URL], medias: [Media], currentState: PreviewSendingState, editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:]) {
         self.urls = urls
         self.medias = medias
         self.currentState = currentState
         self.editedData = editedData
+        self.renderingPreviews = renderingPreviews
     }
     
     func withUpdatedEditedData(_ f:([URL : EditedImageData]) -> [URL : EditedImageData]) -> PreviewState {
-        return PreviewState(urls: self.urls, medias: self.medias, currentState: self.currentState, editedData: f(self.editedData))
+        return PreviewState(urls: self.urls, medias: self.medias, currentState: self.currentState, editedData: f(self.editedData), renderingPreviews: self.renderingPreviews)
+    }
+    func withUpdatedRenderingPreviews(_ f:([URL : CGImage]) -> [URL : CGImage]) -> PreviewState {
+        return PreviewState(urls: self.urls, medias: self.medias, currentState: self.currentState, editedData: self.editedData, renderingPreviews: f(self.renderingPreviews))
     }
     func apply(transition: UpdateTransition<Media>, urls:[URL], state: PreviewSendingState) -> PreviewState {
         var medias:[Media] = self.medias
@@ -790,7 +826,7 @@ private struct PreviewState : Equatable {
             medias[idx] = item
         }
         
-        return PreviewState(urls: urls, medias: medias, currentState: state, editedData: self.editedData)
+        return PreviewState(urls: urls, medias: medias, currentState: state, editedData: self.editedData, renderingPreviews: self.renderingPreviews)
     }
 }
 private func == (lhs: PreviewState, rhs: PreviewState) -> Bool {
@@ -803,7 +839,7 @@ private func == (lhs: PreviewState, rhs: PreviewState) -> Bool {
             }
         }
     }
-    return lhs.urls == rhs.urls && lhs.currentState == rhs.currentState && lhs.editedData == rhs.editedData
+    return lhs.urls == rhs.urls && lhs.currentState == rhs.currentState && lhs.editedData == rhs.editedData && lhs.renderingPreviews == rhs.renderingPreviews
 }
 
 
@@ -856,16 +892,16 @@ private enum PreviewEntryId : Hashable {
 
 private enum PreviewEntry : Comparable, Identifiable {
     case section(Int)
-    case media(index: Int, sectionId: Int, url: URL, media: Media, isSpoiler: Bool, payAmount: Int64?)
-    case mediaGroup(index: Int, sectionId: Int, urls: [URL], messages: [Message], isSpoiler: Bool, payAmount: Int64?)
+    case media(index: Int, sectionId: Int, url: URL, media: Media, isSpoiler: Bool, payAmount: Int64?, renderingPreview: CGImage?)
+    case mediaGroup(index: Int, sectionId: Int, urls: [URL], messages: [Message], isSpoiler: Bool, payAmount: Int64?, renderingPreviews: [URL : CGImage])
     case archive(index: Int, sectionId: Int, urls: [URL], media: Media)
     var stableId: PreviewEntryId {
         switch self {
         case let .section(sectionId):
             return .section(sectionId)
-        case let .media(_, _, _, media, _, _):
+        case let .media(_, _, _, media, _, _, _):
             return .media(media)
-        case let .mediaGroup(index, _, _, _, _, _):
+        case let .mediaGroup(index, _, _, _, _, _, _):
             return .mediaGroup(index)
         case .archive:
             return .archive
@@ -876,9 +912,9 @@ private enum PreviewEntry : Comparable, Identifiable {
         switch self {
         case let .section(sectionId):
             return (sectionId + 1) * 1000 - sectionId
-        case let .media(index, sectionId, _, _, _, _):
+        case let .media(index, sectionId, _, _, _, _, _):
             return (sectionId * 1000) + index
-        case let .mediaGroup(index, sectionId, _, _, _, _):
+        case let .mediaGroup(index, sectionId, _, _, _, _, _):
             return (sectionId * 1000) + index
         case let .archive(index, sectionId, _, _):
             return (sectionId * 1000) + index
@@ -889,8 +925,8 @@ private enum PreviewEntry : Comparable, Identifiable {
         switch self {
         case .section:
             return GeneralRowItem(initialSize, height: 20, stableId: stableId)
-        case let .media(_, _, url, media, isSpoiler, payAmount):
-            return MediaPreviewRowItem(initialSize, media: media, context: arguments.context, theme: arguments.theme, editedData: state.editedData[url], isSpoiler: isSpoiler, payAmount: payAmount, edit: {
+        case let .media(_, _, url, media, isSpoiler, payAmount, renderingPreview):
+            return MediaPreviewRowItem(initialSize, media: media, context: arguments.context, theme: arguments.theme, editedData: state.editedData[url], isSpoiler: isSpoiler, payAmount: payAmount, renderingPreview: renderingPreview, edit: {
                 arguments.edit(url)
             }, paint: {
                 arguments.paint(url)
@@ -903,8 +939,8 @@ private enum PreviewEntry : Comparable, Identifiable {
             }, delete: {
               // arguments.delete(url)
             })
-        case let .mediaGroup(_, _, urls, messages, isSpoiler, payAmount):
-            return MediaGroupPreviewRowItem(initialSize, messages: messages, urls: urls, editedData: state.editedData, isSpoiler: isSpoiler, payAmount: payAmount, edit: { url in
+        case let .mediaGroup(_, _, urls, messages, isSpoiler, payAmount, renderingPreviews):
+            return MediaGroupPreviewRowItem(initialSize, messages: messages, urls: urls, editedData: state.editedData, renderingPreviews: renderingPreviews, isSpoiler: isSpoiler, payAmount: payAmount, edit: { url in
                 arguments.edit(url)
             }, paint: { url in
                 arguments.paint(url)
@@ -919,8 +955,8 @@ private enum PreviewEntry : Comparable, Identifiable {
 }
 private func == (lhs: PreviewEntry, rhs: PreviewEntry) -> Bool {
     switch lhs {
-    case let .media(index, sectionId, url, lhsMedia, spoiler, payAmount):
-        if case .media(index, sectionId, url, let rhsMedia, spoiler, payAmount) = rhs {
+    case let .media(index, sectionId, url, lhsMedia, spoiler, payAmount, renderingPreview):
+        if case .media(index, sectionId, url, let rhsMedia, spoiler, payAmount, renderingPreview) = rhs {
             return lhsMedia.isEqual(to: rhsMedia)
         } else {
             return false
@@ -931,8 +967,8 @@ private func == (lhs: PreviewEntry, rhs: PreviewEntry) -> Bool {
         } else {
             return false
         }
-    case let .mediaGroup(index, sectionId, url, lhsMessages, spoiler, payAmount):
-        if case .mediaGroup(index, sectionId, url, let rhsMessages, spoiler, payAmount) = rhs {
+    case let .mediaGroup(index, sectionId, url, lhsMessages, spoiler, payAmount, renderingPreviews):
+        if case .mediaGroup(index, sectionId, url, let rhsMessages, spoiler, payAmount, renderingPreviews) = rhs {
             if lhsMessages.count != rhsMessages.count {
                 return false
             } else {
@@ -977,18 +1013,18 @@ private func previewMediaEntries( _ state: PreviewState) -> [PreviewEntry] {
             }
             let collages = messages.chunks(10)
             for collage in collages {
-                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: state.urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount))
+                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: state.urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
                 index += 1
             }
         } else {
             for (i, media) in state.medias.enumerated() {
-                entries.append(.media(index: index, sectionId: sectionId, url: state.urls[i], media: media, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount))
+                entries.append(.media(index: index, sectionId: sectionId, url: state.urls[i], media: media, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreview: state.renderingPreviews[state.urls[i]]))
                 index += 1
             }
         }
     case .file:
         for (i, media) in state.medias.enumerated() {
-            entries.append(.media(index: index, sectionId: sectionId, url: state.urls[i], media: media, isSpoiler: false, payAmount: state.currentState.payAmount))
+            entries.append(.media(index: index, sectionId: sectionId, url: state.urls[i], media: media, isSpoiler: false, payAmount: state.currentState.payAmount, renderingPreview: nil))
             index += 1
         }
     }
@@ -1298,6 +1334,34 @@ public class PreviewSenderController: ModalViewController, Notifable {
         return true
     }
 
+    private func startRenderingEdit(cancel: @escaping () -> Void) {
+        isRenderingEdit = true
+        renderCancelDisposable.set((Signal<Void, NoError>.single(Void()) |> delay(2.0, queue: .mainQueue())).start(next: { [weak self] in
+            self?.genericView.updateRenderCancel(cancel)
+        }))
+    }
+
+    private func finishRenderingEdit(applied: Bool) {
+        guard isRenderingEdit else { return }
+        isRenderingEdit = false
+        renderCancelDisposable.set(nil)
+        genericView.updateRenderCancel(nil)
+        if applied {
+            flushPendingRenderSend()
+        } else if pendingRenderSend != nil {
+            pendingRenderSend = nil
+            genericView.sendButton.alphaValue = 1.0
+            genericView.sendButton.shake(beep: false)
+        }
+    }
+
+    private func flushPendingRenderSend() {
+        guard !isRenderingEdit, let pending = pendingRenderSend, getMediaUrls() == urls, !getMedias().contains(where: isPreviewPlaceholder) else { return }
+        pendingRenderSend = nil
+        genericView.sendButton.alphaValue = 1.0
+        pending()
+    }
+
     private func capturePendingSendAction() -> () -> Bool {
         let pendingAction = capturePendingAction()
         return { [weak self] in
@@ -1327,6 +1391,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
     
     var getMedias:()->[Media] = { return [] }
+    private var getMediaUrls: () -> [URL] = { return [] }
     var updateCustomPreview:(String, String?)->Void = { _, _ in }
 
     fileprivate var previews: [String: String] = [:] {
@@ -1378,6 +1443,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
     private let inputInteraction:PreviewContextInteraction = PreviewContextInteraction()
     private let contextChatInteraction: ChatInteraction
     private let editorDisposable = MetaDisposable()
+    private var isRenderingEdit = false
+    private var pendingRenderSend: (() -> Void)?
+    private let renderCancelDisposable = MetaDisposable()
     private let attachmentEdits = PreviewSenderAttachmentEdits()
     private let archiverStatusesDisposable = MetaDisposable()
     private var archiveStatuses: [ArchiveSource : ArchiveStatus] = [:]
@@ -1490,6 +1558,13 @@ public class PreviewSenderController: ModalViewController, Notifable {
         guard !pendingActions.isClosed, !sent else { return }
         guard validateSendSource() else {
             self.genericView.sendButton.shake(beep: false)
+            return
+        }
+        if isRenderingEdit || getMediaUrls() != urls {
+            pendingRenderSend = { [weak self] in
+                self?.send(silent, atDate: atDate, asSpoiler: asSpoiler)
+            }
+            genericView.sendButton.alphaValue = 0.5
             return
         }
         pendingActions.invalidate()
@@ -1911,6 +1986,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
         self.getMedias = {
             return stateValue.with { $0.medias }
         }
+        self.getMediaUrls = {
+            return stateValue.with { $0.urls }
+        }
         
         self.updateCustomPreview = { [weak self] path, preview in
             if let preview {
@@ -1980,7 +2058,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 if !changed {
                     return state
                 }
-                return PreviewState(urls: state.urls, medias: medias, currentState: state.currentState, editedData: state.editedData)
+                return PreviewState(urls: state.urls, medias: medias, currentState: state.currentState, editedData: state.editedData, renderingPreviews: state.renderingPreviews)
             }
         }
 
@@ -2098,7 +2176,10 @@ public class PreviewSenderController: ModalViewController, Notifable {
             self.genericView.state = state
             let isPreparing = medias.contains(where: isPreviewPlaceholder)
             self.genericView.sendButton.isEnabled = !isPreparing
-            self.genericView.sendButton.alphaValue = isPreparing ? 0.5 : 1.0
+            self.genericView.sendButton.alphaValue = isPreparing || self.pendingRenderSend != nil ? 0.5 : 1.0
+            if !isPreparing {
+                self.flushPendingRenderSend()
+            }
             
             let options = self.cachedSenderOptions(self.urls)
             var canCollage = canCollagesFromUrl(self.urls)
@@ -2392,8 +2473,14 @@ public class PreviewSenderController: ModalViewController, Notifable {
         
         self.runEditor = { [weak self] url, paint in
             guard let self, !self.pendingActions.isClosed, !self.sent else { return }
+            guard !self.isRenderingEdit else {
+                NSSound.beep()
+                return
+            }
             
-            if MIMEType(url.path).hasPrefix("video/") {
+            let editedData = stateValue.with { $0.editedData }
+
+            if MIMEType(url.path).hasPrefix("video/"), editedData[url] == nil {
                 self.runVideoEditor(url)
                 return
             }
@@ -2401,7 +2488,6 @@ public class PreviewSenderController: ModalViewController, Notifable {
             guard let edit = self.attachmentEdits.begin(for: url, urls: self.urls) else { return }
             self.editorDisposable.set(nil)
             let chatAction = self.chatInteraction.captureDeferredSendAction()
-            let editedData = stateValue.with { $0.editedData }
             
             let data = editedData[url] ?? EditedImageData(originalUrl: url)
             
@@ -2422,11 +2508,44 @@ public class PreviewSenderController: ModalViewController, Notifable {
                     var editedData = data
                     editedData.paintings = paintings
                     editedData.entities = entities
-                    let new = EditedImageData.generateNewUrl(data: editedData, selectedRect: CGRect(origin: .zero, size: image.size)) |> deliverOnMainQueue
-                    let subscription = MetaDisposable()
+                    var applied = false
+                    var finished = false
+                    let new = EditedImageData.generateNewUrl(data: editedData, selectedRect: CGRect(origin: .zero, size: image.size), allowsAnimation: true) |> deliverOnMainQueue |> afterDisposed { [weak self] in
+                        Queue.mainQueue().justDispatch {
+                            finished = true
+                            updateState { $0.withUpdatedRenderingPreviews { previews in
+                                var previews = previews
+                                previews.removeValue(forKey: url)
+                                return previews
+                            }}
+                            self?.finishRenderingEdit(applied: applied)
+                        }
+                    }
+                    let subscription = DisposableSet()
                     self.editorDisposable.set(subscription)
-                    subscription.set((new).start(next: { [weak self] new in
+                    self.startRenderingEdit(cancel: { [weak self] in
+                        edit.discard()
+                        self?.pendingRenderSend = nil
+                        self?.editorDisposable.set(nil)
+                    })
+                    if editedData.hasAnimatedStickers {
+                        let preview: Signal<CGImage, NoError> = Signal { subscriber in
+                            subscriber.putNext(editedData.makeImage(image, interface: false))
+                            subscriber.putCompletion()
+                            return EmptyDisposable
+                        } |> runOn(resourcesQueue) |> deliverOnMainQueue
+                        subscription.add(preview.start(next: { preview in
+                            guard !finished else { return }
+                            updateState { $0.withUpdatedRenderingPreviews { previews in
+                                var previews = previews
+                                previews[url] = preview
+                                return previews
+                            }}
+                        }))
+                    }
+                    subscription.add(new.start(next: { [weak self] new in
                         guard let self, !self.pendingActions.isClosed, !self.sent, edit.apply(), chatAction.takeIfCurrent() else { return }
+                        applied = true
                         if let index = self.urls.firstIndex(of: url) {
                             updateState { $0.withUpdatedEditedData { data in
                                 var data = data
@@ -2447,7 +2566,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 showModal(with: editor, for: context.window, animationType: .scaleCenter)
 
             } else {
-                guard let editor = EditImageModalController(data.originalUrl, context: context, defaultData: data, canCutOut: self.canSendStickers) else { return }
+                guard let editor = EditImageModalController(data.originalUrl, context: context, defaultData: data, canCutOut: self.canSendStickers, allowsAnimation: true) else { return }
                 editor.onCancelled = { [weak self] in
                     guard edit.cancel(), chatAction.takeIfCurrent() else { return }
                 }
@@ -2610,7 +2729,12 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
     
     fileprivate func editVideoCover(for url: URL, media: TelegramMediaFile) {
-        guard !pendingActions.isClosed, !sent, let edit = attachmentEdits.begin(for: url, urls: urls) else { return }
+        guard !pendingActions.isClosed, !sent else { return }
+        guard !isRenderingEdit else {
+            NSSound.beep()
+            return
+        }
+        guard let edit = attachmentEdits.begin(for: url, urls: urls) else { return }
         editorDisposable.set(nil)
         let selectionAction = capturePendingAction()
         let context = self.context
@@ -2656,7 +2780,12 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
 
     fileprivate func removeVideoCover(for url: URL) {
-        guard !pendingActions.isClosed, !sent, let edit = attachmentEdits.begin(for: url, urls: urls), edit.apply() else { return }
+        guard !pendingActions.isClosed, !sent else { return }
+        guard !isRenderingEdit else {
+            NSSound.beep()
+            return
+        }
+        guard let edit = attachmentEdits.begin(for: url, urls: urls), edit.apply() else { return }
         editorDisposable.set(nil)
         let previous = previews[url.path]
         updateCustomPreview(url.path, nil)

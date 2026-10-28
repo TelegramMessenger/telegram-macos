@@ -20,6 +20,7 @@ public final class EmojiScreenEffect {
     public fileprivate(set) var scrollUpdater: TableScrollListener!
     private var dataDisposable: DisposableDict<MessageId> = DisposableDict()
     private var reactionDataDisposable: DisposableDict<MessageId> = DisposableDict()
+    private var largeReactionCenterDisposable: DisposableDict<MessageId> = DisposableDict()
     
     private let limit: Int = 5
     
@@ -27,6 +28,8 @@ public final class EmojiScreenEffect {
         enum Mode : Equatable, Hashable {
             case effect(Bool)
             case reaction(MessageReaction.Reaction)
+            case largeReaction(MessageReaction.Reaction, mirror: Bool, centered: Bool)
+            case largeReactionCenter(MessageReaction.Reaction)
         }
         let messageId: MessageId
         let timestamp: TimeInterval
@@ -35,7 +38,7 @@ public final class EmojiScreenEffect {
         
         var screenMode: ChatRowView.ScreenEffectMode {
             switch self.mode {
-            case let .reaction(value):
+            case let .reaction(value), let .largeReaction(value, _, _), let .largeReactionCenter(value):
                 return .reaction(value)
             case .effect:
                 return .effect
@@ -51,6 +54,8 @@ public final class EmojiScreenEffect {
         let reaction: MessageReaction.Reaction?
         let mirror: Bool
         let key: Key
+        var onRemove: (() -> Void)? = nil
+        var collapse: (() -> Void)? = nil
     }
     
     private var animations:[Key: Value] = [:]
@@ -111,9 +116,15 @@ public final class EmojiScreenEffect {
                                 point.x -= 10
                                 point.y -= 5
                             }
-                        case .reaction:
+                        case .reaction, .largeReactionCenter:
                             point.x-=subSize.width/2
                             point.y-=subSize.height/2
+                        case let .largeReaction(_, mirror, centered):
+                            point.x-=subSize.width/2
+                            point.y-=subSize.height/2
+                            if !centered {
+                                point.x += (mirror ? 1 : -1) * animationView.animationSize.width * 0.3
+                            }
                         }
                        
 
@@ -138,6 +149,7 @@ public final class EmojiScreenEffect {
     deinit {
         dataDisposable.dispose()
         reactionDataDisposable.dispose()
+        largeReactionCenterDisposable.dispose()
         let animations = self.animations
         for animation in animations {
             deinitAnimation(key: animation.key, animated: false)
@@ -253,7 +265,7 @@ public final class EmojiScreenEffect {
         }
     }
     
-    public func addReactionAnimation(_ value: MessageReaction.Reaction, index: Int?, messageId: MessageId, animationSize: NSSize, viewFrame: NSRect, for parentView: NSView) {
+    public func addReactionAnimation(_ value: MessageReaction.Reaction, index: Int?, messageId: MessageId, animationSize initialAnimationSize: NSSize, isLarge: Bool = false, viewFrame: NSRect, for parentView: NSView) {
         
         let context = self.context
         
@@ -261,6 +273,22 @@ public final class EmojiScreenEffect {
             return
         }
         
+        let mode: Key.Mode
+        let mirror: Bool
+        let animationSize: NSSize
+        if isLarge, value != .stars {
+            let reactionView = (takeTableItem(messageId)?.view as? ChatRowView)?.getScreenEffectView(.reaction(value))
+            let reactionFrame = reactionView.flatMap { $0.convert($0.bounds, to: parentView) }
+            mirror = (reactionFrame?.midX ?? 0) < parentView.bounds.width / 2
+            mode = .largeReaction(value, mirror: mirror, centered: false)
+            animationSize = NSMakeSize(initialAnimationSize.width * 4, initialAnimationSize.height * 4)
+            addLargeReactionCenter(value, messageId: messageId, animationSize: NSMakeSize(initialAnimationSize.width * 1.5, initialAnimationSize.height * 1.5), viewFrame: viewFrame, for: parentView)
+        } else {
+            mirror = false
+            mode = .reaction(value)
+            animationSize = initialAnimationSize
+        }
+
         switch value {
         case let .custom(fileId):
             
@@ -270,7 +298,7 @@ public final class EmojiScreenEffect {
                 })
             }
              |> mapToSignal { reaction -> Signal<MediaResourceData?, NoError> in
-                 if let file = reaction?.aroundAnimation?._parse() {
+                 if let file = isLarge ? reaction?.effectAnimation._parse() : reaction?.aroundAnimation?._parse() {
                     return context.account.postbox.mediaBox.resourceData(file.resource)
                     |> map { $0.complete ? $0 : nil }
                     |> take(1)
@@ -279,7 +307,7 @@ public final class EmojiScreenEffect {
                 }
             } |> map { resource in
                 if let resource = resource, let data = try? Data(contentsOf: URL(fileURLWithPath: resource.path)) {
-                    return LottieAnimation(compressed: data, key: .init(key: .bundle("_reaction_e_\(value)"), size: animationSize, backingScale: Int(System.backingScale), mirror: false), cachePurpose: .temporaryLZ4(.effect), playPolicy: .onceEnd)
+                    return LottieAnimation(compressed: data, key: .init(key: .bundle("_reaction_\(isLarge ? "l" : "e")_\(value)"), size: animationSize, backingScale: Int(System.backingScale), mirror: mirror), cachePurpose: .temporaryLZ4(.effect), playPolicy: .onceEnd)
                 } else {
                     return nil
                 }
@@ -288,12 +316,13 @@ public final class EmojiScreenEffect {
             reactionDataDisposable.set(signal.start(next: { [weak self, weak parentView] animation in
                 if let parentView = parentView {
                     if let animation = animation {
-                        self?.initAnimation(.builtin(animation), mode: .reaction(value), emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
+                        self?.initAnimation(.builtin(animation), mode: mode, emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
                     } else {
-                        let animationSize = NSMakeSize(animationSize.width * 2, animationSize.height * 2)
+                        let animationSize = isLarge ? animationSize : NSMakeSize(animationSize.width * 2, animationSize.height * 2)
                         let rect = NSMakeSize(animationSize.width, animationSize.height).bounds
                         let view = CustomReactionEffectView(frame: rect, context: context, fileId: fileId, style: .inlinePattern(mirrored: viewFrame.midX < parentView.bounds.width / 2))
-                        self?.initAnimation(.custom(view), mode: .reaction(value), emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
+                        let patternMode: Key.Mode = isLarge ? .largeReaction(value, mirror: mirror, centered: true) : mode
+                        self?.initAnimation(.custom(view), mode: patternMode, emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
                     }
                 }
             }), forKey: messageId)
@@ -309,7 +338,7 @@ public final class EmojiScreenEffect {
             |> map {
                 $0!
             } |> mapToSignal { reaction -> Signal<MediaResourceData, NoError> in
-                if let file = reaction.aroundAnimation?._parse() {
+                if let file = isLarge ? reaction.effectAnimation._parse() : reaction.aroundAnimation?._parse() {
                     return context.account.postbox.mediaBox.resourceData(file.resource)
                     |> filter { $0.complete }
                     |> take(1)
@@ -318,7 +347,7 @@ public final class EmojiScreenEffect {
                 }
             } |> map { data in
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)) {
-                    return LottieAnimation(compressed: data, key: .init(key: .bundle("_reaction_e_\(value)"), size: animationSize, backingScale: Int(System.backingScale), mirror: false), cachePurpose: .temporaryLZ4(.effect), playPolicy: .onceEnd)
+                    return LottieAnimation(compressed: data, key: .init(key: .bundle("_reaction_\(isLarge ? "l" : "e")_\(value)"), size: animationSize, backingScale: Int(System.backingScale), mirror: mirror), cachePurpose: .temporaryLZ4(.effect), playPolicy: .onceEnd)
                 } else {
                     return nil
                 }
@@ -326,7 +355,7 @@ public final class EmojiScreenEffect {
             
             reactionDataDisposable.set(signal.start(next: { [weak self, weak parentView] animation in
                 if let animation = animation, let parentView = parentView {
-                    self?.initAnimation(.builtin(animation), mode: .reaction(value), emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
+                    self?.initAnimation(.builtin(animation), mode: mode, emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
                 }
             }), forKey: messageId)
         case .stars:
@@ -353,7 +382,7 @@ public final class EmojiScreenEffect {
             
             reactionDataDisposable.set(signal.start(next: { [weak self, weak parentView] animation in
                 if let animation = animation, let parentView = parentView {
-                    self?.initAnimation(.builtin(animation), mode: .reaction(value), emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
+                    self?.initAnimation(.builtin(animation), mode: mode, emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
                 }
             }), forKey: messageId)
         }
@@ -364,10 +393,69 @@ public final class EmojiScreenEffect {
 
     
     
+    private func addLargeReactionCenter(_ value: MessageReaction.Reaction, messageId: MessageId, animationSize: NSSize, viewFrame: NSRect, for parentView: NSView) {
+        let context = self.context
+        let file: Signal<TelegramMediaFile?, NoError>
+        switch value {
+        case .builtin:
+            file = context.reactions.stateValue |> take(1) |> map {
+                return $0?.reactions.first(where: { $0.value == value })?.activateAnimation._parse()
+            }
+        case let .custom(fileId):
+            file = context.inlinePacksContext.load(fileId: fileId) |> take(1) |> map { file in
+                return file?.isAnimatedSticker == true ? file : nil
+            }
+        case .stars:
+            return
+        }
+        let signal: Signal<LottieAnimation?, NoError> = file
+        |> mapToSignal { file -> Signal<MediaResourceData?, NoError> in
+            if let file {
+                return context.account.postbox.mediaBox.resourceData(file.resource)
+                |> filter { $0.complete }
+                |> take(1)
+                |> map(Optional.init)
+            } else {
+                return .single(nil)
+            }
+        } |> map { data in
+            if let data, let content = try? Data(contentsOf: URL(fileURLWithPath: data.path)) {
+                return LottieAnimation(compressed: content, key: .init(key: .bundle("_reaction_c_\(value)"), size: animationSize, backingScale: Int(System.backingScale), mirror: false), cachePurpose: .temporaryLZ4(.effect), playPolicy: .onceEnd)
+            } else {
+                return nil
+            }
+        } |> deliverOnMainQueue
+
+        largeReactionCenterDisposable.set(signal.start(next: { [weak self, weak parentView] animation in
+            if let animation, let parentView {
+                self?.initAnimation(.builtin(animation), mode: .largeReactionCenter(value), emoji: nil, reaction: value, mirror: false, isIncoming: false, messageId: messageId, animationSize: animationSize, viewFrame: viewFrame, parentView: parentView)
+            }
+        }), forKey: messageId)
+    }
+
+    private func collapseLargeReactionCenter(_ key: Key) {
+        guard var value = animations[key], let collapse = value.collapse else {
+            return
+        }
+        value.collapse = nil
+        animations[key] = value
+        collapse()
+    }
+    
     private func deinitAnimation(key: Key, animated: Bool) {
-        let view = animations.removeValue(forKey: key)?.view.value
+        let value = animations.removeValue(forKey: key)
+        value?.onRemove?()
+        let view = value?.view.value
         if let view = view {
             performSubviewRemoval(view, animated: animated)
+        }
+        if case let .largeReaction(reaction, _, _) = key.mode, case .custom = reaction {
+            let centers = animations.keys.filter {
+                $0.messageId == key.messageId && $0.mode == .largeReactionCenter(reaction)
+            }
+            for center in centers {
+                collapseLargeReactionCenter(center)
+            }
         }
         enqueuedToServer.removeAll(where: { $0.key == key })
         enqueuedToEnjoy.removeAll(where: { $0.key == key })
@@ -378,6 +466,8 @@ public final class EmojiScreenEffect {
         dataDisposable = DisposableDict()
         reactionDataDisposable.dispose()
         reactionDataDisposable = DisposableDict()
+        largeReactionCenterDisposable.dispose()
+        largeReactionCenterDisposable = DisposableDict()
         enjoyTimer?.invalidate()
         enjoyTimer = nil
         for timer in timers.values {
@@ -416,7 +506,24 @@ public final class EmojiScreenEffect {
 
         parentView.addSubview(view)
         
-        let value: Value = .init(view: .init(value: view), index: 1, messageId: messageId, emoji: emoji, reaction: reaction, mirror: mirror, key: key)
+        var value: Value = .init(view: .init(value: view), index: 1, messageId: messageId, emoji: emoji, reaction: reaction, mirror: mirror, key: key)
+
+        if case let .largeReactionCenter(reactionValue) = mode, case let .builtin(lottie) = animation, let chip = (takeTableItem(messageId)?.view as? ChatRowView)?.getReactionChip(reactionValue) {
+            let iconScale = max(chip.getView().frame.width, 1) / animationSize.width
+            chip.lockVisibility()
+            value.onRemove = { [weak chip] in
+                chip?.unlockVisibility()
+            }
+            view.animateContentScale(from: iconScale, to: 1, duration: 0.35, spring: true)
+            value.collapse = { [weak self, weak view] in
+                view?.animateContentScale(from: 1, to: iconScale, duration: 0.25, completion: { _ in
+                    self?.deinitAnimation(key: key, animated: false)
+                })
+            }
+            lottie.triggerOn = (LottiePlayerTriggerFrame.last, { [weak self] in
+                self?.collapseLargeReactionCenter(key)
+            }, {})
+        }
         animations[key] = value
         
         updateScroll(transition: .immediate)

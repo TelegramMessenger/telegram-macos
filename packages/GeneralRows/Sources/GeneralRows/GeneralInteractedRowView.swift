@@ -57,14 +57,20 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
             nextView.isHidden = true
             if case let .switchable(stateback) = item.type {
                 if switchView == nil {
-                    switchView = SwitchView(frame: NSMakeRect(0, 0, 32, 20))
+                    switchView = SwitchView()
                     containerView.addSubview(switchView!)
                 }
                 switchView?.autoswitch = item.autoswitch
                 switchView?.presentation = item.switchAppearance
                 switchView?.setIsOn(stateback,animated:animated)
                 
-                switchView?.stateChanged = item.switchAction ?? item.action
+                switchView?.stateChanged = { [weak self, weak item] in
+                    guard let self, let item, self.item === item else { return }
+                    if item.autoswitch, item.switchAction == nil, let switchView = self.switchView {
+                        item.type = .switchable(switchView.isOn)
+                    }
+                    (item.switchAction ?? item.action)()
+                }
                 switchView?.userInteractionEnabled = item.enabled
                 switchView?.isEnabled = item.enabled
             } else {
@@ -527,10 +533,10 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
             }
             
             switch item.type {
-            case let .switchable(enabled):
-                if item.autoswitch && item.switchAction == nil {
-                    item.type = .switchable(!enabled)
-                    self.switchView?.setIsOn(!enabled,animated: true)
+            case .switchable:
+                if item.switchAction == nil, let switchView {
+                    switchView.performToggle()
+                    return
                 }
             default:
                 break

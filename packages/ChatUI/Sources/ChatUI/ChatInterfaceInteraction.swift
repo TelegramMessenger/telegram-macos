@@ -88,7 +88,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public let disableSelectAbility: Bool
     public let isGlobalSearchMessage: Bool
     public let isPeerSavedMessages: Bool
-    public let inputOverlayHeight: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.minimumInputOverlayHeight)
+    public let bottomInset: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.bottomInset(showsInput: true, inputOverlayHeight: 0))
     private var mediaReplacementId: UUID?
     private var mediaEditSessionId = UUID()
     private var mediaEditSubmissionId: UUID?
@@ -314,6 +314,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public var clearMentions:()->Void = {}
     public var reactionPressed:()->Void = {}
     public var showToaster:(NSAttributedString)->Void = { _ in }
+    public var previewTopic:(Int64)->Void = { _ in }
     public var removeToaster:()->Void = {}
     public var clearReactions:()->Void = {}
     public var attachFile:(Bool)->Void = { _ in }
@@ -374,7 +375,7 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public var runEmojiScreenEffect:(String, Message, Bool, Bool)->Void = { _, _, _, _ in }
     public var runPremiumScreenEffect:(Message, Bool, Bool)->Void = { _, _, _ in }
-    public var runReactionEffect:(MessageReaction.Reaction, MessageId)->Void = { _, _ in }
+    public var runReactionEffect:(MessageReaction.Reaction, MessageId, Bool)->Void = { _, _, _ in }
     
     public var toggleSendAs: (PeerId)->Void = { _ in }
     
@@ -1229,6 +1230,7 @@ public final class ChatInteraction : InterfaceObserver  {
         self.clearMentions = { }
         self.reactionPressed = { }
         self.showToaster = { _ in }
+        self.previewTopic = { _ in }
         self.removeToaster = { }
         self.clearReactions = { }
         self.attachFile = { _ in }
@@ -1269,7 +1271,7 @@ public final class ChatInteraction : InterfaceObserver  {
         self.joinGroupCall = { _, _ in }
         self.runEmojiScreenEffect = { _, _, _, _ in }
         self.runPremiumScreenEffect = { _, _, _ in }
-        self.runReactionEffect = { _, _ in }
+        self.runReactionEffect = { _, _, _ in }
         self.toggleSendAs = { _ in }
         self.showDeleterSetup = { _ in }
         self.showEmojiUseTooltip = { }

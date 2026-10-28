@@ -184,10 +184,6 @@ func ==(lhs:ChatHistoryState, rhs:ChatHistoryState) -> Bool {
     return lhs.isDownOfHistory == rhs.isDownOfHistory && lhs.replyStack == rhs.replyStack
 }
 
-/// Bottom inset reserved below the last message in a chat PREVIEW (peeked from the chat list). The preview
-/// has no input bar, so this stands in for the input height that normally provides the trailing gap.
-private let previewChatBottomInset: CGFloat = 40
-
 private final class ChatPresentationCacheEntry {
     private let base: TelegramPresentationTheme
     private weak var global: TelegramPresentationTheme?
@@ -269,6 +265,23 @@ public class ChatControllerView : View, ChatInputDelegate {
     private weak var navigationView: NSView?
     
     public let inputView:ChatInputView
+    let showsInput: Bool
+
+    static func showsInput(in mode: ChatMode) -> Bool {
+        return mode != .preview
+    }
+
+    func bottomInset(forInputHeight inputHeight: CGFloat) -> CGFloat {
+        return ChatHistoryBottomRowItem.bottomInset(showsInput: showsInput, inputOverlayHeight: max(0, inputHeight - ChatInputView.inputBottomInset) + transcriptionInset)
+    }
+
+    var floatingPhotosBottomGap: CGFloat {
+        var gap = ChatHistoryBottomRowItem.bottomInset(showsInput: showsInput, inputOverlayHeight: 0)
+        if showsInput, inputView.attachView.isAIVisible {
+            gap += ChatInputAttachButton.expandedHeight - ChatInputAttachButton.collapsedHeight
+        }
+        return gap
+    }
     let inputContextHelper:InputContextHelper
     let bubblesView: ChatHeaderBubblesView
     private(set) var state:ChatControllerViewState = .visible
@@ -459,6 +472,7 @@ public class ChatControllerView : View, ChatInputDelegate {
         bubblesView = ChatHeaderBubblesView(frame: NSMakeRect(0, 0, frameRect.width, ChatHeaderBubblesView.totalHeight), chatInteraction: chatInteraction)
 
         inputView = ChatInputView(frame: NSMakeRect(0,tableView.frame.maxY, frameRect.width,50), chatInteraction: chatInteraction)
+        showsInput = ChatControllerView.showsInput(in: chatInteraction.mode)
         //inputView.autoresizingMask = [.width]
         super.init(frame: frameRect)
         
@@ -487,6 +501,8 @@ public class ChatControllerView : View, ChatInputDelegate {
 
         addSubview(inputView)
         addSubview(bubblesView)
+        inputView.isHidden = !showsInput
+        inputShadowView.isHidden = !showsInput
         header.sharedGlassWrapper = bubblesView.sharedGlassWrapper
         inputView.delegate = self
         self.autoresizesSubviews = false
@@ -522,7 +538,7 @@ public class ChatControllerView : View, ChatInputDelegate {
             case let .thread(data):
                 location = .peer(peerId: data.peerId, fromId: fromId, tags: nil, reactions: tags.map { $0.tag.reaction }, threadId: data.threadId, minDate: nil, maxDate: nil)
             }
-            return context.engine.messages.searchMessages(location: location, query: query, state: state) |> map {($0.0.messages.filter({ !($0.extendedMedia is TelegramMediaAction) }), $0.1)}
+            return context.engine.messages.searchMessages(location: location, query: query, state: state) |> map {($0.0.messages.filter({ !($0.extendedMedia is TelegramMediaAction) }), $0.1, $0.0.totalCount)}
         })
         
         
@@ -1235,7 +1251,7 @@ public class ChatControllerView : View, ChatInputDelegate {
             }
             
             value = .search(searchInteractions, interfaceState.searchMode.peer?._asPeer(), interfaceState.searchMode.query, tags, selected, interfaceState.chatLocation)
-        } else if let threadData = interfaceState.threadInfo, threadData.isClosed, let peer = interfaceState.peer as? TelegramChannel, peer.adminRights != nil || peer.flags.contains(.isCreator) || threadData.isOwnedByMe {
+        } else if interfaceState.chatMode != .preview, let threadData = interfaceState.threadInfo, threadData.isClosed, let peer = interfaceState.peer as? TelegramChannel, peer.adminRights != nil || peer.flags.contains(.isCreator) || threadData.isOwnedByMe {
             value = .restartTopic
         } else if interfaceState.managedBotNeedsPhoto {
             value = .setBotPhoto
@@ -2813,10 +2829,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
 
             let ph: CGFloat = 36
-            var gap: CGFloat = 12 + 50
-            if genericView.inputView.attachView.isAIVisible {
-                gap += ChatInputAttachButton.expandedHeight - ChatInputAttachButton.collapsedHeight
-            }
+            let gap = genericView.floatingPhotosBottomGap
             let inset: CGFloat = 3
             
             var isAnchor: Bool = false
@@ -3041,11 +3054,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
         genericView.inputHeightChanged = { [weak self] rawInputHeight in
             guard let self else { return }
-            let inputOverlayHeight = self.mode == .preview
-                ? previewChatBottomInset
-                : max(0, rawInputHeight - ChatInputView.inputBottomInset) + self.genericView.transcriptionInset
-            let previous = self.chatInteraction.inputOverlayHeight.swap(inputOverlayHeight)
-            if ChatHistoryBottomRowItem.height(for: previous) == ChatHistoryBottomRowItem.height(for: inputOverlayHeight) {
+            let bottomInset = self.genericView.bottomInset(forInputHeight: rawInputHeight)
+            let previous = self.chatInteraction.bottomInset.swap(bottomInset)
+            if previous == bottomInset {
                 return
             }
             let table = self.genericView.tableView
@@ -3069,7 +3080,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }
 
         genericView.bubblesView.backHandler = { [weak self] in
-            if self?.mode == .preview {
+            if self?.mode == .preview, (self?.navigationController?.stackCount ?? 0) <= 1 {
                 self?.navigationController?.modal?.close()
             } else {
                 self?.navigationController?.back()
@@ -4564,15 +4575,18 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 return
             }
 
+            let urlPreview = urlPreviewMatchesInput(presentation, context: context) ? presentation.urlPreview : nil
+            let disableUrlPreview = presentation.interfaceState.composeDisableUrlPreview != nil && (urlPreview == nil || urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview)
+
             self.urlPreviewQueryState?.1.dispose()
             
             
             let webpagePreviewAttribute: WebpagePreviewMessageAttribute?
             
             let media: RequestEditMessageMedia
-            if let webpreview = presentation.urlPreview?.1 {
+            if let webpreview = urlPreview?.1 {
                 webpagePreviewAttribute = .init(leadingPreview: !presentation.interfaceState.linkBelowMessage, forceLargeMedia: presentation.interfaceState.largeMedia, isManuallyAdded: false, isSafe: true)
-                if presentation.urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview {
+                if urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview {
                     media = .keep
                 } else {
                     media = .update(.webPage(webPage: WebpageReference(webpreview), media: webpreview))
@@ -4587,7 +4601,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             
             let editSubmissionId = chatInteraction.beginMediaEditSubmission()
             if atDate == nil {
-                self.context.account.pendingUpdateMessageManager.add(messageId: state.message.id, text: inputState.inputText, media: media, entities: TextEntitiesMessageAttribute(entities: inputState.messageTextEntities(extractDates: state.message.id.peerId.namespace == Namespaces.Peer.CloudUser)), richText: nil, inlineStickers: inputState.inlineMedia, webpagePreviewAttribute: webpagePreviewAttribute, invertMediaAttribute: invertMediaAttribute, disableUrlPreview: presentation.interfaceState.composeDisableUrlPreview != nil)
+                self.context.account.pendingUpdateMessageManager.add(messageId: state.message.id, text: inputState.inputText, media: media, entities: TextEntitiesMessageAttribute(entities: inputState.messageTextEntities(extractDates: state.message.id.peerId.namespace == Namespaces.Peer.CloudUser)), richText: nil, inlineStickers: inputState.inlineMedia, webpagePreviewAttribute: webpagePreviewAttribute, invertMediaAttribute: invertMediaAttribute, disableUrlPreview: disableUrlPreview)
                 
                 self.chatInteraction.beginEditingMessage(nil)
                 self.chatInteraction.update({
@@ -4609,7 +4623,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
                 
                 
-                self.chatInteraction.editDisposable.set((context.engine.messages.requestEditMessage(messageId: state.message.id, text: inputState.inputText, media: media, entities: TextEntitiesMessageAttribute(entities: inputState.messageTextEntities()), richText: nil, inlineStickers: inputState.inlineMedia, webpagePreviewAttribute: webpagePreviewAttribute, invertMediaAttribute: invertMediaAttribute, disableUrlPreview: presentation.interfaceState.composeDisableUrlPreview != nil, scheduleInfoAttribute: scheduleAttr) |> deliverOnMainQueue).start(next: { [weak self] progress in
+                self.chatInteraction.editDisposable.set((context.engine.messages.requestEditMessage(messageId: state.message.id, text: inputState.inputText, media: media, entities: TextEntitiesMessageAttribute(entities: inputState.messageTextEntities()), richText: nil, inlineStickers: inputState.inlineMedia, webpagePreviewAttribute: webpagePreviewAttribute, invertMediaAttribute: invertMediaAttribute, disableUrlPreview: disableUrlPreview, scheduleInfoAttribute: scheduleAttr) |> deliverOnMainQueue).start(next: { [weak self] progress in
                     guard let self, self.chatInteraction.isCurrentMediaEditSubmission(editSubmissionId), self.chatInteraction.presentation.interfaceState.editState?.message.id == state.message.id else { return }
                     switch progress {
                     case let .progress(progress):
@@ -4709,25 +4723,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if let date {
                         attributes.append(OutgoingScheduleInfoMessageAttribute(scheduleTime: Int32(min(date.timeIntervalSince1970, Double(scheduleWhenOnlineTimestamp))), repeatPeriod: repeatPeriod))
                     }
-                    let message: EnqueueMessage = .message(text: "", attributes: attributes, inlineStickers: [:],
-                                                           mediaReference: nil, threadId: ci.chatLocation.threadId,
-                                                           replyToMessageId: richTextThreadReplySubject(chatInteraction: ci), replyToStoryId: nil, localGroupingKey: nil,
-                                                           correlationId: nil, bubbleUpEmojiOrStickersets: [])
-                    if let customChatContents = ci.mode.customChatContents {
-                        _ = (customChatContents.enqueueMessages(messages: [message])).start()
-                    } else {
-                        _ = (enqueueMessages(account: context.account, peerId: ci.peerId, messages: [message])).start(next: { ids in
-                        }, completed: {
-                        })
-                    }
+                    richTextEnqueue(chatInteraction: ci, text: "", attributes: attributes)
                 }
                 if let atDate {
                     applyRichDraft(atDate.date, atDate.repeatPeriod)
-                    if strongSelf.mode != .scheduled {
-                        delay(0.1, closure: { [weak strongSelf] in
-                            strongSelf?.openScheduledChat()
-                        })
-                    }
                 } else if strongSelf.mode == .scheduled, let peer = ci.peer {
                     DispatchQueue.main.async {
                         showModal(with: chatDateSelector(context: context, mode: .schedule(peer.id), selectedAt: { date, repeatPeriod in
@@ -6115,12 +6114,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
         }
         
-        chatInteraction.runReactionEffect = { [weak self] value, messageId in
+        chatInteraction.runReactionEffect = { [weak self] value, messageId, isLarge in
             guard let strongSelf = self else {
                 return
             }
             if strongSelf.isOnScreen {
-                strongSelf.emojiEffects.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), viewFrame: context.window.bounds, for: context.window.contentView!)
+                strongSelf.emojiEffects.addReactionAnimation(value, index: nil, messageId: messageId, animationSize: NSMakeSize(80, 80), isLarge: isLarge, viewFrame: context.window.bounds, for: context.window.contentView!)
             }
         }
         
@@ -6973,6 +6972,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             if updated.count < urls.count {
                             }
                             let preview = ChatUIHooks.shared.makePreviewSender(updated, self.chatInteraction, asMedia, attributedString)
+                            _ = ChatUIHooks.shared.bindPreviewSendValidation(preview, { [weak self] in
+                                guard let self else { return false }
+                                guard let navigation = self.navigationController else { return true }
+                                return navigation.controller === self
+                            })
                             showModal(with: preview, for: context.window, morphSource: { [weak self] in self?.genericView.inputView.attachView })
                         }
                     } else {
@@ -7811,6 +7815,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
         chatInteraction.showToaster = { [weak self] text in
             self?.genericView.showToaster(text: text, timeout: 3.0, animated: true)
+        }
+        chatInteraction.previewTopic = { [weak self] threadId in
+            guard let self else { return }
+            let peerId = self.chatInteraction.peerId
+            let threadMessageId = makeThreadIdMessageId(peerId: peerId, threadId: threadId)
+            _ = (fetchAndPreloadReplyThreadInfo(context: context, subject: .groupMessage(threadMessageId), preload: false) |> take(1) |> deliverOnMainQueue).start(next: { [weak self] result in
+                self?.navigationController?.push(ChatController(context: context, chatLocation: .thread(result.message), mode: .preview, chatLocationContextHolder: result.contextHolder))
+            })
         }
         chatInteraction.removeToaster = { [weak self] in
             self?.genericView.removeToaster(animated: true)
@@ -8658,7 +8670,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }.updatedMainPeer(peerView != nil ? peerViewMainPeer(peerView!) : nil).withUpdatedCachedData(peerView?.cachedData).withUpdatedThreadInfo(threadInfo)
                 })
             }
-            self.genericView.inputView.isHidden = self.chatInteraction.presentation.isNotAccessible && !self.canJoinInaccessibleCommunityChat()
+            self.genericView.inputView.isHidden = !self.genericView.showsInput || (self.chatInteraction.presentation.isNotAccessible && !self.canJoinInaccessibleCommunityChat())
             if !animated {
                 self.notify(with: self.chatInteraction.presentation, oldValue: ChatPresentationInterfaceState(chatLocation: self.chatLocation, chatMode: self.mode), animated: animated)
             }
@@ -10249,7 +10261,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         let prev = nav.previousController
         let previousIsEmpty = prev?.isKind(of: ChatHistoryUIHooks.shared.emptyChatControllerType()) ?? false
         let stackHas = nav.stackCount > 1 && !previousIsEmpty
-        let isClose = mode == .preview
+        let isClose = mode == .preview && nav.stackCount <= 1
         genericView.bubblesView.hasBackButton = stackHas || isClose
         genericView.bubblesView.isCloseButton = isClose
     }
@@ -10275,6 +10287,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }
                 }
             }
+        } else if chatInteraction.mode == .preview {
+            let peerId = chatInteraction.peerId
+            var threadInfo: ThreadInfo?
+            if case let .thread(data) = chatInteraction.chatLocation, data.threadId != Message.newTopicThreadId {
+                threadInfo = ThreadInfo(message: data, isChannelPost: false, isMonoforumPost: data.isMonoforumPost, isEmpty: false, contextHolder: chatLocationContextHolder)
+            }
+            navigationController?.modal?.close()
+            ChatUIHooks.shared.pushPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, threadInfo, nil, nil, nil)
         } else if chatInteraction.presentation.isTopicMode {
             chatInteraction.openInfoObserved(chatInteraction.peerId, false, nil, nil)
         } else if chatInteraction.mode.isSavedMessagesThread, let threadId = chatInteraction.chatLocation.threadId {
@@ -11189,7 +11209,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         updateBubblesBackButton()
 
         DispatchQueue.main.async { [weak self] in
-            self?.applyCaptureExclusionIfNeeded()
+            guard let self else { return }
+            self.applyCaptureExclusionIfNeeded()
+            if self.genericView.window === self.context.window, self.navigationController?.controller === self, !hasModals(self.context.window) {
+                _ = self.context.window.makeFirstResponder(self.firstResponder())
+            }
         }
 
         let context = self.context
@@ -11251,7 +11275,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             isAdChat = false
         }
         
-        _ = chatInteraction.inputOverlayHeight.swap(mode == .preview ? previewChatBottomInset : ChatHistoryBottomRowItem.minimumInputOverlayHeight)
+        _ = chatInteraction.bottomInset.swap(ChatHistoryBottomRowItem.bottomInset(showsInput: ChatControllerView.showsInput(in: mode), inputOverlayHeight: 0))
                 
         if chatLocation.peerId.namespace == Namespaces.Peer.CloudChannel || chatLocation.peerId.namespace == Namespaces.Peer.CloudUser, mode == .history {
             self.adMessages = .init(context: context, height: sizeValue.get() |> map { $0 .height}, peerId: chatLocation.peerId)
@@ -11703,7 +11727,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             
             if let peer = value.mainPeer, let oldPeer = oldValue.mainPeer {
                 if TelegramUtilsHooks.shared.peerIsForum(peer) && !TelegramUtilsHooks.shared.peerIsForum(oldPeer) || (oldValue.threadInfo != nil && value.threadInfo == nil && !peer.displayForumAsTabs(splitState: context.layout)), !peer.isMonoForum {
-                    self.navigationController?.removeImmediately(self)
+                    if (self.navigationController?.stackCount ?? 0) > 1 {
+                        self.navigationController?.removeImmediately(self)
+                    } else if self.mode == .preview {
+                        self.navigationController?.modal?.close()
+                    }
                 }
             }
 

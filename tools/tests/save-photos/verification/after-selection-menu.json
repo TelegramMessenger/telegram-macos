@@ -1,0 +1,23 @@
+{
+  "actionFound" : true,
+  "case" : "selection",
+  "photoMessageCount" : 2,
+  "requestedAction" : "Save Selected Photos...",
+  "titles" : [
+    "Reply",
+    "",
+    "Copy Text",
+    "Save Selected Photos...",
+    "Copy Media",
+    "Save As...",
+    "",
+    "Edit",
+    "Pin",
+    "Forward",
+    "Select",
+    "",
+    "Delete",
+    "",
+    "Copy Media Id (dev)"
+  ]
+}

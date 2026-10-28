@@ -26,7 +26,7 @@ private class GalleryThumb {
     public var signal:Signal<ImageDataTransformation, NoError>? {
         var signal:Signal<ImageDataTransformation, NoError>?
         if let item = item as? MGalleryPhotoItem {
-            signal = chatWebpageSnippetPhoto(account: item.context.account, imageReference: item.entry.imageReference(item.media), scale: System.backingScale, small: true, secureIdAccessContext: item.secureIdAccessContext)
+            signal = chatWebpageSnippetPhoto(account: item.context.account, imageReference: item.entry.imageReference(item.media), scale: System.backingScale, small: true, secureIdAccessContext: item.secureIdAccessContext, applyOrientation: true)
         } else if let item = item as? MGalleryGIFItem {
             signal = chatMessageVideo(account: item.context.account, fileReference: item.entry.fileReference(item.media), scale: System.backingScale)
         } else if let item = item as? MGalleryVideoItem {

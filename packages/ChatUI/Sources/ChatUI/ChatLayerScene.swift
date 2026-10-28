@@ -717,7 +717,7 @@ class ChatLayerSceneView: View {
                 if kind == .down {
                     if node.scene === self && node.isVisible && node.isEffectivelyEnabled {
                         captures[button] = node
-                        if node.acceptsKeyboardFocus {
+                        if node.acceptsKeyboardFocus, button == 0, native?.modifierFlags.contains(.control) != true {
                             focus(node)
                             guard storedState === current, focusedNode === node else { return true }
                             window?.makeFirstResponder(self)

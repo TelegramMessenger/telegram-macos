@@ -1152,7 +1152,9 @@ final class WalletCollectablesStage {
             let local = CGPoint(x: (pose.center.x - rect.minX) / k, y: (pose.center.y - rect.minY) / k)
             let nearCard = card.bounds.insetBy(dx: -30, dy: -30).contains(local)
             let solver = self.solver(excluding: drag.id)
-            let spot = tossed ? solver?.spread(aim: local, scale: scale) : (nearCard ? solver?.drop(near: local, scale: scale) : nil)
+            let surface = card.stickerSurfaceSize
+            let dropped = WalletStickerPlacement.Spot(center: CGPoint(x: min(surface.width, max(0, local.x)), y: min(surface.height, max(0, local.y))), scale: scale)
+            let spot = tossed ? solver?.spread(aim: local, scale: scale) : (nearCard ? dropped : nil)
             if let spot {
                 place(drag.gift, from: pose, spot: spot, angle: WalletCollectablesStage.wrapped(pose.angle), thrown: tossed)
                 return

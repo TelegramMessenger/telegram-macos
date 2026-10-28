@@ -735,18 +735,18 @@ final class EditImageCanvasTextLayoutCache {
     }
 }
 
-func applyEntities(_ entities: [EditImageCanvasEntity], for context: CGContext, size: NSSize, excluding: Int64? = nil, cache: EditImageCanvasTextLayoutCache? = nil) {
+func applyEntities(_ entities: [EditImageCanvasEntity], for context: CGContext, size: NSSize, excluding: Int64? = nil, cache: EditImageCanvasTextLayoutCache? = nil, stickerFrames: [Int64: CGImage] = [:]) {
     for entity in entities where entity.id != excluding {
         let scale = size.width / max(1, entity.referenceSize.width)
         context.saveGState()
         context.scaleBy(x: scale, y: scale)
-        drawEntity(entity, in: context, cache: cache)
+        drawEntity(entity, in: context, cache: cache, stickerFrame: stickerFrames[entity.id])
         context.restoreGState()
     }
     context.setBlendMode(.normal)
 }
 
-private func drawEntity(_ entity: EditImageCanvasEntity, in context: CGContext, cache: EditImageCanvasTextLayoutCache?) {
+private func drawEntity(_ entity: EditImageCanvasEntity, in context: CGContext, cache: EditImageCanvasTextLayoutCache?, stickerFrame: CGImage?) {
     let referenceSize = entity.referenceSize
     switch entity.content {
     case let .vector(vector):
@@ -765,7 +765,7 @@ private func drawEntity(_ entity: EditImageCanvasEntity, in context: CGContext, 
     case let .sticker(sticker):
         let rect = CGRect(x: -sticker.baseSize.width / 2.0, y: -sticker.baseSize.height / 2.0, width: sticker.baseSize.width, height: sticker.baseSize.height)
         context.interpolationQuality = .high
-        editImageCanvasDrawUpright(sticker.image, in: rect, context: context)
+        editImageCanvasDrawUpright(stickerFrame ?? sticker.image, in: rect, context: context)
     case let .shape(shape):
         let maxLineWidth = EditImageCanvasMetrics.shapeMaxLineWidth(referenceSize: referenceSize)
         let rect = CGRect(x: -shape.size.width / 2.0, y: -shape.size.height / 2.0, width: shape.size.width, height: shape.size.height).insetBy(dx: maxLineWidth * 0.5, dy: maxLineWidth * 0.5)

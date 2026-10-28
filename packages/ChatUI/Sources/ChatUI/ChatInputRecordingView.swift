@@ -771,7 +771,7 @@ public class ChatInputRecordingView: View {
             stopTranscribing()
             return .invoked
         }
-        if self.overlayView.mouseInside() {
+        if self.overlayView.mouseInside() || (self.isPaused && self.overlayView.isMouseInsideCentre) {
             self.stopAndSend()
             return .invoked
         }

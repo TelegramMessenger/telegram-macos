@@ -65,6 +65,10 @@ public struct EditedImageData : Equatable {
         return orientation == nil && dimensions == .none && !isHorizontalFlipped && paintings.isEmpty && entities.isEmpty && images.isEmpty
     }
 
+    public var hasAnimatedStickers: Bool {
+        return entities.contains(where: { $0.sticker?.animation != nil })
+    }
+
     public func makeImage(_ image: CGImage, interface: Bool, applyPainting: Bool = true) -> CGImage {
         return EditedImageData.makeImage(image, data: self, interface: interface, applyPainting: applyPainting)
     }
@@ -94,28 +98,8 @@ public struct EditedImageData : Equatable {
         var orientation = data.orientation
         
         if !data.paintings.isEmpty || !data.entities.isEmpty, applyPainting {
-            let source = image
-            let blurImage = data.paintings.contains(where: { $0.action == .blur || $0.action == .blurAll }) ? editImageCanvasBlurredImage(source) : nil
-            image = generateImage(image.size, scale: 1.0, rotatedContext: { size, context in
-                let rect = NSMakeRect(0, 0, size.width, size.height)
-                context.clear(rect)
-                
-                context.saveGState()
-                context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
-                context.scaleBy(x: 1, y: -1.0)
-                context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
-                context.draw(image, in: rect)
-                context.restoreGState()
-                
-                let paints = generateImage(size, contextGenerator: { size, ctx in
-                    ctx.clear(rect)
-                    applyPaints(data.paintings, for: ctx, imageSize: size, blurImage: blurImage)
-                    applyEntities(data.entities, for: ctx, size: size)
-                }, scale: 1.0)!
-                
-                context.draw(paints, in: rect)
-                
-            })!
+            let blurImage = data.needsBlurImage ? editImageCanvasBlurredImage(image) : nil
+            image = drawPaint(image, paintings: data.paintings, entities: data.entities, blurImage: blurImage)
         }
         
         if data.isHorizontalFlipped, let temp = orientation {
@@ -166,8 +150,113 @@ public struct EditedImageData : Equatable {
         return image
     }
     
-    public static func generateNewUrl(data: EditedImageData, selectedRect: NSRect, drawPaintings: Bool = true) -> Signal<URL, NoError> {
-        return Signal { subscriber in
+    private static func drawPaint(_ image: CGImage, paintings: [EditImageDrawTouch], entities: [EditImageCanvasEntity], blurImage: CGImage?) -> CGImage {
+        return generateImage(image.size, scale: 1.0, rotatedContext: { size, context in
+            let rect = NSMakeRect(0, 0, size.width, size.height)
+            context.clear(rect)
+
+            context.saveGState()
+            context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
+            context.scaleBy(x: 1, y: -1.0)
+            context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
+            context.draw(image, in: rect)
+            context.restoreGState()
+
+            let paints = generateImage(size, contextGenerator: { size, ctx in
+                ctx.clear(rect)
+                applyPaints(paintings, for: ctx, imageSize: size, blurImage: blurImage)
+                applyEntities(entities, for: ctx, size: size)
+            }, scale: 1.0)!
+
+            context.draw(paints, in: rect)
+
+        })!
+    }
+
+    private var needsBlurImage: Bool {
+        return paintings.contains(where: { $0.action == .blur || $0.action == .blurAll })
+    }
+
+    private static let videoQueue = Queue(name: "EditImageCanvasVideo")
+
+    private static func makeVideo(_ image: CGImage, data: EditedImageData, selectedRect: NSRect, isCancelled: @escaping () -> Bool) -> URL? {
+        guard data.hasAnimatedStickers, selectedRect.width >= 2, selectedRect.height >= 2 else {
+            return nil
+        }
+        let scale = min(1, 1920 / max(selectedRect.width, selectedRect.height))
+        var data = data
+        var source = image
+        var cropRect = selectedRect
+        if scale < 1 {
+            let size = NSMakeSize(max(1, round(image.size.width * scale)), max(1, round(image.size.height * scale)))
+            guard let scaled = generateImage(size, contextGenerator: { size, context in
+                context.interpolationQuality = .high
+                context.draw(image, in: NSMakeRect(0, 0, size.width, size.height))
+            }, scale: 1.0) else {
+                return nil
+            }
+            source = scaled
+            cropRect = NSMakeRect(selectedRect.minX * scale, selectedRect.minY * scale, selectedRect.width * scale, selectedRect.height * scale)
+            data.images = data.images.map { image in
+                var image = image
+                image.multiplier = NSMakeSize(image.multiplier.width * scale, image.multiplier.height * scale)
+                return image
+            }
+        }
+        cropRect = NSMakeRect(round(cropRect.minX), round(cropRect.minY), max(2, floor(cropRect.width / 2) * 2), max(2, floor(cropRect.height / 2) * 2))
+
+        var sources: [Int64: EditImageCanvasStickerFrameSource] = [:]
+        for entity in data.entities {
+            guard let sticker = entity.sticker, let animation = sticker.animation else {
+                continue
+            }
+            let side = max(sticker.baseSize.width, sticker.baseSize.height) * entity.scale * source.size.width / max(1, entity.referenceSize.width)
+            sources[entity.id] = EditImageCanvasStickerFrameSource(animation: animation, size: editImageCanvasStickerRenderSize(sticker, side: side))
+        }
+        guard let frameCount = sources.values.map({ $0.frameCount }).max() else {
+            return nil
+        }
+        guard let firstAnimated = data.entities.firstIndex(where: { sources[$0.id] != nil }) else {
+            return nil
+        }
+        let blurImage = data.needsBlurImage ? editImageCanvasBlurredImage(source) : nil
+        let base = drawPaint(source, paintings: data.paintings, entities: Array(data.entities[..<firstAnimated]), blurImage: blurImage)
+        let animatedEntities = Array(data.entities[firstAnimated...])
+        let sourceList = Array(sources)
+        return editImageCanvasWriteVideo(size: cropRect.size, frameCount: min(frameCount, editImageCanvasAnimationFps * 10), isCancelled: isCancelled, prepare: { range in
+            var perSource = [[CGImage?]](repeating: [], count: sourceList.count)
+            let lock = NSLock()
+            DispatchQueue.concurrentPerform(iterations: sourceList.count) { index in
+                let images = range.map { sourceList[index].value.image(at: $0) }
+                lock.lock()
+                perSource[index] = images
+                lock.unlock()
+            }
+            return range.indices.map { offset in
+                var images: [Int64: CGImage] = [:]
+                for (index, item) in sourceList.enumerated() {
+                    images[item.key] = perSource[index][offset - range.lowerBound]
+                }
+                return images
+            }
+        }, render: { images in
+            var frameData = data
+            frameData.paintings = []
+            frameData.entities = animatedEntities.map { entity in
+                guard var sticker = entity.sticker, let image = images[entity.id] else {
+                    return entity
+                }
+                var entity = entity
+                sticker.image = image
+                entity.content = .sticker(sticker)
+                return entity
+            }
+            return self.makeImage(base, data: frameData, interface: false).cropping(to: cropRect)
+        })
+    }
+
+    public static func generateNewUrl(data: EditedImageData, selectedRect: NSRect, drawPaintings: Bool = true, allowsAnimation: Bool = false) -> Signal<URL, NoError> {
+        let still: Signal<URL, NoError> = Signal { subscriber in
             
             if let image = NSImage(contentsOf: data.originalUrl)?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                 if selectedRect == NSMakeRect(0, 0, image.size.width, image.size.height) && data.hasntData {
@@ -188,6 +277,36 @@ public struct EditedImageData : Equatable {
             subscriber.putCompletion()
             return EmptyDisposable
         } |> runOn(resourcesQueue)
+
+        guard allowsAnimation, drawPaintings, data.hasAnimatedStickers else {
+            return still
+        }
+        let video: Signal<URL?, NoError> = Signal { subscriber in
+            let cancelled = Atomic(value: false)
+            videoQueue.async {
+                let isCancelled = { cancelled.with { $0 } }
+                let image = NSImage(contentsOf: data.originalUrl)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                let url = image.flatMap { self.makeVideo($0, data: data, selectedRect: selectedRect, isCancelled: isCancelled) }
+                if isCancelled() {
+                    if let url {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    return
+                }
+                subscriber.putNext(url)
+                subscriber.putCompletion()
+            }
+            return ActionDisposable {
+                _ = cancelled.swap(true)
+            }
+        }
+        return video |> mapToSignal { url in
+            if let url {
+                EditedPhotoVideos.shared.add(path: url.path)
+                return .single(url)
+            }
+            return still
+        }
     }
     
 }

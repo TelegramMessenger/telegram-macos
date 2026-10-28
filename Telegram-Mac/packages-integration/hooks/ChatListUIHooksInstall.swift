@@ -91,8 +91,8 @@ func installChatListUIHooks() {
         navigateToChat(navigation: navigation, context: context.concrete, chatLocation: chatLocation, focusTarget: focusTarget, initialAction: initialAction, additional: additional, animated: animated, navigationStyle: navigationStyle)
     }, makeChatController: { context, chatLocation, initialAction in
         return ChatController(context: context.concrete, chatLocation: chatLocation, initialAction: initialAction)
-    }, makeChatControllerWithMode: { context, chatLocation, mode in
-        return ChatController(context: context.concrete, chatLocation: chatLocation, mode: mode)
+    }, makeChatControllerWithMode: { context, chatLocation, mode, holder in
+        return ChatController(context: context.concrete, chatLocation: chatLocation, mode: mode, chatLocationContextHolder: holder)
     }, makeChatAdditionController: { context, chatLocation in
         return ChatAdditionController(context: context.concrete, chatLocation: chatLocation)
     }, makeChatAdditionControllerWithFocus: { context, chatLocation, focusTarget, initialAction in

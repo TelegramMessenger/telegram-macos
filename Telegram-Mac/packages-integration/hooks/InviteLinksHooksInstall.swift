@@ -11,5 +11,7 @@ func installInviteLinksUIHooks() {
     }, openPeerInfo: { context, peerId in
         let context = context as! AccountContext
         PeerInfoController.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId)
+    }, shareQrImage: { context, path, link, window in
+        showModal(with: ShareModalController(QrStudioShareObject(context as! AccountContext, path: path, link: link)), for: window)
     }))
 }

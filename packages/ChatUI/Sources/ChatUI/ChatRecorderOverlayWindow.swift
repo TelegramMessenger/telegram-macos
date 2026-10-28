@@ -466,6 +466,15 @@ public class ChatRecorderOverlayView : Control {
         updateInside()
     }
 
+    var isMouseInsideCentre: Bool {
+        guard let window = window else {
+            return false
+        }
+        let point = blobView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let radius = (isPaused ? pausedCentreDiameter : recordingCentreDiameter) / 2
+        return hypot(point.x - blobView.bounds.midX, point.y - blobView.bounds.midY) <= radius
+    }
+
     public func updateInside() {
         let color = (isPaused || isTranscribing || transcribeProgress > 0.25 || mouseInside()) ? theme.colors.accent : theme.colors.redUI
         blobView.setColor(color, animated: true)

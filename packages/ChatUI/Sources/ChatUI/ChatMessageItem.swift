@@ -17,6 +17,7 @@ import InputTextView
 import LocalAnimations
 import Localization
 import MessageUtils
+import MessageTextUtils
 import TelegramContext
 import TelegramMediaUtils
 import TelegramTheme
@@ -60,7 +61,7 @@ private let _streamingStates = Atomic<[MessageId: WeakReference<FoldingTextLayou
 public class ChatMessageItem: ChatRowItem {
     public private(set) var messageText:NSAttributedString
     public private(set) var textLayout: FoldingTextLayout
-    private var relativeDateTimer: SwiftSignalKit.Timer?
+    private var relativeDateTimer: RelativeDateUpdateTimer?
         
     
     public var isFragmentAd: Bool {
@@ -225,6 +226,7 @@ public class ChatMessageItem: ChatRowItem {
     public private(set) var webpageLayout:WPLayout?
     
     public override init(_ initialSize:NSSize, _ chatInteraction:ChatInteraction,_ context: any AccountContextProtocol, _ entry: ChatHistoryEntry, theme: TelegramPresentationTheme) {
+        let relativeDateReferenceTimestamp = Date().timeIntervalSince1970
         
          if let message = entry.message {
              
@@ -610,31 +612,20 @@ public class ChatMessageItem: ChatRowItem {
             
             textLayout.set(interactions)
 
-             var relativeDateUpdatePeriod: Double?
-             for attribute in message.attributes {
-                 if let attribute = attribute as? TextEntitiesMessageAttribute {
-                     for entity in attribute.entities {
-                         if case let .FormattedDate(format, timestamp) = entity.type, case .relative = format {
-                             let currentTimestamp = context.timestamp
-                             let value = abs(currentTimestamp - timestamp)
-                             if value < 120 {
-                                 relativeDateUpdatePeriod = 1
-                             } else if value <= 60 * 60 {
-                                 relativeDateUpdatePeriod = 60
-                             } else {
-                                 relativeDateUpdatePeriod = 30 * 60
-                             }
-                         }
-                     }
-                     break
-                 }
-             }
-             if let period = relativeDateUpdatePeriod {
-                 self.relativeDateTimer = SwiftSignalKit.Timer(timeout: period, repeat: true, completion: { [weak self] in
-                     self?.updateRelativeDates()
-                 }, queue: .mainQueue())
-                 self.relativeDateTimer?.start()
-             }
+            var relativeDateTimestamps: [Int32] = []
+            for attribute in message.attributes {
+                if let attribute = attribute as? TextEntitiesMessageAttribute {
+                    for entity in attribute.entities {
+                        if case let .FormattedDate(format, timestamp) = entity.type, case .relative = format {
+                            relativeDateTimestamps.append(timestamp)
+                        }
+                    }
+                    break
+                }
+            }
+            self.relativeDateTimer = RelativeDateUpdateTimer(timestamps: relativeDateTimestamps, relativeTo: relativeDateReferenceTimestamp, update: { [weak self] in
+                self?.updateRelativeDates()
+            })
 
             return
         }

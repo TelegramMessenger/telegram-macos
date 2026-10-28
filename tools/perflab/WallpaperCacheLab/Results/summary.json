@@ -1,0 +1,161 @@
+{
+  "provenance": {
+    "baseline": "35a0182637c683686a1db1d33ef48c8c3adb2e97",
+    "head": "35a0182637c683686a1db1d33ef48c8c3adb2e97",
+    "production_sha256": "a124bde835c393cd070fb281d055d37e1c4b84ec9bc5e9f82a80dff32e963175",
+    "decoder_sha256": "a63091c3c74509aca36ca3142b84ef870189e42402445546c4169a77517aed74",
+    "swift": "swift-driver version: 1.168.6 Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)\nTarget: arm64-apple-macosx27.0.0\n",
+    "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0.1\nBuildVersion:\t\t26A434\n",
+    "hardware": [
+      "Mac16,8",
+      "25769803776",
+      "12"
+    ],
+    "baseline_cache_sha256": "c0c0765e6d9b7ed0357f43afc841a9f4e94d7d7eb78bdc82d4bc986f4ec686c6"
+  },
+  "medians": [
+    {
+      "scenario": "browse",
+      "variant": "before",
+      "footprint_delta": 319750888,
+      "retained_bitmap_bytes": 315494400,
+      "live_images": 12,
+      "hits": 0,
+      "decodes": 12,
+      "decode_ms": 260.160834,
+      "cache_ms": 0.052957,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 4030968
+    },
+    {
+      "scenario": "browse",
+      "variant": "after",
+      "footprint_delta": 56705576,
+      "retained_bitmap_bytes": 52582400,
+      "live_images": 2,
+      "hits": 0,
+      "decodes": 12,
+      "decode_ms": 256.068544,
+      "cache_ms": 1.792292,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 4080120
+    },
+    {
+      "scenario": "active-owner",
+      "variant": "before",
+      "footprint_delta": 319750888,
+      "retained_bitmap_bytes": 315494400,
+      "live_images": 12,
+      "hits": 0,
+      "decodes": 12,
+      "decode_ms": 261.07921,
+      "cache_ms": 0.051126,
+      "live_after_clear": 1,
+      "footprint_after_clear_delta": 30360104
+    },
+    {
+      "scenario": "active-owner",
+      "variant": "after",
+      "footprint_delta": 83018304,
+      "retained_bitmap_bytes": 78873600,
+      "live_images": 3,
+      "hits": 0,
+      "decodes": 12,
+      "decode_ms": 256.731335,
+      "cache_ms": 1.633168,
+      "live_after_clear": 1,
+      "footprint_after_clear_delta": 30392872
+    },
+    {
+      "scenario": "recent",
+      "variant": "before",
+      "footprint_delta": 55148736,
+      "retained_bitmap_bytes": 52582400,
+      "live_images": 2,
+      "hits": 98,
+      "decodes": 2,
+      "decode_ms": 50.504792,
+      "cache_ms": 0.03721,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 2506872
+    },
+    {
+      "scenario": "recent",
+      "variant": "after",
+      "footprint_delta": 55214272,
+      "retained_bitmap_bytes": 52582400,
+      "live_images": 2,
+      "hits": 98,
+      "decodes": 2,
+      "decode_ms": 50.708209,
+      "cache_ms": 0.047414,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 2588792
+    },
+    {
+      "scenario": "thumbnails",
+      "variant": "before",
+      "footprint_delta": 1654784,
+      "retained_bitmap_bytes": 929280,
+      "live_images": 20,
+      "hits": 80,
+      "decodes": 20,
+      "decode_ms": 106.141376,
+      "cache_ms": 0.043674,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 671744
+    },
+    {
+      "scenario": "thumbnails",
+      "variant": "after",
+      "footprint_delta": 1687552,
+      "retained_bitmap_bytes": 929280,
+      "live_images": 20,
+      "hits": 80,
+      "decodes": 20,
+      "decode_ms": 105.933958,
+      "cache_ms": 0.095583,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 704512
+    },
+    {
+      "scenario": "revisit",
+      "variant": "before",
+      "footprint_delta": 319718096,
+      "retained_bitmap_bytes": 315494400,
+      "live_images": 12,
+      "hits": 12,
+      "decodes": 12,
+      "decode_ms": 262.80529,
+      "cache_ms": 0.059292,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 3998176
+    },
+    {
+      "scenario": "revisit",
+      "variant": "after",
+      "footprint_delta": 56377896,
+      "retained_bitmap_bytes": 52582400,
+      "live_images": 2,
+      "hits": 0,
+      "decodes": 24,
+      "decode_ms": 503.24963,
+      "cache_ms": 3.911086,
+      "live_after_clear": 0,
+      "footprint_after_clear_delta": 3752440
+    }
+  ],
+  "pixel_equivalence_count": 20,
+  "method": {
+    "repetitions": 5,
+    "alternating_order": true,
+    "fresh_process_each_run": true,
+    "fixture": "20 deterministic JPEGs, 2080x3160 pixels, quality 0.85",
+    "decode": "production downsampledImage, maxPixelSize 3160 or 132 for thumbnails",
+    "footprint": "TASK_VM_INFO.phys_footprint after minus before workload",
+    "byte_cost": "selected CGImage.bytesPerRow * height",
+    "cache_budget_bytes": 67108864,
+    "budget_is_advisory": true,
+    "full_app_memory_measurement": false
+  }
+}

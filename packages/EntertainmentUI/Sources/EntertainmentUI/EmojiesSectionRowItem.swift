@@ -18,6 +18,23 @@ import GeneralRows
 import PremiumStatusUI
 import InputView
 import InlineStickerLayer
+
+private let largeReactionHoldDuration: Double = 0.8
+
+private func isSameEmojiEntry(_ lhs: EmojiesSectionRowItem.Item?, _ rhs: EmojiesSectionRowItem.Item?) -> Bool {
+    guard let lhs, let rhs, lhs.rect == rhs.rect else {
+        return false
+    }
+    switch (lhs, rhs) {
+    case let (.item(_, lhsItem, _, _), .item(_, rhsItem, _, _)):
+        return lhsItem.file.fileId == rhsItem.file.fileId
+    case (.more, .more):
+        return true
+    default:
+        return false
+    }
+}
+
 public final class EmojiesSectionRowItem : GeneralRowItem {
     
     public enum Item : Equatable {
@@ -95,6 +112,8 @@ public final class EmojiesSectionRowItem : GeneralRowItem {
     public let stickerItems: [StickerPackItem]
     public let context: any AccountContextProtocol
     public let callback:(StickerPackItem, StickerPackCollectionInfo?, Int32?, NSRect?)->Void
+    public let largeCallback: (() -> ((StickerPackItem, NSRect?) -> Void)?)?
+    public let drag: ((StickerPackItem, EntertainmentStickerDrag) -> Bool)?
     public let itemSize: NSSize
     public let info: StickerPackCollectionInfo?
     public let viewSet: ((StickerPackCollectionInfo)->Void)?
@@ -129,7 +148,7 @@ public final class EmojiesSectionRowItem : GeneralRowItem {
     public let color: NSColor?
     public let uniqueGifts: [StarGift.UniqueGift]
     private let emojiStatusAction = EmojiStatusMenuAction()
-    public init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, revealed: Bool, installed: Bool, info: StickerPackCollectionInfo?, items: [StickerPackItem], isBig: Bool = false, groupEmojiPack: Bool = false, mode: Mode = .panel, selectedItems:[SelectedItem] = [], color: NSColor? = nil, callback:@escaping(StickerPackItem, StickerPackCollectionInfo?, Int32?, NSRect?)->Void, viewSet:((StickerPackCollectionInfo)->Void)? = nil, showAllItems:(()->Void)? = nil, openPremium:(()->Void)? = nil, installPack:((StickerPackCollectionInfo, [StickerPackItem])->Void)? = nil, ignorePremium: Bool = false, uniqueGifts: [StarGift.UniqueGift] = []) {
+    public init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, revealed: Bool, installed: Bool, info: StickerPackCollectionInfo?, items: [StickerPackItem], isBig: Bool = false, groupEmojiPack: Bool = false, mode: Mode = .panel, selectedItems:[SelectedItem] = [], color: NSColor? = nil, callback:@escaping(StickerPackItem, StickerPackCollectionInfo?, Int32?, NSRect?)->Void, largeCallback: (() -> ((StickerPackItem, NSRect?) -> Void)?)? = nil, drag: ((StickerPackItem, EntertainmentStickerDrag) -> Bool)? = nil, viewSet:((StickerPackCollectionInfo)->Void)? = nil, showAllItems:(()->Void)? = nil, openPremium:(()->Void)? = nil, installPack:((StickerPackCollectionInfo, [StickerPackItem])->Void)? = nil, ignorePremium: Bool = false, uniqueGifts: [StarGift.UniqueGift] = []) {
         self.itemSize = isBig ? NSMakeSize(66, 60) : NSMakeSize(40, 34)
         self.info = info
         self.mode = mode
@@ -149,6 +168,8 @@ public final class EmojiesSectionRowItem : GeneralRowItem {
         
         self.context = context
         self.callback = callback
+        self.largeCallback = largeCallback
+        self.drag = drag
         
         if !uniqueGifts.isEmpty {
             let layout = TextViewLayout(.initialize(string: strings().emojiCollectibles, color: theme.colors.grayText, font: .normal(12)), maximumNumberOfLines: 1, alwaysStaticItems: true)
@@ -596,6 +617,9 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
         }, for: .Up)
         
         contentView.set(handler: { [weak self] _ in
+            if self?.largeHoldTimer != nil || self?.largeInvoked == true {
+                return
+            }
             let item = self?.item as? EmojiesSectionRowItem
             let table = item?.table
             let window = self?.window as? Window
@@ -611,15 +635,75 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
     }
     
     private var currentDownItem: (InlineStickerItemLayer, EmojiesSectionRowItem.Item, Bool)?
+    private var largeHoldTimer: SwiftSignalKit.Timer?
+    private var largeInvoked: Bool = false
+
+    private func startLargeHold(_ current: (InlineStickerItemLayer, EmojiesSectionRowItem.Item, Bool), send: @escaping(StickerPackItem, NSRect?)->Void) {
+        let layer = current.0
+        layer.zPosition = 1
+        layer.animateScale(from: layer.transform.m11, to: layer.transform.m11 * 1.5, duration: largeReactionHoldDuration, removeOnCompletion: false)
+        largeHoldTimer = SwiftSignalKit.Timer(timeout: largeReactionHoldDuration, repeat: false, completion: { [weak self] in
+            guard let self else {
+                return
+            }
+            self.largeHoldTimer = nil
+            if isSameEmojiEntry(self.itemUnderMouse?.1, current.1), let sticker = current.1.item, let window = self.window, let item = self.item as? EmojiesSectionRowItem {
+                self.largeInvoked = true
+                let wrect = self.contentView.convert(current.1.rect, to: nil)
+                let srect = window.convertToScreen(wrect)
+                NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                send(sticker, item.context.window.convertFromScreen(srect))
+            } else {
+                self.cancelLargeHold()
+            }
+        }, queue: .mainQueue())
+        largeHoldTimer?.start()
+    }
+
+    private func cancelLargeHold() {
+        largeHoldTimer?.invalidate()
+        largeHoldTimer = nil
+        if let layer = currentDownItem?.0 {
+            layer.animateScale(from: layer.presentation()?.transform.m11 ?? layer.transform.m11, to: layer.transform.m11, duration: 0.18, removeOnCompletion: true)
+            layer.zPosition = 0
+        }
+    }
+
+    private let dragTracker = EntertainmentDragTracker()
     private func updateDown() {
+        largeInvoked = false
         if let item = itemUnderMouse {
             self.currentDownItem = (item.0, item.1, true)
+            self.dragTracker.down(in: window)
         }
-        if let itemUnderMouse = self.currentDownItem {
+        if let current = self.currentDownItem, current.1.item != nil, let send = (self.item as? EmojiesSectionRowItem)?.largeCallback?() {
+            startLargeHold(current, send: send)
+        } else if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: itemUnderMouse.0.presentation()?.transform.m11 ?? itemUnderMouse.0.transform.m11, to: itemUnderMouse.0.transform.m11 * 0.85, duration: 0.12, removeOnCompletion: false)
         }
     }
     private func updateDragging() {
+        if largeHoldTimer != nil {
+            if !isSameEmojiEntry(self.itemUnderMouse?.1, self.currentDownItem?.1) {
+                cancelLargeHold()
+                self.currentDownItem = nil
+            }
+            return
+        }
+        if let current = self.currentDownItem, let item = item as? EmojiesSectionRowItem, let drag = item.drag, let stickerItem = current.1.item, dragTracker.dragged(in: window, begin: { point in
+            guard drag(stickerItem, .moved(point)) else {
+                return false
+            }
+            if current.2 {
+                current.0.animateScale(from: current.0.presentation()?.transform.m11 ?? current.0.transform.m11 * 0.85, to: current.0.transform.m11, duration: 0.18, removeOnCompletion: true)
+                self.currentDownItem?.2 = false
+            }
+            return true
+        }, move: { point in
+            _ = drag(stickerItem, .moved(point))
+        }) {
+            return
+        }
         if let current = self.currentDownItem {
             if self.itemUnderMouse?.1 != current.1, current.2  {
                 current.0.animateScale(from: current.0.presentation()?.transform.m11 ?? current.0.transform.m11 * 0.85, to: current.0.transform.m11, duration: 0.18, removeOnCompletion: true)
@@ -632,6 +716,24 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
             
     }
     private func updateUp() {
+        if largeInvoked {
+            self.currentDownItem = nil
+            return
+        }
+        if largeHoldTimer != nil {
+            cancelLargeHold()
+            if isSameEmojiEntry(self.currentDownItem?.1, self.itemUnderMouse?.1) {
+                self.click()
+            }
+            self.currentDownItem = nil
+            return
+        }
+        if let current = self.currentDownItem, let item = item as? EmojiesSectionRowItem, let stickerItem = current.1.item, dragTracker.up(in: window, end: { point in
+            _ = item.drag?(stickerItem, .ended(point))
+        }) {
+            self.currentDownItem = nil
+            return
+        }
         if let itemUnderMouse = self.currentDownItem {
             if itemUnderMouse.1 == self.itemUnderMouse?.1 {
                 itemUnderMouse.0.animateScale(from: itemUnderMouse.0.presentation()?.transform.m11 ?? itemUnderMouse.0.transform.m11 * 0.85, to: itemUnderMouse.0.transform.m11, duration: 0.18, removeOnCompletion: true)

@@ -37,6 +37,7 @@ public final class StickerPanelArguments {
     public let mode: EntertainmentViewController.Mode
     public let canSchedule:()->Bool
     public var createSticker: ((Control)->Void)?
+    public var dragSticker: ((TelegramMediaFile, CGImage?, EntertainmentStickerDrag) -> Bool)?
     public init(context: any AccountContextProtocol, sendMedia: @escaping(Media, NSView, Bool, Bool, ItemCollectionId?)->Void, showPack: @escaping(StickerPackReference)->Void, addPack: @escaping(StickerPackReference)->Void, navigate: @escaping(ItemCollectionViewEntryIndex)->Void, clearRecent:@escaping()->Void, removePack:@escaping(StickerPackCollectionId)->Void, closeInlineFeatured:@escaping(Int64)->Void, openFeatured:@escaping(FeaturedStickerPackItem)->Void, selectEmojiCategory:@escaping(EmojiSearchCategories.Group?)->Void, mode: EntertainmentViewController.Mode, canSchedule:@escaping()->Bool) {
         self.context = context
         self.sendMedia = sendMedia
@@ -808,8 +809,8 @@ public class NStickersView : View {
     }
     
     
-    public func updateRestricion(_ peer: Peer?, animated: Bool) {
-        if let peer = peer, let text = permissionText(from: peer, for: .banSendStickers) {
+    public func updateRestricion(_ peer: Peer?, cachedData: CachedPeerData?, animated: Bool) {
+        if let peer = peer, let text = permissionText(from: peer, for: .banSendStickers, cachedData: cachedData) {
             let current: RestrictionWrappedView
             if let view = self.restrictedView {
                 current = view
@@ -1212,7 +1213,7 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
         self.chatInteraction = chatInteraction
         chatInteraction.add(observer: self)
         if isLoaded() {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
         self.specificPeerId.set(chatInteraction.peerId)
     }
@@ -1220,11 +1221,11 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
     public func notify(with value: Any, oldValue: Any, animated: Bool) {
         if let value = value as? ChatPresentationSnapshot, let oldValue = oldValue as? ChatPresentationSnapshot {
             if let peer = value.snapshotPeer, let oldPeer = oldValue.snapshotPeer {
-                if permissionText(from: peer, for: .banSendStickers) != permissionText(from: oldPeer, for: .banSendStickers) {
-                    genericView.updateRestricion(peer, animated: animated)
+                if permissionText(from: peer, for: .banSendStickers, cachedData: value.snapshotCachedData) != permissionText(from: oldPeer, for: .banSendStickers, cachedData: oldValue.snapshotCachedData) {
+                    genericView.updateRestricion(peer, cachedData: value.snapshotCachedData, animated: animated)
                 }
             } else if (oldValue.snapshotPeer != nil) != (value.snapshotPeer != nil), let peer = value.snapshotPeer {
-                genericView.updateRestricion(peer, animated: animated)
+                genericView.updateRestricion(peer, cachedData: value.snapshotCachedData, animated: animated)
             }
         }
     }
@@ -1298,14 +1299,14 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         self.genericView.updateSelectionState(animated: false)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     public override func viewDidLoad() {
@@ -1462,6 +1463,14 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
             return self?.chatInteraction?.presentationSendPaidMessageStars == nil
         })
         
+        arguments.dragSticker = { [weak self] file, image, drag in
+            guard let dragItem = self?.interactions?.dragItem, !file.isPremiumSticker || context.isPremium else {
+                return false
+            }
+            dragItem(.file(file), image, drag)
+            return true
+        }
+
         if #available(macOS 14.0, *), mode == .common {
             arguments.createSticker = { [weak self] _ in
                 guard let self else { return }

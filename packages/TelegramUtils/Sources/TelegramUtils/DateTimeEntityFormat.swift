@@ -3,31 +3,27 @@ import TelegramCore
 import Localization
 
 public func formatDateTimeEntity(format: MessageTextEntityType.DateTimeFormat, date: Int32) -> String {
-    let currentTimestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
+    let currentTimestamp = Int64(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
     switch format {
     case .relative:
-        let value = currentTimestamp - date
-        if value > 0 {
-            if value < 60 {
-                return strings().formattedDateSecondsAgoOther(Int(value))
-            } else if value <= 1 * 60 * 60 {
-                return strings().formattedDateMinutesAgoOther(Int(round(Float(value) / 60)))
-            } else if value <= 24 * 60 * 60 {
-                return strings().formattedDateHoursAgoOther(Int(round(Float(value) / (60 * 60))))
-            } else {
-                return strings().formattedDateDaysAgoOther(Int(round(Float(value) / (24 * 60 * 60))))
-            }
-        } else {
-            let value = abs(value)
-            if value < 60 {
-                return strings().formattedDateInSecondsOther(Int(value))
-            } else if value <= 1 * 60 * 60 {
-                return strings().formattedDateInMinutesOther(Int(round(Float(value) / 60)))
-            } else if value <= 24 * 60 * 60 {
-                return strings().formattedDateInHoursOther(Int(round(Float(value) / (60 * 60))))
-            } else {
-                return strings().formattedDateInDaysOther(Int(round(Float(value) / (24 * 60 * 60))))
-            }
+        let value = RelativeDateTimeEntityValue(date: date, timestamp: currentTimestamp)
+        switch (value.isPast, value.unit) {
+        case (true, .seconds):
+            return strings().formattedDateSecondsAgoOther(value.value)
+        case (true, .minutes):
+            return strings().formattedDateMinutesAgoOther(value.value)
+        case (true, .hours):
+            return strings().formattedDateHoursAgoOther(value.value)
+        case (true, .days):
+            return strings().formattedDateDaysAgoOther(value.value)
+        case (false, .seconds):
+            return strings().formattedDateInSecondsOther(value.value)
+        case (false, .minutes):
+            return strings().formattedDateInMinutesOther(value.value)
+        case (false, .hours):
+            return strings().formattedDateInHoursOther(value.value)
+        case (false, .days):
+            return strings().formattedDateInDaysOther(value.value)
         }
     case let .full(timeFormat, dateFormat, dayOfWeek):
         var t: time_t = Int(date)

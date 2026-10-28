@@ -51,6 +51,14 @@ public final class EmojiAnimationEffectView : View {
         }
     }
     
+    public func animateContentScale(from: CGFloat, to: CGFloat, duration: Double, spring: Bool = false, completion: ((Bool) -> Void)? = nil) {
+        if spring {
+            player.layer?.animateScaleSpring(from: from, to: to, duration: duration, removeOnCompletion: false, bounce: false, completion: completion)
+        } else {
+            player.layer?.animateScaleCenter(from: from, to: to, duration: duration, removeOnCompletion: false, completion: completion)
+        }
+    }
+
     public func updatePoint(_ point: NSPoint, transition: ContainedViewLayoutTransition) {
         self.animationPoint = point
         self.updateLayout(size: frame.size, transition: transition)

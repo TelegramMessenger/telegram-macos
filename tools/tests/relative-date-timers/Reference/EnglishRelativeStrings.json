@@ -1,0 +1,10 @@
+{
+  "FormattedDate.DaysAgo_other": "%1$d days ago",
+  "FormattedDate.HoursAgo_other": "%1$d hours ago",
+  "FormattedDate.InDays_other": "in %1$d days",
+  "FormattedDate.InHours_other": "in %1$d hours",
+  "FormattedDate.InMinutes_other": "in %1$d minutes",
+  "FormattedDate.InSeconds_other": "in %1$d seconds",
+  "FormattedDate.MinutesAgo_other": "%1$d minutes ago",
+  "FormattedDate.SecondsAgo_other": "%1$d seconds ago"
+}

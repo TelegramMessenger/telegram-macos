@@ -295,22 +295,23 @@ public class StickerPackPanelRowItem: TableRowItem {
         let packInfo = self.packInfo
         let canSend = self.canSend
         
-        let _savedStickersCount: Signal<Int, NoError> = context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: [Namespaces.OrderedItemList.CloudSavedStickers], namespaces: [Namespaces.ItemCollection.CloudStickerPacks], aroundIndex: nil, count: 100) |> take(1) |> map {
-            $0.orderedItemListsViews[0].items.count
+        let _savedStickers: Signal<[MediaId], NoError> = context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: [Namespaces.OrderedItemList.CloudSavedStickers], namespaces: [Namespaces.ItemCollection.CloudStickerPacks], aroundIndex: nil, count: 100) |> take(1) |> map {
+            $0.orderedItemListsViews[0].items.compactMap { $0.contents.get(SavedStickerItem.self)?.file.fileId }
         } |> deliverOnMainQueue
-        
-        return _savedStickersCount |> map { [weak self] savedStickersCount in
+
+        return _savedStickers |> map { [weak self] savedStickers in
+            let savedStickersCount = savedStickers.count
             var items:[ContextMenuItem] = []
 
             for file in files {
                 let rect = NSMakeRect(file.1.x, file.1.y, 60, 60)
                 let file = file.0
                 if NSPointInRect(location, rect) {
-                    
+
                     if file.isPremiumSticker && !context.isPremium {
                         return []
                     }
-                    
+
                     if NSApp.currentEvent?.modifierFlags.contains(.control) == true {
                         if file.isAnimatedSticker, let data = try? Data(contentsOf: URL(fileURLWithPath: context.account.postbox.mediaBox.resourcePath(file.resource))) {
                             items.append(ContextMenuItem("Copy thumbnail (Dev.)", handler: {
@@ -324,7 +325,7 @@ public class StickerPackPanelRowItem: TableRowItem {
                             }, itemImage: MenuAnimation.menu_copy_media.value))
                         }
                     }
-                    
+
                     inner: switch packInfo {
                     case .saved, .recent:
                         if let reference = file.stickerReference {
@@ -335,52 +336,64 @@ public class StickerPackPanelRowItem: TableRowItem {
                     default:
                         break inner
                     }
-                    inner: switch packInfo {
-                    case .saved:
-                        if let mediaId = file.id {
-                            items.append(ContextMenuItem(strings().contextRemoveFaveSticker, handler: {
-                                showModalText(for: context.window, text: strings().chatContextStickerRemovedFromFavorites)
-                                _ = removeSavedSticker(postbox: context.account.postbox, mediaId: mediaId).start()
-                            }, itemImage: MenuAnimation.menu_remove_from_favorites.value))
-                        }
-                    default:
-                        if packInfo.installed {
-                            items.append(ContextMenuItem(strings().chatContextAddFavoriteSticker, handler: {
-                                let limit = context.isPremium ? context.premiumLimits.stickers_faved_limit_premium : context.premiumLimits.stickers_faved_limit_default
-                                if limit >= savedStickersCount, !context.isPremium {
-                                    showModalText(for: context.window, text: strings().chatContextFavoriteStickersLimitInfo("\(context.premiumLimits.stickers_faved_limit_premium)"), title: strings().chatContextFavoriteStickersLimitTitle, callback: { value in
-                                        FeatureNavigationHooks.shared.showPremiumLimit(context, .faveStickers)
-                                    })
-                                } else {
+                    if packInfo.installed, savedStickers.contains(file.fileId) {
+                        items.append(ContextMenuItem(strings().chatContextRemoveFavoriteSticker, handler: {
+                            showModalText(for: context.window, text: strings().chatContextStickerRemovedFromFavorites)
+                            _ = removeSavedSticker(postbox: context.account.postbox, mediaId: file.fileId).start()
+                        }, itemMode: .destruct, itemImage: MenuAnimation.menu_remove_from_favorites.value))
+                    } else if packInfo.installed || packInfo == .recent {
+                        items.append(ContextMenuItem(strings().chatContextAddFavoriteSticker, handler: {
+                            let limit = context.isPremium ? context.premiumLimits.stickers_faved_limit_premium : context.premiumLimits.stickers_faved_limit_default
+                            let reachedLimit = savedStickersCount >= limit && !context.isPremium
+                            if reachedLimit {
+                                showModalText(for: context.window, text: strings().chatContextFavoriteStickersLimitInfo("\(context.premiumLimits.stickers_faved_limit_premium)"), title: strings().chatContextFavoriteStickersLimitTitle, callback: { value in
+                                    FeatureNavigationHooks.shared.showPremiumLimit(context, .faveStickers)
+                                })
+                            }
+                            _ = (addSavedSticker(postbox: context.account.postbox, network: context.account.network, file: file, limit: limit) |> deliverOnMainQueue).start(error: { _ in
+                                showModalText(for: context.window, text: strings().unknownError)
+                            }, completed: {
+                                if !reachedLimit {
                                     showModalText(for: context.window, text: strings().chatContextStickerAddedToFavorites)
                                 }
-                                _ = addSavedSticker(postbox: context.account.postbox, network: context.account.network, file: file).start()
-                            }, itemImage: MenuAnimation.menu_add_to_favorites.value))
-                        }
+                            })
+                        }, itemImage: MenuAnimation.menu_add_to_favorites.value))
                     }
-                    
+
                     if canSend {
                         items.append(ContextMenuItem(strings().chatSendWithoutSound, handler: { [weak self] in
                             guard let `self` = self else {
                                 return
                             }
-     
+
                             if let contentView = self.view {
                                 self.arguments.sendMedia(file, contentView, true, false, self.collectionId.itemCollectionId)
                             }
                         }, itemImage: MenuAnimation.menu_mute.value))
-                        
-                        
+
+
                         if self?.canSchedule == true {
                             items.append(ContextMenuItem(strings().chatSendScheduledMessage, handler: { [weak self] in
                                 guard let `self` = self else {
                                     return
                                 }
-                                
+
                                 if let contentView = self.view {
                                     self.arguments.sendMedia(file, contentView, false, true, self.collectionId.itemCollectionId)
                                 }
                             }, itemImage: MenuAnimation.menu_schedule_message.value))
+                        }
+                    }
+                    if packInfo == .recent {
+                        items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
+                            context.engine.stickers.removeRecentlyUsedSticker(fileReference: .recentSticker(media: file))
+                        }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+                    } else if packInfo == .saved {
+                        if let mediaId = file.id {
+                            items.append(ContextMenuItem(strings().chatContextRemoveFavoriteSticker, handler: {
+                                showModalText(for: context.window, text: strings().chatContextStickerRemovedFromFavorites)
+                                _ = removeSavedSticker(postbox: context.account.postbox, mediaId: mediaId).start()
+                            }, itemMode: .destruct, itemImage: MenuAnimation.menu_remove_from_favorites.value))
                         }
                     }
                     if let editing = self?.editing {
@@ -523,6 +536,7 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
     }
     
     private var currentDownItem: (InlineStickerItemLayer, TelegramMediaFile, Bool)?
+    private let dragTracker = EntertainmentDragTracker()
     private func updateDown() {
         if isEditing {
             if let (layer, file) = itemUnderMouse, let item = item as? StickerPackPanelRowItem, let window = window {
@@ -533,6 +547,7 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
         }
         if let item = itemUnderMouse {
             self.currentDownItem = (item.0, item.1, true)
+            self.dragTracker.down(in: window)
         }
         if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: 1, to: 0.95, duration: 0.2, removeOnCompletion: false)
@@ -541,6 +556,9 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
     private func updateDragging() {
         if reorderState != nil {
             updateReorder()
+            return
+        }
+        if updateStickerDrag() {
             return
         }
         if let current = self.currentDownItem {
@@ -560,6 +578,12 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
             endReorder(state)
             return
         }
+        if let current = self.currentDownItem, let item = item as? StickerPackPanelRowItem, dragTracker.up(in: window, end: { point in
+            _ = item.arguments.dragSticker?(current.1, nil, .ended(point))
+        }) {
+            self.currentDownItem = nil
+            return
+        }
         if let itemUnderMouse = self.currentDownItem {
             itemUnderMouse.0.animateScale(from: 0.95, to: 1, duration: 0.2, removeOnCompletion: true)
             if itemUnderMouse.1 == self.itemUnderMouse?.1 {
@@ -569,6 +593,24 @@ private final class StickerPackPanelRowView : TableRowView, ModalPreviewRowViewP
         self.currentDownItem = nil
     }
     
+    private func updateStickerDrag() -> Bool {
+        guard let item = item as? StickerPackPanelRowItem, let dragSticker = item.arguments.dragSticker, let current = self.currentDownItem else {
+            return false
+        }
+        return dragTracker.dragged(in: window, begin: { point in
+            let image = current.0.contents.flatMap { CFGetTypeID($0 as CFTypeRef) == CGImage.typeID ? ($0 as! CGImage) : nil }
+            guard dragSticker(current.1, image, .moved(point)) else {
+                return false
+            }
+            if current.2 {
+                current.0.animateScale(from: 0.95, to: 1, duration: 0.2, removeOnCompletion: true)
+            }
+            return true
+        }, move: { point in
+            _ = dragSticker(current.1, nil, .moved(point))
+        })
+    }
+
     private func slotPosition(_ file: TelegramMediaFile, index: Int, item: StickerPackPanelRowItem) -> NSPoint? {
         guard index < item.slots.count else {
             return nil

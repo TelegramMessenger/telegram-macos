@@ -157,7 +157,6 @@ public class ChannelEventLogView : View {
         settings.autoSizeToFit = false
 
         settings.set(font: .medium(.title), for: .Normal)
-        settings.set(text: strings().chanelEventFilterSettings, for: .Normal)
 
 
         setFrameSize(frameRect.size)
@@ -167,6 +166,7 @@ public class ChannelEventLogView : View {
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         let theme = theme as! TelegramPresentationTheme
+        settings.set(text: strings().channelEventFilterFilters, for: .Normal) //TODOLANG
         settings.set(color: theme.colors.text, for: .Normal)
         settings.set(background: .clear, for: .Highlight)
         settings.set(background: .clear, for: .Normal)
@@ -180,6 +180,7 @@ public class ChannelEventLogView : View {
         info.layer?.cornerRadius = 20
         info.setGlassEffect(size: NSMakeSize(40, 40))
         info.setAccessibilityLabel(strings().voiceOverCommonInfo)
+        needsLayout = true
     }
     
     func updateState(_ state: ChannelEventLogState) {

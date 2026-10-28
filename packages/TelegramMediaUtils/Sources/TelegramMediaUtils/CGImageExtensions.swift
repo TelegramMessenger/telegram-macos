@@ -76,16 +76,6 @@ public extension CGImage {
         
         telegramFastBlurMore(Int32(thumbnailContextSmallSize.width), Int32(thumbnailContextSmallSize.height), Int32(thumbnailContext.bytesPerRow), thumbnailContext.bytes)
         
-        let thumb = DrawingContext(size: thumbnailContextSize, scale: 1.0)
-
-        
-        thumb.withContext { ctx in
-            ctx.interpolationQuality = .none
-            ctx.draw(thumbnailContext.generateImage()!, in: CGRect(origin: CGPoint(), size: thumbnailContextSize))
-        }
-      //  telegramFastBlurMore(Int32(thumbnailContextSize.width), Int32(thumbnailContextSize.height), Int32(thumb.bytesPerRow), thumb.bytes)
-
-        
         return thumbnailContext.generateImage()!
     }
 

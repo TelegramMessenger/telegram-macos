@@ -1,0 +1,102 @@
+[
+  {
+    "canReact": false,
+    "event": "initial",
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033636.744442
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033649.5607538
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033652.471272
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033653.512877
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033654.054545
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033654.254559
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033654.479549
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033657.23788
+  },
+  {
+    "canReact": true,
+    "event": "rights_changed",
+    "messagePeerRestricted": true,
+    "mode": "allowed",
+    "time": 1793033659.01305
+  },
+  {
+    "canReact": true,
+    "event": "picker_requested",
+    "hasPickerWindow": true,
+    "messagePeerRestricted": true,
+    "mode": "allowed",
+    "time": 1793033660.379153
+  },
+  {
+    "canReact": false,
+    "event": "rights_changed",
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033677.100512
+  },
+  {
+    "canReact": false,
+    "event": "picker_requested",
+    "hasPickerWindow": false,
+    "messagePeerRestricted": true,
+    "mode": "restricted",
+    "time": 1793033678.192484
+  },
+  {
+    "canReact": true,
+    "event": "rights_changed",
+    "messagePeerRestricted": true,
+    "mode": "allowed",
+    "time": 1793033692.63391
+  }
+]

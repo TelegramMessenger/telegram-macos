@@ -18,6 +18,8 @@ import InlineStickerLayer
 
 
 
+private let largeReactionHoldDuration: Double = 0.8
+
 public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     
@@ -43,7 +45,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         private let parentWindow: Window?
         
-        required init(frame frameRect: NSRect, context: any AccountContextProtocol, reaction: ContextReaction, add: @escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, theme: TelegramPresentationTheme, message: Message?, parentWindow: Window? = nil) {
+        required init(frame frameRect: NSRect, context: any AccountContextProtocol, reaction: ContextReaction, add: @escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)?, theme: TelegramPresentationTheme, message: Message?, parentWindow: Window? = nil) {
             
             let size: NSSize = reaction.isSelected ? NSMakeSize(25, 24) : NSMakeSize(frameRect.width, 30)
             let rect = CGRect(origin: .zero, size: size)
@@ -152,13 +154,32 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             }
             
             set(handler: { control in
-                if let window = control.window {
+                if let window = control.window, (control as? ReactionView)?.largeInvoked != true {
                     let wrect = control.convert(control.frame.size.bounds, to: nil)
                     let srect = window.convertToScreen(wrect)
                     add(reaction.value, true, getWindow().convertFromScreen(srect))
                 }
             }, for: .Click)
             
+            if let addLarge, !reaction.isSelected, reaction.value != .stars {
+                self.handleLongEvent = false
+                self.largeHoldEnabled = true
+                set(handler: { control in
+                    (control as? ReactionView)?.startLargeHold(completion: { control in
+                        if let window = control.window {
+                            let wrect = control.convert(control.frame.size.bounds, to: nil)
+                            let srect = window.convertToScreen(wrect)
+                            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                            addLarge(reaction.value, getWindow().convertFromScreen(srect))
+                            AppMenu.closeAll()
+                        }
+                    })
+                }, for: .Down)
+                set(handler: { control in
+                    (control as? ReactionView)?.cancelLargeHold()
+                }, for: .Up)
+            }
+
             if case .stars = reaction.value, let message {
                 self.set(handler: { _ in
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: getWindow())
@@ -210,6 +231,40 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             return context.isLite(.emoji)
         }
         
+        private var largeHoldTimer: SwiftSignalKit.Timer?
+        private var largeHoldEnabled: Bool = false
+        fileprivate private(set) var largeInvoked: Bool = false
+
+        fileprivate func startLargeHold(completion: @escaping(ReactionView)->Void) {
+            largeHoldTimer?.invalidate()
+            self.layer?.zPosition = 1
+            self.layer?.animateScaleCenter(from: 1, to: 1.5, duration: largeReactionHoldDuration, removeOnCompletion: false)
+            largeHoldTimer = SwiftSignalKit.Timer(timeout: largeReactionHoldDuration, repeat: false, completion: { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.largeHoldTimer = nil
+                if self.mouseInside() {
+                    self.largeInvoked = true
+                    completion(self)
+                } else {
+                    self.cancelLargeHold()
+                }
+            }, queue: .mainQueue())
+            largeHoldTimer?.start()
+        }
+
+        fileprivate func cancelLargeHold() {
+            guard !largeInvoked else {
+                return
+            }
+            largeHoldTimer?.invalidate()
+            largeHoldTimer = nil
+            let current = self.layer?.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
+            self.layer?.animateScaleCenter(from: current, to: 1, duration: 0.2, removeOnCompletion: true)
+            self.layer?.zPosition = 0
+        }
+
         private func apply(_ data: Data, key: String, policy: LottiePlayPolicy) {
             let animation = LottieAnimation(compressed: data, key: LottieAnimationEntryKey(key: .bundle("reaction_\(reaction.value)_\(key)"), size: player.frame.size), type: .lottie, cachePurpose: .none, playPolicy: policy, maximumFps: 60, runOnQueue: Queue(), metalSupport: false)
             player.set(animation, reset: true, saveContext: true, animated: false)
@@ -258,9 +313,9 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
                 break
             }
             
-            if previous == .Hover, state == .Highlight {
+            if !largeHoldEnabled, previous == .Hover, state == .Highlight {
                 self.layer?.animateScaleCenter(from: 1, to: 0.8, duration: 0.2, removeOnCompletion: false)
-            } else if state == .Hover && previous == .Highlight {
+            } else if !largeHoldEnabled, state == .Hover, previous == .Highlight {
                 self.layer?.animateScaleCenter(from: 0.8, to: 1, duration: 0.2, removeOnCompletion: true)
             }
             previous = state
@@ -309,6 +364,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     public class ShowMore : Control {
         private let imageView = ImageView()
+        private var loadingViews: [ImageView] = []
         public required init(frame frameRect: NSRect, theme: TelegramPresentationTheme) {
             super.init(frame: frameRect)
             self.backgroundColor = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
@@ -324,6 +380,47 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         public override func layout() {
             super.layout()
             imageView.center()
+            for view in loadingViews {
+                view.frame = imageView.frame
+            }
+        }
+        
+        func startLoading() {
+            guard loadingViews.isEmpty else {
+                return
+            }
+            self.userInteractionEnabled = false
+            for _ in 0 ..< 2 {
+                let view = ImageView()
+                view.isAccessibilityDecorative = true
+                view.image = imageView.image
+                view.frame = imageView.frame
+                addSubview(view, positioned: .below, relativeTo: imageView)
+                loadingViews.append(view)
+            }
+            let views = loadingViews + [imageView]
+            let step: CGFloat = 4
+            let now = CACurrentMediaTime()
+            for (i, view) in views.enumerated() {
+                guard let layer = view.layer else {
+                    continue
+                }
+                let offset = (CGFloat(i) - 1) * step
+                layer.opacity = 0.4 + 0.3 * Float(i)
+                layer.transform = CATransform3DMakeTranslation(0, offset, 0)
+                layer.animate(from: NSNumber(value: Float(-offset)), to: NSNumber(value: 0), keyPath: "transform.translation.y", timingFunction: .spring, duration: 0.25, additive: true)
+                
+                let bounce = CAKeyframeAnimation(keyPath: "transform.translation.y")
+                bounce.values = [0, 3, 0]
+                bounce.keyTimes = [0, 0.5, 1]
+                bounce.timingFunctions = [CAMediaTimingFunction(name: .easeInEaseOut), CAMediaTimingFunction(name: .easeInEaseOut)]
+                bounce.duration = 0.7
+                bounce.repeatCount = .infinity
+                bounce.isAdditive = true
+                bounce.beginTime = now + 0.25 + Double(i) * 0.08
+                bounce.fillMode = .backwards
+                layer.add(bounce, forKey: "loading")
+            }
         }
         
         public required init?(coder: NSCoder) {
@@ -356,9 +453,9 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     private let backgroundColorView = View()
     private let shadowLayer = SimpleShapeLayer()
     private let presentation: TelegramPresentationTheme
-    private let hasBubble: Bool
+    private var hasBubble: Bool
     private let aboveText: TextViewLayout?
-    public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
+    public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
         self.list = list
         self.showMore = ShowMore(frame: NSMakeRect(0, 0, 34, 34), theme: presentation)
         self.revealReactions = revealReactions
@@ -384,10 +481,11 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         showMore.set(handler: { [weak self] control in
             if let view = self {
+                view.hasBubble = false
+                view.updateLayout(size: view.frame.size, transition: .immediate)
+                view.showMore.startLoading()
                 revealReactions?(view)
             }
-            control.layer?.animateScaleCenter(from: 1, to: 0.1, duration: 0.35, removeOnCompletion: false)
-            control.layer?.animateAlpha(from: 1, to: 0, duration: 0.35, removeOnCompletion: false)
         }, for: .Click)
         
         shadowLayer.shadowColor = NSColor.black.cgColor
@@ -464,10 +562,10 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         for reaction in list {
             let add:(ContextReaction)->Void = { reaction in
                 let itemSize = size.bounds
-                let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, theme: presentation, message: message, parentWindow: parentWindow)
+                let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, addLarge: addLarge, theme: presentation, message: message, parentWindow: parentWindow)
                 
                 self.documentView.addSubview(reaction)
-                x += size.width + 4
+                x += size.width + 3
             }
             if x < frame.width {
                 add(reaction)
@@ -496,6 +594,21 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             view?.playAppearAnimation()
         }
         updateScroll()
+    }
+    
+    public func revealDidStart() {
+        guard let superview = self.superview else {
+            return
+        }
+        let button = self.showMore
+        let frame = button.convert(button.bounds, to: superview)
+        button.removeFromSuperview()
+        button.frame = frame
+        superview.addSubview(button)
+        button.layer?.animateScaleCenter(from: 1, to: 0.1, duration: 0.2, removeOnCompletion: false)
+        button.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { [weak button] _ in
+            button?.removeFromSuperview()
+        })
     }
     
     public func collect() -> [Int : LottiePlayerView] {
@@ -587,7 +700,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     public static func width(for count: Int, maxCount: Int = .max, allowToAll: Bool = true) -> CGFloat {
         var width = CGFloat(min(count, maxCount)) * self.size.width
-        width += CGFloat(min(count, maxCount)) * 4
+        width += CGFloat(min(count, maxCount)) * 3
         if maxCount != .max, allowToAll {
             width += self.size.width
         }

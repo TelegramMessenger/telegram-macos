@@ -480,12 +480,13 @@ public class Sender: NSObject {
             let asset = AVURLAsset(url: URL(fileURLWithPath: path))
             let video = asset.tracks(withMediaType: AVMediaType.video).first
             let audio = asset.tracks(withMediaType: AVMediaType.audio).first
+            let isEditedPhoto = EditedPhotoVideos.shared.contains(path: path)
             if let video = video {
                 var size = video.naturalSize.applying(video.preferredTransform)
                 size = NSMakeSize(floor(abs(size.width)), floor(abs(size.height)))
                 attrs.append(TelegramMediaFileAttribute.Video(duration: Double(CMTimeGetSeconds(asset.duration)), size: PixelDimensions(size), flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil))
                 attrs.append(TelegramMediaFileAttribute.FileName(fileName: path.nsstring.lastPathComponent.nsstring.deletingPathExtension.appending(".mp4")))
-                if !inCollage {
+                if !inCollage, !isEditedPhoto {
                     if audio == nil, let size = fileSize(path), size < Int32(10 * 1024 * 1024), mime.hasSuffix("mp4") {
                         attrs.append(TelegramMediaFileAttribute.Animated)
                     }
@@ -494,7 +495,7 @@ public class Sender: NSObject {
                 if !mime.hasSuffix("mp4") {
                     attrs.append(.hintFileIsLarge)
                 }
-                if audio == nil {
+                if audio == nil, !isEditedPhoto {
                     attrs.append(.Animated)
                 }
                 return attrs

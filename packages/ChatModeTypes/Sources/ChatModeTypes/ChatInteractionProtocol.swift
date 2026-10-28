@@ -7,6 +7,7 @@ import TelegramUtils
 
 public protocol ChatPresentationSnapshot {
     var snapshotPeer: Peer? { get }
+    var snapshotCachedData: (any CachedPeerData)? { get }
 }
 
 public protocol ChatInteractionProtocol: AnyObject {

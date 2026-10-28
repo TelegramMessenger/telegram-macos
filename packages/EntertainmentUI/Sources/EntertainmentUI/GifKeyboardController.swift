@@ -291,8 +291,8 @@ public final class GifKeyboardView : View {
     }
  
     
-    public func updateRestricion(_ peer: Peer?, animated: Bool) {
-        if let peer = peer, let text = permissionText(from: peer, for: .banSendGifs) {
+    public func updateRestricion(_ peer: Peer?, cachedData: CachedPeerData?, animated: Bool) {
+        if let peer = peer, let text = permissionText(from: peer, for: .banSendGifs, cachedData: cachedData) {
             let current: RestrictionWrappedView
             if let view = self.restrictedView {
                 current = view
@@ -449,20 +449,20 @@ public final class GifKeyboardController<Context: AccountContextProtocol> : Tele
         self.interactions = interactions
         self.chatInteraction = chatInteraction
         if isLoaded() {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if let chatInteraction = chatInteraction {
-            genericView.updateRestricion(chatInteraction.presentationPeer, animated: false)
+            genericView.updateRestricion(chatInteraction.presentationPeer, cachedData: chatInteraction.presentationCachedData, animated: false)
         }
     }
     
@@ -644,7 +644,7 @@ public final class GifKeyboardController<Context: AccountContextProtocol> : Tele
                         } else {
                             items.append(ContextMenuItem(strings().messageContextSaveGif, handler: {
                                 let limit = context.isPremium ? context.premiumLimits.saved_gifs_limit_premium : context.premiumLimits.saved_gifs_limit_default
-                                if limit >= gifItems.count, !context.isPremium {
+                                if limit <= gifItems.count, !context.isPremium {
                                     showModalText(for: context.window, text: strings().chatContextFavoriteGifsLimitInfo("\(context.premiumLimits.saved_gifs_limit_premium)"), title: strings().chatContextFavoriteGifsLimitTitle, callback: { value in
                                         FeatureNavigationHooks.shared.showPremiumLimit(context, .savedGifs)
                                     })
@@ -680,6 +680,13 @@ public final class GifKeyboardController<Context: AccountContextProtocol> : Tele
         }, messageMenuItems: { message, view in
             return .single([])
         })
+        mediaArguments.drag = { [weak self] result, point, ended in
+            guard let dragItem = self?.interactions?.dragItem, case let .internalReference(values) = result, let file = values.file else {
+                return false
+            }
+            dragItem(.file(file), nil, ended ? .ended(point) : .moved(point))
+            return true
+        }
 
         self.updateState = { f in
             updateState(f)
