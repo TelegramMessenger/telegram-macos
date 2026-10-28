@@ -4460,20 +4460,21 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         let _afterSentTransition:(Bool)->Void = { [weak self] flushInput in
             self?.chatInteraction.update({ presentation in
+                let keepsInput = !flushInput && !presentation.interfaceState.inputState.inputText.isEmpty
                 return presentation.updatedInputQueryResult {_ in
                     return nil
                 }.updatedInterfaceState { current in
                 
                     var value: ChatInterfaceState = current
-                    if flushInput {
+                    if !keepsInput {
                         value = value
                             .withUpdatedInputState(ChatTextInputState())
                             .withUpdatedComposeDisableUrlPreview(nil)
                             .withUpdatedMessageEffect(nil)
+                            .withUpdatedSuggestPost(nil)
                     }
                     value = value.withUpdatedReplyMessageId(nil)
                         .withUpdatedForwardMessageIds([])
-                        .withUpdatedSuggestPost(nil)
                         .withoutEditMessage()
                 
                     if let message = presentation.keyboardButtonsMessage, let replyMarkup = message.replyMarkup {
@@ -4482,7 +4483,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                     }
                     return value
-                }.updatedUrlPreview(flushInput ? nil : presentation.urlPreview).updateBotMenu({ current in
+                }.updatedUrlPreview(keepsInput ? presentation.urlPreview : nil).updateBotMenu({ current in
                     var current = current
                     current?.revealed = false
                     return current
