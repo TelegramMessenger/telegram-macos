@@ -16,6 +16,10 @@ final class ContextMenuItemsTests: XCTestCase {
         System.legacyMenu = previousLegacyMenu
     }
 
+    private func menuView(_ window: NSWindow?) -> MenuView? {
+        window?.contentView?.subviews.first as? MenuView
+    }
+
     private func makeItems(_ count: Int) -> [ContextMenuItem] {
         (0..<count).map { ContextMenuItem("Item \($0)") }
     }
@@ -142,6 +146,49 @@ final class ContextMenuItemsTests: XCTestCase {
 
         XCTAssertEqual(calls, 1)
         XCTAssertNil(menu.asyncItemsProvider)
+    }
+
+    func testPressingLoadingSubmenuRowWhileSiblingSubmenuIsOpenPresentsItWhenLoaded() throws {
+        let window = Window(contentRect: NSMakeRect(0, 0, 200, 200), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let anchor = NSView(frame: NSMakeRect(0, 0, 100, 100))
+        window.contentView?.addSubview(anchor)
+
+        let open = ContextMenuItem("Open")
+        let openSubmenu = ContextMenu()
+        openSubmenu.addItem(ContextMenuItem("Nested"))
+        open.submenu = openSubmenu
+        let loading = ContextMenuItem("Loading")
+        let loadingSubmenu = ContextMenu()
+        var complete: (([NSMenuItem]) -> Void)?
+        loadingSubmenu.asyncItemsProvider = { completion in
+            complete = completion
+            return EmptyDisposable
+        }
+        loading.submenu = loadingSubmenu
+        let menu = ContextMenu()
+        [open, loading].forEach(menu.addItem)
+
+        let controller = AppMenuController(menu, presentation: .current(PresentationTheme.current.colors), holder: AppMenu(menu: menu), betterInside: false, appearMode: .click, parentView: anchor)
+        defer { controller.close() }
+        let event = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: NSMakePoint(5, 5), modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
+        controller.present(event: event, view: anchor)
+
+        let root = try XCTUnwrap(NSApp.windows.compactMap(menuView).first { $0.controller === controller })
+        root.layoutSubtreeIfNeeded()
+        let openRow = try XCTUnwrap(root.item(for: open.id))
+        let loadingRow = try XCTUnwrap(root.item(for: loading.id))
+
+        XCTAssertTrue(openRow.accessibilityPerformPress())
+        XCTAssertEqual(menuView(root.childView)?.submenuId, open.id)
+
+        XCTAssertTrue(loadingRow.accessibilityPerformPress())
+        XCTAssertNil(root.childView)
+        XCTAssertTrue(loadingRow.isSelected)
+
+        complete?([ContextMenuItem("Topic")])
+        XCTAssertEqual(menuView(root.childView)?.submenuId, loading.id)
     }
 
     func testAsyncItemsLoadingIsDisposedWithMenu() {

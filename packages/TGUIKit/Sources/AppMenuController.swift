@@ -795,7 +795,9 @@ final class AppMenuController : NSObject  {
         self.windows = self.windows.filter({
             $0.key.submenuId != submenu.view.submenuId
         })
-        submenu.view.parentView?.view.tableView.cancelSelection()
+        if let tableView = submenu.view.parentView?.view.tableView, let submenuId = submenu.view.submenuId, tableView.selectedItem()?.stableId == AnyHashable(submenuId) {
+            tableView.cancelSelection()
+        }
         
         submenu.view.parentView?.view.childView = nil
         submenu.view.parentView = nil
@@ -856,7 +858,6 @@ final class AppMenuController : NSObject  {
                 guard let self, let parentView, let menu, !self.isClosed, !menu.contextItems.isEmpty else {
                     return
                 }
-                // Hover requests are dropped once the pointer leaves the row; Return and VoiceOver select the row instead.
                 guard let parentItem = parentView.view.item(for: id) else {
                     return
                 }
