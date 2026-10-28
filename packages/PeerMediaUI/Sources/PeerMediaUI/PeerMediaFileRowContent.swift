@@ -23,6 +23,7 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
     public private(set) var nameLayout:TextViewLayout
     public private(set) var actionLayout:TextViewLayout
     public private(set) var actionLayoutLocal:TextViewLayout
+    public let isCopyProtected: Bool
     public private(set) var iconArguments:TransformImageArguments?
     public private(set) var icon:TelegramMediaImage?
     public private(set) var docIcon:CGImage?
@@ -36,6 +37,7 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
         let message = object.message!
         let file = message.file!
         self.file = file
+        self.isCopyProtected = message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: interface.presentation.cachedData) == true
         
         nameLayout = TextViewLayout(.initialize(string: file.fileName ?? "Unknown", color: theme.colors.text, font: .medium(.text)), maximumNumberOfLines: 1, truncationType: .end)
         
@@ -394,7 +396,7 @@ public class PeerMediaFileRowView : PeerMediaRowView {
                         switch status {
                         case .Local:
                             deinitDownloadControls()
-                            strongSelf.actionView.update(item.actionLayoutLocal)
+                            strongSelf.actionView.update(item.isCopyProtected ? item.actionLayout : item.actionLayoutLocal)
                         case .Remote, .Paused:
                             deinitProgressControl()
                             initStatusControlIfNeeded()

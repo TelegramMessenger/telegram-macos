@@ -10,10 +10,13 @@ public func isMessageCopyProtected(_ id: MessageId?, postbox: Postbox) -> Signal
         return .single(false)
     }
     return postbox.transaction { transaction -> Bool in
-        guard let message = transaction.getMessage(id) else {
-            return false
-        }
-        if message.containsSecretMedia || message.isCopyProtected() {
+        if let message = transaction.getMessage(id) {
+            if message.isCopyProtected() {
+                return true
+            }
+        } else if let channel = transaction.getPeer(id.peerId) as? TelegramChannel, channel.flags.contains(.copyProtectionEnabled) {
+            return true
+        } else if let group = transaction.getPeer(id.peerId) as? TelegramGroup, group.flags.contains(.copyProtectionEnabled) {
             return true
         }
         if let cachedData = transaction.getPeerCachedData(peerId: id.peerId) as? CachedUserData {

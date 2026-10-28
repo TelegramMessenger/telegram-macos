@@ -97,8 +97,8 @@ public class QuickLookPreview : NSObject, QLPreviewPanelDelegate, QLPreviewPanel
             let postbox = context.account.postbox
             signal = isMessageCopyProtected(messageId, postbox: postbox) |> mapToSignal { [forceExtension, mimeType] isCopyProtected -> Signal<(String?, String?), NoError> in
                 if isCopyProtected {
-                    return combineLatest(postbox.mediaBox.resourceData(file.resource) |> filter { $0.complete } |> take(1), resourceType(mimeType: mimeType)) |> map { data, type in
-                        return (Optional(data.path), forceExtension ?? type)
+                    return combineLatest(postbox.mediaBox.resourceData(file.resource) |> take(1), resourceType(mimeType: mimeType)) |> map { data, type in
+                        return data.complete ? (Optional(data.path), forceExtension ?? type) : (nil, nil)
                     }
                 }
                 return copyToDownloads(file, postbox: postbox) |> map { path in
