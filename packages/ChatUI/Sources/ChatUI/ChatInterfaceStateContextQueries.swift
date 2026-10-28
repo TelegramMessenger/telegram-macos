@@ -585,17 +585,22 @@ private func detectedPreviewUrl(_ chatPresentationInterfaceState: ChatPresentati
     return detectedUrl
 }
 
-func urlPreviewMatchesInput(_ chatPresentationInterfaceState: ChatPresentationInterfaceState) -> Bool {
+func urlPreviewMatchesInput(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: any AccountContextProtocol) -> Bool {
     guard let urlPreview = chatPresentationInterfaceState.urlPreview else {
         return false
     }
     if chatPresentationInterfaceState.state == .editing, let editState = chatPresentationInterfaceState.interfaceState.editState, let media = editState.message.anyMedia as? TelegramMediaWebpage, firstDetectedUrl(chatPresentationInterfaceState.effectiveInput.inputText) == firstDetectedUrl(editState.message.text) {
         return urlPreview.1.webpageId == media.webpageId
     }
-    guard let dataDetector else {
+    guard let dataDetector, let detectedUrl = detectedPreviewUrl(chatPresentationInterfaceState, dataDetector: dataDetector) else {
         return false
     }
-    return urlPreview.0 == detectedPreviewUrl(chatPresentationInterfaceState, dataDetector: dataDetector)
+    switch ChatInterfaceHooks.shared.urlPreviewInAppLink(detectedUrl, context) {
+    case let .external(url, _), let .joinchat(url, _, _, _), let .wallpaper(url, _, _), let .theme(url, _, _), let .instantView(url, _, _):
+        return urlPreview.0 == url
+    default:
+        return urlPreview.0 == detectedUrl
+    }
 }
 
  public func urlPreviewStateForChatInterfacePresentationState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: any AccountContextProtocol, currentQuery: String?, disableEditingPreview: ((String)->Void)? = nil) -> Signal<(String?, Signal<(TelegramMediaWebpage?) -> TelegramMediaWebpage?, NoError>)?, NoError> {

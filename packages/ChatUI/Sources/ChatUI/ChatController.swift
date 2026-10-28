@@ -4575,7 +4575,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 return
             }
 
-            let urlPreview = urlPreviewMatchesInput(presentation) ? presentation.urlPreview : nil
+            let urlPreview = urlPreviewMatchesInput(presentation, context: context) ? presentation.urlPreview : nil
             let disableUrlPreview = presentation.interfaceState.composeDisableUrlPreview != nil && (urlPreview == nil || urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview)
 
             self.urlPreviewQueryState?.1.dispose()
