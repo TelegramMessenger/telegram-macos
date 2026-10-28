@@ -2044,7 +2044,7 @@ public class ChatListRowItem: TableRowItem {
                     
                     zeroGroup.append(ContextMenuItem(strings().chatSavedMessagesViewAsChats, handler: {
                         context.engine.peers.updateSavedMessagesViewAsTopics(value: true)
-                        if context.layout != .minimisize, let controller = context.bindings.rootNavigation().controller as? ChatListChatController, controller.chatLocation.peerId == context.peerId, controller.chatInteraction.mode == .history || controller.chatInteraction.mode.isThreadMode {
+                        if !displaySavedChatsAsTopics, context.layout != .minimisize, let controller = context.bindings.rootNavigation().controller as? ChatListChatController, controller.chatLocation.peerId == context.peerId, controller.chatInteraction.mode == .history || controller.chatInteraction.mode.isThreadMode {
                             if controller.chatLocation.threadId == nil {
                                 context.bindings.rootNavigation().back()
                             }

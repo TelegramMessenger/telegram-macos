@@ -98,7 +98,11 @@ public struct ForumUI {
                 var parentIsArchive = false
                 let navigation = ChatListUIHooks.shared.mainEffectiveNavigation(context)
                 if let controller = navigation.controller as? ChatListControllerKind {
-                    if controller.mode.isForumLike {
+                    var opensSavedChatsOverForum = false
+                    if peerId == context.peerId, case .forum = controller.mode {
+                        opensSavedChatsOverForum = true
+                    }
+                    if controller.mode.isForumLike, !opensSavedChatsOverForum {
                         if context.layout == .single {
                             context.bindings.rootNavigation().gotoEmpty()
                         } else {
@@ -109,6 +113,9 @@ public struct ForumUI {
                         return
                     }
                     parentIsArchive = controller.mode.groupId == .archive
+                    if opensSavedChatsOverForum {
+                        navigation.back(animated: false)
+                    }
                 }
                 
                 let mode: PeerListMode = peerId == context.peerId ? .savedMessagesChats(peerId: peerId) : .forum(peerId, fullWidth || context.layout == .minimisize, parentIsArchive)

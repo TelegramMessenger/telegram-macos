@@ -9993,6 +9993,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }, itemImage: !displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
 
                 items.append(ContextMenuItem(strings().chatSavedMessagesViewAsChats, handler: { [weak self] in
+                    if displaySavedChatsAsTopics {
+                        return
+                    }
                     context.engine.peers.updateSavedMessagesViewAsTopics(value: true)
                     self?.navigationController?.back()
                     ChatUIHooks.shared.openForum(context.peerId, true, context)
