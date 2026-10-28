@@ -504,6 +504,7 @@ public final class ChatInteraction : InterfaceObserver  {
         }
         return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: chatLocation.threadId, isWelcome: isWelcome)
     }
+    private let richTextDraftPromise = ValuePromise<InstantPage?>(nil, ignoreRepeated: false)
     private var persistentRichTextDraftId: EngineDataBuffer? {
         guard mode.customChatContents == nil else {
             return nil
@@ -513,26 +514,35 @@ public final class ChatInteraction : InterfaceObserver  {
         id.setInt64(8, value: chatLocation.threadId ?? 0)
         return id
     }
-    private let richTextDraftPromise = ValuePromise<InstantPage?>(nil, ignoreRepeated: false)
     public var richTextDraft: InstantPage? { ChatInteraction.globalRichTextDrafts.value(for: richTextDraftKey) }
     public var richTextDraftSignal: Signal<InstantPage?, NoError> { richTextDraftPromise.get() }
     public var flushRichTextDraft: (() -> Void)?
-    public func setRichTextDraft(_ page: InstantPage?) {
+    public func setRichTextDraft(_ page: InstantPage?, persist: Bool = true) {
         if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey) {
             invalidateDeferredSendActions()
-            storePersistentRichTextDraft(page)
         }
         richTextDraftPromise.set(page)
+        if persist {
+            storePersistentRichTextDraft(page)
+        }
+    }
+    public func storeRichTextDraftSnapshot(_ page: InstantPage) {
+        if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey) {
+            invalidateDeferredSendActions()
+        }
+        storePersistentRichTextDraft(page)
     }
     public func reloadRichTextDraft() {
         richTextDraftPromise.set(richTextDraft)
+    }
+    public func loadPersistentRichTextDraft() {
         guard richTextDraft == nil, let id = persistentRichTextDraftId else {
             return
         }
         let key = richTextDraftKey
-        _ = (context.engine.data.get(TelegramEngine.EngineData.Item.ItemCache.Item(collectionId: Namespaces.CachedItemCollection.richTextComposerDrafts, id: id))
+        _ = (context.engine.data.get(TelegramEngine.EngineData.Item.ItemCache.Item(collectionId: ApplicationSpecificItemCacheCollectionId.richTextComposerDraft, id: id))
         |> deliverOnMainQueue).start(next: { [weak self] entry in
-            guard let self, let page = entry?.get(ChatRichTextDraftEntry.self)?.page else {
+            guard let self, self.richTextDraftKey == key, let page = entry?.get(ChatRichTextDraftEntry.self)?.page else {
                 return
             }
             guard self.presentation.effectiveInput.inputText.isEmpty, ChatInteraction.globalRichTextDrafts.value(for: key) == nil else {
@@ -544,14 +554,17 @@ public final class ChatInteraction : InterfaceObserver  {
             self.richTextDraftPromise.set(page)
         })
     }
+    public func removePersistentRichTextDraft() {
+        storePersistentRichTextDraft(nil)
+    }
     private func storePersistentRichTextDraft(_ page: InstantPage?) {
         guard let id = persistentRichTextDraftId else {
             return
         }
         if let page {
-            _ = context.engine.itemCache.put(collectionId: Namespaces.CachedItemCollection.richTextComposerDrafts, id: id, item: ChatRichTextDraftEntry(page: page)).start()
+            _ = context.engine.itemCache.put(collectionId: ApplicationSpecificItemCacheCollectionId.richTextComposerDraft, id: id, item: ChatRichTextDraftEntry(page: page)).start()
         } else {
-            _ = context.engine.itemCache.remove(collectionId: Namespaces.CachedItemCollection.richTextComposerDrafts, id: id).start()
+            _ = context.engine.itemCache.remove(collectionId: ApplicationSpecificItemCacheCollectionId.richTextComposerDraft, id: id).start()
         }
     }
 

@@ -4807,6 +4807,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 let startSending: () -> Void = { [weak controller] in
                                     guard !startedSending, let controller else { return }
                                     startedSending = true
+                                    if chatInteraction.richTextDraft == nil {
+                                        chatInteraction.removePersistentRichTextDraft()
+                                    }
                                     if setNextToTransaction {
                                         if atDate != nil {
                                             afterSentTransition()
@@ -8099,6 +8102,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
             guard let initialData = combinedInitialData.initialData else {
                 self.genericView.inputView.updateInterface(with: self.chatInteraction)
+                self.chatInteraction.loadPersistentRichTextDraft()
                 return
             }
                         
@@ -8239,6 +8243,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             
             
             self.state = self.chatInteraction.presentation.state == .selecting ? .Edit : .Normal
+            self.chatInteraction.loadPersistentRichTextDraft()
             
             
         } |> map {_ in}

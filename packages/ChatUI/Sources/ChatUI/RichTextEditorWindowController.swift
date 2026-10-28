@@ -111,7 +111,7 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
     if let draft = chatInteraction.richTextDraft {
         // Reopen the structural draft WITH its media (text→photo→text round-trips).
         initialDraft = richTextOutgoing(from: draft)
-        chatInteraction.setRichTextDraft(nil)
+        chatInteraction.setRichTextDraft(nil, persist: false)
     } else {
         let inputState = chatInteraction.presentation.effectiveInput
         let composerText = inputState.inputText

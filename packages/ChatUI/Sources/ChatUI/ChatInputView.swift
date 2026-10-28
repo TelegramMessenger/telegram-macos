@@ -90,6 +90,7 @@ public final class ChatInputContainerView: FlippableView {
     public var sendRichDraft: (() -> Void)?
     /// The inline editor's content grew/shrank → host propagates the new input height.
     public var richDraftHeightChanged: (() -> Void)?
+    public var richDraftContentChanged: (() -> Void)?
 
     public let accessory: ChatInputAccessory
     public let contentView: FlippableView
@@ -238,6 +239,9 @@ public final class ChatInputContainerView: FlippableView {
                 }
                 current.onSend = { [weak self] in
                     self?.sendRichDraft?()
+                }
+                current.onEditorContentChange = { [weak self] in
+                    self?.richDraftContentChanged?()
                 }
                 current.onEditorHeightChange = { [weak self] in
                     guard let self = self, let preview = self.richDraftPreview else { return }
@@ -682,6 +686,8 @@ public class ChatInputView: View, Notifable {
     private let slowModeUntilDisposable = MetaDisposable()
     private let accessoryDisposable:MetaDisposable = MetaDisposable()
     private let richDraftDisposable = MetaDisposable()
+    private let inlineRichDraftStoreDisposable = MetaDisposable()
+    private var hasPendingInlineRichDraftStore = false
     private let incomingTypingDraftDisposable = MetaDisposable()
     private var incomingTypingDraftKey: PeerAndThreadId?
     private var canStopIncomingStreamingMessage = false
@@ -776,6 +782,7 @@ public class ChatInputView: View, Notifable {
         // Just before any send reads the stored draft, write the live inline-editor content into it (or into
         // the composer text when the content reduced to plain) — so the send button posts the edited content.
         chatInteraction.flushRichTextDraft = { [weak self] in
+            self?.cancelInlineRichDraftStore()
             guard let self = self, let preview = self.container.richDraftPreview, preview.isInlineEditing,
                   let blocks = preview.currentOutgoing() else { return }
             switch composeRichMessage(from: blocks, media: preview.currentMedia()) {
@@ -799,6 +806,9 @@ public class ChatInputView: View, Notifable {
         container.richDraftHeightChanged = { [weak self] in
             self?.inputDidUpdateLayout(animated: true)
         }
+        container.richDraftContentChanged = { [weak self] in
+            self?.scheduleInlineRichDraftStore()
+        }
         richDraftDisposable.set((chatInteraction.richTextDraftSignal |> deliverOnMainQueue).start(next: { [weak self] page in
             guard let self = self else { return }
             if self.container.setRichDraft(page, theme: self.currentChatTheme ?? theme) {
@@ -816,6 +826,28 @@ public class ChatInputView: View, Notifable {
         }))
         chatInteraction.reloadRichTextDraft()
         self.bindIncomingTypingDraft(for: chatInteraction.chatLocation, animated: false)
+    }
+
+    private func scheduleInlineRichDraftStore() {
+        hasPendingInlineRichDraftStore = true
+        inlineRichDraftStoreDisposable.set((Signal<Void, NoError>.single(Void()) |> delay(0.5, queue: .mainQueue())).start(completed: { [weak self] in
+            self?.storeInlineRichDraft()
+        }))
+    }
+
+    private func cancelInlineRichDraftStore() {
+        hasPendingInlineRichDraftStore = false
+        inlineRichDraftStoreDisposable.set(nil)
+    }
+
+    private func storeInlineRichDraft() {
+        hasPendingInlineRichDraftStore = false
+        guard chatInteraction.richTextDraft != nil, let preview = container.richDraftPreview, preview.isInlineEditing, let blocks = preview.currentOutgoing() else {
+            return
+        }
+        if let page = richTextInstantPage(from: blocks, media: preview.currentMedia()) {
+            chatInteraction.storeRichTextDraftSnapshot(page)
+        }
     }
 
     private func bindIncomingTypingDraft(for chatLocation: ChatLocation, animated: Bool) {
@@ -1221,6 +1253,10 @@ public class ChatInputView: View, Notifable {
         if let value = value as? ChatPresentationInterfaceState {
             if let oldValue = oldValue as? ChatPresentationInterfaceState, value.chatLocation != oldValue.chatLocation {
                 self.bindIncomingTypingDraft(for: value.chatLocation, animated: animated)
+                self.cancelInlineRichDraftStore()
+                self.deletedRichDraft = nil
+                self.chatInteraction.reloadRichTextDraft()
+                self.chatInteraction.loadPersistentRichTextDraft()
             }
             let sendState = ChatInputView.sendButtonState(
                 from: value,
@@ -2129,6 +2165,10 @@ public class ChatInputView: View, Notifable {
     
     
     deinit {
+        if self.hasPendingInlineRichDraftStore {
+            self.storeInlineRichDraft()
+        }
+        self.inlineRichDraftStoreDisposable.dispose()
         self.accessoryDisposable.dispose()
         self.rtfAttachmentsDisposable.dispose()
         self.slowModeUntilDisposable.dispose()
