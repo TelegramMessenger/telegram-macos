@@ -1527,10 +1527,14 @@ public final class RichTextDraftPreviewView: View {
         // draft-sync round-trip) would reset the caret.
         let focused = (window?.firstResponder as? NSView).map { $0 === editor || $0.isDescendant(of: editor) } ?? false
         if isNew || !focused || reseedsEditor {
+            let clearsUndo = reseedsEditor
             reseedsEditor = false
             let (blocks, media) = richTextOutgoing(from: instantPage)
             self.mediaCache = media
             editor.setOutgoingBlocks(blocks)
+            if clearsUndo {
+                editor.removeAllUndoActions()
+            }
             editor.moveCaretToEnd()
         }
         return measureEditable(width: width)

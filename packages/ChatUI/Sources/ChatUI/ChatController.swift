@@ -4807,9 +4807,6 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 let startSending: () -> Void = { [weak controller] in
                                     guard !startedSending, let controller else { return }
                                     startedSending = true
-                                    if chatInteraction.richTextDraft == nil {
-                                        chatInteraction.removePersistentRichTextDraft()
-                                    }
                                     if setNextToTransaction {
                                         if atDate != nil {
                                             afterSentTransition()

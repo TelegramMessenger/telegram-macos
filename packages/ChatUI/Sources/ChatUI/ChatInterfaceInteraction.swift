@@ -523,12 +523,16 @@ public final class ChatInteraction : InterfaceObserver  {
     public var richTextDraft: InstantPage? { ChatInteraction.globalRichTextDrafts.value(for: richTextDraftKey) }
     public var richTextDraftSignal: Signal<InstantPage?, NoError> { richTextDraftPromise.get() }
     public var flushRichTextDraft: (() -> Void)?
+    public var storePendingRichTextDraft: (() -> Void)?
+    public var storePendingRichTextEditorDraft: (() -> Void)?
+    private var unshownPersistentRichTextDraftKey: ChatRichTextDraftKey?
     public func setRichTextDraft(_ page: InstantPage?, persist: Bool = true) {
         if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey) {
             invalidateDeferredSendActions()
         }
         richTextDraftPromise.set(page)
-        if persist {
+        if persist, page != nil || unshownPersistentRichTextDraftKey != richTextDraftKey {
+            unshownPersistentRichTextDraftKey = nil
             storePersistentRichTextDraft(page, threadId: chatLocation.threadId)
         }
     }
@@ -539,6 +543,12 @@ public final class ChatInteraction : InterfaceObserver  {
         }
         invalidateDeferredSendActions()
         storePersistentRichTextDraft(page, threadId: threadId)
+    }
+    public func persistRichTextDraft(_ page: InstantPage) {
+        guard unshownPersistentRichTextDraftKey != richTextDraftKey else {
+            return
+        }
+        storePersistentRichTextDraft(page, threadId: chatLocation.threadId)
     }
     public func reloadRichTextDraft() {
         richTextDraftPromise.set(richTextDraft)
@@ -553,17 +563,19 @@ public final class ChatInteraction : InterfaceObserver  {
             guard let self, self.richTextDraftKey == key, let page = entry?.get(ChatRichTextDraftEntry.self)?.page else {
                 return
             }
-            guard self.presentation.effectiveInput.inputText.isEmpty, ChatInteraction.globalRichTextDrafts.value(for: key) == nil else {
+            guard self.presentation.effectiveInput.inputText.isEmpty else {
+                self.unshownPersistentRichTextDraftKey = key
                 return
             }
+            guard ChatInteraction.globalRichTextDrafts.value(for: key) == nil else {
+                return
+            }
+            self.unshownPersistentRichTextDraftKey = nil
             if ChatInteraction.globalRichTextDrafts.set(page, for: key) {
                 self.invalidateDeferredSendActions()
             }
             self.richTextDraftPromise.set(page)
         })
-    }
-    public func removePersistentRichTextDraft() {
-        storePersistentRichTextDraft(nil, threadId: chatLocation.threadId)
     }
     private func storePersistentRichTextDraft(_ page: InstantPage?, threadId: Int64?) {
         guard let id = persistentRichTextDraftId(threadId: threadId) else {
@@ -1175,6 +1187,10 @@ public final class ChatInteraction : InterfaceObserver  {
     
     
     public func saveState(_ force:Bool = true, scrollState: ChatInterfaceHistoryScrollState? = nil, sync: Bool = false) {
+        if sync {
+            storePendingRichTextDraft?()
+            storePendingRichTextEditorDraft?()
+        }
         
         if mode.customChatContents != nil || mode.customChatLink != nil {
             return

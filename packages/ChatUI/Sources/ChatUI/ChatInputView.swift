@@ -779,6 +779,13 @@ public class ChatInputView: View, Notifable {
         container.sendRichDraft = { [weak self] in
             self?.sendInlineRichDraft()
         }
+        chatInteraction.storePendingRichTextDraft = { [weak self] in
+            guard let self, self.hasPendingInlineRichDraftStore else {
+                return
+            }
+            self.cancelInlineRichDraftStore()
+            self.storeInlineRichDraft(threadId: self.chatInteraction.chatLocation.threadId)
+        }
         // Just before any send reads the stored draft, write the live inline-editor content into it (or into
         // the composer text when the content reduced to plain) — so the send button posts the edited content.
         chatInteraction.flushRichTextDraft = { [weak self] in
@@ -922,20 +929,13 @@ public class ChatInputView: View, Notifable {
         window.remove(object: self, for: .Z, modifierFlags: [.command], forceCheckFlags: true)
         window.remove(object: self, for: .Z, modifierFlags: [.command, .shift], forceCheckFlags: true)
 
-        // Whether the draft is shown in the LIVE inline editor (vs the read-only media preview). Matches the
-        // preview's block-based decision (NOT `media.isEmpty`, which can be non-empty for a text-only draft):
-        // a draft with no unsupported-media block is the live inline editor. Both cases get a window Return
+        // Whether the draft is shown in the LIVE inline editor (vs the read-only preview). On macOS 12+ the
+        // preview hosts every draft, media blocks included, in the inline editor. Both cases get a window Return
         // handler honoring the send preference; the inline case rejects non-send Returns so the editor adds a
         // newline, while Delete/⌘Z go to the editor.
         let isInlineEditable: Bool = {
-            guard #available(macOS 12, *), let draft = chatInteraction.richTextDraft else { return false }
-            let hasUninlineableBlock = draft.blocks.contains { block in
-                switch block {
-                case .video, .audio, .map, .collage, .slideshow: return true
-                default: return false
-                }
-            }
-            return !hasUninlineableBlock
+            guard #available(macOS 12, *) else { return false }
+            return chatInteraction.richTextDraft != nil
         }()
 
         if isInlineEditable {
@@ -1254,14 +1254,16 @@ public class ChatInputView: View, Notifable {
         if let value = value as? ChatPresentationInterfaceState {
             if let oldValue = oldValue as? ChatPresentationInterfaceState, value.chatLocation != oldValue.chatLocation {
                 self.bindIncomingTypingDraft(for: value.chatLocation, animated: animated)
-                if self.hasPendingInlineRichDraftStore {
-                    self.storeInlineRichDraft(threadId: oldValue.chatLocation.threadId)
+                if value.chatLocation.peerId != oldValue.chatLocation.peerId || value.chatLocation.threadId != oldValue.chatLocation.threadId {
+                    if self.hasPendingInlineRichDraftStore {
+                        self.storeInlineRichDraft(threadId: oldValue.chatLocation.threadId)
+                    }
+                    self.cancelInlineRichDraftStore()
+                    self.container.richDraftPreview?.reseedEditorOnNextUpdate()
+                    self.deletedRichDraft = nil
+                    self.chatInteraction.reloadRichTextDraft()
+                    self.chatInteraction.loadPersistentRichTextDraft()
                 }
-                self.cancelInlineRichDraftStore()
-                self.container.richDraftPreview?.reseedEditorOnNextUpdate()
-                self.deletedRichDraft = nil
-                self.chatInteraction.reloadRichTextDraft()
-                self.chatInteraction.loadPersistentRichTextDraft()
             }
             let sendState = ChatInputView.sendButtonState(
                 from: value,
