@@ -1,0 +1,186 @@
+import Cocoa
+import TGUIKit
+
+public final class DetachedWindowControlsView: View {
+    private var buttons: [(button: NSButton, parent: NSView, frame: NSRect, autoresizingMask: NSView.AutoresizingMask)] = []
+    private weak var attachedWindow: NSWindow?
+    private var originalChrome: (fullSize: Bool, transparent: Bool, visibility: NSWindow.TitleVisibility)?
+    private var observers: [NSObjectProtocol] = []
+    private var enteringFullScreen = false
+    private var compactChromeApplied = false
+    private var updatingPresentation = false
+    private var mouseInGroup = false
+    private var hoverTrackingArea: NSTrackingArea?
+    public var visibilityChanged: (() -> Void)?
+
+    public var showsControls: Bool {
+        return !buttons.isEmpty
+    }
+
+    public func attach(to window: NSWindow) {
+        guard attachedWindow !== window else { return }
+        detach()
+        attachedWindow = window
+        originalChrome = (window.styleMask.contains(.fullSizeContentView), window.titlebarAppearsTransparent, window.titleVisibility)
+        let notifications = NotificationCenter.default
+        observers.append(notifications.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+            self?.enteringFullScreen = true
+            self?.updatePresentation()
+        })
+        observers.append(notifications.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+            self?.enteringFullScreen = false
+            self?.updatePresentation()
+        })
+        for name in [NSWindow.didUpdateNotification, NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
+            observers.append(notifications.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                self?.updatePresentation()
+            })
+        }
+        updatePresentation()
+    }
+
+    public func detach() {
+        guard attachedWindow != nil || !observers.isEmpty || !buttons.isEmpty else { return }
+        let window = attachedWindow
+        let chrome = originalChrome
+        let restoreChrome = compactChromeApplied
+        attachedWindow = nil
+        originalChrome = nil
+        compactChromeApplied = false
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers.removeAll()
+        restoreButtons()
+        if restoreChrome, let window, let chrome {
+            applyOriginalChrome(chrome, to: window)
+        }
+        enteringFullScreen = false
+        visibilityChanged?()
+    }
+
+    private func applyOriginalChrome(_ chrome: (fullSize: Bool, transparent: Bool, visibility: NSWindow.TitleVisibility), to window: NSWindow) {
+        if !chrome.fullSize {
+            window.styleMask.remove(.fullSizeContentView)
+        }
+        window.titlebarAppearsTransparent = chrome.transparent
+        window.titleVisibility = chrome.visibility
+    }
+
+    private func updatePresentation() {
+        guard let window = attachedWindow, !updatingPresentation else { return }
+        updatingPresentation = true
+        defer { updatingPresentation = false }
+        let hadControls = showsControls
+        if window.styleMask.contains(.fullScreen) || enteringFullScreen {
+            restoreButtons()
+        } else if DetachedWindowHeaderLayout.usesCompactLayout(width: window.frame.width) {
+            if !compactChromeApplied {
+                compactChromeApplied = true
+                window.styleMask.insert(.fullSizeContentView)
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+            }
+            installButtons()
+            positionButtons()
+        } else {
+            restoreButtons()
+            if compactChromeApplied, let chrome = originalChrome {
+                compactChromeApplied = false
+                applyOriginalChrome(chrome, to: window)
+            }
+        }
+        if hadControls != showsControls {
+            visibilityChanged?()
+        }
+    }
+
+    private func installButtons() {
+        guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen, buttons.isEmpty else { return }
+        for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            if let button = window.standardWindowButton(kind), let parent = button.superview {
+                buttons.append((button, parent, button.frame, button.autoresizingMask))
+                button.autoresizingMask = []
+                addSubview(button)
+            }
+        }
+    }
+
+    private func restoreButtons() {
+        let previousButtons = buttons
+        buttons.removeAll()
+        mouseInGroup = false
+        for entry in previousButtons {
+            entry.parent.addSubview(entry.button)
+            entry.button.frame = entry.frame
+            entry.button.autoresizingMask = entry.autoresizingMask
+        }
+    }
+
+    public override func layout() {
+        super.layout()
+        positionButtons()
+    }
+
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    public override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        setMouseInGroup(true)
+    }
+
+    public override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setMouseInGroup(false)
+    }
+
+    @objc func _mouseInGroup(_ button: NSButton) -> Bool {
+        return mouseInGroup
+    }
+
+    private func setMouseInGroup(_ value: Bool) {
+        guard mouseInGroup != value else { return }
+        mouseInGroup = value
+        for entry in buttons {
+            entry.button.needsDisplay = true
+        }
+    }
+
+    private func positionButtons() {
+        guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen, !buttons.isEmpty else { return }
+        let spacing: CGFloat = 6
+        let width = buttons.reduce(CGFloat(0)) { $0 + $1.frame.width } + CGFloat(max(0, buttons.count - 1)) * spacing
+        var x = floor((bounds.width - width) / 2)
+        for entry in buttons {
+            let size = entry.frame.size
+            if entry.button.superview !== self {
+                addSubview(entry.button)
+            }
+            let frame = NSRect(x: x, y: floor((bounds.height - size.height) / 2), width: size.width, height: size.height)
+            if entry.button.frame != frame {
+                entry.button.frame = frame
+            }
+            x += size.width + spacing
+        }
+    }
+
+    public override var mouseDownCanMoveWindow: Bool {
+        return true
+    }
+
+    public override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+
+    deinit {
+        detach()
+    }
+}
