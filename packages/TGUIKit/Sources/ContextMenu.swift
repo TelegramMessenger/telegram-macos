@@ -172,14 +172,6 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
     
     public var loadMore: (()->Void)? = nil
 
-    public var itemsProvider: (() -> [NSMenuItem])? {
-        didSet {
-            if System.legacyMenu {
-                loadProvidedItems()
-            }
-        }
-    }
-
     private var isAppendingItem = false
 
     @objc dynamic internal var _items:[NSMenuItem] = [] {
@@ -203,14 +195,6 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
         isAppendingItem = true
         defer { isAppendingItem = false }
         _items.append(newItem)
-    }
-
-    func loadProvidedItems() {
-        guard let itemsProvider else {
-            return
-        }
-        self.itemsProvider = nil
-        self.items = itemsProvider()
     }
 
     public var asyncItemsProvider: ((@escaping ([NSMenuItem]) -> Void) -> Disposable)? {

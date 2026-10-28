@@ -83,37 +83,6 @@ final class ContextMenuItemsTests: XCTestCase {
         assertNativeItems(menu, are: initial + [appended])
     }
 
-    func testItemsProviderRunsOnceWhenLoaded() {
-        let menu = ContextMenu()
-        let items = makeItems(2)
-        var calls = 0
-        menu.itemsProvider = {
-            calls += 1
-            return items
-        }
-
-        XCTAssertEqual(calls, 0)
-        XCTAssertEqual(menu.numberOfItems, 0)
-
-        menu.loadProvidedItems()
-        menu.loadProvidedItems()
-
-        XCTAssertEqual(calls, 1)
-        XCTAssertNil(menu.itemsProvider)
-        assertNativeItems(menu, are: items)
-    }
-
-    func testItemsProviderLoadsImmediatelyForNativeMenus() {
-        System.legacyMenu = true
-        let menu = ContextMenu()
-        let items = makeItems(2)
-
-        menu.itemsProvider = { items }
-
-        XCTAssertNil(menu.itemsProvider)
-        assertNativeItems(menu, are: items)
-    }
-
     func testAsyncItemsProviderStartsOnceAndFillsMenuWhenLoaded() {
         let menu = ContextMenu()
         let items = makeItems(3)

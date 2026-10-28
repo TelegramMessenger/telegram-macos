@@ -850,17 +850,25 @@ final class AppMenuController : NSObject  {
         if parentView.view.dismissed {
             return
         }
-        menu.loadProvidedItems()
         menu.loadAsyncItems()
         if menu.isLoadingAsyncItems {
             menu.asyncItemsLoaded = { [weak self, weak parentView, weak menu] in
                 guard let self, let parentView, let menu, !self.isClosed, !menu.contextItems.isEmpty else {
                     return
                 }
-                guard parentView.view.item(for: id)?.view?.mouseInside() == true else {
+                // Hover requests are dropped once the pointer leaves the row; Return and VoiceOver select the row instead.
+                guard let parentItem = parentView.view.item(for: id) else {
+                    return
+                }
+                let isHovered = parentItem.view?.mouseInside() == true
+                guard isHovered || parentItem.isSelected else {
                     return
                 }
                 self.presentSubmenu(menu, parentView: parentView, for: id)
+                if !isHovered, let view = self.findSubmenu(id)?.view {
+                    view.tableView.selectNext()
+                    view.updateScroll()
+                }
             }
             return
         }

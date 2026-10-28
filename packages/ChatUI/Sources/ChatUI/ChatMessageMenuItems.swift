@@ -1246,8 +1246,12 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     for folder in data.folders {
                         let item = ContextMenuItem(ChatHistoryUIHooks.shared.chatListFilterTitle(folder), itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(folder).emoticon).value)
                         let submenu = ContextMenu()
-                        submenu.asyncItemsProvider = { completion in
+                        submenu.asyncItemsProvider = { [weak item] completion in
                             return (data.folderPeers(folder) |> deliverOnMainQueue).start(next: { peers in
+                                if peers.isEmpty, let item {
+                                    item.submenu = nil
+                                    item.redraw?()
+                                }
                                 completion(peers.map { makeItem($0) })
                             })
                         }
