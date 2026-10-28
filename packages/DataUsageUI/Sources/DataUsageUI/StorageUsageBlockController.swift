@@ -374,7 +374,9 @@ enum StorageUsageCollection : Int32 {
 
 
 
-class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGenericViewController<StorageUsageMediaContainerView, Context> {
+class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGenericViewController<StorageUsageMediaContainerView, Context>, StorageUsageBlockControlling {
+    var mediaView: View { genericView }
+    var mainTable: TableView? { genericView.mainTable }
    
     
     private let members: ViewController
