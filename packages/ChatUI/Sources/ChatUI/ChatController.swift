@@ -7633,7 +7633,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
                 
                 items.append(ContextMenuItem(isMuted ? strings().chatListContextUnmute : strings().chatListContextMute, handler: {
-                    if isMuted {
+                    if isMuted, threadData.notificationSettings.muteState == .default {
                         _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).startStandalone()
                     } else {
                         _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
@@ -7684,7 +7684,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                
                 
                 items.append(ContextMenuItem(isMuted ? strings().chatListContextUnmute : strings().chatListContextMute, handler: {
-                    if isMuted {
+                    if isMuted, item.threadData?.notificationSettings.muteState == .default {
                         _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).startStandalone()
                     } else {
                         _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
