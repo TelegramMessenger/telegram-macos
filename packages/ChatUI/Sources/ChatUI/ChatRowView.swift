@@ -1466,7 +1466,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         chatInteraction?.openInfoFromMessage(peer.id, true, nil, nil, message: item.message)
                     }, itemImage: MenuAnimation.menu_read.value))
 
-                    if !peer.isChannel {
+                    if !peer.isChannel || peer.addressName != nil {
                         menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
                             let attr: NSMutableAttributedString = NSMutableAttributedString()
 
