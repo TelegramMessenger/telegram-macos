@@ -1404,7 +1404,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                     thirdBlock.append(ContextMenuItem(!saved ? strings().chatContextAddFavoriteSticker : strings().chatContextRemoveFavoriteSticker, handler: {
                         if !saved {
                             let limit = context.isPremium ? context.premiumLimits.stickers_faved_limit_premium : context.premiumLimits.stickers_faved_limit_default
-                            if limit >= data.savedStickersCount, !context.isPremium, !context.premiumIsBlocked {
+                            if limit <= data.savedStickersCount, !context.isPremium, !context.premiumIsBlocked {
                                 showModalText(for: context.window, text: strings().chatContextFavoriteStickersLimitInfo("\(context.premiumLimits.stickers_faved_limit_premium)"), title: strings().chatContextFavoriteStickersLimitTitle, callback: { value in
                                     showPremiumLimit(context: context, type: .faveStickers)
                                 })
