@@ -1522,7 +1522,11 @@ public class ChatListRowItem: TableRowItem {
     }
     
     public var markAsUnread: Bool {
-        return !isSecret && !isUnreadMarked && badgeNode == nil && !showsMentionSlot && !self.mode.savedMessages
+        return !isSecret && !isUnreadMarked && badgeNode == nil && !showsMentionSlot && !self.mode.savedMessages && peer?.isForumOrMonoForum != true
+    }
+
+    public var canToggleUnread: Bool {
+        return peer?.isForumOrMonoForum != true || badgeNode != nil || showsMentionSlot || isUnreadMarked
     }
     
     public func collapseOrExpandArchive() {
