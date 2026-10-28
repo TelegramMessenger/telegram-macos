@@ -432,11 +432,21 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
         }
     }, resetApp: { action in
         confirmDeveloperAppReset(for: context.window, action: action) {
-            do {
-                try action.performAndRelaunch(accountBasePath: context.account.basePath)
-            } catch {
-                alert(for: context.window, header: "Reset App", info: "Could not prepare to restart Telegram. Please try again.")
+            actionsDisposable.add((accountBackupData(postbox: context.account.postbox)
+            |> mapToSignal { backupData in
+                return saveDeveloperAppResetBackup(backupData, accountId: context.account.id, accountManager: context.sharedContext.accountManager)
             }
+            |> deliverOnMainQueue).start(next: { saved in
+                guard saved else {
+                    alert(for: context.window, header: "Reset App", info: "Could not preserve your login. The database has not been cleared.")
+                    return
+                }
+                do {
+                    try action.performAndRelaunch(accountBasePath: context.account.basePath, process: appRelaunchProcess())
+                } catch {
+                    alert(for: context.window, header: "Reset App", info: "Could not prepare to restart Telegram. Please try again.")
+                }
+            }))
         }
     })
 

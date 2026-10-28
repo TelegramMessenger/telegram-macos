@@ -98,7 +98,7 @@ private enum DeveloperAppResetTests {
             }
         }
 
-        let relaunch = DeveloperAppReset.relaunchProcess(bundleURL: bundle, parentProcessIdentifier: parent.processIdentifier, openerURL: opener)
+        let relaunch = appRelaunchProcess(bundleURL: bundle, parentProcessIdentifier: parent.processIdentifier, openerURL: opener)
         relaunch.environment = ["DEVELOPER_RELAUNCH_RECORD": record.path, "DEVELOPER_RELAUNCH_PARENT": String(parent.processIdentifier)]
         try relaunch.run()
         defer {
