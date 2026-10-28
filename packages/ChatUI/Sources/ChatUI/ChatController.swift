@@ -6722,6 +6722,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             let _ = (Sender.enqueue(media: file, context: context, peerId: makePeerId(), replyId: takeReplyId(), threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(next: { ids in
                             }, completed: completed)
                         }
+                        _ = controller.nextTransaction.execute()
                         controller.nextTransaction.set(handler: {
                             if hasFwd {
                                 DispatchQueue.main.async {
