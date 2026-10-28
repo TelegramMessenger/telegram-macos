@@ -987,7 +987,7 @@ public final class StorageUsageView : View {
     fileprivate let tableView: TableView
     private var selectPanel: SelectPanel?
     public required init(frame frameRect: NSRect) {
-        self.tableView = .init(frame: frameRect.size.bounds)
+        self.tableView = StorageUsageTableView(frame: frameRect.size.bounds)
         super.init(frame: frameRect)
         addSubview(tableView)
         tableView.getBackgroundColor = {
