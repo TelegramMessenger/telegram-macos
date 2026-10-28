@@ -5,6 +5,24 @@ import Postbox
 import FetchManager
 import InAppSettings
 
+public func isMessageCopyProtected(_ id: MessageId?, postbox: Postbox) -> Signal<Bool, NoError> {
+    guard let id else {
+        return .single(false)
+    }
+    return postbox.transaction { transaction -> Bool in
+        guard let message = transaction.getMessage(id) else {
+            return false
+        }
+        if message.containsSecretMedia || message.isCopyProtected() {
+            return true
+        }
+        if let cachedData = transaction.getPeerCachedData(peerId: id.peerId) as? CachedUserData {
+            return cachedData.flags.contains(.copyProtectionEnabled) || cachedData.flags.contains(.myCopyProtectionEnabled)
+        }
+        return false
+    }
+}
+
 private final class DownloadedMediaStoreContext {
     private let queue: Queue
     private var disposable: Disposable?
@@ -25,9 +43,13 @@ private final class DownloadedMediaStoreContext {
             resource = file.resource
         }
         if let resource = resource {
-            self.disposable = (storeSettings
-            |> map { storeSettings -> Bool in
-                return true
+            var messageId: MessageId?
+            if case let .message(message, _) = media {
+                messageId = message.id
+            }
+            self.disposable = (combineLatest(storeSettings, isMessageCopyProtected(messageId, postbox: postbox))
+            |> map { _, isCopyProtected -> Bool in
+                return !isCopyProtected
             }
             |> take(1)
             |> mapToSignal { store -> Signal<MediaResourceData, NoError> in
