@@ -2173,6 +2173,7 @@ public final class L10n {
   public static var channelEventFilterAdminsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.AdminsHeader") }
   /// EVENTS
   public static var channelEventFilterEventsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.EventsHeader") }
+  /// Filters
   public static var channelEventFilterFilters: String  { return L10n.tr("Localizable", "Channel.EventFilter.Filters") }
   /// Empty
   public static var channelEventLogEmpty: String  { return L10n.tr("Localizable", "Channel.EventLog.Empty") }
@@ -3494,10 +3495,12 @@ public final class L10n {
   public static var chatContextRestrict: String  { return L10n.tr("Localizable", "Chat.Context.Restrict") }
   /// Return Messages Fee
   public static var chatContextReturnMessageFee: String  { return L10n.tr("Localizable", "Chat.Context.ReturnMessageFee") }
+  /// Save All Photos...
+  public static var chatContextSaveAllPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveAllPhotos") }
   /// Save As...
   public static var chatContextSaveMedia: String  { return L10n.tr("Localizable", "Chat.Context.SaveMedia") }
+  /// Save Selected Photos...
   public static var chatContextSaveSelectedPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveSelectedPhotos") }
-  public static var chatContextSaveAllPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveAllPhotos") }
   /// Shared Media
   public static var chatContextSharedMedia: String  { return L10n.tr("Localizable", "Chat.Context.SharedMedia") }
   /// Summarize
@@ -17590,6 +17593,14 @@ public final class L10n {
   public static var storageUsageClearChatInfo: String  { return L10n.tr("Localizable", "StorageUsage.ClearChat.Info") }
   /// All media can be re-downloaded from the Telegram cloud if you need them again.
   public static var storageUsageClearedInfo: String  { return L10n.tr("Localizable", "StorageUsage.Cleared.Info") }
+  /// Telegram uses less than %@ of your device storage.
+  public static func storageUsageDeviceStorageUsageEmpty(_ p1: String) -> String {
+    return L10n.tr("Localizable", "StorageUsage.DeviceStorageUsage.Empty", p1)
+  }
+  /// Telegram uses **%@** of your device storage.
+  public static func storageUsageDeviceStorageUsageText(_ p1: String) -> String {
+    return L10n.tr("Localizable", "StorageUsage.DeviceStorageUsage.Text", p1)
+  }
   /// Channels
   public static var storageUsageKeepMediaChannels: String  { return L10n.tr("Localizable", "StorageUsage.KeepMedia.Channels") }
   /// Photos, videos and other files from cloud chats that you have **not accessed** during this period will be removed from this device to save disk space.\n\nAll media will stay in the Telegram cloud and can be re-downloaded if you need it again.
