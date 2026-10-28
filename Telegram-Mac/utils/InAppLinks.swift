@@ -460,7 +460,11 @@ private func openNoPaidMessagesPeer(_ peer: EnginePeer, token: String, context: 
 
 private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: ChatInitialAction?, forceProfile: Bool, context: AccountContext, window: Window, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
     do {
-        if peer.isForum {
+        var joinsVoiceChat = false
+        if case .joinVoiceChat = action {
+            joinsVoiceChat = true
+        }
+        if peer.isForum, !joinsVoiceChat {
             closeAllModals(window: window)
             if let messageId {
                 let signal = context.engine.messages.getMessagesLoadIfNecessary([messageId])
