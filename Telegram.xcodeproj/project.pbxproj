@@ -984,6 +984,8 @@
 		9AB6DAD8DF0C1248CC621AFB /* PasscodeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8108E8A15C9EE293636E539F /* PasscodeCore */; };
 		4B9679F90FE2EF0F0FD21C7A /* PasscodeUIHooksInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47318F78978A06BD3FA4B985 /* PasscodeUIHooksInstall.swift */; };
 		BE3536CA4246405D5520629A /* WalletUIHooksInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A5FA781BD7994857138FCB /* WalletUIHooksInstall.swift */; };
+		C0DEBACC1000000000000001 /* AccountResetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEBACC1000000000000003 /* AccountResetSupport */; };
+		C0DEBACC1000000000000002 /* AccountResetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEBACC1000000000000004 /* AccountResetSupport */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2013,6 +2015,7 @@
 				2037C058F06EC3DBD00E2F08 /* AvatarUIShare in Frameworks */,
 				B1FA9B51E5E4F05E194C4934 /* TelegramUtilsShare in Frameworks */,
 				72C71783A0E1779049B81298 /* TelegramContextShare in Frameworks */,
+				C0DEBACC1000000000000002 /* AccountResetSupport in Frameworks */,
 				31864961DB5EA80D31BE47DB /* GeneralRowsShare in Frameworks */,
 				D7B6E2D49B7BB627BA468E5C /* TelegramThemeShare in Frameworks */,
 				B84A7663ED2EC1703C61889D /* FoundationUtils in Frameworks */,
@@ -2112,6 +2115,7 @@
 				085B6C90304CA53F691DF2BC /* QuickSwitcher in Frameworks */,
 				1862EEF9189FCF93570DBB3C /* SelectPeersUI in Frameworks */,
 				29B9B2CF4D64B3C4CF4AEA48 /* SettingsUI in Frameworks */,
+				C0DEBACC1000000000000001 /* AccountResetSupport in Frameworks */,
 				203539E61CF29A531AFDC6B6 /* CallsUI in Frameworks */,
 				440D4FCF2D61E243EFA4AB47 /* StoriesUI in Frameworks */,
 				5E1BA73BB5BD511EA38CFA55 /* WallpaperUI in Frameworks */,
@@ -3635,6 +3639,7 @@
 				2DBE492FD219DCD254A93957 /* AvatarUIShare */,
 				F3DD5977041CBCE33A98E464 /* TelegramUtilsShare */,
 				44E83C8CAD7652510D91ABEA /* TelegramContextShare */,
+				C0DEBACC1000000000000004 /* AccountResetSupport */,
 				478591E264E224F9B26FA893 /* GeneralRowsShare */,
 				7C13C59242BA714DFE654DEC /* TelegramThemeShare */,
 				5A62F6BDEB7EDB55D4C17A92 /* FoundationUtils */,
@@ -3739,6 +3744,7 @@
 				50941F4CCB10813A5A22AAD4 /* QuickSwitcher */,
 				57E7338A178CB9DFD6AB2173 /* SelectPeersUI */,
 				F31F9758C68E1A13DB8606A5 /* SettingsUI */,
+				C0DEBACC1000000000000003 /* AccountResetSupport */,
 				B8A8E44F7300232B017AAAB2 /* CallsUI */,
 				A98D4E6AB0807C52D9939D93 /* StoriesUI */,
 				196E677E6F95C4389353C1C1 /* WallpaperUI */,
@@ -6063,6 +6069,14 @@
 		8108E8A15C9EE293636E539F /* PasscodeCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PasscodeCore;
+		};
+		C0DEBACC1000000000000003 /* AccountResetSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AccountResetSupport;
+		};
+		C0DEBACC1000000000000004 /* AccountResetSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AccountResetSupport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

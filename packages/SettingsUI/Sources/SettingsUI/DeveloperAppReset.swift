@@ -1,4 +1,5 @@
 import Foundation
+import AccountResetSupport
 
 enum DeveloperAppReset {
     case database
@@ -13,8 +14,13 @@ enum DeveloperAppReset {
         }
     }
 
-    func performAndRelaunch(accountBasePath: String, process: Process) throws {
-        try process.run()
+    func performAndRelaunch(accountBasePath: String, backupStore: DeveloperAppResetBackupStore, process: Process) throws {
+        do {
+            try process.run()
+        } catch {
+            try? backupStore.remove()
+            throw error
+        }
         perform(accountBasePath: accountBasePath)
     }
 

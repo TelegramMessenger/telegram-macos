@@ -14,6 +14,7 @@ import TelegramUtils
 import TelegramTheme
 import ColorPalette
 import FoundationUtils
+import AccountResetSupport
 import AlertsUI
 import InAppSettings
 import FilePanels
@@ -432,9 +433,14 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
         }
     }, resetApp: { action in
         confirmDeveloperAppReset(for: context.window, action: action) {
+            guard let parameters = context.sharedContext.appEncryptionValue.decrypt(), let key = ValueBoxEncryptionParameters.Key(data: parameters.key), let salt = ValueBoxEncryptionParameters.Salt(data: parameters.salt) else {
+                alert(for: context.window, header: "Reset App", info: "Could not preserve your login. The database has not been cleared.") //TODOLANG
+                return
+            }
+            let store = DeveloperAppResetBackupStore(accountBasePath: context.account.basePath, accountId: context.account.id, encryptionParameters: ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: key, salt: salt))
             actionsDisposable.add((accountBackupData(postbox: context.account.postbox)
             |> mapToSignal { backupData in
-                return saveDeveloperAppResetBackup(backupData, accountId: context.account.id, accountManager: context.sharedContext.accountManager)
+                return saveDeveloperAppResetBackup(backupData, store: store, accountManager: context.sharedContext.accountManager)
             }
             |> deliverOnMainQueue).start(next: { saved in
                 guard saved else {
@@ -442,7 +448,7 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
                     return
                 }
                 do {
-                    try action.performAndRelaunch(accountBasePath: context.account.basePath, process: appRelaunchProcess())
+                    try action.performAndRelaunch(accountBasePath: context.account.basePath, backupStore: store, process: appRelaunchProcess())
                 } catch {
                     alert(for: context.window, header: "Reset App", info: "Could not prepare to restart Telegram. Please try again.")
                 }

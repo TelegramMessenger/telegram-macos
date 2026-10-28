@@ -1,24 +1,23 @@
 import Foundation
+import XCTest
+import FoundationUtils
+@testable import SettingsUI
 
-private struct TestFailure: Error {
-    let message: String
-}
+final class DeveloperAppResetTests: XCTestCase {
+    private var root: URL!
+    private let fileManager = FileManager.default
 
-@main
-private enum DeveloperAppResetTests {
-    static func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
-        let result = try condition()
-        if !result {
-            throw TestFailure(message: message)
-        }
+    override func setUpWithError() throws {
+        root = fileManager.temporaryDirectory.appendingPathComponent("DeveloperAppResetTests-" + UUID().uuidString)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    static func main() throws {
-        let fileManager = FileManager.default
-        let root = fileManager.temporaryDirectory.appendingPathComponent("DeveloperAppResetTests-" + UUID().uuidString)
-        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: root) }
+    override func tearDownWithError() throws {
+        try fileManager.removeItem(at: root)
+        root = nil
+    }
 
+    func testResetsPreserveCacheAndNeighboringAccountsAsAppropriate() throws {
         for (index, action) in [DeveloperAppReset.database, .databaseAndCache].enumerated() {
             let fixture = root.appendingPathComponent("fixture-\(index)")
             let account = fixture.appendingPathComponent("account-current")
@@ -41,37 +40,39 @@ private enum DeveloperAppResetTests {
                 databaseWasRemovedBeforeTermination = !fileManager.fileExists(atPath: database.path)
             }
 
-            try require(terminations == 1, "Reset must terminate exactly once")
-            try require(databaseWasRemovedBeforeTermination, "Database must be removed before termination")
+            XCTAssertTrue(terminations == 1, "Reset must terminate exactly once")
+            XCTAssertTrue(databaseWasRemovedBeforeTermination, "Database must be removed before termination")
             switch action {
             case .database:
-                try require(fileManager.fileExists(atPath: cache.appendingPathComponent("data").path), "Database reset must preserve cached media")
+                XCTAssertTrue(fileManager.fileExists(atPath: cache.appendingPathComponent("data").path), "Database reset must preserve cached media")
             case .databaseAndCache:
-                try require(!fileManager.fileExists(atPath: account.appendingPathComponent("postbox").path), "Full reset must remove the entire postbox")
+                XCTAssertTrue(!fileManager.fileExists(atPath: account.appendingPathComponent("postbox").path), "Full reset must remove the entire postbox")
             }
-            try require(try Data(contentsOf: otherAccount.appendingPathComponent("data")) == Data("fixture".utf8), "Reset must preserve other accounts")
-            try require(try Data(contentsOf: accountManager) == Data("accounts".utf8), "Reset must preserve account-manager metadata")
-            try require(try Data(contentsOf: accountMetadata) == Data("account".utf8), "Reset must preserve files outside postbox")
-            print("Passed: \(action.title)")
+            XCTAssertTrue(try Data(contentsOf: otherAccount.appendingPathComponent("data")) == Data("fixture".utf8), "Reset must preserve other accounts")
+            XCTAssertTrue(try Data(contentsOf: accountManager) == Data("accounts".utf8), "Reset must preserve account-manager metadata")
+            XCTAssertTrue(try Data(contentsOf: accountMetadata) == Data("account".utf8), "Reset must preserve files outside postbox")
         }
+    }
 
+    func testMissingAndInvalidTargetsStillTerminateWithoutDeletingParents() throws {
         for action in [DeveloperAppReset.database, .databaseAndCache] {
             var terminations = 0
             action.perform(accountBasePath: root.appendingPathComponent("missing-account").path) {
                 terminations += 1
             }
-            try require(terminations == 1, "A missing reset target must still terminate, matching iOS")
+            XCTAssertTrue(terminations == 1, "A missing reset target must still terminate, matching iOS")
 
             let invalidAccount = root.appendingPathComponent(UUID().uuidString)
             try Data("preserve".utf8).write(to: invalidAccount)
             action.perform(accountBasePath: invalidAccount.path) {
                 terminations += 1
             }
-            try require(terminations == 2, "A removal error must still terminate, matching iOS")
-            try require(try Data(contentsOf: invalidAccount) == Data("preserve".utf8), "An invalid target must not delete its parent")
-            print("Passed: \(action.title) with missing or inaccessible postbox")
+            XCTAssertTrue(terminations == 2, "A removal error must still terminate, matching iOS")
+            XCTAssertTrue(try Data(contentsOf: invalidAccount) == Data("preserve".utf8), "An invalid target must not delete its parent")
         }
+    }
 
+    func testRelaunchWaitsForExitAndPreservesBundlePath() throws {
         let opener = root.appendingPathComponent("fixture opener.sh")
         let record = root.appendingPathComponent("relaunch-arguments")
         let bundle = root.appendingPathComponent("Telegram's $HOME \"fixture\".app")
@@ -108,7 +109,7 @@ private enum DeveloperAppResetTests {
             }
         }
         Thread.sleep(forTimeInterval: 0.2)
-        try require(!fileManager.fileExists(atPath: record.path), "Relaunch must wait until the old process exits")
+        XCTAssertTrue(!fileManager.fileExists(atPath: record.path), "Relaunch must wait until the old process exits")
         parent.terminate()
         parent.waitUntilExit()
 
@@ -116,11 +117,13 @@ private enum DeveloperAppResetTests {
         while relaunch.isRunning, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
-        try require(!relaunch.isRunning, "Relaunch must open the app after the old process exits")
+        guard !relaunch.isRunning else {
+            XCTFail("Relaunch must open the app after the old process exits")
+            return
+        }
         relaunch.waitUntilExit()
-        try require(relaunch.terminationStatus == 0, "Relaunch helper must finish successfully")
+        XCTAssertTrue(relaunch.terminationStatus == 0, "Relaunch helper must finish successfully")
         let arguments = try String(contentsOf: record, encoding: .utf8)
-        try require(arguments == "-n\n" + bundle.path + "\nexited\n", "Relaunch must preserve the bundle path and open exactly once after exit")
-        print("Passed: relaunch waits for exit and preserves the app bundle path")
+        XCTAssertTrue(arguments == "-n\n" + bundle.path + "\nexited\n", "Relaunch must preserve the bundle path and open exactly once after exit")
     }
 }

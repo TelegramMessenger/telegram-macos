@@ -5,6 +5,7 @@ import Postbox
 import SwiftSignalKit
 import TGUIKit
 import BuildConfig
+import AccountResetSupport
 import ApiCredentials
 
 #if SHARE
@@ -355,7 +356,22 @@ class SharedAccountContext {
                 var addedAuthSignal: Signal<UnauthorizedAccount?, NoError> = .single(nil)
                 for (id, attributes) in records {
                     if self.activeAccountsValue?.accounts.firstIndex(where: { $0.0 == id}) == nil {
-                        addedSignals.append(accountWithId(accountManager: accountManager, networkArguments: networkArguments, id: id, encryptionParameters: encryptionParameters, supplementary: supplementary, isSupportUser: false, rootPath: rootPath, beginWithTestingEnvironment: attributes.isTestingEnvironment, backupData: attributes.backupData, auxiliaryMethods: telegramAccountAuxiliaryMethods)
+                        let resetBackup = DeveloperAppResetBackupStore(accountBasePath: rootPath + "/" + accountRecordIdPathName(id), accountId: id, encryptionParameters: encryptionParameters)
+                        addedSignals.append(loadDeveloperAppResetBackup(legacyBackup: attributes.backupData, store: resetBackup, accountManager: accountManager)
+                            |> mapToSignal { backupData -> Signal<AccountResult, DeveloperAppResetBackupError> in
+                                return accountWithId(accountManager: accountManager, networkArguments: networkArguments, id: id, encryptionParameters: encryptionParameters, supplementary: supplementary, isSupportUser: false, rootPath: rootPath, beginWithTestingEnvironment: attributes.isTestingEnvironment, backupData: backupData?.data, auxiliaryMethods: telegramAccountAuxiliaryMethods)
+                                |> map { result in
+                                    if case .authorized = result {
+                                        try? resetBackup.completeRestoration(backupData)
+                                    }
+                                    return result
+                                }
+                                |> castError(DeveloperAppResetBackupError.self)
+                            }
+                            |> `catch` { _ -> Signal<AccountResult, NoError> in
+                                Logger.shared.log("Account", "Could not open encrypted reset backup")
+                                return .single(.upgrading(0.0))
+                            }
                             |> map { result -> AddedAccountResult in
                                 switch result {
                                 case let .authorized(account):

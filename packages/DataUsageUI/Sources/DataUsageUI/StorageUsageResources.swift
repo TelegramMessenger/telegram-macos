@@ -29,7 +29,7 @@ enum StorageUsageResources {
         case .other, .misc, .stories:
             image = TelegramThemeHooks.shared.image(.iconSvgParticleOther)
         }
-        return image.precomposed(flipVertical: true)
+        return image.precomposed()
     }
 
     static var storiesIcon: CGImage {
