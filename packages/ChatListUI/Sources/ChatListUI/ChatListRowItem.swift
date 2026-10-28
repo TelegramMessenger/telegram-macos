@@ -2037,10 +2037,19 @@ public class ChatListRowItem: TableRowItem {
                 if peerId == context.peerId, case .chat = mode {
                     zeroGroup.append(ContextMenuItem(strings().chatSavedMessagesViewAsMessages, handler: {
                         context.engine.peers.updateSavedMessagesViewAsTopics(value: false)
+                        if context.layout != .minimisize, let controller = context.bindings.rootNavigation().controller as? ChatListChatController, controller.chatLocation.peerId == context.peerId, controller.chatLocation.threadId != nil, controller.chatInteraction.mode.isThreadMode {
+                            ChatUIHooks.shared.navigateToChat(context.bindings.rootNavigation(), context, .peer(context.peerId))
+                        }
                     }, itemImage: !displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
                     
                     zeroGroup.append(ContextMenuItem(strings().chatSavedMessagesViewAsChats, handler: {
                         context.engine.peers.updateSavedMessagesViewAsTopics(value: true)
+                        if context.layout != .minimisize, let controller = context.bindings.rootNavigation().controller as? ChatListChatController, controller.chatLocation.peerId == context.peerId, controller.chatInteraction.mode == .history || controller.chatInteraction.mode.isThreadMode {
+                            if controller.chatLocation.threadId == nil {
+                                context.bindings.rootNavigation().back()
+                            }
+                            ForumUI.open(context.peerId, addition: false, context: context)
+                        }
                     }, itemImage: displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
                 }
 

@@ -2490,12 +2490,19 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
         
         switch mode {
         case .savedMessagesChats:
-            let signal = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.DisplaySavedChatsAsTopics()) |> deliverOnMainQueue
+            let signal = context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.DisplaySavedChatsAsTopics()) |> deliverOnMainQueue
             actionsDisposable.add(signal.startStrict(next: { [weak self] value in
-                self?.updateState { current in
+                guard let self else {
+                    return
+                }
+                let wasDisplayedAsTopics = self.state?.displaySavedAsTopics == true
+                self.updateState { current in
                     var current = current
                     current.displaySavedAsTopics = value
                     return current
+                }
+                if wasDisplayedAsTopics, !value, self.navigationController?.controller === self {
+                    self.navigationController?.back()
                 }
             }))
         default:
