@@ -15512,24 +15512,16 @@ public final class L10n {
   public static var sessionPreviewAcceptHeader: String  { return L10n.tr("Localizable", "SessionPreview.AcceptHeader") }
   /// Application
   public static var sessionPreviewApp: String  { return L10n.tr("Localizable", "SessionPreview.App") }
-  public static var sessionPreviewConnectionHeader: String  { return L10n.tr("Localizable", "SessionPreview.ConnectionHeader") }
-  public static var sessionPreviewDeviceHeader: String  { return L10n.tr("Localizable", "SessionPreview.DeviceHeader") }
-  public static var sessionPreviewFirstSignedAt: String  { return L10n.tr("Localizable", "SessionPreview.FirstSignedAt") }
   /// IP Address
   public static var sessionPreviewIp: String  { return L10n.tr("Localizable", "SessionPreview.Ip") }
   /// This location estimate is based on the IP address and may not always be accurate.
   public static var sessionPreviewIpDesc: String  { return L10n.tr("Localizable", "SessionPreview.IpDesc") }
-  public static var sessionPreviewLastSignedAt: String  { return L10n.tr("Localizable", "SessionPreview.LastSignedAt") }
   /// Location
   public static var sessionPreviewLocation: String  { return L10n.tr("Localizable", "SessionPreview.Location") }
-  public static var sessionPreviewLocationError: String  { return L10n.tr("Localizable", "SessionPreview.LocationError") }
-  public static var sessionPreviewOfficialAppTooltip: String  { return L10n.tr("Localizable", "SessionPreview.OfficialAppTooltip") }
-  public static var sessionPreviewOS: String  { return L10n.tr("Localizable", "SessionPreview.OS") }
   /// Terminate Session
   public static var sessionPreviewTerminateSession: String  { return L10n.tr("Localizable", "SessionPreview.TerminateSession") }
   /// Session
   public static var sessionPreviewTitle: String  { return L10n.tr("Localizable", "SessionPreview.Title") }
-  public static var sessionPreviewVersion: String  { return L10n.tr("Localizable", "SessionPreview.Version") }
   /// Incoming Calls
   public static var sessionPreviewAcceptCalls: String  { return L10n.tr("Localizable", "SessionPreview.Accept.Calls") }
   /// New Secret Chats
