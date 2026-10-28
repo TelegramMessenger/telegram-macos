@@ -1044,6 +1044,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
     private let mergeDisposable:MetaDisposable = MetaDisposable()
     
     private var unresortedList: [TableRowItem]?
+    private var unresortedListCarried: Bool = false
 
     public var resortController: TableResortController? {
         didSet {
@@ -2401,8 +2402,9 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
                 self.beginTableUpdates()
 
                 if isValidDrop {
-                    if start != current, self.unresortedList == nil {
+                    if start != current, self.unresortedList == nil || self.unresortedListCarried {
                         self.unresortedList = self.list
+                        self.unresortedListCarried = false
                     }
                     self.moveItem(from: start, to: current, redraw: false, animation: .none)
                     self.tableView.removeRows(at: IndexSet(integer: start), withAnimation: .none)
@@ -2473,44 +2475,77 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         return items
     }
 
-    private func deletionsAdjustedForResort(_ transition: TableUpdateTransition) -> (deleted: [Int], settlesResort: Bool) {
+    private func hasUniqueStableIds(_ items: [TableRowItem]) -> Bool {
+        return Set(items.map { $0.stableId }).count == items.count
+    }
+
+    private func hasSameRows(_ lhs: [TableRowItem], _ rhs: [TableRowItem]) -> Bool {
+        let lhsIds = Set(lhs.map { ObjectIdentifier($0) })
+        return lhs.count == rhs.count && lhsIds.count == lhs.count && lhsIds == Set(rhs.map { ObjectIdentifier($0) })
+    }
+
+    private func adjustedForResort(_ transition: TableUpdateTransition) -> (deleted: [Int], updated: [(Int, TableRowItem)], settlesResort: Bool) {
+        let unchanged = (transition.deleted, transition.updated, false)
         guard let unresorted = self.unresortedList else {
-            return (transition.deleted, false)
+            return unchanged
         }
         self.unresortedList = nil
+        self.unresortedListCarried = false
 
-        let listIds = self.list.map { ObjectIdentifier($0) }
-        let listIdSet = Set(listIds)
-        guard unresorted.count == listIds.count, listIdSet.count == listIds.count, Set(unresorted.map { ObjectIdentifier($0) }) == listIdSet else {
-            return (transition.deleted, false)
+        guard hasSameRows(unresorted, self.list) else {
+            return unchanged
         }
         guard let expected = listAfterMerge(unresorted, deleted: transition.deleted, inserted: transition.inserted, updated: transition.updated), let current = listAfterMerge(self.list, deleted: transition.deleted, inserted: transition.inserted, updated: transition.updated) else {
-            return (transition.deleted, false)
+            return unchanged
         }
         if current.elementsEqual(expected, by: { $0 === $1 }) {
-            return (transition.deleted, true)
+            return (transition.deleted, transition.updated, true)
         }
-        let currentIdSet = Set(current.map { ObjectIdentifier($0) })
-        if current.count == expected.count, currentIdSet.count == current.count, currentIdSet == Set(expected.map { ObjectIdentifier($0) }) {
-            self.unresortedList = expected
-            return (transition.deleted, false)
+        if hasUniqueStableIds(current) {
+            if hasSameRows(current, expected) {
+                self.unresortedList = expected
+                self.unresortedListCarried = true
+            }
+            return unchanged
         }
+
         var listIndices: [ObjectIdentifier: Int] = [:]
-        for (index, id) in listIds.enumerated() {
-            listIndices[id] = index
+        for (index, item) in self.list.enumerated() {
+            listIndices[ObjectIdentifier(item)] = index
         }
         var deleted: [Int] = []
         for index in transition.deleted {
             guard index >= 0, index < unresorted.count, let listIndex = listIndices[ObjectIdentifier(unresorted[index])] else {
-                return (transition.deleted, false)
+                return unchanged
             }
             deleted.append(listIndex)
         }
         deleted.sort()
-        guard let adjusted = listAfterMerge(self.list, deleted: deleted, inserted: transition.inserted, updated: transition.updated), adjusted.elementsEqual(expected, by: { $0 === $1 }) else {
-            return (transition.deleted, false)
+
+        guard let expectedBeforeUpdates = listAfterMerge(unresorted, deleted: transition.deleted, inserted: transition.inserted, updated: []), let currentBeforeUpdates = listAfterMerge(self.list, deleted: deleted, inserted: transition.inserted, updated: []) else {
+            return unchanged
         }
-        return (deleted, true)
+        var currentIndices: [ObjectIdentifier: Int] = [:]
+        for (index, item) in currentBeforeUpdates.enumerated() {
+            currentIndices[ObjectIdentifier(item)] = index
+        }
+        var updated: [(Int, TableRowItem)] = []
+        for (index, item) in transition.updated {
+            guard index >= 0, index < expectedBeforeUpdates.count, let currentIndex = currentIndices[ObjectIdentifier(expectedBeforeUpdates[index])] else {
+                return unchanged
+            }
+            updated.append((currentIndex, item))
+        }
+
+        guard let adjusted = listAfterMerge(self.list, deleted: deleted, inserted: transition.inserted, updated: updated), hasUniqueStableIds(adjusted), hasSameRows(adjusted, expected) else {
+            return unchanged
+        }
+        if adjusted.elementsEqual(expected, by: { $0 === $1 }) {
+            return (deleted, updated, true)
+        }
+        self.unresortedList = expected
+        self.unresortedListCarried = true
+        return (deleted, updated, false)
     }
 
     private var maxResortHeight: CGFloat {
@@ -3387,7 +3422,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
         assertOnMainThread()
         assert(!updating)
 
-        let (deleted, settlesResort) = self.deletionsAdjustedForResort(transition)
+        let (deleted, updated, settlesResort) = self.adjustedForResort(transition)
 
         var groupInOne = transition.groupInOne
         var groupedListHeight: CGFloat?
@@ -3512,7 +3547,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
             
             if let current = removed.first(where: { $0.0 == index })?.1 {
                 item = current
-            } else if let current = transition.updated.first(where: { $0.0 == index })?.1 {
+            } else if let current = updated.first(where: { $0.0 == index })?.1 {
                 item = current
             } else {
                 item = nil
@@ -3637,7 +3672,7 @@ open class TableView: ScrollView, NSTableViewDelegate,NSTableViewDataSource,Sele
 //        if case let .none(interface) = transition.state, interface != nil {
 //            animated = true
 //        }
-        for (index,item) in transition.updated {
+        for (index,item) in updated {
             var animated: Bool
             animated = (visibleRange.indexIn(index) || !transition.animateVisibleOnly)
             if case .saveVisible = state {

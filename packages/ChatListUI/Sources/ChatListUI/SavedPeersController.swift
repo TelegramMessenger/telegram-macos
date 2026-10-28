@@ -212,15 +212,9 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
         }, complete: { [weak controller] from, to in
             var items:[Int64] = []
 
-            var offset: Int = 0
-                       
             controller?.tableView.enumerateItems { item -> Bool in
                 guard let item = item as? ChatListRowItem else {
-                    offset += 1
                     return true
-                }
-                if item.isAd {
-                    offset += 1
                 }
                 switch item.pinnedType {
                 case .some, .last:
