@@ -614,13 +614,13 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
                 if let _ = state.peer {
                     usageText = strings().storageUsageTelegramUsageEmptyPeer("1%")
                 } else {
-                    usageText = strings().storageUsageDeviceStorageUsageEmpty("0.01%")
+                    usageText = "Telegram uses less than 0.01% of your device storage." //TODOLANG
                 }
             } else {
                 if let _ = state.peer {
                     usageText = strings().storageUsageTelegramUsageTextPeer(String(format: "%.02f%%", usageProgress))
                 } else {
-                    usageText = strings().storageUsageDeviceStorageUsageText(String(format: "%.02f%%", usageProgress))
+                    usageText = "Telegram uses **\(String(format: "%.02f%%", usageProgress))** of your device storage." //TODOLANG
                 }
             }
         } else {
