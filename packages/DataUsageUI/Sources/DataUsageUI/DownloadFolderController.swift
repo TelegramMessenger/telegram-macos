@@ -35,14 +35,14 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     let custom = !temporary && !isDefault
 
     entries.append(.sectionId(0, type: .normal))
-    entries.append(.general(sectionId: 1, index: 0, value: .none, error: nil, identifier: _id_default, data: .init(name: strings().dataAndStorageDownloadFolderDefault, color: theme.colors.text, type: .selectable(isDefault), viewType: .firstItem, description: defaultFolder, action: {
+    entries.append(.general(sectionId: 1, index: 0, value: .none, error: nil, identifier: _id_default, data: .init(name: "System Downloads Folder", color: theme.colors.text, type: .selectable(isDefault), viewType: .firstItem, description: defaultFolder, action: { //TODOLANG DataAndStorage.DownloadFolder.Default
         arguments.select(defaultFolder)
     })))
-    entries.append(.general(sectionId: 1, index: 1, value: .none, error: nil, identifier: _id_temporary, data: .init(name: strings().dataAndStorageDownloadFolderTemporary, color: theme.colors.text, type: .selectable(temporary), viewType: .innerItem, action: {
+    entries.append(.general(sectionId: 1, index: 1, value: .none, error: nil, identifier: _id_temporary, data: .init(name: "Temporary Folder", color: theme.colors.text, type: .selectable(temporary), viewType: .innerItem, action: { //TODOLANG DataAndStorage.DownloadFolder.Temporary
         arguments.select(AutomaticMediaDownloadSettings.temporaryDownloadFolder)
     })))
-    entries.append(.general(sectionId: 1, index: 2, value: .none, error: nil, identifier: _id_custom, data: .init(name: strings().dataAndStorageDownloadFolderCustom, color: theme.colors.text, type: .selectable(custom), viewType: .lastItem, description: custom ? state.settings.downloadFolder : nil, action: arguments.selectCustom)))
-    entries.append(.desc(sectionId: 1, index: 3, text: .plain(strings().dataAndStorageDownloadFolderTemporaryInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+    entries.append(.general(sectionId: 1, index: 2, value: .none, error: nil, identifier: _id_custom, data: .init(name: "Custom Folder", color: theme.colors.text, type: .selectable(custom), viewType: .lastItem, description: custom ? state.settings.downloadFolder : nil, action: arguments.selectCustom))) //TODOLANG DataAndStorage.DownloadFolder.Custom
+    entries.append(.desc(sectionId: 1, index: 3, text: .plain("Files in the temporary folder are removed when you log out of this account. Use Save As to keep a permanent copy."), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem))) //TODOLANG DataAndStorage.DownloadFolder.TemporaryInfo
     entries.append(.sectionId(2, type: .normal))
     return entries
 }

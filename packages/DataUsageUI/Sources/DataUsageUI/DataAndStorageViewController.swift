@@ -454,7 +454,7 @@ private func entries(state: State, data: DataAndStorageData, proxy: ProxySetting
     entries.append(.sectionId(sectionId))
     sectionId += 1
     
-    entries.append(.downloadFolder(sectionId, data.automaticMediaDownloadSettings.usesTemporaryDownloadFolder ? strings().dataAndStorageDownloadFolderTemporary : data.automaticMediaDownloadSettings.downloadFolder, viewType: .singleItem))
+    entries.append(.downloadFolder(sectionId, data.automaticMediaDownloadSettings.usesTemporaryDownloadFolder ? "Temporary Folder" : data.automaticMediaDownloadSettings.downloadFolder, viewType: .singleItem)) //TODOLANG DataAndStorage.DownloadFolder.Temporary
 
     
     entries.append(.sectionId(sectionId))
