@@ -1042,12 +1042,23 @@ public class ChatRowItem: TableRowItem {
         return chatInteraction.peer.flatMap { $0.id == message.id.peerId ? $0 : nil } ?? message.peers[message.id.peerId]
     }
 
-    public var canReact: Bool {
-        if let message = firstMessage {
+    private var canSendReactionsHere: Bool {
+        guard let peer = reactionPermissionPeer else {
+            return false
+        }
+        return chatInteraction.presentation.canSendReactions(to: peer)
+    }
 
-            guard let peer = reactionPermissionPeer, canSendReactionsToPeer(EnginePeer(peer)) else {
-                return false
-            }
+    public var canReact: Bool {
+        return canSendReactionsHere && isReactable
+    }
+
+    private var isReactionRestricted: Bool {
+        return !canSendReactionsHere && isReactable
+    }
+
+    private var isReactable: Bool {
+        if let message = firstMessage {
 
             if message.activeEphemeralReplacementMessage != nil {
                 return false
@@ -1805,8 +1816,8 @@ public class ChatRowItem: TableRowItem {
             let context = self.context
             let chatInteraction = self.chatInteraction
             if let reactions = reactions, !reactions.reactions.isEmpty, let available = context.reactions.available {
-                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), reactionPeer: { [weak self] in
-                    self?.reactionPermissionPeer
+                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), canSendReactions: { [weak self] in
+                    self?.canSendReactionsHere ?? false
                 }, openInfo: { peerId in
                     ChatHistoryUIHooks.shared.pushReactionPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, message.id)
                 }, runEffect: { [weak chatInteraction] value, isLarge in
@@ -1820,6 +1831,8 @@ public class ChatRowItem: TableRowItem {
                 }, starReact: { [weak self] in
                     guard self?.canReact == true else { return }
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: context.window)
+                }, reactionsDisabled: { [weak chatInteraction] in
+                    chatInteraction?.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG Chat.SendReactionRestricted
                 })
                 
                 _reactionsLayout = layout
@@ -3815,8 +3828,6 @@ public class ChatRowItem: TableRowItem {
     public func reactAction() -> Bool {
         if canReact {
             
-            
-            
             let context = self.context
             let value = ChatHistoryUIHooks.shared.reactionSettings(context).quickReaction
             let message = self.message
@@ -3867,6 +3878,8 @@ public class ChatRowItem: TableRowItem {
                     context.reactions.react(messageId, values: ChatHistoryUIHooks.shared.messageNewReactions(message, reaction.toUpdate(), context.peerId == message.id.peerId))
                 }
             }
+        } else if isReactionRestricted {
+            chatInteraction.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG Chat.SendReactionRestricted
         }
         return false
     }

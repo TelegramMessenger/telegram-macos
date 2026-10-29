@@ -268,11 +268,11 @@ public class FastSettings {
 
     
     public static func needConfirmPaid(_ peerId: PeerId, price: Int) -> Bool {
-        return UserDefaults.standard.bool(forKey: "\(peerId)_confirm_paid_\(price)_3")
+        return UserDefaults.standard.bool(forKey: "\(peerId)_confirm_paid_\(price)_4")
     }
     
     public static func toggleCofirmPaid(_ peerId: PeerId, price: Int) -> Void {
-        UserDefaults.standard.set(!needConfirmPaid(peerId, price: price), forKey: "\(peerId)_confirm_paid_\(price)_3")
+        UserDefaults.standard.set(!needConfirmPaid(peerId, price: price), forKey: "\(peerId)_confirm_paid_\(price)_4")
     }
     
     public static func shouldConfirmWebApp(_ peerId: PeerId) -> Bool {

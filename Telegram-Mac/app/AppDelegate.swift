@@ -829,11 +829,31 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 useBetaFeatures = false
                 #endif
                 
-                let networkArguments = NetworkInitializationArguments(apiId: ApiEnvironment.apiId, apiHash: ApiEnvironment.apiHash, languagesCategory: ApiEnvironment.language, appVersion: ApiEnvironment.version, voipMaxLayer: OngoingCallContext.maxLayer, voipVersions: voipVersions, appData: appData, externalRequestVerificationStream: .single([:]), externalRecaptchaRequestVerification: { _, _ in return .complete() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: deviceModelPretty(), useBetaFeatures: useBetaFeatures, isICloudEnabled: false, networkEngineFactory: RustNetworkEngineFactory())
+                let systemDeviceModel = deviceModelPretty()
+                ApiEnvironment.systemDeviceModel = systemDeviceModel
+                let networkArguments = NetworkInitializationArguments(apiId: ApiEnvironment.apiId, apiHash: ApiEnvironment.apiHash, languagesCategory: ApiEnvironment.language, appVersion: ApiEnvironment.version, voipMaxLayer: OngoingCallContext.maxLayer, voipVersions: voipVersions, appData: appData, externalRequestVerificationStream: .single([:]), externalRecaptchaRequestVerification: { _, _ in return .complete() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: ApiEnvironment.customDeviceModel ?? systemDeviceModel, useBetaFeatures: useBetaFeatures, isICloudEnabled: false, networkEngineFactory: RustNetworkEngineFactory())
                 
                 let sharedContext = SharedAccountContext(accountManager: accountManager, networkArguments: networkArguments, rootPath: rootPath, encryptionParameters: encryptionParameters, appEncryption: appEncryption, displayUpgradeProgress: displayUpgrade)
                 
                 self.hangKeybind(sharedContext)
+                
+                let deviceModel: Signal<String, NoError> = Signal { subscriber in
+                    subscriber.putNext(ApiEnvironment.customDeviceModel ?? systemDeviceModel)
+                    let observer = NotificationCenter.default.addObserver(forName: ApiEnvironment.deviceModelDidChange, object: nil, queue: nil, using: { _ in
+                        subscriber.putNext(ApiEnvironment.customDeviceModel ?? systemDeviceModel)
+                    })
+                    return ActionDisposable {
+                        NotificationCenter.default.removeObserver(observer)
+                    }
+                }
+                _ = combineLatest(sharedContext.activeAccounts, deviceModel).start(next: { accounts, deviceModel in
+                    for (_, account, _) in accounts.accounts {
+                        updateDeviceModel(account.network, deviceModel)
+                    }
+                    if let auth = accounts.currentAuth {
+                        updateDeviceModel(auth.network, deviceModel)
+                    }
+                })
                 
                 
               
@@ -1792,5 +1812,20 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             }
         }
         self.authContextValue?.applyExternalLoginCode(code)
+    }
+}
+
+private func updateDeviceModel(_ network: Network, _ deviceModel: String) {
+    guard class_getInstanceVariable(MTApiEnvironment.self, "_deviceModelName") != nil else {
+        return
+    }
+    network.context.updateApiEnvironment { current in
+        guard let current = current, current.deviceModel != deviceModel else {
+            return nil
+        }
+        let copy = current.withUpdatedLangPackCode(current.langPackCode)
+        copy.setValue(deviceModel, forKey: "deviceModelName")
+        let updated = copy.withUpdatedLangPackCode(copy.langPackCode)
+        return updated.deviceModel == deviceModel ? updated : nil
     }
 }

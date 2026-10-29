@@ -100,7 +100,8 @@ public final class GlassContainerView: FlippableView {
         if size == validLayout { return }
         validLayout = size
 
-        guard !self.flip, mergesGhosts, transition.isAnimated else {
+        let hasOverflowingGlass = ghosts.contains { $0.frame.maxY > size.height }
+        guard mergesGhosts, transition.isAnimated, !self.flip || hasOverflowingGlass else {
             deferredUnflippedLayout = nil
             deferredUnflippedLayoutToken &+= 1
             applyHostLayout(size: size, transition: transition)

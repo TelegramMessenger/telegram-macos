@@ -263,6 +263,18 @@ struct ChatHeaderState : Identifiable, Equatable {
         return height
     }
 
+    var canDisplayInline: Bool {
+        guard height == primaryHeight else {
+            return false
+        }
+        switch main {
+        case .pinned, .restartTopic, .search(_, _, _, nil, _, _):
+            return true
+        default:
+            return false
+        }
+    }
+
     var secondaryHeight:CGFloat {
         var height: CGFloat = 0
         if let _ = voiceChat {
@@ -311,6 +323,7 @@ class ChatHeaderController {
     private let chatInteraction:ChatInteraction
 
     private(set) var currentView:View?
+    private(set) var hasLayout = false
     private var glassEffect: LiquidGlassView?
 
     /// External `GlassContainerView` (typically `ChatHeaderBubblesView.sharedGlassWrapper`)
@@ -330,28 +343,28 @@ class ChatHeaderController {
 
     private var primaryView: View? {
         didSet {
-            if oldValue == nil, primaryView != nil {
+            if oldValue !== primaryView {
                 primaryInited = false
             }
         }
     }
     private var seconderyView : View? {
         didSet {
-            if oldValue == nil, seconderyView != nil {
+            if oldValue !== seconderyView {
                 seconderyInited = false
             }
         }
     }
     private var thirdView : View? {
         didSet {
-            if oldValue == nil, thirdView != nil {
+            if oldValue !== thirdView {
                 thirdInited = false
             }
         }
     }
     private var fourthView : View? {
         didSet {
-            if oldValue == nil, fourthView != nil {
+            if oldValue !== fourthView {
                 fourthInited = false
             }
         }
@@ -410,9 +423,10 @@ class ChatHeaderController {
         // caller's transition.
         let layoutSlot: (View?, Bool) -> Bool = { view, inited in
             guard let view = view else { return inited }
-            transition.updateFrame(view: view, frame: NSMakeRect(0, view.frame.minY, size.width, view.frame.height))
             let layoutTransition: ContainedViewLayoutTransition = inited ? transition : .immediate
-            (view as? ChatHeaderProtocol)?.updateLayout(size: NSMakeSize(size.width, view.frame.height), transition: layoutTransition)
+            let height = view === self.primaryView ? (self._headerState.canDisplayInline ? size.height : self._headerState.primaryHeight) : view.frame.height
+            layoutTransition.updateFrame(view: view, frame: NSMakeRect(0, view.frame.minY, size.width, height))
+            (view as? ChatHeaderProtocol)?.updateLayout(size: NSMakeSize(size.width, height), transition: layoutTransition)
             return true
         }
         primaryInited = layoutSlot(self.primaryView, primaryInited)
@@ -420,6 +434,7 @@ class ChatHeaderController {
         thirdInited = layoutSlot(self.thirdView, thirdInited)
         fourthInited = layoutSlot(self.fourthView, fourthInited)
         layoutSeparators(size: size, transition: transition)
+        hasLayout = true
     }
 
     private func layoutSeparators(size: NSSize, transition: ContainedViewLayoutTransition) {
@@ -448,7 +463,7 @@ class ChatHeaderController {
         }
     }
     
-    func updateState(_ state:ChatHeaderState, animated:Bool, for view:View, inset: CGFloat, relativeView: NSView?) -> Void {
+    func updateState(_ state:ChatHeaderState, animated:Bool, for view:View, inset: CGFloat, relativeView: NSView?, mergeGlassOnRemoval: Bool = false) -> Void {
         if _headerState != state {
             _headerState = state
 
@@ -558,7 +573,7 @@ class ChatHeaderController {
                 if let v = currentView {
                     current = v
                     let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.2, curve: .easeOut) : .immediate
-                    transition.updateFrame(view: current, frame: NSMakeRect(current.frame.origin.x, current.frame.origin.y, view.frame.width - inset - (current.frame.origin.x * 2), state.height))
+                    transition.updateFrame(view: current, frame: NSMakeRect(current.frame.origin.x, current.frame.origin.y, current.frame.width, state.height))
                   
                 } else {
                     current = View(frame: NSMakeRect(inset + edge, ChatHeaderBubblesView.totalHeight, view.frame.width - inset - edge * 2, state.height))
@@ -576,6 +591,7 @@ class ChatHeaderController {
                         view.addSubview(current)
                     }
                     self.currentView = current
+                    self.hasLayout = false
                 }
 
                 for (view, position, aboveView) in updated {
@@ -638,19 +654,29 @@ class ChatHeaderController {
             } else {
                 if let currentView = currentView {
                     self.currentView = nil
+                    self.hasLayout = false
                     let removingGlass = self.glassEffect
                     self.glassEffect = nil
                     self.separatorViews.removeAll()
                     performSubviewRemoval(currentView, animated: animated)
                     if let removingGlass, removingGlass.superview !== currentView {
                         let wrapper = sharedGlassWrapper
-                        performSubviewRemoval(removingGlass, animated: animated, completed: { [weak wrapper, weak removingGlass] _ in
-                            if let removingGlass {
+                        if animated && mergeGlassOnRemoval {
+                            Queue.mainQueue().after(0.2) { [weak wrapper, weak removingGlass] in
+                                if let removingGlass {
+                                    wrapper?.removeGhost(removingGlass)
+                                    removingGlass.removeFromSuperview()
+                                }
+                            }
+                        } else {
+                            performSubviewRemoval(removingGlass, animated: animated, completed: { [weak wrapper, weak removingGlass] _ in
+                                if let removingGlass {
+                                    wrapper?.removeGhost(removingGlass)
+                                }
+                            })
+                            if !animated {
                                 wrapper?.removeGhost(removingGlass)
                             }
-                        })
-                        if !animated {
-                            wrapper?.removeGhost(removingGlass)
                         }
                     }
                 }
@@ -2491,9 +2517,10 @@ private final class ChatRestartTopic : Control, ChatHeaderProtocol {
 
     func update(with state: ChatHeaderState, animated: Bool) {
         _state = state
+        setAccessibilityLabel(strings().chatHeaderRestartTopic)
         let attr = NSMutableAttributedString()
         _ = attr.append(string: strings().chatHeaderRestartTopic, color: theme.colors.text, font: .normal(.text))
-        let layout = TextViewLayout(attr)
+        let layout = TextViewLayout(attr, maximumNumberOfLines: 1)
         textView.update(layout)
         updateLocalizationAndTheme(theme: theme)
         needsLayout = true
@@ -2508,12 +2535,12 @@ private final class ChatRestartTopic : Control, ChatHeaderProtocol {
     
     override func layout() {
         super.layout()
-        textView.resize(frame.width - 40)
-        textView.center()
+        updateLayout(size: frame.size, transition: .immediate)
     }
     
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        
+        textView.resize(max(0, size.width - 40))
+        transition.updateFrame(view: textView, frame: textView.centerFrame())
     }
     
     
@@ -2642,95 +2669,7 @@ private final class ChatTranslateHeader : Control, ChatHeaderProtocol {
         guard let translate = self._state?.translate else {
             return nil
         }
-        
-        let menu = ContextMenu(betterInside: true)
-        var items: [ContextMenuItem] = []
-
-        if translate.paywall {
-            items.append(ContextMenuItem(strings().chatTranslateMenuHide, handler: { [weak self] in
-                self?.chatInteraction.hideTranslation()
-            }, itemImage: MenuAnimation.menu_clear_history.value))
-            
-            menu.items = items
-            return menu
-        }
-        
-        
-        let other = ContextMenuItem(strings().chatTranslateMenuTo, itemImage: MenuAnimation.menu_translate.value)
-        
-        var codes = Translate.codes.sorted(by: { lhs, rhs in
-            let lhsSelected = lhs.code.contains(translate.to)
-            let rhsSelected = rhs.code.contains(translate.to)
-            if lhsSelected && !rhsSelected {
-                return true
-            } else if !lhsSelected && rhsSelected {
-                return false
-            } else {
-                return lhs.language < rhs.language
-            }
-        })
-        
-        let languageCode = Translate.normalizeLanguageCode(appAppearance.languageCode)
-        let codeIndex = codes.firstIndex(where: {
-            $0.code.contains(languageCode)
-        })
-        if let codeIndex = codeIndex {
-            codes.move(at: codeIndex, to: 0)
-        }
-        
-        let submenu = ContextMenu(betterInside: true)
-        
-        for code in codes {
-            submenu.addItem(ContextMenuItem(code.language, handler: { [weak self] in
-                if let first = code.code.first {
-                    self?.chatInteraction.translateTo(first)
-                }
-            }, itemImage: code.code.contains(translate.to) ? MenuAnimation.menu_check_selected.value : nil))
-        }
-        other.submenu = submenu
-        
-        items.append(other)
-
-        let toneItem = ContextMenuItem(strings().chatHeaderTone, itemImage: MenuAnimation.menu_tune_fork.value)
-        let toneSubmenu = ContextMenu()
-        let toneNames: [(TranslationTone, String)] = [
-            (.formal, strings().chatHeaderToneFormal),
-            (.neutral, strings().chatHeaderToneNeutral),
-            (.casual, strings().chatHeaderToneCasual)
-        ]
-        for (tone, name) in toneNames {
-            toneSubmenu.addItem(ContextMenuItem(name, handler: { [weak self] in
-                self?.chatInteraction.setTranslateTone(tone)
-            }, state: translate.tone == tone ? .on : nil))
-        }
-        toneItem.submenu = toneSubmenu
-        items.append(toneItem)
-
-        if let from = translate.from, let language = Translate.find(from) {
-            items.append(ContextMenuItem(strings().chatTranslateMenuDoNotTranslate(_NSLocalizedString(language.localizationKey)), handler: { [weak self] in
-                self?.chatInteraction.doNotTranslate(from)
-            }, itemImage: MenuAnimation.menu_restrict.value))
-        }
-        
-        items.append(ContextMenuItem(strings().chatTranslateMenuHide, handler: { [weak self] in
-            self?.chatInteraction.hideTranslation()
-        }, itemImage: MenuAnimation.menu_clear_history.value))
-        
-        
-        items.append(ContextSeparatorItem())
-
-        let item = ContextMenuItem(strings().chatTranslationPoweredByCocoon, handler: { [weak self] in
-            guard let context = self?.chatInteraction.interactionContext else { return }
-            ChatUIHooks.shared.showAboutCocoonModal(context)
-        }, itemImage: MenuAnimation.menu_cocoon.value, removeTail: false, overrideWidth: 200)
-
-        items.append(item)
-        
-        //items.append(ContextMenuItem("Read about transl"))
-        menu.items = items
-        
-        return menu
-        
+        return chatTranslationSettingsMenu(chatInteraction: chatInteraction, translate: translate)
     }
     
     func measure(_ width: CGFloat) {

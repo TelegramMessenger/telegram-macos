@@ -399,6 +399,14 @@ public class ChatPollItem: ChatRowItem {
     }
     
     public let isTranslateLoading: Bool
+
+    fileprivate var canCopyText: Bool {
+        guard let message = message, !message.flags.contains(.CopyProtected) else {
+            return false
+        }
+        let peer = chatInteraction.peer.flatMap { $0.id == message.id.peerId ? $0 : nil } ?? message.peers[message.id.peerId]
+        return peer.map { !$0.isCopyProtected(cachedData: chatInteraction.presentation.cachedData) } ?? false
+    }
     
     public override init(_ initialSize: NSSize, _ chatInteraction: ChatInteraction, _ context: any AccountContextProtocol, _ object: ChatHistoryEntry, theme: TelegramPresentationTheme) {
         
@@ -527,7 +535,11 @@ public class ChatPollItem: ChatRowItem {
             optionText.append(string: option.text, color: self.presentation.chat.textColor(isIncoming, renderType == .bubble), font: nameFont)
             InlineStickerItem.apply(to: optionText, associatedMedia: message?.associatedMedia ?? [:], entities: option.entities, isPremium: context.isPremium)
 
-            let nameLayout = TextViewLayout(optionText, alwaysStaticItems: true)
+            let nameLayout = TextViewLayout(optionText, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), alwaysStaticItems: true, mayItems: canCopyText)
+            nameLayout.interactions.copyAttributedString = LinkHooks.shared.globalLinkExecutor().copyAttributedString
+            nameLayout.interactions.copy = { [weak self] in
+                return self?.canCopyText != true
+            }
 
             let wrapper = PollOption(option: option, nameText: nameLayout, percent: percent, realPercent: realPercent, voteCount: votedCount, isSelected: isSelected, isIncoming: isIncoming, isBubbled: renderType == .bubble, voted: voted, isLoading: object.additionalData.pollStateData.identifiers.contains(option.opaqueIdentifier) && object.additionalData.pollStateData.isLoading, presentation: self.presentation, isCorrect: isCorrect, isQuiz: poll.isQuiz, isMultipleSelected: object.additionalData.pollStateData.identifiers.contains(option.opaqueIdentifier), isMultipleChoice: poll.isMultiple, optionMedia: option.media, anyOptionHasMedia: anyOptionHasMedia, hideResults: hideResults && (voted || object.additionalData.pollStateData.isLoading), vote: { [weak self] control in
                 self?.voteOption(option, for: control)
@@ -563,8 +575,42 @@ public class ChatPollItem: ChatRowItem {
         if let message = message, !message.text.isEmpty {
             let descAttr = ChatMessageItem.applyMessageEntities(with: message.attributes, for: message.text, message: message, context: context, fontSize: theme.fontSize, openInfo: { [weak chatInteraction] peerId, toChat, postId, action in
                 chatInteraction?.openInfo(peerId, toChat, postId, action)
-            }, textColor: self.presentation.chat.textColor(isIncoming, renderType == .bubble), linkColor: self.presentation.chat.linkColor(isIncoming, renderType == .bubble), isDark: theme.colors.isDark, bubbled: renderType == .bubble).mutableCopy() as! NSMutableAttributedString
-            self.descriptionText = TextViewLayout(descAttr, alwaysStaticItems: true)
+            }, botCommand: { [weak chatInteraction] command in
+                chatInteraction?.sendPlainText(command)
+            }, hashtag: { [weak chatInteraction] tag in
+                chatInteraction?.hashtag(tag)
+            }, applyProxy: { [weak chatInteraction] proxy in
+                chatInteraction?.applyProxy(proxy)
+            }, textColor: self.presentation.chat.textColor(isIncoming, renderType == .bubble), linkColor: self.presentation.chat.linkColor(isIncoming, renderType == .bubble), openBank: { [weak chatInteraction] bank in
+                chatInteraction?.openBank(bank)
+            }, isDark: theme.colors.isDark, bubbled: renderType == .bubble, openPhoneNumber: { [weak chatInteraction] phone in
+                chatInteraction?.openPhoneNumberContextMenu(phone)
+            }, openTonAddress: { [weak chatInteraction] address in
+                chatInteraction?.openTonAddressContextMenu(address)
+            }, ignoreLinks: !object.additionalData.canHighlightLinks && isIncoming).mutableCopy() as! NSMutableAttributedString
+            let layout = TextViewLayout(descAttr, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), strokeLinks: renderType == .bubble, alwaysStaticItems: true, disableTooltips: false, mayItems: canCopyText)
+            layout.interactions = LinkHooks.shared.globalLinkExecutor()
+            layout.interactions.copy = { [weak self] in
+                return self?.canCopyText != true
+            }
+            layout.interactions.topWindow = { [weak self] in
+                return self?.menuAdditionView ?? .single(nil)
+            }
+            layout.interactions.menuItems = { [weak self] type in
+                if let strongSelf = self, let message = strongSelf.message {
+                    return chatMenuItems(for: message, entry: strongSelf.entry, textLayout: (strongSelf.descriptionText, type), chatInteraction: strongSelf.chatInteraction)
+                }
+                return .complete()
+            }
+            let processURL = layout.interactions.processURL
+            let makeLinkType = layout.interactions.makeLinkType
+            layout.interactions.processURL = { [weak self] link in
+                if case .code = makeLinkType((link, "")), self?.canCopyText != true {
+                    return
+                }
+                processURL(link)
+            }
+            self.descriptionText = layout
         }
 
         let titleAttr = NSMutableAttributedString()
@@ -573,7 +619,11 @@ public class ChatPollItem: ChatRowItem {
         InlineStickerItem.apply(to: titleAttr, associatedMedia: message?.associatedMedia ?? [:], entities: poll.textEntities, isPremium: context.isPremium)
 
 
-        self.titleText = TextViewLayout(titleAttr, alwaysStaticItems: true)
+        self.titleText = TextViewLayout(titleAttr, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), alwaysStaticItems: true, mayItems: canCopyText)
+        self.titleText.interactions.copyAttributedString = LinkHooks.shared.globalLinkExecutor().copyAttributedString
+        self.titleText.interactions.copy = { [weak self] in
+            return self?.canCopyText != true
+        }
         
         
         let typeText: String = self.isBotQuiz ? strings().chatQuizTextType : poll.title
@@ -715,7 +765,7 @@ public class ChatPollItem: ChatRowItem {
             } else {
                 source = .general
             }
-            return chatMenuItems(for: message, entry: entry, textLayout: nil, chatInteraction: chatInteraction, source: source)
+            return chatMenuItems(for: message, entry: entry, textLayout: foundIndex == nil ? ((view as? ChatPollItemView)?.menuTextLayout(at: location), nil) : nil, chatInteraction: chatInteraction, source: source)
         }
         return super.menuItems(in: location)
     }
@@ -968,7 +1018,8 @@ public final class ChatPollItemView : ChatRowView {
 
         contentNode.change(size: NSMakeSize(contentFrameModifier(item).width, item.contentSize.height), animated: animated)
         contentNode.update(with: item, animated: animated)
-        
+        updateTextSelection(updatePermissions: true)
+
         contentNode.updateLayout(item: item, size: contentNode.frame.size, transition: animated ? .animated(duration: 0.2, curve: .easeOut) : .immediate)
     }
         
@@ -1003,18 +1054,71 @@ public final class ChatPollItemView : ChatRowView {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func canStartTextSelecting(_ event: NSEvent) -> Bool {
-        
-        let point = contentView.convert(event.locationInWindow, from: nil)
-        return NSPointInRect(point, NSMakeRect(0, contentNode.titleView.frame.minY, contentNode.frame.width, contentNode.titleView.frame.height))
+    public override func notify(with value: Any, oldValue: Any, animated: Bool) {
+        super.notify(with: value, oldValue: oldValue, animated: animated)
+        updateTextSelection()
     }
-    
+
+    private func updateTextSelection(updatePermissions: Bool = false) {
+        guard let item = item as? ChatPollItem else { return }
+        let canCopy = item.canCopyText
+        if !canCopy, selectManager.find(item.stableId) != nil {
+            selectManager.removeAll()
+        }
+        var views: [TextView] = [contentNode.titleView.textView] + contentNode.options.map { $0.nameView.textView }
+        if let descriptionView = contentNode.descriptionView {
+            views.append(descriptionView)
+        }
+        for view in views {
+            if updatePermissions || view.textLayout?.mayItems != canCopy {
+                view.isSelectable = canCopy
+                view.textLayout?.mayItems = canCopy
+            }
+            if !canCopy, let layout = view.textLayout, layout.selectedRange.range.location != NSNotFound || !layout.additionalSelections.isEmpty {
+                layout.clearSelect()
+                layout.additionalSelections = []
+                view.needsDisplay = true
+            }
+        }
+    }
+
+    func menuTextLayout(at location: NSPoint) -> TextViewLayout? {
+        let views: [TextView] = [contentNode.titleView.textView] + [contentNode.descriptionView].compactMap { $0 }
+        for view in views {
+            let point = view.convert(location, from: contentView)
+            if view.bounds.contains(point) {
+                return view.textLayout
+            }
+        }
+        return nil
+    }
+
+    public override func canStartTextSelecting(_ event: NSEvent) -> Bool {
+        for view in selectableTextViews {
+            let point = view.convert(event.locationInWindow, from: nil)
+            if NSPointInRect(point, view.bounds) {
+                return true
+            }
+        }
+        return false
+    }
+
     override var textSelectionSources: ChatTextSelectionSources {
         return .views(selectableTextViews)
     }
 
     public override var selectableTextViews: [TextView] {
-        return [contentNode.titleView.textView]
+        guard let item = item as? ChatPollItem, item.canCopyText else {
+            return []
+        }
+        var views: [TextView] = [contentNode.titleView.textView]
+        if let descriptionView = contentNode.descriptionView {
+            views.append(descriptionView)
+        }
+        for option in contentNode.options {
+            views.append(option.nameView.textView)
+        }
+        return views
     }
     
     public override func canMultiselectTextIn(_ location: NSPoint) -> Bool {
@@ -1061,7 +1165,7 @@ public final class ChatPollItemView : ChatRowView {
 
 private final class PollOptionView : Control {
     private var percentView: ImageView?
-    private let nameView: InteractiveTextView = InteractiveTextView(frame: .zero)
+    fileprivate let nameView: InteractiveTextView = InteractiveTextView(frame: .zero)
     private var selectingView:ImageView?
     private let progressBackgroundView: View = View(frame: NSZeroRect)
     private let progressView: LinearProgressControl = LinearProgressControl(progressHeight: 5)
@@ -1075,11 +1179,52 @@ private final class PollOptionView : Control {
 
     private var selectedImageView: ImageView?
 
+    private var startMouseDownPoint: NSPoint?
+    private var didDrag: Bool = false
+
+    override func mouseDown(with event: NSEvent) {
+        startMouseDownPoint = event.locationInWindow
+        didDrag = false
+        if !event.modifierFlags.contains(.control) {
+            selectManager.removeAll()
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if let start = startMouseDownPoint {
+            if chatTextSelectionDidDrag(from: start, to: event.locationInWindow) {
+                didDrag = true
+            }
+        }
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let start = startMouseDownPoint {
+            if chatTextSelectionDidDrag(from: start, to: event.locationInWindow) {
+                didDrag = true
+            }
+        }
+        defer {
+            startMouseDownPoint = nil
+            didDrag = false
+        }
+        super.mouseUp(with: event)
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        startMouseDownPoint = nil
+        didDrag = false
+        return super.accessibilityPerformPress()
+    }
+
     private var option: PollOption?
     private weak var pollItem: ChatPollItem?
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         nameView.userInteractionEnabled = false
+        nameView.textView.isSelectable = true
         progressView.hasMinumimVisibility = true
         progressBackgroundView.layer?.cornerRadius = 2.5
         addSubview(nameView)
@@ -1095,9 +1240,13 @@ private final class PollOptionView : Control {
 
         progressView.isEventLess = true
         progressBackgroundView.isEventLess = true
-                
+
         set(handler: { [weak self] control in
-            self?.option?.vote(control)
+            guard let self = self else { return }
+            if self.startMouseDownPoint != nil && (self.didDrag || !selectManager.isEmpty) {
+                return
+            }
+            self.option?.vote(control)
         }, for: .Click)
     }
     
@@ -1659,7 +1808,7 @@ private final class PollOptionView : Control {
 
 private final class PollView : Control {
     fileprivate var mediaContentView: ChatMediaContentView?
-    private var descriptionView: TextView?
+    fileprivate var descriptionView: TextView?
     fileprivate let titleView: InteractiveTextView = InteractiveTextView(frame: .zero)
     private let typeView: TextView = TextView()
     private var actionButton: TextButton?
@@ -1736,6 +1885,7 @@ private final class PollView : Control {
                 self.descriptionView = descView
                 addSubview(descView)
             }
+            descView.isSelectable = item.canCopyText
             descView.update(descriptionText)
         } else {
             self.descriptionView?.removeFromSuperview()

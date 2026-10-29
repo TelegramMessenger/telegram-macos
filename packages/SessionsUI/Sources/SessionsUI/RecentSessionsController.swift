@@ -24,6 +24,9 @@ public func iconForSession(_ session: RecentAccountSession) -> (CGImage?, LocalA
     let platform = session.platform.lowercased()
     let device = session.deviceModel.lowercased()
     let systemVersion = session.systemVersion.lowercased()
+    if session.isCurrent {
+        return (NSImage(named: "Icon_Device_Apple")!.precomposed(), LocalAnimatedSticker.device_mac, NSColor(rgb: 0x0079ff), nil)
+    }
     if device.contains("xbox") {
         return (NSImage(named: "Icon_Device_Xbox")!.precomposed(), nil, NSColor(rgb: 0x35c759), nil)
     }
@@ -48,7 +51,7 @@ public func iconForSession(_ session: RecentAccountSession) -> (CGImage?, LocalA
     if platform.contains("android") {
         return (NSImage(named: "Icon_Device_Android")!.precomposed(), LocalAnimatedSticker.device_android, NSColor(rgb: 0x35c759), ["Eye L.Eye L.Заливка 1", "Eye R.Eye R.Заливка 1"])
     }
-    if (platform.contains("macos") || systemVersion.contains("macos")) && device.contains("mac")  {
+    if (platform.contains("macos") || systemVersion.contains("macos")) && !device.contains("iphone") && !device.contains("ipad") {
         return (NSImage(named: "Icon_Device_Apple")!.precomposed(), LocalAnimatedSticker.device_mac, NSColor(rgb: 0x0079ff), nil)
     }
     if device.contains("ipad") {
@@ -83,12 +86,14 @@ private final class RecentSessionsControllerArguments {
     public let terminateOthers:() -> Void
     public let toggleTtl:(Int)->Void
     public let preview:(RecentAccountSession, AnyHashable)->Void
-    public init(context: any AccountContextProtocol, removeSession: @escaping (Int64) -> Void, terminateOthers: @escaping()->Void, toggleTtl:@escaping(Int)->Void, preview:@escaping(RecentAccountSession, AnyHashable)->Void) {
+    public let rename:()->Void
+    public init(context: any AccountContextProtocol, removeSession: @escaping (Int64) -> Void, terminateOthers: @escaping()->Void, toggleTtl:@escaping(Int)->Void, preview:@escaping(RecentAccountSession, AnyHashable)->Void, rename:@escaping()->Void) {
         self.context = context
         self.removeSession = removeSession
         self.terminateOthers = terminateOthers
         self.toggleTtl = toggleTtl
         self.preview = preview
+        self.rename = rename
     }
 }
 
@@ -113,7 +118,7 @@ public enum RecentSessionsEntryStableId: Hashable {
 private enum RecentSessionsEntry: Comparable, Identifiable {
     case loading(sectionId:Int)
     case currentSessionHeader(sectionId:Int, viewType: GeneralViewType)
-    case currentSession(sectionId:Int, RecentAccountSession, viewType: GeneralViewType)
+    case currentSession(sectionId:Int, RecentAccountSession, deviceModel: String?, viewType: GeneralViewType)
     case terminateOtherSessions(sectionId:Int, viewType: GeneralViewType)
     case currentSessionInfo(sectionId:Int, viewType: GeneralViewType)
     
@@ -193,7 +198,7 @@ private enum RecentSessionsEntry: Comparable, Identifiable {
             return sectionId
         case let .currentSessionHeader(sectionId, _):
             return sectionId
-        case let .currentSession(sectionId, _, _):
+        case let .currentSession(sectionId, _, _, _):
             return sectionId
         case let .terminateOtherSessions(sectionId, _):
             return sectionId
@@ -222,7 +227,7 @@ private enum RecentSessionsEntry: Comparable, Identifiable {
             return (sectionId * 1000) + stableIndex
         case let .currentSessionHeader(sectionId, _):
             return (sectionId * 1000) + stableIndex
-        case let .currentSession(sectionId, _, _):
+        case let .currentSession(sectionId, _, _, _):
             return (sectionId * 1000) + stableIndex
         case let .terminateOtherSessions(sectionId, _):
             return (sectionId * 1000) + stableIndex
@@ -253,9 +258,9 @@ private enum RecentSessionsEntry: Comparable, Identifiable {
     public func item(_ arguments: RecentSessionsControllerArguments, initialSize: NSSize) -> TableRowItem {
         switch self {
         case let .currentSessionHeader(_, viewType):
-            return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().sessionsCurrentSessionHeader, viewType: viewType)
-        case let .currentSession(_, session, viewType):
-            return RecentSessionRowItem(initialSize, session: session, stableId: stableId, viewType: viewType, icon: iconForSession(session), handler: {
+            return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().sessionsCurrentSessionHeader, viewType: viewType, rightItem: InputDataGeneralTextRightData(isLoading: false, text: .initialize(string: "Rename", color: theme.colors.accent, font: .medium(.small)), action: arguments.rename)) //TODOLANG
+        case let .currentSession(_, session, deviceModel, viewType):
+            return RecentSessionRowItem(initialSize, session: session, deviceModel: deviceModel, stableId: stableId, viewType: viewType, icon: iconForSession(session), handler: {
                 arguments.preview(session, stableId)
             })
         case let .terminateOtherSessions(_, viewType):
@@ -356,7 +361,7 @@ private struct RecentSessionsControllerState: Equatable {
     }
 }
 
-private func recentSessionsControllerEntries(state: RecentSessionsControllerState, sessions: ActiveSessionsContextState) -> [RecentSessionsEntry] {
+private func recentSessionsControllerEntries(state: RecentSessionsControllerState, sessions: ActiveSessionsContextState, deviceModel: String?) -> [RecentSessionsEntry] {
     var entries: [RecentSessionsEntry] = []
     
     
@@ -368,7 +373,7 @@ private func recentSessionsControllerEntries(state: RecentSessionsControllerStat
     entries.append(.currentSessionHeader(sectionId: sectionId, viewType: .textTopItem))
     if let index = sessions.sessions.firstIndex(where: { $0.hash == 0 }) {
         existingSessionIds.insert(sessions.sessions[index].hash)
-        entries.append(.currentSession(sectionId: sectionId, sessions.sessions[index], viewType: .firstItem))
+        entries.append(.currentSession(sectionId: sectionId, sessions.sessions[index], deviceModel: deviceModel, viewType: .firstItem))
     }
     entries.append(.terminateOtherSessions(sectionId: sectionId, viewType: existingSessionIds.isEmpty ? .singleItem : .lastItem))
     entries.append(.currentSessionInfo(sectionId: sectionId, viewType: .textBottomItem))
@@ -526,6 +531,9 @@ open class RecentSessionsController<Context: AccountContextProtocol>: TableViewC
             showModal(with: SessionModalController(context: context, session: session), for: context.window, morphSource: {
                 (self?.genericView.item(stableId: stableId)?.view as? GeneralContainableRowView)?.containerView
             })
+        }, rename: { [weak self] in
+            let source = (self?.genericView.item(stableId: RecentSessionsEntryStableId.index(2))?.view as? RecentSessionRowView)?.titleView
+            showModal(with: RenameDeviceController(context: context), for: context.window, morphSource: source.map { source in { [weak source] in source } })
         })
         
         let sessionsSignal: Signal<ActiveSessionsContextState, NoError> = context.activeSessionsContext.state
@@ -534,10 +542,10 @@ open class RecentSessionsController<Context: AccountContextProtocol>: TableViewC
         
         let previousSessions: Atomic<[AppearanceWrapperEntry<RecentSessionsEntry>]> = Atomic(value: [])
         
-        let signal = combineLatest(statePromise.get(), sessionsPromise.get(), appearanceSignal)
+        let signal = combineLatest(statePromise.get(), sessionsPromise.get(), renamedDeviceModel.get(), appearanceSignal)
             |> deliverOnMainQueue
-            |> map { state, sessions, appearance -> TableUpdateTransition in
-                let entries = recentSessionsControllerEntries(state: state, sessions: sessions).map {AppearanceWrapperEntry(entry: $0, appearance: appearance)}
+            |> map { state, sessions, deviceModel, appearance -> TableUpdateTransition in
+                let entries = recentSessionsControllerEntries(state: state, sessions: sessions, deviceModel: deviceModel).map {AppearanceWrapperEntry(entry: $0, appearance: appearance)}
                 return prepareSessions(left: previousSessions.swap(entries), right: entries, arguments: arguments, initialSize: initialSize.modify {$0})
             } |> afterDisposed {
                 actionsDisposable.dispose()
