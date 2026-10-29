@@ -42,7 +42,7 @@ final class SidebarUITests: XCTestCase {
         XCTAssertEqual(entries.map { $0.stableId }, [-2, -1, 20, 10])
         XCTAssertEqual(entries.map { $0.index }, [-1, 1, 2, 3])
         XCTAssertEqual(entries.sorted(), entries)
-        guard case let .folder(_, selected, _, count, unmuted) = entries[1] else { return XCTFail() }
+        guard case let .folder(_, selected, _, count, _, unmuted) = entries[1] else { return XCTFail() }
         XCTAssertTrue(selected)
         XCTAssertEqual(count, 0)
         XCTAssertFalse(unmuted)
@@ -50,14 +50,15 @@ final class SidebarUITests: XCTestCase {
 
     func testBadgesFollowIdentityAndSelectionWithoutReordering() {
         let entries = leftSidebarEntries(SidebarState(tabs: [filter(20), filter(10)], selectedFilterId: 10), badgeForFilter: { filter in
-            return filter.sidebarId == 20 ? (7, true) : nil
+            return filter.sidebarId == 20 ? (7, 9, true) : nil
         })
-        guard case let .folder(_, selected, filter, count, unmuted) = entries[1] else { return XCTFail() }
+        guard case let .folder(_, selected, filter, count, totalCount, unmuted) = entries[1] else { return XCTFail() }
         XCTAssertEqual(filter.sidebarId, 20)
         XCTAssertFalse(selected)
         XCTAssertEqual(count, 7)
+        XCTAssertEqual(totalCount, 9)
         XCTAssertTrue(unmuted)
-        guard case let .folder(_, secondSelected, _, secondCount, _) = entries[2] else { return XCTFail() }
+        guard case let .folder(_, secondSelected, _, secondCount, _, _) = entries[2] else { return XCTFail() }
         XCTAssertTrue(secondSelected)
         XCTAssertEqual(secondCount, 0)
     }

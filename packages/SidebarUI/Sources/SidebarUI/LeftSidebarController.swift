@@ -158,13 +158,13 @@ enum LeftSibarBarEntry : Comparable, Identifiable {
         return lhs.index < rhs.index
     }
     case topOffset
-    case folder(index: Int, selected: Bool, filter: ChatListFilter, unreadCount: Int, hasUnmutedUnread: Bool)
+    case folder(index: Int, selected: Bool, filter: ChatListFilter, unreadCount: Int, totalUnreadCount: Int, hasUnmutedUnread: Bool)
 
     var stableId: Int32 {
         switch self {
         case .topOffset:
             return -2
-        case let .folder(_, _, filter, _, _):
+        case let .folder(_, _, filter, _, _, _):
             return filter.sidebarId
         }
     }
@@ -173,15 +173,15 @@ enum LeftSibarBarEntry : Comparable, Identifiable {
         switch self {
         case .topOffset:
             return -1
-        case let .folder(index, _, _, _, _):
+        case let .folder(index, _, _, _, _, _):
             return index
         }
     }
 
     fileprivate func item(_ arguments: LeftSidebarArguments, initialSize: NSSize) -> TableRowItem {
         switch self {
-        case let .folder(_, selected, filter, unreadCount, hasUnmutedUnread):
-            return LeftSidebarFolderItem(initialSize, context: arguments.context, environment: arguments.environment, folder: filter, selected: selected, unreadCount: unreadCount, hasUnmutedUnread: hasUnmutedUnread, callback: arguments.callback, menuItems: arguments.menuItems)
+        case let .folder(_, selected, filter, unreadCount, totalUnreadCount, hasUnmutedUnread):
+            return LeftSidebarFolderItem(initialSize, context: arguments.context, environment: arguments.environment, folder: filter, selected: selected, unreadCount: unreadCount, totalUnreadCount: totalUnreadCount, hasUnmutedUnread: hasUnmutedUnread, callback: arguments.callback, menuItems: arguments.menuItems)
         case .topOffset:
             return GeneralRowItem(initialSize, height: 30, stableId: stableId, backgroundColor: .clear)
         }
@@ -190,11 +190,11 @@ enum LeftSibarBarEntry : Comparable, Identifiable {
 
 func leftSidebarEntries(_ filterData: SidebarState, _ badges: ChatListFilterBadges) -> [LeftSibarBarEntry] {
     return leftSidebarEntries(filterData, badgeForFilter: { filter in
-        badges.count(for: filter).map { ($0.count, $0.hasUnmutedUnread) }
+        badges.count(for: filter).map { ($0.count, $0.totalCount, $0.hasUnmutedUnread) }
     })
 }
 
-func leftSidebarEntries(_ filterData: SidebarState, badgeForFilter: (ChatListFilter) -> (count: Int, hasUnmutedUnread: Bool)?) -> [LeftSibarBarEntry] {
+func leftSidebarEntries(_ filterData: SidebarState, badgeForFilter: (ChatListFilter) -> (count: Int, totalCount: Int, hasUnmutedUnread: Bool)?) -> [LeftSibarBarEntry] {
     var index: Int = 1
 
     var entries:[LeftSibarBarEntry] = []
@@ -202,7 +202,7 @@ func leftSidebarEntries(_ filterData: SidebarState, badgeForFilter: (ChatListFil
 
     for filter in filterData.tabs {
         let badge = badgeForFilter(filter)
-        entries.append(.folder(index: index, selected: filter.sidebarId == filterData.selectedFilterId, filter: filter, unreadCount: badge?.count ?? 0, hasUnmutedUnread: badge?.hasUnmutedUnread ?? false))
+        entries.append(.folder(index: index, selected: filter.sidebarId == filterData.selectedFilterId, filter: filter, unreadCount: badge?.count ?? 0, totalUnreadCount: badge?.totalCount ?? 0, hasUnmutedUnread: badge?.hasUnmutedUnread ?? false))
         index += 1
     }
 
