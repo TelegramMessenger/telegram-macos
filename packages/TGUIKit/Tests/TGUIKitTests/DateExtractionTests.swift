@@ -13,10 +13,22 @@ final class DateExtractionTests: XCTestCase {
         )
     }
 
-    func testRussianAndBelarusianHoursAreDetected() {
+    func testRussianUkrainianAndBelarusianHoursAreDetected() {
         XCTAssertEqual(
             extractDates(from: "через 1 час", referenceDate: referenceDate).map(\.text),
             ["через 1 час"]
+        )
+        XCTAssertEqual(
+            extractDates(from: "через 2 години", referenceDate: referenceDate).map(\.text),
+            ["через 2 години"]
+        )
+        XCTAssertEqual(
+            extractDates(from: "за годину", referenceDate: referenceDate).map(\.text),
+            ["за годину"]
+        )
+        XCTAssertEqual(
+            extractDates(from: "через 5 годин", referenceDate: referenceDate).map(\.text),
+            ["через 5 годин"]
         )
         XCTAssertEqual(
             extractDates(from: "праз 1 гадзіну", referenceDate: referenceDate).map(\.text),
