@@ -326,7 +326,7 @@ public final class ChatListRevealView : TableStickView {
         }
         segmentView.menuItems = { [weak item] selected in
             if let item = item, selected.uniqueId != -1 && selected.uniqueId != -2 {
-                return item.menuItems(for: item.tabs[selected.index], unreadCount: item.counters.count(for: item.tabs[selected.index])?.count)
+                return item.menuItems(for: item.tabs[selected.index], unreadCount: item.counters.count(for: item.tabs[selected.index])?.totalCount)
             } else if let item = item, selected.uniqueId == -1 {
                 return item.menuItems(for: .allChats, unreadCount: nil)
             } else {

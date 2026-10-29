@@ -123,6 +123,7 @@ public func chatListFilterPreferences(engine: TelegramEngine) -> Signal<ChatList
 public struct ChatListFilterBadge : Equatable {
     public let filter: ChatListFilter
     public let count: Int
+    public let totalCount: Int
     public let hasUnmutedUnread: Bool
 }
 public struct ChatListFilterBadges : Equatable {
@@ -192,17 +193,107 @@ public func chatListFilterItems(engine: TelegramEngine, accountManager: AccountM
     }
 }
 
+private func chatListFilterUnreadCount(data: ChatListFilterData, totalStates: [PeerGroupId: ChatListTotalUnreadState], peerTagAndCount: [PeerId: (PeerSummaryCounterTags, Int, Bool)], includeMuted: Bool) -> (count: Int, hasUnmutedUnread: Bool) {
+    var tags: [PeerSummaryCounterTags] = []
+    if data.categories.contains(.contacts) {
+        tags.append(.contact)
+    }
+    if data.categories.contains(.nonContacts) {
+        tags.append(.nonContact)
+    }
+    if data.categories.contains(.groups) {
+        tags.append(.group)
+    }
+    if data.categories.contains(.bots) {
+        tags.append(.bot)
+    }
+    if data.categories.contains(.channels) {
+        tags.append(.channel)
+    }
+
+    let excludeMuted = data.excludeMuted || !includeMuted
+    var count = 0
+    var hasUnmutedUnread = false
+    if let totalState = totalStates[.root] {
+        for tag in tags {
+            if excludeMuted {
+                if let value = totalState.filteredCounters[tag] {
+                    if value.chatCount != 0 {
+                        count += Int(value.chatCount)
+                        hasUnmutedUnread = true
+                    }
+                }
+            } else {
+                if let value = totalState.absoluteCounters[tag] {
+                    count += Int(value.chatCount)
+                }
+                if let value = totalState.filteredCounters[tag] {
+                    if value.chatCount != 0 {
+                        hasUnmutedUnread = true
+                    }
+                }
+            }
+        }
+    }
+    if !data.excludeArchived {
+        if let totalState = totalStates[Namespaces.PeerGroup.archive] {
+            for tag in tags {
+                if excludeMuted {
+                    if let value = totalState.filteredCounters[tag] {
+                        if value.chatCount != 0 {
+                            count += Int(value.chatCount)
+                            hasUnmutedUnread = true
+                        }
+                    }
+                } else {
+                    if let value = totalState.absoluteCounters[tag] {
+                        count += Int(value.chatCount)
+                    }
+                    if let value = totalState.filteredCounters[tag] {
+                        if value.chatCount != 0 {
+                            hasUnmutedUnread = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for peerId in data.includePeers.peers {
+        if let (tag, peerCount, hasUnmuted) = peerTagAndCount[peerId] {
+            if !tags.contains(tag) {
+                if peerCount != 0 && (includeMuted || hasUnmuted) {
+                    count += 1
+                    if hasUnmuted {
+                        hasUnmutedUnread = true
+                    }
+                }
+            }
+        }
+    }
+    for peerId in data.excludePeers {
+        if let (tag, peerCount, hasUnmuted) = peerTagAndCount[peerId] {
+            if tags.contains(tag) {
+                if peerCount != 0 && (includeMuted || hasUnmuted) {
+                    count -= 1
+                }
+            }
+        }
+    }
+    return (count, hasUnmutedUnread)
+}
+
 private func makeChatListFilterItems(engine: TelegramEngine, accountManager: AccountManager<TelegramAccountManagerTypes>) -> Signal<ChatListFilterBadges, NoError> {
     
     let settings = appNotificationSettings(accountManager: accountManager) |> distinctUntilChanged(isEqual: { lhs, rhs in
-        return lhs.badgeEnabled == rhs.badgeEnabled
+        return lhs.badgeEnabled == rhs.badgeEnabled && lhs.folderBadgeIncludeMuted == rhs.folderBadgeIncludeMuted
     })
     let badges = combineLatest(engine.peers.updatedChatListFilters(), settings)
-        |> mapToSignal { filters, inAppSettings -> Signal<(Int, [(ChatListFilter, Int, Bool)]), NoError> in
+        |> mapToSignal { filters, inAppSettings -> Signal<(Int, [(ChatListFilter, Int, Int, Bool)]), NoError> in
             
             if !inAppSettings.badgeEnabled {
                 return .single((0, []))
             }
+            let badgeIncludeMuted = inAppSettings.folderBadgeIncludeMuted
             
             var unreadCountItems: [UnreadMessageCountsItem] = []
             unreadCountItems.append(.totalInGroup(.root))
@@ -239,12 +330,12 @@ private func makeChatListFilterItems(engine: TelegramEngine, accountManager: Acc
                                  engine.account.postbox.combinedView(keys: keys),
                                  Signal<Bool, NoError>.single(true)
                 )
-                |> map { view, _ -> (Int, [(ChatListFilter, Int, Bool)]) in
+                |> map { view, _ -> (Int, [(ChatListFilter, Int, Int, Bool)]) in
                     guard let unreadCounts = view.views[unreadKey] as? UnreadMessageCountsView else {
                         return (0, [])
                     }
                     
-                    var result: [(ChatListFilter, Int, Bool)] = []
+                    var result: [(ChatListFilter, Int, Int, Bool)] = []
                     
                     var peerTagAndCount: [PeerId: (PeerSummaryCounterTags, Int, Bool)] = [:]
                     
@@ -292,100 +383,18 @@ private func makeChatListFilterItems(engine: TelegramEngine, accountManager: Acc
                     for filter in filters {
                         switch filter {
                         case .allChats:
-                            result.append((filter, 0, false))
+                            result.append((filter, 0, 0, false))
                         case let .filter(_, _, _, data):
-                            var tags: [PeerSummaryCounterTags] = []
-                            if data.categories.contains(.contacts) {
-                                tags.append(.contact)
-                            }
-                            if data.categories.contains(.nonContacts) {
-                                tags.append(.nonContact)
-                            }
-                            if data.categories.contains(.groups) {
-                                tags.append(.group)
-                            }
-                            if data.categories.contains(.bots) {
-                                tags.append(.bot)
-                            }
-                            if data.categories.contains(.channels) {
-                                tags.append(.channel)
-                            }
-                            
-                            var count = 0
-                            var hasUnmutedUnread = false
-                            if let totalState = totalStates[.root] {
-                                for tag in tags {
-                                    if data.excludeMuted {
-                                        if let value = totalState.filteredCounters[tag] {
-                                            if value.chatCount != 0 {
-                                                count += Int(value.chatCount)
-                                                hasUnmutedUnread = true
-                                            }
-                                        }
-                                    } else {
-                                        if let value = totalState.absoluteCounters[tag] {
-                                            count += Int(value.chatCount)
-                                        }
-                                        if let value = totalState.filteredCounters[tag] {
-                                            if value.chatCount != 0 {
-                                                hasUnmutedUnread = true
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if !data.excludeArchived {
-                                if let totalState = totalStates[Namespaces.PeerGroup.archive] {
-                                    for tag in tags {
-                                        if data.excludeMuted {
-                                            if let value = totalState.filteredCounters[tag] {
-                                                if value.chatCount != 0 {
-                                                    count += Int(value.chatCount)
-                                                    hasUnmutedUnread = true
-                                                }
-                                            }
-                                        } else {
-                                            if let value = totalState.absoluteCounters[tag] {
-                                                count += Int(value.chatCount)
-                                            }
-                                            if let value = totalState.filteredCounters[tag] {
-                                                if value.chatCount != 0 {
-                                                    hasUnmutedUnread = true
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            for peerId in data.includePeers.peers {
-                                if let (tag, peerCount, hasUnmuted) = peerTagAndCount[peerId] {
-                                    if !tags.contains(tag) {
-                                        if peerCount != 0 {
-                                            count += 1
-                                            if hasUnmuted {
-                                                hasUnmutedUnread = true
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            for peerId in data.excludePeers {
-                                if let (tag, peerCount, _) = peerTagAndCount[peerId] {
-                                    if tags.contains(tag) {
-                                        if peerCount != 0 {
-                                            count -= 1
-                                        }
-                                    }
-                                }
-                            }
-                            result.append((filter, count, hasUnmutedUnread))
+                            let (count, hasUnmutedUnread) = chatListFilterUnreadCount(data: data, totalStates: totalStates, peerTagAndCount: peerTagAndCount, includeMuted: badgeIncludeMuted)
+                            let totalCount = badgeIncludeMuted ? count : chatListFilterUnreadCount(data: data, totalStates: totalStates, peerTagAndCount: peerTagAndCount, includeMuted: true).count
+                            result.append((filter, count, totalCount, hasUnmutedUnread))
                         }
                     }
                     
                     return (totalBadge, result)
             }
         } |> map { value -> ChatListFilterBadges in
-            return ChatListFilterBadges(total: value.0, filters: value.1.map { ChatListFilterBadge(filter: $0.0, count: max(0, $0.1), hasUnmutedUnread: $0.2) })
+            return ChatListFilterBadges(total: value.0, filters: value.1.map { ChatListFilterBadge(filter: $0.0, count: max(0, $0.1), totalCount: max(0, $0.2), hasUnmutedUnread: $0.3) })
         }
     return combineLatest(queue: Queue(), badges, renderedTotalUnreadCount(accountManager: accountManager, postbox: engine.account.postbox)) |> map { badges, total in
         return ChatListFilterBadges(total: Int(max(total.0, 0)), filters: badges.filters)

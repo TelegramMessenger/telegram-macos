@@ -92,6 +92,7 @@ private final class NotificationArguments {
     public let toggleCountUnreadMessages:(Bool) -> Void
     public let toggleIncludeGroups:(Bool) -> Void
     public let toggleIncludeChannels:(Bool) -> Void
+    public let toggleFolderBadgeIncludeMuted:(Bool) -> Void
     public let allAcounts: ()-> Void
     public let snoof: ()-> Void
     public let updateJoinedNotifications: (Bool) -> Void
@@ -102,7 +103,7 @@ private final class NotificationArguments {
     public let toggleIncomingCalls:()->Void
     public let openCategory:(NotificationSettingsCategory)->Void
     public let openReactions:()->Void
-    public init(resetAllNotifications: @escaping() -> Void, toggleMessagesPreview:@escaping() -> Void, toggleNotifications:@escaping() -> Void, notificationTone:@escaping() -> Void, toggleIncludeUnreadChats:@escaping(Bool) -> Void, toggleCountUnreadMessages:@escaping(Bool) -> Void, toggleIncludeGroups:@escaping(Bool) -> Void, toggleIncludeChannels:@escaping(Bool) -> Void, allAcounts: @escaping()-> Void, snoof: @escaping()-> Void, updateJoinedNotifications: @escaping(Bool) -> Void, toggleBadge: @escaping(Bool)->Void, toggleRequestUserAttention: @escaping ()->Void, toggleInAppSounds: @escaping(Bool)->Void, toggleChats: @escaping()->Void, toggleIncomingCalls:@escaping()->Void, openCategory:@escaping(NotificationSettingsCategory)->Void, openReactions:@escaping()->Void) {
+    public init(resetAllNotifications: @escaping() -> Void, toggleMessagesPreview:@escaping() -> Void, toggleNotifications:@escaping() -> Void, notificationTone:@escaping() -> Void, toggleIncludeUnreadChats:@escaping(Bool) -> Void, toggleCountUnreadMessages:@escaping(Bool) -> Void, toggleIncludeGroups:@escaping(Bool) -> Void, toggleIncludeChannels:@escaping(Bool) -> Void, toggleFolderBadgeIncludeMuted:@escaping(Bool) -> Void, allAcounts: @escaping()-> Void, snoof: @escaping()-> Void, updateJoinedNotifications: @escaping(Bool) -> Void, toggleBadge: @escaping(Bool)->Void, toggleRequestUserAttention: @escaping ()->Void, toggleInAppSounds: @escaping(Bool)->Void, toggleChats: @escaping()->Void, toggleIncomingCalls:@escaping()->Void, openCategory:@escaping(NotificationSettingsCategory)->Void, openReactions:@escaping()->Void) {
         self.resetAllNotifications = resetAllNotifications
         self.toggleMessagesPreview = toggleMessagesPreview
         self.toggleNotifications = toggleNotifications
@@ -111,6 +112,7 @@ private final class NotificationArguments {
         self.toggleCountUnreadMessages = toggleCountUnreadMessages
         self.toggleIncludeGroups = toggleIncludeGroups
         self.toggleIncludeChannels = toggleIncludeChannels
+        self.toggleFolderBadgeIncludeMuted = toggleFolderBadgeIncludeMuted
         self.allAcounts = allAcounts
         self.snoof = snoof
         self.updateJoinedNotifications = updateJoinedNotifications
@@ -133,6 +135,7 @@ private let _id_badge_enabled = InputDataIdentifier("_badge_enabled")
 private let _id_include_muted_chats = InputDataIdentifier("_id_include_muted_chats")
 private let _id_include_public_group = InputDataIdentifier("_id_include_public_group")
 private let _id_include_channels = InputDataIdentifier("_id_include_channels")
+private let _id_folder_badge_include_muted = InputDataIdentifier("_id_folder_badge_include_muted")
 private let _id_count_unred_messages = InputDataIdentifier("_id_count_unred_messages")
 private let _id_new_contacts = InputDataIdentifier("_id_new_contacts")
 private let _id_snoof = InputDataIdentifier("_id_snoof")
@@ -341,6 +344,11 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
     })))
     index += 1
     
+    entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_folder_badge_include_muted, data: InputDataGeneralData(name: strings().notificationSettingsIncludeMutedChats, color: theme.colors.text, type: .switchable(settings.folderBadgeIncludeMuted), viewType: .innerItem, enabled: settings.badgeEnabled, action: {
+        arguments.toggleFolderBadgeIncludeMuted(!settings.folderBadgeIncludeMuted)
+    })))
+    index += 1
+    
     entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_count_unred_messages, data: InputDataGeneralData(name: strings().notificationSettingsCountUnreadMessages, color: theme.colors.text, type: .switchable(settings.totalUnreadCountDisplayCategory == .messages), viewType: .lastItem, enabled: settings.badgeEnabled, action: {
         arguments.toggleCountUnreadMessages(settings.totalUnreadCountDisplayCategory != .messages)
     })))
@@ -424,6 +432,10 @@ public func NotificationPreferencesController(_ context: any AccountContextProto
                 tags.remove(.channel)
             }
             return value.withUpdatedTotalUnreadCountIncludeTags(tags)
+        }).start()
+    }, toggleFolderBadgeIncludeMuted: { enable in
+        _ = updateInAppNotificationSettingsInteractively(accountManager: context.sharedContext.accountManager, { value in
+            return value.withUpdatedFolderBadgeIncludeMuted(enable)
         }).start()
     }, allAcounts: {
         _ = updateInAppNotificationSettingsInteractively(accountManager: context.sharedContext.accountManager, { value in

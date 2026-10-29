@@ -22,14 +22,16 @@ class LeftSidebarFolderItem: TableRowItem {
     let badge: CGImage?
     let nameLayout: TextViewLayout
     let unreadCount: Int
+    let totalUnreadCount: Int
 
 
-    init(_ initialSize: NSSize, context: any AccountContextProtocol, environment: SidebarUIEnvironment, folder: ChatListFilter, selected: Bool, unreadCount: Int, hasUnmutedUnread: Bool, callback: @escaping(ChatListFilter)->Void, menuItems: @escaping(ChatListFilter, Int?, Bool?) -> [ContextMenuItem]) {
+    init(_ initialSize: NSSize, context: any AccountContextProtocol, environment: SidebarUIEnvironment, folder: ChatListFilter, selected: Bool, unreadCount: Int, totalUnreadCount: Int, hasUnmutedUnread: Bool, callback: @escaping(ChatListFilter)->Void, menuItems: @escaping(ChatListFilter, Int?, Bool?) -> [ContextMenuItem]) {
         self.folder = folder
         self.context = context
         self.selected = selected
         self.callback = callback
         self.unreadCount = unreadCount
+        self.totalUnreadCount = totalUnreadCount
         self.menuItems = menuItems
         var folderIcon = FolderIcon(folder).icon(for: selected ? .sidebarActive : .sidebar, image: environment.folderImage)
 
@@ -106,7 +108,7 @@ class LeftSidebarFolderItem: TableRowItem {
 
         let id = self.folder.sidebarId
         let folder = self.folder
-        let unreadCount = self.unreadCount
+        let totalUnreadCount = self.totalUnreadCount
         let context = self.context
 
         let filterPeersAreMuted: Signal<Bool, NoError> = context.engine.peers.currentChatListFilters()
@@ -135,7 +137,7 @@ class LeftSidebarFolderItem: TableRowItem {
         } |> deliverOnMainQueue
 
         return filterPeersAreMuted |> map { [weak self] allMuted in
-            return self?.menuItems(folder, unreadCount, allMuted) ?? []
+            return self?.menuItems(folder, totalUnreadCount, allMuted) ?? []
         }
     }
 
