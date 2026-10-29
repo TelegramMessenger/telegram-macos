@@ -3152,7 +3152,12 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
                     case .forum:
                         id = .chatId(.forum(threadId), location.peerId, -1)
                     case .savedMessagesChats:
-                        id = .chatId(.chatList(PeerId(data.threadId)), PeerId(data.threadId), -1)
+                        let sourceId = PeerId(data.threadId)
+                        if self.genericView.tableView.item(stableId: UIChatListEntryId.forum(sourceId)) != nil {
+                            id = .forum(sourceId)
+                        } else {
+                            id = .chatId(.chatList(sourceId), sourceId, -1)
+                        }
                     case .community:
                         id = .chatId(.chatList(location.peerId), location.peerId, -1)
                     }
@@ -3492,7 +3497,9 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
             self.navigationController?.push(ChatListController(context, modal: false, mode: .folder(groupId)))
         case let .forum(peerId):
             let current = navigationController?.controller as? ChatListController<Context>
-            if case .forum(peerId, _, _) = current?.mode {
+            if mode.isSavedMessages {
+                _ = (ForumUI.openSavedMessages(peerId.toInt64(), context: context, messageId: messageId, initialAction: initialAction) |> take(1)).start()
+            } else if case .forum(peerId, _, _) = current?.mode {
                 navigationController?.back()
             } else {
                 if current?.mode.isForum == true {
