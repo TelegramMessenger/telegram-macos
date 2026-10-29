@@ -3455,7 +3455,7 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
             switch type {
             case let .chatList(peerId):
                 
-                if openAsTopics {
+                if openAsTopics, !(navigation.modalAction is ChatListForwardAction && peerId == context.peerId) {
                     ForumUI.open(peerId, addition: false, context: context, threadId: threadId, fullWidth: fullWidthTopics)
                 } else {
                     if let modalAction = navigation.modalAction as? ChatListForwardAction, peerId == context.peerId {
