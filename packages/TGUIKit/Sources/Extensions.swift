@@ -3480,7 +3480,7 @@ private func extractRelativeDates(from text: String, referenceDate: Date) -> [Ex
 
     // Pattern B examples:
     // "20m", "2h", "3d", "1w", "20 min", "10мин", "5хв", "2soat"
-    let patternB = #"\b(\d+(?:[.,]\d+)?)\s*([[:alpha:]\p{M}]{1,12}\.?)\b"#
+    let patternB = #"(?<!\S)(\d+(?:[.,]\d+)?)\s*([[:alpha:]\p{M}]{1,12}\.?)\b"#
 
     // Pattern C examples (implied "1"):
     // "через минуту", "через час", "in a minute", "in an hour", "nach einer Stunde"
