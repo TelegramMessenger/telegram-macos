@@ -12,11 +12,7 @@ public struct EmojiSkinModifier : Codable, Equatable {
     public let emoji: String
     public let modifier: String
     public init(emoji: String, modifier: String) {
-        var emoji = emoji
-        for skin in emoji.emojiSkinToneModifiers {
-            emoji = emoji.replacingOccurrences(of: skin, with: "")
-        }
-        self.emoji = emoji
+        self.emoji = emoji.emojiUnmodified
         self.modifier = modifier
     }
     public func encode(to encoder: Encoder) throws {
@@ -41,11 +37,39 @@ private let recentSingleEmojiWidth = recentEmojiLineWidth("😀")
 
 public extension String {
     var recentEmojiCandidates: [String] {
-        return self.map { String($0) }.filter { $0.isRecentEmojiCandidate }
+        return self.map { String($0) }.filter { $0.hasEmojiPresentation }.map { $0.recentEmojiCanonical }.filter { $0.isRecentEmojiCandidate }
     }
 }
 
+private func recentEmojiUsing(_ emoji: String, in emojies: [String]) -> [String] {
+    guard emoji.isRecentEmojiCandidate else {
+        return emojies
+    }
+    return Array(([emoji] + emojies.filter { $0 != emoji }).prefix(35))
+}
+
 private extension String {
+    var hasEmojiPresentation: Bool {
+        if unicodeScalars.contains("\u{fe0e}") {
+            return false
+        }
+        return unicodeScalars.contains {
+            $0 == "\u{fe0f}" || $0 == "\u{20e3}" || $0.properties.isEmojiPresentation || $0.properties.isEmojiModifier
+        }
+    }
+    
+    var recentEmojiCanonical: String {
+        var scalars = String.UnicodeScalarView(unicodeScalars.filter { $0 != "\u{fe0e}" && $0 != "\u{fe0f}" })
+        while scalars.last == "\u{200d}" {
+            scalars.removeLast()
+        }
+        let normalized = String(scalars).normalizedEmoji
+        if scalars.count == 1, !normalized.unicodeScalars.contains("\u{fe0f}") {
+            return normalized + "\u{fe0f}"
+        }
+        return normalized
+    }
+    
     var rendersAsSingleEmoji: Bool {
         guard count == 1, containsEmoji else {
             return false
@@ -56,51 +80,36 @@ private extension String {
         return recentEmojiLineWidth(self) <= recentSingleEmojiWidth * 1.5
     }
     
-    var withoutTrailingVariationSelectors: String {
-        var scalars = String.UnicodeScalarView(unicodeScalars)
-        while scalars.last == "\u{fe0f}" {
-            scalars.removeLast()
-        }
-        return String(scalars)
-    }
-    
     var isRecentEmojiCandidate: Bool {
-        return rendersAsSingleEmoji && unicodeScalars.contains { $0.value > 0x7f && !$0.properties.isVariationSelector }
+        let scalars = Array(unicodeScalars)
+        guard let first = scalars.first, let last = scalars.last else {
+            return false
+        }
+        let isKeycap = scalars.count > 1 && last == "\u{20e3}" && "0123456789#*".unicodeScalars.contains(first) && scalars.dropFirst().dropLast().allSatisfy { $0 == "\u{fe0f}" }
+        let hasEmojiBase = scalars.contains {
+            $0.value > 0x7f && $0.properties.isEmoji && !$0.properties.isEmojiModifier
+        }
+        let hasStrayMark = scalars.contains {
+            let category = $0.properties.generalCategory
+            let isMark = category == .nonspacingMark || category == .enclosingMark
+            return isMark && !$0.properties.isVariationSelector && !(isKeycap && $0 == "\u{20e3}")
+        }
+        return (hasEmojiBase || isKeycap) && !hasStrayMark && rendersAsSingleEmoji
     }
 }
 
 public class RecentUsedEmoji: Codable, Equatable {
-    private let _emojies:[String]
+    public let emojies:[String]
     public let skinModifiers:[EmojiSkinModifier]
     public let animated:[MediaId]
     public init(emojies:[String], animated: [MediaId], skinModifiers: [EmojiSkinModifier]) {
-        self._emojies = emojies
+        self.emojies = emojies
         self.animated = animated
         self.skinModifiers = skinModifiers
     }
     
     public static var defaultSettings: RecentUsedEmoji {
         return RecentUsedEmoji(emojies: ["😂", "😘", "❤️", "😍", "😊", "🤔", "😁", "👍", "☺️", "😔", "😄", "😭", "💋", "😒", "😳", "😜", "🙈", "😉", "😃", "😢", "😝", "😱", "😡", "😏", "😞", "😅", "😚", "🙊", "😌", "😀", "😋", "😆", "🌚", "😐", "😕", "👎", diceSymbol, dartSymbol], animated: [], skinModifiers: [])
-    }
-    
-    public var emojies: [String] {
-        var isset = Set<String>()
-        var list:[String] = []
-        for emoji in _emojies {
-            var value = emoji
-            if value.emojiHasSkinTone, !value.rendersAsSingleEmoji {
-                value = String(String.UnicodeScalarView(value.unicodeScalars.filter { !$0.properties.isEmojiModifier }))
-            }
-            guard let first = value.first else {
-                continue
-            }
-            value = String(first)
-            let key = value.strippedEmoji
-            if !key.isEmpty, !value.emojiSkinToneModifiers.contains(value), isset.insert(key).inserted {
-                list.append(value)
-            }
-        }
-        return list
     }
     
     public required init(from decoder: Decoder) throws {
@@ -113,18 +122,12 @@ public class RecentUsedEmoji: Codable, Equatable {
         var isset = Set<String>()
         var list:[String] = []
         for emoji in emojies {
-            let key = emoji.strippedEmoji
-            if !key.isEmpty, emoji != "�", !emoji.emojiSkinToneModifiers.contains(emoji), isset.insert(key).inserted {
-                let emoji = emoji.withoutTrailingVariationSelectors
-                let updated = emoji + "\u{fe0f}"
-                if updated.isRecentEmojiCandidate {
-                    list.append(updated)
-                } else if emoji.isRecentEmojiCandidate {
-                    list.append(emoji)
-                }
+            let emoji = emoji.recentEmojiCanonical
+            if emoji.isRecentEmojiCandidate, isset.insert(emoji).inserted {
+                list.append(emoji)
             }
         }
-        self._emojies = list
+        self.emojies = list
         
         
     }
@@ -132,7 +135,7 @@ public class RecentUsedEmoji: Codable, Equatable {
     
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: StringCodingKey.self)
-        try container.encode(_emojies, forKey: "e")
+        try container.encode(emojies, forKey: "e")
         try container.encode(skinModifiers, forKey: "sm_new")
         try container.encode(animated, forKey: "ae")
 
@@ -148,24 +151,11 @@ public func ==(lhs: RecentUsedEmoji, rhs: RecentUsedEmoji) -> Bool {
 public func saveUsedEmoji(_ list:[String], postbox:Postbox) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
         transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
-            var emojies: [String]
             let value: RecentUsedEmoji = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
-            emojies = value.emojies.filter {
-                $0.isRecentEmojiCandidate
-            }
-            
+            var emojies = value.emojies
             for emoji in list.reversed() {
-                if emoji.isRecentEmojiCandidate {
-                    let key = emoji.strippedEmoji
-                    if !key.isEmpty && emoji.count == 1 {
-                        if let index = emojies.firstIndex(where: { $0.strippedEmoji == key }) {
-                            emojies.remove(at: index)
-                        }
-                        emojies.insert(emoji, at: 0)
-                    }
-                }
+                emojies = recentEmojiUsing(emoji.recentEmojiCanonical, in: emojies)
             }
-            emojies = Array(emojies.filter({$0.containsEmoji}).prefix(35))
             return PreferencesEntry(RecentUsedEmoji(emojies: emojies, animated: value.animated, skinModifiers: value.skinModifiers))
         })
     }
@@ -187,7 +177,7 @@ public func saveAnimatedUsedEmoji(_ list:[MediaId], postbox:Postbox) -> Signal<V
     }
 }
 
-public func modifySkinEmoji(_ emoji:String, modifier: String?, postbox: Postbox) -> Signal<Void, NoError> {
+public func modifySkinEmoji(_ emoji:String, modifier: String?, recentEmoji: String?, postbox: Postbox) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
         transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
             let settings = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
@@ -204,7 +194,11 @@ public func modifySkinEmoji(_ emoji:String, modifier: String?, postbox: Postbox)
                 skinModifiers.remove(at: index)
             }
            
-            return PreferencesEntry(RecentUsedEmoji(emojies: settings.emojies, animated: settings.animated, skinModifiers: skinModifiers))
+            var emojies = settings.emojies
+            if let recentEmoji = recentEmoji, emojies.contains(recentEmoji.recentEmojiCanonical) {
+                emojies = recentEmojiUsing((modifier.map { emoji.emojiWithSkinModifier($0) } ?? emoji).recentEmojiCanonical, in: emojies)
+            }
+            return PreferencesEntry(RecentUsedEmoji(emojies: emojies, animated: settings.animated, skinModifiers: skinModifiers))
             
         })
     }

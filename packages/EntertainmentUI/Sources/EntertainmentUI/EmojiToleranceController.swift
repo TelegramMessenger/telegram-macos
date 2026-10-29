@@ -9,8 +9,10 @@ private class EmojiTolerance : View {
     
     init(frame frameRect: NSRect, emoji:String, handle:@escaping(String, String?)->Void) {
         super.init(frame: frameRect)
-        
-        
+        addVariants(emoji: emoji, handle: handle)
+    }
+
+    private func addVariants(emoji: String, handle: @escaping(String, String?)->Void) {
         let variants: [(String, String?)] = [(emoji, nil)] + emoji.emojiSkinToneModifiers.map {
             (emoji.emojiWithSkinModifier($0), $0)
         }

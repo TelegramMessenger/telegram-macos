@@ -281,10 +281,15 @@ public class Sender: NSObject {
                 return observe(preparedMessages |> mapToSignal { messages in
                     return enqueueMessages(account: context.account, peerId: peerId, messages: messages)
                 } |> mapToSignal { value in
+                    var saves: [Signal<Void, NoError>] = []
                     if !emojis.isEmpty {
-                        let es = saveUsedEmoji(emojis, postbox: context.account.postbox)
-                        let aes = saveAnimatedUsedEmoji(inlineMedia, postbox: context.account.postbox)
-                        return combineLatest(es, aes) |> map { _ in
+                        saves.append(saveUsedEmoji(emojis, postbox: context.account.postbox))
+                    }
+                    if !inlineMedia.isEmpty {
+                        saves.append(saveAnimatedUsedEmoji(inlineMedia, postbox: context.account.postbox))
+                    }
+                    if !saves.isEmpty {
+                        return combineLatest(saves) |> map { _ in
                             return value
                         }
                     }

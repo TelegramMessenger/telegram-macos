@@ -24,12 +24,14 @@ public class EBlockItem: TableRowItem {
     public let segment: EmojiSegment
     public internal(set) var selectedOrders: [String: Int]
     public let selectionColor: NSColor?
+    private let isRecentList: Bool
     
-    public init(_ initialSize:NSSize, stableId: AnyHashable, attrLines:[[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler:@escaping(String, NSRect)->Void, selectedOrders: [String: Int] = [:], selectionColor: NSColor? = nil) {
+    public init(_ initialSize:NSSize, stableId: AnyHashable, attrLines:[[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler:@escaping(String, NSRect)->Void, selectedOrders: [String: Int] = [:], selectionColor: NSColor? = nil, isRecentList: Bool = false) {
         self.lineAttr = attrLines
         self.symbols = attrLines.flatMap { $0 }
         self.selectedOrders = selectedOrders
         self.selectionColor = selectionColor
+        self.isRecentList = isRecentList
         self._stableId = stableId
         self.account = account
         self.segment = segment
@@ -64,10 +66,12 @@ public class EBlockItem: TableRowItem {
     public override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
         var items: [ContextMenuItem] = []
         let postbox = self.account.postbox
-        if let view = self.view as? EBlockRowView {
-            if let emoji = view.emojiUnderMouse?.emojiUnmodified, emoji.canHaveSkinToneModifier {
+        if let view = self.view as? EBlockRowView, let emojiUnderMouse = view.emojiUnderMouse {
+            let emoji = emojiUnderMouse.emojiUnmodified
+            if emoji.canHaveSkinToneModifier {
+                let recentEmoji = self.isRecentList ? emojiUnderMouse : nil
                 items.append(EmojiToleranceContextMenuItem(emoji: emoji, callback: { value in
-                    _ = modifySkinEmoji(emoji, modifier: value, postbox: postbox).start()
+                    _ = modifySkinEmoji(emoji, modifier: value, recentEmoji: recentEmoji, postbox: postbox).start()
                 }))
             }
         }

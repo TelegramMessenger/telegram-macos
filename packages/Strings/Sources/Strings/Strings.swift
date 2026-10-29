@@ -110,10 +110,6 @@ public extension String {
         return [ "🏻", "🏼", "🏽", "🏾", "🏿" ]
     }
     
-    var emojiHasSkinTone: Bool {
-        return unicodeScalars.contains { $0.properties.isEmojiModifier }
-    }
-    
     var emojiUnmodified: String {
         return String(String.UnicodeScalarView(unicodeScalars.filter {
             $0 != "\u{fe0f}" && !$0.properties.isEmojiModifier
@@ -177,7 +173,7 @@ public extension String {
     }
     
     var isSingleEmoji: Bool {
-        return containsEmoji && glyphCount == 1
+        return glyphCount == 1 && containsEmoji
     }
     
     var containsEmoji: Bool {
