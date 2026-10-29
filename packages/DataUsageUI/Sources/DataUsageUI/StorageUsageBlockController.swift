@@ -173,12 +173,14 @@ final class StorageUsageMediaContainerView : View {
        view = StorageUsageBlockControllerView(frame: NSMakeRect(0, sectionOffset, min(600, frameRect.width - sectionOffset * 2), frameRect.height - sectionOffset))
        super.init(frame: frameRect)
        addSubview(view)
-       backgroundColor = theme.colors.listBackground
+       backgroundColor = .clear
+       layer?.isOpaque = false
        layout()
    }
    override func updateLocalizationAndTheme(theme: PresentationTheme) {
        super.updateLocalizationAndTheme(theme: theme)
-       backgroundColor = theme.colors.listBackground
+       backgroundColor = .clear
+       layer?.isOpaque = false
    }
    
    override func scrollWheel(with event: NSEvent) {
@@ -236,12 +238,10 @@ final class StorageUsageMediaContainerView : View {
 
 class StorageUsageBlockControllerView : View {
    
-   private let topPanelView = GeneralRowContainerView(frame: .zero)
+   private let contentContainerView = GeneralRowContainerView(frame: .zero)
    fileprivate let segmentPanelView: SegmentContainerView
    
    private(set) weak var mainView:NSView?
-   
-   private let topPanelSeparatorView = View()
    
    override func scrollWheel(with event: NSEvent) {
        mainTable?.scrollWheel(with: event)
@@ -263,18 +263,17 @@ class StorageUsageBlockControllerView : View {
    required init(frame frameRect:NSRect) {
        segmentPanelView = SegmentContainerView(frame: NSMakeRect(0, 0, frameRect.width, SegmentContainerView.height))
        super.init(frame: frameRect)
-       addSubview(topPanelView)
-       topPanelView.addSubview(topPanelSeparatorView)
-       topPanelView.addSubview(segmentPanelView)
+       addSubview(contentContainerView)
+       addSubview(segmentPanelView)
        updateLocalizationAndTheme(theme: theme)
        layout()
    }
    
    override func updateLocalizationAndTheme(theme: PresentationTheme) {
-      // super.updateLocalizationAndTheme(theme: theme)
-       backgroundColor = theme.colors.listBackground
-       topPanelView.backgroundColor = theme.colors.background
-       topPanelSeparatorView.backgroundColor = theme.colors.border
+       backgroundColor = .clear
+       layer?.isOpaque = false
+       contentContainerView.backgroundColor = .clear
+       contentContainerView.layer?.isOpaque = false
        segmentPanelView.updateLocalizationAndTheme(theme: theme)
    }
    
@@ -284,12 +283,12 @@ class StorageUsageBlockControllerView : View {
    
    func updateCorners(_ corners: GeneralViewItemCorners, animated: Bool) {
        self.corners = corners
-       self.topPanelView.setCorners(corners, animated: animated)
-       topPanelSeparatorView.isHidden = corners == .all
+       self.contentContainerView.setCorners(corners, animated: animated)
    }
    
    fileprivate func updateMainView(with view:NSView, animated:AnimationDirection?) {
-       addSubview(view, positioned: .below, relativeTo: topPanelView)
+       view.frame = contentContainerView.bounds
+       contentContainerView.addSubview(view)
        
        let timingFunction: CAMediaTimingFunctionName = .spring
        let duration: TimeInterval = 0.35
@@ -331,13 +330,12 @@ class StorageUsageBlockControllerView : View {
    
    override func layout() {
        
+       super.layout()
        let inset:CGFloat = isSelectionState ? 40 : 0
-       topPanelView.frame = NSMakeRect(0, 0, frame.width, SegmentContainerView.height)
-       topPanelView.setCorners(self.corners)
-       topPanelSeparatorView.frame = NSMakeRect(0, topPanelView.frame.height - .borderSize, topPanelView.frame.width, .borderSize)
-       
-       segmentPanelView.frame = NSMakeRect(0, 0, topPanelView.frame.width, SegmentContainerView.height)
-       mainView?.frame = NSMakeRect(0, topPanelView.isHidden ? 0 : topPanelView.frame.height, frame.width, frame.height - inset - (topPanelView.isHidden ? 0 : topPanelView.frame.height))
+       segmentPanelView.frame = NSMakeRect(0, 0, frame.width, SegmentContainerView.height)
+       contentContainerView.frame = NSMakeRect(0, segmentPanelView.frame.maxY, frame.width, max(0, frame.height - inset - segmentPanelView.frame.maxY))
+       contentContainerView.setCorners(self.corners)
+       mainView?.frame = contentContainerView.bounds
        
 
    }
@@ -564,7 +562,6 @@ class StorageUsageBlockController<Context: AccountContextProtocol>: TelegramGene
        self.currentController = controller
        controller.viewWillAppear(animated)
        previous?.viewWillDisappear(animated)
-       controller.view.frame = self.genericView.view.bounds
        let animation: AnimationDirection?
        
        if animated, let oldMode = oldMode {
