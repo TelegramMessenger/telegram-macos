@@ -505,7 +505,7 @@ public final class ChatInteraction : InterfaceObserver  {
         } else {
             isWelcome = false
         }
-        return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: threadId, isWelcome: isWelcome)
+        return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: threadId, isWelcome: isWelcome, isCustomEditor: mode.customChatContents != nil || mode.customChatLink != nil)
     }
     private let richTextDraftPromise = ValuePromise<InstantPage?>(nil, ignoreRepeated: false)
     private var persistentRichTextDraftId: EngineDataBuffer? {
@@ -544,7 +544,7 @@ public final class ChatInteraction : InterfaceObserver  {
         invalidateDeferredSendActions()
         storePersistentRichTextDraft(page, threadId: threadId)
     }
-    public func persistRichTextDraft(_ page: InstantPage) {
+    public func persistRichTextDraft(_ page: InstantPage?) {
         guard unshownPersistentRichTextDraftKey != richTextDraftKey else {
             return
         }
@@ -563,7 +563,7 @@ public final class ChatInteraction : InterfaceObserver  {
             guard let self, self.richTextDraftKey == key, let page = entry?.get(ChatRichTextDraftEntry.self)?.page else {
                 return
             }
-            guard self.presentation.effectiveInput.inputText.isEmpty else {
+            guard self.context.appConfiguration.isRichTextEditorEnabled, self.presentation.effectiveInput.inputText.isEmpty else {
                 self.unshownPersistentRichTextDraftKey = key
                 return
             }

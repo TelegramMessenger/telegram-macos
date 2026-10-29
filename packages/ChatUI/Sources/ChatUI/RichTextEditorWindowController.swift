@@ -289,7 +289,7 @@ private func richTextEditorEntries(_ state: RichTextEditorState, coordinator: Ri
 }
 
 @available(macOS 12, *)
-public func RichTextEditorController(context: any AccountContextProtocol, initialDocument: Document? = nil, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])? = nil, isEditing: Bool = false, requestScheduleDate: ((@escaping (Date, Int32?) -> Void) -> Void)? = nil, sendMenuItems: ((@escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]?)? = nil, onDeleteMessage: (() -> Void)? = nil, onCancel: ((ComposedRichMessage) -> Void)? = nil, autosaveDraft: ((InstantPage) -> Void)? = nil, flushDraft: ActionBox? = nil, send: @escaping (_ text: String, _ attributes: [MessageAttribute]) -> Void) -> InputDataModalController {
+public func RichTextEditorController(context: any AccountContextProtocol, initialDocument: Document? = nil, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])? = nil, isEditing: Bool = false, requestScheduleDate: ((@escaping (Date, Int32?) -> Void) -> Void)? = nil, sendMenuItems: ((@escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]?)? = nil, onDeleteMessage: (() -> Void)? = nil, onCancel: ((ComposedRichMessage) -> Void)? = nil, autosaveDraft: ((InstantPage?) -> Void)? = nil, flushDraft: ActionBox? = nil, send: @escaping (_ text: String, _ attributes: [MessageAttribute]) -> Void) -> InputDataModalController {
     let coordinator = RichTextEditorCoordinator(context: context)
     coordinator.editor.withPasteContext = { paste in
         paste()
@@ -320,13 +320,15 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
     }
     let autosaveDisposable = MetaDisposable()
     var lastAutosavedPage: InstantPage? = initialDraft.flatMap { richTextInstantPage(from: $0.blocks, media: $0.media) }
+    var awaitsInitialDraft = initialDraft != nil
     let storeDraftNow: () -> Void = { [weak coordinator] in
         autosaveDisposable.set(nil)
-        guard let autosaveDraft, let coordinator, !didSend, !isClosed, !contentNeedsPremium() else {
+        guard let autosaveDraft, let coordinator, !didSend, !isClosed, !awaitsInitialDraft, !contentNeedsPremium() else {
             return
         }
         let outgoing = coordinator.editor.outgoingBlocks()
-        guard richTextOutgoingHasContent(outgoing), let page = richTextInstantPage(from: outgoing, media: coordinator.pickedMedia), page != lastAutosavedPage else {
+        let page = richTextOutgoingHasContent(outgoing) ? richTextInstantPage(from: outgoing, media: coordinator.pickedMedia) : nil
+        guard page != lastAutosavedPage else {
             return
         }
         lastAutosavedPage = page
@@ -473,6 +475,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
         if !didSeedInitial, let initialDraft = initialDraft {
             didSeedInitial = true
             coordinator.seedDraft(blocks: initialDraft.blocks, media: initialDraft.media)
+            awaitsInitialDraft = false
         }
         if !didPositionInitialCaret {
             didPositionInitialCaret = true
