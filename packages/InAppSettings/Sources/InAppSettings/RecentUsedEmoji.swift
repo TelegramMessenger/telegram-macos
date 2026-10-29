@@ -25,19 +25,6 @@ public struct EmojiSkinModifier : Codable, Equatable {
         try container.encode(modifier, forKey: "m")
     }
     
-    public var modify: String {
-        var e:String = emoji
-        if emoji.length == 5 {
-            let mutable = NSMutableString()
-            mutable.insert(e, at: 0)
-            mutable.insert(modifier, at: 2)
-            e = mutable as String
-        } else {
-            e = emoji + modifier
-        }
-        return e
-    }
-    
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StringCodingKey.self)
         self.emoji = try container.decode(String.self, forKey: "e")
