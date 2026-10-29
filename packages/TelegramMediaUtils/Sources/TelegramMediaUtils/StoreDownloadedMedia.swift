@@ -5,6 +5,13 @@ import Postbox
 import FetchManager
 import InAppSettings
 
+public func isMessageCopyProtected(_ message: Message?, postbox: Postbox) -> Signal<Bool, NoError> {
+    if let message, message.isCopyProtected() {
+        return .single(true)
+    }
+    return isMessageCopyProtected(message?.id, postbox: postbox)
+}
+
 public func isMessageCopyProtected(_ id: MessageId?, postbox: Postbox) -> Signal<Bool, NoError> {
     guard let id else {
         return .single(false)

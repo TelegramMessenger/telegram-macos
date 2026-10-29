@@ -87,18 +87,18 @@ public class QuickLookPreview : NSObject, QLPreviewPanelDelegate, QLPreviewPanel
             
             
             
-            var messageId: MessageId?
+            var message: Message?
             switch stableId {
-            case let .message(message)?, let .mediaId(_, message)?:
-                messageId = message.id
+            case let .message(value)?, let .mediaId(_, value)?:
+                message = value
             default:
                 break
             }
             let postbox = context.account.postbox
-            signal = isMessageCopyProtected(messageId, postbox: postbox) |> mapToSignal { [forceExtension, mimeType] isCopyProtected -> Signal<(String?, String?), NoError> in
+            signal = isMessageCopyProtected(message, postbox: postbox) |> mapToSignal { [forceExtension, mimeType] isCopyProtected -> Signal<(String?, String?), NoError> in
                 if isCopyProtected {
                     return combineLatest(postbox.mediaBox.resourceData(file.resource) |> take(1), resourceType(mimeType: mimeType)) |> map { data, type in
-                        return data.complete ? (Optional(data.path), forceExtension ?? type) : (nil, nil)
+                        return data.complete ? (Optional(data.path), forceExtension ?? type ?? "") : (nil, nil)
                     }
                 }
                 return copyToDownloads(file, postbox: postbox) |> map { path in
