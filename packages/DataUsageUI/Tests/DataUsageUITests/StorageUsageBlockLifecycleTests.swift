@@ -183,4 +183,23 @@ final class StorageUsageBlockLifecycleTests: XCTestCase {
             }
         }
     }
+
+    func testOverflowingTabsCanScrollWithAVerticalMouseWheel() throws {
+        let tabs = SegmentContainerView(frame: NSMakeRect(0, 0, 120, 56))
+        tabs.update(collections: [.peers, .media, .files, .music, .voice], selected: .peers, animated: false)
+        tabs.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(tabs.subviews.first as? HorizontalScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertGreaterThan(document.frame.width, scroll.frame.width)
+        scroll.clipView.scroll(to: NSMakePoint((document.frame.width - scroll.frame.width) / 2, 0))
+        let before = scroll.clipView.bounds.origin
+        scroll.scrollWheel(with: VerticalWheelEvent())
+        XCTAssertNotEqual(scroll.clipView.bounds.origin.x, before.x)
+        XCTAssertEqual(scroll.clipView.bounds.origin.y, 0)
+    }
+}
+
+private final class VerticalWheelEvent: NSEvent {
+    override var scrollingDeltaY: CGFloat { 40 }
+    override var scrollingDeltaX: CGFloat { 0 }
 }

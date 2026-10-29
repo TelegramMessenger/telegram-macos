@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import XCTest
 import Postbox
 import SwiftSignalKit
@@ -35,6 +36,14 @@ final class DeveloperAppResetBackupTests: XCTestCase {
 
     private func makeStore(root: URL, id: AccountRecordId, keyByte: UInt8 = 0x25) -> DeveloperAppResetBackupStore {
         return DeveloperAppResetBackupStore(accountBasePath: root.path, accountId: id, encryptionParameters: ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: .init(data: Data(repeating: keyByte, count: 32))!, salt: .init(data: Data(repeating: 0x36, count: 16))!))
+    }
+
+    private func exitedProcessIdentifier() throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+        return process.processIdentifier
     }
 
     private func assertNoPlaintextCredentials(root: URL, backup: AccountBackupData) throws {
@@ -116,15 +125,16 @@ final class DeveloperAppResetBackupTests: XCTestCase {
         }
     }
 
-    func testMissingCredentialsLeaveExistingBackupIntact() throws {
+    func testMissingCredentialsLeaveEncryptedBackupAndMetadataIntact() throws {
         try withManager { manager, root, metadataPath in
-            let existingBackup = backup(peerId: 100)
-            let id = try value(manager.transaction { transaction in
-                return transaction.createRecord([.backupData(AccountBackupDataAttribute(data: existingBackup))])
-            })
-            XCTAssertFalse(try value(saveDeveloperAppResetBackup(nil, store: makeStore(root: root, id: id), accountManager: manager)))
-            let records = AccountManager<TelegramAccountManagerTypes>.getCurrentRecords(basePath: metadataPath).records
-            XCTAssertEqual(recordBackup(try XCTUnwrap(records.first)), [existingBackup])
+            let id = try value(manager.transaction { $0.createRecord([]) })
+            let store = makeStore(root: root, id: id)
+            let existing = backup(peerId: 100)
+            try store.save(existing)
+            let metadata = try Data(contentsOf: URL(fileURLWithPath: metadataPath + "/atomic-state"))
+            XCTAssertFalse(try value(saveDeveloperAppResetBackup(nil, store: store, accountManager: manager)))
+            XCTAssertEqual(try store.load(), existing)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: metadataPath + "/atomic-state")), metadata)
         }
     }
 
@@ -170,26 +180,6 @@ final class DeveloperAppResetBackupTests: XCTestCase {
         }
     }
 
-    func testLegacyBackupMigratesOutOfPlaintextMetadataBeforeRestoration() throws {
-        try withManager { manager, root, metadataPath in
-            let credentials = backup(peerId: 200)
-            let id = try value(manager.transaction { transaction in
-                let id = transaction.createRecord([.backupData(AccountBackupDataAttribute(data: credentials))])
-                transaction.setCurrentId(id)
-                return id
-            })
-            let store = makeStore(root: root, id: id)
-            let loaded = try value(loadDeveloperAppResetBackup(legacyBackup: credentials, store: store, accountManager: manager) |> map { $0 } |> `catch` { _ in .single(nil) })
-            XCTAssertEqual(loaded?.data, credentials)
-            XCTAssertEqual(try store.load(), credentials)
-            let record = try XCTUnwrap(AccountManager<TelegramAccountManagerTypes>.getCurrentRecords(basePath: metadataPath).records.first)
-            XCTAssertTrue(recordBackup(record).isEmpty)
-            try assertNoPlaintextCredentials(root: root, backup: credentials)
-            try store.completeRestoration(loaded)
-            XCTAssertNil(try store.load())
-        }
-    }
-
     func testBackupStaysEncryptedUntilPasscodeUnlockAndSurvivesPasscodeChanges() throws {
         try withManager { manager, root, _ in
             let id = try value(manager.transaction { $0.createRecord([]) })
@@ -227,7 +217,7 @@ final class DeveloperAppResetBackupTests: XCTestCase {
             let store = makeStore(root: root, id: id)
             XCTAssertThrowsError(try store.load())
             let failed = expectation(description: "Invalid backup is not treated as absent")
-            let disposable = loadDeveloperAppResetBackup(legacyBackup: nil, store: store, accountManager: manager).start(next: { _ in XCTFail("Invalid backup must fail") }, error: { _ in failed.fulfill() })
+            let disposable = loadDeveloperAppResetBackup(store: store).start(next: { _ in XCTFail("Invalid backup must fail") }, error: { _ in failed.fulfill() })
             defer { disposable.dispose() }
             wait(for: [failed], timeout: 5)
             XCTAssertEqual(try Data(contentsOf: file), invalid)
@@ -266,7 +256,7 @@ final class DeveloperAppResetBackupTests: XCTestCase {
     func testStaleRestorationCannotRemoveANewerResetBackup() throws {
         try withManager { _, root, _ in
             let store = makeStore(root: root, id: AccountRecordId(rawValue: 1))
-            try store.save(backup(peerId: 100), resetProcessIdentifier: nil)
+            try store.save(backup(peerId: 100), resetProcessIdentifier: exitedProcessIdentifier())
             let staleReader = try XCTUnwrap(store.loadForRestoration())
             let current = backup(peerId: 200)
             try store.save(current)
@@ -277,28 +267,94 @@ final class DeveloperAppResetBackupTests: XCTestCase {
 
     func testInterruptedPreparationIsNotPublishedForRestoration() throws {
         try withManager { _, root, _ in
-            let staging = root.appendingPathComponent("developer-reset-backup.preparing-interrupted")
+            let staging = root.appendingPathComponent("developer-reset-backup.preparing-" + UUID().uuidString)
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
             try Data("partial database".utf8).write(to: staging.appendingPathComponent("db_sqlite"))
             let store = makeStore(root: root, id: AccountRecordId(rawValue: 1))
             XCTAssertNil(try store.load())
+            XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
             let credentials = backup(peerId: 200)
             try store.save(credentials)
             XCTAssertEqual(try store.load(), credentials)
         }
     }
 
-    func testLegacyMigrationCannotReplaceAPendingReset() throws {
-        try withManager { manager, root, _ in
-            let legacy = backup(peerId: 100)
-            let current = backup(peerId: 200)
-            let id = try value(manager.transaction { $0.createRecord([.backupData(AccountBackupDataAttribute(data: legacy))]) })
-            let store = makeStore(root: root, id: id)
-            try store.save(current)
-            let loaded = try value(loadDeveloperAppResetBackup(legacyBackup: legacy, store: store, accountManager: manager) |> `catch` { _ in .single(nil) })
-            XCTAssertEqual(loaded?.data, current)
-            try store.completeRestoration(loaded)
-            XCTAssertEqual(try store.load(), current)
+
+
+    func testOrdinaryAccountLoadingRunsOffMainWithoutCreatingArtifacts() throws {
+        try withManager { _, root, _ in
+            let store = makeStore(root: root, id: AccountRecordId(rawValue: 1))
+            let initialFiles = try FileManager.default.contentsOfDirectory(atPath: root.path).sorted()
+            let descriptor = open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            XCTAssertGreaterThanOrEqual(descriptor, 0)
+            defer { close(descriptor) }
+            XCTAssertEqual(flock(descriptor, LOCK_EX), 0)
+            defer { flock(descriptor, LOCK_UN) }
+            let loaded = expectation(description: "Absent backup bypasses directory lock")
+            let disposable = loadDeveloperAppResetBackup(store: store).start(next: { backup in
+                XCTAssertFalse(Thread.isMainThread)
+                XCTAssertNil(backup)
+                loaded.fulfill()
+            }, error: { error in
+                XCTFail("Unexpected load error: \(error)")
+                loaded.fulfill()
+            })
+            defer { disposable.dispose() }
+            wait(for: [loaded], timeout: 2)
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted(), initialFiles)
+        }
+    }
+
+    func testStagingCleanupPreservesPublishedBackupAndUnrelatedDirectories() throws {
+        try withManager { _, root, _ in
+            let store = makeStore(root: root, id: AccountRecordId(rawValue: 1))
+            let credentials = backup(peerId: 200)
+            try store.save(credentials)
+            let abandoned = root.appendingPathComponent("developer-reset-backup.preparing-" + UUID().uuidString)
+            try FileManager.default.copyItem(at: root.appendingPathComponent("developer-reset-backup"), to: abandoned)
+            let unrelated = root.appendingPathComponent("developer-reset-backup.preparing-not-a-uuid")
+            try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+            XCTAssertEqual(try store.load(), credentials)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: abandoned.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(".developer-reset-backup.lock").path))
+            try assertNoPlaintextCredentials(root: root, backup: credentials)
+        }
+    }
+
+    func testStagingCleanupWaitsForAnActiveWriterWithoutBlockingMain() throws {
+        try withManager { _, root, _ in
+            let store = makeStore(root: root, id: AccountRecordId(rawValue: 1))
+            let credentials = backup(peerId: 200)
+            try store.save(credentials)
+            let descriptor = open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            XCTAssertGreaterThanOrEqual(descriptor, 0)
+            defer { close(descriptor) }
+            XCTAssertEqual(flock(descriptor, LOCK_EX), 0)
+            var locked = true
+            defer { if locked { flock(descriptor, LOCK_UN) } }
+            let staging = root.appendingPathComponent("developer-reset-backup.preparing-" + UUID().uuidString)
+            try FileManager.default.copyItem(at: root.appendingPathComponent("developer-reset-backup"), to: staging)
+            let loaded = expectation(description: "Reader waits for writer")
+            let disposable = loadDeveloperAppResetBackup(store: store).start(next: { backup in
+                XCTAssertFalse(locked)
+                XCTAssertFalse(Thread.isMainThread)
+                XCTAssertEqual(backup?.data, credentials)
+                loaded.fulfill()
+            }, error: { error in
+                XCTFail("Unexpected load error: \(error)")
+                loaded.fulfill()
+            })
+            defer { disposable.dispose() }
+            let mainResponsive = expectation(description: "Main thread remains responsive")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                XCTAssertTrue(FileManager.default.fileExists(atPath: staging.path))
+                locked = false
+                flock(descriptor, LOCK_UN)
+                mainResponsive.fulfill()
+            }
+            wait(for: [mainResponsive, loaded], timeout: 3)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
         }
     }
 

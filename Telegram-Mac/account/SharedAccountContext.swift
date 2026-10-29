@@ -19,7 +19,6 @@ import TelegramContext
 private struct AccountAttributes: Equatable {
     let sortIndex: Int32
     let isTestingEnvironment: Bool
-    let backupData: AccountBackupData?
 }
 
 
@@ -311,17 +310,14 @@ class SharedAccountContext {
                         }
                     })
 
-                    var backupData: AccountBackupData?
                     var sortIndex: Int32 = 0
                     for attribute in record.attributes {
                         if case let .sortOrder(sortOrder) = attribute {
                             sortIndex = sortOrder.order
-                        } else if case let .backupData(backupDataValue) = attribute {
-                            backupData = backupDataValue.data
                         }
                     }
 
-                    result[record.id] = AccountAttributes(sortIndex: sortIndex, isTestingEnvironment: isTestingEnvironment, backupData: backupData)
+                    result[record.id] = AccountAttributes(sortIndex: sortIndex, isTestingEnvironment: isTestingEnvironment)
                 }
                 let authRecord: (AccountRecordId, Bool)? = view.currentAuthAccount.flatMap({ authAccount in
                     let isTestingEnvironment = authAccount.attributes.contains(where: { attribute in
@@ -357,7 +353,8 @@ class SharedAccountContext {
                 for (id, attributes) in records {
                     if self.activeAccountsValue?.accounts.firstIndex(where: { $0.0 == id}) == nil {
                         let resetBackup = DeveloperAppResetBackupStore(accountBasePath: rootPath + "/" + accountRecordIdPathName(id), accountId: id, encryptionParameters: encryptionParameters)
-                        addedSignals.append(loadDeveloperAppResetBackup(legacyBackup: attributes.backupData, store: resetBackup, accountManager: accountManager)
+                        addedSignals.append(loadDeveloperAppResetBackup(store: resetBackup)
+                            |> deliverOnMainQueue
                             |> mapToSignal { backupData -> Signal<AccountResult, DeveloperAppResetBackupError> in
                                 return accountWithId(accountManager: accountManager, networkArguments: networkArguments, id: id, encryptionParameters: encryptionParameters, supplementary: supplementary, isSupportUser: false, rootPath: rootPath, beginWithTestingEnvironment: attributes.isTestingEnvironment, backupData: backupData?.data, auxiliaryMethods: telegramAccountAuxiliaryMethods)
                                 |> map { result in

@@ -128,6 +128,35 @@ final class PieChartTests: XCTestCase {
         XCTAssertEqual(particle.position, position)
     }
 
+    func testFirstNonanimatedUpdateStillMorphsFromEqualSlices() throws {
+        let chart = makeChart()
+        let section = try XCTUnwrap(try sections(in: chart).first)
+        let mask = try XCTUnwrap(section.mask as? CAShapeLayer)
+        let initial = try XCTUnwrap(mask.path)
+        let window = NSWindow(contentRect: chart.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = chart
+        windows.append(window)
+        window.orderFront(nil)
+        advanceRunLoop()
+        XCTAssertNotEqual(mask.path, initial)
+    }
+
+    func testReduceMotionSkipsTheIntroMorph() throws {
+        PieChartView.reduceMotion = { true }
+        let chart = makeChart()
+        let section = try XCTUnwrap(try sections(in: chart).first)
+        let mask = try XCTUnwrap(section.mask as? CAShapeLayer)
+        let initial = try XCTUnwrap(mask.path)
+        let window = NSWindow(contentRect: chart.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = chart
+        windows.append(window)
+        window.orderFront(nil)
+        advanceRunLoop()
+        XCTAssertEqual(mask.path, initial)
+    }
+
     private func makeChart() -> PieChartView {
         let chart = PieChartView(frame: NSMakeRect(0, 0, 400, 200), presentation: .init(strokeColor: .clear, strokeSize: 1, bgColor: .clear, totalTextColor: .black, itemTextColor: .white))
         let particle = testImage(NSMakeSize(144, 144))

@@ -568,7 +568,7 @@ public class PieChartView : Control {
             }
         }
         
-        if prevItems.isEmpty && animated {
+        if prevItems.isEmpty && !Self.reduceMotion() {
             for item in self.items {
                 updated[item.stableId] = .init(value: items.reduce(0, { $0 + $1.count }) / items.count, timestamp: 0)
             }

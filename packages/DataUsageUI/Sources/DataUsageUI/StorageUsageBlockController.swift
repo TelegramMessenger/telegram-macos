@@ -14,9 +14,9 @@ import InputDataUI
 
 
 
-private final class SegmentContainerView : View {
+final class SegmentContainerView : View {
     static let height: CGFloat = 56
-    private let scrollView = ScrollView(frame: .zero)
+    private let scrollView = HorizontalScrollView(frame: .zero)
     private let documentView = View()
     private let segmentControl = GlassSegmentView(frame: .zero)
     private var collections: [StorageUsageCollection] = []
