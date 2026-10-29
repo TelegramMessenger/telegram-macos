@@ -4470,11 +4470,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         value = value
                             .withUpdatedInputState(ChatTextInputState())
                             .withUpdatedComposeDisableUrlPreview(nil)
-                            .withUpdatedMessageEffect(nil)
-                            .withUpdatedSuggestPost(nil)
                     }
                     value = value.withUpdatedReplyMessageId(nil)
                         .withUpdatedForwardMessageIds([])
+                        .withUpdatedMessageEffect(nil)
+                        .withUpdatedSuggestPost(nil)
                         .withoutEditMessage()
                 
                     if let message = presentation.keyboardButtonsMessage, let replyMarkup = message.replyMarkup {
@@ -6711,19 +6711,20 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             if peer.canSendMessage(strongSelf.mode.isThreadMode, media: file, threadData: strongSelf.chatInteraction.presentation.threadInfo, cachedData: strongSelf.chatInteraction.presentation.cachedData) {
 
                 let invoke:()->Void = { [strongSelf] in
-                    let hasFwd = !strongSelf.chatInteraction.presentation.interfaceState.forwardMessageIds.isEmpty
                     func apply(_ controller: ChatController, atDate: Date?, repeatPeriod: Int32?) {
+                        let replyId = takeReplyId()
+                        _ = controller.nextTransaction.execute()
+                        let hasFwd = !controller.chatInteraction.presentation.interfaceState.forwardMessageIds.isEmpty
                         let completed: () -> Void = {
                             scrollAfterSend()
                         }
                         if let caption = caption {
-                            let _ = (Sender.enqueue(media: [file], caption: caption, context: context, peerId: makePeerId(), replyId: takeReplyId(), threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(completed: completed)
+                            let _ = (Sender.enqueue(media: [file], caption: caption, context: context, peerId: makePeerId(), replyId: replyId, threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(completed: completed)
                         } else {
-                            let _ = (Sender.enqueue(media: file, context: context, peerId: makePeerId(), replyId: takeReplyId(), threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(next: { ids in
+                            let _ = (Sender.enqueue(media: file, context: context, peerId: makePeerId(), replyId: replyId, threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(next: { ids in
                             }, completed: completed)
                         }
-                        _ = controller.nextTransaction.execute()
-                        controller.nextTransaction.set(handler: {
+                        let afterSent: () -> Void = {
                             if hasFwd {
                                 DispatchQueue.main.async {
                                     self?.chatInteraction.sendMessage(false, nil, self?.chatInteraction.presentation.messageEffect)
@@ -6731,7 +6732,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             } else {
                                 _afterSentTransition(false)
                             }
-                        })
+                        }
+                        if atDate != nil {
+                            afterSent()
+                        } else {
+                            controller.nextTransaction.set(handler: afterSent)
+                        }
                     }
 
                     if let preSchedule = preSchedule {
