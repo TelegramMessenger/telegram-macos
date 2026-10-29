@@ -614,7 +614,7 @@ private final class WithdrawInputView : GeneralRowView {
         required init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             addSubview(textView)
-            layer?.cornerRadius = 10
+            layer?.cornerRadius = 20
             scaleOnClick = true
             self.set(background: theme.colors.accent, for: .Normal)
             

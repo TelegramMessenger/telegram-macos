@@ -228,6 +228,7 @@ open class AppMenuRowItem : AppMenuBasicItem {
             return false
         }
         if item.submenu != nil {
+            _ = table?.select(item: self)
             interaction.presentSubmenu(item)
         } else {
             interaction.action(item)

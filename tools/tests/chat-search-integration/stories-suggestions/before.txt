@@ -1,0 +1,28 @@
+FAIL: Stories suggestions collapsed before their container could grow
+FAIL: Stories initial size callback did not expand the container
+FAIL: Stories reply container stayed at its bootstrap height
+FAIL: Stories suggestions collapsed after their size callback
+FAIL: Stories emoji suggestions lost their existing height limit
+FAIL: Stories emoji sizing did not reach the reply container
+FAIL: Stories suggestions did not reopen from their collapsed container
+FAIL: Stories suggestions collapsed before their container could grow
+FAIL: Stories initial size callback did not expand the container
+FAIL: Stories reply container stayed at its bootstrap height
+FAIL: Stories suggestions collapsed after their size callback
+FAIL: Stories emoji suggestions lost their existing height limit
+FAIL: Stories emoji sizing did not reach the reply container
+FAIL: Stories suggestions did not reopen from their collapsed container
+FAIL: Stories suggestions collapsed before their container could grow
+FAIL: Stories initial size callback did not expand the container
+FAIL: Stories reply container stayed at its bootstrap height
+FAIL: Stories suggestions collapsed after their size callback
+FAIL: Stories emoji suggestions lost their existing height limit
+FAIL: Stories emoji sizing did not reach the reply container
+FAIL: Stories suggestions did not reopen from their collapsed container
+FAIL: Stories suggestions collapsed before their container could grow
+FAIL: Stories initial size callback did not expand the container
+FAIL: Stories reply container stayed at its bootstrap height
+FAIL: Stories suggestions collapsed after their size callback
+FAIL: Stories emoji suggestions lost their existing height limit
+FAIL: Stories emoji sizing did not reach the reply container
+FAIL: Stories suggestions did not reopen from their collapsed container

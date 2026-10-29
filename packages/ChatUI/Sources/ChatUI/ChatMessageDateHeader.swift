@@ -23,6 +23,26 @@ private let timezoneOffset: Int32 = {
 }()
 
 private let formatter = DateFormatter()
+
+private func chatDateFormat(languageCode: String, withYear: Bool) -> String {
+    let fixed = withYear ? "dd MMMM yyyy" : "dd MMMM"
+    guard languageCode != "en", let localized = DateFormatter.dateFormat(fromTemplate: withYear ? "dMMMMyyyy" : "dMMMM", options: 0, locale: Locale(identifier: languageCode)) else {
+        return fixed
+    }
+    var fields = ""
+    var quoted = false
+    for char in localized {
+        if char == "'" {
+            quoted.toggle()
+        } else if !quoted {
+            fields.append(char)
+        }
+    }
+    guard let day = fields.firstIndex(of: "d"), let month = fields.firstIndex(of: "M"), month < day else {
+        return fixed
+    }
+    return localized
+}
 private let granularity: Int32 = 60 * 60 * 24
 
 
@@ -86,15 +106,9 @@ public class ChatDateStickItem : TableStickItem {
         } else {
             let dateFormatter = formatter
             
+            dateFormatter.locale = appAppearance.locale
             dateFormatter.calendar = Calendar.current
-            //dateFormatter.timeZone = NSTimeZone.local
-            dateFormatter.dateFormat = "dd MMMM";
-            //&& (timeinfoNow.tm_mon >= timeinfo.tm_mon || (timeinfoNow.tm_year - timeinfo.tm_year) >= 2)
-            if timeinfoNow.tm_year > timeinfo.tm_year  {
-                dateFormatter.dateFormat = "dd MMMM yyyy";
-            } else if timeinfoNow.tm_year < timeinfo.tm_year {
-                dateFormatter.dateFormat = "dd MMMM yyyy";
-            }
+            dateFormatter.dateFormat = chatDateFormat(languageCode: appAppearance.languageCode, withYear: timeinfoNow.tm_year != timeinfo.tm_year)
             let dateString = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp)))
             switch interaction.mode {
             case .scheduled:

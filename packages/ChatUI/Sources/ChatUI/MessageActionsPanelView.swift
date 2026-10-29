@@ -50,6 +50,7 @@ public class MessageActionsPanelView: Control, Notifable {
 
         deleteButton.disableActions()
         forwardButton.disableActions()
+        forwardButton.controlOpacityEventIgnored = true
 
         deleteButton.scaleOnClick = true
         forwardButton.scaleOnClick = true
@@ -140,10 +141,28 @@ public class MessageActionsPanelView: Control, Notifable {
     }
 
     private var chatInteraction:ChatInteraction?
+    private var forwardingRestrictionText: String?
+    
+    private static func restrictionText(for presentation: ChatPresentationInterfaceState) -> String {
+        if presentation.peer is TelegramGroup {
+            return "Forwards from this group are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledGroup
+        }
+        if let peer = presentation.peer as? TelegramChannel {
+            if case .broadcast = peer.info {
+                return "Forwards from this channel are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledChannel
+            }
+            return "Forwards from this group are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledGroup
+        }
+        if let peer = presentation.peer as? TelegramUser, peer.botInfo != nil {
+            return "Forwards from this bot are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledBot
+        }
+        return "Forwarding is restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledSecret
+    }
 
-    private func updateUI(_ canDelete:Bool , _ canForward:Bool, _ count:Int) -> Void {
+    private func updateUI(_ canDelete:Bool , _ canForward:Bool, _ count:Int, forwardingRestrictionText: String? = nil) -> Void {
         deleteButton.isEnabled = canDelete
-        forwardButton.isEnabled = canForward
+        forwardButton.isEnabled = canForward || (count > 0 && forwardingRestrictionText != nil)
+        self.forwardingRestrictionText = forwardingRestrictionText
 
         deleteButton.alphaValue = canDelete ? 1.0 : 0.3
         deleteGhost?.alphaValue = canDelete ? 1.0 : 0.3
@@ -171,7 +190,7 @@ public class MessageActionsPanelView: Control, Notifable {
             if value.reportMode != nil {
                 updateUI(true, selectionState.selectedIds.count > 0, selectionState.selectedIds.count)
             } else {
-                updateUI(value.canInvokeBasicActions.delete, value.canInvokeBasicActions.forward, selectionState.selectedIds.count)
+                updateUI(value.canInvokeBasicActions.delete, value.canInvokeBasicActions.forward, selectionState.selectedIds.count, forwardingRestrictionText: value.canInvokeBasicActions.forward ? nil : MessageActionsPanelView.restrictionText(for: value))
             }
         }
     }
@@ -194,8 +213,15 @@ public class MessageActionsPanelView: Control, Notifable {
         self.chatInteraction = chatInteraction
         self.chatInteraction?.add(observer: self)
 
-        forwardButton.set(handler: { [weak chatInteraction] _ in
-            chatInteraction?.forwardSelectedMessages()
+        forwardButton.set(handler: { [weak chatInteraction, weak self] _ in
+            guard let chatInteraction else {
+                return
+            }
+            if !chatInteraction.presentation.canInvokeBasicActions.forward, let text = self?.forwardingRestrictionText {
+                chatInteraction.showAnimatedToaster(.banned, text)
+            } else {
+                chatInteraction.forwardSelectedMessages()
+            }
         }, for: .Click)
         deleteButton.set(handler: { [weak chatInteraction, weak self] _ in
             chatInteraction?.deleteSelectedMessages(morphSource: { [weak self] in self?.deleteButton })

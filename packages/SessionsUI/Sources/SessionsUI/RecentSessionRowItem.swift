@@ -26,11 +26,11 @@ public class RecentSessionRowItem: GeneralRowItem {
     public let handler:()->Void
     public let icon: (CGImage?, LocalAnimatedSticker?, NSColor?, [String]?)
     
-    public init(_ initialSize: NSSize, session:RecentAccountSession, stableId:AnyHashable, viewType: GeneralViewType, icon: (CGImage?, LocalAnimatedSticker?, NSColor?, [String]?), handler: @escaping()->Void) {
+    public init(_ initialSize: NSSize, session:RecentAccountSession, deviceModel: String? = nil, stableId:AnyHashable, viewType: GeneralViewType, icon: (CGImage?, LocalAnimatedSticker?, NSColor?, [String]?), handler: @escaping()->Void) {
         self.session = session
         self.handler = handler
         self.icon = icon
-        headerLayout = TextViewLayout(.initialize(string: session.deviceModel, color: theme.colors.text, font: .normal(.title)), maximumNumberOfLines: 1)
+        headerLayout = TextViewLayout(.initialize(string: deviceModel ?? session.deviceModel, color: theme.colors.text, font: .normal(.title)), maximumNumberOfLines: 1)
         
         let attr = NSMutableAttributedString()
         
@@ -93,6 +93,12 @@ public class RecentSessionRowView : GeneralContainableRowView {
     private let descTextView = TextView()
     private let dateTextView = TextView()
     private let iconView: ImageView = ImageView()
+    private let scrambleAnimation = ScrambleTextAnimation()
+    private var scrambleLayout: TextViewLayout?
+
+    var titleView: NSView {
+        return headerTextView
+    }
     public required init(frame frameRect: NSRect) {
           
         super.init(frame: frameRect)
@@ -136,11 +142,26 @@ public class RecentSessionRowView : GeneralContainableRowView {
     
     
     public override func set(item: TableRowItem, animated: Bool) {
+        let previousTitle = (self.item as? RecentSessionRowItem)?.headerLayout.attributedString.string
         super.set(item: item)
  
         
         
         if let item = item as? RecentSessionRowItem {
+            let title = item.headerLayout.attributedString.string
+            if animated, let previousTitle = previousTitle, previousTitle != title, !title.isEmpty {
+                let width = item.headerLayout.constrainedWidth
+                let attributes = item.headerLayout.attributedString.attributes(at: 0, effectiveRange: nil)
+                scrambleAnimation.start(from: scrambleLayout?.attributedString.string ?? previousTitle, to: title, update: { [weak self] text in
+                    let layout = TextViewLayout(NSAttributedString(string: text, attributes: attributes), maximumNumberOfLines: 1)
+                    layout.measure(width: width)
+                    self?.scrambleLayout = text == title ? nil : layout
+                    self?.needsLayout = true
+                })
+            } else if previousTitle != title {
+                scrambleAnimation.cancel()
+                scrambleLayout = nil
+            }
             self.iconView.image = item.icon.0
             self.iconView.sizeToFit()
         }
@@ -156,7 +177,7 @@ public class RecentSessionRowView : GeneralContainableRowView {
         let insets = item.viewType.innerInset
         self.iconView.setFrameOrigin(NSMakePoint(insets.left, insets.top))
         let left: CGFloat = (item.icon.0 != nil ? 38 : 0)
-        self.headerTextView.update(item.headerLayout, origin: NSMakePoint(left + insets.left, insets.top - 2))
+        self.headerTextView.update(scrambleLayout ?? item.headerLayout, origin: NSMakePoint(left + insets.left, insets.top - 2))
         self.descTextView.update(item.descLayout, origin: NSMakePoint(left + insets.left, headerTextView.frame.maxY + 4))
         self.dateTextView.update(item.dateLayout, origin: NSMakePoint(self.containerView.frame.width - insets.right - item.dateLayout.layoutSize.width, insets.top))
 

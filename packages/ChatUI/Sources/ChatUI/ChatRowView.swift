@@ -1466,17 +1466,22 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         chatInteraction?.openInfoFromMessage(peer.id, true, nil, nil, message: item.message)
                     }, itemImage: MenuAnimation.menu_read.value))
 
-                    menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
-                        let attr: NSMutableAttributedString = NSMutableAttributedString()
+                    if !peer.isChannel || peer.addressName != nil {
+                        menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
+                            let attr: NSMutableAttributedString = NSMutableAttributedString()
 
-                        if let addressName = peer.addressName {
-                            attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
-                        } else {
-                            attr.append(string: peer.compactDisplayTitle + " ", font: .normal(theme.fontSize))
-                            attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
-                        }
-                        _ = chatInteraction?.appendText(attr)
-                    }, itemImage: MenuAnimation.menu_atsign.value))
+                            if let addressName = peer.addressName {
+                                attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
+                            } else {
+                                attr.append(string: peer.compactDisplayTitle, font: .normal(theme.fontSize))
+                                if peer.isUser {
+                                    attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
+                                }
+                                attr.append(string: " ", font: .normal(theme.fontSize))
+                            }
+                            _ = chatInteraction?.appendText(attr)
+                        }, itemImage: MenuAnimation.menu_atsign.value))
+                    }
 
                     if let chatPeer = chatInteraction?.peer, (chatPeer.isGroup || chatPeer.isSupergroup), !chatPeer.isMonoForum, chatInteraction?.isLogInteraction == false, let mode = chatInteraction?.mode, mode == .history || mode.isThreadMode || mode.isTopicMode {
                         menu.addItem(ContextMenuItem(strings().shortcutsControllerChatSearchMessages, handler: {

@@ -369,7 +369,7 @@ private final class BalanceView: GeneralContainableRowView {
         addSubview(action)
         action.autohighlight = false
         action.scaleOnClick = true
-        action.layer?.cornerRadius = 10
+        action.layer?.cornerRadius = 20
         
         balance.userInteractionEnabled = false
         info.userInteractionEnabled = false
@@ -464,7 +464,7 @@ private final class BalanceView: GeneralContainableRowView {
             }
             current.autohighlight = false
             current.scaleOnClick = true
-            current.layer?.cornerRadius = 10
+            current.layer?.cornerRadius = 20
             
             current.setSingle(handler: { [weak item] _ in
                 item?.stats()
