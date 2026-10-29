@@ -300,13 +300,17 @@ public class ChatAudioContentView: ChatMediaContentView, APDelegate {
         }
         self.setNeedsDisplay()
         
-        if !self.hasFetchStatusForCurrentMedia {
-            self.fetchStatus = self.initialFetchStatus
-        }
+        initializeFetchStatus()
         checkState(animated: animated)
 
     }
     
+    func initializeFetchStatus() {
+        if !hasFetchStatusForCurrentMedia {
+            fetchStatus = initialFetchStatus
+        }
+    }
+
     public var leftInset:CGFloat {
         return 40.0 + 10.0;
     }
