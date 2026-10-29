@@ -81,6 +81,7 @@ private final class PopularPeerItem : TableRowItem {
             items.append(ContextMenuItem(strings().searchPopularDelete, handler: {
                 _ = context.engine.peers.removeRecentPeer(peerId: peer.id).start()
             }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+            return searchPeerContextMenuItems(peer: peer, context: context, remove: items.first)
         default:
             break
         }
