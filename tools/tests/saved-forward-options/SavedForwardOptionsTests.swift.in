@@ -1,0 +1,952 @@
+import Foundation
+import XCTest
+import SwiftSignalKit
+
+struct PeerId: Hashable, Comparable {
+    let value: Int64
+    var namespace: Int32 = 0
+    init(_ value: Int64) { self.value = value }
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.value < rhs.value }
+}
+
+struct MessageId: Hashable, Comparable {
+    let peerId: PeerId
+    let id: Int32
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.peerId == rhs.peerId ? lhs.id < rhs.id : lhs.peerId < rhs.peerId
+    }
+}
+
+struct Message {
+    let id: MessageId
+    var isPublicPoll = false
+}
+
+struct Peer {
+    let id: PeerId
+    var isChannel = false
+    var isCommunity = false
+    var isMonoForum = false
+    var canSend = true
+    func canSendMessage() -> Bool { canSend }
+}
+
+struct StarsAmount: Equatable { let value: Int64 }
+struct EngineMessageReplySubject {}
+
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Hashtags = Self(rawValue: 1)
+    static let Links = Self(rawValue: 2)
+}
+
+struct ChatTextInputState: Equatable {
+    var inputText: String
+    func messageTextEntities(_ parsingType: ParsingType) -> [String] { [inputText] }
+}
+
+protocol MessageAttribute {}
+struct TextEntitiesMessageAttribute: MessageAttribute { let entities: [String] }
+struct SendAsMessageAttribute: MessageAttribute { let peerId: PeerId }
+struct ForwardOptionsMessageAttribute: MessageAttribute, Equatable {
+    let hideNames: Bool
+    let hideCaptions: Bool
+}
+struct NotificationInfoMessageAttribute: MessageAttribute {
+    struct Flags: OptionSet {
+        let rawValue: Int
+        static let muted = Self(rawValue: 1)
+    }
+    let flags: Flags
+}
+struct PaidStarsMessageAttribute: MessageAttribute {
+    let stars: StarsAmount
+    let postponeSending: Bool
+}
+struct OutgoingScheduleInfoMessageAttribute: MessageAttribute {
+    let scheduleTime: Int32
+    let repeatPeriod: Int32?
+}
+
+enum EnqueueMessage {
+    enum Grouping { case auto, none }
+    case forward(source: MessageId, threadId: Int64?, grouping: Grouping, attributes: [MessageAttribute], correlationId: Int64?)
+    case message(text: String, attributes: [MessageAttribute], inlineStickers: [Int: Int], mediaReference: Int?, threadId: Int64?, replyToMessageId: Int?, replyToStoryId: Int?, localGroupingKey: Int64?, correlationId: Int64?, bubbleUpEmojiOrStickersets: [Int])
+}
+
+enum Namespaces {
+    enum Peer { static let SecretChat: Int32 = 1 }
+}
+enum FastSettings {
+    static func isChannelMessagesMuted(_ peerId: PeerId) -> Bool { false }
+}
+
+final class Postbox {
+    var peers: [PeerId: Peer] = [:]
+    var messages: [MessageId: Message] = [:]
+    var groups: [MessageId: [Message]] = [:]
+    var requestedMessages: [MessageId] = []
+    var requestedGroups: [MessageId] = []
+    func transaction<T>(_ body: @escaping (Postbox) -> T) -> Signal<T, NoError> {
+        Signal { subscriber in
+            subscriber.putNext(body(self))
+            subscriber.putCompletion()
+            return EmptyDisposable
+        }
+    }
+    func getPeer(_ id: PeerId) -> Peer? { peers[id] }
+    func getMessage(_ id: MessageId) -> Message? {
+        requestedMessages.append(id)
+        return messages[id]
+    }
+    func getMessageGroup(_ id: MessageId) -> [Message]? {
+        requestedGroups.append(id)
+        return groups[id]
+    }
+    func loadedPeerWithId(_ id: PeerId) -> Signal<Peer, NoError> {
+        peers[id].map(Signal.single) ?? .complete()
+    }
+}
+
+final class CachedChannelData { var sendAsPeerId: PeerId? }
+func getCachedDataView(peerId: PeerId, postbox: Postbox) -> Signal<Any?, NoError> { .single(nil) }
+
+struct EnqueueCall {
+    let peerId: PeerId
+    let messages: [EnqueueMessage]
+}
+
+final class Account {
+    let peerId: PeerId
+    let postbox = Postbox()
+    var enqueueCalls: [EnqueueCall] = []
+    var enqueueSubscriptions = 0
+    var enqueueResult: Signal<[MessageId?], NoError>?
+    init(peerId: PeerId) { self.peerId = peerId }
+}
+
+func enqueueMessages(account: Account, peerId: PeerId, messages: [EnqueueMessage]) -> Signal<[MessageId?], NoError> {
+    account.enqueueCalls.append(EnqueueCall(peerId: peerId, messages: messages))
+    return Signal { subscriber in
+        account.enqueueSubscriptions += 1
+        let result: Signal<[MessageId?], NoError> = account.enqueueResult ?? Signal.single(messages.enumerated().map { Optional(MessageId(peerId: peerId, id: Int32(1000 + $0.offset))) })
+        return result.start(next: subscriber.putNext, completed: subscriber.putCompletion)
+    }
+}
+
+enum Sender {
+    __SENDER_FORWARD__
+
+    static func enqueue(message: EnqueueMessage, context: any AccountContextProtocol, peerId: PeerId) -> Signal<[MessageId?], NoError> {
+        enqueueMessages(account: context.account, peerId: peerId, messages: [message])
+    }
+}
+
+enum ChatInitialAction: Equatable {
+    enum Behavior { case automatic }
+    case forward(messageIds: [MessageId], text: ChatTextInputState?, behavior: Behavior)
+}
+
+struct ChatReplyThreadMessage: Equatable {
+    let peerId: PeerId
+    let threadId: Int64
+}
+
+enum ChatLocation: Equatable {
+    case peer(PeerId)
+    case thread(ChatReplyThreadMessage)
+    var peerId: PeerId {
+        switch self {
+        case let .peer(id): return id
+        case let .thread(value): return value.peerId
+        }
+    }
+    var threadId: Int64? {
+        switch self {
+        case .peer: return nil
+        case let .thread(value): return value.threadId
+        }
+    }
+}
+
+struct ChatEditState: Equatable {
+    let messageId: MessageId
+    let inputState: ChatTextInputState
+}
+
+struct InterfaceState: Equatable {
+    var forwardMessageIds: [MessageId] = []
+    var inputState = ChatTextInputState(inputText: "")
+    var editState: ChatEditState?
+    func withUpdatedForwardMessageIds(_ ids: [MessageId]) -> Self {
+        var copy = self
+        copy.forwardMessageIds = ids
+        return copy
+    }
+    func withUpdatedInputState(_ state: ChatTextInputState) -> Self {
+        var copy = self
+        copy.inputState = state
+        return copy
+    }
+}
+
+enum ChatState {
+    case normal
+    case editing
+    case recording
+    case action
+    case selecting
+}
+
+struct PresentationState: Equatable {
+    var hasSelection = true
+    var recordingState: RecordingState?
+    var isRecording: Bool {
+        get { recordingState != nil }
+        set { recordingState = newValue ? RecordingState() : nil }
+    }
+    var hasSearchTag = false
+    var interfaceState = InterfaceState()
+    var state: ChatState {
+        if hasSelection { return .selecting }
+        if isRecording { return .recording }
+        if interfaceState.editState != nil { return .editing }
+        if hasSearchTag { return .action }
+        return .normal
+    }
+    var effectiveInput: ChatTextInputState { interfaceState.editState?.inputState ?? interfaceState.inputState }
+    func withoutSelectionState() -> Self {
+        var copy = self
+        copy.hasSelection = false
+        return copy
+    }
+    func updatedInterfaceState(_ update: (InterfaceState) -> InterfaceState) -> Self {
+        var copy = self
+        copy.interfaceState = update(interfaceState)
+        return copy
+    }
+}
+
+final class ChatInteraction {
+    let chatLocation: ChatLocation
+    var mode: ChatMode = .history
+    var peerId: PeerId { chatLocation.peerId }
+    var presentation = PresentationState()
+    var updates = 0
+    init(_ location: ChatLocation) { chatLocation = location }
+    func update(_ transform: (PresentationState) -> PresentationState) {
+        presentation = transform(presentation)
+        updates += 1
+    }
+}
+
+final class RecordingState: Equatable {
+    var discarded = false
+    static func == (lhs: RecordingState, rhs: RecordingState) -> Bool { lhs === rhs }
+    func discard(from interaction: ChatInteraction, closingOtherModals: Bool) {
+        discarded = true
+        interaction.presentation.recordingState = nil
+    }
+}
+
+class Controller {
+    var ableToNextController: (Controller, @escaping (Controller, Bool) -> Void) -> Void = { controller, completed in completed(controller, true) }
+}
+class ChatInterfaceController: Controller {
+    let context = Context()
+    private var isConfirmingDiscardRecording = false
+    __RECORDING_CONFIRM__
+    let chatInteraction: ChatInteraction
+    let ready = Promise<Bool>()
+    let initialAction: ChatInitialAction?
+    init(_ location: ChatLocation, initialAction: ChatInitialAction? = nil, readySignal: Signal<Bool, NoError> = .single(true)) {
+        chatInteraction = ChatInteraction(location)
+        self.initialAction = initialAction
+        ready.set(readySignal)
+        super.init()
+        __NAVIGATION_GATE__
+    }
+}
+
+final class Navigation {
+    var controller: Controller = Controller()
+    var stack: [Controller] = []
+    var pushed: [ChatInterfaceController] = []
+    func enumerateControllers(_ body: (Controller, Int) -> Bool) {
+        for (index, controller) in stack.enumerated() {
+            if body(controller, index) { break }
+        }
+    }
+    func push(_ controller: ChatInterfaceController) {
+        self.controller.ableToNextController(controller, { [weak self] controller, accepted in
+            guard accepted, let self, let controller = controller as? ChatInterfaceController else { return }
+            self.stack.append(controller)
+            self.pushed.append(controller)
+            self.controller = controller
+        })
+    }
+}
+
+final class Bindings {
+    let navigation = Navigation()
+    func rootNavigation() -> Navigation { navigation }
+}
+
+enum ChatMode: Equatable {
+    case history
+    case pinned
+    case scheduled
+    case savedThread
+}
+struct FactoryCall {
+    let location: ChatLocation
+    let initialAction: ChatInitialAction
+    let addition: Bool
+}
+struct TopicCall {
+    let threadId: Int64
+    let peerId: PeerId
+    let initialAction: ChatInitialAction?
+    let isMonoforum: Bool
+}
+final class Recorder {
+    var factories: [FactoryCall] = []
+    var topics: [TopicCall] = []
+    var newControllerReady: Signal<Bool, NoError> = .single(true)
+}
+
+protocol AccountContextProtocol {
+    var peerId: PeerId { get }
+    var account: Account { get }
+    var bindings: Bindings { get }
+    var recorder: Recorder { get }
+    var window: Int { get }
+}
+final class Context: AccountContextProtocol {
+    let peerId = PeerId(1)
+    let account = Account(peerId: PeerId(1))
+    let bindings = Bindings()
+    let recorder = Recorder()
+    let window = 0
+}
+
+struct ShareUIHooks {
+    static let shared = ShareUIHooks()
+    func makeChatController(_ context: any AccountContextProtocol, _ location: ChatLocation, _ action: ChatInitialAction) -> ChatInterfaceController {
+        make(context, location, action, addition: false)
+    }
+    func makeChatAdditionController(_ context: any AccountContextProtocol, _ location: ChatLocation, _ action: ChatInitialAction) -> ChatInterfaceController {
+        make(context, location, action, addition: true)
+    }
+    private func make(_ context: any AccountContextProtocol, _ location: ChatLocation, _ action: ChatInitialAction, addition: Bool) -> ChatInterfaceController {
+        context.recorder.factories.append(FactoryCall(location: location, initialAction: action, addition: addition))
+        return ChatInterfaceController(location, initialAction: action, readySignal: context.recorder.newControllerReady)
+    }
+}
+
+enum ForumUI {
+    static func openTopic(_ threadId: Int64, peerId: PeerId, context: any AccountContextProtocol, messageId: MessageId? = nil, animated: Bool = false, addition: Bool = false, initialAction: ChatInitialAction? = nil, isMonoforum: Bool = false) -> Signal<Bool, NoError> {
+        context.recorder.topics.append(TopicCall(threadId: threadId, peerId: peerId, initialAction: initialAction, isMonoforum: isMonoforum))
+        return context.recorder.newControllerReady
+    }
+}
+
+final class ConfirmationProbe {
+    static var count = 0
+    static var accept: (() -> Void)?
+    static var cancel: (() -> Void)?
+    static var notices: [String] = []
+    static func reset() { count = 0; accept = nil; cancel = nil; notices = [] }
+}
+func verifyAlert_button(for window: Int, information: String, ok: String, cancel: String, successHandler: @escaping (Bool) -> Void, cancelHandler: @escaping () -> Void, onDeinit: @escaping () -> Void) {
+    ConfirmationProbe.count += 1
+    ConfirmationProbe.accept = { successHandler(true); onDeinit() }
+    ConfirmationProbe.cancel = { cancelHandler(); onDeinit() }
+}
+func showModalText(for window: Int, text: String) { ConfirmationProbe.notices.append(text) }
+struct Strings {
+    let pollForwardError = "poll-forward-error"
+    let chatRecordingCancel = "discard recording?"
+    let alertDiscard = "Discard"
+    let alertNO = "No"
+}
+func strings() -> Strings { Strings() }
+struct Theme {
+    struct Icons { let successModalProgress = 0 }
+    let icons = Icons()
+}
+let theme = Theme()
+func delay(_ interval: Double, closure: @escaping () -> Void) {}
+func showModalSuccess(for window: Int, icon: Int, delay: Double) -> Signal<Never, NoError> { .complete() }
+
+__FORWARD_RESULT__
+
+__DELIVERY__
+
+final class ForwardMessagesObject {
+    let context: any AccountContextProtocol
+    let messages: [Message]
+    let album: Bool
+    let getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?
+    var messageIds: [MessageId] { messages.map { $0.id } }
+    var scheduleDate: Date? = nil
+    var withoutSound = false
+    var threadIds: [PeerId: Int64] = [:]
+    init(_ context: any AccountContextProtocol, messages: [Message], album: Bool = false, getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)? = nil) {
+        self.context = context
+        self.messages = messages
+        self.album = album
+        self.getMessages = getMessages
+    }
+    func attributes(_ peerId: PeerId, sendPaidMessageStars: StarsAmount?) -> [MessageAttribute] { [] }
+    func run(to peerIds: [PeerId], threadId: Int64? = nil, comment: ChatTextInputState? = nil, observedResult: @escaping (ForwardMessagesResult) -> Void) -> Signal<Never, String> {
+        performForward(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: [:], observedResult: observedResult)
+    }
+
+    __PERFORM_FORWARD__
+}
+
+final class SavedForwardOptionsTests: XCTestCase {
+    var context: Context!
+    let other = PeerId(2)
+    let third = PeerId(3)
+    var saved: Message { Message(id: MessageId(peerId: context.peerId, id: 11)) }
+    var external: Message { Message(id: MessageId(peerId: other, id: 21)) }
+    var comment: ChatTextInputState { ChatTextInputState(inputText: "keep this comment #tag") }
+
+    override func setUp() {
+        ConfirmationProbe.reset()
+        context = Context()
+        for id in [context.peerId, other, third] { context.account.postbox.peers[id] = Peer(id: id) }
+        for message in [saved, external] { context.account.postbox.messages[message.id] = message }
+    }
+
+    @discardableResult
+    func install(_ location: ChatLocation, mode: ChatMode = .history, ready: Signal<Bool, NoError> = .single(true)) -> ChatInterfaceController {
+        let controller = ChatInterfaceController(location, readySignal: ready)
+        controller.chatInteraction.mode = mode
+        context.bindings.navigation.controller = controller
+        context.bindings.navigation.stack = [controller]
+        return controller
+    }
+
+    func forward(_ messages: [Message], to peer: PeerId? = nil, thread: Int64? = nil, comment: ChatTextInputState? = nil, album: Bool = false, loader: (([MessageId], Bool) -> Signal<[Message], NoError>)? = nil, expectedError: String? = nil) -> [ForwardMessagesResult] {
+        let object = ForwardMessagesObject(context, messages: messages, album: album, getMessages: loader)
+        let done = expectation(description: "forward terminal event")
+        var results: [ForwardMessagesResult] = []
+        var failure: String?
+        let disposable = object.run(to: [peer ?? context.peerId], threadId: thread, comment: comment, observedResult: { results.append($0) }).start(error: {
+            failure = $0
+            done.fulfill()
+        }, completed: { done.fulfill() })
+        wait(for: [done], timeout: 2)
+        disposable.dispose()
+        XCTAssertEqual(failure, expectedError)
+        return results
+    }
+
+    func assertResults(_ actual: [ForwardMessagesResult], _ expected: [ForwardMessagesResult], file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(actual.map { String(describing: $0) }, expected.map { String(describing: $0) }, file: file, line: line)
+    }
+
+    func assertNoEnqueue(file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(context.account.enqueueCalls.isEmpty, "Draft preparation must not enqueue", file: file, line: line)
+        XCTAssertEqual(context.account.enqueueSubscriptions, 0, file: file, line: line)
+    }
+
+    func assertNoNavigation(file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(context.recorder.factories.isEmpty, file: file, line: line)
+        XCTAssertTrue(context.recorder.topics.isEmpty, file: file, line: line)
+        XCTAssertTrue(context.bindings.navigation.pushed.isEmpty, file: file, line: line)
+    }
+
+    func action(_ ids: [MessageId], text: ChatTextInputState? = nil) -> ChatInitialAction {
+        .forward(messageIds: ids, text: text, behavior: .automatic)
+    }
+
+    func assertDraft(_ controller: ChatInterfaceController, ids: [MessageId], text: ChatTextInputState, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(controller.chatInteraction.presentation.interfaceState.forwardMessageIds, ids, file: file, line: line)
+        XCTAssertEqual(controller.chatInteraction.presentation.effectiveInput, text, file: file, line: line)
+        XCTAssertFalse(controller.chatInteraction.presentation.hasSelection, file: file, line: line)
+        assertNoEnqueue(file: file, line: line)
+    }
+
+    func testSavedToCurrentSavedPreparesDraftWithoutSending() {
+        let current = install(.peer(context.peerId))
+        current.chatInteraction.presentation.interfaceState.forwardMessageIds = [external.id]
+        assertResults(forward([saved]), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: ChatTextInputState(inputText: ""))
+        assertNoNavigation()
+    }
+
+    func testSavedToCurrentSavedKeepsNonemptyComment() {
+        let current = install(.peer(context.peerId))
+        current.chatInteraction.presentation.interfaceState.inputState = ChatTextInputState(inputText: "old draft")
+        assertResults(forward([saved], comment: comment), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: comment)
+        assertNoNavigation()
+    }
+
+    func testSavedToCurrentSavedPreservesExistingInputWithoutComment() {
+        let current = install(.peer(context.peerId))
+        current.chatInteraction.presentation.interfaceState.inputState = comment
+        assertResults(forward([saved]), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: comment)
+    }
+
+    func testSavedToCurrentSavedPreservesExistingInputWithEmptyComment() {
+        let current = install(.peer(context.peerId))
+        current.chatInteraction.presentation.interfaceState.inputState = comment
+        assertResults(forward([saved], comment: ChatTextInputState(inputText: "")), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: comment)
+    }
+
+    func assertSavedSpecialControllerOpensHistoryDraft(mode: ChatMode, editState: ChatEditState? = nil, recording: Bool = false, searchTag: Bool = false, suppliedComment: ChatTextInputState?, file: StaticString = #filePath, line: UInt = #line) throws {
+        let previous = install(.peer(context.peerId), mode: mode)
+        previous.chatInteraction.presentation.isRecording = recording
+        previous.chatInteraction.presentation.hasSearchTag = searchTag
+        previous.chatInteraction.presentation.interfaceState.inputState = ChatTextInputState(inputText: "existing normal draft")
+        previous.chatInteraction.presentation.interfaceState.forwardMessageIds = [external.id]
+        previous.chatInteraction.presentation.interfaceState.editState = editState
+        let previousInterface = previous.chatInteraction.presentation.interfaceState
+        let previousEffectiveInput = previous.chatInteraction.presentation.effectiveInput
+        assertResults(forward([saved], comment: suppliedComment), [.destinationReady], file: file, line: line)
+        XCTAssertEqual(previous.chatInteraction.presentation.interfaceState, previousInterface, file: file, line: line)
+        XCTAssertEqual(previous.chatInteraction.presentation.effectiveInput, previousEffectiveInput, file: file, line: line)
+        XCTAssertEqual(previous.chatInteraction.presentation.isRecording, recording, file: file, line: line)
+        XCTAssertEqual(previous.chatInteraction.presentation.hasSearchTag, searchTag, file: file, line: line)
+        XCTAssertFalse(previous.chatInteraction.presentation.hasSelection, file: file, line: line)
+        assertNoEnqueue(file: file, line: line)
+        let call = try XCTUnwrap(context.recorder.factories.first, file: file, line: line)
+        XCTAssertEqual(context.recorder.factories.count, 1, file: file, line: line)
+        XCTAssertEqual(call.location, .peer(context.peerId), file: file, line: line)
+        XCTAssertEqual(call.initialAction, action([saved.id], text: suppliedComment), file: file, line: line)
+        XCTAssertFalse(call.addition, file: file, line: line)
+        let opened = try XCTUnwrap(context.bindings.navigation.pushed.first, file: file, line: line)
+        XCTAssertFalse(opened === previous, file: file, line: line)
+        XCTAssertEqual(opened.chatInteraction.mode, .history, file: file, line: line)
+        XCTAssertNil(opened.chatInteraction.presentation.interfaceState.editState, file: file, line: line)
+        XCTAssertEqual(opened.initialAction, call.initialAction, file: file, line: line)
+        XCTAssertTrue(context.recorder.topics.isEmpty, file: file, line: line)
+    }
+
+    func testSavedFromPinnedSelfOpensNormalHistoryDraft() throws {
+        try assertSavedSpecialControllerOpensHistoryDraft(mode: .pinned, suppliedComment: comment)
+    }
+
+    func testSavedFromScheduledSelfOpensNormalHistoryDraft() throws {
+        try assertSavedSpecialControllerOpensHistoryDraft(mode: .scheduled, suppliedComment: comment)
+    }
+
+    func testSavedWhileEditingSelfPreservesEditWithoutUsingEditTextAsComment() throws {
+        let edit = ChatEditState(messageId: saved.id, inputState: ChatTextInputState(inputText: "unsaved edit text"))
+        try assertSavedSpecialControllerOpensHistoryDraft(mode: .history, editState: edit, suppliedComment: nil)
+    }
+
+    func testSavedWhileEditingSelfPreservesEditAndCarriesExplicitComment() throws {
+        let edit = ChatEditState(messageId: saved.id, inputState: ChatTextInputState(inputText: "unsaved edit text"))
+        try assertSavedSpecialControllerOpensHistoryDraft(mode: .history, editState: edit, suppliedComment: comment)
+    }
+
+    func assertRecordingBlocksSavedDraft(location: ChatLocation, thread: Int64? = nil, messages: [Message]? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        let current = install(location)
+        let recording = RecordingState()
+        current.chatInteraction.presentation.recordingState = recording
+        current.chatInteraction.presentation.interfaceState.inputState = comment
+        current.chatInteraction.presentation.interfaceState.forwardMessageIds = [external.id]
+        let before = current.chatInteraction.presentation
+        assertResults(forward(messages ?? [saved], thread: thread, comment: comment), [.restricted], file: file, line: line)
+        XCTAssertEqual(current.chatInteraction.presentation, before, file: file, line: line)
+        XCTAssertTrue(current.chatInteraction.presentation.recordingState === recording, file: file, line: line)
+        XCTAssertFalse(recording.discarded, file: file, line: line)
+        XCTAssertTrue(context.bindings.navigation.controller === current, file: file, line: line)
+        XCTAssertEqual(context.bindings.navigation.stack.count, 1, file: file, line: line)
+        XCTAssertEqual(ConfirmationProbe.count, 0, file: file, line: line)
+        XCTAssertNil(ConfirmationProbe.accept, file: file, line: line)
+        XCTAssertEqual(ConfirmationProbe.notices, ["Finish or discard the current recording before forwarding to Saved Messages."], file: file, line: line)
+        assertNoEnqueue(file: file, line: line)
+        assertNoNavigation(file: file, line: line)
+    }
+
+    func testSavedWhileRecordingSelfDoesNotNavigateOrAskToDiscard() {
+        assertRecordingBlocksSavedDraft(location: .peer(context.peerId))
+    }
+
+    func testSavedWhileRecordingInOtherChatDoesNotNavigateOrAskToDiscard() {
+        assertRecordingBlocksSavedDraft(location: .peer(other))
+    }
+
+    func testSavedThreadWhileRecordingDoesNotNavigateOrAskToDiscard() {
+        assertRecordingBlocksSavedDraft(location: .peer(context.peerId), thread: 71)
+    }
+
+    func testMixedSavedSourcesWhileRecordingDoNotNavigateOrAskToDiscard() {
+        assertRecordingBlocksSavedDraft(location: .peer(context.peerId), messages: [external, saved])
+    }
+
+    func testSavedForwardCanBeRetriedAfterRecordingFinishes() {
+        let current = install(.peer(context.peerId))
+        current.chatInteraction.presentation.isRecording = true
+        assertResults(forward([saved]), [.restricted])
+        current.chatInteraction.presentation.isRecording = false
+        assertResults(forward([saved], comment: comment), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: comment)
+        assertNoNavigation()
+        XCTAssertEqual(ConfirmationProbe.count, 0)
+    }
+
+    func testExternalQuickSaveDoesNotInterruptRecording() {
+        let current = install(.peer(context.peerId))
+        let recording = RecordingState()
+        current.chatInteraction.presentation.recordingState = recording
+        assertResults(forward([external]), [.accepted])
+        XCTAssertTrue(current.chatInteraction.presentation.recordingState === recording)
+        XCTAssertFalse(recording.discarded)
+        XCTAssertEqual(context.account.enqueueSubscriptions, 1)
+        XCTAssertEqual(ConfirmationProbe.count, 0)
+        XCTAssertTrue(ConfirmationProbe.notices.isEmpty)
+        assertNoNavigation()
+    }
+
+    func testNavigationGateDeclineKeepsRecordingAndCurrentController() {
+        let current = install(.peer(context.peerId))
+        let recording = RecordingState()
+        current.chatInteraction.presentation.recordingState = recording
+        context.bindings.navigation.push(ChatInterfaceController(.peer(other)))
+        XCTAssertEqual(ConfirmationProbe.count, 1)
+        ConfirmationProbe.cancel?()
+        XCTAssertTrue(context.bindings.navigation.controller === current)
+        XCTAssertTrue(context.bindings.navigation.pushed.isEmpty)
+        XCTAssertFalse(recording.discarded)
+        XCTAssertTrue(current.chatInteraction.presentation.recordingState === recording)
+    }
+
+    func testNavigationGateConfirmDiscardsRecordingBeforePushing() {
+        let current = install(.peer(context.peerId))
+        let recording = RecordingState()
+        current.chatInteraction.presentation.recordingState = recording
+        let next = ChatInterfaceController(.peer(other))
+        context.bindings.navigation.push(next)
+        XCTAssertEqual(ConfirmationProbe.count, 1)
+        XCTAssertTrue(context.bindings.navigation.pushed.isEmpty)
+        ConfirmationProbe.accept?()
+        XCTAssertTrue(context.bindings.navigation.controller === next)
+        XCTAssertTrue(recording.discarded)
+        XCTAssertNil(current.chatInteraction.presentation.recordingState)
+    }
+
+    func testSavedFromTagFilteredSelfOpensMainComposerWithoutReplacingFilter() throws {
+        try assertSavedSpecialControllerOpensHistoryDraft(mode: .history, searchTag: true, suppliedComment: comment)
+    }
+
+    func testSavedFromOtherChatOpensAdditionDraft() throws {
+        let previous = install(.peer(other))
+        assertResults(forward([saved], comment: comment), [.destinationReady])
+        let call = try XCTUnwrap(context.recorder.factories.first)
+        XCTAssertEqual(context.recorder.factories.count, 1)
+        XCTAssertEqual(call.location, .peer(context.peerId))
+        XCTAssertEqual(call.initialAction, action([saved.id], text: comment))
+        XCTAssertTrue(call.addition)
+        XCTAssertEqual(context.bindings.navigation.pushed.first?.initialAction, call.initialAction)
+        XCTAssertFalse(previous.chatInteraction.presentation.hasSelection)
+        assertNoEnqueue()
+    }
+
+    func testSavedDestinationAlreadyInStackUsesRegularController() throws {
+        let previous = install(.peer(other))
+        context.bindings.navigation.stack.insert(ChatInterfaceController(.peer(context.peerId)), at: 0)
+        assertResults(forward([saved]), [.destinationReady])
+        let call = try XCTUnwrap(context.recorder.factories.first)
+        XCTAssertFalse(call.addition)
+        XCTAssertEqual(call.initialAction, action([saved.id]))
+        XCTAssertEqual(context.bindings.navigation.pushed.count, 1)
+        XCTAssertFalse(previous.chatInteraction.presentation.hasSelection)
+        assertNoEnqueue()
+    }
+
+    func testSavedFromNonChatControllerOpensDraft() throws {
+        assertResults(forward([saved], comment: comment), [.destinationReady])
+        let call = try XCTUnwrap(context.recorder.factories.first)
+        XCTAssertTrue(call.addition)
+        XCTAssertEqual(call.initialAction, action([saved.id], text: comment))
+        assertNoEnqueue()
+    }
+
+    func assertMainSavedComposerOpened(text: ChatTextInputState?, file: StaticString = #filePath, line: UInt = #line) throws {
+        assertNoEnqueue(file: file, line: line)
+        XCTAssertTrue(context.recorder.topics.isEmpty, file: file, line: line)
+        XCTAssertEqual(context.recorder.factories.count, 1, file: file, line: line)
+        let call = try XCTUnwrap(context.recorder.factories.first, file: file, line: line)
+        XCTAssertEqual(call.location, .peer(context.peerId), file: file, line: line)
+        XCTAssertNil(call.location.threadId, file: file, line: line)
+        XCTAssertEqual(call.initialAction, action([saved.id], text: text), file: file, line: line)
+        let opened = try XCTUnwrap(context.bindings.navigation.pushed.first, file: file, line: line)
+        XCTAssertEqual(opened.chatInteraction.chatLocation, .peer(context.peerId), file: file, line: line)
+        XCTAssertEqual(opened.chatInteraction.mode, .history, file: file, line: line)
+        XCTAssertNil(opened.chatInteraction.presentation.interfaceState.editState, file: file, line: line)
+        XCTAssertEqual(opened.initialAction, call.initialAction, file: file, line: line)
+    }
+
+    func testSavedToCurrentSavedThreadOpensMainSavedComposer() throws {
+        let previous = install(.thread(ChatReplyThreadMessage(peerId: context.peerId, threadId: 71)), mode: .savedThread)
+        let previousInterface = previous.chatInteraction.presentation.interfaceState
+        assertResults(forward([saved], thread: 71, comment: comment), [.destinationReady])
+        try assertMainSavedComposerOpened(text: comment)
+        XCTAssertEqual(previous.chatInteraction.presentation.interfaceState, previousInterface)
+        XCTAssertFalse(context.bindings.navigation.pushed.first === previous)
+    }
+
+    func testSavedToNewSavedThreadOpensMainSavedComposer() throws {
+        install(.peer(other))
+        assertResults(forward([saved], thread: 71, comment: comment), [.destinationReady])
+        try assertMainSavedComposerOpened(text: comment)
+        XCTAssertEqual(context.recorder.factories.first?.addition, true)
+    }
+
+    func testSavedFromDifferentSavedThreadOpensMainSavedComposer() throws {
+        let previous = install(.thread(ChatReplyThreadMessage(peerId: context.peerId, threadId: 70)), mode: .savedThread)
+        let previousInterface = previous.chatInteraction.presentation.interfaceState
+        assertResults(forward([saved], thread: 71), [.destinationReady])
+        try assertMainSavedComposerOpened(text: nil)
+        XCTAssertEqual(previous.chatInteraction.presentation.interfaceState, previousInterface)
+    }
+
+    func testSavedThreadDestinationReusesCurrentMainSavedComposer() {
+        let current = install(.peer(context.peerId))
+        assertResults(forward([saved], thread: 71, comment: comment), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: comment)
+        XCTAssertEqual(current.chatInteraction.chatLocation, .peer(context.peerId))
+        XCTAssertEqual(current.chatInteraction.mode, .history)
+        assertNoNavigation()
+    }
+
+    func assertWaitsForReadiness(thread: Int64?, currentThread: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let pipe = ValuePipe<Bool>()
+        if currentThread {
+            install(.thread(ChatReplyThreadMessage(peerId: context.peerId, threadId: thread!)), mode: .savedThread)
+        } else {
+            install(.peer(other))
+        }
+        context.recorder.newControllerReady = pipe.signal()
+        let object = ForwardMessagesObject(context, messages: [saved])
+        let done = expectation(description: "wait for true readiness")
+        var results: [ForwardMessagesResult] = []
+        var completed = false
+        let disposable = object.run(to: [context.peerId], threadId: thread, observedResult: { results.append($0) }).start(error: { XCTFail($0, file: file, line: line) }, completed: { completed = true; done.fulfill() })
+        XCTAssertTrue(results.isEmpty, file: file, line: line)
+        XCTAssertFalse(completed, file: file, line: line)
+        pipe.putNext(false)
+        XCTAssertTrue(results.isEmpty, file: file, line: line)
+        XCTAssertFalse(completed, file: file, line: line)
+        pipe.putNext(true)
+        wait(for: [done], timeout: 2)
+        pipe.putNext(true)
+        disposable.dispose()
+        assertResults(results, [.destinationReady], file: file, line: line)
+        assertNoEnqueue(file: file, line: line)
+        XCTAssertEqual(context.recorder.factories.first?.location, .peer(context.peerId), file: file, line: line)
+        XCTAssertEqual(context.bindings.navigation.pushed.first?.chatInteraction.mode, .history, file: file, line: line)
+        XCTAssertTrue(context.recorder.topics.isEmpty, file: file, line: line)
+    }
+
+    func testRegularSavedDraftWaitsForControllerReadiness() { assertWaitsForReadiness(thread: nil, currentThread: false) }
+    func testRequestedSavedThreadWaitsForMainComposerReadiness() { assertWaitsForReadiness(thread: 71, currentThread: false) }
+    func testCurrentSavedThreadWaitsForMainComposerReadiness() { assertWaitsForReadiness(thread: 71, currentThread: true) }
+
+    func testExternalToSavedStillSendsImmediately() throws {
+        let current = install(.peer(context.peerId))
+        assertResults(forward([external]), [.accepted])
+        XCTAssertEqual(context.account.enqueueCalls.count, 1)
+        XCTAssertEqual(context.account.enqueueSubscriptions, 1)
+        let call = try XCTUnwrap(context.account.enqueueCalls.first)
+        XCTAssertEqual(call.peerId, context.peerId)
+        guard case let .forward(source, thread, grouping, attributes, _) = try XCTUnwrap(call.messages.first) else { return XCTFail("Expected forwarded message") }
+        XCTAssertEqual(source, external.id)
+        XCTAssertNil(thread)
+        XCTAssertEqual(grouping, .none)
+        XCTAssertFalse(attributes.contains { $0 is ForwardOptionsMessageAttribute })
+        XCTAssertTrue(current.chatInteraction.presentation.interfaceState.forwardMessageIds.isEmpty)
+        XCTAssertFalse(current.chatInteraction.presentation.hasSelection)
+        assertNoNavigation()
+    }
+
+    func testExternalToSavedThreadStillSendsCommentAndMessageImmediately() throws {
+        install(.peer(other))
+        assertResults(forward([external], thread: 71, comment: comment), [.accepted])
+        XCTAssertEqual(context.account.enqueueCalls.count, 2)
+        XCTAssertEqual(context.account.enqueueSubscriptions, 2)
+        let commentCall = try XCTUnwrap(context.account.enqueueCalls.first)
+        guard case let .message(text, _, _, _, thread, _, _, _, _, _) = try XCTUnwrap(commentCall.messages.first) else { return XCTFail("Expected comment") }
+        XCTAssertEqual(text, comment.inputText)
+        XCTAssertEqual(thread, 71)
+        let forwardCall = try XCTUnwrap(context.account.enqueueCalls.last)
+        guard case let .forward(source, forwardedThread, _, _, _) = try XCTUnwrap(forwardCall.messages.first) else { return XCTFail("Expected forward") }
+        XCTAssertEqual(source, external.id)
+        XCTAssertEqual(forwardedThread, 71)
+        XCTAssertTrue(context.account.enqueueCalls.allSatisfy { $0.peerId == context.peerId })
+        assertNoNavigation()
+    }
+
+    func testSavedToOtherCurrentChatRemainsDraft() {
+        let current = install(.peer(other))
+        assertResults(forward([saved], to: other, comment: comment), [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: comment)
+        assertNoNavigation()
+    }
+
+    func testSavedToOtherNewChatPreservesInitialAction() throws {
+        install(.peer(context.peerId))
+        assertResults(forward([saved], to: other, comment: comment), [.destinationReady])
+        let call = try XCTUnwrap(context.recorder.factories.first)
+        XCTAssertEqual(call.location, .peer(other))
+        XCTAssertEqual(call.initialAction, action([saved.id], text: comment))
+        assertNoEnqueue()
+    }
+
+    func testSavedToOtherThreadStillUsesTopicRouting() throws {
+        assertResults(forward([saved], to: other, thread: 71, comment: comment), [.destinationReady])
+        let call = try XCTUnwrap(context.recorder.topics.first)
+        XCTAssertEqual(call.peerId, other)
+        XCTAssertEqual(call.threadId, 71)
+        XCTAssertEqual(call.initialAction, action([saved.id], text: comment))
+        XCTAssertFalse(call.isMonoforum)
+        XCTAssertTrue(context.recorder.factories.isEmpty)
+        assertNoEnqueue()
+    }
+
+    func testMissingSourceDoesNotSendOrNavigate() {
+        let current = install(.peer(context.peerId))
+        let before = current.chatInteraction.presentation
+        context.account.postbox.messages.removeAll()
+        assertResults(forward([saved], comment: comment), [.sourceUnavailable])
+        XCTAssertEqual(current.chatInteraction.presentation, before)
+        assertNoEnqueue()
+        assertNoNavigation()
+    }
+
+    func testMissingTargetDoesNotSendOrNavigate() {
+        let current = install(.peer(context.peerId))
+        let before = current.chatInteraction.presentation
+        context.account.postbox.peers.removeValue(forKey: context.peerId)
+        assertResults(forward([saved], comment: comment), [.targetUnavailable])
+        XCTAssertEqual(current.chatInteraction.presentation, before)
+        assertNoEnqueue()
+        assertNoNavigation()
+    }
+
+    func testEmptyRefreshedSourcesDoNotSendOrNavigate() {
+        assertResults(forward([saved], loader: { _, _ in .single([]) }), [.sourceUnavailable])
+        assertNoEnqueue()
+        assertNoNavigation()
+    }
+
+    func testPublicPollRestrictionStillPreventsChannelForwarding() {
+        context.account.postbox.peers[other] = Peer(id: other, isChannel: true)
+        context.account.postbox.messages[saved.id] = Message(id: saved.id, isPublicPoll: true)
+        assertResults(forward([saved], to: other, expectedError: strings().pollForwardError), [.restricted])
+        assertNoEnqueue()
+        assertNoNavigation()
+    }
+
+    func testSavedAlbumExpandsToCompleteDraftWithoutSending() {
+        let second = Message(id: MessageId(peerId: context.peerId, id: 12))
+        context.account.postbox.groups[saved.id] = [saved, second]
+        let current = install(.peer(context.peerId))
+        assertResults(forward([saved], comment: comment, album: true), [.draftPrepared])
+        assertDraft(current, ids: [saved.id, second.id], text: comment)
+        XCTAssertEqual(context.account.postbox.requestedGroups, [saved.id])
+    }
+
+    func testRefreshedSavedIDsOverrideExternalOriginalIDs() {
+        let current = install(.peer(context.peerId))
+        var requested: [MessageId] = []
+        var requestedAlbum: Bool?
+        let refreshed = [saved]
+        assertResults(forward([external], comment: comment, album: true, loader: { ids, album in
+            requested = ids
+            requestedAlbum = album
+            return .single(refreshed)
+        }), [.draftPrepared])
+        XCTAssertEqual(requested, [external.id])
+        XCTAssertEqual(requestedAlbum, true)
+        assertDraft(current, ids: [saved.id], text: comment)
+    }
+
+    func testRefreshedExternalIDsOverrideSavedOriginalIDsAndStillSave() throws {
+        let refreshed = [external]
+        assertResults(forward([saved], loader: { _, _ in .single(refreshed) }), [.accepted])
+        let call = try XCTUnwrap(context.account.enqueueCalls.first)
+        guard case let .forward(source, _, _, _, _) = try XCTUnwrap(call.messages.first) else { return XCTFail("Expected forward") }
+        XCTAssertEqual(source, external.id)
+        assertNoNavigation()
+    }
+
+    func testMixedSavedAndExternalIDsPrepareDraftRegardlessOfOrder() {
+        let current = install(.peer(context.peerId))
+        for messages in [[external, saved], [saved, external]] {
+            assertResults(forward(messages, comment: comment), [.draftPrepared])
+            assertDraft(current, ids: messages.map { $0.id }, text: comment)
+        }
+        assertNoNavigation()
+    }
+
+    func testRefreshedMixedAlbumDoesNotTakeImmediateSavePath() {
+        let current = install(.peer(context.peerId))
+        let refreshed = [external, saved]
+        assertResults(forward([external], album: true, loader: { _, _ in .single(refreshed) }), [.draftPrepared])
+        assertDraft(current, ids: refreshed.map { $0.id }, text: ChatTextInputState(inputText: ""))
+    }
+
+    func testOnlyFirstCombinedEmissionPreparesDraft() {
+        let current = install(.peer(context.peerId))
+        let pipe = ValuePipe<[Message]>()
+        let object = ForwardMessagesObject(context, messages: [saved], getMessages: { _, _ in pipe.signal() })
+        let done = expectation(description: "first combined result completes")
+        var results: [ForwardMessagesResult] = []
+        let disposable = object.run(to: [context.peerId], observedResult: { results.append($0) }).start(error: { XCTFail($0) }, completed: { done.fulfill() })
+        pipe.putNext([saved])
+        wait(for: [done], timeout: 2)
+        pipe.putNext([external])
+        disposable.dispose()
+        assertResults(results, [.draftPrepared])
+        assertDraft(current, ids: [saved.id], text: ChatTextInputState(inputText: ""))
+        XCTAssertEqual(current.chatInteraction.updates, 1)
+    }
+
+    func testSenderForwardOptionsReachEnqueueForEveryFlagCombination() throws {
+        for (hideNames, hideCaptions) in [(false, false), (true, false), (false, true), (true, true)] {
+            context.account.enqueueCalls.removeAll()
+            let disposable = Sender.forwardMessages(messageIds: [saved.id], context: context, peerId: context.peerId, replyId: nil, threadId: 71, hideNames: hideNames, hideCaptions: hideCaptions).start()
+            disposable.dispose()
+            let call = try XCTUnwrap(context.account.enqueueCalls.first)
+            XCTAssertEqual(call.peerId, context.peerId)
+            guard case let .forward(source, thread, _, attributes, _) = try XCTUnwrap(call.messages.first) else { return XCTFail("Expected forward") }
+            XCTAssertEqual(source, saved.id)
+            XCTAssertEqual(thread, 71)
+            let options = attributes.compactMap { $0 as? ForwardOptionsMessageAttribute }
+            XCTAssertEqual(options, hideNames || hideCaptions ? [ForwardOptionsMessageAttribute(hideNames: hideNames || hideCaptions, hideCaptions: hideCaptions)] : [])
+        }
+    }
+
+    func testSenderAlbumPreservesFlagsGroupingOrderAndOtherAttributes() throws {
+        let ids = [MessageId(peerId: context.peerId, id: 13), saved.id, MessageId(peerId: context.peerId, id: 12)]
+        let disposable = Sender.forwardMessages(messageIds: ids, context: context, peerId: other, replyId: nil, threadId: 71, hideNames: false, hideCaptions: true, silent: true, atDate: Date(timeIntervalSince1970: 2000), repeatPeriod: 60, sendAsPeerId: third, sendPaidMessageStars: StarsAmount(value: 5)).start()
+        disposable.dispose()
+        let call = try XCTUnwrap(context.account.enqueueCalls.first)
+        XCTAssertEqual(call.peerId, other)
+        var sources: [MessageId] = []
+        for message in call.messages {
+            guard case let .forward(source, thread, grouping, attributes, _) = message else { return XCTFail("Expected forward") }
+            sources.append(source)
+            XCTAssertEqual(thread, 71)
+            XCTAssertEqual(grouping, .auto)
+            XCTAssertEqual(attributes.compactMap { $0 as? ForwardOptionsMessageAttribute }, [ForwardOptionsMessageAttribute(hideNames: true, hideCaptions: true)])
+            XCTAssertEqual(attributes.compactMap { $0 as? NotificationInfoMessageAttribute }.first?.flags, [.muted])
+            XCTAssertEqual(attributes.compactMap { $0 as? OutgoingScheduleInfoMessageAttribute }.first?.scheduleTime, 2000)
+            XCTAssertEqual(attributes.compactMap { $0 as? OutgoingScheduleInfoMessageAttribute }.first?.repeatPeriod, 60)
+            XCTAssertEqual(attributes.compactMap { $0 as? SendAsMessageAttribute }.first?.peerId, third)
+            XCTAssertEqual(attributes.compactMap { $0 as? PaidStarsMessageAttribute }.first?.stars, StarsAmount(value: 5))
+        }
+        XCTAssertEqual(sources, ids.sorted())
+    }
+}
