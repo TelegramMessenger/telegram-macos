@@ -1510,10 +1510,16 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
             reorderDisposable.set(signal.start())
 
         default:
-            var items:[PinnedItemId] = []
+            guard from != to else {
+                return
+            }
+            let tableView = self.genericView.tableView
+            guard let moved = tableView.optionalItem(at: to) as? ChatListRowItem, let itemId = moved.chatLocation?.pinnedItemId else {
+                return
+            }
+            let reference = tableView.optionalItem(at: from < to ? to - 1 : to + 1) as? ChatListRowItem
+            let referenceId = reference?.chatLocation?.pinnedItemId
 
-            var offset: Int = 0
-            
             let groupId: EngineChatList.Group = self.mode.groupId
 
             let location: TogglePeerChatPinnedLocation
@@ -1525,27 +1531,23 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
                 location = .filter(id)
             }
             
-            self.genericView.tableView.enumerateItems { item -> Bool in
-                guard let item = item as? ChatListRowItem else {
-                    offset += 1
-                    return true
+            let engine = context.engine
+            let signal = engine.peers.getPinnedItemIds(location: location) |> mapToSignal { itemIds -> Signal<Bool, NoError> in
+                guard itemIds.contains(itemId) else {
+                    return .single(false)
                 }
-                if item.groupId != .root || item.isAd {
-                    offset += 1
+                var itemIds = itemIds.filter { $0 != itemId }
+                if let referenceId, let index = itemIds.firstIndex(of: referenceId) {
+                    itemIds.insert(itemId, at: from < to ? index + 1 : index)
+                } else if from < to {
+                    itemIds.append(itemId)
+                } else {
+                    itemIds.insert(itemId, at: 0)
                 }
-                if let location = item.chatLocation {
-                    switch item.pinnedType {
-                    case .some, .last:
-                        items.append(location.pinnedItemId)
-                    default:
-                        break
-                    }
-                }
-               
-                return item.isFixedItem || item.groupId != .root
+                return engine.peers.reorderPinnedItemIds(location: location, itemIds: itemIds)
             }
             _ = first.swap(true)
-            reorderDisposable.set(context.engine.peers.reorderPinnedItemIds(location: location, itemIds: items).start())
+            reorderDisposable.set(signal.start())
         }
         
     }
