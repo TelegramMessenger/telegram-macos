@@ -111,14 +111,9 @@ public extension String {
     }
     
     var emojiUnmodified: String {
-        var emoji = self
-        for skin in emoji.emojiSkinToneModifiers {
-            emoji = emoji.replacingOccurrences(of: skin, with: "")
-        }
-        emoji = String(emoji.unicodeScalars.filter {
-            $0 != "\u{fe0f}"
-        })
-        return emoji
+        return String(String.UnicodeScalarView(unicodeScalars.filter {
+            $0 != "\u{fe0f}" && !$0.properties.isEmojiModifier
+        }))
     }
     
     func emojiWithSkinModifier(_ modifier: String) -> String {
@@ -167,13 +162,6 @@ public extension String {
         if self.isEmpty {
             return false
         }
-        
-        
-        let modified = self.basicEmoji.0.strippedEmoji + self.emojiSkinToneModifiers[0]
-        if modified.glyphCount == 1 {
-            return true
-        }
-        
         return self.emojiWithSkinModifier(self.emojiSkinToneModifiers[0]).glyphCount == 1
     }
     

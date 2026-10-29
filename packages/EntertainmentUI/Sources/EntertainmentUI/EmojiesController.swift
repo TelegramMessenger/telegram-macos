@@ -178,6 +178,9 @@ private func segments(_ emoji: [EmojiSegment : [String]], skinModifiers: [EmojiS
     var segments:[EmojiSegment:[[NSAttributedString]]] = [:]
     for (key,list) in emoji {
         let items = list.map { emoji -> NSAttributedString in
+            if key == .Recent {
+                return .initialize(string: emoji, font: .normal(26.0))
+            }
             let unmodified = emoji.emojiUnmodified
             let value = skinModifiers.first(where: { $0.emoji == unmodified }).map { unmodified.emojiWithSkinModifier($0.modifier) } ?? emoji
             return .initialize(string: value.normalizedEmoji, font: .normal(26.0))
@@ -851,7 +854,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 }
                 let tuple = Tuple(key: key, lines: lines, selectedOrders: selectedOrders, selectionColor: state.color ?? theme.colors.text)
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(key.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EBlockItem(initialSize, stableId: stableId, attrLines: tuple.lines, segment: tuple.key, account: arguments.context.account, selectHandler: arguments.sendEmoji, dragHandler: arguments.dragEmoji, selectedOrders: tuple.selectedOrders, selectionColor: tuple.selectionColor)
+                    return EBlockItem(initialSize, stableId: stableId, attrLines: tuple.lines, segment: tuple.key, account: arguments.context.account, selectHandler: arguments.sendEmoji, dragHandler: arguments.dragEmoji, selectedOrders: tuple.selectedOrders, selectionColor: tuple.selectionColor, isRecentList: tuple.key == .Recent)
                 }))
                 index += 1
             }
