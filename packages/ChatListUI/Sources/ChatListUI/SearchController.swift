@@ -338,8 +338,17 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 }
 
 
-private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
+private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
     var items:[ContextMenuItem] = []
+
+    switch arguments.target {
+    case .common, .community:
+        items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+            ChatListUIHooks.shared.openPeerInNewWindow(arguments.context, chatPeerId ?? peer.id)
+        }, itemImage: MenuAnimation.menu_open_with.value))
+    case .forum, .savedMessages:
+        break
+    }
     
     let togglePin:(Peer) -> Void = { peer in
         let updatePeer = arguments.context.account.postbox.transaction { transaction -> Void in
@@ -524,7 +533,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: secretChat != nil ? theme.colors.accent : theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: drawBorder, isLookSavedMessage: true, drawLastSeparator: true, canRemoveFromRecent: false, controlAction: {
                 arguments.setPeerAsTag(peer)
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: peer, chatPeerId: secretChat?.peerId ?? renderedPeer.peerId, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
             }, unreadBadge: badge, canAddAsTag: canAddAsTag, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, monoforumPeer: chatOrMonoforum)
         case let .topic(item, _, _, _, _):
             return SearchTopicRowItem(initialSize, stableId: entry.stableId, item: item, context: arguments.context)
@@ -555,7 +564,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                     arguments.removeRecentPeerId(peer.id)
                 }
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: true)
+                return peerContextMenuItems(peer: peer, chatPeerId: secretChat?.peerId ?? renderedPeer.peerId, pinnedItems: pinnedItems, arguments: arguments, isRecent: true)
             }, unreadBadge: badge, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, isGrossingApp: isGrossingApp, isRecentApp: isRecentApp, monoforumPeer: chatOrMonoforum)
         case let .savedMessages(peer):
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: true, isLookSavedMessage: true, contextMenuItems: {
