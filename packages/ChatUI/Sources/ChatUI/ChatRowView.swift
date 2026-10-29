@@ -282,10 +282,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
    
     
     public var header: String? {
-        if let item = item as? ChatRowItem, let message = item.message, let peer = coreMessageMainPeer(message) {
-            if !peer.isChannel, let date = item.fullDate, let name = item.authorText?.attributedString.string {
-                return "\(name), [\(date)]:"
+        if let item = item as? ChatRowItem, let message = item.message {
+            var header = copiedMessageHeader(message, timeDifference: item.context.timeDifference) + ":"
+            if let replyLine = copiedMessageReplyLine(message, threadId: item.chatInteraction.chatLocation.threadId) {
+                header += "\n" + replyLine
             }
+            return header
         }
         return nil
     }
@@ -1464,17 +1466,28 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         chatInteraction?.openInfoFromMessage(peer.id, true, nil, nil, message: item.message)
                     }, itemImage: MenuAnimation.menu_read.value))
 
-                    menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
-                        let attr: NSMutableAttributedString = NSMutableAttributedString()
+                    if !peer.isChannel || peer.addressName != nil {
+                        menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
+                            let attr: NSMutableAttributedString = NSMutableAttributedString()
 
-                        if let addressName = peer.addressName {
-                            attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
-                        } else {
-                            attr.append(string: peer.compactDisplayTitle + " ", font: .normal(theme.fontSize))
-                            attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
-                        }
-                        _ = chatInteraction?.appendText(attr)
-                    }, itemImage: MenuAnimation.menu_atsign.value))
+                            if let addressName = peer.addressName {
+                                attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
+                            } else {
+                                attr.append(string: peer.compactDisplayTitle, font: .normal(theme.fontSize))
+                                if peer.isUser {
+                                    attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
+                                }
+                                attr.append(string: " ", font: .normal(theme.fontSize))
+                            }
+                            _ = chatInteraction?.appendText(attr)
+                        }, itemImage: MenuAnimation.menu_atsign.value))
+                    }
+
+                    if let chatPeer = chatInteraction?.peer, (chatPeer.isGroup || chatPeer.isSupergroup), !chatPeer.isMonoForum, chatInteraction?.isLogInteraction == false, let mode = chatInteraction?.mode, mode == .history || mode.isThreadMode || mode.isTopicMode {
+                        menu.addItem(ContextMenuItem(strings().shortcutsControllerChatSearchMessages, handler: {
+                            chatInteraction?.searchPeerMessages(peer)
+                        }, itemImage: MenuAnimation.menu_search.value))
+                    }
 
                     if let channel = chatInteraction?.peer as? TelegramChannel, let context = chatInteraction?.interactionContext, peer.id != context.peerId {
                         
@@ -2217,7 +2230,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     public override func rightMouseDown(with event: NSEvent) {
         if let item = self.item as? ChatRowItem {
             if item.chatInteraction.presentation.state == .selecting {
-                return
+                let selectedIds = item.chatInteraction.presentation.selectionState?.selectedIds ?? []
+                guard selectedIds.count > 1, item.messages.contains(where: { message in
+                    selectedIds.contains(message.id) && message.media.contains(where: { $0 is TelegramMediaImage })
+                }) else {
+                    return
+                }
             }
         }
         super.rightMouseDown(with: event)

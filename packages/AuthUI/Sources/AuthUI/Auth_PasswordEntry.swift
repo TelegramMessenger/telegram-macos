@@ -74,13 +74,47 @@ private final class Auth_PasswordEntryHeaderView : View {
 
 private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
     private let secureField: NSSecureTextField = NSSecureTextField()
+    private let plainField: NSTextField = NSTextField()
+    private let revealButton: ImageButton = ImageButton()
+    private var isRevealed: Bool = false
     private var hint: String?
     private var takeError: (()->Void)?
     private var invoke:(()->Void)?
+    private let revealButtonSize: CGFloat = 28
+    
+    private var activeField: NSTextField {
+        return isRevealed ? plainField : secureField
+    }
+    
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(secureField)
+        addSubview(plainField)
+        addSubview(revealButton)
+        plainField.isHidden = true
+        revealButton.autohighlight = false
+        revealButton.scaleOnClick = true
+        revealButton.set(handler: { [weak self] _ in
+            self?.toggleReveal()
+        }, for: .Click)
         updateLocalizationAndTheme(theme: theme)
+    }
+    
+    private func configure(_ field: NSTextField, theme: PresentationTheme) {
+        field.font = .normal(.title)
+        field.textColor = theme.colors.text
+        field.drawsBackground = false
+        field.backgroundColor = .clear
+        field.focusRingType = .none
+        field.isBordered = false
+        field.usesSingleLineMode = true
+        field.isBezeled = false
+        field.delegate = self
+        if #available(macOS 11.0, *) {
+            field.contentType = .password
+        }
+        let hint = self.hint ?? ""
+        field.placeholderAttributedString = .initialize(string: hint.isEmpty ? strings().loginNewPasswordPlaceholder : hint, color: theme.colors.grayText, font: .normal(.text))
     }
     
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
@@ -88,21 +122,37 @@ private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
         background = theme.colors.grayBackground
         layer?.cornerRadius = 10
         
-        secureField.font = .normal(.title)
-        secureField.textColor = theme.colors.text
-        secureField.drawsBackground = false
-        secureField.backgroundColor = .clear
-        secureField.focusRingType = .none
-        secureField.isBordered = false
-        secureField.usesSingleLineMode = true
-        secureField.isBezeled = false
-        secureField.delegate = self
-        if #available(macOS 11.0, *) {
-            secureField.contentType = .password
-        }
-        let hint = self.hint ?? ""
+        configure(secureField, theme: theme)
+        configure(plainField, theme: theme)
         
-        secureField.placeholderAttributedString = .initialize(string: hint.isEmpty ? strings().loginNewPasswordPlaceholder : hint, color: theme.colors.grayText, font: .normal(.text))
+        let icon = NSImage(named: isRevealed ? "Icon_Eye_On" : "Icon_Eye_Off")?.precomposed(theme.colors.grayIcon)
+        if let icon = icon {
+            revealButton.set(image: icon, for: .Normal)
+        }
+        revealButton.setFrameSize(NSMakeSize(revealButtonSize, revealButtonSize))
+        revealButton.setAccessibilityLabel(isRevealed ? strings().voiceOverCommonHide : strings().voiceOverCommonShow)
+    }
+    
+    private func toggleReveal() {
+        let previous = activeField
+        let editor = previous.currentEditor()
+        let hadFocus = editor != nil
+        let selection = editor?.selectedRange ?? NSMakeRange(previous.stringValue.length, 0)
+        
+        isRevealed.toggle()
+        
+        let next = activeField
+        next.stringValue = previous.stringValue
+        previous.stringValue = ""
+        previous.isHidden = true
+        next.isHidden = false
+        updateLocalizationAndTheme(theme: theme)
+        
+        if hadFocus {
+            window?.makeFirstResponder(next)
+            next.setSelectionRange(selection)
+        }
+        needsLayout = true
     }
     
     public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -126,24 +176,29 @@ private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
     
     public override func layout() {
         super.layout()
-        secureField.frame = NSMakeRect(10, 10, frame.width - 20, 18)
+        let fieldWidth = frame.width - 20 - revealButtonSize
+        secureField.frame = NSMakeRect(10, 10, fieldWidth, 18)
+        plainField.frame = secureField.frame
+        revealButton.setFrameOrigin(NSMakePoint(frame.width - revealButtonSize - 6, floorToScreenPixels((frame.height - revealButtonSize) / 2)))
     }
     
     public func updateLocked(_ locked: Bool) {
         self.secureField.textView?.isEditable = !locked
+        self.plainField.textView?.isEditable = !locked
     }
     
     public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     public func firstResponder() -> NSResponder? {
-        if window?.firstResponder == secureField.textView {
-            return secureField.textView
+        let field = activeField
+        if window?.firstResponder == field.textView {
+            return field.textView
         }
-        return secureField
+        return field
     }
     public var value: String {
-        return self.secureField.stringValue
+        return self.activeField.stringValue
     }
 }
 

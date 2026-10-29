@@ -211,11 +211,17 @@ public final class ChatInputContainerView: FlippableView {
         accessory.isVisibility() ? 10 + accessory.size.height : 0
     }
 
+    fileprivate var richDraftSlotHeight: CGFloat {
+        let minHeight = CGFloat(textView.min_height)
+        let draftHeight = richDraftPreviewHeight - RichTextDraftPreviewView.vInset * 2
+        return max(minHeight, min(richDraftPreviewHeight, draftHeight * 2 - minHeight))
+    }
+
     public func contentHeight(for width: CGFloat) -> CGFloat {
         // A rich draft stands IN PLACE of the text (it looks like the entered content), so it replaces the
         // text's base height rather than stacking above an empty field.
         if richDraftPreviewHeight > 0 {
-            return max(richDraftPreviewHeight, CGFloat(textView.min_height)) + accessoryHeight
+            return richDraftSlotHeight + accessoryHeight
         }
         let base = (chatState == .normal || chatState == .editing) ? textViewSize(width).0.height : CGFloat(textView.min_height)
         return base + accessoryHeight
@@ -269,8 +275,7 @@ public final class ChatInputContainerView: FlippableView {
                 // doesn't flash at the origin before the next layout pass.
                 let sendAsInset: CGFloat = sendAsView != nil ? 34 + 3 : 0
                 let textLeftInset: CGFloat = 12 + sendAsInset
-                let slot = max(richDraftPreviewHeight, CGFloat(textView.min_height))
-                let previewY = accessoryHeight + (slot - richDraftPreviewHeight) / 2
+                let previewY = accessoryHeight + (richDraftSlotHeight - richDraftPreviewHeight) / 2
                 current.frame = NSMakeRect(textLeftInset, previewY, width, richDraftPreviewHeight)
             }
         } else if let view = richDraftPreview {
@@ -490,8 +495,7 @@ public final class ChatInputContainerView: FlippableView {
                 }
             }
             textView.isHidden = true
-            let slot = max(richDraftPreviewHeight, CGFloat(textView.min_height))
-            let previewY = textY + (slot - richDraftPreviewHeight) / 2
+            let previewY = textY + (richDraftSlotHeight - richDraftPreviewHeight) / 2
             transition.updateFrame(view: preview, frame: NSMakeRect(textLeftInset, previewY, textSize.width, richDraftPreviewHeight))
         } else {
             textView.isHidden = false
@@ -519,7 +523,14 @@ public final class ChatInputContainerView: FlippableView {
             }
             let bs = current.frame.size
             let sendColumnMidX = containerWidth - ChatInputSendButton.fieldInset - sendWidth / 2
-            let frame = NSMakeRect(sendColumnMidX - bs.width / 2, accessoryHeight + 8, bs.width, bs.height)
+            let stackedY = accessoryHeight + 8
+            let frame: NSRect
+            if richDraftPreview != nil, sendButton.isInField, stackedY + bs.height > contentHeight - sendSize.height {
+                let slot = actionsView.entertaiments.frame.size
+                frame = NSMakeRect(fieldContentWidth - (slot.width + bs.width) / 2, contentHeight - (slot.height + bs.height) / 2, bs.width, bs.height)
+            } else {
+                frame = NSMakeRect(sendColumnMidX - bs.width / 2, stackedY, bs.width, bs.height)
+            }
             if isNew {
                 current.frame = frame
             } else {
@@ -1236,6 +1247,10 @@ public class ChatInputView: View, Notifable {
             if value.effectiveInput != oldValue.effectiveInput || oldValue.state != value.state || textPermissionChanged {
                 updateInput(value, prevState: oldValue, animated: animated)
             }
+            if value.sendPaidMessageStars != oldValue.sendPaidMessageStars {
+                updatePlaceholder()
+            }
+
             updateAttachments(value,animated)
             
             var urlPreviewChanged:Bool

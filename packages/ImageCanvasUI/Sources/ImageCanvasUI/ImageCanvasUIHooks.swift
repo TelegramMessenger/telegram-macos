@@ -13,9 +13,16 @@ public struct EditImageCanvasStickerPick {
     }
 }
 
+public enum EditImageCanvasStickerDrag {
+    case moved(CGImage?, NSPoint)
+    case preview(EditImageCanvasStickerPick)
+    case ended
+    case dropped(EditImageCanvasStickerPick, NSPoint)
+}
+
 public protocol EditImageCanvasStickerPicker: AnyObject {
     var visibilityChanged: ((Bool) -> Void)? { get set }
-    func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void)
+    func show(for control: Control, select: @escaping (EditImageCanvasStickerPick) -> Void, drag: @escaping (EditImageCanvasStickerDrag) -> Void)
     func close()
 }
 

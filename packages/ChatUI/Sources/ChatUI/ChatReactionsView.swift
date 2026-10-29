@@ -503,7 +503,7 @@ public final class ChatReactionsLayout {
     public let mode: Mode
     
     
-    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void) {
+    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}) {
         
         var mode: Mode = .full
         if message.id.peerId == context.peerId {
@@ -600,6 +600,10 @@ public final class ChatReactionsLayout {
                     if message.id.peerId == context.peerId, !isFilterTag, mode == .tag {
                        tagAction(value)
                     } else {
+                        guard canSendReactions() else {
+                            reactionsDisabled()
+                            return
+                        }
                         if value == .stars {
                             engine.sendStarsReaction(message.id, count: 1)
                         } else {

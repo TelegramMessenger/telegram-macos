@@ -21,12 +21,13 @@ public class EBlockItem: TableRowItem {
     
     public let account: Account
     public var selectHandler:(String, NSRect)->Void = { _, _ in}
+    public let dragHandler: ((String, EntertainmentStickerDrag) -> Bool)?
     public let segment: EmojiSegment
     public internal(set) var selectedOrders: [String: Int]
     public let selectionColor: NSColor?
     private let isRecentList: Bool
     
-    public init(_ initialSize:NSSize, stableId: AnyHashable, attrLines:[[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler:@escaping(String, NSRect)->Void, selectedOrders: [String: Int] = [:], selectionColor: NSColor? = nil, isRecentList: Bool = false) {
+    public init(_ initialSize:NSSize, stableId: AnyHashable, attrLines:[[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler:@escaping(String, NSRect)->Void, dragHandler: ((String, EntertainmentStickerDrag) -> Bool)? = nil, selectedOrders: [String: Int] = [:], selectionColor: NSColor? = nil, isRecentList: Bool = false) {
         self.lineAttr = attrLines
         self.symbols = attrLines.flatMap { $0 }
         self.selectedOrders = selectedOrders
@@ -36,6 +37,7 @@ public class EBlockItem: TableRowItem {
         self.account = account
         self.segment = segment
         self.selectHandler = selectHandler
+        self.dragHandler = dragHandler
         
         super.init(initialSize)
         _ = makeSize(initialSize.width)

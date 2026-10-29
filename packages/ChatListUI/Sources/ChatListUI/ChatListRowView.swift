@@ -2734,7 +2734,7 @@ public class ChatListRowView: TableRowView, RevealTableView {
             }
             
             
-            if !item.isTopic {
+            if !item.isTopic, item.canToggleUnread {
                 revealLeftView.addSubview(unread)
                 revealLeftView.backgroundColor = .clear
             }
@@ -2872,6 +2872,7 @@ public class ChatListRowView: TableRowView, RevealTableView {
     private var animateOnceAfterDelta: Bool = true
     private var revealHighlighted: Bool = false
     public func moveReveal(delta: CGFloat) {
+        let delta = revealLeftView.subviews.isEmpty ? min(delta, 0) : delta
 
         if !revealHighlighted, delta != 0, let item = item as? ChatListRowItem, !item.isSelected, let table = item.table {
             _ = table.highlight(item: item)

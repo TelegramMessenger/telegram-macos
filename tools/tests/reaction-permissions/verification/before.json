@@ -1,0 +1,85 @@
+{
+  "checks" : [
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "group member allowed",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : false,
+      "name" : "group member default ban",
+      "pass" : false
+    },
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "group admin exemption",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "group creator exemption",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "supergroup member allowed",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : false,
+      "name" : "supergroup default ban",
+      "pass" : false
+    },
+    {
+      "actual" : true,
+      "expected" : false,
+      "name" : "supergroup individual ban",
+      "pass" : false
+    },
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "supergroup creator exemption",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "supergroup admin exemption",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : false,
+      "name" : "live rights become restricted with stale message peer",
+      "pass" : false
+    },
+    {
+      "actual" : true,
+      "expected" : true,
+      "name" : "live rights become allowed",
+      "pass" : true
+    },
+    {
+      "actual" : true,
+      "expected" : false,
+      "name" : "missing live peer uses restricted message peer",
+      "pass" : false
+    },
+    {
+      "actual" : true,
+      "expected" : false,
+      "name" : "unrelated live peer cannot override message restriction",
+      "pass" : false
+    }
+  ],
+  "method" : "Actual TelegramCore peer models and production ChatRowItem.canReact in authenticated full client; no server writes",
+  "passed" : 7,
+  "total" : 13
+}

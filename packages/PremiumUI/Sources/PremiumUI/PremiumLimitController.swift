@@ -613,7 +613,7 @@ public final class PremiumLimitView: View {
         acceptOK.set(background: theme.colors.accent, for: .Normal)
         acceptOK.set(color: theme.colors.underSelectedColor, for: .Normal)
         acceptOK.set(text: strings().modalOK, for: .Normal)
-        acceptOK.layer?.cornerRadius = 10
+        acceptOK.layer?.cornerRadius = 20
         acceptOK.sizeToFit(NSMakeSize(0, 0), NSMakeSize(size.width, size.height), thatFit: true)
         acceptOK.autohighlight = false
         acceptOK.scaleOnClick = true
@@ -649,7 +649,7 @@ public final class PremiumLimitView: View {
         self.desc.update(desc)
 
 //        top.layer?.cornerRadius = size.height / 2
-        accept.layer?.cornerRadius = 10
+        accept.layer?.cornerRadius = 20
     
         
         self.lineView.isHidden = context.premiumIsBlocked

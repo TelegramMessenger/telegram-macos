@@ -123,7 +123,11 @@ func installEntertainmentUIHooks() {
     }, makeStickerContentView: { animated, frame in
         return animated ? MediaAnimatedStickerView(frame: frame) : ChatStickerContentView(frame: frame)
     }, makeContextMediaRowItem: { initialSize, row, index, context, arguments, collection, stableId in
-        return ContextMediaRowItem(initialSize, row, index, context, ContextMediaArguments(sendResult: arguments.sendResult, menuItems: arguments.menuItems, openMessage: arguments.openMessage, messageMenuItems: arguments.messageMenuItems), collection: collection, stableId: stableId)
+        let mediaArguments = ContextMediaArguments(sendResult: arguments.sendResult, menuItems: arguments.menuItems, openMessage: arguments.openMessage, messageMenuItems: arguments.messageMenuItems)
+        mediaArguments.drag = { result, point, ended in
+            return arguments.drag?(result, point, ended) ?? false
+        }
+        return ContextMediaRowItem(initialSize, row, index, context, mediaArguments, collection: collection, stableId: stableId)
     }, launchSendFlight: { chatInteraction, view, rect, sourceLayer in
         guard let chatInteraction = chatInteraction as? ChatInteraction, let source = ChatMediaSendFlightSource(view: view, rect: rect, sourceLayer: sourceLayer) else {
             return

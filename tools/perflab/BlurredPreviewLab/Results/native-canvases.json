@@ -1,0 +1,86 @@
+[
+  {
+    "baselineCanvasBytes": 22400,
+    "currentCanvasBytes": 11200,
+    "height": 50,
+    "scale": 1,
+    "width": 50
+  },
+  {
+    "baselineCanvasBytes": 27584,
+    "currentCanvasBytes": 11200,
+    "height": 64,
+    "scale": 1,
+    "width": 64
+  },
+  {
+    "baselineCanvasBytes": 1019200,
+    "currentCanvasBytes": 11200,
+    "height": 500,
+    "scale": 1,
+    "width": 500
+  },
+  {
+    "baselineCanvasBytes": 2084800,
+    "currentCanvasBytes": 11200,
+    "height": 720,
+    "scale": 1,
+    "width": 720
+  },
+  {
+    "baselineCanvasBytes": 3692672,
+    "currentCanvasBytes": 6272,
+    "height": 720,
+    "scale": 1,
+    "width": 1280
+  },
+  {
+    "baselineCanvasBytes": 8300672,
+    "currentCanvasBytes": 6272,
+    "height": 1080,
+    "scale": 1,
+    "width": 1920
+  },
+  {
+    "baselineCanvasBytes": 52800,
+    "currentCanvasBytes": 11200,
+    "height": 50,
+    "scale": 2,
+    "width": 50
+  },
+  {
+    "baselineCanvasBytes": 76736,
+    "currentCanvasBytes": 11200,
+    "height": 64,
+    "scale": 2,
+    "width": 64
+  },
+  {
+    "baselineCanvasBytes": 4011200,
+    "currentCanvasBytes": 11200,
+    "height": 500,
+    "scale": 2,
+    "width": 500
+  },
+  {
+    "baselineCanvasBytes": 8305600,
+    "currentCanvasBytes": 11200,
+    "height": 720,
+    "scale": 2,
+    "width": 720
+  },
+  {
+    "baselineCanvasBytes": 14751872,
+    "currentCanvasBytes": 6272,
+    "height": 720,
+    "scale": 2,
+    "width": 1280
+  },
+  {
+    "baselineCanvasBytes": 33183872,
+    "currentCanvasBytes": 6272,
+    "height": 1080,
+    "scale": 2,
+    "width": 1920
+  }
+]

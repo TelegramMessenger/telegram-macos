@@ -1037,7 +1037,27 @@ public class ChatRowItem: TableRowItem {
         return false
     }
     
+    private var reactionPermissionPeer: Peer? {
+        guard let message = firstMessage else { return nil }
+        return chatInteraction.peer.flatMap { $0.id == message.id.peerId ? $0 : nil } ?? message.peers[message.id.peerId]
+    }
+
+    private var canSendReactionsHere: Bool {
+        guard let peer = reactionPermissionPeer else {
+            return false
+        }
+        return chatInteraction.presentation.canSendReactions(to: peer)
+    }
+
     public var canReact: Bool {
+        return canSendReactionsHere && isReactable
+    }
+
+    private var isReactionRestricted: Bool {
+        return !canSendReactionsHere && isReactable
+    }
+
+    private var isReactable: Bool {
         if let message = firstMessage {
 
             if message.activeEphemeralReplacementMessage != nil {
@@ -1255,6 +1275,13 @@ public class ChatRowItem: TableRowItem {
         return false
     }
     
+    static func hidesReply(to attribute: ReplyMessageAttribute, in message: Message, threadId: Int64?) -> Bool {
+        if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
+            return true
+        }
+        return message.media.first is TelegramMediaGiveawayResults
+    }
+
     private static func canFillAuthorName(_ message: Message, chatInteraction: ChatInteraction, renderType: ChatItemRenderType, isIncoming: Bool, hasBubble: Bool) -> Bool {
         var canFillAuthorName: Bool = true
         var disable: Bool = false
@@ -1789,7 +1816,9 @@ public class ChatRowItem: TableRowItem {
             let context = self.context
             let chatInteraction = self.chatInteraction
             if let reactions = reactions, !reactions.reactions.isEmpty, let available = context.reactions.available {
-                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), openInfo: { peerId in
+                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), canSendReactions: { [weak self] in
+                    self?.canSendReactionsHere ?? false
+                }, openInfo: { peerId in
                     ChatHistoryUIHooks.shared.pushReactionPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, message.id)
                 }, runEffect: { [weak chatInteraction] value, isLarge in
                     chatInteraction?.runReactionEffect(value, message.id, isLarge)
@@ -1799,8 +1828,11 @@ public class ChatRowItem: TableRowItem {
                     } else {
                         chatInteraction?.setLocationTag(.customTag(ReactionsMessageAttribute.messageTag(reaction: reaction), nil))
                     }
-                }, starReact: {
+                }, starReact: { [weak self] in
+                    guard self?.canReact == true else { return }
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: context.window)
+                }, reactionsDisabled: { [weak chatInteraction] in
+                    chatInteraction?.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG Chat.SendReactionRestricted
                 })
                 
                 _reactionsLayout = layout
@@ -2682,15 +2714,7 @@ public class ChatRowItem: TableRowItem {
             for attribute in message.attributes {
                 if let attribute = attribute as? ReplyMessageAttribute, let replyMessage = message.associatedMessages[attribute.messageId] {
                     
-                    var ignore: Bool = false
-                    if threadId == message.threadId && Int64(attribute.messageId.id) == threadId {
-                        ignore = true
-                    }
-                    
-                    if message.media.first is TelegramMediaGiveawayResults {
-                        ignore = true
-                    }
-                    if !ignore {
+                    if !ChatRowItem.hidesReply(to: attribute, in: message, threadId: threadId) {
                         
                         let isQuote = attribute.isQuote
                         
@@ -3804,8 +3828,6 @@ public class ChatRowItem: TableRowItem {
     public func reactAction() -> Bool {
         if canReact {
             
-            
-            
             let context = self.context
             let value = ChatHistoryUIHooks.shared.reactionSettings(context).quickReaction
             let message = self.message
@@ -3856,6 +3878,8 @@ public class ChatRowItem: TableRowItem {
                     context.reactions.react(messageId, values: ChatHistoryUIHooks.shared.messageNewReactions(message, reaction.toUpdate(), context.peerId == message.id.peerId))
                 }
             }
+        } else if isReactionRestricted {
+            chatInteraction.showAnimatedToaster(.banned, "You cannot send reactions in this chat.") //TODOLANG Chat.SendReactionRestricted
         }
         return false
     }
@@ -4029,6 +4053,8 @@ public class ChatRowItem: TableRowItem {
 
             let signal = combineLatest(queue: .mainQueue(), builtin, peerAllowed, orderedReactions, maximumReactionsLimit, starsAllowed)
             |> take(1)
+
+            let canApplyReaction: () -> Bool = { [weak self] in self?.canReact == true }
 
             return (signal) |> map { builtin, peerAllowed, reactions, maximumReactionsLimit, starsAllowed in
                 let enabled = builtin?.enabled ?? []
@@ -4223,6 +4249,7 @@ public class ChatRowItem: TableRowItem {
                 if accessToAll {
                     reveal = { view in
                         let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
+                            guard isTags || canApplyReaction() else { return }
                             let parsedFile = sticker.file._parse()
                             let value: UpdateMessageReaction
                             if let bundle = parsedFile.stickerText {
@@ -4272,6 +4299,7 @@ public class ChatRowItem: TableRowItem {
                 
                 
                 let view = ContextAddReactionsListView(frame: rect, context: context, list: available, add: { value, checkPrem, fromRect in
+                    guard isTags || canApplyReaction() else { return }
                     if isTags, !context.isPremium {
                         openSavedTagsPremium()
                     } else {
@@ -4282,6 +4310,7 @@ public class ChatRowItem: TableRowItem {
                         }
                     }
                 }, addLarge: isTags ? nil : { value, fromRect in
+                    guard isTags || canApplyReaction() else { return }
                     context.reactions.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(), isTags), fromRect: fromRect, storeAsRecentlyUsed: true, isLarge: true)
                 }, radiusLayer: nil, revealReactions: reveal, aboveText: aboveLayout, message: message)
                 

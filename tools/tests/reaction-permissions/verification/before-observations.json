@@ -1,0 +1,17 @@
+[
+  {
+    "canReact" : true,
+    "event" : "initial",
+    "messagePeerRestricted" : true,
+    "mode" : "restricted",
+    "time" : 1793032973.601218
+  },
+  {
+    "canReact" : true,
+    "event" : "picker_requested",
+    "hasPickerWindow" : true,
+    "messagePeerRestricted" : true,
+    "mode" : "restricted",
+    "time" : 1793032989.8308721
+  }
+]

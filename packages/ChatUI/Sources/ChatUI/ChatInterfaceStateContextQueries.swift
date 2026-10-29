@@ -547,6 +547,62 @@ public func chatContextQueryForSearchMention(chatLocations: [ChatLocation], _ in
 
 private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.link]).rawValue)
 
+private func firstDetectedUrl(_ text: String) -> String? {
+    let text = String(text.prefix(4096))
+    guard let match = dataDetector?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) else {
+        return nil
+    }
+    return (text as NSString).substring(with: match.range)
+}
+
+private func detectedPreviewUrl(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, dataDetector: NSDataDetector) -> String? {
+    var detectedUrl: String?
+
+    var detectedRange: NSRange = NSMakeRange(NSNotFound, 0)
+    let text = chatPresentationInterfaceState.effectiveInput.inputText.prefix(4096)
+    
+    var attr = chatPresentationInterfaceState.effectiveInput.attributedString()
+    attr = attr.attributedSubstring(from: NSMakeRange(0, min(attr.length, 4096)))
+    
+    attr.enumerateAttribute(TextInputAttributes.textUrl, in: attr.range, options: NSAttributedString.EnumerationOptions(rawValue: 0), using: { (value, range, stop) in
+        
+        if let tag = value as? TextInputTextUrlAttribute {
+            detectedUrl = tag.url
+            detectedRange = range
+        }
+        let s: ObjCBool = (detectedUrl != nil) ? true : false
+        stop.pointee = s
+        
+    })
+    
+    let utf16 = text.utf16
+    if let match = dataDetector.firstMatch(in: text, options: [], range: NSRange(location: 0, length: utf16.count)) {
+        let urlText = (text as NSString).substring(with: match.range)
+        if match.range.location < detectedRange.location {
+            detectedUrl = urlText
+        }
+    }
+    return detectedUrl
+}
+
+func urlPreviewMatchesInput(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: any AccountContextProtocol) -> Bool {
+    guard let urlPreview = chatPresentationInterfaceState.urlPreview else {
+        return false
+    }
+    if chatPresentationInterfaceState.state == .editing, let editState = chatPresentationInterfaceState.interfaceState.editState, let media = editState.message.anyMedia as? TelegramMediaWebpage, firstDetectedUrl(chatPresentationInterfaceState.effectiveInput.inputText) == firstDetectedUrl(editState.message.text) {
+        return urlPreview.1.webpageId == media.webpageId
+    }
+    guard let dataDetector, let detectedUrl = detectedPreviewUrl(chatPresentationInterfaceState, dataDetector: dataDetector) else {
+        return false
+    }
+    switch ChatInterfaceHooks.shared.urlPreviewInAppLink(detectedUrl, context) {
+    case let .external(url, _), let .joinchat(url, _, _, _), let .wallpaper(url, _, _), let .theme(url, _, _), let .instantView(url, _, _):
+        return urlPreview.0 == url
+    default:
+        return urlPreview.0 == detectedUrl
+    }
+}
+
  public func urlPreviewStateForChatInterfacePresentationState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: any AccountContextProtocol, currentQuery: String?, disableEditingPreview: ((String)->Void)? = nil) -> Signal<(String?, Signal<(TelegramMediaWebpage?) -> TelegramMediaWebpage?, NoError>)?, NoError> {
     
     return Signal { subscriber in
@@ -569,7 +625,7 @@ private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.Check
         }
         
         if chatPresentationInterfaceState.state == .editing, let media = chatPresentationInterfaceState.interfaceState.editState?.message.anyMedia {
-            if let media = media as? TelegramMediaWebpage {
+            if let media = media as? TelegramMediaWebpage, firstDetectedUrl(chatPresentationInterfaceState.effectiveInput.inputText) == firstDetectedUrl(chatPresentationInterfaceState.interfaceState.editState?.message.text ?? "") {
                 let url: String?
                 switch media.content {
                 case let .Loaded(content):
@@ -585,32 +641,7 @@ private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.Check
         
         if let dataDetector = detector {
             
-            var detectedUrl: String?
-
-            var detectedRange: NSRange = NSMakeRange(NSNotFound, 0)
-            let text = chatPresentationInterfaceState.effectiveInput.inputText.prefix(4096)
-            
-            var attr = chatPresentationInterfaceState.effectiveInput.attributedString()
-            attr = attr.attributedSubstring(from: NSMakeRange(0, min(attr.length, 4096)))
-            
-            attr.enumerateAttribute(TextInputAttributes.textUrl, in: attr.range, options: NSAttributedString.EnumerationOptions(rawValue: 0), using: { (value, range, stop) in
-                
-                if let tag = value as? TextInputTextUrlAttribute {
-                    detectedUrl = tag.url
-                    detectedRange = range
-                }
-                let s: ObjCBool = (detectedUrl != nil) ? true : false
-                stop.pointee = s
-                
-            })
-            
-            let utf16 = text.utf16
-            if let match = dataDetector.firstMatch(in: text, options: [], range: NSRange(location: 0, length: utf16.count)) {
-                let urlText = (text as NSString).substring(with: match.range)
-                if match.range.location < detectedRange.location {
-                    detectedUrl = urlText
-                }
-            }
+            let detectedUrl = detectedPreviewUrl(chatPresentationInterfaceState, dataDetector: dataDetector)
             
             if let disableEditingPreview = disableEditingPreview {
                 if let editState = chatPresentationInterfaceState.interfaceState.editState {

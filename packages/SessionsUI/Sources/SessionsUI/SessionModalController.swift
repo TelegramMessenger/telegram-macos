@@ -1,3 +1,4 @@
+import Cocoa
 import Foundation
 import SwiftSignalKit
 import TelegramCore
@@ -20,15 +21,18 @@ private final class Arguments {
     public let context: any AccountContextProtocol
     public let toggleChats:(Bool)->Void
     public let toggleIncomingCalls: (Bool) -> Void
-    public init(context: any AccountContextProtocol, toggleChats:@escaping(Bool)->Void, toggleIncomingCalls: @escaping(Bool) -> Void) {
+    public let rename: (NSView) -> Void
+    public init(context: any AccountContextProtocol, toggleChats:@escaping(Bool)->Void, toggleIncomingCalls: @escaping(Bool) -> Void, rename: @escaping(NSView) -> Void) {
         self.context = context
         self.toggleChats = toggleChats
         self.toggleIncomingCalls = toggleIncomingCalls
+        self.rename = rename
     }
 }
 
 private struct State : Equatable {
     public let session: RecentAccountSession
+    public let deviceModel: String?
 }
 
 
@@ -42,7 +46,12 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     sectionId += 1
 //
     let icon = iconForSession(state.session)
-    if let sticker = icon.1 {
+    if let sticker = icon.1, state.session.isCurrent {
+        entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("header"), equatable: InputDataEquatable(state), comparable: nil, item: { initialSize, stableId in
+            return SessionHeaderItem(initialSize, stableId: stableId, context: arguments.context, sticker: sticker, stickerSize: NSMakeSize(60, 60), bgColor: icon.2, modify: icon.3, name: state.deviceModel ?? state.session.deviceModel, date: DateUtils.string(forLastSeen: state.session.activityDate), rename: arguments.rename)
+        }))
+        index += 1
+    } else if let sticker = icon.1 {
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("header"), equatable: nil, comparable: nil, item: { initialSize, stableId in
             
             let attr: NSMutableAttributedString = .init()
@@ -110,6 +119,10 @@ public func SessionModalController(context: any AccountContextProtocol, session:
 
     var close:(()->Void)? = nil
     var isUpdating = false
+    var deviceModelUpdates = 0
+    let deviceModelDisposable = renamedDeviceModel.get().start(next: { _ in
+        deviceModelUpdates += 1
+    })
 
     let updateSession: (Signal<Never, UpdateSessionError>) -> Void = { signal in
         guard !isUpdating else {
@@ -140,11 +153,15 @@ public func SessionModalController(context: any AccountContextProtocol, session:
         updateSession(context.activeSessionsContext.updateSessionAcceptsSecretChats(session, accepts: updated))
     }, toggleIncomingCalls: { updated in
         updateSession(context.activeSessionsContext.updateSessionAcceptsIncomingCalls(session, accepts: updated))
+    }, rename: { source in
+        showModal(with: RenameDeviceController(context: context), for: context.window, morphSource: { [weak source] in
+            return source
+        })
     })
     
-    let signal = context.activeSessionsContext.state
-    |> map { state in
-        return State(session: state.sessions.first(where: { $0.hash == session.hash }) ?? session)
+    let signal = combineLatest(context.activeSessionsContext.state, renamedDeviceModel.get())
+    |> map { state, deviceModel in
+        return State(session: state.sessions.first(where: { $0.hash == session.hash }) ?? session, deviceModel: session.isCurrent ? deviceModel : nil)
     }
     |> distinctUntilChanged
     |> deliverOnPrepareQueue
@@ -188,14 +205,20 @@ public func SessionModalController(context: any AccountContextProtocol, session:
         }
     }
     
-    let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
+    controller.onDeinit = {
+        deviceModelDisposable.dispose()
+    }
+
+    let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, closeHandler: { _ in
+        close?()
+    })
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()
     })
     
     close = { [weak modalController] in
-        modalController?.modal?.close()
+        modalController?.modal?.close(animationType: deviceModelUpdates > 1 ? .noMorph : .common)
     }
     
     /*
