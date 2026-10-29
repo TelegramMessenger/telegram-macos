@@ -3388,7 +3388,7 @@ private func extractRelativeDates(from text: String, referenceDate: Date) -> [Ex
         { s in
             let u = s
             if u.hasPrefix("hour") || u == "h" || u.hasPrefix("hr")
-                || u.hasPrefix("час") || u.hasPrefix("год") || u.hasPrefix("гад") // ru/uk/be
+                || u.hasPrefix("час") || u.hasPrefix("гадз") // ru/uk/be
                 || u.hasPrefix("st") || u.hasPrefix("std") // de Stunde
                 || u.hasPrefix("heure") || u.hasPrefix("heures") // fr
                 || u.hasPrefix("hora") || u.hasPrefix("horas") // es
