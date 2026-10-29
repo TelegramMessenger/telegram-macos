@@ -325,7 +325,9 @@ public final class MessageReadMenuRowItem : AppMenuRowItem {
 
             
             self.item.submenu = menu
-            if let view = self.view, view.mouseInside() || self.isSelected {
+            if let view = self.view as? AppMenuRowView, view.mouseInside() {
+                view.presentSubmenuAfterDelay()
+            } else if self.isSelected {
                 self.interaction?.presentSubmenu(self.item)
             }
             

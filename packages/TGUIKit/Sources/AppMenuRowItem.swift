@@ -372,6 +372,18 @@ open class AppMenuRowView: AppMenuBasicItemView {
     private let hoverDisposable = MetaDisposable()
     private let submenuDisposable = MetaDisposable()
     
+    public func presentSubmenuAfterDelay() {
+        submenuDisposable.set(delaySignal(0.157).start(completed: { [weak self] in
+            guard let self, let item = self.item as? AppMenuRowItem, self.containerView.controlState == .Hover else {
+                return
+            }
+            guard NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0) == self.window?.windowNumber else {
+                return
+            }
+            item.interaction?.presentSubmenu(item.item)
+        }))
+    }
+    
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         super.addSubview(contentView)
@@ -397,12 +409,7 @@ open class AppMenuRowView: AppMenuBasicItemView {
                 item.interaction?.presentSubmenu(item.item)
                 return
             }
-            self?.submenuDisposable.set(delaySignal(0.157).start(completed: {
-                guard let item = self?.item as? AppMenuRowItem, self?.containerView.controlState == .Hover, CheckWindow() else {
-                    return
-                }
-                item.interaction?.presentSubmenu(item.item)
-            }))
+            self?.presentSubmenuAfterDelay()
         }, for: .Hover)
         
         
