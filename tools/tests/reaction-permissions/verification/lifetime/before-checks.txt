@@ -1,0 +1,8 @@
+FAIL: existing reaction chip remains usable after its row is replaced
+FAIL: normal, large and expanded picker actions survive a row refresh without boosts
+FAIL: row-independent picker still observes a live restriction
+FAIL: retired existing chip still submits builtin
+FAIL: retired existing chip rejects a new restriction builtin
+FAIL: retired existing chip still submits stars
+FAIL: retired existing chip rejects a new restriction stars
+56/63 reaction permission checks passed

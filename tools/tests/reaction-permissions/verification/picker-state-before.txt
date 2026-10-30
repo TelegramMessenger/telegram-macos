@@ -1,0 +1,10 @@
+FAIL: picker 0 never resurrects a remotely removed reaction
+FAIL: picker 0 preserves a reaction added after opening
+FAIL: picker 0 ignores a deleted message
+FAIL: picker 1 never resurrects a remotely removed reaction
+FAIL: picker 1 preserves a reaction added after opening
+FAIL: picker 1 ignores a deleted message
+FAIL: picker 2 never resurrects a remotely removed reaction
+FAIL: picker 2 preserves a reaction added after opening
+FAIL: picker 2 ignores a deleted message
+76/85 reaction permission checks passed

@@ -1,0 +1,35 @@
+FAIL: existing reaction chip remains usable after its row is replaced
+FAIL: normal, large and expanded picker actions survive a row refresh without boosts
+FAIL: row-independent picker still observes a live restriction
+FAIL: retired existing chip still submits builtin
+FAIL: retired existing chip rejects a new restriction builtin
+FAIL: retired existing chip still submits stars
+FAIL: retired existing chip rejects a new restriction stars
+FAIL: picker 0 never resurrects a remotely removed reaction
+FAIL: picker 0 preserves a reaction added after opening
+FAIL: picker 0 ignores a deleted message
+FAIL: picker 1 never resurrects a remotely removed reaction
+FAIL: picker 1 preserves a reaction added after opening
+FAIL: picker 1 ignores a deleted message
+FAIL: picker 2 never resurrects a remotely removed reaction
+FAIL: picker 2 preserves a reaction added after opening
+FAIL: picker 2 ignores a deleted message
+FAIL: paid picker revalidates current message: deleted
+FAIL: existing star chip revalidates current message: deleted
+FAIL: unchanged retained star chip observes latest state: deleted
+FAIL: paid picker revalidates current message: unsent
+FAIL: existing star chip revalidates current message: unsent
+FAIL: unchanged retained star chip observes latest state: unsent
+FAIL: paid picker revalidates current message: failed
+FAIL: existing star chip revalidates current message: failed
+FAIL: unchanged retained star chip observes latest state: failed
+FAIL: paid picker revalidates current message: media
+FAIL: existing star chip revalidates current message: media
+FAIL: unchanged retained star chip observes latest state: media
+FAIL: paid picker revalidates current message: ephemeral
+FAIL: existing star chip revalidates current message: ephemeral
+FAIL: unchanged retained star chip observes latest state: ephemeral
+FAIL: paid picker revalidates current message: secret
+FAIL: existing star chip revalidates current message: secret
+FAIL: unchanged retained star chip observes latest state: secret
+72/106 reaction permission checks passed

@@ -1,0 +1,17 @@
+FAIL: default restriction uses boost threshold Optional(2)/Optional(2)
+FAIL: default restriction uses boost threshold Optional(2)/Optional(3)
+FAIL: boost exemption permits the common quick-reaction send path
+FAIL: boost exemption permits open picker callback 0
+FAIL: boost exemption permits open picker callback 1
+FAIL: boost exemption permits open picker callback 2
+FAIL: boost exemption permits paid-reaction entry point
+FAIL: boost exemption permits existing reaction chip builtin
+FAIL: boost exemption permits existing reaction chip stars
+FAIL: existing reaction chip remains usable after its row is replaced
+FAIL: normal, large and expanded picker actions survive a row refresh without boosts
+FAIL: row-independent picker still observes a live restriction
+FAIL: retired existing chip still submits builtin
+FAIL: retired existing chip rejects a new restriction builtin
+FAIL: retired existing chip still submits stars
+FAIL: retired existing chip rejects a new restriction stars
+47/63 reaction permission checks passed

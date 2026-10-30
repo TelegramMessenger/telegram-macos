@@ -1,0 +1,19 @@
+FAIL: paid picker revalidates current message: deleted
+FAIL: existing star chip revalidates current message: deleted
+FAIL: unchanged retained star chip observes latest state: deleted
+FAIL: paid picker revalidates current message: unsent
+FAIL: existing star chip revalidates current message: unsent
+FAIL: unchanged retained star chip observes latest state: unsent
+FAIL: paid picker revalidates current message: failed
+FAIL: existing star chip revalidates current message: failed
+FAIL: unchanged retained star chip observes latest state: failed
+FAIL: paid picker revalidates current message: media
+FAIL: existing star chip revalidates current message: media
+FAIL: unchanged retained star chip observes latest state: media
+FAIL: paid picker revalidates current message: ephemeral
+FAIL: existing star chip revalidates current message: ephemeral
+FAIL: unchanged retained star chip observes latest state: ephemeral
+FAIL: paid picker revalidates current message: secret
+FAIL: existing star chip revalidates current message: secret
+FAIL: unchanged retained star chip observes latest state: secret
+88/106 reaction permission checks passed

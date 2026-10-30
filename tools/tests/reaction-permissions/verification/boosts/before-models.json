@@ -1,0 +1,56 @@
+[
+  {
+    "actual" : false,
+    "expected" : false,
+    "name" : "default ban without boosts",
+    "pass" : true
+  },
+  {
+    "actual" : false,
+    "expected" : true,
+    "name" : "sufficient boosts bypass default ban",
+    "pass" : false
+  },
+  {
+    "actual" : false,
+    "expected" : false,
+    "name" : "insufficient boosts do not bypass default ban",
+    "pass" : true
+  },
+  {
+    "actual" : false,
+    "expected" : false,
+    "name" : "zero threshold does not bypass defaults",
+    "pass" : true
+  },
+  {
+    "actual" : false,
+    "expected" : false,
+    "name" : "absent threshold does not bypass defaults",
+    "pass" : true
+  },
+  {
+    "actual" : false,
+    "expected" : true,
+    "name" : "extra boosts bypass default ban",
+    "pass" : false
+  },
+  {
+    "actual" : false,
+    "expected" : false,
+    "name" : "boosts do not bypass a personal ban",
+    "pass" : true
+  },
+  {
+    "actual" : false,
+    "expected" : true,
+    "name" : "restoring live permission ignores stale message peer",
+    "pass" : false
+  },
+  {
+    "actual" : false,
+    "expected" : false,
+    "name" : "missing cached data does not bypass defaults",
+    "pass" : true
+  }
+]

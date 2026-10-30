@@ -1,0 +1,62 @@
+[
+  {
+    "canReact" : true,
+    "event" : "initial",
+    "messagePeerRestricted" : true,
+    "mode" : "boosted",
+    "time" : 1793114232.7098498
+  },
+  {
+    "canReact" : true,
+    "event" : "picker_requested",
+    "hasPickerWindow" : true,
+    "messagePeerRestricted" : true,
+    "mode" : "boosted",
+    "time" : 1793114254.3220348
+  },
+  {
+    "canReact" : false,
+    "event" : "rights_changed",
+    "messagePeerRestricted" : true,
+    "mode" : "personal",
+    "time" : 1793114280.743753
+  },
+  {
+    "canReact" : false,
+    "event" : "picker_requested",
+    "hasPickerWindow" : false,
+    "messagePeerRestricted" : true,
+    "mode" : "personal",
+    "time" : 1793114281.3156319
+  },
+  {
+    "canReact" : false,
+    "event" : "rights_changed",
+    "messagePeerRestricted" : true,
+    "mode" : "restricted",
+    "time" : 1793114302.26879
+  },
+  {
+    "canReact" : false,
+    "event" : "picker_requested",
+    "hasPickerWindow" : false,
+    "messagePeerRestricted" : true,
+    "mode" : "restricted",
+    "time" : 1793114302.8310881
+  },
+  {
+    "canReact" : true,
+    "event" : "rights_changed",
+    "messagePeerRestricted" : true,
+    "mode" : "boosted",
+    "time" : 1793114303.667094
+  },
+  {
+    "canReact" : true,
+    "event" : "picker_requested",
+    "hasPickerWindow" : true,
+    "messagePeerRestricted" : true,
+    "mode" : "boosted",
+    "time" : 1793114304.3469238
+  }
+]

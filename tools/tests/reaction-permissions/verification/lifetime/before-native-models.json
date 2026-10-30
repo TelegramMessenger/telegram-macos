@@ -1,0 +1,26 @@
+[
+  {
+    "name" : "production picker created without boosts",
+    "pass" : true
+  },
+  {
+    "name" : "callbacks do not retain retired row",
+    "pass" : true
+  },
+  {
+    "name" : "existing chip permission survives retired row",
+    "pass" : false
+  },
+  {
+    "name" : "retired chip observes a live restriction",
+    "pass" : true
+  },
+  {
+    "name" : "retired chip observes permission restoration",
+    "pass" : false
+  },
+  {
+    "name" : "closing production picker releases retired row",
+    "pass" : true
+  }
+]
