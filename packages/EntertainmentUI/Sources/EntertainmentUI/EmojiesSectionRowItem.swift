@@ -338,7 +338,7 @@ public final class EmojiesSectionRowItem : GeneralRowItem {
         if context.isPremium {
             if let view = self.view as? EmojiesSectionRowView, let file = view.itemUnderMouse?.0.file, file.isCustomEmoji {
                 switch mode {
-                case .panel:
+                case .panel, .preview:
                     setStatus = .init(strings().emojiContextSetStatus, handler: { [weak self] in
                         guard let self else { return }
                         let window = self.context.window
