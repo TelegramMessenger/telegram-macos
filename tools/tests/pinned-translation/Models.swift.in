@@ -1,0 +1,108 @@
+import Foundation
+import NaturalLanguage
+import XCTest
+
+public struct PeerId: Equatable, Hashable {
+    public struct Id: Equatable, Hashable {
+        let value: Int64
+        public static func _internalFromInt64Value(_ value: Int64) -> Id { Id(value: value) }
+    }
+    let namespace: Int32
+    let id: Id
+    public init(namespace: Int32, id: Id) { self.namespace = namespace; self.id = id }
+}
+public struct MediaId: Equatable { let namespace: Int32; let id: Int64 }
+public enum EngineMedia { public typealias Id = MediaId }
+public struct PixelDimensions: Equatable { let width: Int32; let height: Int32 }
+public enum Namespaces {
+    public enum Peer { public static let CloudUser: Int32 = 0 }
+    public enum Message { public static let Cloud: Int32 = 0 }
+}
+public struct MessageId: Hashable, Comparable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+    public static func < (lhs: MessageId, rhs: MessageId) -> Bool { lhs.id < rhs.id }
+}
+public struct MessageTextEntity: Equatable { let range: Range<Int>; let type: MessageTextEntityType }
+public enum MessageTextEntityType: Equatable {
+    case Bold
+    case CustomEmoji(stickerPack: Int?, fileId: Int64)
+    public enum DateTimeFormat: Equatable { case normal }
+}
+public enum ReplyMarkupButtonAction: Equatable { case text }
+public final class InstantPageButton: Equatable {
+    let text: RichText
+    init(text: RichText, action: ReplyMarkupButtonAction, color: Int?) { self.text = text }
+    public static func == (lhs: InstantPageButton, rhs: InstantPageButton) -> Bool { lhs.text == rhs.text }
+}
+public struct InstantPageCaption: Equatable { let text: RichText; let credit: RichText }
+public enum TableHorizontalAlignment { case left }
+public enum TableVerticalAlignment { case top }
+public enum InstantPageButtonRowAlignment { case left }
+public struct InstantPageTableCell: Equatable {
+    let text: RichText?
+    let header: Bool
+    let alignment: TableHorizontalAlignment
+    let verticalAlignment: TableVerticalAlignment
+    let colspan: Int32
+    let rowspan: Int32
+}
+public struct InstantPageTableRow: Equatable { let cells: [InstantPageTableCell] }
+public struct InstantPageRelatedArticle: Equatable {}
+public struct TelegramChannel: Equatable {}
+public indirect enum InstantPageListItem: Equatable {
+    case unknown
+    case text(RichText, String?, Bool?)
+    case blocks([InstantPageBlock], String?, Bool?)
+}
+public struct InstantPage {
+    let blocks: [InstantPageBlock]
+    let views: Int32?
+    init(blocks: [InstantPageBlock], media: [Int: Int], isComplete: Bool, rtl: Bool, url: String, views: Int32?) {
+        self.blocks = blocks
+        self.views = views
+    }
+}
+public protocol MessageAttribute {}
+public protocol Media {}
+public struct RichTextMessageAttribute: MessageAttribute { let instantPage: InstantPage; let fullInstantPage: InstantPage? }
+public struct TextEntitiesMessageAttribute: MessageAttribute { let entities: [MessageTextEntity] }
+public struct AudioTranscriptionMessageAttribute: MessageAttribute { let id: Int64; let text: String; let isPending: Bool; let didRate: Bool; let error: Int? }
+public struct TranslationMessageAttribute: MessageAttribute { let text: String; let entities: [MessageTextEntity]; let toLang: String }
+public struct TelegramMediaPoll: Media {
+    struct Option { let text: String }
+    struct Results { let solution: Option? }
+    let text: String
+    let options: [Option]
+    let results: Results
+}
+public struct TelegramMediaImage: Media {
+    init(imageId: MediaId, representations: [Int], immediateThumbnailData: Data?, reference: Int?, partialReference: Int?, flags: [Int]) {}
+}
+public struct Author { let id: PeerId }
+public struct Message: Equatable {
+    public let id: MessageId
+    let stableVersion: UInt32
+    let author: Author? = nil
+    let text: String
+    let incoming: Bool
+    let attributes: [MessageAttribute]
+    let media: [Media]
+    var textEntitiesAttribute: TextEntitiesMessageAttribute? { attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.first }
+    var audioTranscription: AudioTranscriptionMessageAttribute? { attributes.compactMap { $0 as? AudioTranscriptionMessageAttribute }.first }
+    func effectivelyIncoming(_ accountPeerId: PeerId) -> Bool { incoming }
+    func hasTranslationAttribute(toLang: String) -> Bool { attributes.compactMap { $0 as? TranslationMessageAttribute }.contains { $0.toLang == toLang } }
+    public static func == (lhs: Message, rhs: Message) -> Bool { lhs.id == rhs.id && lhs.stableVersion == rhs.stableVersion }
+}
+public enum TranslationTone { case neutral }
+public enum Translate {
+    static func normalizeLanguageCode(_ code: String) -> String {
+        let base = code.components(separatedBy: "-").first ?? code
+        return base == "nb" ? "no" : base
+    }
+}
+
+__RICH_TEXT__
+
+__PAGE_BLOCKS__

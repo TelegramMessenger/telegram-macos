@@ -1,0 +1,96 @@
+import XCTest
+
+struct PinSnapshot {
+    let messageId: Int
+    let message: PinMessage?
+    let isLatest: Bool
+    let index: Int
+    let totalCount: Int
+}
+struct PinMessage {
+    let stableVersion: UInt32
+}
+final class PinAnimationFixture {
+    var pinnedMessage: PinSnapshot?
+    var translate: ChatLiveTranslateContext.State.Result?
+
+    func update(_ pinnedMessage: PinSnapshot, translate: ChatLiveTranslateContext.State.Result?, animated: Bool) -> (rebuild: Bool, animate: Bool) {
+        __ANIMATION_DECISION__
+        let rebuild = __REBUILD_DECISION__
+        self.pinnedMessage = pinnedMessage
+        self.translate = translate
+        return (rebuild, animated)
+    }
+}
+
+final class PinnedAnimationTests: XCTestCase {
+    private func pin(_ id: Int = 1, version: UInt32 = 0, latest: Bool = false, index: Int = 0, count: Int = 3) -> PinSnapshot {
+        PinSnapshot(messageId: id, message: PinMessage(stableVersion: version), isLatest: latest, index: index, totalCount: count)
+    }
+
+    func testNonLatestPinReactionRefreshRebuildsWithoutSlide() {
+        for result: ChatLiveTranslateContext.State.Result? in [nil, .loading(toLang: "en"), .complete(toLang: "en")] {
+            let fixture = PinAnimationFixture()
+            _ = fixture.update(pin(), translate: result, animated: false)
+            let update = fixture.update(pin(version: 1), translate: result, animated: true)
+            XCTAssertTrue(update.rebuild)
+            XCTAssertFalse(update.animate)
+        }
+    }
+
+    func testNonLatestPinEditRefreshDoesNotReplayTransition() {
+        let fixture = PinAnimationFixture()
+        _ = fixture.update(pin(version: 3), translate: .complete(toLang: "en"), animated: false)
+        let update = fixture.update(pin(version: 4), translate: .complete(toLang: "en"), animated: true)
+        XCTAssertTrue(update.rebuild)
+        XCTAssertFalse(update.animate)
+    }
+
+    func testSamePinCountIndexAndLatestChangesDoNotSlide() {
+        let fixture = PinAnimationFixture()
+        _ = fixture.update(pin(latest: true), translate: nil, animated: false)
+        for current in [pin(latest: false, index: 1, count: 4), pin(version: 1, latest: true, index: 3, count: 4)] {
+            XCTAssertFalse(fixture.update(current, translate: nil, animated: true).animate)
+        }
+    }
+
+    func testSelectingAnotherPinRetainsTransition() {
+        let fixture = PinAnimationFixture()
+        _ = fixture.update(pin(3, latest: true), translate: nil, animated: false)
+        let previous = fixture.update(pin(2), translate: nil, animated: true)
+        XCTAssertTrue(previous.rebuild)
+        XCTAssertTrue(previous.animate)
+        let older = fixture.update(pin(1), translate: nil, animated: true)
+        XCTAssertTrue(older.rebuild)
+        XCTAssertTrue(older.animate)
+        let latest = fixture.update(pin(3, latest: true), translate: nil, animated: true)
+        XCTAssertTrue(latest.rebuild)
+        XCTAssertTrue(latest.animate)
+    }
+
+    func testInitialDisplayAndDisabledAnimationStayImmediate() {
+        let fixture = PinAnimationFixture()
+        let first = fixture.update(pin(), translate: nil, animated: true)
+        XCTAssertTrue(first.rebuild)
+        XCTAssertFalse(first.animate)
+        let second = fixture.update(pin(2), translate: nil, animated: false)
+        XCTAssertTrue(second.rebuild)
+        XCTAssertFalse(second.animate)
+    }
+
+    func testTranslationUpdateRebuildsWithoutPinTransition() {
+        let fixture = PinAnimationFixture()
+        _ = fixture.update(pin(), translate: .loading(toLang: "en"), animated: false)
+        let update = fixture.update(pin(version: 1), translate: .complete(toLang: "en"), animated: true)
+        XCTAssertTrue(update.rebuild)
+        XCTAssertFalse(update.animate)
+    }
+
+    func testUnchangedPinDoesNotRebuildOrAnimate() {
+        let fixture = PinAnimationFixture()
+        _ = fixture.update(pin(), translate: nil, animated: false)
+        let update = fixture.update(pin(), translate: nil, animated: true)
+        XCTAssertFalse(update.rebuild)
+        XCTAssertFalse(update.animate)
+    }
+}
