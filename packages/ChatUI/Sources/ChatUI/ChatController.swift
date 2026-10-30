@@ -7684,7 +7684,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
                 
                 items.append(ContextMenuItem(isMuted ? strings().chatListContextUnmute : strings().chatListContextMute, handler: {
-                    _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    if isMuted, threadData.notificationSettings.muteState == .default {
+                        _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).startStandalone()
+                    } else {
+                        _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    }
                 }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
         
                 
@@ -7731,7 +7735,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                
                 
                 items.append(ContextMenuItem(isMuted ? strings().chatListContextUnmute : strings().chatListContextMute, handler: {
-                    _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    if isMuted, item.threadData?.notificationSettings.muteState == .default {
+                        _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).startStandalone()
+                    } else {
+                        _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    }
                 }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
         
                 items.append(ContextSeparatorItem())
