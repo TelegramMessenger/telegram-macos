@@ -430,6 +430,7 @@ private final class WalletCollectibleTileView: View {
         mediaView.layer?.cornerCurve = .continuous
         lottieView.isEventLess = true
         lottieView.isHidden = true
+        lottieView.isAccessibilityDecorative = true
 
         mediaView.addSubview(imageView)
         mediaView.addSubview(lottieView)
@@ -437,13 +438,16 @@ private final class WalletCollectibleTileView: View {
 
         cellView.isEventLess = true
         cellView.isHidden = true
+        cellView.isAccessibilityDecorative = true
         cellView.layer?.masksToBounds = true
         cellView.layer?.cornerCurve = .continuous
         addSubview(cellView)
         modelView.isEventLess = true
+        modelView.isAccessibilityDecorative = true
         addSubview(modelView)
 
         peeledView.isEventLess = true
+        peeledView.isAccessibilityDecorative = true
         peeledView.layer?.masksToBounds = true
         peeledView.layer?.cornerCurve = .continuous
         peeledView.layer?.opacity = 0
@@ -452,6 +456,8 @@ private final class WalletCollectibleTileView: View {
         ribbonView.isEventLess = true
         ribbonTextView.isEventLess = true
         ribbonNumberView.isEventLess = true
+        ribbonView.isAccessibilityDecorative = true
+        ribbonNumberView.isAccessibilityDecorative = true
         ribbonView.isHidden = true
         ribbonTextMask.contentsGravity = .resize
         ribbonTextView.layer?.mask = ribbonTextMask

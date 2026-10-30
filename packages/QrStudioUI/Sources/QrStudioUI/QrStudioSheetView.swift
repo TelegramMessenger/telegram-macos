@@ -2,6 +2,7 @@ import Foundation
 import Cocoa
 import TGUIKit
 import ColorPalette
+import Localization
 
 func qrStudioSheetPalette(isDark: Bool) -> ColorPalette {
     return isDark ? darkPalette : dayClassicPalette
@@ -42,8 +43,17 @@ private final class QrStudioSheetIconButton: Control {
         super.init(frame: .zero)
         self.scaleOnClick = true
         self.iconView.isEventLess = true
+        self.iconView.isAccessibilityDecorative = true
         self.iconView.contentGravity = .center
         self.addSubview(self.iconView)
+        switch kind {
+        case .color:
+            self.setAccessibilityLabel(strings().voiceOverCommonColor)
+        case .emoji:
+            self.setAccessibilityLabel(strings().voiceOverCommonEmoji)
+        case .gift:
+            self.setAccessibilityLabel(strings().voiceOverCommonGift)
+        }
     }
 
     required init(frame frameRect: NSRect) {

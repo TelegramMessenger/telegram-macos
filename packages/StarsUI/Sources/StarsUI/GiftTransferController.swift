@@ -83,6 +83,7 @@ private final class GiftTransferDestinationRowView: GeneralContainableRowView {
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         iconView.isEventLess = true
+        iconView.isAccessibilityDecorative = true
         titleView.userInteractionEnabled = false
         titleView.isSelectable = false
         subtitleView.userInteractionEnabled = false

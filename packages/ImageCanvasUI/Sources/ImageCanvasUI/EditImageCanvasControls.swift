@@ -156,9 +156,10 @@ func applyGlass(_ button: ImageButton) {
     button.setGlassEffect(forceAppearance: .forceDark)
 }
 
-func makeGlassIconButton(_ image: CGImage) -> ImageButton {
+func makeGlassIconButton(_ image: CGImage, label: String) -> ImageButton {
     let button = ImageButton()
     button.set(image: image, for: .Normal)
+    button.setAccessibilityLabel(label)
     applyGlass(button)
     _ = button.sizeToFit(.zero, NSMakeSize(40, 40), thatFit: true)
     return button
@@ -199,8 +200,8 @@ final class EditImageCanvasTopBar: View {
 
     required init(frame frameRect: NSRect) {
         let undoImage = NSImage(resource: .iconEditImageUndo)
-        self.undo = makeGlassIconButton(undoImage.precomposed(.white))
-        self.redo = makeGlassIconButton(undoImage.precomposed(.white, flipHorizontal: true))
+        self.undo = makeGlassIconButton(undoImage.precomposed(.white), label: strings().voiceOverCommonUndo)
+        self.redo = makeGlassIconButton(undoImage.precomposed(.white, flipHorizontal: true), label: strings().voiceOverCommonRedo)
         self.clearAll = makeGlassTextButton(strings().editImageCanvasControlsClearAll)
         self.cancelText = makeGlassTextButton(strings().modalCancel)
         self.doneText = makeGlassTextButton(strings().navigationDone, color: nightAccentPalette.accent)
@@ -284,7 +285,16 @@ final class EditImageCanvasTopBar: View {
             centerButtons.append(drawTypeButton(drawType))
             centerButtons.append(flipButton())
         case let .vector(type):
-            let button = makeGlassIconButton(EditImageCanvasGlyph.vector(type))
+            let label: String
+            switch type.next {
+            case .oneSidedArrow:
+                label = "Switch to One-Sided Arrow" //TODOLANG
+            case .twoSidedArrow:
+                label = "Switch to Two-Sided Arrow" //TODOLANG
+            case .line:
+                label = "Switch to Line" //TODOLANG
+            }
+            let button = makeGlassIconButton(EditImageCanvasGlyph.vector(type), label: label)
             button.set(handler: { [weak self] _ in
                 self?.arguments?.cycleVectorType()
             }, for: .Click)
@@ -306,7 +316,8 @@ final class EditImageCanvasTopBar: View {
 
     private func drawTypeButton(_ drawType: EditImageCanvasEntity.DrawType) -> Control {
         let image = drawType == .fill ? NSImage(resource: .iconEditImageShapeFill) : NSImage(resource: .iconEditImageShapeStroke)
-        let button = makeGlassIconButton(image.precomposed(.white))
+        let label = drawType == .fill ? "Switch to Outline" : "Switch to Fill" //TODOLANG
+        let button = makeGlassIconButton(image.precomposed(.white), label: label)
         button.set(handler: { [weak self] _ in
             self?.arguments?.toggleDrawType()
         }, for: .Click)
@@ -314,7 +325,7 @@ final class EditImageCanvasTopBar: View {
     }
 
     private func flipButton() -> Control {
-        let button = makeGlassIconButton(NSImage(resource: .iconEditImageEntityFlip).precomposed(.white))
+        let button = makeGlassIconButton(NSImage(resource: .iconEditImageEntityFlip).precomposed(.white), label: strings().voiceOverCommonFlip)
         button.set(handler: { [weak self] _ in
             self?.arguments?.flip()
         }, for: .Click)
@@ -651,6 +662,8 @@ final class EditImageCanvasTextSettingsRow: View {
             button.scaleOnClick = true
             addSubview(button)
         }
+        style.setAccessibilityLabel("Text Style") //TODOLANG
+        alignment.setAccessibilityLabel("Text Alignment") //TODOLANG
         font.autohighlight = false
         font.scaleOnClick = true
         font.set(color: .white, for: .Normal)
@@ -866,6 +879,7 @@ final class EditImageCanvasColorRow: View {
             swatch.set(handler: { [weak self] _ in
                 self?.arguments?.selectColor(color, true)
             }, for: .Click)
+            swatch.setAccessibilityLabel("\(strings().voiceOverCommonColor) #\(color.hexString)")
             swatches.append(swatch)
             addSubview(swatch)
         }
@@ -875,6 +889,7 @@ final class EditImageCanvasColorRow: View {
         plus.set(background: NSColor.white.withAlphaComponent(0.15), for: .Normal)
         plus.layer?.cornerRadius = 12
         addSubview(plus)
+        plus.setAccessibilityLabel(strings().voiceOverCommonAdd)
         plus.set(handler: { [weak self] control in
             self?.arguments?.plus(control)
         }, for: .Click)
@@ -952,12 +967,14 @@ final class EditImageCanvasModeRow: View {
         cancel.set(image: EditImageCanvasGlyph.close(), for: .Normal)
         cancel.set(background: NSColor.white.withAlphaComponent(0.15), for: .Normal)
         cancel.layer?.cornerRadius = 20
+        cancel.setAccessibilityLabel(strings().voiceOverCommonCancel)
 
         done.autohighlight = false
         done.scaleOnClick = true
         done.set(image: EditImageCanvasGlyph.check(), for: .Normal)
         done.set(background: nightAccentPalette.accent, for: .Normal)
         done.layer?.cornerRadius = 20
+        done.setAccessibilityLabel(strings().voiceOverCommonDone)
 
         pill.backgroundColor = NSColor.white.withAlphaComponent(0.15)
         pill.layer?.cornerRadius = 20

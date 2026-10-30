@@ -533,6 +533,7 @@ public class ChatDateStickView : TableStickView {
                 countLocation = location
             }
             textView.update(item.layout)
+            containerView.setAccessibilityLabel(item.layout.attributedString.string)
         }
         super.set(item: item, animated: animated)
         self.updateLayout(size: self.frame.size, transition: .immediate)

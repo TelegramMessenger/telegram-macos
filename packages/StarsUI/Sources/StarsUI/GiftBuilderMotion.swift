@@ -189,6 +189,7 @@ final class GiftBuilderButton: Control {
         addSubview(glass)
         addSubview(icon)
         icon.isEventLess = true
+        icon.isAccessibilityDecorative = true
         icon.contentGravity = .resizeAspect
         interactiveGlassView = glass
     }

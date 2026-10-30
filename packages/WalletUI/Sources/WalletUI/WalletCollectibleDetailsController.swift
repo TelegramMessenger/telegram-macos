@@ -278,6 +278,9 @@ private final class WalletCollectibleHeroRowView: TableRowView {
         super.init(frame: frameRect)
         compositionView.isEventLess = true
         giftView.isEventLess = true
+        compositionView.isAccessibilityDecorative = true
+        giftView.isAccessibilityDecorative = true
+        giftControl.isAccessibilityDecorative = true
         addSubview(compositionView)
         placeholderView.layer?.cornerRadius = 16
         lottieView.layer?.cornerRadius = 16

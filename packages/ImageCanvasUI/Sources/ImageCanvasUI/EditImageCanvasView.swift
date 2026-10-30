@@ -1,6 +1,7 @@
 import Cocoa
 import TGUIKit
 import ColorPalette
+import Localization
 
 final class EditImageCanvasInteraction {
     let state: () -> EditImageCanvasState
@@ -428,6 +429,7 @@ final class EditImageCanvasArea: View {
         layer?.masksToBounds = true
         imageView.image = image
         imageView.background = .white
+        imageView.setAccessibilityLabel(strings().voiceOverCommonPhoto)
         contentView.addSubview(imageView)
         contentView.addSubview(drawView)
         contentView.addSubview(entitiesView)
@@ -548,6 +550,7 @@ final class EditImageCanvasArea: View {
     private func startEditor(entity: EditImageCanvasEntity, text: EditImageCanvasEntity.Text) {
         let overlay = Control(frame: bounds)
         overlay.backgroundColor = NSColor.black.withAlphaComponent(0.4)
+        overlay.isAccessibilityDecorative = true
         overlay.set(handler: { [weak self] _ in
             self?.interaction?.endTextEditing(true)
         }, for: .Down)
@@ -1249,6 +1252,7 @@ final class EditImageCanvasView: View {
         hideColorPicker()
         let overlay = Control(frame: bounds)
         overlay.backgroundColor = NSColor.black.withAlphaComponent(0.25)
+        overlay.isAccessibilityDecorative = true
         overlay.set(handler: { [weak self] _ in
             self?.hideColorPicker()
         }, for: .Click)

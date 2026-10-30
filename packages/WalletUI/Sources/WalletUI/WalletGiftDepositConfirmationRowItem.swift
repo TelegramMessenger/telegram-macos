@@ -73,6 +73,10 @@ final class WalletGiftDepositConfirmationRowItem: GeneralRowItem {
 
     override var height: CGFloat { feeLayout == nil ? pathY + 24 : feeY + 16 }
 
+    override var accessibilityLabel: String? {
+        return textLayout.attributedString.string
+    }
+
     override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
         _ = super.makeSize(width, oldWidth: oldWidth)
         textLayout.measure(width: width - 40)
