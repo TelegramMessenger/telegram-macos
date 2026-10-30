@@ -308,10 +308,16 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
 
         let selected = self.interactions.presentation.inputText.attributedSubstring(from: textRange)
         let selectedText = selected.string
+        let selectedEntities = ChatTextInputState(attributedText: selected, selectionRange: 0 ..< 0).messageTextEntities().filter { entity in
+            if case .FormattedDate = entity.type {
+                return false
+            }
+            return true
+        }
 
         let language = Translate.detectLanguage(for: selectedText)
 
-        InputTextViewHooks.shared.showTranslateObserved(context, window, language, selectedText, onUse: { [weak self] translated in
+        InputTextViewHooks.shared.showTranslateObserved(context, window, language, selectedText, selectedEntities, onUse: { [weak self] translated in
             guard let self else { return }
             self.interactions.update { current in
                 return chatTextInputReplaceSelectedText(current, selectionRange: textRange.min..<textRange.max, text: translated)
