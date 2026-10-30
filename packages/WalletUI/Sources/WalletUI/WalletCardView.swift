@@ -520,6 +520,8 @@ public final class WalletCardView: View {
     private var hiddenStickers: Set<String> = []
     private var stickerLayers: [String: WalletCardStickerLayer] = [:]
     private var stickerPlayers: [String: InlineStickerItemLayer] = [:]
+    private var stickerOutlineBusy: Set<String> = []
+    private var stickerOutlinePending: [String: CGImage] = [:]
     private var stickerGrow: [String: CGFloat] = [:]
     private var isStickerInteraction = false
     var stickerTracking: ((String, NSEvent) -> Bool)?
@@ -532,6 +534,7 @@ public final class WalletCardView: View {
     var stickerSelectionCleared: (() -> Void)?
     var stickerGesture: ((NSEvent) -> Bool)?
     var stickerAvailabilityChanged: (() -> Void)?
+    var stickerDragAllowed: (() -> Bool)?
     private var giftStyle: WalletContext.CardGiftStyle?
     private var styleWaveHit = false
     private var accentColor: NSColor = walletCardSecondaryColor
@@ -696,6 +699,9 @@ public final class WalletCardView: View {
             startTiltEngine()
         } else {
             tiltAnimator?.isPaused = true
+            for id in Array(stickerPlayers.keys) {
+                stopSticker(id)
+            }
         }
         updateSurfaceClock()
     }
@@ -1624,17 +1630,12 @@ extension WalletCardView {
         let size = file.dimensions?.size.aspectFitted(NSMakeSize(box, box)) ?? NSMakeSize(box, box)
         let player = InlineStickerItemLayer(account: account, file: file, size: size, playPolicy: .onceEnd, ignorePreview: true)
         player.frame = CGRect(x: (layer.bounds.width - size.width) / 2, y: (layer.bounds.height - size.height) / 2, width: size.width, height: size.height)
-        player.opacity = player.isContentLoaded ? 1 : 0
-        if player.isContentLoaded {
-            layer.contents = WalletCollectableImages.base(id)
-        }
-        player.contentDidUpdate = { [weak self, weak layer, weak player] _ in
-            guard let self, let layer, let player, self.stickerPlayers[id] === player else {
+        player.opacity = 0
+        player.contentDidUpdate = { [weak self, weak player] frame in
+            guard let self, let player, self.stickerPlayers[id] === player else {
                 return
             }
-            player.contentDidUpdate = nil
-            player.opacity = 1
-            layer.contents = WalletCollectableImages.base(id)
+            self.updateStickerOutline(id, player: player, frame: frame)
         }
         player.triggerOnState = (.finished, { [weak self, weak player] _ in
             guard let self, let player, self.stickerPlayers[id] === player else {
@@ -1643,15 +1644,52 @@ extension WalletCardView {
             self.stopSticker(id)
         })
         stickerPlayers[id] = player
+        layer.setAnimating(true)
+        player.superview = self
         layer.addSublayer(player)
         player.isPlayable = true
         setStickerGrow(id, grow, duration: 0.22)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self, weak player] in
+            guard let self, let player, self.stickerPlayers[id] === player else {
+                return
+            }
+            self.stopSticker(id)
+        }
+    }
+
+    private func updateStickerOutline(_ id: String, player: InlineStickerItemLayer, frame: CGImage) {
+        if stickerOutlineBusy.contains(id) {
+            stickerOutlinePending[id] = frame
+            return
+        }
+        stickerOutlineBusy.insert(id)
+        DispatchQueue.global(qos: .userInteractive).async { [weak self, weak player] in
+            let image = WalletCollectableImages.animatedSticker(frame: frame, side: WalletCollectibleArtworks.artSide)
+            DispatchQueue.main.async {
+                guard let self else {
+                    return
+                }
+                self.stickerOutlineBusy.remove(id)
+                guard let player, self.stickerPlayers[id] === player else {
+                    self.stickerOutlinePending[id] = nil
+                    return
+                }
+                if let image {
+                    self.stickerLayers[id]?.contents = image
+                }
+                if let next = self.stickerOutlinePending.removeValue(forKey: id) {
+                    self.updateStickerOutline(id, player: player, frame: next)
+                }
+            }
+        }
     }
 
     private func stopSticker(_ id: String) {
         guard let player = stickerPlayers.removeValue(forKey: id) else {
             return
         }
+        stickerOutlinePending[id] = nil
+        stickerLayers[id]?.setAnimating(false)
         player.contentDidUpdate = nil
         player.removeFromSuperlayer()
         stickerLayers[id]?.contents = WalletCollectableImages.sticker(id)
@@ -1740,6 +1778,7 @@ extension WalletCardView {
 
     fileprivate func updateStickerCursor(at point: NSPoint?, force: Bool = false) {
         let hit = acceptsStickers ? point.flatMap { stickerSelectionHit(at: $0) ?? (sticker(at: $0) != nil ? .body : nil) } : nil
+        let isDraggable = stickerDragAllowed?() ?? true
         guard hit != stickerCursor || force else {
             return
         }
@@ -1749,7 +1788,11 @@ extension WalletCardView {
         case .some(.handle):
             NSCursor.crosshair.set()
         case .some(.body):
-            NSCursor.openHand.set()
+            if isDraggable {
+                NSCursor.openHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
         case .none:
             if previous != nil || force {
                 NSCursor.arrow.set()
