@@ -4275,6 +4275,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     let _ = previousMaxIncomingMessageIdByNamespace.swap([:])
                     return
                 }
+                if let cachedData = (view as? PeerView)?.cachedData as? CachedUserData, cachedData.peerStatusSettings?.flags.contains(.canReport) == true {
+                    return
+                }
                 if canRead && !hasModals(context.window) {
                     var apply = false
                     let _ = previousMaxIncomingMessageIdByNamespace.modify { dict in
