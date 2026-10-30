@@ -1,0 +1,17 @@
+FAIL: comment link opens channel
+FAIL: opens chat rather than profile
+FAIL: focuses source post
+FAIL: resolved source wins over comment origin
+FAIL: thread source wins over navigation origin
+FAIL: channel origin works before source cache
+FAIL: same-source channel is reused
+FAIL: reuse focuses the original post
+FAIL: same-source channel is reused
+FAIL: reuse focuses the original post
+FAIL: recording requests navigation confirmation
+FAIL: confirmed recording exit reuses channel
+FAIL: recording requests navigation confirmation
+FAIL: confirmed recording exit reuses channel
+FAIL: title reuse resumes once navigation unlocks
+FAIL: title reuse resumes once navigation unlocks
+28/44 discussion navigation checks passed

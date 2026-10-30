@@ -401,6 +401,8 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
                         }
                     }
                 }
+            } else if let source = chatDiscussionSourceMessageId(mode: chatInteraction.mode, location: chatInteraction.chatLocation) {
+                openChatDiscussionSource(source, interaction: chatInteraction)
             } else if chatInteraction.presentation.isTopicMode {
                 chatInteraction.openInfo(chatInteraction.peerId, false, nil, nil)
             } else if chatInteraction.mode.isSavedMessagesThread, let threadId = chatInteraction.chatLocation.threadId {
