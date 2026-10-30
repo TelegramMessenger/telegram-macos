@@ -8401,7 +8401,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         
         
-        let savedChatsAsTopics = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.DisplaySavedChatsAsTopics())
+        let savedChatsAsTopics: Signal<Bool, NoError> = self.chatLocation.peerId == context.peerId ? context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.DisplaySavedChatsAsTopics()) : .single(false)
        
         let managingBot = peerView.get() |> map { (($0 as? PeerView)?.cachedData as? CachedUserData)?.peerStatusSettings?.managingBot }
         
@@ -10049,8 +10049,13 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }, itemImage: !displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
 
                 items.append(ContextMenuItem(strings().chatSavedMessagesViewAsChats, handler: { [weak self] in
+                    if displaySavedChatsAsTopics {
+                        return
+                    }
                     context.engine.peers.updateSavedMessagesViewAsTopics(value: true)
-                    self?.navigationController?.back()
+                    if chatLocation.threadId == nil {
+                        self?.navigationController?.back()
+                    }
                     ChatUIHooks.shared.openForum(context.peerId, true, context)
                 }, itemImage: displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
 

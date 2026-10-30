@@ -221,7 +221,7 @@ public class ChatListRowItem: TableRowItem {
     }
     
     public var isForum: Bool {
-        if let peer = peer, TelegramUtilsHooks.shared.peerIsForum(peer) && !peer.displayForumAsTabs(splitState: context.layout) {
+        if !mode.savedMessages, let peer = peer, TelegramUtilsHooks.shared.peerIsForum(peer) && !peer.displayForumAsTabs(splitState: context.layout) {
             return true
         }
         return false
@@ -2041,10 +2041,19 @@ public class ChatListRowItem: TableRowItem {
                 if peerId == context.peerId, case .chat = mode {
                     zeroGroup.append(ContextMenuItem(strings().chatSavedMessagesViewAsMessages, handler: {
                         context.engine.peers.updateSavedMessagesViewAsTopics(value: false)
+                        if context.layout != .minimisize, let controller = context.bindings.rootNavigation().controller as? ChatListChatController, controller.chatLocation.peerId == context.peerId, controller.chatLocation.threadId != nil, controller.chatInteraction.mode.isSavedMessagesThread {
+                            ChatUIHooks.shared.navigateToChat(context.bindings.rootNavigation(), context, .peer(context.peerId))
+                        }
                     }, itemImage: !displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
                     
                     zeroGroup.append(ContextMenuItem(strings().chatSavedMessagesViewAsChats, handler: {
                         context.engine.peers.updateSavedMessagesViewAsTopics(value: true)
+                        if !displaySavedChatsAsTopics, context.layout != .minimisize, let controller = context.bindings.rootNavigation().controller as? ChatListChatController, controller.chatLocation.peerId == context.peerId, controller.chatInteraction.mode == .history || controller.chatInteraction.mode.isSavedMessagesThread {
+                            if controller.chatLocation.threadId == nil {
+                                context.bindings.rootNavigation().back()
+                            }
+                            ForumUI.open(context.peerId, addition: false, context: context)
+                        }
                     }, itemImage: displaySavedChatsAsTopics ? MenuAnimation.menu_check_selected.value : nil))
                 }
 
