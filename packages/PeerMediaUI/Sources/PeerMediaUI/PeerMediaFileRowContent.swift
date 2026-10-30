@@ -23,6 +23,7 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
     public private(set) var nameLayout:TextViewLayout
     public private(set) var actionLayout:TextViewLayout
     public private(set) var actionLayoutLocal:TextViewLayout
+    public let isCopyProtected: Bool
     public private(set) var iconArguments:TransformImageArguments?
     public private(set) var icon:TelegramMediaImage?
     public private(set) var docIcon:CGImage?
@@ -36,6 +37,7 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
         let message = object.message!
         let file = message.file!
         self.file = file
+        self.isCopyProtected = message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: interface.presentation.cachedData) == true
         
         nameLayout = TextViewLayout(.initialize(string: file.fileName ?? "Unknown", color: theme.colors.text, font: .medium(.text)), maximumNumberOfLines: 1, truncationType: .end)
         
@@ -332,7 +334,8 @@ public class PeerMediaFileRowView : PeerMediaRowView {
             let animated:Atomic<Bool> = Atomic(value:false)
             
             if let updatedStatusSignal = updatedStatusSignal {
-                self.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).start(next: { [weak self] status in
+                let copyProtected = isMessageCopyProtected(item.message.id, postbox: item.interface.interactionContext.account.postbox)
+                self.statusDisposable.set((combineLatest(updatedStatusSignal, copyProtected) |> deliverOnMainQueue).start(next: { [weak self] status, isCopyProtected in
                     if let strongSelf = self {
                         strongSelf.fetchStatus = status
                         if case .Local = status {
@@ -394,7 +397,7 @@ public class PeerMediaFileRowView : PeerMediaRowView {
                         switch status {
                         case .Local:
                             deinitDownloadControls()
-                            strongSelf.actionView.update(item.actionLayoutLocal)
+                            strongSelf.actionView.update(item.isCopyProtected || isCopyProtected ? item.actionLayout : item.actionLayoutLocal)
                         case .Remote, .Paused:
                             deinitProgressControl()
                             initStatusControlIfNeeded()

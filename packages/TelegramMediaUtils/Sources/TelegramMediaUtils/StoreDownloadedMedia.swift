@@ -5,6 +5,34 @@ import Postbox
 import FetchManager
 import InAppSettings
 
+public func isMessageCopyProtected(_ message: Message?, postbox: Postbox) -> Signal<Bool, NoError> {
+    if let message, message.isCopyProtected() {
+        return .single(true)
+    }
+    return isMessageCopyProtected(message?.id, postbox: postbox)
+}
+
+public func isMessageCopyProtected(_ id: MessageId?, postbox: Postbox) -> Signal<Bool, NoError> {
+    guard let id else {
+        return .single(false)
+    }
+    return postbox.transaction { transaction -> Bool in
+        if let message = transaction.getMessage(id) {
+            if message.isCopyProtected() {
+                return true
+            }
+        } else if let channel = transaction.getPeer(id.peerId) as? TelegramChannel, channel.flags.contains(.copyProtectionEnabled) {
+            return true
+        } else if let group = transaction.getPeer(id.peerId) as? TelegramGroup, group.flags.contains(.copyProtectionEnabled) {
+            return true
+        }
+        if let cachedData = transaction.getPeerCachedData(peerId: id.peerId) as? CachedUserData {
+            return cachedData.flags.contains(.copyProtectionEnabled) || cachedData.flags.contains(.myCopyProtectionEnabled)
+        }
+        return false
+    }
+}
+
 private final class DownloadedMediaStoreContext {
     private let queue: Queue
     private var disposable: Disposable?
@@ -25,9 +53,13 @@ private final class DownloadedMediaStoreContext {
             resource = file.resource
         }
         if let resource = resource {
-            self.disposable = (storeSettings
-            |> map { storeSettings -> Bool in
-                return true
+            var messageId: MessageId?
+            if case let .message(message, _) = media {
+                messageId = message.id
+            }
+            self.disposable = (combineLatest(storeSettings, isMessageCopyProtected(messageId, postbox: postbox))
+            |> map { _, isCopyProtected -> Bool in
+                return !isCopyProtected
             }
             |> take(1)
             |> mapToSignal { store -> Signal<MediaResourceData, NoError> in
@@ -51,6 +83,8 @@ private final class DownloadedMediaStoreContext {
                 
                 storeAsset()
 
+                completed()
+            }, completed: {
                 completed()
             })
         } else {
