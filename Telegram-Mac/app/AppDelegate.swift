@@ -333,7 +333,9 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         let singleColumnThreshold: CGFloat = 650
         let chromeMode: Window.ChromeMode = window.frame.width < singleColumnThreshold ? .compact : .standard
         window.applyChrome(chromeMode)
+#if compiler(<6.4)
         window.applyCornerRadius(for: chromeMode)
+#endif
 
 //        window.styleMask.insert(.unifiedTitleAndToolbar)
         //window.styleMask.insert(.borderless)
