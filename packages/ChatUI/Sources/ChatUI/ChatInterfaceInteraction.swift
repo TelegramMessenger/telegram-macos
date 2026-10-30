@@ -498,30 +498,100 @@ public final class ChatInteraction : InterfaceObserver  {
     // composer (InstantPageV2) and sends as a `RichTextMessageAttribute`. nil when there is no rich draft.
     //
     // Backed by a process-global per-chat store so the draft survives the chat controller being torn down
-    // and reopened (the `ChatInteraction` is recreated each time). (Full cross-launch/cross-device sync —
-    // like iOS persisting it into the synchronizeable input state — is a follow-up.)
+    // and reopened (the `ChatInteraction` is recreated each time), and kept in the item cache like iOS so it
+    // survives a relaunch. (Cross-device sync is a follow-up.)
     private static let globalRichTextDrafts = ChatRichTextDraftStore<InstantPage>()
     private var richTextDraftKey: ChatRichTextDraftKey {
+        return richTextDraftKey(threadId: chatLocation.threadId)
+    }
+    private func richTextDraftKey(threadId: Int64?) -> ChatRichTextDraftKey {
         let isWelcome: Bool
         if case .welcomeMessages = mode.customChatContents?.kind {
             isWelcome = true
         } else {
             isWelcome = false
         }
-        return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: chatLocation.threadId, isWelcome: isWelcome)
+        return ChatRichTextDraftKey(accountId: context.account.id.int64, peerId: peerId.toInt64(), threadId: threadId, isWelcome: isWelcome, isCustomEditor: mode.customChatContents != nil || mode.customChatLink != nil)
     }
     private let richTextDraftPromise = ValuePromise<InstantPage?>(nil, ignoreRepeated: false)
+    private var persistentRichTextDraftId: EngineDataBuffer? {
+        return persistentRichTextDraftId(threadId: chatLocation.threadId)
+    }
+    private func persistentRichTextDraftId(threadId: Int64?) -> EngineDataBuffer? {
+        guard mode.customChatContents == nil, mode.customChatLink == nil else {
+            return nil
+        }
+        let id = EngineDataBuffer(length: 16)
+        id.setInt64(0, value: peerId.toInt64())
+        id.setInt64(8, value: threadId ?? 0)
+        return id
+    }
     public var richTextDraft: InstantPage? { ChatInteraction.globalRichTextDrafts.value(for: richTextDraftKey) }
     public var richTextDraftSignal: Signal<InstantPage?, NoError> { richTextDraftPromise.get() }
     public var flushRichTextDraft: (() -> Void)?
-    public func setRichTextDraft(_ page: InstantPage?) {
+    public var storePendingRichTextDraft: (() -> Void)?
+    public var storePendingRichTextEditorDraft: (() -> Void)?
+    private var unshownPersistentRichTextDraftKey: ChatRichTextDraftKey?
+    public func setRichTextDraft(_ page: InstantPage?, persist: Bool = true) {
         if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey) {
             invalidateDeferredSendActions()
         }
         richTextDraftPromise.set(page)
+        if persist, page != nil || unshownPersistentRichTextDraftKey != richTextDraftKey {
+            unshownPersistentRichTextDraftKey = nil
+            storePersistentRichTextDraft(page, threadId: chatLocation.threadId)
+        }
+    }
+    public func storeRichTextDraftSnapshot(_ page: InstantPage, threadId: Int64?) {
+        let key = richTextDraftKey(threadId: threadId)
+        guard ChatInteraction.globalRichTextDrafts.value(for: key) != nil, ChatInteraction.globalRichTextDrafts.set(page, for: key) else {
+            return
+        }
+        invalidateDeferredSendActions()
+        storePersistentRichTextDraft(page, threadId: threadId)
+    }
+    public func persistRichTextDraft(_ page: InstantPage?) {
+        guard unshownPersistentRichTextDraftKey != richTextDraftKey else {
+            return
+        }
+        storePersistentRichTextDraft(page, threadId: chatLocation.threadId)
     }
     public func reloadRichTextDraft() {
         richTextDraftPromise.set(richTextDraft)
+    }
+    public func loadPersistentRichTextDraft() {
+        guard richTextDraft == nil, let id = persistentRichTextDraftId else {
+            return
+        }
+        let key = richTextDraftKey
+        _ = (context.engine.data.get(TelegramEngine.EngineData.Item.ItemCache.Item(collectionId: ApplicationSpecificItemCacheCollectionId.richTextComposerDraft, id: id))
+        |> deliverOnMainQueue).start(next: { [weak self] entry in
+            guard let self, self.richTextDraftKey == key, let page = entry?.get(ChatRichTextDraftEntry.self)?.page else {
+                return
+            }
+            guard self.context.appConfiguration.isRichTextEditorEnabled, self.presentation.effectiveInput.inputText.isEmpty else {
+                self.unshownPersistentRichTextDraftKey = key
+                return
+            }
+            guard ChatInteraction.globalRichTextDrafts.value(for: key) == nil else {
+                return
+            }
+            self.unshownPersistentRichTextDraftKey = nil
+            if ChatInteraction.globalRichTextDrafts.set(page, for: key) {
+                self.invalidateDeferredSendActions()
+            }
+            self.richTextDraftPromise.set(page)
+        })
+    }
+    private func storePersistentRichTextDraft(_ page: InstantPage?, threadId: Int64?) {
+        guard let id = persistentRichTextDraftId(threadId: threadId) else {
+            return
+        }
+        if let page {
+            _ = context.engine.itemCache.put(collectionId: ApplicationSpecificItemCacheCollectionId.richTextComposerDraft, id: id, item: ChatRichTextDraftEntry(page: page)).start()
+        } else {
+            _ = context.engine.itemCache.remove(collectionId: ApplicationSpecificItemCacheCollectionId.richTextComposerDraft, id: id).start()
+        }
     }
 
     
@@ -1123,6 +1193,10 @@ public final class ChatInteraction : InterfaceObserver  {
     
     
     public func saveState(_ force:Bool = true, scrollState: ChatInterfaceHistoryScrollState? = nil, sync: Bool = false) {
+        if sync {
+            storePendingRichTextDraft?()
+            storePendingRichTextEditorDraft?()
+        }
         
         if mode.customChatContents != nil || mode.customChatLink != nil {
             return
