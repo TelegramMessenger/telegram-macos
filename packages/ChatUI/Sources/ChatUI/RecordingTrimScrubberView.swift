@@ -236,6 +236,7 @@ public final class RecordingTrimScrubberView: View {
     private let playPillGlass = LiquidGlassView(frame: NSZeroRect, cornerRadius: Metrics.pillHeight / 2, hasShadow: true, hasBorder: true, tintAlpha: 0.5)
     private let playIcon = ImageView()
     private let durationView = TextView()
+    private let videoPosition = View()
 
     private var duration: Double = 0
     private var trimRange: Range<Double> = 0 ..< 0
@@ -264,7 +265,7 @@ public final class RecordingTrimScrubberView: View {
 
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for view in [thumbnails, dimClip, selection, waveformView, seekArea, leftHandle, rightHandle, playPill] as [NSView] {
+        for view in [thumbnails, dimClip, selection, waveformView, videoPosition, seekArea, leftHandle, rightHandle, playPill] as [NSView] {
             addSubview(view)
         }
         dimClip.addSubview(dimLeft)
@@ -287,6 +288,9 @@ public final class RecordingTrimScrubberView: View {
         durationView.isSelectable = false
         durationView.userInteractionEnabled = false
         selection.isEventLess = true
+        videoPosition.isEventLess = true
+        videoPosition.backgroundColor = .white
+        videoPosition.layer?.cornerRadius = 1
         selection.layer?.masksToBounds = true
         rightHandle.isLeft = false
         playPill.layer?.masksToBounds = false
@@ -536,6 +540,8 @@ public final class RecordingTrimScrubberView: View {
         transition.updateFrame(view: dimRight, frame: CGRect(x: dimR, y: 0, width: max(0, size.width - dimR), height: size.height))
         transition.updateFrame(view: waveformView, frame: CGRect(x: Metrics.waveInset, y: 0, width: max(0, size.width - Metrics.waveInset * 2), height: size.height))
         let played = handleWidth + handleOriginX(for: position, width: size.width)
+        videoPosition.isHidden = !isVideo
+        transition.updateFrame(view: videoPosition, frame: CGRect(x: played - 1, y: 3, width: 2, height: max(0, size.height - 6)))
         waveformView.update(trimRange: left.maxX - Metrics.waveInset ..< right.minX - Metrics.waveInset, progressWidth: played - Metrics.waveInset)
         let gap = max(0, right.minX - left.maxX)
         transition.updateFrame(view: seekArea, frame: CGRect(x: left.maxX, y: 0, width: gap, height: size.height))
@@ -555,7 +561,7 @@ public final class RecordingTrimScrubberView: View {
         transition.updateFrame(view: playPillGlass, frame: frame.size.bounds)
         playPillGlass.cornerRadius = Metrics.pillHeight / 2
         playPillGlass.updateLayout(size: frame.size, transition: transition)
-        playPill.isHidden = isVideo || gap < Metrics.pillCollapsedWidth
+        playPill.isHidden = gap < Metrics.pillCollapsedWidth
         let iconY = snap((Metrics.pillHeight - icon.height) / 2)
         if collapsed {
             playIcon.frame = CGRect(x: snap((pillWidth - icon.width) / 2), y: iconY, width: icon.width, height: icon.height)

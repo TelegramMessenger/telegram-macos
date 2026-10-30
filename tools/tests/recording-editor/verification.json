@@ -1,0 +1,379 @@
+{
+  "latest_verification": {
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "code_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+    "native_cases_passed": 29,
+    "full_debug_build": "PASS",
+    "manual_send_after_limit": "PASS, direct account-owner confirmation",
+    "manual_resume_after_trim": "PASS, direct account-owner confirmation",
+    "details": "pause_finalization_and_real_resume_review"
+  },
+  "source_base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+  "environment": {
+    "macos": "27.0.1 (26A434)",
+    "hardware": "Apple M4 Pro, arm64",
+    "xcode": "27.1",
+    "swift": "6.4"
+  },
+  "independent_from_pr82": true,
+  "pr82_blur_helper_applied_during_native_checks": false,
+  "dictation_implementation_modified": false,
+  "native_tests": {
+    "passed": 15,
+    "failed": 0,
+    "log_sha256": "d4d87d466564b7a14b8f3966a24cf35271eaf3597e28b2f044ad618ceb6a50b4",
+    "coverage": [
+      "Both video grips receive pointer events",
+      "Both boundaries shrink and expand",
+      "Right grip above floating recorder controls",
+      "Pause control receives clicks",
+      "Video Play/Pause control visible",
+      "Seek before player readiness",
+      "Full-video playback and pause",
+      "Selected fragment stops and can replay",
+      "Pause cancels pending playback seek",
+      "Repeated resume cleans old layers",
+      "Modal suspension and duplicate confirmation protection",
+      "Repeated discard cannot resurrect overlay",
+      "Dismissal finishes without animation callback",
+      "Animation and fallback complete only once"
+    ]
+  },
+  "full_build": {
+    "result": "BUILD SUCCEEDED",
+    "base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "configuration": "Debug arm64",
+    "log_sha256": "afad268c1fdadb4296644a8f87a0c8f984784503d38fc63d0cfe83cfe4808ade",
+    "local_configuration": "Prepared Xcode 27 compatibility, isolated test bundle/profile; those build adjustments are excluded from the PR"
+  },
+  "signed_in_workflow": {
+    "status": "pass",
+    "source": "Direct user confirmation in chat",
+    "local_test_date": "2026-10-26 Europe/Moscow",
+    "confirmed_at": "2026-10-25T23:58:20.113088+00:00",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "base": "272d85dd7cc78864549b1d5510a177db79059fc7",
+    "tested_pr_heads": {
+      "82": "362ca9f6b1054d391c4c93fd8e5d729175ba75fc",
+      "92": "5add38a4115719fa52e854dbbf13597efa055d37"
+    },
+    "binary_sha256": "b2fb5697d43d5abe4f616c1457d1e79ee31e3fe7a4050364ebdb989e4eed5394",
+    "both_prs_applied": true,
+    "checks": [
+      "Existing account and chats present",
+      "Normal video preview and initial thumbnails",
+      "Both trim handles move inward and back",
+      "Click/drag seeking and playhead stay within selected trim range",
+      "Full and selected-fragment Play/Pause",
+      "Repeated editing, No/Discard confirmation, another recording"
+    ],
+    "latest_master_signed_in_retest": true,
+    "send_upload_export_tested": false
+  },
+  "source_sha256": {
+    "packages/ChatUI/Sources/ChatUI/ChatInputRecordingView.swift": "9a1ba43321efc64dc53add3310c30fed1871f3b00b4bd833ebd8210bbacee3a0",
+    "packages/ChatUI/Sources/ChatUI/ChatRecorderOverlayWindow.swift": "d758701e4d05c2cdf80159b8a6d8f1455fd633a7bee36893424aed78d8faf4b3",
+    "packages/ChatUI/Sources/ChatUI/RecordingTrimScrubberView.swift": "f286b84d8c8eaec6b40163f1ec36861eb217f96ab68a81d54a95beb8b02c482b",
+    "packages/ChatUI/Sources/ChatUI/RecordingDismissal.swift": "01c3af30383b07fce1f179e2ff5163eadc53842d0e6f2269eb082fd35d38a741",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalView.swift": "60a92288d36006b40eb3ea1ab5c3487d6f5e835ce17bd69eb1e2828d00d5a262",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalController.swift": "6f7fe8dcecd44b8253654005b1f4a18d8aab042478280bbc494a2ae6d309b0de",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoCameraStructures.swift": "a38ac8c3acbad31eb67dc64b8e7c6af26dc20e87d77d2d560ce001957625999c",
+    "packages/MediaRecorderUI/Sources/MediaRecorderUI/ChatRecordingState.swift": "8041c67afc5dc0bbd84cc40ff09c1e680fc46c4795c64c1f2b8e61b822fade84",
+    "packages/ChatUI/Tests/ChatUITests/RecordingTrimScrubberInteractionTests.swift": "0b377b0ac78f4e941f0754aef222145cba876ab49d3add849092e4ea3653f1f9",
+    "packages/ChatUI/Tests/ChatUITests/RecordingVideoPreviewTests.swift": "b6af6fcfd00cd1199471fcb1e415fa9912c32495b37634b2b6bddd741749f716",
+    "packages/ChatUI/Tests/ChatUITests/RecordingOverlayLifecycleTests.swift": "0fa2231f0c05ebd67747f435adc6a9948ea2e348066d9940ecc1cc7229d8711e"
+  },
+  "screenshots": {
+    "before": {
+      "sha256": "2b5eaa17de00853fa6b4408456281f35c67f2e3adb318aedfb8e6a234be523e0",
+      "capture_log_sha256": "b19a41003147b607b92391c05b2c9c06dbf52d57d3bd5470cbb1a6daf3e064c8"
+    },
+    "after": {
+      "sha256": "925e85b3466cc403c07ba740cb4326619d2d387a880217eebb135e2c6420cfc6",
+      "capture_log_sha256": "d6a64ccf5ab4b4e88549af8f72972cc86b0d2c2976db7a12952a8b2796a15101"
+    }
+  },
+  "screenshot_scope": "Native AppKit timeline fixture. Same generated placeholder, 10-second duration, 2-8 second selection and 4-second position. Only RecordingTrimScrubberView is switched to baseline source for before. Not screenshots of an authenticated client.",
+  "limits": [
+    "Earlier fixture and combined-client checks on master 272d85dd are preserved as historical evidence.",
+    "Ordinary and trimmed video sending were manually confirmed on master e1883098 plus earlier PR code 3749a4a8, before changing the duration-limit behavior.",
+    "The new limit-to-editor workflow has passing native controller tests and a full build; its manual full-client check passed, confirmed by the account owner.",
+    "Native fixtures do not establish end-to-end camera or message delivery behavior.",
+    "No app-wide performance improvement is claimed."
+  ],
+  "earlier_signed_in_workflow": {
+    "status": "pass",
+    "source": "Direct user confirmation",
+    "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+    "base": "cdf97a0e316521c72bd606bfb8002487d8fc842c",
+    "feature_source_hashes_match_this_patch": true,
+    "checks": [
+      "Both trim boundaries and seeking",
+      "Full and trimmed Play/Pause",
+      "Repeated editing with No twice, then Discard",
+      "New recording after discard"
+    ],
+    "confirmation": "Play/Pause works, dialogs close, another recording starts",
+    "latest_master_signed_in_retest": false
+  },
+  "combined_build": {
+    "result": "BUILD SUCCEEDED",
+    "signature_verified": true,
+    "native_tests": {
+      "passed": 15,
+      "failed": 0,
+      "log_sha256": "f5b784d71d97c77ad9439676805f85f581afc201f4ad83af9d392961b80ed9e0"
+    },
+    "build_log_sha256": "c8c0d4ef4a386071a0dc46fb448a7c7952a8b9d559ec8c4317399eaca8d3a3a6",
+    "performance_measurement": false
+  },
+  "client_screenshots": {
+    "client-playing.png": {
+      "sha256": "a71553922d5acd4aaefb41c047d203d86dbd364ffc88c88d60055073f31bd874",
+      "source": "User-provided screenshot of the full signed-in combined client",
+      "unaltered": true
+    },
+    "client-paused.png": {
+      "sha256": "9ea85de46e8d8cdcb35f91fa96fdf5784121d7c914418925dce9a51c576b2f3c",
+      "source": "User-provided screenshot of the full signed-in combined client",
+      "unaltered": true
+    }
+  },
+  "camera_shutdown_revalidation": {
+    "date": "2026-10-27",
+    "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+    "change": "Keep the pipeline status subscription after viewWillDisappear; disposal still occurs in deinit. Preview and countdown cleanup remain unchanged.",
+    "before": {
+      "regression_cases_failed": 3,
+      "existing_editor_cases_passed": 15,
+      "controller_sha256": "6f7fe8dcecd44b8253654005b1f4a18d8aab042478280bbc494a2ae6d309b0de",
+      "master": "e537320b28d79cecc1baf716bcbf822b02f93b7a"
+    },
+    "after": {
+      "cases_passed": 18,
+      "cases_failed": 0,
+      "controller_sha256": "0e3abd76cec0ba8f5343ecce56d3c55b09b4f24e35ddb0cb905107a3e8cf957e",
+      "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+      "final_test_log_sha256": "b21682a82fafb886bcc1fe1dc6a33f7e9ba63f4bf2fbc0678b5e692007b05c2b"
+    },
+    "test_method": "Current controller source compiled with capture/view probes. Physical camera shutdown is not established by these tests.",
+    "log_hashes": {
+      "before": "4b95498084c03dcf5e908798db7c11bf8e4e7d30f43d82e68327a5c064bef492",
+      "after": "8846a221bd20aca42a9ad601c2c475f84c06401df390aa70f7d6e5957f96c23b"
+    },
+    "full_client_build": {
+      "result": "PASS",
+      "configuration": "Debug arm64",
+      "code_commit": "feb84919ea41f30e024927d28c963eb57bd053d6",
+      "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+      "strict_signature_verification": "PASS",
+      "initial_e537_builds": {
+        "master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+        "code_commit": "39b2e33519795a9da41e89fb54d01c9f6af47b57",
+        "unguarded_log_sha256": "73b9d69b133b7012c57f474b7a1eb446a7c97a457a4e11014c844b87978514c9",
+        "guarded_log_sha256": "739787fe2741bb985c7db14c93c3bc316558e4cea066d634093fe50761fa1940"
+      },
+      "final_guarded_log_sha256": "184c725c79b8779f6cce710c016923ae0ebd51fb0465035cfa0cb7355dcf04f3"
+    },
+    "physical_camera_verification": {
+      "result": "PASS with manual assistance and local sending guard",
+      "session_cycles_observed": 6,
+      "manual_user_confirmation": "Recording window closed and camera indicator switched off after pause/discard.",
+      "capture_log_sha256": "e7649a47058570149dbb9dedf119a392f2d43c6bd2c8ef3b64c95bdb6d6045cb",
+      "limitations": [
+        "Recording lifetime values are not camera-shutdown latency measurements.",
+        "The retained-controller guarantee is verified by three source-derived regression tests; physical notifications do not establish object lifetime.",
+        "Normal send/upload/export behavior was not validated with the local sending guard enabled."
+      ],
+      "automation_limitation": "UI automation did not expose the separate recording window. Pause/discard actions were performed by the user; automation alone is not marked passing.",
+      "initial_unguarded_attempt": "Separate recording window was not exposed by automation; recordings reached automatic completion and test videos appeared in Saved Messages. This attempt is not counted as a passing manual cancellation test.",
+      "all_start_notifications_report_running": true,
+      "all_stop_notifications_report_not_running": true,
+      "live_test_master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+      "live_test_code_commit": "39b2e33519795a9da41e89fb54d01c9f6af47b57",
+      "final_source_equivalence": "Recorder controller, capture pipeline, modal preview and recording controls are byte-identical between the live-tested source and final master + fix. The local guarded ChatController is also byte-identical."
+    },
+    "local_test_guard": "Local-only media-send and recording-pre-upload gate; excluded from PR. Temporary capture observers removed and debugger detached after validation.",
+    "initial_regression_master": "e537320b28d79cecc1baf716bcbf822b02f93b7a",
+    "final_client_startup": {
+      "result": "PASS",
+      "master": "605ade9e0e467f88da6de7c209a874a439139e21",
+      "code_commit": "feb84919ea41f30e024927d28c963eb57bd053d6",
+      "actual": "Existing account remained available and Saved Messages opened. No further recordings or media actions were performed."
+    }
+  },
+  "current_client_sending_validation": {
+    "date": "2026-10-27",
+    "source": "Direct user confirmation in this conversation",
+    "tested_source": "3749a4a8e4b17dbed3fb91d3f32cbe5b7efa82df",
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "pr92_head": "b4dbd90fe655c82ca941ab85863ad6dffb2cb7eb",
+    "ordinary_video_sending": "PASS",
+    "trimmed_video_sending": "PASS",
+    "original_60_second_automatic_submission": "PASS",
+    "new_60_second_editor_behavior": "NOT YET TESTED",
+    "media_send_guard_enabled": false,
+    "confirmation": "Ок, обычное и обрезанное видео отправляются, завершение по лимиту тоже работает."
+  },
+  "recording_limit_review": {
+    "date": "2026-10-27",
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "code_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+    "intentional_behavior_change": {
+      "before": "At 60 seconds the video was automatically submitted and the recording UI closed.",
+      "after": "At 60 seconds recording pauses in the existing editor. Playback, trimming, discard and explicit Send remain available. No automatic submission occurs."
+    },
+    "resume_behavior": "Record More is disabled while the effective video selection is at the limit; shortening the selection enables it. On resume, the duration signal starts with the retained duration instead of the stale pre-trim value.",
+    "before_regression": {
+      "new_test_cases_failed": 1,
+      "failed_assertions": 4,
+      "existing_tests_passed": 18,
+      "observed_submission_callbacks": 1,
+      "observed_recording_resets": 1,
+      "paused_editor_updates": 0,
+      "log_sha256": "931200927bf0882ed2b56c1cda0fc46f375e7427a564dbdcf6b9f5a5b1996389"
+    },
+    "after": {
+      "cases_passed": 22,
+      "cases_failed": 0,
+      "new_duration_cases": 4,
+      "log_sha256": "7aa8e1b6107754ba03bf27579fa265ad782ee56ed4442def43d080e9f126b6bc",
+      "coverage": [
+        "Duration below 60 seconds keeps recording",
+        "At 60 seconds paused preview opens without submission or reset, and hands-free mode is requested",
+        "Repeated limit updates pause only once",
+        "A resumed duration stream can reach the limit again"
+      ]
+    },
+    "test_method": "The runner compiles the current modal controller source with capture/view probes. A recorder-state test subclass emits a synthetic submission payload; it never accesses an account or network. Actual time values are injected; tests do not wait for or record 60 seconds of camera footage.",
+    "full_debug_arm64_build": {
+      "result": "BUILD SUCCEEDED",
+      "source_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+      "log_sha256": "6fe0b334d945708c9e1f1d34386e2244298f342e7f28be75fd1aec446efa7d6d",
+      "strict_signature_verified": true,
+      "installed_debug_library_sha256": "54809d15c9be88a797c014dfd45069e093aa2f882b7698f0f91fa71d7191f305"
+    },
+    "manual_new_limit_workflow": {
+      "date": "2026-10-27",
+      "source": "Direct user confirmation in this conversation",
+      "code_commit": "d33bf763d1e9bb03e1f3466677cb161844ec73c9",
+      "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+      "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+      "installed_debug_library_sha256": "54809d15c9be88a797c014dfd45069e093aa2f882b7698f0f91fa71d7191f305",
+      "media_send_guard_enabled": false,
+      "result": "PASS",
+      "checks": [
+        "At 60 seconds recording remains in the editor without automatic submission",
+        "Play/Pause works",
+        "Trim boundaries work",
+        "Explicit Send delivers the video and it plays on the phone",
+        "Recorder window closes and camera indicator switches off after sending"
+      ],
+      "confirmation": "Да, всё получилось",
+      "not_claimed": [
+        "Manual Record More after trimming a full-limit recording",
+        "A separate held-mouse-release limit run",
+        "Hardware error or disconnected-device scenarios"
+      ]
+    },
+    "limitations": [
+      "The previous real-client sending check confirms original and trimmed sending before this new limit behavior.",
+      "Native controller tests do not establish full-client camera, composition, trimming/export or delivery behavior at the limit.",
+      "Pause uses the existing pipeline path; capture cleanup remains on send or discard.",
+      "No app-wide performance improvement is claimed.",
+      "Manual Record More after trimming, held-gesture release and hardware-error paths were not independently confirmed in the latest client check."
+    ],
+    "production_source_sha256": {
+      "packages/ChatUI/Sources/ChatUI/ChatInputRecordingView.swift": "0633c61ad05b533cf3ac088519564a23e927c416ec696d84d0bec159139fef16",
+      "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderModalController.swift": "67937f9167d24e1e73c69a8f612a3e0ca121d944e0c2eb60d4ffb28654059460",
+      "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "9fd0088d180c319f0e492b00c008db72f2f8c1685e7f0f795f53e14076c44373"
+    }
+  },
+  "pause_finalization_and_real_resume_review": {
+    "date": "2026-10-27",
+    "master": "e18830989542a063dd66c5bdc4dbe6a70cbbd175",
+    "code_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+    "parent_commit": "a4148a003be829b3496721c271dd18027842d7df",
+    "changes": {
+      "pending_pause_send": "Send records its stopping intent and waits for the current native writer to finish before composing the complete recording. Repeated Send does not finalize the writer again. Discard, writer failure and obsolete writer callbacks cannot complete that pending segment.",
+      "real_resume_regression": "The manually primed controller resume test was removed. Its replacement uses the actual pipeline, real trim/export of a generated 60-second video to 10 seconds, and real resume. It observes the retained duration before the recording status."
+    },
+    "before_regression": {
+      "existing_tests_passed": 22,
+      "new_test_cases_failed": 1,
+      "failed_assertions": 3,
+      "observed": "Send while the first paused segment was finalizing emitted stopped and no finished video; expected [60], observed [].",
+      "log_sha256": "dd155d3da607579024ee23463aae1b39c9df76f6829b68ef495ce4c06d710962"
+    },
+    "after": {
+      "cases_passed": 29,
+      "cases_failed": 0,
+      "log_sha256": "c983efba62286b4df80f898352b13a7e0e7e46d42ce33da017eea04b7687b192",
+      "real_pipeline_cases": 8,
+      "coverage": [
+        "Send waits for first paused segment finalization",
+        "Real trim/export and resume publish 10 seconds before recording status",
+        "Ordinary Send still finishes",
+        "Repeated Send finalizes the writer once",
+        "Send waits for second segment and includes both segments: 2 + 3 seconds = 5 seconds",
+        "Discard during finalization ignores late completion",
+        "Resume cannot replace a writer still finalizing",
+        "Writer failure remains terminal despite late completion"
+      ]
+    },
+    "resume_mutation": {
+      "mutation": "Remove the duration publication from the production resume method",
+      "result": "EXPECTED FAILURE",
+      "observed_seconds": 60,
+      "expected_seconds": 10,
+      "source_restored": true,
+      "final_suite_after_restore": "29 passed, 0 failed",
+      "log_sha256": "0e0710173614f1404e3e256c354fe8cd3fbb0856e3a4a0d86b8d118a5d1b0403"
+    },
+    "full_debug_arm64_build": {
+      "result": "BUILD SUCCEEDED",
+      "configuration": "Debug arm64",
+      "log_sha256": "9ac64826453aa40763a6f253504e9bdcda7e324a88371af9c16bb2434f52754d",
+      "source_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+      "strict_signature_verified": true,
+      "installed_debug_library_sha256": "2fccc2a25f712d3a88638183a5cc0b668835521c3edd96ac17e5409654ae78d0"
+    },
+    "manual_validation": {
+      "source": "Direct account-owner confirmation",
+      "date": "2026-10-27",
+      "source_commit": "1a6e40322732505bd327fd42fb47d09858ae9567",
+      "built_before_commit": true,
+      "verified_source_sha256": {
+        "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "c9fbb2b031a3e70ae66c2042e357c5a3cb2983b3585ebd955e33222dcb848d0d",
+        "packages/ChatUI/Tests/ChatUITests/RecordingPipelineTests.swift": "dd1177458e177bff3ccb0beb654ada4a8604c503cb8c6ac66636223cb3f9a07d",
+        "tools/tests/recording-editor/CameraLifecycleTests.swift": "d5df0013f3576bb793a8adfd439673f9e375d51c7a4c3be24f736ad22a37f68c",
+        "tools/tests/recording-editor/run.py": "264f2a07af19390fe4eefe57adf817a3081754333f1ffff9e60c64f2245d8611",
+        "packages/ChatUI/Package.swift": "1ea3cf85fb563f10f550423e0a916710c7ba85854f397ba40477331fc7886fd6"
+      },
+      "application": "Telegram Master Test 13.1.0 (283357), Debug arm64",
+      "result": "PASS",
+      "checks": [
+        "Send after the 60-second limit",
+        "Continue recording after trimming"
+      ],
+      "media_send_guard_enabled": false,
+      "local_patch_sha256": "ea156079c45654a183dc3c1952f29dd01dc4957e0a8714d4e45f4390e5140698",
+      "installed_debug_library_sha256": "2fccc2a25f712d3a88638183a5cc0b668835521c3edd96ac17e5409654ae78d0"
+    },
+    "test_method": "Tests instantiate the actual VideoRecorderPipeline with capture setup disabled and a controlled native-writer subclass that delays completion. Generated local video files pass through the real composition, trim/export and resume methods. No real camera, microphone, account or network is used in the automated tests. Controller cleanup tests compile current production controller code with capture/view probes.",
+    "limitations": [
+      "The latest manual confirmation covers Send after 60 seconds and continuation after trimming; it does not measure the probability of hitting the native finalization race.",
+      "Physical camera-off and phone-playback observations belong to the earlier d33bf763 manual workflow recorded under recording_limit_review, not a new automated hardware check.",
+      "A separate held-gesture release run and device-disconnect/error scenarios were not newly confirmed in the live client.",
+      "Tests and the full build were local, not GitHub CI. No app-wide performance result is claimed.",
+      "Local Xcode, signing and isolated-profile changes are excluded from the PR."
+    ],
+    "source_sha256": {
+      "packages/MediaRecorderUI/Sources/MediaRecorderUI/VideoRecorderPipeline.swift": "c9fbb2b031a3e70ae66c2042e357c5a3cb2983b3585ebd955e33222dcb848d0d",
+      "packages/ChatUI/Tests/ChatUITests/RecordingPipelineTests.swift": "dd1177458e177bff3ccb0beb654ada4a8604c503cb8c6ac66636223cb3f9a07d",
+      "tools/tests/recording-editor/CameraLifecycleTests.swift": "d5df0013f3576bb793a8adfd439673f9e375d51c7a4c3be24f736ad22a37f68c",
+      "tools/tests/recording-editor/run.py": "264f2a07af19390fe4eefe57adf817a3081754333f1ffff9e60c64f2245d8611",
+      "packages/ChatUI/Package.swift": "1ea3cf85fb563f10f550423e0a916710c7ba85854f397ba40477331fc7886fd6"
+    }
+  }
+}

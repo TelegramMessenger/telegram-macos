@@ -17,7 +17,7 @@ import AVFoundation
 
 public class VideoRecorderModalView: View {
     private let captureLayer: AVCaptureVideoPreviewLayer = AVCaptureVideoPreviewLayer()
-    private let captureContainer: View = View()
+    private let captureContainer: Control = Control()
     private let placeholderView: ImageView = ImageView()
     private let progressView:  RadialProgressView
     private let previewPlayer: GIFPlayerView = GIFPlayerView()
@@ -29,6 +29,15 @@ public class VideoRecorderModalView: View {
     private var pausedTrimRange: Range<Double>?
     private var pausedVideoRange: Range<Double>?
     private var pausedEndObserver: Any?
+    private var pausedStatusObserver: NSKeyValueObservation?
+    private var pausedTimeObserver: Any?
+    private var pendingPreviewCommand: (trimRange: Range<Double>?, seekTo: Double, play: Bool)?
+    private var requestedPlayback = false
+    private var requestedPosition: Double = 0
+    private var seekGeneration = UUID()
+    private var isSeeking = false
+
+    public var previewUpdated: ((VideoRecorderPreviewState) -> Void)?
     public override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
@@ -40,6 +49,10 @@ public class VideoRecorderModalView: View {
         super.init(frame: frameRect)
         addSubview(shadowView)
         addSubview(captureContainer)
+
+        captureContainer.set(handler: { [weak self] _ in
+            self?.togglePreviewPlayback()
+        }, for: .Click)
 
         
         
@@ -99,23 +112,16 @@ public class VideoRecorderModalView: View {
     }
 
     private func fadeOutPausedPlayer() {
-        guard let player = pausedPlayer, let layer = pausedPlayerLayer else {
+        guard let layer = pausedPlayerLayer else {
             tearDownPausedPlayer()
             return
         }
-        player.pause()
-        if let observer = pausedEndObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        pausedEndObserver = nil
-        pausedPlayer = nil
-        pausedTrimRange = nil
-        pausedVideoRange = nil
-        pausedPath = nil
+        tearDownPausedPlayer(removeLayer: false)
         layer.opacity = 0
-        layer.animateAlpha(from: 1, to: 0, duration: 0.3, completion: { [weak layer] _ in
+        layer.animateAlpha(from: 1, to: 0, duration: 0.3)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak layer] in
             layer?.removeFromSuperlayer()
-        })
+        }
     }
     
     private func hideGIFPreview() {
@@ -124,18 +130,43 @@ public class VideoRecorderModalView: View {
     }
     
     public func updatePreview(trimRange: Range<Double>?, seekTo: Double, play: Bool) {
-        guard let player = pausedPlayer else {
+        guard seekTo.isFinite, let player = pausedPlayer else {
             return
         }
+        seekGeneration = UUID()
+        requestedPlayback = play
         pausedTrimRange = trimRange
+        requestedPosition = clampedPreviewTime(seekTo, duration: CMTimeGetSeconds(player.currentItem?.duration ?? .zero))
+        isSeeking = true
+        player.pause()
+        publishPreview(position: requestedPosition)
+        guard player.currentItem?.status == .readyToPlay else {
+            pendingPreviewCommand = (trimRange, seekTo, play)
+            return
+        }
+        pendingPreviewCommand = nil
         if let trimRange {
             let duration = CMTimeGetSeconds(player.currentItem?.duration ?? .zero)
-            player.currentItem?.forwardPlaybackEndTime = CMTimeMakeWithSeconds(clampedPreviewTime(trimRange.upperBound, duration: duration), preferredTimescale: 1000)
+            let end = duration.isFinite && duration > 0 ? min(duration, trimRange.upperBound) : trimRange.upperBound
+            player.currentItem?.forwardPlaybackEndTime = CMTimeMakeWithSeconds(end, preferredTimescale: 1000)
         } else {
             player.currentItem?.forwardPlaybackEndTime = .invalid
-            player.pause()
         }
         seekPreview(to: seekTo, play: play)
+    }
+
+    public func togglePreviewPlayback() {
+        guard let player = pausedPlayer else { return }
+        let time = isSeeking ? requestedPosition : CMTimeGetSeconds(player.currentTime())
+        let lower = pausedTrimRange?.lowerBound ?? pausedVideoRange?.lowerBound ?? 0
+        let upper = pausedTrimRange?.upperBound ?? pausedVideoRange?.upperBound ?? .greatestFiniteMagnitude
+        let position = time.isFinite && time >= lower && time < upper - 0.05 ? time : lower
+        updatePreview(trimRange: pausedTrimRange, seekTo: position, play: !requestedPlayback)
+    }
+
+    private func publishPreview(position: Double? = nil) {
+        let time = position ?? (isSeeking ? requestedPosition : pausedPlayer.map { CMTimeGetSeconds($0.currentTime()) } ?? 0)
+        previewUpdated?(VideoRecorderPreviewState(position: time.isFinite ? time : 0, isPlaying: requestedPlayback))
     }
     
     private func seekPreview(to seconds: Double, play: Bool) {
@@ -147,9 +178,19 @@ public class VideoRecorderModalView: View {
             return
         }
         let clamped = clampedPreviewTime(seconds, duration: duration)
-        player.seek(to: CMTimeMakeWithSeconds(max(0, clamped), preferredTimescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: { [weak self] finished in
-            if finished, play {
-                self?.pausedPlayer?.play()
+        let generation = UUID()
+        seekGeneration = generation
+        player.seek(to: CMTimeMakeWithSeconds(max(0, clamped), preferredTimescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: { [weak self, weak player] finished in
+            DispatchQueue.main.async {
+                guard let self, self.pausedPlayer === player, self.seekGeneration == generation else { return }
+                self.isSeeking = false
+                if finished, play, self.requestedPlayback {
+                    player?.play()
+                } else {
+                    self.requestedPlayback = false
+                    player?.pause()
+                }
+                self.publishPreview()
             }
         })
     }
@@ -161,7 +202,10 @@ public class VideoRecorderModalView: View {
         }
         if let video = pausedVideoRange {
             end = min(end, video.upperBound - 0.05)
-            return max(video.lowerBound, end)
+            end = max(video.lowerBound, end)
+        }
+        if let trim = pausedTrimRange {
+            end = max(trim.lowerBound, min(end, trim.upperBound - 0.05))
         }
         return end
     }
@@ -196,29 +240,56 @@ public class VideoRecorderModalView: View {
         
         pausedPlayer = player
         pausedPlayerLayer = layer
-        pausedEndObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main, using: { [weak self] _ in
-            self?.restartPausedPlayback()
+        requestedPosition = pausedVideoRange?.lowerBound ?? 0
+        requestedPlayback = false
+        pausedTimeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 10), queue: .main, using: { [weak self, weak player] time in
+            guard let self, self.pausedPlayer === player, !self.isSeeking else { return }
+            self.publishPreview(position: CMTimeGetSeconds(time))
         })
-        player.play()
+        pausedStatusObserver = player.currentItem?.observe(\.status, options: [.initial, .new], changeHandler: { [weak self, weak player] _, _ in
+            DispatchQueue.main.async {
+                guard let self, self.pausedPlayer === player, player?.currentItem?.status == .readyToPlay,
+                      let command = self.pendingPreviewCommand else { return }
+                self.updatePreview(trimRange: command.trimRange, seekTo: command.seekTo, play: command.play)
+            }
+        })
+        pausedEndObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main, using: { [weak self, weak player] _ in
+            guard let self, self.pausedPlayer === player, self.requestedPlayback else { return }
+            self.updatePreview(trimRange: self.pausedTrimRange, seekTo: self.pausedTrimRange?.lowerBound ?? self.pausedVideoRange?.lowerBound ?? 0, play: false)
+        })
+        publishPreview(position: requestedPosition)
+    }
+
+    public func stopPreview() {
+        tearDownPausedPlayer()
+        hideGIFPreview()
     }
     
-    private func restartPausedPlayback() {
-        pausedPlayer?.pause()
-        seekPreview(to: pausedTrimRange?.lowerBound ?? 0, play: true)
-    }
-    
-    private func tearDownPausedPlayer() {
+    private func tearDownPausedPlayer(removeLayer: Bool = true) {
+        seekGeneration = UUID()
+        isSeeking = false
+        requestedPlayback = false
+        requestedPosition = 0
         if let pausedEndObserver {
             NotificationCenter.default.removeObserver(pausedEndObserver)
         }
         pausedEndObserver = nil
+        pausedStatusObserver = nil
+        pendingPreviewCommand = nil
+        if let pausedTimeObserver {
+            pausedPlayer?.removeTimeObserver(pausedTimeObserver)
+        }
+        pausedTimeObserver = nil
         pausedPlayer?.pause()
         pausedPlayer = nil
-        pausedPlayerLayer?.removeFromSuperlayer()
+        if removeLayer {
+            pausedPlayerLayer?.removeFromSuperlayer()
+        }
         pausedPlayerLayer = nil
         pausedTrimRange = nil
         pausedVideoRange = nil
         pausedPath = nil
+        publishPreview(position: 0)
     }
     
     deinit {

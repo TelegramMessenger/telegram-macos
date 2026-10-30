@@ -274,6 +274,7 @@ public func ==(lhs:ChatRecordingState, rhs:ChatRecordingState) -> Bool {
 public final class ChatRecordingVideoState : ChatRecordingState {
     public let pipeline: VideoRecorderPipeline
     public let previewCommands: Promise<VideoRecorderPreviewCommand> = Promise()
+    public let previewState = ValuePromise(VideoRecorderPreviewState(position: 0, isPlaying: false), ignoreRepeated: true)
     public init(context: (any AccountContextProtocol), liveUpload:Bool, autohold: Bool) {
         let id:Int64 = arc4random64()
         let path = temporaryMediaPath("video_message", "mp4")
