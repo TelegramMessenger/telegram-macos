@@ -1,0 +1,137 @@
+import Foundation
+
+struct StringCodingKey: CodingKey, ExpressibleByStringLiteral {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+    init(stringLiteral value: String) { stringValue = value }
+}
+
+__MODEL__
+
+var checks = 0
+func check(_ condition: Bool, _ message: String) {
+    precondition(condition, message)
+    checks += 1
+}
+let encoder = JSONEncoder()
+let decoder = JSONDecoder()
+let defaults = BaseApplicationSettings.defaultSettings
+check(defaults.showContactsTab, "Contacts default on")
+var legacy = try JSONSerialization.jsonObject(with: encoder.encode(defaults)) as! [String: Any]
+legacy.removeValue(forKey: "cnt")
+let old = try decoder.decode(BaseApplicationSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+check(old.showContactsTab, "Legacy missing cnt stays on")
+legacy["cnt"] = 0
+let hiddenContacts = try decoder.decode(BaseApplicationSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+check(!hiddenContacts.showContactsTab, "Stored Contacts preference retained")
+let encoded = try JSONSerialization.jsonObject(with: encoder.encode(hiddenContacts)) as! [String: Any]
+check(encoded["cnt"] as? Int == 0, "Hidden Contacts preference is encoded")
+for visible in [false, true] {
+    let value = defaults.withUpdatedShowContactsTab(visible)
+    let loaded = try decoder.decode(BaseApplicationSettings.self, from: encoder.encode(value))
+    check(loaded.showContactsTab == visible && loaded == value, "Preference round trip")
+    let updated = [
+        value.withUpdatedShowCallsTab(false),
+        value.withUpdatedSidebar(false),
+        value.withUpdatedTranslateChannels(false),
+        value.withUpdatedInAppKeyHandle(true),
+        value.withUpdatedPredictEmoji(false),
+        value.withUpdatedBigEmoji(false),
+        value.withUpdatedStatusBar(false),
+        value.withUpdatedDoNotTranslate(["en"]),
+        value.withUpdatedPaywall(.initialize()),
+        value.withUpdatedStoriesQuaility(true),
+        value.updateLiteMode { $0 }
+    ]
+    check(updated.allSatisfy { $0.showContactsTab == visible }, "All other updates preserve Contacts")
+}
+check(defaults != defaults.withUpdatedShowContactsTab(false), "Equality sees visibility")
+
+final class Controller {}
+enum Icon { case contacts, calls }
+struct Theme {
+    struct Icons {
+        let tab_contacts = Icon.contacts
+        let tab_contacts_active = Icon.contacts
+        let tab_calls = Icon.calls
+        let tab_calls_active = Icon.calls
+    }
+    let icons = Icons()
+}
+let theme = Theme()
+enum Animation { case tab_contacts, tab_calls }
+struct TabAnimatedItem {
+    let controller: Controller
+    init(_ animation: Animation, image: Icon, selectedImage: Icon, controller: Controller) {
+        self.controller = controller
+    }
+}
+final class TabController {
+    var controllers: [Controller] = []
+    var selectedIndex = 0
+    var current: Controller { controllers[selectedIndex] }
+    func insert(tab: TabAnimatedItem, at index: Int) {
+        precondition((0...controllers.count).contains(index))
+        if !controllers.isEmpty && selectedIndex >= index { selectedIndex += 1 }
+        controllers.insert(tab.controller, at: index)
+    }
+    func remove(at index: Int) {
+        precondition(controllers.indices.contains(index))
+        let selected = index == selectedIndex
+        controllers.remove(at: index)
+        if selectedIndex > index { selectedIndex -= 1 }
+        else if selected { selectedIndex = min(index, max(0, controllers.count - 1)) }
+    }
+}
+final class Harness {
+    let contacts = Controller()
+    let phoneCalls = Controller()
+    let navigation = Controller()
+    let settingsController = Controller()
+    let tabController = TabController()
+    var previousIndex: Int?
+    var showCallTabs = true
+    var showContactTabs = true
+    init() { tabController.controllers = [contacts, phoneCalls, navigation, settingsController] }
+    func updateTabAccessibility() {}
+    func apply(_ settings: BaseApplicationSettings) {
+        __UPDATE__
+    }
+    __METHODS__
+    func validate(_ contacts: Bool, _ calls: Bool) {
+        let expected = (contacts ? [self.contacts] : []) + (calls ? [phoneCalls] : []) + [navigation, settingsController]
+        check(tabController.controllers.count == expected.count, "Tab count")
+        check(zip(tabController.controllers, expected).allSatisfy { $0 === $1 }, "Tab order")
+        check(tabController.controllers[chatIndex] === navigation, "Chats shortcut index")
+        check(tabController.controllers[settingsIndex] === settingsController, "Settings shortcut index")
+        check(tabController.controllers.indices.contains(tabController.selectedIndex), "Selection in bounds")
+    }
+}
+var transitions = 0
+for oldContacts in [false, true] {
+    for oldCalls in [false, true] {
+        for newContacts in [false, true] {
+            for newCalls in [false, true] {
+                for selected in 0..<4 {
+                    let h = Harness()
+                    h.apply(defaults.withUpdatedShowContactsTab(oldContacts).withUpdatedShowCallsTab(oldCalls))
+                    h.tabController.selectedIndex = min(selected, h.tabController.controllers.count - 1)
+                    let current = h.tabController.current
+                    let value = defaults.withUpdatedShowContactsTab(newContacts).withUpdatedShowCallsTab(newCalls)
+                    h.apply(value)
+                    h.validate(newContacts, newCalls)
+                    if h.tabController.controllers.contains(where: { $0 === current }) {
+                        check(h.tabController.current === current, "Visible selected controller retained")
+                    }
+                    let once = h.tabController.controllers
+                    h.apply(value)
+                    check(zip(once, h.tabController.controllers).allSatisfy { $0 === $1 } && once.count == h.tabController.controllers.count, "Repeated preferences do not duplicate tabs")
+                    transitions += 1
+                }
+            }
+        }
+    }
+}
+print("PASS: \(checks) assertions across \(transitions) Contacts/Calls transitions and settings persistence")

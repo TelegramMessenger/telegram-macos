@@ -542,13 +542,24 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         settings.loadViewIfNeeded(bounds)
     }
 
+    private func showContactsTab() {
+        tabController.insert(tab: TabAnimatedItem(.tab_contacts, image: theme.icons.tab_contacts, selectedImage: theme.icons.tab_contacts_active, controller: contacts), at: 0)
+        previousIndex = tabController.selectedIndex
+        updateTabAccessibility()
+    }
+
+    private func hideContactsTab() {
+        tabController.remove(at: 0)
+        previousIndex = tabController.selectedIndex
+    }
+
     private func showCallsTab() {
-        tabController.insert(tab: TabAnimatedItem(.tab_calls, image: theme.icons.tab_calls, selectedImage: theme.icons.tab_calls_active, controller: phoneCalls), at: 1)
+        tabController.insert(tab: TabAnimatedItem(.tab_calls, image: theme.icons.tab_calls, selectedImage: theme.icons.tab_calls_active, controller: phoneCalls), at: showContactTabs ? 1 : 0)
         previousIndex = tabController.selectedIndex
         updateTabAccessibility()
     }
     private func hideCallsTab() {
-        tabController.remove(at: 1)
+        tabController.remove(at: showContactTabs ? 1 : 0)
         previousIndex = tabController.selectedIndex
     }
     
@@ -557,6 +568,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
     }
     
     private var showCallTabs: Bool = true
+    private var showContactTabs: Bool = true
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -571,6 +583,14 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
                     self.showCallsTab()
                 } else {
                     self.hideCallsTab()
+                }
+            }
+            if settings.showContactsTab != self.showContactTabs {
+                self.showContactTabs = settings.showContactsTab
+                if self.showContactTabs {
+                    self.showContactsTab()
+                } else {
+                    self.hideContactsTab()
                 }
             }
         }))
@@ -728,8 +748,10 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
     private func updateTabsIfNeeded() {
         if !tabController.isEmpty && (previousTheme?.colors != theme.colors ||  previousIconColor != theme.colors.accentIcon) {
             var index: Int = 0
-            tabController.replace(tab: tabController.tab(at: index).withUpdatedImages(theme.icons.tab_contacts, theme.icons.tab_contacts_active), at: index)
-            index += 1
+            if showContactTabs {
+                tabController.replace(tab: tabController.tab(at: index).withUpdatedImages(theme.icons.tab_contacts, theme.icons.tab_contacts_active), at: index)
+                index += 1
+            }
             if showCallTabs {
                 tabController.replace(tab: tabController.tab(at: index).withUpdatedImages(theme.icons.tab_calls, theme.icons.tab_calls_active), at: index)
                 index += 1
@@ -908,11 +930,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
     }
     
     var chatIndex: Int {
-        if showCallTabs {
-            return 2
-        } else {
-            return 1
-        }
+        return (showContactTabs ? 1 : 0) + (showCallTabs ? 1 : 0)
     }
     
     var settingsIndex: Int {
@@ -947,7 +965,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
                 if self.context.layout == .single {
                     self.navigationController?.close()
                 }
-                self.tabController.select(index: 1)
+                self.tabController.select(index: showContactTabs ? 1 : 0)
             }
         }
     }
