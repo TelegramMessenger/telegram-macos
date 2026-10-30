@@ -199,6 +199,19 @@ void TGDisableLayerActions(CALayer *layer) {
                 }];
             }
 
+            NSString *domainPattern = @"(?<![@\\w.%/=,-])(?!(?:this|self|ctx|super|cls|window|document|global|module|exports|props|state|config|data|obj|args|req|res|err|opts|options|e)\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![\\w-]|\\.\\w))[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![\\w-]|\\.\\w)(?::[0-9]{1,5}(?![\\w]))?(?:/[^\\s\\u3000-\\u30FF\\u3400-\\u9FFF\\uFF00-\\uFFEF]*[^\\s\\u3000-\\u30FF\\u3400-\\u9FFF\\uFF00-\\uFFEF.,;:!?)\\]}\"'>\\u201D\\u2019\\u00BB\\u2026])?";
+            NSRegularExpression *domainRegex = [NSRegularExpression regularExpressionWithPattern:domainPattern options:0 error:&error];
+            if (error) {
+                NSLog(@"Error creating regex: %@", error.localizedDescription);
+            } else {
+                [domainRegex enumerateMatchesInString:text options:0 range:NSMakeRange(0, text.length) usingBlock:^(NSTextCheckingResult *match, __unused NSMatchingFlags flags, __unused BOOL *stop) {
+                    @try {
+                        [results addObject:[NSValue valueWithRange:match.range]];
+                    } @catch (NSException *exception) {
+                    }
+                }];
+            }
+
             // Custom detection for TonConnect deep links (tg://?v=2&... / tc://?v=2&...): they carry the
             // query directly after the scheme with NO host, a form NSDataDetector never matches. The
             // trailing character class stops the match before sentence punctuation.
