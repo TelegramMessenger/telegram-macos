@@ -465,13 +465,12 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
             }
         }
         
-        let color: NSColor
-        
         if let nameColor = nameColor, threadId == nil, !editing {
-            color = context.peerNameColors.getProfile(nameColor).main
-        } else {
-            color = theme.colors.text
+            let main = context.peerNameColors.getProfile(nameColor).main
+            return main.blended(withFraction: 0.1, of: .black) ?? NSColor.black.withAlphaComponent(0.15)
         }
+        
+        let color = theme.colors.text
         if color.lightness >= 0.2 {
             return color.withAlphaComponent(0.5)
         } else {
