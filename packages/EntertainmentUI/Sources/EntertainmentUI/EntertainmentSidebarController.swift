@@ -115,6 +115,10 @@ public final class EntertainmentSidebarController: GenericViewController<Enterta
         availabilityDisposable.dispose()
     }
 
+    public override func escapeKeyAction() -> KeyHandlerResult {
+        return entertainment.escapeKeyAction()
+    }
+
     public override func viewDidLoad() {
         super.viewDidLoad()
         readyOnce()

@@ -1070,6 +1070,13 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         return controller.view.window === window && !controller.view.visibleRect.isEmpty
     }
 
+    func escapeEntertainmentSidebar(in window: NSWindow?) -> Bool {
+        guard window === self.window, let controller = self.entertainmentSidebar, controller.isLoaded() else {
+            return false
+        }
+        return controller.escapeKeyAction() == .invoked
+    }
+
     private func updateMinMaxWindowSize(animated: Bool) {
         var width: CGFloat = 380
         if leftSidebarController != nil {

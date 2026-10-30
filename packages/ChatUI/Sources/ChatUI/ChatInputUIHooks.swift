@@ -120,6 +120,7 @@ public struct ChatInputUIHooks {
     public let isEntertainmentSidebarAvailable: (NSWindow?) -> Bool
     public let isEntertainmentSidebarVisible: (NSWindow?) -> Bool
     public let updateEntertainmentSidebar: (Bool) -> Void
+    public let escapeEntertainmentSidebar: (NSWindow?) -> Bool
 
     public init(makeEntertainmentsPopover: @escaping (ChatInteraction) -> ViewController,
                 makeSuggestPostPanelModel: @escaping (ChatInterfaceState.ChannelSuggestPost, any AccountContextProtocol) -> ChatAccessoryModel,
@@ -137,7 +138,8 @@ public struct ChatInputUIHooks {
                 makeEmojiPicker: @escaping (any AccountContextProtocol, @escaping (StickerPackItem, StarGift.UniqueGift?, StickerPackCollectionInfo?, Int32?, NSRect?) -> Void, @escaping (String, CGRect?) -> Void) -> ViewController,
                 isEntertainmentSidebarAvailable: @escaping (NSWindow?) -> Bool,
                 updateEntertainmentSidebar: @escaping (Bool) -> Void,
-                isEntertainmentSidebarVisible: @escaping (NSWindow?) -> Bool = { _ in false }) {
+                isEntertainmentSidebarVisible: @escaping (NSWindow?) -> Bool = { _ in false },
+                escapeEntertainmentSidebar: @escaping (NSWindow?) -> Bool = { _ in false }) {
         self.makeEntertainmentsPopover = makeEntertainmentsPopover
         self.makeSuggestPostPanelModel = makeSuggestPostPanelModel
         self.makeUrlPreviewModel = makeUrlPreviewModel
@@ -155,6 +157,7 @@ public struct ChatInputUIHooks {
         self.isEntertainmentSidebarAvailable = isEntertainmentSidebarAvailable
         self.updateEntertainmentSidebar = updateEntertainmentSidebar
         self.isEntertainmentSidebarVisible = isEntertainmentSidebarVisible
+        self.escapeEntertainmentSidebar = escapeEntertainmentSidebar
     }
 
     @available(macOS 10.15, *)

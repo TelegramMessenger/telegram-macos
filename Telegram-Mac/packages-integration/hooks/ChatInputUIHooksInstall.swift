@@ -150,6 +150,14 @@ func installChatInputUIHooks() {
             }
         }
         return result
+    }, escapeEntertainmentSidebar: { window in
+        var result = false
+        appDelegate?.enumerateApplicationContexts { applicationContext in
+            if applicationContext.escapeEntertainmentSidebar(in: window) {
+                result = true
+            }
+        }
+        return result
     })
     hooks.makeTranslateModalWithContext = { context, from, toLang, text, onUse, onSend in
         TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, onUse: onUse, onSend: onSend)
