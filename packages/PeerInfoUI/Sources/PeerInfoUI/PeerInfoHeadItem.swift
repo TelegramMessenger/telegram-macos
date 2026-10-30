@@ -780,7 +780,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
                 }
             }
         }
-        var result = stringStatus(for: peerView, context: context, theme: PeerStatusStringTheme(titleFont: .medium(.huge), titleColor: PeerInfoHeadItem.textColor(peer, threadId: threadId, context: context), statusFont: threadId != nil ? .medium(.text) : .normal(.text), statusColor: PeerInfoHeadItem.grayTextColor(peer, threadId: threadId, context: context), highlightIfActivity: false), expanded: true)
+        var result = stringStatus(for: peerView, context: context, theme: PeerStatusStringTheme(titleFont: .semibold(24), titleColor: PeerInfoHeadItem.textColor(peer, threadId: threadId, context: context), statusFont: threadId != nil ? .medium(.text) : .normal(.text), statusColor: PeerInfoHeadItem.grayTextColor(peer, threadId: threadId, context: context), highlightIfActivity: false), expanded: true)
         
         
         
@@ -820,7 +820,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
                 guard let `self` = self else {
                     return
                 }
-                let result = stringStatus(for: peerView, context: context, theme: PeerStatusStringTheme(titleFont: .medium(.huge), titleColor: PeerInfoHeadItem.textColor(peer, threadId: threadId, context: context), statusFont: threadId != nil ? .medium(.text) : .normal(.text), statusColor: PeerInfoHeadItem.grayTextColor(peer, threadId: threadId, context: context), highlightIfActivity: false), onlineMemberCount: count)
+                let result = stringStatus(for: peerView, context: context, theme: PeerStatusStringTheme(titleFont: .semibold(24), titleColor: PeerInfoHeadItem.textColor(peer, threadId: threadId, context: context), statusFont: threadId != nil ? .medium(.text) : .normal(.text), statusColor: PeerInfoHeadItem.grayTextColor(peer, threadId: threadId, context: context), highlightIfActivity: false), onlineMemberCount: count)
 
                 if result != self.result {
                     self.result = result
