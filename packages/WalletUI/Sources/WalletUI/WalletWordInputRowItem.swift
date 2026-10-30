@@ -30,6 +30,11 @@ private final class WalletWordInputRowView: InputDataRowView {
         containerView.layer?.cornerRadius = containerView.cornerRadius
     }
 
+    override func layout() {
+        super.layout()
+        containerView.layer?.cornerRadius = min(containerView.frame.height / 2, containerView.cornerRadius)
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }

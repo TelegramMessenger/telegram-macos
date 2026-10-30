@@ -125,7 +125,7 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
     }
 
 
-    open var cornerRadius: CGFloat = 20
+    open var cornerRadius: CGFloat = 26
     // The visible rounding is drawn by `maskLayer`, not `layer.cornerRadius`, so report it for the morph.
     public var morphCornerRadius: CGFloat { return cornerRadius }
     // The row's layer is geometry-flipped (min-Y is the visual top, as createMask's arc order assumes), so a
@@ -184,7 +184,7 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
     private func createMask(for corners: GeneralViewItemCorners, frame: NSRect) -> CGPath {
 
         if corners.contains(.topLeft) && corners.contains(.topRight) && corners.contains(.bottomLeft) && corners.contains(.bottomRight) {
-            let radius = min(frame.height / 2, 20)
+            let radius = min(frame.height / 2, cornerRadius)
             return CGPath(roundedRect: CGRect(origin: .zero, size: frame.size), cornerWidth: radius, cornerHeight: radius, transform: nil)
         }
 

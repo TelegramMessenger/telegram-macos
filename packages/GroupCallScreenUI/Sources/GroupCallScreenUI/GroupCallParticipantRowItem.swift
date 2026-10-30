@@ -466,7 +466,7 @@ public final class VerticalContainerView : GeneralContainableRowView, GroupCallP
         
         containerView.layer?.masksToBounds = false
         
-        speakingView.layer?.cornerRadius = 20
+        speakingView.layer?.cornerRadius = containerView.cornerRadius
         speakingView.layer?.borderWidth = 2
         speakingView.layer?.borderColor = GroupCallTheme.speakActiveColor.cgColor
     
