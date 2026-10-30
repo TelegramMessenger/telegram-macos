@@ -562,6 +562,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         super.viewDidLoad()
                 
         tabController.navigationController = navigation
+        context.bindings.rootNavigation().add(listener: WeakReference(value: self))
                 
         prefDisposable.set((baseAppSettings(accountManager: context.sharedContext.accountManager) |> deliverOnMainQueue).start(next: { [weak self] settings in
             guard let `self` = self else {return}
@@ -765,6 +766,34 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
     }
     
     private var previousIndex: Int? = nil
+    private weak var settingsReturnController: ViewController?
+    private weak var settingsReturnSidebar: ViewController?
+    private weak var settingsEntryController: ViewController?
+
+    override func navigationWillChangeController() {
+        super.navigationWillChangeController()
+        guard tabController.current === settings, settingsReturnController != nil else { return }
+        let navigation = context.bindings.rootNavigation()
+        guard navigation.controller === settingsReturnController else {
+            var entryIsInStack = false
+            navigation.enumerateControllers { controller, _ in
+                entryIsInStack = controller === self.settingsEntryController
+                return entryIsInStack
+            }
+            if !entryIsInStack {
+                settingsReturnController = nil
+                settingsReturnSidebar = nil
+                settingsEntryController = nil
+            }
+            return
+        }
+        let index = (0 ..< tabController.count).first(where: { tabController.tab(at: $0).controller === settingsReturnSidebar }) ?? chatIndex
+        settingsEntryController = nil
+        settingsReturnController = nil
+        settingsReturnSidebar = nil
+        previousIndex = index
+        tabController.select(index: index)
+    }
     
     func checkSettings(_ index:Int) {
         let isSettings = tabController.tab(at: index).controller is AccountViewController
@@ -777,8 +806,22 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         } else {
             if previousIndex == tabController.count - 1 || isSettings {
                 if isSettings && context.layout != .single {
-                    navigation.push(GeneralSettingsViewController(context), false)
+                    settingsReturnController = nil
+                    navigation.enumerateControllers { controller, _ in
+                        guard !controller.removeAfterDisapper, controller.stake.keepLeft == 0 else { return false }
+                        self.settingsReturnController = controller
+                        return true
+                    }
+                    settingsReturnSidebar = previousIndex.flatMap { index in
+                        (0 ..< tabController.count).contains(index) ? tabController.tab(at: index).controller : nil
+                    } ?? self.navigation
+                    let controller = GeneralSettingsViewController(context)
+                    settingsEntryController = controller
+                    navigation.push(controller, false)
                 } else {
+                    settingsReturnController = nil
+                    settingsReturnSidebar = nil
+                    settingsEntryController = nil
                     navigation.enumerateControllers( { controller, index in
                         if (controller is ChatController) || (controller is PeerInfoController) || (controller is ChannelAdminsViewController) || (controller is ChannelAdminsViewController) || (controller is EmptyChatViewController) {
                             self.backFromSettings(index)
