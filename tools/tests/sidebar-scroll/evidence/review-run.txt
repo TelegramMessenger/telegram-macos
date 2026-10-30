@@ -1,0 +1,2 @@
+Build complete! (35,33 sec)
+Application scrollbars: 458 checks, 0 failures; actual native TableView/NSScroller; source-extracted production inset configuration.

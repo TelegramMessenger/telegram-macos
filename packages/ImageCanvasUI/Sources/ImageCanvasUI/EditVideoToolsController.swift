@@ -274,6 +274,7 @@ final class EditVideoToolsView: View {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
+        scrollView.applyThemedVerticalScroller()
         scrollView.documentView = rowsView
         scrollView.contentView.postsBoundsChangedNotifications = true
         panel.addSubview(scrollView)

@@ -1,0 +1,19 @@
+let plain = ScrollView(frame: NSMakeRect(0, 0, 320, 400))
+check(!plain.hasVerticalScroller, "Common scroll view enabled an unwanted scroller")
+plain.hasVerticalScroller = true
+let themed = plain.verticalScroller
+check(NSStringFromClass(type(of: themed!)).hasSuffix("ThemedScroller"), "Common scroll view did not install the themed scroller")
+check(themed?.scrollerStyle == .overlay, "Common scroll view lost overlay behavior")
+plain.applyThemedVerticalScroller()
+check(plain.verticalScroller === themed, "Repeated configuration replaced the active scroller")
+plain.hasVerticalScroller = false
+check(!plain.hasVerticalScroller, "Intentionally hidden scroller was enabled")
+plain.hasVerticalScroller = true
+check(plain.verticalScroller === themed, "Re-enabling lost the native scroller instance")
+let horizontal = HorizontalScrollView(frame: NSMakeRect(0, 0, 320, 400))
+check(!horizontal.hasVerticalScroller, "Horizontal-only view gained a vertical scrollbar")
+let native = NSScrollView(frame: NSMakeRect(0, 0, 320, 400))
+native.hasVerticalScroller = true
+native.scrollerStyle = .overlay
+native.applyThemedVerticalScroller()
+check(NSStringFromClass(type(of: native.verticalScroller!)).hasSuffix("ThemedScroller"), "Native scroll view opt-in failed")

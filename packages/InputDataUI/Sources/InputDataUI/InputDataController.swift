@@ -694,7 +694,7 @@ public class InputDataController: GenericViewController<InputDataView> {
         var contentInsets = tableView.contentInsets
         contentInsets.bottom = max(0, contentInsets.bottom - appliedContainerBottomInset) + insets.bottom
         tableView.contentInsets = contentInsets
-        tableView.scrollerInsets.bottom = contentInsets.bottom
+        tableView.scrollerInsets.bottom = 0
         appliedContainerBottomInset = insets.bottom
         genericView.contentBottomInset = insets.bottom
         genericView.updateLayout(size: bounds.size, transition: transition)

@@ -218,6 +218,16 @@ open class ScrollView: NSScrollView{
 //
 //    }
 //    
+    open override var hasVerticalScroller: Bool {
+        get { super.hasVerticalScroller }
+        set {
+            super.hasVerticalScroller = newValue
+            if newValue {
+                applyThemedVerticalScroller()
+            }
+        }
+    }
+
     open override var scrollerStyle: NSScroller.Style {
         set {
             super.scrollerStyle = .overlay

@@ -1363,6 +1363,7 @@ public final class RichTextDraftPreviewView: View {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        scrollView.applyThemedVerticalScroller()
         scrollView.verticalScrollElasticity = .allowed
         // Top/bottom breathing room that survives scrolling (the content never sits flush against the
         // preview's edges).

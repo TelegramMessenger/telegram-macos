@@ -483,7 +483,7 @@ public class RecentCallsViewController<Context: AccountContextProtocol>: Telegra
         super.updateContainerContentInsets(insets, transition: transition)
         if isLoaded() {
             genericView.tableView.contentInsets.bottom = insets.bottom
-            genericView.tableView.scrollerInsets.bottom = insets.bottom
+            genericView.tableView.scrollerInsets.bottom = 0
         }
     }
 

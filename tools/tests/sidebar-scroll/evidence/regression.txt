@@ -1,0 +1,5 @@
+macOS 27.0.1 (26A434), arm64
+Actual AppKit/TGUIKit, source-extracted inset assignments from Chats/Search/Settings/Calls/InputData and ChatController history insets.
+Baseline e537320b28d79cecc1baf716bcbf822b02f93b7a: 450 checks, 24 failures (duplicated bottom scrollbar inset).
+Candidate: 458 checks, 0 failures (450 inset/native geometry checks and 8 shared-scroller lifecycle checks).
+Each run snapshots the affected TGUIKit sources from its selected revision; other dependencies come from the dependency checkout.

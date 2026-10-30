@@ -1,0 +1,7 @@
+FAIL: Duplicate bottom scrollbar inset: scenario=emoji height=400.0 bottom=56.0 top=0.0
+FAIL: Duplicate bottom scrollbar inset: scenario=emoji height=800.0 bottom=56.0 top=0.0
+FAIL: Duplicate bottom scrollbar inset: scenario=stickers height=400.0 bottom=56.0 top=0.0
+FAIL: Duplicate bottom scrollbar inset: scenario=stickers height=800.0 bottom=56.0 top=0.0
+FAIL: Duplicate bottom scrollbar inset: scenario=gifs height=400.0 bottom=56.0 top=0.0
+FAIL: Duplicate bottom scrollbar inset: scenario=gifs height=800.0 bottom=56.0 top=0.0
+Application scrollbars: 530 checks, 6 failures; actual native TableView/NSScroller; source-extracted production inset configuration.
