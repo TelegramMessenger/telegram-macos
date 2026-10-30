@@ -1,5 +1,4 @@
 import Cocoa
-import Foundation
 import SwiftSignalKit
 import TelegramCore
 import TGUIKit
@@ -21,20 +20,165 @@ private final class Arguments {
     public let context: any AccountContextProtocol
     public let toggleChats:(Bool)->Void
     public let toggleIncomingCalls: (Bool) -> Void
+    public let openLocation: (String) -> Void
     public let rename: (NSView) -> Void
-    public init(context: any AccountContextProtocol, toggleChats:@escaping(Bool)->Void, toggleIncomingCalls: @escaping(Bool) -> Void, rename: @escaping(NSView) -> Void) {
+    public init(context: any AccountContextProtocol, toggleChats:@escaping(Bool)->Void, toggleIncomingCalls: @escaping(Bool) -> Void, openLocation: @escaping(String) -> Void, rename: @escaping(NSView) -> Void) {
         self.context = context
         self.toggleChats = toggleChats
         self.toggleIncomingCalls = toggleIncomingCalls
+        self.openLocation = openLocation
         self.rename = rename
     }
 }
 
 private struct State : Equatable {
     public let session: RecentAccountSession
+    public let isGeocoding: Bool
     public let deviceModel: String?
 }
 
+private final class SessionDetailRowItem: GeneralInteractedRowItem {
+    let valueLayout: TextViewLayout
+    let accessoryImage: CGImage?
+    let accessoryTooltip: String?
+    let accessoryAction: (() -> Void)?
+    let accessoryLoading: Bool
+
+    var accessoryInset: CGFloat {
+        return accessoryImage.map { $0.systemSize.width + 10 } ?? 0
+    }
+
+    var valueWidth: CGFloat {
+        return max(1, blockWidth - nameLayout.layoutSize.width - viewType.innerInset.right - inset.left - 10 - accessoryInset)
+    }
+
+    init(_ initialSize: NSSize, stableId: AnyHashable, name: String, value: String, viewType: GeneralViewType, accessoryImage: CGImage?, accessoryTooltip: String?, accessoryAction: (() -> Void)?, accessoryLoading: Bool) {
+        self.accessoryImage = accessoryImage
+        self.accessoryTooltip = accessoryTooltip
+        self.accessoryAction = accessoryAction
+        self.accessoryLoading = accessoryLoading
+        valueLayout = TextViewLayout(.initialize(string: value, color: theme.colors.grayText, font: .normal(.title)), alignment: .right)
+        let type: GeneralInteractedType
+        if let accessoryImage, accessoryAction == nil {
+            type = .imageContext(accessoryImage, value)
+        } else {
+            type = .context(value)
+        }
+        super.init(initialSize, stableId: stableId, name: name, type: type, viewType: viewType)
+    }
+
+    override func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool {
+        let result = super.makeSize(width, oldWidth: oldWidth)
+        valueLayout.measure(width: valueWidth)
+        return result
+    }
+
+    override var height: CGFloat {
+        return max(super.height, valueLayout.layoutSize.height + viewType.innerInset.top + viewType.innerInset.bottom)
+    }
+
+    override func viewClass() -> AnyClass {
+        return SessionDetailRowView.self
+    }
+
+    override var accessibilityHelp: String? {
+        return accessoryLoading ? strings().voiceOverCommonLoading : accessoryTooltip
+    }
+
+    override var accessibilityRole: NSAccessibility.Role? {
+        return accessoryAction == nil ? super.accessibilityRole : .group
+    }
+
+    override var accessibilityIncludesChildren: Bool {
+        return accessoryAction != nil
+    }
+}
+
+private final class SessionDetailRowView: GeneralInteractedRowView {
+    private var accessoryControl: Control?
+    private var accessoryProgress: ProgressIndicator?
+
+    override func set(item: TableRowItem, animated: Bool = false) {
+        super.set(item: item, animated: animated)
+        guard let item = item as? SessionDetailRowItem else {
+            return
+        }
+        if let image = item.accessoryImage {
+            let control: Control
+            if let current = accessoryControl {
+                control = current
+            } else {
+                control = item.accessoryAction == nil ? OverlayControl() : ImageButton()
+                control.set(handler: { control in
+                    if control.controlState != .Hover {
+                        dismissTooltip(for: control)
+                    }
+                }, for: .Other)
+                if item.accessoryAction != nil {
+                    control.set(handler: { [weak self] _ in
+                        (self?.item as? SessionDetailRowItem)?.accessoryAction?()
+                    }, for: .Click)
+                }
+                containerView.addSubview(control)
+                accessoryControl = control
+            }
+            (control as? ImageButton)?.set(image: image, for: .Normal)
+            control.setFrameSize(NSMakeSize(image.systemSize.width + 8, image.systemSize.height + 8))
+            control.appTooltip = item.accessoryLoading ? nil : item.accessoryTooltip
+            control.setAccessibilityLabel(item.accessoryTooltip)
+            control.isAccessibilityDecorative = item.accessoryAction == nil
+            control.isEnabled = !item.accessoryLoading
+            control.isHidden = item.accessoryLoading
+            if item.accessoryLoading {
+                dismissTooltip(for: control)
+            }
+        } else {
+            if let accessoryControl {
+                dismissTooltip(for: accessoryControl)
+            }
+            accessoryControl?.removeFromSuperview()
+            accessoryControl = nil
+        }
+        if item.accessoryLoading {
+            let progress: ProgressIndicator
+            if let current = accessoryProgress {
+                progress = current
+            } else {
+                progress = ProgressIndicator(frame: NSMakeRect(0, 0, 20, 20))
+                progress.userInteractionEnabled = false
+                progress.isAccessibilityDecorative = true
+                containerView.addSubview(progress)
+                accessoryProgress = progress
+            }
+            progress.progressColor = theme.colors.accent
+        } else {
+            accessoryProgress?.removeFromSuperview()
+            accessoryProgress = nil
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        guard let item = item as? SessionDetailRowItem, let textView = textView else {
+            return
+        }
+        item.valueLayout.measure(width: item.valueWidth)
+        textView.update(item.valueLayout)
+        textView.centerY(x: containerView.frame.width - item.viewType.innerInset.right - textView.frame.width - item.accessoryInset)
+        if let accessoryControl, let image = item.accessoryImage {
+            accessoryControl.centerY(x: containerView.frame.width - item.viewType.innerInset.right - image.systemSize.width - 4, addition: -1)
+            accessoryProgress?.centerY(x: accessoryControl.frame.midX - 10, addition: -1)
+        }
+    }
+}
+
+private func sessionDetailEntry(sectionId: Int32, index: Int32, identifier: InputDataIdentifier, name: String, value: String, viewType: GeneralViewType, accessoryImage: CGImage? = nil, accessoryTooltip: String? = nil, accessoryAction: (() -> Void)? = nil, accessoryLoading: Bool = false) -> InputDataEntry {
+    let type: GeneralInteractedType = accessoryLoading ? .loading : accessoryImage.map { .imageContext($0, value) } ?? .context(value)
+    let data = InputDataGeneralData(name: name, color: theme.colors.text, type: type, viewType: viewType, description: accessoryTooltip)
+    return .custom(sectionId: sectionId, index: index, value: .none, identifier: identifier, equatable: InputDataEquatable(data), comparable: nil, item: { initialSize, stableId in
+        return SessionDetailRowItem(initialSize, stableId: stableId, name: name, value: value, viewType: viewType, accessoryImage: accessoryImage, accessoryTooltip: accessoryTooltip, accessoryAction: accessoryAction, accessoryLoading: accessoryLoading)
+    })
+}
 
 private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
@@ -69,22 +213,57 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
-    
-    
-    
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("application"), data: InputDataGeneralData(name: strings().sessionPreviewApp, color: theme.colors.text, type: .context(state.session.appName + ", " + state.session.appVersion), viewType: state.session.ip.isEmpty ? .singleItem : .firstItem, enabled: true)))
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("Device"), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem))) //TODOLANG
     index += 1
-    
-    if !state.session.ip.isEmpty {
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("ip"), data: InputDataGeneralData(name: strings().sessionPreviewIp, color: theme.colors.text, type: .context(state.session.ip), viewType: .innerItem, enabled: true)))
+
+    let isOfficial = state.session.flags.contains(.isOfficial)
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("application"), name: strings().sessionPreviewApp, value: state.session.appName, viewType: .firstItem, accessoryImage: isOfficial ? theme.icons.verifyDialog : nil, accessoryTooltip: isOfficial ? "This session is from the official Telegram app" : nil)) //TODOLANG
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("version"), data: InputDataGeneralData(name: "Version", color: theme.colors.text, type: .context(state.session.appVersion), viewType: .innerItem, enabled: true))) //TODOLANG
+    index += 1
+
+    let system = [state.session.platform, state.session.systemVersion].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " ")
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("os"), data: InputDataGeneralData(name: "OS", color: theme.colors.text, type: .context(system), viewType: .lastItem, enabled: true))) //TODOLANG
+    index += 1
+
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
+
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("Connection"), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem))) //TODOLANG
+    index += 1
+
+    let ip = state.session.ip.trimmingCharacters(in: .whitespacesAndNewlines)
+    let location = [state.session.country, state.session.region].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " ")
+
+    if !ip.isEmpty {
+        entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("ip"), name: strings().sessionPreviewIp, value: ip, viewType: .firstItem))
         index += 1
-        
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("location"), data: InputDataGeneralData(name: strings().sessionPreviewLocation, color: theme.colors.text, type: .context(state.session.country), viewType: .lastItem, enabled: true)))
+    }
+
+    if !location.isEmpty {
+        entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("location"), name: strings().sessionPreviewLocation, value: location, viewType: ip.isEmpty ? .firstItem : .innerItem, accessoryImage: theme.icons.chatAttachLocation, accessoryTooltip: strings().locationPreviewTitle, accessoryAction: {
+            arguments.openLocation(location)
+        }, accessoryLoading: state.isGeocoding))
         index += 1
-        
+    }
+
+    let dateFormatter = DateFormatter()
+    dateFormatter.locale = appAppearance.locale
+    dateFormatter.timeZone = .current
+    dateFormatter.dateStyle = .medium
+    dateFormatter.timeStyle = .medium
+    dateFormatter.doesRelativeDateFormatting = false
+
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("first_signed_at"), name: "First Signed At", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.creationDate))), viewType: ip.isEmpty && location.isEmpty ? .firstItem : .innerItem)) //TODOLANG
+    index += 1
+
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("last_active"), name: "Last Active", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.activityDate))), viewType: .lastItem)) //TODOLANG
+    index += 1
+
+    if !location.isEmpty {
         entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().sessionPreviewIpDesc), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
         index += 1
-
     }
 
     
@@ -119,6 +298,9 @@ public func SessionModalController(context: any AccountContextProtocol, session:
 
     var close:(()->Void)? = nil
     var isUpdating = false
+    let locationDisposable = MetaDisposable()
+    let geocodingPromise = ValuePromise(false, ignoreRepeated: true)
+    var isGeocoding = false
     var deviceModelUpdates = 0
     let deviceModelDisposable = renamedDeviceModel.get().start(next: { _ in
         deviceModelUpdates += 1
@@ -153,15 +335,36 @@ public func SessionModalController(context: any AccountContextProtocol, session:
         updateSession(context.activeSessionsContext.updateSessionAcceptsSecretChats(session, accepts: updated))
     }, toggleIncomingCalls: { updated in
         updateSession(context.activeSessionsContext.updateSessionAcceptsIncomingCalls(session, accepts: updated))
+    }, openLocation: { location in
+        guard !isGeocoding else {
+            return
+        }
+        isGeocoding = true
+        geocodingPromise.set(true)
+        let signal = FeatureNavigationHooks.shared.makeLocationPreviewController(context, location)
+        |> deliverOnMainQueue
+        |> afterDisposed {
+            Queue.mainQueue().async {
+                isGeocoding = false
+                geocodingPromise.set(false)
+            }
+        }
+        locationDisposable.set(signal.start(next: { controller in
+            if let controller {
+                showModal(with: controller, for: context.window)
+            } else {
+                alert(for: context.window, info: "Couldn't find this location. Please try again.") //TODOLANG
+            }
+        }))
     }, rename: { source in
         showModal(with: RenameDeviceController(context: context), for: context.window, morphSource: { [weak source] in
             return source
         })
     })
     
-    let signal = combineLatest(context.activeSessionsContext.state, renamedDeviceModel.get())
-    |> map { state, deviceModel in
-        return State(session: state.sessions.first(where: { $0.hash == session.hash }) ?? session, deviceModel: session.isCurrent ? deviceModel : nil)
+    let signal = combineLatest(context.activeSessionsContext.state, geocodingPromise.get(), renamedDeviceModel.get())
+    |> map { state, isGeocoding, deviceModel in
+        return State(session: state.sessions.first(where: { $0.hash == session.hash }) ?? session, isGeocoding: isGeocoding, deviceModel: session.isCurrent ? deviceModel : nil)
     }
     |> distinctUntilChanged
     |> deliverOnPrepareQueue
@@ -170,6 +373,10 @@ public func SessionModalController(context: any AccountContextProtocol, session:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().sessionPreviewTitle)
+    controller.onDeinit = {
+        locationDisposable.dispose()
+        deviceModelDisposable.dispose()
+    }
     
     let modalInteractions: ModalInteractions
     if session.isCurrent {
@@ -205,13 +412,9 @@ public func SessionModalController(context: any AccountContextProtocol, session:
         }
     }
     
-    controller.onDeinit = {
-        deviceModelDisposable.dispose()
-    }
-
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, closeHandler: { _ in
         close?()
-    })
+    }, size: NSMakeSize(440, 300))
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()
