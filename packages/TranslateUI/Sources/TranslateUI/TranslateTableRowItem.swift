@@ -33,6 +33,7 @@ final class TranslateTableRowItem : GeneralRowItem {
     let headerData: TranslateHeaderData?
     let isLoading: Bool
     let copyTranslation: (()->Void)?
+    let canCopy: Bool
     fileprivate var headerLayout: TextViewLayout?
     fileprivate var toneLayout: TextViewLayout?
     fileprivate var emojifyLayout: TextViewLayout?
@@ -48,8 +49,9 @@ final class TranslateTableRowItem : GeneralRowItem {
     /// Collapsed cap for rich content (≈3 text lines), revealed via the "Show more" overlay.
     private static let collapsedRichHeight: CGFloat = 66
 
-    init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, text: String, entities: [MessageTextEntity] = [], revealed: Bool = false, headerData: TranslateHeaderData? = nil, isLoading: Bool = false, originalText: String? = nil, originalEntities: [MessageTextEntity] = [], richPage: InstantPage? = nil, viewType: GeneralViewType, copyTranslation: (()->Void)? = nil, reveal: @escaping()->Void) {
+    init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, text: String, entities: [MessageTextEntity] = [], revealed: Bool = false, headerData: TranslateHeaderData? = nil, isLoading: Bool = false, originalText: String? = nil, originalEntities: [MessageTextEntity] = [], richPage: InstantPage? = nil, viewType: GeneralViewType, copyTranslation: (()->Void)? = nil, canCopy: Bool = true, reveal: @escaping()->Void) {
         self.reveal = reveal
+        self.canCopy = canCopy
         self.revealed = revealed
         self.context = context
         self.headerData = headerData
@@ -66,12 +68,14 @@ final class TranslateTableRowItem : GeneralRowItem {
         }
 
         self.textLayout = .init(attr, maximumNumberOfLines: revealed ? Int32.max : 2)
+        self.textLayout.mayItems = canCopy
 
         if isLoading, let originalText = originalText, !originalText.isEmpty {
             var origAttr = ChatMessageItem.applyMessageEntities(with: [TextEntitiesMessageAttribute(entities: originalEntities)], for: originalText, message: nil, context: context, fontSize: FontSize.text, openInfo: { _,_,_,_ in }, isDark: theme.colors.isDark, bubbled: true).mutableCopy() as! NSMutableAttributedString
             InlineStickerItem.apply(to: origAttr, associatedMedia: [:], entities: originalEntities, isPremium: context.isPremium)
             origAttr = origAttr.trimNewLinesToSpace.mutableCopy() as! NSMutableAttributedString
             let layout = TextViewLayout(origAttr, maximumNumberOfLines: 3)
+            layout.mayItems = canCopy
             self.originalTextLayout = layout
         } else {
             self.originalTextLayout = nil
@@ -379,6 +383,8 @@ private final class TranslateTableRowView : GeneralContainableRowView {
         guard let item = item as? TranslateTableRowItem else {
             return
         }
+
+        textView.textView.isSelectable = item.canCopy
 
         if let headerData = item.headerData, let headerLayout = item.headerLayout {
             let hButton: TranslateHeaderButton
