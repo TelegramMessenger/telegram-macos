@@ -4,6 +4,10 @@ import TelegramCore
 import SwiftSignalKit
 import InAppSettings
 import Strings
+import Localization
+import LocalAnimations
+
+let recentEmojiSourceKey = NSAttributedString.Key("recentEmojiSource")
 
 public class EBlockItem: TableRowItem {
 
@@ -25,12 +29,14 @@ public class EBlockItem: TableRowItem {
     public let segment: EmojiSegment
     public internal(set) var selectedOrders: [String: Int]
     public let selectionColor: NSColor?
+    public let removeRecent: ((String) -> Void)?
     
-    public init(_ initialSize:NSSize, stableId: AnyHashable, attrLines:[[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler:@escaping(String, NSRect)->Void, dragHandler: ((String, EntertainmentStickerDrag) -> Bool)? = nil, selectedOrders: [String: Int] = [:], selectionColor: NSColor? = nil) {
+    public init(_ initialSize:NSSize, stableId: AnyHashable, attrLines:[[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler:@escaping(String, NSRect)->Void, dragHandler: ((String, EntertainmentStickerDrag) -> Bool)? = nil, selectedOrders: [String: Int] = [:], selectionColor: NSColor? = nil, removeRecent: ((String) -> Void)? = nil) {
         self.lineAttr = attrLines
         self.symbols = attrLines.flatMap { $0 }
         self.selectedOrders = selectedOrders
         self.selectionColor = selectionColor
+        self.removeRecent = removeRecent
         self._stableId = stableId
         self.account = account
         self.segment = segment
@@ -66,11 +72,21 @@ public class EBlockItem: TableRowItem {
     public override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
         var items: [ContextMenuItem] = []
         let postbox = self.account.postbox
-        if let view = self.view as? EBlockRowView {
-            if let emoji = view.emojiUnderMouse?.emojiUnmodified, emoji.canHaveSkinToneModifier {
+        if let view = self.view as? EBlockRowView, let selectedEmoji = view.emoji(at: location) {
+            let emoji = selectedEmoji.string.emojiUnmodified
+            if emoji.canHaveSkinToneModifier {
                 items.append(EmojiToleranceContextMenuItem(emoji: emoji, callback: { value in
                     _ = modifySkinEmoji(emoji, modifier: value, postbox: postbox).start()
                 }))
+            }
+            if let removeRecent = removeRecent {
+                if !items.isEmpty {
+                    items.append(ContextSeparatorItem())
+                }
+                let source = selectedEmoji.attribute(recentEmojiSourceKey, at: 0, effectiveRange: nil) as? String ?? selectedEmoji.string
+                items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
+                    removeRecent(source)
+                }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
             }
         }
         

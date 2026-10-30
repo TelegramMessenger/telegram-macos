@@ -147,13 +147,15 @@ public final class EmojiesSectionRowItem : GeneralRowItem {
     public let mode: Mode
     public let color: NSColor?
     public let uniqueGifts: [StarGift.UniqueGift]
+    public let removeRecent: ((MediaId) -> Void)?
     private let emojiStatusAction = EmojiStatusMenuAction()
-    public init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, revealed: Bool, installed: Bool, info: StickerPackCollectionInfo?, items: [StickerPackItem], isBig: Bool = false, groupEmojiPack: Bool = false, mode: Mode = .panel, selectedItems:[SelectedItem] = [], color: NSColor? = nil, callback:@escaping(StickerPackItem, StickerPackCollectionInfo?, Int32?, NSRect?)->Void, largeCallback: (() -> ((StickerPackItem, NSRect?) -> Void)?)? = nil, drag: ((StickerPackItem, EntertainmentStickerDrag) -> Bool)? = nil, viewSet:((StickerPackCollectionInfo)->Void)? = nil, showAllItems:(()->Void)? = nil, openPremium:(()->Void)? = nil, installPack:((StickerPackCollectionInfo, [StickerPackItem])->Void)? = nil, ignorePremium: Bool = false, uniqueGifts: [StarGift.UniqueGift] = []) {
+    public init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, revealed: Bool, installed: Bool, info: StickerPackCollectionInfo?, items: [StickerPackItem], isBig: Bool = false, groupEmojiPack: Bool = false, mode: Mode = .panel, selectedItems:[SelectedItem] = [], color: NSColor? = nil, callback:@escaping(StickerPackItem, StickerPackCollectionInfo?, Int32?, NSRect?)->Void, largeCallback: (() -> ((StickerPackItem, NSRect?) -> Void)?)? = nil, drag: ((StickerPackItem, EntertainmentStickerDrag) -> Bool)? = nil, viewSet:((StickerPackCollectionInfo)->Void)? = nil, showAllItems:(()->Void)? = nil, openPremium:(()->Void)? = nil, installPack:((StickerPackCollectionInfo, [StickerPackItem])->Void)? = nil, ignorePremium: Bool = false, uniqueGifts: [StarGift.UniqueGift] = [], removeRecent: ((MediaId) -> Void)? = nil) {
         self.itemSize = isBig ? NSMakeSize(66, 60) : NSMakeSize(40, 34)
         self.info = info
         self.mode = mode
         self.color = color
         self.uniqueGifts = uniqueGifts
+        self.removeRecent = removeRecent
         self._items = items
         self.viewSet = viewSet
         self.installed = installed
@@ -450,6 +452,12 @@ public final class EmojiesSectionRowItem : GeneralRowItem {
             items.append(setStatus)
         }
         
+        if let removeRecent = removeRecent, let view = self.view as? EmojiesSectionRowView, let file = view.item(at: location)?.file {
+            items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
+                removeRecent(file.fileId)
+            }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+        }
+
         if stableId == AnyHashable(0) || self.viewSet == nil {
             return .single(items)
         }
@@ -787,6 +795,14 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
         }
     }
     
+    fileprivate func item(at point: NSPoint) -> StickerPackItem? {
+        let point = contentView.convert(point, from: self)
+        guard contentView.bounds.contains(point), let item = self.item as? EmojiesSectionRowItem else {
+            return nil
+        }
+        return item.items.first(where: { $0.rect.contains(point) })?.item
+    }
+
     fileprivate var itemUnderMouse: (InlineStickerItemLayer, EmojiesSectionRowItem.Item)? {
         guard let window = self.window, let item = self.item as? EmojiesSectionRowItem else {
             return nil
