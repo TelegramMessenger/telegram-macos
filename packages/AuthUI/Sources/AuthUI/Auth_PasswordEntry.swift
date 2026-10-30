@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramTheme
 import Localization
 import TelegramUtils
+import Carbon
 
 private final class Auth_PasswordEntryHeaderView : View {
     private let playerView:LottiePlayerView = LottiePlayerView()
@@ -72,9 +73,81 @@ private final class Auth_PasswordEntryHeaderView : View {
     }
 }
 
+private final class Auth_PasswordInputSourceGuard {
+    private var previous: TISInputSource?
+
+    private static func isEnglish(_ source: TISInputSource) -> Bool {
+        guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
+            return false
+        }
+        let languages = Unmanaged<AnyObject>.fromOpaque(value).takeUnretainedValue() as? [String]
+        return languages?.first == "en"
+    }
+
+    private static func englishLayout() -> TISInputSource? {
+        let filter = [kTISPropertyInputSourceType as String: kTISTypeKeyboardLayout as String]
+        let sources = TISCreateInputSourceList(filter as CFDictionary, false)?.takeRetainedValue() as? [TISInputSource] ?? []
+        return sources.first(where: { source in
+            guard isEnglish(source), let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsSelectCapable) else {
+                return false
+            }
+            return (Unmanaged<AnyObject>.fromOpaque(value).takeUnretainedValue() as? Bool) == true
+        })
+    }
+
+    var isPaused = false
+
+    func activate() {
+        guard previous == nil, !isPaused else {
+            return
+        }
+        let selected = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        guard !Auth_PasswordInputSourceGuard.isEnglish(selected), let english = Auth_PasswordInputSourceGuard.englishLayout() else {
+            return
+        }
+        previous = selected
+        TISSelectInputSource(english)
+    }
+
+    func deactivate() {
+        guard let previous = previous, !isPaused else {
+            return
+        }
+        self.previous = nil
+        TISSelectInputSource(previous)
+    }
+
+    deinit {
+        deactivate()
+    }
+}
+
+private final class Auth_PasswordSecureField : NSSecureTextField {
+    var inputSourceGuard: Auth_PasswordInputSourceGuard?
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            inputSourceGuard?.activate()
+        }
+        return result
+    }
+}
+
+private final class Auth_PasswordPlainField : NSTextField {
+    var inputSourceGuard: Auth_PasswordInputSourceGuard?
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            inputSourceGuard?.activate()
+        }
+        return result
+    }
+}
+
 private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
-    private let secureField: NSSecureTextField = NSSecureTextField()
-    private let plainField: NSTextField = NSTextField()
+    private let secureField: NSSecureTextField = Auth_PasswordSecureField()
+    private let plainField: NSTextField = Auth_PasswordPlainField()
+    private let inputSourceGuard = Auth_PasswordInputSourceGuard()
     private let revealButton: ImageButton = ImageButton()
     private var isRevealed: Bool = false
     private var hint: String?
@@ -91,6 +164,10 @@ private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
         addSubview(secureField)
         addSubview(plainField)
         addSubview(revealButton)
+        (secureField as? Auth_PasswordSecureField)?.inputSourceGuard = inputSourceGuard
+        (plainField as? Auth_PasswordPlainField)?.inputSourceGuard = inputSourceGuard
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidResignActive), name: NSApplication.didResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidBecomeActive), name: NSApplication.didBecomeActiveNotification, object: nil)
         plainField.isHidden = true
         revealButton.autohighlight = false
         revealButton.scaleOnClick = true
@@ -133,7 +210,25 @@ private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
         revealButton.setAccessibilityLabel(isRevealed ? strings().voiceOverCommonHide : strings().voiceOverCommonShow)
     }
     
+    @objc private func applicationDidResignActive() {
+        inputSourceGuard.deactivate()
+    }
+    
+    @objc private func applicationDidBecomeActive() {
+        if activeField.currentEditor() != nil {
+            inputSourceGuard.activate()
+        }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
     private func toggleReveal() {
+        inputSourceGuard.isPaused = true
+        defer {
+            inputSourceGuard.isPaused = false
+        }
         let previous = activeField
         let editor = previous.currentEditor()
         let hadFocus = editor != nil
@@ -165,6 +260,10 @@ private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
     
     public func controlTextDidChange(_ obj: Notification) {
         self.takeError?()
+    }
+
+    public func controlTextDidEndEditing(_ obj: Notification) {
+        inputSourceGuard.deactivate()
     }
     
     public func update(locked: Bool, hint: String?, invoke: @escaping()->Void, takeError:@escaping()->Void) {
