@@ -1,0 +1,29 @@
+[
+  {
+    "name" : "tile 1 revealed without ink",
+    "pass" : true
+  },
+  {
+    "name" : "tile 1 sharp after reveal",
+    "pass" : false,
+    "pixelVariance" : 0.00074467567570499454
+  },
+  {
+    "name" : "tile 2 revealed without ink",
+    "pass" : true
+  },
+  {
+    "name" : "tile 2 sharp after reveal",
+    "pass" : false,
+    "pixelVariance" : 0.00074467567570499454
+  },
+  {
+    "name" : "tile 3 revealed without ink",
+    "pass" : true
+  },
+  {
+    "name" : "tile 3 sharp after reveal",
+    "pass" : false,
+    "pixelVariance" : 0.00074467567570499454
+  }
+]

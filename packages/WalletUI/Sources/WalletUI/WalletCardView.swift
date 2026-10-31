@@ -581,6 +581,11 @@ public final class WalletCardView: View {
             textView.disableBackgroundDrawing = true
             textView.isEventLess = true
         }
+        stickerView.isEventLess = true
+        stickerMaskLayer.contentsGravity = .resize
+        faceView.addSubview(stickerView)
+        stickerView.layer?.addSublayer(stickerHintLayer)
+
         for textView in [nameView, recipientView] {
             faceView.addSubview(textView)
         }
@@ -601,11 +606,6 @@ public final class WalletCardView: View {
         qrIconView.contentGravity = .resizeAspect
         qrButton.addSubview(qrIconView)
         faceView.addSubview(qrButton)
-
-        stickerView.isEventLess = true
-        stickerMaskLayer.contentsGravity = .resize
-        faceView.addSubview(stickerView)
-        stickerView.layer?.addSublayer(stickerHintLayer)
 
         for textView in [integralView, fractionalView, currencyView, fiatView] {
             faceView.addSubview(textView)

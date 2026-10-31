@@ -377,12 +377,17 @@ private func showStandardLeaveDialog(context: any AccountContextProtocol, peer: 
 
             let verify = verifyAlertSignal(for: context.window, information: text, ok: okTitle ?? strings().alertOK, option: thridTitle, optionIsSelected: false, completeWhenDismissed: true) |> filter { $0 != nil }
 
-            return combineLatest(verify, context.globalPeerHandler.get() |> take(1)) |> map { result, location -> Bool in
+            return combineLatest(verify, context.globalPeerHandler.get() |> take(1)) |> deliverOnMainQueue |> map { result, location -> Bool in
 
                 if let threadId = threadId {
                     _ = context.engine.peers.removeForumChannelThread(id: peerId, threadId: threadId).start()
                 } else {
                     scheduleChatRemoval(context: context, peer: peer, peerId: peerId, deleteGloballyIfPossible: result == .thrid || forceRemoveGlobally, blockBot: peer.isBot && result == .thrid)
+                }
+
+                if let threadId = threadId, peerId == context.peerId {
+                    SavedChatControllerRegistry.shared.remove(accountId: context.account.id, peerId: peerId, threadId: threadId)
+                    return true
                 }
 
                 switch location {

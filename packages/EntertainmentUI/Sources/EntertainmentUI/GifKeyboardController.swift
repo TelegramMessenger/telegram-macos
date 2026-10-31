@@ -644,7 +644,7 @@ public final class GifKeyboardController<Context: AccountContextProtocol> : Tele
                         } else {
                             items.append(ContextMenuItem(strings().messageContextSaveGif, handler: {
                                 let limit = context.isPremium ? context.premiumLimits.saved_gifs_limit_premium : context.premiumLimits.saved_gifs_limit_default
-                                if limit >= gifItems.count, !context.isPremium {
+                                if limit <= gifItems.count, !context.isPremium {
                                     showModalText(for: context.window, text: strings().chatContextFavoriteGifsLimitInfo("\(context.premiumLimits.saved_gifs_limit_premium)"), title: strings().chatContextFavoriteGifsLimitTitle, callback: { value in
                                         FeatureNavigationHooks.shared.showPremiumLimit(context, .savedGifs)
                                     })

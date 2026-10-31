@@ -731,6 +731,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         }
 
         super.init()
+        self.inputContextHelper.fullWidthInset = 12
         
         self.inputContextHelper.controller.onSearchMessageSelected = { [weak self] message in
             self?.inputInteraction.update({ state in
@@ -821,10 +822,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
             let stateValue = self.query
             
             updateCount(current: max(value.selectedIndex + 1, 0), total: max(value.totalCount, value.messages.0.count), animated: animated)
-            prev.isEnabled = !value.messages.0.isEmpty && value.selectedIndex < value.messages.0.count - 1
-            next.isEnabled = !value.messages.0.isEmpty && value.selectedIndex > 0
-            next.set(image: next.isEnabled ? theme.icons.chat_search_next : theme.icons.chat_search_next_disabled, for: .Normal)
-            prev.set(image: prev.isEnabled ? theme.icons.chat_search_prev : theme.icons.chat_search_prev_disabled, for: .Normal)
+            updateSearchState()
 
             
             
@@ -1217,13 +1215,6 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         let theme = (theme as! TelegramPresentationTheme)
         backgroundColor = .clear
 
-        next.set(image: theme.icons.chat_search_next, for: .Normal)
-        _ = next.sizeToFit()
-
-        prev.set(image: theme.icons.chat_search_prev, for: .Normal)
-        _ = prev.sizeToFit()
-
-
         calendar.set(image: theme.icons.chat_search_calendar, for: .Normal)
         _ = calendar.sizeToFit()
 
@@ -1246,7 +1237,13 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
     }
     
     func updateSearchState() {
-       
+        let state = inputInteraction.state
+        prev.isEnabled = !state.messages.0.isEmpty && state.selectedIndex < state.messages.0.count - 1
+        next.isEnabled = !state.messages.0.isEmpty && state.selectedIndex > 0
+        next.set(image: next.isEnabled ? theme.icons.chat_search_next : theme.icons.chat_search_next_disabled, for: .Normal)
+        prev.set(image: prev.isEnabled ? theme.icons.chat_search_prev : theme.icons.chat_search_prev_disabled, for: .Normal)
+        _ = next.sizeToFit()
+        _ = prev.sizeToFit()
     }
     
     private func closeCalendarPopover() {
@@ -1272,7 +1269,7 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         perform()
     }
     
-    private var searchWidth: CGFloat {
+    private var searchAccessoryWidth: CGFloat {
         let gap: CGFloat = 8
         var rightSide: CGFloat = gap + cancel.frame.width
         if !calendar.isHidden {
@@ -1283,10 +1280,17 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         }
         rightSide += gap + next.frame.width
         rightSide += gap + prev.frame.width
-        if countWidth > 0 {
-            rightSide += gap + countWidth
-        }
-        return max(0, frame.width - gap - rightSide - gap)
+        return rightSide
+    }
+
+    private var visibleCountWidth: CGFloat {
+        let available = frame.width - 16 - searchAccessoryWidth
+        return countWidth > 0 && available - countWidth - 8 >= 160 ? countWidth : 0
+    }
+
+    private var searchWidth: CGFloat {
+        let countSpace = visibleCountWidth > 0 ? visibleCountWidth + 8 : 0
+        return max(0, frame.width - 16 - searchAccessoryWidth - countSpace)
     }
 
     private func countLayout(_ string: String) -> TextViewLayout {
@@ -1347,6 +1351,8 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         transition.updateFrame(view: prev, frame: prev.centerFrameY(x: searchView.frame.maxX + gap))
 
         let countHeight: CGFloat = 20
+        let countWidth = visibleCountWidth
+        countContainer.isHidden = countWidth == 0
         let countFrame = NSMakeRect(prev.frame.maxX + gap, floor((40 - countHeight) / 2), countWidth, countHeight)
         transition.updateFrame(view: countContainer, frame: countFrame)
 
@@ -1371,12 +1377,10 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
 
         transition.updateFrame(view: cancel, frame: cancel.centerFrameY(x: x))
 
-        let inputContextView = inputContextHelper.controller.view
-        let rect = CGRect(origin: inputContextHelper.controller.frame.origin, size: NSSize(width: size.width, height: inputContextHelper.controller.frame.height))
-        transition.updateFrame(view: inputContextView, frame: rect)
+        inputContextHelper.updateLayout(animated: transition.isAnimated)
 
         if let tagsView = tagsView {
-            transition.updateFrame(view: tagsView, frame: NSMakeRect(0, 35, size.width, 40))
+            transition.updateFrame(view: tagsView, frame: NSMakeRect(12, 35, max(0, size.width - 24), 40))
         }
     }
 

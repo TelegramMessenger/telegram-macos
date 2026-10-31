@@ -156,7 +156,7 @@ public struct StorageUsageUIState : Equatable {
     var stats: StorageUsageStats?
     var msgSizes: [EngineMessage.Id : Int64] = [:]
     var appearance: Appearance
-    var systemSize: UInt64?
+    var totalDeviceStorageBytes: UInt64?
     var otherRevealed: Bool
     var unselected:Set<StorageUsageCategory>
     var peerId: PeerId?
@@ -453,6 +453,7 @@ private struct TupleUsage : Equatable {
 
 private struct TupleClear : Equatable {
     var text: String
+    var sizeText: String?
     var enabled: Bool
     var viewType: GeneralViewType
 }
@@ -544,7 +545,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
                 size = 0
             }
             
-            items.append(.init(id: key.rawValue, index: Int(key.rawValue), count: Int(size), color: key.color, badge: nil, particle: nil))
+            items.append(.init(id: key.rawValue, index: Int(key.rawValue), count: Int(size), color: key.color, badge: nil, particle: StorageUsageResources.particle(for: key)))
             i += 1
         }
         
@@ -599,31 +600,31 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
         
 
         
-        let usageProgress: CGFloat
+        let usageProgress: CGFloat?
         if let _ = state.peerId, let allStats = state.allStats {
-            usageProgress = CGFloat(stats.totalCount) / CGFloat(allStats.totalStats.totalCount) * 100.0
+            usageProgress = allStats.totalStats.totalCount > 0 ? CGFloat(stats.totalCount) / CGFloat(allStats.totalStats.totalCount) * 100.0 : nil
         } else {
-            if let systemSize = state.systemSize {
-                usageProgress = CGFloat(stats.totalCount) / CGFloat(systemSize * 1024 * 1024 * 1024) * 100.0
-            } else {
-                usageProgress = 0
-            }
+            usageProgress = StorageUsageCapacity.fraction(usedBytes: stats.totalCount, totalBytes: state.totalDeviceStorageBytes).map { $0 * 100.0 }
         }
         
         
         let usageText: String
-        if usageProgress < 0.01 {
-            if let _ = state.peer {
-                usageText = strings().storageUsageTelegramUsageEmptyPeer("1%")
+        if let usageProgress {
+            if usageProgress < 0.01 {
+                if let _ = state.peer {
+                    usageText = strings().storageUsageTelegramUsageEmptyPeer("1%")
+                } else {
+                    usageText = "Telegram uses less than 0.01% of your device storage." //TODOLANG
+                }
             } else {
-                usageText = strings().storageUsageTelegramUsageEmpty("1%")
+                if let _ = state.peer {
+                    usageText = strings().storageUsageTelegramUsageTextPeer(String(format: "%.02f%%", usageProgress))
+                } else {
+                    usageText = "Telegram uses **\(String(format: "%.02f%%", usageProgress))** of your device storage." //TODOLANG
+                }
             }
         } else {
-            if let _ = state.peer {
-                usageText = strings().storageUsageTelegramUsageTextPeer(String(format: "%.02f%%", usageProgress))
-            } else {
-                usageText = strings().storageUsageTelegramUsageText(String(format: "%.02f%%", usageProgress))
-            }
+            usageText = ""
         }
         let usageHeader: String
         if let peer = state.peer {
@@ -632,7 +633,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
             usageHeader = strings().storageUsageHeader
         }
         
-        let tupleUsage = TupleUsage(string: usageText, header: usageHeader, progress: max(0.03, usageProgress / 100.0), viewType: .legacy)
+        let tupleUsage = TupleUsage(string: usageText, header: usageHeader, progress: usageProgress.map { max(0.03, $0 / 100.0) } ?? 0, viewType: .legacy)
         
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_usage, equatable: .init(tupleUsage), comparable: nil, item: { initialSize, stableId in
             return StorageUsageHeaderItem(initialSize, stableId: stableId, header: tupleUsage.header, string: tupleUsage.string, progress: tupleUsage.progress, viewType: tupleUsage.viewType)
@@ -739,7 +740,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
             
             
             let text: String
-            let enabled: Bool
+            let sizeText: String?
             
             let clearSize = stats.categories.filter {
                 !state.unselected.contains($0.key.mapped)
@@ -749,19 +750,19 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
             
             if clearSize > 0 {
                 if state.unselected.isEmpty {
-                    text = strings().storageUsageClearFull(String.prettySized(with: clearSize, round: true))
+                    text = strings().storageUsageClearConfirmOKAll
                 } else {
-                    text = strings().storageUsageClearPart(String.prettySized(with: clearSize, round: true))
+                    text = strings().storageUsageSelectedClearDisabled
                 }
-                enabled = true
+                sizeText = String.prettySized(with: clearSize, round: true)
             } else {
-                text = strings().storageUsageClearDisabled
-                enabled = false
+                text = strings().storageUsageSelectedClearDisabled
+                sizeText = nil
             }
-            let tupleClear: TupleClear = .init(text: text, enabled: enabled, viewType: categoryItems.isEmpty ? .singleItem : .lastItem)
+            let tupleClear: TupleClear = .init(text: text, sizeText: sizeText, enabled: clearSize > 0, viewType: categoryItems.isEmpty ? .singleItem : .lastItem)
             
             entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_clear, equatable: InputDataEquatable(tupleClear), comparable: nil, item: { initialSize, stableId in
-                return StorageUsageClearButtonItem(initialSize, stableId: stableId, text: tupleClear.text, enabled: tupleClear.enabled, viewType: tupleClear.viewType, action: arguments.clearAll)
+                return StorageUsageClearButtonItem(initialSize, stableId: stableId, text: tupleClear.text, sizeText: tupleClear.sizeText, enabled: tupleClear.enabled, viewType: tupleClear.viewType, action: arguments.clearAll)
             }))
             index += 1
             entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().storageUsageCategoryText), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
@@ -803,7 +804,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
             if !values.contains(value) {
                 value = Int32.max
             }
-            return SelectSizeRowItem(initialSize, stableId: stableId, current: value, sizes: values, hasMarkers: false, titles: ["5GB", "16GB", "32GB", strings().storageUsageLimitNoLimit], viewType: .singleItem, selectAction: { selected in
+            return SelectSizeRowItem(initialSize, stableId: stableId, current: value, sizes: values, hasMarkers: false, titles: ["5GB", "16GB", "32GB", strings().storageUsageLimitNoLimit], viewType: GeneralViewType.singleItem.withUpdatedInsets(NSEdgeInsetsMake(12, 28, 12, 28)), selectAction: { selected in
                 arguments.updateMediaLimit(values[selected])
             })
         }))
@@ -875,7 +876,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
                 case .privateChats:
                     icon = generateSettingsIcon(TelegramThemeHooks.shared.image(.iconColoredPrivate).precomposed(flipVertical: true))
                 case .stories:
-                    icon = theme.icons.settingsStories
+                    icon = StorageUsageResources.storiesIcon
                 }
                 let desc: String?
                 if keepMedia.exceptions.isEmpty {
@@ -986,7 +987,7 @@ public final class StorageUsageView : View {
     fileprivate let tableView: TableView
     private var selectPanel: SelectPanel?
     public required init(frame frameRect: NSRect) {
-        self.tableView = .init(frame: frameRect.size.bounds)
+        self.tableView = StorageUsageTableView(frame: frameRect.size.bounds)
         super.init(frame: frameRect)
         addSubview(tableView)
         tableView.getBackgroundColor = {
@@ -1446,7 +1447,7 @@ open class StorageUsageController<Context: AccountContextProtocol>: EditableView
                 }
                 
                 current.appearance = appearance
-                current.systemSize = freeSystemGigabytes()
+                current.totalDeviceStorageBytes = StorageUsageCapacity.totalDeviceBytes
                 return current
             }
         }))

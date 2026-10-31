@@ -15,6 +15,7 @@ import StatisticsUI
 import SwiftSignalKit
 import TelegramCore
 import Postbox
+import LocalAnimations
 
 public class PollResultStickItem: TableStickItem {
     
@@ -26,13 +27,19 @@ public class PollResultStickItem: TableStickItem {
     public let collapse: (()->Void)?
     public let _stableId: AnyHashable
     public let context: (any AccountContextProtocol)?
-    public init(_ initialSize:NSSize, stableId: AnyHashable, left: NSAttributedString, context: any AccountContextProtocol, additionText: String, right: String, collapse: (()->Void)?, viewType: GeneralViewType) {
+    public let canCopy: Bool
+    private let canCopyText: () -> Bool
+    public init(_ initialSize:NSSize, stableId: AnyHashable, left: NSAttributedString, context: any AccountContextProtocol, additionText: String, right: String, collapse: (()->Void)?, viewType: GeneralViewType, canCopy: Bool, canCopyText: @escaping () -> Bool) {
+        self.canCopy = canCopy
+        self.canCopyText = canCopyText
         self.viewType = viewType
         self._stableId = stableId
         self.context = context
         self.inset = NSEdgeInsets(left: 20, right: 20)
         self.collapse = collapse
-        self.leftLayout = TextViewLayout(left, maximumNumberOfLines: 1, truncationType: .end)
+        self.leftLayout = TextViewLayout(left, maximumNumberOfLines: 1, truncationType: .end, mayItems: canCopy)
+        self.leftLayout.interactions = LinkHooks.shared.globalLinkExecutor()
+        self.leftLayout.interactions.copy = { !canCopyText() }
         self.leftAdditionLayout = TextViewLayout(.initialize(string: additionText, color: theme.colors.listGrayText, font: .normal(11.5)), maximumNumberOfLines: 1, truncationType: .end)
 
         if let collapse = collapse {
@@ -59,8 +66,25 @@ public class PollResultStickItem: TableStickItem {
     public override var canBeAnchor: Bool {
         return false
     }
+
+    public override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
+        guard canCopyText() else { return .single([]) }
+        let text = self.leftLayout.attributedString
+        let interactions = self.leftLayout.interactions
+        let canCopyText = self.canCopyText
+        return .single([
+            ContextMenuItem(strings().textCopy, handler: {
+                guard canCopyText() else { return }
+                if !interactions.copyAttributedString(text) {
+                    copyToClipboard(text.string)
+                }
+            }, itemImage: MenuAnimation.menu_copy.value)
+        ])
+    }
     
     public required init(_ initialSize: NSSize) {
+        self.canCopy = false
+        self.canCopyText = { false }
         self.viewType = .legacy
         self.leftLayout = TextViewLayout(NSAttributedString())
         self.rightLayout = TextViewLayout(NSAttributedString())
@@ -111,8 +135,8 @@ private final class PollResultStickView : TableStickView {
         containerView.addSubview(self.textView)
         containerView.addSubview(self.rightView)
         containerView.addSubview(self.textAdditionView)
-        self.textView.textView.isSelectable = false
-        self.textView.userInteractionEnabled = false
+        self.textView.textView.isSelectable = true
+        self.textView.userInteractionEnabled = true
         
         self.textAdditionView.disableBackgroundDrawing = true
         self.textAdditionView.isSelectable = false
@@ -164,6 +188,9 @@ private final class PollResultStickView : TableStickView {
         guard let item = item as? PollResultStickItem else {
             return
         }
+        self.textView.textView.isSelectable = item.canCopy
+        self.textView.textView.userInteractionEnabled = item.canCopy
+        self.textView.userInteractionEnabled = item.canCopy
         self.textView.set(text: item.leftLayout, context: item.context)
         self.textAdditionView.update(item.leftAdditionLayout)
         self.rightView.update(item.rightLayout)

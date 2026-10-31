@@ -57,6 +57,7 @@ private let keyURLSet = "set";
 private let keyURLText = "text";
 private let keyURLStart = "start";
 private let keyURLVoiceChat = "voicechat";
+private let keyURLVideoChat = "videochat";
 private let keyURLStartattach = "startattach";
 private let keyURLAttach = "attach";
 private let keyURLStartGroup = "startgroup";
@@ -455,7 +456,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                 return .inviteBotToGroup(link: urlString, username: username, action: .start(parameter: value, behavior: .automatic), rights: rights, isChannel: key == keyURLStartChannel)
                             }
                             break loop;
-                        case keyURLVoiceChat:
+                        case keyURLVoiceChat, keyURLVideoChat, keyURLLivestream:
                             action = .joinVoiceChat(value)
                             break loop;
                         case keyURLAttach:
@@ -471,7 +472,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                             break
                         }
                     }
-                    if vars.isEmpty && userAndVariables[1] == keyURLVoiceChat {
+                    if vars.isEmpty && [keyURLVoiceChat, keyURLVideoChat, keyURLLivestream].contains(userAndVariables[1]) {
                         action = .joinVoiceChat(nil)
                     }
                 }
@@ -735,7 +736,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                     let rights = vars[keyURLAdmin]
                                     return .inviteBotToGroup(link: urlString, username: username, action: .start(parameter: value, behavior: .none), rights: rights, isChannel: key == keyURLStartChannel)
                                 }
-                            case keyURLVoiceChat:
+                            case keyURLVoiceChat, keyURLVideoChat, keyURLLivestream:
                                 action = .joinVoiceChat(value)
                                 break loop
                             case keyURLAttach:
@@ -771,7 +772,7 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                         }
                         if action == nil && emptyVars.contains(keyURLStartapp) {
                             action = .makeWebview(appname: "", command: nil)
-                        } else if action == nil && emptyVars.contains(keyURLVoiceChat) {
+                        } else if action == nil && (emptyVars.contains(keyURLVoiceChat) || emptyVars.contains(keyURLVideoChat) || emptyVars.contains(keyURLLivestream)) {
                             action = .joinVoiceChat(nil)
                         } else if action == nil, vars[keyURLStartattach] != nil || vars[keyURLAttach] != nil {
                             let choose = vars[keyURLChoose]?.split(separator: "+").compactMap { String($0) }

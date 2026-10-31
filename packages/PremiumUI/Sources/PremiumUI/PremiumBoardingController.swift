@@ -1069,7 +1069,7 @@ private final class PremiumBoardingView : View {
         self.arguments = arguments
         let size = acceptView.update(animated: animated, state: state, context: arguments.context)
         acceptView.setFrameSize(NSMakeSize(frame.width - 40, size.height))
-        acceptView.layer?.cornerRadius = 10
+        acceptView.layer?.cornerRadius = 20
         let transition: ContainedViewLayoutTransition
         if animated && !first {
             transition = .animated(duration: 0.2, curve: .easeOut)
@@ -1114,7 +1114,7 @@ private final class PremiumBoardingView : View {
             let acceptView = AcceptView(frame: .zero)
             let size = acceptView.update(animated: false, state: state, context: arguments.context)
             acceptView.setFrameSize(NSMakeSize(frame.width - 40, size.height))
-            acceptView.layer?.cornerRadius = 10
+            acceptView.layer?.cornerRadius = 20
             acceptView.set(handler: { [weak self] _ in
                 self?.accept?()
             }, for: .Click)
@@ -1126,10 +1126,10 @@ private final class PremiumBoardingView : View {
             okButton.autohighlight = false
             okButton.set(font: .medium(.text), for: .Normal)
             okButton.set(color: .white, for: .Normal)
-            okButton.layer?.cornerRadius = 10
+            okButton.layer?.cornerRadius = 20
             okButton.set(text: strings().modalOK, for: .Normal)
             okButton.sizeToFit(.zero, NSMakeSize(frame.width - 40, 40), thatFit: true)
-            okButton.layer?.cornerRadius = 10
+            okButton.layer?.cornerRadius = 20
             let gradient = CAGradientLayer()
             gradient.frame = okButton.bounds
             gradient.disableActions()

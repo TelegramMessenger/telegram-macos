@@ -78,17 +78,18 @@ func richTextThreadReplySubject(chatInteraction: ChatInteraction) -> EngineMessa
     return .init(messageId: MessageId(peerId: chatInteraction.peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId)), quote: nil, innerSubject: nil)
 }
 
-private func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute]) {
+func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute]) {
     let context = chatInteraction.interactionContext
     let message: EnqueueMessage = .message(text: text, attributes: attributes, inlineStickers: [:],
                                            mediaReference: nil, threadId: chatInteraction.chatLocation.threadId,
-                                           replyToMessageId: richTextThreadReplySubject(chatInteraction: chatInteraction), replyToStoryId: nil, localGroupingKey: nil,
+                                           replyToMessageId: chatInteraction.presentation.interfaceState.replyMessageId ?? richTextThreadReplySubject(chatInteraction: chatInteraction), replyToStoryId: nil, localGroupingKey: nil,
                                            correlationId: nil, bubbleUpEmojiOrStickersets: [])
     if let customChatContents = chatInteraction.mode.customChatContents {
         _ = (customChatContents.enqueueMessages(messages: [message])).start()
     } else {
         _ = (enqueueMessages(account: context.account, peerId: chatInteraction.peerId, messages: [message])).start()
     }
+    chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedReplyMessageId(nil) } }
     if chatInteraction.mode != .scheduled, attributes.contains(where: { $0 is OutgoingScheduleInfoMessageAttribute }) {
         delay(0.1, closure: { [weak chatInteraction] in
             guard let chatInteraction else { return }

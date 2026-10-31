@@ -3,7 +3,7 @@ import AppKit
 import ColorPalette
 
 
-private struct Particle {
+struct PieChartParticle {
     var trackIndex: Int
     var position: CGPoint
     var scale: CGFloat
@@ -35,8 +35,8 @@ private struct Particle {
     }
 }
 
-private final class ParticleSet {
-    private(set) var particles: [Particle] = []
+final class PieChartParticleSet {
+    private(set) var particles: [PieChartParticle] = []
     
     init() {
         self.generateParticles(preAdvance: true)
@@ -83,7 +83,7 @@ private final class ParticleSet {
                     position.x += direction.x * initialOffset * 105.0
                     position.y += direction.y * initialOffset * 105.0
                     
-                    let particle = Particle(
+                    let particle = PieChartParticle(
                         trackIndex: directionIndex,
                         position: position,
                         scale: scale,
@@ -188,13 +188,13 @@ private class TooltipView : View {
 private final class SectionLayer: SimpleLayer {
     private let maskLayer: SimpleShapeLayer
     private let gradientLayer: SimpleGradientLayer
-        
+    private let strokeLayer = SimpleShapeLayer()
+    private let labelLayer = SimpleLayer()
+    private var labelCache: (text: String, fontSize: CGFloat, color: NSColor, scale: CGFloat)?
     private var particleImage: CGImage?
     private var particleLayers: [SimpleLayer] = []
-    
-    private let item: PieChartView.Item
-    init(_ item: PieChartView.Item) {
-        self.item = item
+
+    override init() {
         self.maskLayer = SimpleShapeLayer()
         self.maskLayer.fillColor = NSColor.white.cgColor
         
@@ -207,8 +207,16 @@ private final class SectionLayer: SimpleLayer {
         
         self.mask = self.maskLayer
         self.addSublayer(self.gradientLayer)
-        
-        self.particleImage = item.particle
+        self.strokeLayer.fillColor = nil
+        self.strokeLayer.lineCap = .round
+        self.addSublayer(self.strokeLayer)
+        self.addSublayer(self.labelLayer)
+    }
+
+    override init(layer: Any) {
+        self.maskLayer = SimpleShapeLayer()
+        self.gradientLayer = SimpleGradientLayer()
+        super.init(layer: layer)
     }
     
     
@@ -223,12 +231,24 @@ private final class SectionLayer: SimpleLayer {
         return false
     }
     
-    func update(size: CGSize, path: CGPath) {
+    func update(item: PieChartView.Item, size: CGSize, path: CGPath, strokePath: CGPath, presentation: PieChartView.Presentation) {
         self.maskLayer.frame = CGRect(origin: CGPoint(), size: size)
         self.gradientLayer.frame = CGRect(origin: CGPoint(), size: size)
+        self.strokeLayer.frame = CGRect(origin: .zero, size: size)
+        self.strokeLayer.path = strokePath
+        self.strokeLayer.strokeColor = presentation.strokeColor.cgColor
+        self.strokeLayer.lineWidth = presentation.strokeSize
+        if self.particleImage !== item.particle {
+            self.particleImage = item.particle
+            for layer in self.particleLayers {
+                layer.contents = item.particle
+                layer.bounds = CGRect(origin: .zero, size: item.particle?.backingSize ?? .zero)
+            }
+        }
         
-        let normalColor = item.color.cgColor
-        let darkerColor = item.color.withMultipliedBrightnessBy(0.96).cgColor
+        let color = item.color.usingColorSpace(.deviceRGB) ?? item.color
+        let normalColor = color.cgColor
+        let darkerColor = color.withMultipliedBrightnessBy(0.96).cgColor
         let colors: [CGColor] = [
             darkerColor,
             normalColor,
@@ -250,13 +270,33 @@ private final class SectionLayer: SimpleLayer {
             return location as NSNumber
         }
         
-        let path = CGMutablePath()
         self.maskLayer.path = path
-        
     }
-    
-    func updateParticles(particleSet: ParticleSet) {
+
+    func updateLabel(text: String?, fontSize: CGFloat, color: NSColor, center: CGPoint) {
+        guard let text else {
+            self.labelLayer.isHidden = true
+            return
+        }
+        self.labelLayer.isHidden = false
+        if labelCache?.text != text || labelCache?.fontSize != fontSize || labelCache?.color != color || labelCache?.scale != System.backingScale {
+            let attributedString = NSAttributedString(string: text, attributes: [.foregroundColor: color, .font: NSFont.avatar(fontSize)])
+            let node = TextLabelNode.layoutText(attributedString, CGSize(width: 200, height: 200))
+            self.labelLayer.bounds = CGRect(origin: .zero, size: node.0.size)
+            self.labelLayer.contents = generateImage(node.0.size, rotatedContext: { size, context in
+                context.clear(CGRect(origin: .zero, size: size))
+                node.1.draw(CGRect(origin: .zero, size: size), in: context, backingScaleFactor: System.backingScale)
+            })
+            self.labelCache = (text, fontSize, color, System.backingScale)
+        }
+        self.labelLayer.position = center
+    }
+
+    func updateParticles(particleSet: PieChartParticleSet) {
         guard let particleImage = self.particleImage else {
+            for layer in self.particleLayers {
+                layer.isHidden = true
+            }
             return
         }
         for i in 0 ..< particleSet.particles.count {
@@ -269,7 +309,7 @@ private final class SectionLayer: SimpleLayer {
             } else {
                 particleLayer = SimpleLayer()
                 particleLayer.contents = particleImage
-                particleLayer.bounds = CGRect(origin: CGPoint(), size: particleImage.size)
+                particleLayer.bounds = CGRect(origin: CGPoint(), size: particleImage.backingSize)
                 self.particleLayers.append(particleLayer)
                 self.insertSublayer(particleLayer, above: self.gradientLayer)
             }
@@ -332,7 +372,7 @@ public class PieChartView : Control {
     public private(set) var items: [Item] = []
     public var presentation: Presentation {
         didSet {
-            needsDisplay = true
+            updateChartLayers()
         }
     }
     private let totalTextView = DynamicCounterTextView()
@@ -343,6 +383,11 @@ public class PieChartView : Control {
     
     
     private var displayAnimator: ConstantDisplayLinkAnimator?
+    private let chartLayer = SimpleLayer()
+    private var sectionLayers: [AnyHashable: SectionLayer] = [:]
+    private let contentObserver = AnimatableContentObserver()
+    private var motionObserver: NSObjectProtocol?
+    static var reduceMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     
     private struct AnimationValues {
         struct Value {
@@ -354,30 +399,116 @@ public class PieChartView : Control {
         var radius:[AnyHashable : CGFloat] = [:]
         var selected: AnyHashable? = nil
         
-        var isEmpty: Bool {
-            return radius.isEmpty && selection.isEmpty && values.isEmpty && selected == nil
-        }
     }
     
     private var animationValues: AnimationValues = .init() {
         didSet {
-            DispatchQueue.main.async {
-                self.displayAnimator?.isPaused = self.animationValues.isEmpty
-            }
-            self.needsDisplay = true
+            updateChartLayers()
+            updateAnimator()
         }
     }
-    private let particleSet: ParticleSet = ParticleSet()
+    private let particleSet = PieChartParticleSet()
 
     
     public init(frame frameRect: NSRect, presentation: Presentation) {
         self.presentation = presentation
         super.init(frame: frameRect)
+        self.layer?.isOpaque = false
+        self.layer?.backgroundColor = NSColor.clear.cgColor
+        self.layer?.insertSublayer(chartLayer, at: 0)
         addSubview(totalTextView)
+        postsFrameChangedNotifications = true
+        postsBoundsChangedNotifications = true
+        motionObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.updateAnimator()
+        })
         
         set(handler: { [weak self] control in
             self?.invokeToggle()
         }, for: .Click)
+    }
+
+    private var hasChartAnimation: Bool {
+        if !animationValues.values.isEmpty {
+            return true
+        }
+        for item in items {
+            let selectionTarget: CGFloat = animationValues.selected == item.id ? 1 : 0
+            if (animationValues.selection[item.id] ?? 0) != selectionTarget {
+                return true
+            }
+            let radiusTarget: CGFloat = !animationValues.selection.isEmpty && animationValues.selection[item.id] == nil ? 1 : 0
+            if (animationValues.radius[item.id] ?? 0) != radiusTarget {
+                return true
+            }
+        }
+        return false
+    }
+
+    private var isVisibleForAnimation: Bool {
+        return window?.isVisible == true && WindowKeyObserver.isKey(window) && !isHiddenOrHasHiddenAncestor && !visibleRect.isEmpty
+    }
+
+    var isAnimatingParticles: Bool {
+        return isVisibleForAnimation && !Self.reduceMotion() && items.contains(where: { $0.count > 0 && $0.particle != nil })
+    }
+
+    private func updateAnimator() {
+        let isAnimating = isVisibleForAnimation && (hasChartAnimation || isAnimatingParticles)
+        if isAnimating && displayAnimator == nil {
+            displayAnimator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] duration in
+                guard let self else {
+                    return
+                }
+                if self.isAnimatingParticles {
+                    self.particleSet.update(deltaTime: duration)
+                    for layer in self.sectionLayers.values {
+                        layer.updateParticles(particleSet: self.particleSet)
+                    }
+                }
+                if self.hasChartAnimation {
+                    self.runAnimatorUpdater(duration)
+                }
+            })
+        }
+        displayAnimator?.isPaused = !isAnimating
+    }
+
+    @objc private func updateAnimationVisibility() {
+        contentObserver.update(for: self, target: self, selector: #selector(updateAnimationVisibility), options: [.contentBounds, .documentFrame, .ownFrame, .ownBounds])
+        updateAnimator()
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateAnimationVisibility()
+    }
+
+    public override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        updateAnimationVisibility()
+    }
+
+    public override func viewDidHide() {
+        super.viewDidHide()
+        updateAnimator()
+    }
+
+    public override func viewDidUnhide() {
+        super.viewDidUnhide()
+        updateAnimator()
+    }
+
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateChartLayers()
+    }
+
+    deinit {
+        displayAnimator?.invalidate()
+        if let motionObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(motionObserver)
+        }
     }
     
     private func invokeToggle() {
@@ -437,13 +568,14 @@ public class PieChartView : Control {
             }
         }
         
-        if prevItems.isEmpty {
+        if prevItems.isEmpty && !Self.reduceMotion() {
             for item in self.items {
                 updated[item.stableId] = .init(value: items.reduce(0, { $0 + $1.count }) / items.count, timestamp: 0)
             }
         }
         
-        self.animationValues.values = updated
+        let validIds = Set(self.items.map { $0.id })
+        self.animationValues = .init(values: updated.filter { validIds.contains($0.key) }, selection: self.animationValues.selection.filter { validIds.contains($0.key) }, radius: self.animationValues.radius.filter { validIds.contains($0.key) }, selected: self.animationValues.selected.flatMap { validIds.contains($0) ? $0 : nil })
 
         
         var dynamicFontSize: CGFloat = 15
@@ -460,18 +592,11 @@ public class PieChartView : Control {
         totalTextView.change(size: value.size, animated: animated)
         totalTextView.change(pos: focus(value.size).origin, animated: animated)
         
-        if displayAnimator == nil {
-            displayAnimator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] duration in
-                self?.runAnimatorUpdater(duration)
-            })
-        }
-        
-        displayAnimator?.isPaused = self.animationValues.isEmpty
-        
         self.runAnimatorUpdater(1.0 / 60.0)
+        self.updateAnimator()
         
         needsLayout = true
-        self.needsDisplay = true
+        self.updateChartLayers()
     }
     
     private var countUpElapsed: CGFloat = 0
@@ -546,6 +671,8 @@ public class PieChartView : Control {
     public override func layout() {
         super.layout()
         totalTextView.center()
+        updateChartLayers()
+        updateAnimator()
     }
     
     func selectedItemIndex(at point: CGPoint) -> Int? {
@@ -578,116 +705,66 @@ public class PieChartView : Control {
     
     private let initialAngle: CGFloat = .pi / 3
     
-    public override func draw(_ layer: CALayer, in ctx: CGContext) {
-        
-        guard self.window != nil else {
-            return
-        }
-       
-        var startAngle: CGFloat = self.initialAngle
-        let center = CGPoint(x: bounds.width / 2, y: bounds.height / 2)
-                
-        
-        let items = self.items.filter { $0.count > 0 || animationValues.values[$0.stableId] != nil }
-        
-        var counts:[Int] = items.map { $0.count }
-        
-        for (i, item) in items.enumerated() {
-            let count: CGFloat
-            if let current = animationValues.values[item.stableId] {
-                count = CGFloat(current.value)
-            } else {
-                count = CGFloat(item.count)
-            }
-            counts[i] = Int(count)
-        }
+    private func updateChartLayers() {
+        chartLayer.frame = bounds
+        let center = CGPoint(x: 100, y: 100)
+        let chartFrame = CGRect(x: bounds.midX - 100, y: bounds.midY - 100, width: 200, height: 200)
+        let innerRadius = min(bounds.width, bounds.height) / 5
+        let visibleItems = items.filter { (animationValues.values[$0.id]?.value ?? $0.count) > 0 }
+        let counts = visibleItems.map { CGFloat(animationValues.values[$0.id]?.value ?? $0.count) }
         let total = counts.reduce(0, +)
-        
-        
-        
-        for (i, item) in items.enumerated() {
-            
-            var radius = min(bounds.width, bounds.height) / 2 - presentation.strokeSize - 8
+        var validIds = Set<AnyHashable>()
+        var startAngle = initialAngle
 
-            if let add = self.animationValues.radius[item.id], items.count > 1 {
-                radius -= 5 * add
+        if total > 0 {
+            for (index, item) in visibleItems.enumerated() {
+                validIds.insert(item.id)
+                let section: SectionLayer
+                if let current = sectionLayers[item.id] {
+                    section = current
+                } else {
+                    section = SectionLayer()
+                    sectionLayers[item.id] = section
+                    chartLayer.addSublayer(section)
+                }
+                section.frame = chartFrame
+                var radius = min(bounds.width, bounds.height) / 2 - presentation.strokeSize - 8
+                if visibleItems.count > 1 {
+                    radius -= 5 * (animationValues.radius[item.id] ?? 0)
+                }
+                radius = max(innerRadius, radius)
+                let fraction = counts[index] / total
+                let endAngle = startAngle + 2 * .pi * fraction
+                let middleAngle = (startAngle + endAngle) / 2
+
+                let path = CGMutablePath()
+                path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+                path.addArc(center: center, radius: innerRadius, startAngle: endAngle, endAngle: startAngle, clockwise: true)
+                path.closeSubpath()
+
+                let strokePath = CGMutablePath()
+                strokePath.move(to: center)
+                strokePath.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+                strokePath.closeSubpath()
+                section.update(item: item, size: chartFrame.size, path: path, strokePath: strokePath, presentation: presentation)
+                section.updateParticles(particleSet: particleSet)
+
+                let fontFraction = min(CGFloat.pi / 4, 1)
+                let fontSize = (4 + (radius / 7 - 4) * fontFraction).rounded(.down)
+                let diagramRadius = radius - 5
+                let labelOffset = diagramRadius / 2 + diagramRadius / 2 * (1 - fontFraction) + 15
+                let labelCenter = CGPoint(x: center.x + cos(middleAngle) * labelOffset, y: center.y + sin(middleAngle) * labelOffset)
+                let text = fraction >= 0.04 && fraction != 1 ? "\(Int(fraction * 100))%" : nil
+                section.updateLabel(text: text, fontSize: fontSize, color: presentation.itemTextColor, center: labelCenter)
+                startAngle = endAngle
             }
-            
-            
-            let animationSelectionOffset: CGFloat = 5
-
-            let maximumFontSize: CGFloat = radius / 7
-            let minimumFontSize: CGFloat = 4
-            let centerOffsetStartAngle = CGFloat.pi / 4
-            let diagramRadius = radius - animationSelectionOffset
-
-            
-            let count = CGFloat(counts[i])
-            let segmentSize = 2 * .pi * (count / CGFloat(total))
-            let endAngle = startAngle + segmentSize
-            let centerAngle = (startAngle + endAngle) / 2
-            let labelVector = CGPoint(x: cos(centerAngle),
-                                      y: sin(centerAngle))
-            
-            let updatedCenter = CGPoint(x: center.x ,
-                                        y: center.y )
-            
-            ctx.saveGState()
-            let path = CGMutablePath()
-            path.move(to: updatedCenter)
-            path.addArc(center: updatedCenter, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
-            path.closeSubpath()
-            
-            ctx.addPath(path)
-            ctx.setFillColor(item.color.cgColor)
-            ctx.fillPath()
-
-            ctx.addPath(path)
-            ctx.setLineWidth(presentation.strokeSize)
-            ctx.setLineCap(.round)
-            ctx.setStrokeColor(presentation.strokeColor.cgColor)
-            ctx.strokePath()
-            
-            ctx.restoreGState()
-            
-            
-            ctx.saveGState()
-            
-            let percent = (count / CGFloat(total))
-            
-            if percent >= 0.04, percent != 1.0 {
-                let text = "\(Int(percent * 100))%"
-                let fraction = max(0, min(centerOffsetStartAngle, 1))
-                
-                let fontSize = (minimumFontSize + (maximumFontSize - minimumFontSize) * fraction).rounded(.down)
-                let labelPotisionOffset = diagramRadius / 2 + diagramRadius / 2 * (1 - fraction) + 15
-                let font = NSFont.avatar(fontSize)
-                
-                let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.white,
-                                                                 .font: font]
-                
-                let attributedString = NSAttributedString(string: text, attributes: attributes)
-                let textNode = TextLabelNode.layoutText(attributedString, bounds.size)
-                
-                let labelPoint = CGPoint(x: labelVector.x * labelPotisionOffset + updatedCenter.x - textNode.0.size.width / 2,
-                                         y: labelVector.y * labelPotisionOffset + updatedCenter.y - textNode.0.size.height / 2)
-                textNode.1.draw(CGRect(origin: labelPoint, size: textNode.0.size), in: ctx, backingScaleFactor: System.backingScale)
-
-            }
-            
-            ctx.restoreGState()
-
-            startAngle = endAngle
         }
-        ctx.saveGState()
-        ctx.move(to: center)
-        ctx.setBlendMode(.clear)
-        let clearRadius = min(bounds.width, bounds.height) / 2.5
-        ctx.fillEllipse(in: focus(NSMakeSize(clearRadius, clearRadius)))
-        ctx.restoreGState()
-        
+
+        for id in Set(sectionLayers.keys).subtracting(validIds) {
+            sectionLayers.removeValue(forKey: id)?.removeFromSuperlayer()
+        }
     }
-    
+
     private func middleTextPoint(_ point: NSPoint, item: Item) -> NSPoint {
         
         let selectionAnimationFraction: CGFloat = 1.0
