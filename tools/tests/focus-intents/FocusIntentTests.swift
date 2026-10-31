@@ -78,7 +78,88 @@ private final class TestCatalogSource: @unchecked Sendable {
 
 @main
 private enum FocusIntentTests {
+    private static func testUniqueSelections() async throws {
+        let account = FocusAccountEntity(id: "1", title: "Same")
+        let renamedAccount = FocusAccountEntity(id: "1", title: "Renamed")
+        let otherAccount = FocusAccountEntity(id: "2", title: "Same")
+        let folder = FocusFolderEntity(id: "1:7", title: "Same", accountTitle: "Same")
+        let renamedFolder = FocusFolderEntity(id: "1:7", title: "Renamed", accountTitle: "Renamed")
+        let otherFolder = FocusFolderEntity(id: "1:8", title: "Same", accountTitle: "Same")
+        let crossAccountFolder = FocusFolderEntity(id: "2:7", title: "Same", accountTitle: "Same")
+        let chat = FocusChatEntity(id: "1:42", title: "Same", accountTitle: "Same")
+        let renamedChat = FocusChatEntity(id: "1:42", title: "Renamed", accountTitle: "Renamed")
+        let otherChat = FocusChatEntity(id: "1:43", title: "Same", accountTitle: "Same")
+        let crossAccountChat = FocusChatEntity(id: "2:42", title: "Same", accountTitle: "Same")
+        let secretChat = FocusChatEntity(id: "1:4294967338", title: "Same", accountTitle: "Same")
+        let intent = TelegramFocusFilter()
+        intent.accounts = [account, account, renamedAccount, otherAccount]
+        intent.folders = [folder, folder, renamedFolder, otherFolder, crossAccountFolder]
+        intent.chats = [chat, chat, renamedChat, otherChat, crossAccountChat, secretChat]
+        precondition(intent.accounts?.count == 2, "Account selection must be unique by ID, including renamed entities")
+        precondition(intent.folders?.count == 3, "Folder selection must be unique by account and folder ID")
+        precondition(intent.chats?.count == 4, "Chat selection must preserve different accounts and peer namespaces")
+        precondition(String(localized: intent.displayRepresentation.subtitle!).contains("ID: 1"))
+        intent.accounts?.remove(renamedAccount)
+        intent.folders?.remove(renamedFolder)
+        intent.chats?.remove(renamedChat)
+        precondition(intent.accounts?.count == 1)
+        precondition(intent.folders?.count == 2)
+        precondition(intent.chats?.count == 3)
+        intent.accounts?.insert(account)
+        intent.folders?.insert(folder)
+        intent.chats?.insert(chat)
+        precondition(String(localized: intent.displayRepresentation.subtitle!) == "Same (ID: 1), Same (ID: 2)")
+        precondition(intent.configuration.accountIds == [1, 2])
+        precondition(intent.configuration.folderIds.count == 3)
+        precondition(intent.configuration.chatIds.count == 4)
+        precondition(String(localized: account.displayRepresentation.title) == "Same (ID: 1)")
+        precondition(String(localized: folder.displayRepresentation.title) == "Same (ID: 1:7)")
+        precondition(String(localized: chat.displayRepresentation.title) == "Same (ID: 1:42)")
+        precondition(Set([account, otherAccount].map { String(localized: $0.displayRepresentation.title) }).count == 2)
+        precondition(Set([folder, otherFolder, crossAccountFolder].map { String(localized: $0.displayRepresentation.title) }).count == 3)
+        precondition(Set([chat, otherChat, crossAccountChat, secretChat].map { String(localized: $0.displayRepresentation.title) }).count == 4)
+
+        let catalog = FocusFilterCatalog(
+            accounts: [.init(id: 1, title: "Same"), .init(id: 1, title: "Renamed"), .init(id: 2, title: "Same")],
+            chats: [
+                .init(id: .init(accountId: 1, peerId: 42), title: "Same"),
+                .init(id: .init(accountId: 1, peerId: 42), title: "Renamed"),
+                .init(id: .init(accountId: 2, peerId: 42), title: "Same")
+            ],
+            folders: [
+                .init(id: .init(accountId: 1, folderId: 7), title: "Same", peerIds: []),
+                .init(id: .init(accountId: 1, folderId: 7), title: "Renamed", peerIds: []),
+                .init(id: .init(accountId: 2, folderId: 7), title: "Same", peerIds: [])
+            ]
+        )
+        let accountQuery = FocusAccountQuery(catalogProvider: { catalog })
+        let folderQuery = FocusFolderQuery(catalogProvider: { catalog })
+        let chatQuery = FocusChatQuery(catalogProvider: { catalog })
+        let accounts = try await accountQuery.entities(for: ["1", "01", "2", "3", "3"])
+        let folders = try await folderQuery.entities(for: ["1:7", "01:007", "2:7", "3:7", "3:7"])
+        let chats = try await chatQuery.entities(for: ["1:42", "01:042", "2:42", "3:42", "3:42"])
+        precondition(accounts.map(\.id) == ["1", "2", "3"])
+        precondition(folders.map(\.id) == ["1:7", "2:7", "3:7"])
+        precondition(chats.map(\.id) == ["1:42", "2:42", "3:42"])
+        precondition(String(localized: accounts[2].displayRepresentation.title).contains("ID: 3"))
+        precondition(String(localized: folders[2].displayRepresentation.title).contains("ID: 3:7"))
+        precondition(String(localized: chats[2].displayRepresentation.title).contains("ID: 3:42"))
+        let suggestedAccounts = try await accountQuery.suggestedEntities()
+        let suggestedFolders = try await folderQuery.suggestedEntities()
+        let suggestedChats = try await chatQuery.suggestedEntities()
+        precondition(suggestedAccounts.map(\.id) == ["1", "2"])
+        precondition(suggestedFolders.map(\.id) == ["1:7", "2:7"])
+        precondition(suggestedChats.map(\.id) == ["1:42", "2:42"])
+        let matchingAccounts = try await accountQuery.entities(matching: "2")
+        let matchingFolders = try await folderQuery.entities(matching: "2:7")
+        let matchingChats = try await chatQuery.entities(matching: "2:42")
+        precondition(matchingAccounts.map(\.id) == ["2"])
+        precondition(matchingFolders.map(\.id) == ["2:7"])
+        precondition(matchingChats.map(\.id) == ["2:42"])
+    }
+
     static func main() async throws {
+        try await testUniqueSelections()
         let catalog = FocusFilterCatalog(
             accounts: [.init(id: 1, title: "Work"), .init(id: 2, title: "Personal")],
             chats: [
@@ -130,9 +211,9 @@ private enum FocusIntentTests {
         precondition(FocusModeParameter.excludeSelected.filterMode == .excludeSelected)
         let intent = TelegramFocusFilter()
         precondition(intent.configuration == FocusFilterConfiguration())
-        intent.accounts = accounts + [FocusAccountEntity(id: "invalid", title: "Invalid")]
-        intent.folders = folders + [FocusFolderEntity(id: "invalid", title: "Invalid", accountTitle: "Invalid")]
-        intent.chats = chats + [FocusChatEntity(id: "invalid", title: "Invalid", accountTitle: "Invalid")]
+        intent.accounts = Set(accounts + [FocusAccountEntity(id: "invalid", title: "Invalid")])
+        intent.folders = Set(folders + [FocusFolderEntity(id: "invalid", title: "Invalid", accountTitle: "Invalid")])
+        intent.chats = Set(chats + [FocusChatEntity(id: "invalid", title: "Invalid", accountTitle: "Invalid")])
         intent.mode = .excludeSelected
         intent.effect = .both
         let configuration = intent.configuration
@@ -151,6 +232,6 @@ private enum FocusIntentTests {
         } catch TestFailure.persistence {
             precondition(repository.configurations == [configuration])
         }
-        print("PASS: native Focus queries, identifiers, unavailable entities, configuration and persistence errors")
+        print("PASS: unique Focus selections, ID labels/search, queries, unavailable entities, configuration and persistence errors")
     }
 }

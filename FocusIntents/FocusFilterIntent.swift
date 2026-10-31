@@ -47,7 +47,7 @@ struct TelegramFocusFilter: SetFocusFilterIntent {
     static let description = IntentDescription("Choose the Telegram accounts to filter. Other accounts keep working normally. Selected folders and individual chats are combined. An empty selection allows no chats with Allow Selected, and excludes no chats with Exclude Selected. Existing notification settings still apply.")
 
     @Parameter(title: "Accounts", description: "Apply the rule only to these accounts. Leave empty to keep all accounts unchanged.")
-    var accounts: [FocusAccountEntity]?
+    var accounts: Set<FocusAccountEntity>?
 
     @Parameter(title: "Effect", default: .notifications)
     var effect: FocusEffectParameter
@@ -56,10 +56,10 @@ struct TelegramFocusFilter: SetFocusFilterIntent {
     var mode: FocusModeParameter
 
     @Parameter(title: "Folders", description: "Include the current chats in these folders.")
-    var folders: [FocusFolderEntity]?
+    var folders: Set<FocusFolderEntity>?
 
     @Parameter(title: "Chats", description: "Choose individual private chats, groups, or channels in addition to folders.")
-    var chats: [FocusChatEntity]?
+    var chats: Set<FocusChatEntity>?
 
     var configuration: FocusFilterConfiguration {
         FocusFilterConfiguration(
@@ -72,7 +72,10 @@ struct TelegramFocusFilter: SetFocusFilterIntent {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "Filter Telegram", subtitle: "\((accounts ?? []).map(\.title).joined(separator: ", "))")
+        let accountTitles = (accounts ?? []).sorted { $0.id < $1.id }.map {
+            String(localized: $0.displayRepresentation.title)
+        }
+        return DisplayRepresentation(title: "Filter Telegram", subtitle: "\(accountTitles.joined(separator: ", "))")
     }
 
     var appContext: FocusFilterAppContext {

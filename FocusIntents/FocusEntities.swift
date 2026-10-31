@@ -2,15 +2,23 @@ import AppIntents
 import FocusFilterCore
 import Foundation
 
-struct FocusAccountEntity: AppEntity {
+struct FocusAccountEntity: AppEntity, Hashable {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Telegram Account")
     static let defaultQuery = FocusAccountQuery()
 
     let id: String
     let title: String
 
+    static func == (lhs: FocusAccountEntity, rhs: FocusAccountEntity) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)")
+        DisplayRepresentation(title: "\(title) (ID: \(id))")
     }
 }
 
@@ -34,11 +42,13 @@ struct FocusAccountQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [FocusAccountEntity] {
-        try await suggestedEntities().filter { $0.title.localizedStandardContains(string) }
+        try await suggestedEntities().filter {
+            $0.title.localizedStandardContains(string) || $0.id.localizedStandardContains(string)
+        }
     }
 }
 
-struct FocusFolderEntity: AppEntity {
+struct FocusFolderEntity: AppEntity, Hashable {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Telegram Folder")
     static let defaultQuery = FocusFolderQuery()
 
@@ -46,8 +56,16 @@ struct FocusFolderEntity: AppEntity {
     let title: String
     let accountTitle: String
 
+    static func == (lhs: FocusFolderEntity, rhs: FocusFolderEntity) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
+        DisplayRepresentation(title: "\(title) (ID: \(id))", subtitle: "\(accountTitle)")
     }
 }
 
@@ -72,12 +90,14 @@ struct FocusFolderQuery: EntityStringQuery {
 
     func entities(matching string: String) async throws -> [FocusFolderEntity] {
         try await suggestedEntities().filter {
-            $0.title.localizedStandardContains(string) || $0.accountTitle.localizedStandardContains(string)
+            $0.title.localizedStandardContains(string)
+                || $0.id.localizedStandardContains(string)
+                || $0.accountTitle.localizedStandardContains(string)
         }
     }
 }
 
-struct FocusChatEntity: AppEntity {
+struct FocusChatEntity: AppEntity, Hashable {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Telegram Chat")
     static let defaultQuery = FocusChatQuery()
 
@@ -85,8 +105,16 @@ struct FocusChatEntity: AppEntity {
     let title: String
     let accountTitle: String
 
+    static func == (lhs: FocusChatEntity, rhs: FocusChatEntity) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
+        DisplayRepresentation(title: "\(title) (ID: \(id))", subtitle: "\(accountTitle)")
     }
 }
 
@@ -111,7 +139,9 @@ struct FocusChatQuery: EntityStringQuery {
 
     func entities(matching string: String) async throws -> [FocusChatEntity] {
         try await suggestedEntities().filter {
-            $0.title.localizedStandardContains(string) || $0.accountTitle.localizedStandardContains(string)
+            $0.title.localizedStandardContains(string)
+                || $0.id.localizedStandardContains(string)
+                || $0.accountTitle.localizedStandardContains(string)
         }
     }
 }
@@ -124,42 +154,47 @@ private struct FocusEntityCatalog {
     }
 
     var accounts: [FocusAccountEntity] {
-        catalog.accounts.map { FocusAccountEntity(id: String($0.id), title: $0.title) }
+        uniqueEntities(catalog.accounts.map { FocusAccountEntity(id: String($0.id), title: $0.title) })
     }
 
     func accounts(for identifiers: [String]) -> [FocusAccountEntity] {
-        identifiers.compactMap { rawValue in
+        uniqueEntities(identifiers.compactMap { rawValue in
             guard let accountId = Int64(rawValue) else { return nil }
-            return FocusAccountEntity(id: rawValue, title: accountTitle(accountId))
-        }
+            return FocusAccountEntity(id: String(accountId), title: accountTitle(accountId))
+        })
     }
 
     var folders: [FocusFolderEntity] {
-        catalog.folders.map {
+        uniqueEntities(catalog.folders.map {
             FocusFolderEntity(id: $0.id.rawValue, title: $0.title, accountTitle: accountTitle($0.id.accountId))
-        }
+        })
     }
 
     func folders(for identifiers: [String]) -> [FocusFolderEntity] {
-        identifiers.compactMap { rawValue in
+        uniqueEntities(identifiers.compactMap { rawValue in
             guard let id = FocusFolderIdentifier(rawValue: rawValue) else { return nil }
             let title = catalog.folders.first(where: { $0.id == id })?.title ?? String(localized: "Unavailable folder")
-            return FocusFolderEntity(id: rawValue, title: title, accountTitle: accountTitle(id.accountId))
-        }
+            return FocusFolderEntity(id: id.rawValue, title: title, accountTitle: accountTitle(id.accountId))
+        })
     }
 
     var chats: [FocusChatEntity] {
-        catalog.chats.map {
+        uniqueEntities(catalog.chats.map {
             FocusChatEntity(id: $0.id.rawValue, title: $0.title, accountTitle: accountTitle($0.id.accountId))
-        }
+        })
     }
 
     func chats(for identifiers: [String]) -> [FocusChatEntity] {
-        identifiers.compactMap { rawValue in
+        uniqueEntities(identifiers.compactMap { rawValue in
             guard let id = FocusChatIdentifier(rawValue: rawValue) else { return nil }
             let title = catalog.chats.first(where: { $0.id == id })?.title ?? String(localized: "Unavailable chat")
-            return FocusChatEntity(id: rawValue, title: title, accountTitle: accountTitle(id.accountId))
-        }
+            return FocusChatEntity(id: id.rawValue, title: title, accountTitle: accountTitle(id.accountId))
+        })
+    }
+
+    private func uniqueEntities<Entity: AppEntity>(_ entities: [Entity]) -> [Entity] {
+        var identifiers = Set<Entity.ID>()
+        return entities.filter { identifiers.insert($0.id).inserted }
     }
 
     private func accountTitle(_ accountId: Int64) -> String {

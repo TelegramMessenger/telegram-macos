@@ -34,6 +34,31 @@ navigation row retains its normal unread count, with chat titles and message
 previews removed while filtering. Search, quick switching and already open
 conversations remain usable; this feature does not implement an access lock.
 
+## Selection identity
+
+Accounts, folders and chats are Set-valued App Intents parameters. The system
+receives unordered collections without duplicate support; entity equality and
+hashing use only the stable identifier, so renaming an item does not make another
+selection. Query results also remove repeated identifiers while retaining distinct
+items with the same name. Existing parameter names and entity identifiers are
+unchanged; saved identifier arrays resolve through the same queries.
+
+Each entity's primary display title includes `(ID: identifier)`. This is visible
+both when choosing an item and in the selected-items list, where macOS may omit
+subtitles. Accounts use their local account record ID; folders use
+`accountId:folderId`; chats use `accountId:fullPeerId`, including the Postbox peer
+namespace. These are the filter's stable identifiers, not Bot API chat IDs. The
+account prefix distinguishes the same chat or folder selected through different
+accounts. Unavailable items retain their ID label, and searches match IDs as well
+as names. The filter summary sorts accounts by ID for stable display.
+
+After installing a signed build, check in System Settings that each picker
+prevents adding the same item twice, removing and re-adding still works, same-name
+items remain independently selectable, and existing filters (including those
+with repeated items) reopen with the intended selection. Also check a second
+Focus mode: selecting an item in one mode must not remove it from another mode's
+choices.
+
 ## Dependency boundaries
 
 | Boundary | Responsibility | Dependencies |
@@ -110,17 +135,19 @@ the pinned Postbox predicate and mute resolver, checking a newly unread chat
 against both selection rules without waiting for catalogue publication.
 Injected resolver checks cover a configuration change during a pending lookup,
 fallbacks and avoiding unnecessary lookups. Native-query checks compile actual
-extension sources against isolated providers and verify search, stale identifiers,
-enum mappings, configuration and persistence failures. Repository checks inject
-memory persistence/change delivery, verify callback execution outside the lock,
+extension sources against isolated providers and verify ID-based uniqueness,
+renaming, removal/reselection, same-name and cross-account items, ID labels/search,
+stale identifiers, enum mappings, configuration and persistence failures. Repository
+checks inject memory persistence/change delivery, verify callback execution outside the lock,
 and distinguish missing files from permission failures.
 These checks do not replace complete application compilation or a device test.
 
 The extension build check extracts the real `FocusIntents` target and its local
 package dependency into an isolated project. It compiles and links the extension,
 checks the host's embedding/dependency declarations, and validates the system Focus
-protocol, five parameters, English/Russian resources and build channel in extracted
-App Intents metadata. Release also checks both Apple Silicon and Intel binaries.
+protocol, five parameters, Set collection capabilities and original entity types,
+English/Russian resources and build channel in extracted App Intents metadata.
+Release also checks both Apple Silicon and Intel binaries.
 It neither installs nor runs an application or extension, and code signing is off.
 
 The complete application still requires the submodules, generated sources and

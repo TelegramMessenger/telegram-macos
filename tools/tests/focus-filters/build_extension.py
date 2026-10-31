@@ -180,7 +180,11 @@ def validate_intent_metadata(product):
     parameters = {parameter["name"]: parameter for parameter in action["parameters"]}
     assert set(parameters) == {"accounts", "effect", "mode", "folders", "chats"}
     for parameter in ["accounts", "folders", "chats"]:
-        assert "array" in parameters[parameter]["valueType"]
+        collection = parameters[parameter]["valueType"]["array"]["wrapper"]
+        assert collection["capabilities"] == 0, f"{parameter} must use Set semantics without duplicates or ordering"
+        assert collection["memberValueType"]["entity"]["wrapper"]["typeName"] == {
+            "accounts": "FocusAccountEntity", "folders": "FocusFolderEntity", "chats": "FocusChatEntity"
+        }[parameter]
 
 
 def validate_localizations(product):
