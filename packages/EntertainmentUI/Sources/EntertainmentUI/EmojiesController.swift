@@ -1372,14 +1372,20 @@ public final class AnimatedEmojiesView : Control {
     private let borderView = View()
     private let tabs = View()
     private let selectionView: View = View(frame: NSMakeRect(0, 0, 36, 36))
+    private var selectionFrost: NSVisualEffectView?
     
     public let searchView = SearchView(frame: .zero)
     fileprivate let searchContainer = View()
     private let visualEffect = NSVisualEffectView()
+    private let searchFrost = NSVisualEffectView()
     private let searchInside = View()
     private let searchBackdrop = View()
     
     private let searchBorder = View()
+    private let headerBlur = NSVisualEffectView()
+    private var headerBlurMaskHeight: CGFloat = 0
+    private var tableBlurFilter: NSObject?
+    private var tableBlurMaskKey: NSSize?
     private let searchStatusView = PanelSearchStatusView(frame: .zero)
     private var searchStatus: PanelSearchPresentation = .hidden
     
@@ -1407,6 +1413,50 @@ public final class AnimatedEmojiesView : Control {
     private var glassSurface: LiquidGlassView?
     private var isClearBackground: Bool {
         return mode.isTransparent || isGlass
+    }
+
+    private func updateTableBlur(enabled: Bool, height: CGFloat) -> Bool {
+        guard #available(macOS 26.0, *), enabled, let layer = tableView.layer else {
+            if tableBlurFilter != nil {
+                tableView.layer?.filters = nil
+                tableBlurFilter = nil
+                tableBlurMaskKey = nil
+            }
+            return false
+        }
+        if tableBlurFilter == nil {
+            guard let filter = ee2_makeVariableBlurFilter() else {
+                return false
+            }
+            filter.setValue(14, forKey: "inputRadius")
+            filter.setValue(false, forKey: "inputNormalizeEdges")
+            tableBlurFilter = filter
+        }
+        guard let filter = tableBlurFilter else {
+            return false
+        }
+        let key = NSMakeSize(floor(max(0, height)), floor(layer.bounds.height))
+        if key != tableBlurMaskKey, key.height > 0 {
+            tableBlurMaskKey = key
+            filter.setValue(AnimatedEmojiesView.headerBlurMask(blurHeight: key.width, height: key.height), forKey: "inputMaskImage")
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.filters = [filter]
+            CATransaction.commit()
+        }
+        return true
+    }
+
+    private static func headerBlurMask(blurHeight: CGFloat, height: CGFloat) -> CGImage? {
+        let scale = System.backingScale
+        let pixelHeight = Int(min(2048, height * scale))
+        let unit = CGFloat(pixelHeight) / height
+        guard pixelHeight > 0, let context = CGContext(data: nil, width: 1, height: pixelHeight, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return nil
+        }
+        context.setFillColor(NSColor.black.cgColor)
+        context.fill(CGRect(x: 0, y: CGFloat(pixelHeight) - blurHeight * unit, width: 1, height: blurHeight * unit))
+        return context.makeImage()
     }
 
     private func updateGlassSurface() {
@@ -1444,11 +1494,28 @@ public final class AnimatedEmojiesView : Control {
             .clear
         }
         addSubview(self.tableView)
+        headerBlur.blendingMode = .withinWindow
+        headerBlur.state = .active
+        headerBlur.material = .menu
+        addSubview(headerBlur)
         
         searchView.isLeftOrientated = true
-        searchView.layer?.cornerRadius = 15
+        searchView.layer?.cornerRadius = 9
 
+        searchFrost.wantsLayer = true
+        if #available(macOS 10.14, *) {
+            searchFrost.material = .selection
+        }
+        searchFrost.blendingMode = .withinWindow
+        searchFrost.state = .active
+        searchFrost.layer?.cornerRadius = 9
+        if #available(macOS 10.15, *) {
+            searchFrost.layer?.cornerCurve = .continuous
+        }
+        searchFrost.layer?.masksToBounds = true
+        searchFrost.isHidden = true
         searchInside.addSubview(searchView)
+        searchInside.addSubview(searchFrost, positioned: .below, relativeTo: searchView)
         
         visualEffect.wantsLayer = true
         
@@ -1509,12 +1576,19 @@ public final class AnimatedEmojiesView : Control {
         transition.updateFrame(view: tabs, frame: NSMakeRect(0, initial, size.width, 46))
         transition.updateFrame(view: packsView, frame: tabs.focus(NSMakeSize(size.width, 36)))
         transition.updateFrame(view: borderView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, .borderSize))
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, size.height - initial))
+        let blursUnderHeader = mode.isTransparent && !TelegramUtilsHooks.shared.isLite(.blur)
+        let headerInset: CGFloat = blursUnderHeader ? 46 : 0
+        if tableView.contentInsets.top != headerInset {
+            var insets = tableView.contentInsets
+            insets.top = headerInset
+            tableView.contentInsets = insets
+        }
+        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tabs.frame.maxY - headerInset, size.width, size.height - initial + headerInset))
         
-        transition.updateAlpha(view: borderView, alpha: inSearch ? 0 : 1)
+        transition.updateAlpha(view: borderView, alpha: inSearch || mode.isTransparent ? 0 : 1)
 
         
-        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y), 46))
+        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y) + headerInset, 46))
 
         let searchDest = inSearch ? 0 : dest
         transition.updateFrame(view: searchContainer, frame: NSMakeRect(0, tabs.frame.maxY, size.width, 46 - min(searchDest, 46)))
@@ -1527,14 +1601,36 @@ public final class AnimatedEmojiesView : Control {
 
         
         
-        transition.updateFrame(view: searchView, frame: searchInside.focus(NSMakeSize(size.width - 16, 30)))
+        transition.updateFrame(view: searchView, frame: searchInside.focus(NSMakeSize(size.width - 16, 28)))
+        transition.updateFrame(view: searchFrost, frame: searchView.frame)
+        searchFrost.layer?.cornerRadius = 9
         transition.updateFrame(view: searchBorder, frame: NSMakeRect(0, searchContainer.frame.height - .borderSize, size.width, .borderSize))
-        let alpha: CGFloat = inSearch && tableView.documentOffset.y > 0 ? 1 : 0
+        let alpha: CGFloat = inSearch && tableView.documentOffset.y > -headerInset ? 1 : 0
         transition.updateAlpha(view: searchBorder, alpha: alpha)
         if isGlass {
             transition.updateAlpha(view: searchBackdrop, alpha: alpha)
         }
         transition.updateFrame(view: searchBackdrop, frame: searchInsideRect)
+        
+        let blursTableContent = updateTableBlur(enabled: blursUnderHeader, height: tabs.frame.maxY - tableView.frame.minY)
+        headerBlur.isHidden = !blursUnderHeader || blursTableContent
+        if blursUnderHeader && !blursTableContent {
+            let fade: CGFloat = 16
+            if headerBlurMaskHeight != fade {
+                headerBlurMaskHeight = fade
+                let mask = NSImage(size: NSMakeSize(1, fade + 2), flipped: false, drawingHandler: { rect in
+                    let gradient = NSGradient(starting: .clear, ending: .black)
+                    gradient?.draw(in: NSMakeRect(0, 0, rect.width, fade), angle: 90)
+                    NSColor.black.setFill()
+                    NSMakeRect(0, fade, rect.width, 2).fill()
+                    return true
+                })
+                mask.capInsets = NSEdgeInsets(top: 0, left: 0, bottom: fade, right: 0)
+                mask.resizingMode = .stretch
+                headerBlur.maskImage = mask
+            }
+            transition.updateFrame(view: headerBlur, frame: NSMakeRect(0, 0, size.width, max(0, searchContainer.frame.maxY) + fade))
+        }
         
         if let categories = categories {
             transition.updateFrame(view: categories, frame: categories.centerFrameY(x: searchInside.frame.width - categories.frame.width - searchView.frame.minX))
@@ -1563,21 +1659,24 @@ public final class AnimatedEmojiesView : Control {
         self.searchContainer.background = isClearBackground ? .clear : theme.colors.background
         self.searchBorder.backgroundColor = mode.isTransparent ? .clear : isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
         visualEffect.material = theme.colors.isDark ? .dark : .light
-        visualEffect.isHidden = isGlass
+        visualEffect.isHidden = isGlass || mode.isTransparent
+        headerBlur.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+        searchFrost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+        searchFrost.isHidden = TelegramUtilsHooks.shared.isLite(.blur)
         if let glassSurface {
             glassSurface.customTint = theme.colors.background.withAlphaComponent(EntertainmentView.glassTintAlpha)
             glassSurface.updateLocalizationAndTheme(theme: theme)
         }
         searchBackdrop.backgroundColor = theme.colors.background.withAlphaComponent(0.85)
         searchBackdrop.isHidden = !isGlass
-        if isGlass {
+        if isClearBackground && !searchFrost.isHidden {
             searchInside.backgroundColor = .clear
         } else {
             searchInside.backgroundColor = mode.isTransparent ? theme.colors.background.withAlphaComponent(0.7) : theme.colors.background
         }
         if isClearBackground {
             let background = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
-            let searchTheme = SearchTheme(background, theme.search.searchImage, theme.search.clearImage, theme.search.placeholder, theme.search.textColor, theme.search.placeholderColor)
+            let searchTheme = SearchTheme(isClearBackground && !searchFrost.isHidden ? .clear : background, theme.search.searchImage, theme.search.clearImage, theme.search.placeholder, theme.search.textColor, theme.search.placeholderColor)
             self.searchView.searchTheme = searchTheme
             self.categories?.searchTheme = searchTheme
         } else {
@@ -1626,7 +1725,11 @@ public final class AnimatedEmojiesView : Control {
     }
     
     fileprivate func update(sections: TableUpdateTransition, packs: TableUpdateTransition, state: State, context: any AccountContextProtocol, arguments: Arguments, mode: EmojiesController.Mode) {
+        let modeChanged = self.mode != mode
         self.mode = mode
+        if modeChanged {
+            updateLocalizationAndTheme(theme: presentation ?? theme)
+        }
         
         let previous = self.state
         self.state = state
@@ -1844,9 +1947,29 @@ public final class AnimatedEmojiesView : Control {
         let rect = NSMakeRect(viewPoint.y - point.y, 5, item.height, packsView.frame.height)
         
         selectionView.layer?.cornerRadius = item.height == item.width && item.index != 1 ? .cornerRadius : item.width / 2
-        if mode == .reactions || isGlass {
+        if (mode.isTransparent || isGlass), !TelegramUtilsHooks.shared.isLite(.blur) {
+            let frost: NSVisualEffectView
+            if let current = selectionFrost {
+                frost = current
+            } else {
+                frost = NSVisualEffectView(frame: selectionView.bounds)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                frost.autoresizingMask = [.width, .height]
+                selectionView.addSubview(frost)
+                selectionFrost = frost
+            }
+            frost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+            selectionView.background = .clear
+        } else if mode.isTransparent || isGlass {
+            selectionFrost?.removeFromSuperview()
+            selectionFrost = nil
             selectionView.background = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
         } else {
+            selectionFrost?.removeFromSuperview()
+            selectionFrost = nil
             selectionView.background = theme.colors.grayBackground.withAlphaComponent(item.height == item.width ? 1 : 0.9)
         }
         if animated {
@@ -1987,7 +2110,7 @@ public enum EmojiesControllerMode {
     }
     public var isTransparent: Bool {
         switch self {
-        case .reactions:
+        case .reactions, .defaultTags:
             return true
         case .messageEffects:
             return true

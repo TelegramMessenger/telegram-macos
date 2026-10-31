@@ -1798,7 +1798,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 
                 let rect = NSMakeRect(0, 0, w_width, 40 + 20 + aboveLayout.layoutSize.height + 4)
                 
-                let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+                let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
                 panel._canBecomeMain = false
                 panel._canBecomeKey = false
                 panel.level = .popUpMenu

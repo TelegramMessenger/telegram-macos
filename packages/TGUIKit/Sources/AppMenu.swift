@@ -32,7 +32,7 @@ public final class AppMenu {
             return colors.grayIcon.withAlphaComponent(0.15)
         }
         public var borderColor: NSColor {
-            return colors.grayIcon.withAlphaComponent(0.1)
+            return colors.grayIcon.withAlphaComponent(0.14)
         }
         public var backgroundColor: NSColor {
             return colors.background.withAlphaComponent(0.7)
