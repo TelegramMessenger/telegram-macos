@@ -91,6 +91,12 @@ final class ThemedScrollerTests: XCTestCase {
             scroll.layoutSubtreeIfNeeded()
             XCTAssertEqual(scroll.scrollerInsets.bottom, max(0, 50 - reserved))
             XCTAssertEqual(scroll.scrollerInsets.top, 46)
+            let scroller = try XCTUnwrap(scroll.verticalScroller)
+            if scroll.isFlipped {
+                XCTAssertEqual(scroller.frame.maxY, scroll.bounds.maxY - max(50, reserved), accuracy: 0.5)
+            } else {
+                XCTAssertEqual(scroller.frame.minY, scroll.bounds.minY + max(50, reserved), accuracy: 0.5)
+            }
             XCTAssertEqual(reserved + scroll.scrollerInsets.bottom, max(50, reserved))
         }
     }
