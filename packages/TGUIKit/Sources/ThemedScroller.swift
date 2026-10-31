@@ -64,6 +64,10 @@ final class ThemedScroller: NSScroller {
 }
 
 public extension NSScrollView {
+    func additionalBottomScrollerInset(for minimumClearance: CGFloat) -> CGFloat {
+        return max(0, minimumClearance - contentInsets.bottom)
+    }
+
     func applyThemedVerticalScroller() {
         guard hasVerticalScroller, !(verticalScroller is ThemedScroller) else { return }
         let size = verticalScroller?.controlSize ?? .regular

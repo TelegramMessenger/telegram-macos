@@ -81,4 +81,18 @@ final class ThemedScrollerTests: XCTestCase {
         XCTAssertEqual(color.alphaComponent, 1)
     }
 
+    func testRepeatedPickerUpdatesKeepOnlyTheUnreservedBottomClearance() throws {
+        let scroll = ScrollView(frame: NSRect(x: 0, y: 0, width: 320, height: 400))
+        scroll.hasVerticalScroller = true
+        scroll.documentView = View(frame: NSRect(x: 0, y: 0, width: 320, height: 1200))
+        for reserved: CGFloat in [0, 56, 56, 56, 20, 56, 0] {
+            scroll.contentInsets.bottom = reserved
+            scroll.scrollerInsets = .init(left: 0, right: 0, top: 46, bottom: scroll.additionalBottomScrollerInset(for: 50))
+            scroll.layoutSubtreeIfNeeded()
+            XCTAssertEqual(scroll.scrollerInsets.bottom, max(0, 50 - reserved))
+            XCTAssertEqual(scroll.scrollerInsets.top, 46)
+            XCTAssertEqual(reserved + scroll.scrollerInsets.bottom, max(50, reserved))
+        }
+    }
+
 }
