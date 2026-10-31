@@ -180,7 +180,11 @@ private func segments(_ emoji: [EmojiSegment : [String]], skinModifiers: [EmojiS
         let items = list.map { emoji -> NSAttributedString in
             let unmodified = emoji.emojiUnmodified
             let value = skinModifiers.first(where: { $0.emoji == unmodified }).map { unmodified.emojiWithSkinModifier($0.modifier) } ?? emoji
-            return .initialize(string: value.normalizedEmoji, font: .normal(26.0))
+            let attributed = NSMutableAttributedString(attributedString: .initialize(string: value.normalizedEmoji, font: .normal(26.0)))
+            if key == .Recent {
+                attributed.addAttribute(recentEmojiSourceKey, value: emoji, range: NSRange(location: 0, length: attributed.length))
+            }
+            return attributed
         }
         let lines = stride(from: 0, to: items.count, by: 8).map {
             Array(items[$0 ..< min($0 + 8, items.count)])
@@ -517,9 +521,12 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         }
     }
     let seg = segments(e, skinModifiers: state.recent.skinModifiers)
-    let seglist = seg.map { (key,_) -> EmojiSegment in
+    var seglist = seg.map { (key,_) -> EmojiSegment in
         return key
     }.sorted(by: <)
+    if !seglist.contains(.Recent) {
+        seglist.insert(.Recent, at: 0)
+    }
     
     
     let isPremium = state.peer?.peer.isPremium == true || arguments.ignorePremium
@@ -814,13 +821,25 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             let hasAnimatedRecent = arguments.mode == .emoji || arguments.mode == .stories || arguments.mode == .forumTopic || arguments.mode == .selectAvatar || arguments.mode == .channelReactions
             
             if key == .Recent, !recentAnimated.isEmpty, hasAnimatedRecent {
+                let removeRecent: ((MediaId) -> Void)?
+                if arguments.mode == .emoji || arguments.mode == .stories {
+                    removeRecent = { id in
+                        _ = removeAnimatedUsedEmoji(id, postbox: arguments.context.account.postbox).startStandalone()
+                    }
+                } else {
+                    removeRecent = nil
+                }
                 let tuple = Tuple(items: recentAnimated, selected: emojiesRowSelection(state.selectedItems, in: recentAnimated), color: state.color)
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(EmojiSegment.RecentAnimated.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: recentAnimated, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, ignorePremium: arguments.ignorePremium)
+                    return EmojiesSectionRowItem(initialSize, stableId: stableId, context: arguments.context, revealed: true, installed: true, info: nil, items: recentAnimated, mode: arguments.mode.itemMode, selectedItems: tuple.selected, color: tuple.color, callback: arguments.send, largeCallback: arguments.sendLarge, drag: arguments.drag, ignorePremium: arguments.ignorePremium, removeRecent: removeRecent)
                 }))
                 index += 1
             }
             
+            guard let lines = seg[key], !lines.isEmpty else {
+                continue
+            }
+
             if key != .Recent || !recentAnimated.isEmpty, arguments.mode == .emoji || arguments.mode == .stories {
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_segment(key.rawValue), equatable: InputDataEquatable(key), comparable: nil, item: { initialSize, stableId in
                     return EStickItem(initialSize, stableId: stableId, segmentName:key.localizedString)
@@ -836,7 +855,6 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                     let selectedOrders: [String: Int]
                     let selectionColor: NSColor?
                 }
-                let lines = seg[key]!
                 var selectedOrders: [String: Int] = [:]
                 if state.selectedItems.contains(where: { $0.index != nil }) {
                     let segmentKeys = Set(lines.flatMap { $0.map { emojiSelectionKey($0.string) } })
@@ -849,9 +867,17 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                         }
                     }
                 }
+                let removeRecent: ((String) -> Void)?
+                if key == .Recent {
+                    removeRecent = { emoji in
+                        _ = removeUsedEmoji(emoji, postbox: arguments.context.account.postbox).startStandalone()
+                    }
+                } else {
+                    removeRecent = nil
+                }
                 let tuple = Tuple(key: key, lines: lines, selectedOrders: selectedOrders, selectionColor: state.color ?? theme.colors.text)
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_emoji_block(key.rawValue), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                    return EBlockItem(initialSize, stableId: stableId, attrLines: tuple.lines, segment: tuple.key, account: arguments.context.account, selectHandler: arguments.sendEmoji, dragHandler: arguments.dragEmoji, selectedOrders: tuple.selectedOrders, selectionColor: tuple.selectionColor)
+                    return EBlockItem(initialSize, stableId: stableId, attrLines: tuple.lines, segment: tuple.key, account: arguments.context.account, selectHandler: arguments.sendEmoji, dragHandler: arguments.dragEmoji, selectedOrders: tuple.selectedOrders, selectionColor: tuple.selectionColor, removeRecent: removeRecent)
                 }))
                 index += 1
             }
