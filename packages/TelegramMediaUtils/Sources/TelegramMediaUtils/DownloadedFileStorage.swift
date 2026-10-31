@@ -1,7 +1,7 @@
 import Foundation
 
-enum DownloadedFileStorage {
-    static func temporaryDirectory(mediaBoxPath: String) -> String {
+public enum DownloadedFileStorage {
+    public static func temporaryDirectory(mediaBoxPath: String) -> String {
         return URL(fileURLWithPath: mediaBoxPath, isDirectory: true)
             .deletingLastPathComponent()
             .appendingPathComponent("temp-downloads", isDirectory: true).path

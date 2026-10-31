@@ -8,6 +8,7 @@ import Postbox
 import TelegramCore
 import Localization
 import InAppSettings
+import TelegramMediaUtils
 import IOKit
 import CodeSyntax
 import SettingsUI
