@@ -2202,25 +2202,25 @@ public func updateTheme(with settings: ThemePaletteSettings, for window: Window?
     let palette: ColorPalette
     switch settings.palette.name {
     case whitePalette.name:
-        if settings.palette.accent == whitePalette.accent {
+        if settings.palette == whitePalette {
             palette = whitePalette
         } else {
             palette = settings.palette
         }
     case darkPalette.name:
-        if settings.palette.accent == darkPalette.accent {
+        if settings.palette == darkPalette {
             palette = darkPalette
         } else {
             palette = settings.palette
         }
     case dayClassicPalette.name:
-        if settings.palette.accent == dayClassicPalette.accent {
+        if settings.palette == dayClassicPalette {
             palette = dayClassicPalette
         } else {
             palette = settings.palette
         }
     case nightAccentPalette.name:
-        if settings.palette.accent == nightAccentPalette.accent {
+        if settings.palette == nightAccentPalette {
             palette = nightAccentPalette
         } else {
             palette = settings.palette
