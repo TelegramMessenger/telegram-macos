@@ -985,6 +985,22 @@
 		9AB6DAD8DF0C1248CC621AFB /* PasscodeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8108E8A15C9EE293636E539F /* PasscodeCore */; };
 		4B9679F90FE2EF0F0FD21C7A /* PasscodeUIHooksInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47318F78978A06BD3FA4B985 /* PasscodeUIHooksInstall.swift */; };
 		BE3536CA4246405D5520629A /* WalletUIHooksInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A5FA781BD7994857138FCB /* WalletUIHooksInstall.swift */; };
+		F0C050000000000000000001 /* FocusFilterCore in Frameworks */ = {isa = PBXBuildFile; productRef = F0C05000000000000000001E /* FocusFilterCore */; };
+		F0C050000000000000000002 /* FocusFilterCore in Frameworks */ = {isa = PBXBuildFile; productRef = F0C05000000000000000001F /* FocusFilterCore */; };
+		F0C050000000000000000003 /* FocusFilterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C05000000000000000000D /* FocusFilterCoordinator.swift */; };
+		F0C050000000000000000004 /* FocusFilterIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C05000000000000000000E /* FocusFilterIntent.swift */; };
+		F0C050000000000000000005 /* FocusIntentsExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C05000000000000000000F /* FocusIntentsExtension.swift */; };
+		F0C050000000000000000006 /* FocusIntents.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = F0C050000000000000000010 /* FocusIntents.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F0C050000000000000000007 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F0C050000000000000000013 /* Localizable.strings */; };
+		F0C1EA00000000000000001E /* FocusCatalogProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA00000000000000000A /* FocusCatalogProjection.swift */; };
+		F0C1EA00000000000000001F /* FocusAccountCatalogContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA00000000000000000B /* FocusAccountCatalogContext.swift */; };
+		F0C1EA000000000000000020 /* FocusNotificationMembership.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA00000000000000000C /* FocusNotificationMembership.swift */; };
+		F0C1EA000000000000000021 /* FocusNotificationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA00000000000000000D /* FocusNotificationPolicy.swift */; };
+		F0C1EA000000000000000022 /* FocusNotificationResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA00000000000000000E /* FocusNotificationResolver.swift */; };
+		F0C1EA000000000000000023 /* FocusEntities.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA00000000000000000F /* FocusEntities.swift */; };
+		F0C1EA000000000000000024 /* FocusIntentStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1EA000000000000000010 /* FocusIntentStorage.swift */; };
+		F0C1EA000000000000000003 /* FocusFilterInfrastructure in Frameworks */ = {isa = PBXBuildFile; productRef = F0C1EA000000000000000001 /* FocusFilterInfrastructure */; };
+		F0C1EA000000000000000004 /* FocusFilterInfrastructure in Frameworks */ = {isa = PBXBuildFile; productRef = F0C1EA000000000000000002 /* FocusFilterInfrastructure */; };
 		C0DEBACC1000000000000001 /* AccountResetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEBACC1000000000000003 /* AccountResetSupport */; };
 		C0DEBACC1000000000000002 /* AccountResetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEBACC1000000000000004 /* AccountResetSupport */; };
 /* End PBXBuildFile section */
@@ -997,6 +1013,7 @@
 			remoteGlobalIDString = C232EA901E1D07E700C4D38C;
 			remoteInfo = TelegramShare;
 		};
+		F0C050000000000000000024 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = D098C70D1D7E175A007784E4 /* Project object */; proxyType = 1; remoteGlobalIDString = F0C050000000000000000020; remoteInfo = FocusIntents; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -1029,6 +1046,15 @@
 			files = (
 				C23D0D7D1F1A692100AF5151 /* SFCompactRounded-Semibold.otf in CopyFiles */,
 			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0C050000000000000000018 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (F0C050000000000000000006 /* FocusIntents.appex in Embed ExtensionKit Extensions */, );
+			name = "Embed ExtensionKit Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -2005,6 +2031,22 @@
 		345CA31BC0A2A11FA5B91D15 /* SelectColorUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SelectColorUI; path = packages/SelectColorUI; sourceTree = "<group>"; };
 		DC03D85B85DFD13971D4E5B3 /* GiftCraftingUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GiftCraftingUI; path = packages/GiftCraftingUI; sourceTree = "<group>"; };
 		7EFAFFDDB86A365C817F7F0A /* PasscodeCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PasscodeCore; path = "submodules/telegram-ios/submodules/PasscodeCore"; sourceTree = "<group>"; };
+		F0C05000000000000000000D /* FocusFilterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusFilterCoordinator.swift; sourceTree = "<group>"; };
+		F0C05000000000000000000E /* FocusFilterIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusFilterIntent.swift; sourceTree = "<group>"; };
+		F0C05000000000000000000F /* FocusIntentsExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusIntentsExtension.swift; sourceTree = "<group>"; };
+		F0C050000000000000000010 /* FocusIntents.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = FocusIntents.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0C050000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F0C050000000000000000012 /* FocusIntents.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FocusIntents.entitlements; sourceTree = "<group>"; };
+		F0C050000000000000000014 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		F0C050000000000000000015 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
+		F0C050000000000000000016 /* FocusFilterCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FocusFilterCore; path = packages/FocusFilterCore; sourceTree = "<group>"; };
+		F0C1EA00000000000000000A /* FocusCatalogProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusCatalogProjection.swift; sourceTree = "<group>"; };
+		F0C1EA00000000000000000B /* FocusAccountCatalogContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusAccountCatalogContext.swift; sourceTree = "<group>"; };
+		F0C1EA00000000000000000C /* FocusNotificationMembership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusNotificationMembership.swift; sourceTree = "<group>"; };
+		F0C1EA00000000000000000D /* FocusNotificationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusNotificationPolicy.swift; sourceTree = "<group>"; };
+		F0C1EA00000000000000000E /* FocusNotificationResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusNotificationResolver.swift; sourceTree = "<group>"; };
+		F0C1EA00000000000000000F /* FocusEntities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusEntities.swift; sourceTree = "<group>"; };
+		F0C1EA000000000000000010 /* FocusIntentStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusIntentStorage.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2069,6 +2111,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F0C1EA000000000000000003 /* FocusFilterInfrastructure in Frameworks */,
+				F0C050000000000000000001 /* FocusFilterCore in Frameworks */,
 				179E9277EEDF6EE57D278A28 /* MTProtoRustEngine in Frameworks */,
 				26F8A3445EB870ACB07A9BAA /* PasscodeCore in Frameworks */,
 				A624E60A4F34F0CDF90B607B /* GiftCraftingUI in Frameworks */,
@@ -2310,6 +2354,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F0C050000000000000000019 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (F0C1EA000000000000000004 /* FocusFilterInfrastructure in Frameworks */, F0C050000000000000000002 /* FocusFilterCore in Frameworks */, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -2748,6 +2793,7 @@
 		27F3B7592739300C00B81F10 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				F0C050000000000000000016 /* FocusFilterCore */,
 				FD784E303A88B94212763B13 /* MTProtoRustEngine */,
 				7EFAFFDDB86A365C817F7F0A /* PasscodeCore */,
 				DC03D85B85DFD13971D4E5B3 /* GiftCraftingUI */,
@@ -2984,6 +3030,12 @@
 		9F7D422822240235007B68BB /* account */ = {
 			isa = PBXGroup;
 			children = (
+				F0C1EA00000000000000000E /* FocusNotificationResolver.swift */,
+				F0C1EA00000000000000000D /* FocusNotificationPolicy.swift */,
+				F0C1EA00000000000000000C /* FocusNotificationMembership.swift */,
+				F0C1EA00000000000000000B /* FocusAccountCatalogContext.swift */,
+				F0C1EA00000000000000000A /* FocusCatalogProjection.swift */,
+				F0C05000000000000000000D /* FocusFilterCoordinator.swift */,
 				9F7D422922240403007B68BB /* AccountContext.swift */,
 				726D2C319EBD3AB2BA2C237F /* AccountManagerSetup.swift */,
 				E64BED76F5F0416925F8157C /* AccountContextConformance.swift */,
@@ -3362,6 +3414,7 @@
 		D098C70C1D7E175A007784E4 = {
 			isa = PBXGroup;
 			children = (
+				F0C050000000000000000017 /* FocusIntents */,
 				27F3B7592739300C00B81F10 /* Packages */,
 				D098C7171D7E175A007784E4 /* Telegram-Mac */,
 				C232EA921E1D07E700C4D38C /* TelegramShare */,
@@ -3374,6 +3427,7 @@
 		D098C7161D7E175A007784E4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				F0C050000000000000000010 /* FocusIntents.appex */,
 				D098C7151D7E175A007784E4 /* Telegram.app */,
 				C232EA911E1D07E700C4D38C /* TelegramShare.appex */,
 			);
@@ -3618,6 +3672,12 @@
 			name = "Recovered References";
 			sourceTree = "<group>";
 		};
+		F0C050000000000000000017 /* FocusIntents */ = {
+			isa = PBXGroup;
+			children = (F0C1EA000000000000000010 /* FocusIntentStorage.swift */, F0C1EA00000000000000000F /* FocusEntities.swift */, F0C05000000000000000000E /* FocusFilterIntent.swift */, F0C05000000000000000000F /* FocusIntentsExtension.swift */, F0C050000000000000000011 /* Info.plist */, F0C050000000000000000012 /* FocusIntents.entitlements */, F0C050000000000000000013 /* Localizable.strings */, );
+			path = FocusIntents;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -3683,6 +3743,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = D098C7221D7E175A007784E4 /* Build configuration list for PBXNativeTarget "Telegram" */;
 			buildPhases = (
+				F0C050000000000000000018 /* Embed ExtensionKit Extensions */,
 				CE4D72C9B2A34D84A52D6A02 /* Check TelegramApi Sources */,
 				161B8B778DC5A90FA234F9E6 /* Check Wallet Engine Bindings */,
 				C20D5AB61DAA94500042616A /* Copy Files */,
@@ -3694,10 +3755,13 @@
 			buildRules = (
 			);
 			dependencies = (
+				F0C050000000000000000025 /* PBXTargetDependency */,
 				275E4B3F2EEC24B700BC1A68 /* PBXTargetDependency */,
 			);
 			name = Telegram;
 			packageProductDependencies = (
+				F0C1EA000000000000000001 /* FocusFilterInfrastructure */,
+				F0C05000000000000000001E /* FocusFilterCore */,
 				65444FEC9F6C1C634AC14116 /* MTProtoRustEngine */,
 				C0C39F69D94F71B3D37CE102 /* PasscodeCore */,
 				F685D321C7FA76A9B76D43C9 /* GiftCraftingUI */,
@@ -3887,6 +3951,18 @@
 			productReference = D098C7151D7E175A007784E4 /* Telegram.app */;
 			productType = "com.apple.product-type.application";
 		};
+		F0C050000000000000000020 /* FocusIntents */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F0C050000000000000000023 /* Build configuration list for PBXNativeTarget FocusIntents */;
+			buildPhases = (F0C05000000000000000001A /* Sources */, F0C050000000000000000019 /* Frameworks */, F0C05000000000000000001B /* Resources */, );
+			buildRules = ();
+			dependencies = ();
+			name = FocusIntents;
+			packageProductDependencies = (F0C1EA000000000000000002 /* FocusFilterInfrastructure */, F0C05000000000000000001F /* FocusFilterCore */, );
+			productName = FocusIntents;
+			productReference = F0C050000000000000000010 /* FocusIntents.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -3951,6 +4027,7 @@
 			);
 			mainGroup = D098C70C1D7E175A007784E4;
 			packageReferences = (
+				F0C05000000000000000001D /* XCLocalSwiftPackageReference "packages/FocusFilterCore" */,
 				8412CCD8FD1ED53B957DC5A9 /* XCLocalSwiftPackageReference "packages/AvatarUI" */,
 				F0255D56305311A9001994C2 /* XCLocalSwiftPackageReference "packages/TelegramUtils" */,
 			);
@@ -3968,6 +4045,7 @@
 			);
 			projectRoot = "";
 			targets = (
+				F0C050000000000000000020 /* FocusIntents */,
 				D098C7141D7E175A007784E4 /* Telegram */,
 				C232EA901E1D07E700C4D38C /* TelegramShare */,
 			);
@@ -4538,6 +4616,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F0C05000000000000000001B /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (F0C050000000000000000007 /* Localizable.strings in Resources */, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 
@@ -4619,6 +4698,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F0C1EA000000000000000022 /* FocusNotificationResolver.swift in Sources */,
+				F0C1EA000000000000000021 /* FocusNotificationPolicy.swift in Sources */,
+				F0C1EA000000000000000020 /* FocusNotificationMembership.swift in Sources */,
+				F0C1EA00000000000000001F /* FocusAccountCatalogContext.swift in Sources */,
+				F0C1EA00000000000000001E /* FocusCatalogProjection.swift in Sources */,
+				F0C050000000000000000003 /* FocusFilterCoordinator.swift in Sources */,
 				BE3536CA4246405D5520629A /* WalletUIHooksInstall.swift in Sources */,
 				4B9679F90FE2EF0F0FD21C7A /* PasscodeUIHooksInstall.swift in Sources */,
 				E568F0911A11424B5B985A64 /* AccountManagerSetup.swift in Sources */,
@@ -4742,6 +4827,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F0C05000000000000000001A /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F0C1EA000000000000000024 /* FocusIntentStorage.swift in Sources */, F0C1EA000000000000000023 /* FocusEntities.swift in Sources */, F0C050000000000000000004 /* FocusFilterIntent.swift in Sources */, F0C050000000000000000005 /* FocusIntentsExtension.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -4750,6 +4836,7 @@
 			target = C232EA901E1D07E700C4D38C /* TelegramShare */;
 			targetProxy = 275E4B3E2EEC24B700BC1A68 /* PBXContainerItemProxy */;
 		};
+		F0C050000000000000000025 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = F0C050000000000000000020 /* FocusIntents */; targetProxy = F0C050000000000000000024 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
@@ -4802,6 +4889,7 @@
 			name = MainMenu.xib;
 			sourceTree = "<group>";
 		};
+		F0C050000000000000000013 /* Localizable.strings */ = {isa = PBXVariantGroup; children = (F0C050000000000000000014 /* en */, F0C050000000000000000015 /* ru */, ); name = Localizable.strings; sourceTree = "<group>"; };
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
@@ -5152,6 +5240,60 @@
 			};
 			name = Debug;
 		};
+		F0C050000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 278926CE27551B5600923087 /* Debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ONLY_ACTIVE_ARCH = YES;
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = FocusIntents/FocusIntents.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 283357;
+				DEVELOPMENT_TEAM = 6N38VWS5BX;
+				ENABLE_APP_SANDBOX = YES;
+				FOCUS_APP_GROUP = 6N38VWS5BX.ru.keepcoder.Telegram;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FocusIntents/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 13.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.keepcoder.Telegram.FocusIntents;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F0C050000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 278926CF2755222700923087 /* Release.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ONLY_ACTIVE_ARCH = NO;
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = FocusIntents/FocusIntents.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 283357;
+				DEVELOPMENT_TEAM = 6N38VWS5BX;
+				ENABLE_APP_SANDBOX = YES;
+				FOCUS_APP_GROUP = 6N38VWS5BX.ru.keepcoder.Telegram;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FocusIntents/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 13.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.keepcoder.Telegram.FocusIntents;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -5182,6 +5324,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		F0C050000000000000000023 /* Build configuration list for PBXNativeTarget FocusIntents */ = {isa = XCConfigurationList; buildConfigurations = (F0C050000000000000000021 /* Debug */, F0C050000000000000000022 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -5193,6 +5336,7 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = packages/TelegramUtils;
 		};
+		F0C05000000000000000001D /* XCLocalSwiftPackageReference "packages/FocusFilterCore" */ = {isa = XCLocalSwiftPackageReference; relativePath = packages/FocusFilterCore; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -6074,6 +6218,10 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = PasscodeCore;
 		};
+		F0C05000000000000000001E /* FocusFilterCore */ = {isa = XCSwiftPackageProductDependency; package = F0C05000000000000000001D /* XCLocalSwiftPackageReference packages/FocusFilterCore */; productName = FocusFilterCore; };
+		F0C05000000000000000001F /* FocusFilterCore */ = {isa = XCSwiftPackageProductDependency; package = F0C05000000000000000001D /* XCLocalSwiftPackageReference packages/FocusFilterCore */; productName = FocusFilterCore; };
+		F0C1EA000000000000000001 /* FocusFilterInfrastructure */ = {isa = XCSwiftPackageProductDependency; package = F0C05000000000000000001D; productName = FocusFilterInfrastructure; };
+		F0C1EA000000000000000002 /* FocusFilterInfrastructure */ = {isa = XCSwiftPackageProductDependency; package = F0C05000000000000000001D; productName = FocusFilterInfrastructure; };
 		C0DEBACC1000000000000003 /* AccountResetSupport */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AccountResetSupport;

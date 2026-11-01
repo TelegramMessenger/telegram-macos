@@ -22,6 +22,7 @@ import ChatUI
 import ChatModeTypes
 import InlineStickerLayer
 import InputDataUI
+import FocusFilterCore
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -917,11 +918,13 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         }))
 
         
-        let chatHistoryView: Signal<(ChatListViewUpdate, FilterData, Bool, ChatFolderUpdates?), NoError> = filterSignal |> distinctUntilChanged(isEqual: { lhs, rhs in
+        let focusPolicies = ChatListFocusHooks.shared.policies()
+        let focusSelection = chatListFocusSelection(accountId: context.account.id.int64, policies: focusPolicies)
+        let chatHistoryView: Signal<(ChatListViewUpdate, FilterData, Bool, ChatFolderUpdates?), NoError> = combineLatest(filterSignal |> distinctUntilChanged(isEqual: { lhs, rhs in
             return lhs.filter == rhs.filter && lhs.request == rhs.request
-        }) |> mapToSignal { data in
+        }), focusSelection) |> mapToSignal { data, selection in
             
-            let signal = combineLatest(context.engine.peers.subscribedChatFolderUpdates(folderId: ChatListUIHooks.shared.chatListFilterId(data.filter)), chatListViewForLocation(chatListLocation: mode.location, location: data.request, filter: data.filter, account: context.account))
+            let signal = combineLatest(context.engine.peers.subscribedChatFolderUpdates(folderId: ChatListUIHooks.shared.chatListFilterId(data.filter)), focusFilteredChatListView(chatListLocation: mode.location, location: data.request, filter: data.filter, account: context.account, selection: selection, policies: focusPolicies))
             return  signal |> map { updates, view in
                 return (view, data, false, updates)
             }

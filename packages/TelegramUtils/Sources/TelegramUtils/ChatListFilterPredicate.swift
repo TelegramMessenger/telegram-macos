@@ -264,6 +264,10 @@ public struct ChatListViewUpdate {
     public let scroll: TableScrollState?
     public var removeNextAnimation: Bool
     public var communityCategories: [PeerId: ChatListFilterPeerCategories] = [:]
+
+    public func withUpdatedList(_ list: EngineChatList, type: ViewUpdateType? = nil) -> ChatListViewUpdate {
+        ChatListViewUpdate(list: list, type: type ?? self.type, scroll: scroll, removeNextAnimation: removeNextAnimation, communityCategories: communityCategories)
+    }
 }
 
 
@@ -290,12 +294,18 @@ private func applyCommunityChatListSummaries(_ list: EngineChatList, account: Ac
     }
 }
 
-public func chatListViewForLocation(chatListLocation: ChatListControllerLocation, location: ChatListIndexRequest, filter: ChatListFilter?, account: Account) -> Signal<ChatListViewUpdate, NoError> {
+public func chatListViewForLocation(chatListLocation: ChatListControllerLocation, location: ChatListIndexRequest, filter: ChatListFilter?, account: Account, predicateTransform: ((ChatListFilterPredicate?) -> ChatListFilterPredicate?)? = nil) -> Signal<ChatListViewUpdate, NoError> {
     switch chatListLocation {
     case let .chatList(groupId):
         return communityFilterCategories(account: account)
         |> mapToSignal { communityCategories -> Signal<ChatListViewUpdate, NoError> in
-            let filterPredicate = chatListFilterPredicate(for: filter, communityCategories: communityCategories)
+            let basePredicate = chatListFilterPredicate(for: filter, communityCategories: communityCategories)
+            let filterPredicate: ChatListFilterPredicate?
+            if let predicateTransform = predicateTransform {
+                filterPredicate = predicateTransform(basePredicate)
+            } else {
+                filterPredicate = basePredicate
+            }
             switch location {
             case let .Initial(count, st):
                 let signal = account.viewTracker.tailChatListView(groupId: groupId, filterPredicate: filterPredicate, count: count)
