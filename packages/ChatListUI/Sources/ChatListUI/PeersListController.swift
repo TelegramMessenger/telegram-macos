@@ -2490,12 +2490,19 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
         
         switch mode {
         case .savedMessagesChats:
-            let signal = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.DisplaySavedChatsAsTopics()) |> deliverOnMainQueue
+            let signal = context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.DisplaySavedChatsAsTopics()) |> deliverOnMainQueue
             actionsDisposable.add(signal.startStrict(next: { [weak self] value in
-                self?.updateState { current in
+                guard let self else {
+                    return
+                }
+                let wasDisplayedAsTopics = self.state?.displaySavedAsTopics == true
+                self.updateState { current in
                     var current = current
                     current.displaySavedAsTopics = value
                     return current
+                }
+                if wasDisplayedAsTopics, !value, self.navigationController?.controller === self {
+                    self.navigationController?.back()
                 }
             }))
         default:
@@ -3145,7 +3152,12 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
                     case .forum:
                         id = .chatId(.forum(threadId), location.peerId, -1)
                     case .savedMessagesChats:
-                        id = .chatId(.chatList(PeerId(data.threadId)), PeerId(data.threadId), -1)
+                        let sourceId = PeerId(data.threadId)
+                        if self.genericView.tableView.item(stableId: UIChatListEntryId.forum(sourceId)) != nil {
+                            id = .forum(sourceId)
+                        } else {
+                            id = .chatId(.chatList(sourceId), sourceId, -1)
+                        }
                     case .community:
                         id = .chatId(.chatList(location.peerId), location.peerId, -1)
                     }
@@ -3443,7 +3455,7 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
             switch type {
             case let .chatList(peerId):
                 
-                if openAsTopics {
+                if openAsTopics, !(navigation.modalAction is ChatListForwardAction && peerId == context.peerId) {
                     ForumUI.open(peerId, addition: false, context: context, threadId: threadId, fullWidth: fullWidthTopics)
                 } else {
                     if let modalAction = navigation.modalAction as? ChatListForwardAction, peerId == context.peerId {
@@ -3485,7 +3497,9 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
             self.navigationController?.push(ChatListController(context, modal: false, mode: .folder(groupId)))
         case let .forum(peerId):
             let current = navigationController?.controller as? ChatListController<Context>
-            if case .forum(peerId, _, _) = current?.mode {
+            if mode.isSavedMessages {
+                _ = (ForumUI.openSavedMessages(peerId.toInt64(), context: context, messageId: messageId, initialAction: initialAction) |> take(1)).start()
+            } else if case .forum(peerId, _, _) = current?.mode {
                 navigationController?.back()
             } else {
                 if current?.mode.isForum == true {
@@ -3641,6 +3655,9 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     }
     
     open override var fullSlideAnimation: Bool {
+        if case .savedMessagesChats = self.mode {
+            return true
+        }
         return !self.mode.isForumLike || self.mode.isFullForum
     }
     

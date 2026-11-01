@@ -1480,7 +1480,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
     private func resortPinned(_ from: Int, _ to: Int) {
         let context = self.context
         switch mode {
-        case let .forum(peerId, _, _):
+        case let .forum(peerId, _, _), let .savedMessagesChats(peerId):
             var items:[Int64] = []
 
             var offset: Int = 0
