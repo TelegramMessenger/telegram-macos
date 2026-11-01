@@ -43,22 +43,24 @@ selection. Query results also remove repeated identifiers while retaining distin
 items with the same name. Existing parameter names and entity identifiers are
 unchanged; saved identifier arrays resolve through the same queries.
 
-Account titles show `(Telegram ID: userId)` using the signed-in account's Telegram
-user ID, also searchable by that number. The catalogue carries this separately
-from the local account record ID, which is a random signed value and remains the
-entity/configuration identity. Existing selections therefore keep working. Older
-catalogues without a Telegram user ID still decode; those accounts and unavailable
-accounts show an explicitly labelled `(Local account: recordId)` fallback so
-same-name items remain distinguishable without presenting that value as a Telegram
-ID. Opening the updated app republishes the catalogue with Telegram user IDs.
+Account and chat titles use `Name (TelegramID)`, with only the number inside the
+parentheses. This applies to suggestions, search results, selected items, account
+subtitles and the filter summary. Account IDs are Telegram user IDs; chat IDs use
+[Telegram's dialog ID format](https://core.telegram.org/api/bots/ids): positive user
+IDs, negative group IDs, and the documented channel/secret-chat offsets. The app
+publishes these display values separately from the stable local account and full
+Postbox peer identifiers used by saved selections. Searching accounts/chats matches
+the Telegram ID or name, rather than the internal composite identifier.
 
-Folder and chat primary titles retain `(ID: identifier)`: folders use
-`accountId:folderId`; chats use `accountId:fullPeerId`, including the Postbox peer
-namespace. These are the filter's stable identifiers, not Bot API chat IDs. Their
-account prefix distinguishes selections through different accounts, including
-unavailable items. Searches match these identifiers as well as names. Primary
-titles remain visible when macOS omits subtitles from selected-items lists. The
-filter summary uses the same account labels and sorts by stable local identity.
+Older catalogues without these optional display IDs still decode. Until the updated
+app republishes the catalogue, and for unavailable items, only the name is shown;
+local record keys are never substituted for Telegram IDs. The same chat selected
+through different accounts retains separate internal identity and an account
+subtitle even when its primary `Name (TelegramID)` title is identical.
+
+Folders retain their account-qualified `accountId:folderId` labels because they do
+not have a Telegram dialog ID. Their account subtitle uses the same account display
+format. The filter summary sorts accounts by stable local identity.
 
 After installing a signed build, check in System Settings that each picker
 prevents adding the same item twice, removing and re-adding still works, same-name

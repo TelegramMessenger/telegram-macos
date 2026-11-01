@@ -26,9 +26,9 @@ struct FocusAccountEntity: AppEntity, Hashable {
 
     var displayRepresentation: DisplayRepresentation {
         if let telegramUserId {
-            return DisplayRepresentation(title: "\(title) (Telegram ID: \(String(telegramUserId)))")
+            return DisplayRepresentation(title: "\(title) (\(String(telegramUserId)))")
         }
-        return DisplayRepresentation(title: "\(title) (Local account: \(id))")
+        return DisplayRepresentation(title: "\(title)")
     }
 }
 
@@ -115,6 +115,14 @@ struct FocusChatEntity: AppEntity, Hashable {
     let id: String
     let title: String
     let accountTitle: String
+    let telegramChatId: Int64?
+
+    init(id: String, title: String, accountTitle: String, telegramChatId: Int64? = nil) {
+        self.id = id
+        self.title = title
+        self.accountTitle = accountTitle
+        self.telegramChatId = telegramChatId
+    }
 
     static func == (lhs: FocusChatEntity, rhs: FocusChatEntity) -> Bool {
         lhs.id == rhs.id
@@ -125,7 +133,10 @@ struct FocusChatEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title) (ID: \(id))", subtitle: "\(accountTitle)")
+        if let telegramChatId {
+            return DisplayRepresentation(title: "\(title) (\(String(telegramChatId)))", subtitle: "\(accountTitle)")
+        }
+        return DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
     }
 }
 
@@ -151,7 +162,7 @@ struct FocusChatQuery: EntityStringQuery {
     func entities(matching string: String) async throws -> [FocusChatEntity] {
         try await suggestedEntities().filter {
             $0.title.localizedStandardContains(string)
-                || $0.id.localizedStandardContains(string)
+                || $0.telegramChatId.map { String($0).localizedStandardContains(string) } == true
                 || $0.accountTitle.localizedStandardContains(string)
         }
     }
@@ -174,7 +185,8 @@ private struct FocusEntityCatalog {
         uniqueEntities(identifiers.compactMap { rawValue in
             guard let accountId = Int64(rawValue) else { return nil }
             let account = catalog.accounts.first { $0.id == accountId }
-            return FocusAccountEntity(id: String(accountId), title: accountTitle(accountId), telegramUserId: account?.telegramUserId)
+            let title = account?.title ?? String(localized: "Unavailable account")
+            return FocusAccountEntity(id: String(accountId), title: title, telegramUserId: account?.telegramUserId)
         })
     }
 
@@ -194,15 +206,16 @@ private struct FocusEntityCatalog {
 
     var chats: [FocusChatEntity] {
         uniqueEntities(catalog.chats.map {
-            FocusChatEntity(id: $0.id.rawValue, title: $0.title, accountTitle: accountTitle($0.id.accountId))
+            FocusChatEntity(id: $0.id.rawValue, title: $0.title, accountTitle: accountTitle($0.id.accountId), telegramChatId: $0.telegramChatId)
         })
     }
 
     func chats(for identifiers: [String]) -> [FocusChatEntity] {
         uniqueEntities(identifiers.compactMap { rawValue in
             guard let id = FocusChatIdentifier(rawValue: rawValue) else { return nil }
-            let title = catalog.chats.first(where: { $0.id == id })?.title ?? String(localized: "Unavailable chat")
-            return FocusChatEntity(id: id.rawValue, title: title, accountTitle: accountTitle(id.accountId))
+            let chat = catalog.chats.first(where: { $0.id == id })
+            let title = chat?.title ?? String(localized: "Unavailable chat")
+            return FocusChatEntity(id: id.rawValue, title: title, accountTitle: accountTitle(id.accountId), telegramChatId: chat?.telegramChatId)
         })
     }
 
@@ -212,6 +225,9 @@ private struct FocusEntityCatalog {
     }
 
     private func accountTitle(_ accountId: Int64) -> String {
-        catalog.accounts.first(where: { $0.id == accountId })?.title ?? String(localized: "Unavailable account")
+        guard let account = catalog.accounts.first(where: { $0.id == accountId }) else {
+            return String(localized: "Unavailable account")
+        }
+        return String(localized: FocusAccountEntity(id: String(account.id), title: account.title, telegramUserId: account.telegramUserId).displayRepresentation.title)
     }
 }

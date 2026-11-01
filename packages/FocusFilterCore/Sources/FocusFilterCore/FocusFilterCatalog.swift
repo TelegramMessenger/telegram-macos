@@ -14,11 +14,13 @@ public struct FocusCatalogChat: Equatable, Codable, Sendable {
     public let id: FocusChatIdentifier
     public let title: String
     public let isArchived: Bool
+    public let telegramChatId: Int64?
 
-    public init(id: FocusChatIdentifier, title: String, isArchived: Bool = false) {
+    public init(id: FocusChatIdentifier, title: String, isArchived: Bool = false, telegramChatId: Int64? = nil) {
         self.id = id
         self.title = title
         self.isArchived = isArchived
+        self.telegramChatId = telegramChatId
     }
 }
 

@@ -2,7 +2,14 @@ import Foundation
 
 struct PeerId: Hashable {
     let value: Int64
+    var namespace: Int32 = Namespaces.Peer.CloudUser
+    var id: Id { Id(value: value) }
     func toInt64() -> Int64 { value }
+
+    struct Id {
+        let value: Int64
+        func _internalGetInt64Value() -> Int64 { value }
+    }
 }
 
 enum PeerGroupId: Hashable {
@@ -11,6 +18,12 @@ enum PeerGroupId: Hashable {
 }
 
 enum Namespaces {
+    enum Peer {
+        static let CloudUser: Int32 = 0
+        static let CloudGroup: Int32 = 1
+        static let CloudChannel: Int32 = 2
+        static let SecretChat: Int32 = 3
+    }
     enum PeerGroup {
         static let archive = PeerGroupId.archive
     }
@@ -78,6 +91,29 @@ final class Transaction {
 @main
 struct FocusCatalogTests {
     static func main() {
+        let displayIds: [(Int32, Int64, Int64?)] = [
+            (Namespaces.Peer.CloudUser, 6_123_456_789, 6_123_456_789),
+            (Namespaces.Peer.CloudGroup, 42, -42),
+            (Namespaces.Peer.CloudChannel, 42, -1_000_000_000_042),
+            (Namespaces.Peer.CloudChannel, 3_000_000_000_000, -4_000_000_000_000),
+            (Namespaces.Peer.SecretChat, -42, -2_000_000_000_042),
+            (Namespaces.Peer.CloudUser, 0, nil),
+            (Namespaces.Peer.CloudUser, 0x10000000000, nil),
+            (Namespaces.Peer.CloudGroup, -42, nil),
+            (Namespaces.Peer.CloudGroup, 1_000_000_000_000, nil),
+            (Namespaces.Peer.CloudChannel, 1_000_000_000_000, nil),
+            (Namespaces.Peer.CloudChannel, 3_000_000_000_001, nil),
+            (Namespaces.Peer.SecretChat, Int64(Int32.max) + 1, nil),
+            (4, 42, nil)
+        ]
+        for (namespace, value, expected) in displayIds {
+            let peer = GroupPeer(id: PeerId(value: value, namespace: namespace), displayTitle: "Chat")
+            let catalog = focusAccountCatalog(transaction: Transaction(groups: [.root: [peer]]), accountId: -71, filters: [], communityCategories: [:])
+            precondition(catalog.chats.first?.telegramChatId == expected)
+            precondition(catalog.chats.first?.id == .init(accountId: -71, peerId: peer.id.toInt64()))
+        }
+        print("PASS Telegram dialog IDs for users, groups, channels, monoforums and secret chats preserve internal selection identity")
+
         let work = GroupPeer(id: PeerId(value: 30), displayTitle: "Work")
         let archived = GroupPeer(id: PeerId(value: 20), displayTitle: "Archived")
         let oldCached = GroupPeer(id: PeerId(value: 10), displayTitle: "Older cached chat beyond a history hole")
