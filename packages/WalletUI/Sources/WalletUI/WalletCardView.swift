@@ -520,8 +520,8 @@ public final class WalletCardView: View {
     private var hiddenStickers: Set<String> = []
     private var stickerLayers: [String: WalletCardStickerLayer] = [:]
     private var stickerPlayers: [String: InlineStickerItemLayer] = [:]
-    private var stickerOutlineBusy: Set<String> = []
-    private var stickerOutlinePending: [String: CGImage] = [:]
+    private var stickerOutlineBusy: Set<ObjectIdentifier> = []
+    private var stickerOutlinePending: [ObjectIdentifier: CGImage] = [:]
     private var stickerGrow: [String: CGFloat] = [:]
     private var isStickerInteraction = false
     var stickerTracking: ((String, NSEvent) -> Bool)?
@@ -1658,26 +1658,27 @@ extension WalletCardView {
     }
 
     private func updateStickerOutline(_ id: String, player: InlineStickerItemLayer, frame: CGImage) {
-        if stickerOutlineBusy.contains(id) {
-            stickerOutlinePending[id] = frame
+        let key = ObjectIdentifier(player)
+        if stickerOutlineBusy.contains(key) {
+            stickerOutlinePending[key] = frame
             return
         }
-        stickerOutlineBusy.insert(id)
-        DispatchQueue.global(qos: .userInteractive).async { [weak self, weak player] in
+        stickerOutlineBusy.insert(key)
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             let image = WalletCollectableImages.animatedSticker(frame: frame, side: WalletCollectibleArtworks.artSide)
             DispatchQueue.main.async {
                 guard let self else {
                     return
                 }
-                self.stickerOutlineBusy.remove(id)
-                guard let player, self.stickerPlayers[id] === player else {
-                    self.stickerOutlinePending[id] = nil
+                self.stickerOutlineBusy.remove(key)
+                guard self.stickerPlayers[id] === player else {
+                    self.stickerOutlinePending[key] = nil
                     return
                 }
                 if let image {
                     self.stickerLayers[id]?.contents = image
                 }
-                if let next = self.stickerOutlinePending.removeValue(forKey: id) {
+                if let next = self.stickerOutlinePending.removeValue(forKey: key) {
                     self.updateStickerOutline(id, player: player, frame: next)
                 }
             }
@@ -1688,7 +1689,7 @@ extension WalletCardView {
         guard let player = stickerPlayers.removeValue(forKey: id) else {
             return
         }
-        stickerOutlinePending[id] = nil
+        stickerOutlinePending[ObjectIdentifier(player)] = nil
         stickerLayers[id]?.setAnimating(false)
         player.contentDidUpdate = nil
         player.removeFromSuperlayer()
