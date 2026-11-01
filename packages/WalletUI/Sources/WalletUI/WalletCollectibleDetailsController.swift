@@ -442,6 +442,7 @@ private final class WalletCollectibleHeroRowView: TableRowView {
                         self.giftView.isHidden = true
                     }
                     self.giftPlayer = player
+                    player.superview = self.giftControl
                     self.giftControl.layer?.addSublayer(player)
                     player.isPlayable = true
                 }
