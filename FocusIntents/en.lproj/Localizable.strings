@@ -23,3 +23,5 @@
 "Chats" = "Chats";
 "Choose individual private chats, groups, or channels in addition to folders." = "Choose individual private chats, groups, or channels in addition to folders.";
 "Filter Telegram" = "Filter Telegram";
+"%@ (Telegram ID: %@)" = "%@ (Telegram ID: %@)";
+"%@ (Local account: %@)" = "%@ (Local account: %@)";

@@ -43,14 +43,22 @@ selection. Query results also remove repeated identifiers while retaining distin
 items with the same name. Existing parameter names and entity identifiers are
 unchanged; saved identifier arrays resolve through the same queries.
 
-Each entity's primary display title includes `(ID: identifier)`. This is visible
-both when choosing an item and in the selected-items list, where macOS may omit
-subtitles. Accounts use their local account record ID; folders use
+Account titles show `(Telegram ID: userId)` using the signed-in account's Telegram
+user ID, also searchable by that number. The catalogue carries this separately
+from the local account record ID, which is a random signed value and remains the
+entity/configuration identity. Existing selections therefore keep working. Older
+catalogues without a Telegram user ID still decode; those accounts and unavailable
+accounts show an explicitly labelled `(Local account: recordId)` fallback so
+same-name items remain distinguishable without presenting that value as a Telegram
+ID. Opening the updated app republishes the catalogue with Telegram user IDs.
+
+Folder and chat primary titles retain `(ID: identifier)`: folders use
 `accountId:folderId`; chats use `accountId:fullPeerId`, including the Postbox peer
-namespace. These are the filter's stable identifiers, not Bot API chat IDs. The
-account prefix distinguishes the same chat or folder selected through different
-accounts. Unavailable items retain their ID label, and searches match IDs as well
-as names. The filter summary sorts accounts by ID for stable display.
+namespace. These are the filter's stable identifiers, not Bot API chat IDs. Their
+account prefix distinguishes selections through different accounts, including
+unavailable items. Searches match these identifiers as well as names. Primary
+titles remain visible when macOS omits subtitles from selected-items lists. The
+filter summary uses the same account labels and sorts by stable local identity.
 
 After installing a signed build, check in System Settings that each picker
 prevents adding the same item twice, removing and re-adding still works, same-name
@@ -58,6 +66,9 @@ items remain independently selectable, and existing filters (including those
 with repeated items) reopen with the intended selection. Also check a second
 Focus mode: selecting an item in one mode must not remove it from another mode's
 choices.
+After upgrading, also open Telegram and reopen an existing Focus filter: account
+rows and the filter summary should show the positive Telegram user ID while
+retaining the original selection and filtering behavior.
 
 ## Dependency boundaries
 

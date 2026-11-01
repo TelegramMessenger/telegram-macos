@@ -42,7 +42,7 @@ final class FocusFilterCoordinator {
         var catalog = FocusFilterCatalog()
         for id in accounts.keys.sorted() {
             guard let context = accounts[id] else { continue }
-            catalog.accounts.append(FocusCatalogAccount(id: id, title: context.title))
+            catalog.accounts.append(FocusCatalogAccount(id: id, title: context.title, telegramUserId: context.account.peerId.id._internalGetInt64Value()))
             catalog.chats.append(contentsOf: context.catalog.chats)
             catalog.folders.append(contentsOf: context.catalog.folders)
         }

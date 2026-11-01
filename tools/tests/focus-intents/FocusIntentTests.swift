@@ -78,10 +78,49 @@ private final class TestCatalogSource: @unchecked Sendable {
 
 @main
 private enum FocusIntentTests {
+    private static func testTelegramAccountIdentifiers() async throws {
+        let localId: Int64 = -8_000_000_000_000_000_001
+        let telegramId: Int64 = 6_123_456_789
+        let catalog = try JSONDecoder().decode(FocusFilterCatalog.self, from: Data(#"{"accounts":[{"id":-8000000000000000001,"title":"Same","telegramUserId":6123456789},{"id":8000000000000000001,"title":"Same","telegramUserId":7123456789}],"chats":[],"folders":[]}"#.utf8))
+        let query = FocusAccountQuery(catalogProvider: { catalog })
+        let restored = try await query.entities(for: [String(localId)])
+        let suggested = try await query.suggestedEntities()
+        precondition(restored.count == 1 && restored[0].id == String(localId))
+        precondition(String(localized: restored[0].displayRepresentation.title) == "Same (Telegram ID: 6123456789)", "Account labels must show the Telegram user ID, not the local account record ID")
+        precondition(suggested.map { String(localized: $0.displayRepresentation.title) } == ["Same (Telegram ID: 6123456789)", "Same (Telegram ID: 7123456789)"])
+        let foundByTelegramId = try await query.entities(matching: String(telegramId))
+        let foundByLocalId = try await query.entities(matching: String(localId))
+        precondition(foundByTelegramId.map(\.id) == [String(localId)])
+        precondition(foundByLocalId.isEmpty)
+        let intent = TelegramFocusFilter()
+        intent.accounts = Set(restored)
+        precondition(intent.configuration.accountIds == [localId])
+        precondition(String(localized: intent.displayRepresentation.subtitle!) == "Same (Telegram ID: 6123456789)")
+        let policy = FocusFilterPolicy(configuration: intent.configuration, catalog: catalog)
+        precondition(!policy.includes(accountId: localId, peerId: 42, effect: .notifications))
+        precondition(policy.includes(accountId: telegramId, peerId: 42, effect: .notifications))
+    }
+
+    private static func testLegacyAccountIdentifiers() async throws {
+        let legacy = try JSONDecoder().decode(FocusFilterCatalog.self, from: Data(#"{"accounts":[{"id":-123,"title":"Same"},{"id":456,"title":"Same"}],"chats":[],"folders":[]}"#.utf8))
+        let query = FocusAccountQuery(catalogProvider: { legacy })
+        let suggested = try await query.suggestedEntities()
+        precondition(suggested.map { String(localized: $0.displayRepresentation.title) } == ["Same (Local account: -123)", "Same (Local account: 456)"])
+        let restored = try await query.entities(for: ["-123", "456", "-789"])
+        precondition(restored.map(\.id) == ["-123", "456", "-789"])
+        precondition(String(localized: restored[2].displayRepresentation.title).contains("Local account: -789"))
+        precondition(!String(localized: restored[2].displayRepresentation.title).contains("Telegram ID"))
+        let refreshed = FocusAccountEntity(id: "-123", title: "Renamed", telegramUserId: 6_123_456_789)
+        precondition(Set([suggested[0], refreshed]).count == 1)
+        let intent = TelegramFocusFilter()
+        intent.accounts = Set(restored)
+        precondition(intent.configuration.accountIds == [-123, 456, -789])
+    }
+
     private static func testUniqueSelections() async throws {
-        let account = FocusAccountEntity(id: "1", title: "Same")
-        let renamedAccount = FocusAccountEntity(id: "1", title: "Renamed")
-        let otherAccount = FocusAccountEntity(id: "2", title: "Same")
+        let account = FocusAccountEntity(id: "1", title: "Same", telegramUserId: 101)
+        let renamedAccount = FocusAccountEntity(id: "1", title: "Renamed", telegramUserId: 101)
+        let otherAccount = FocusAccountEntity(id: "2", title: "Same", telegramUserId: 202)
         let folder = FocusFolderEntity(id: "1:7", title: "Same", accountTitle: "Same")
         let renamedFolder = FocusFolderEntity(id: "1:7", title: "Renamed", accountTitle: "Renamed")
         let otherFolder = FocusFolderEntity(id: "1:8", title: "Same", accountTitle: "Same")
@@ -98,7 +137,7 @@ private enum FocusIntentTests {
         precondition(intent.accounts?.count == 2, "Account selection must be unique by ID, including renamed entities")
         precondition(intent.folders?.count == 3, "Folder selection must be unique by account and folder ID")
         precondition(intent.chats?.count == 4, "Chat selection must preserve different accounts and peer namespaces")
-        precondition(String(localized: intent.displayRepresentation.subtitle!).contains("ID: 1"))
+        precondition(String(localized: intent.displayRepresentation.subtitle!).contains("Telegram ID: 101"))
         intent.accounts?.remove(renamedAccount)
         intent.folders?.remove(renamedFolder)
         intent.chats?.remove(renamedChat)
@@ -108,11 +147,11 @@ private enum FocusIntentTests {
         intent.accounts?.insert(account)
         intent.folders?.insert(folder)
         intent.chats?.insert(chat)
-        precondition(String(localized: intent.displayRepresentation.subtitle!) == "Same (ID: 1), Same (ID: 2)")
+        precondition(String(localized: intent.displayRepresentation.subtitle!) == "Same (Telegram ID: 101), Same (Telegram ID: 202)")
         precondition(intent.configuration.accountIds == [1, 2])
         precondition(intent.configuration.folderIds.count == 3)
         precondition(intent.configuration.chatIds.count == 4)
-        precondition(String(localized: account.displayRepresentation.title) == "Same (ID: 1)")
+        precondition(String(localized: account.displayRepresentation.title) == "Same (Telegram ID: 101)")
         precondition(String(localized: folder.displayRepresentation.title) == "Same (ID: 1:7)")
         precondition(String(localized: chat.displayRepresentation.title) == "Same (ID: 1:42)")
         precondition(Set([account, otherAccount].map { String(localized: $0.displayRepresentation.title) }).count == 2)
@@ -120,7 +159,7 @@ private enum FocusIntentTests {
         precondition(Set([chat, otherChat, crossAccountChat, secretChat].map { String(localized: $0.displayRepresentation.title) }).count == 4)
 
         let catalog = FocusFilterCatalog(
-            accounts: [.init(id: 1, title: "Same"), .init(id: 1, title: "Renamed"), .init(id: 2, title: "Same")],
+            accounts: [.init(id: 1, title: "Same", telegramUserId: 101), .init(id: 1, title: "Renamed", telegramUserId: 101), .init(id: 2, title: "Same", telegramUserId: 202)],
             chats: [
                 .init(id: .init(accountId: 1, peerId: 42), title: "Same"),
                 .init(id: .init(accountId: 1, peerId: 42), title: "Renamed"),
@@ -141,7 +180,7 @@ private enum FocusIntentTests {
         precondition(accounts.map(\.id) == ["1", "2", "3"])
         precondition(folders.map(\.id) == ["1:7", "2:7", "3:7"])
         precondition(chats.map(\.id) == ["1:42", "2:42", "3:42"])
-        precondition(String(localized: accounts[2].displayRepresentation.title).contains("ID: 3"))
+        precondition(String(localized: accounts[2].displayRepresentation.title).contains("Local account: 3"))
         precondition(String(localized: folders[2].displayRepresentation.title).contains("ID: 3:7"))
         precondition(String(localized: chats[2].displayRepresentation.title).contains("ID: 3:42"))
         let suggestedAccounts = try await accountQuery.suggestedEntities()
@@ -159,6 +198,8 @@ private enum FocusIntentTests {
     }
 
     static func main() async throws {
+        try await testTelegramAccountIdentifiers()
+        try await testLegacyAccountIdentifiers()
         try await testUniqueSelections()
         let catalog = FocusFilterCatalog(
             accounts: [.init(id: 1, title: "Work"), .init(id: 2, title: "Personal")],
@@ -232,6 +273,6 @@ private enum FocusIntentTests {
         } catch TestFailure.persistence {
             precondition(repository.configurations == [configuration])
         }
-        print("PASS: unique Focus selections, ID labels/search, queries, unavailable entities, configuration and persistence errors")
+        print("PASS: Telegram user IDs, stable local identity, legacy catalogs, unique Focus selections, queries, configuration and persistence errors")
     }
 }

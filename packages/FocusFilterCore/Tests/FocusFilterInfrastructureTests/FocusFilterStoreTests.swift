@@ -31,7 +31,7 @@ final class FocusFilterStoreTests: XCTestCase {
         let system = makeStore()
         let chat = FocusChatIdentifier(accountId: Int64.min, peerId: Int64.max)
         let configuration = FocusFilterConfiguration(accountIds: [chat.accountId], chatIds: [chat], effect: .both)
-        let catalog = FocusFilterCatalog(accounts: [.init(id: chat.accountId, title: "Работа")], chats: [.init(id: chat, title: "Чат")])
+        let catalog = FocusFilterCatalog(accounts: [.init(id: chat.accountId, title: "Работа", telegramUserId: 6_123_456_789)], chats: [.init(id: chat, title: "Чат")])
 
         try system.updateConfiguration(configuration)
         app.reload()

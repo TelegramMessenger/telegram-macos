@@ -23,3 +23,5 @@
 "Chats" = "Чаты";
 "Choose individual private chats, groups, or channels in addition to folders." = "Выберите отдельные личные чаты, группы или каналы в дополнение к папкам.";
 "Filter Telegram" = "Фильтровать Telegram";
+"%@ (Telegram ID: %@)" = "%@ (ID Telegram: %@)";
+"%@ (Local account: %@)" = "%@ (Локальный аккаунт: %@)";

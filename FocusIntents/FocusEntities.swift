@@ -8,6 +8,13 @@ struct FocusAccountEntity: AppEntity, Hashable {
 
     let id: String
     let title: String
+    let telegramUserId: Int64?
+
+    init(id: String, title: String, telegramUserId: Int64? = nil) {
+        self.id = id
+        self.title = title
+        self.telegramUserId = telegramUserId
+    }
 
     static func == (lhs: FocusAccountEntity, rhs: FocusAccountEntity) -> Bool {
         lhs.id == rhs.id
@@ -18,7 +25,10 @@ struct FocusAccountEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title) (ID: \(id))")
+        if let telegramUserId {
+            return DisplayRepresentation(title: "\(title) (Telegram ID: \(String(telegramUserId)))")
+        }
+        return DisplayRepresentation(title: "\(title) (Local account: \(id))")
     }
 }
 
@@ -43,7 +53,8 @@ struct FocusAccountQuery: EntityStringQuery {
 
     func entities(matching string: String) async throws -> [FocusAccountEntity] {
         try await suggestedEntities().filter {
-            $0.title.localizedStandardContains(string) || $0.id.localizedStandardContains(string)
+            $0.title.localizedStandardContains(string)
+                || $0.telegramUserId.map { String($0).localizedStandardContains(string) } == true
         }
     }
 }
@@ -154,13 +165,16 @@ private struct FocusEntityCatalog {
     }
 
     var accounts: [FocusAccountEntity] {
-        uniqueEntities(catalog.accounts.map { FocusAccountEntity(id: String($0.id), title: $0.title) })
+        uniqueEntities(catalog.accounts.map {
+            FocusAccountEntity(id: String($0.id), title: $0.title, telegramUserId: $0.telegramUserId)
+        })
     }
 
     func accounts(for identifiers: [String]) -> [FocusAccountEntity] {
         uniqueEntities(identifiers.compactMap { rawValue in
             guard let accountId = Int64(rawValue) else { return nil }
-            return FocusAccountEntity(id: String(accountId), title: accountTitle(accountId))
+            let account = catalog.accounts.first { $0.id == accountId }
+            return FocusAccountEntity(id: String(accountId), title: accountTitle(accountId), telegramUserId: account?.telegramUserId)
         })
     }
 

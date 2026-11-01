@@ -1,10 +1,12 @@
 public struct FocusCatalogAccount: Equatable, Codable, Sendable {
     public let id: Int64
     public let title: String
+    public let telegramUserId: Int64?
 
-    public init(id: Int64, title: String) {
+    public init(id: Int64, title: String, telegramUserId: Int64? = nil) {
         self.id = id
         self.title = title
+        self.telegramUserId = telegramUserId
     }
 }
 
