@@ -31,32 +31,24 @@ public func clearHistory(context: any AccountContextProtocol, peer: Peer, mainPe
     })
 }
 
+public func protectedCopyText(_ peer: Peer) -> String {
+    if peer.isGroup || peer.isSupergroup {
+        return strings().copyRestrictedGroup
+    } else if peer is TelegramUser {
+        return strings().copyRestrictedChat
+    } else {
+        return strings().copyRestrictedChannel
+    }
+}
+
 public func showProtectedCopyAlert(_ message: Message, for window: Window) {
     if let peer = message.peers[message.id.peerId] {
-        let text: String
-        if message.paidContent != nil {
-            text = strings().contextCopyPaidMediaRestricted
-        } else if peer.isGroup || peer.isSupergroup {
-            text = strings().copyRestrictedGroup
-        } else if peer is TelegramUser {
-            text = strings().copyRestrictedChat
-        } else {
-            text = strings().copyRestrictedChannel
-        }
-        showModalText(for: window, text: text)
+        showModalText(for: window, text: message.paidContent != nil ? strings().contextCopyPaidMediaRestricted : protectedCopyText(peer))
     }
 }
 
 public func showProtectedCopyAlert(_ peer: Peer, for window: Window) {
-    let text: String
-    if peer.isGroup || peer.isSupergroup {
-        text = strings().copyRestrictedGroup
-    } else if peer is TelegramUser {
-        text = strings().copyRestrictedChat
-    } else {
-        text = strings().copyRestrictedChannel
-    }
-    showModalText(for: window, text: text)
+    showModalText(for: window, text: protectedCopyText(peer))
 }
 
 public func showSuccess(window: Window) {

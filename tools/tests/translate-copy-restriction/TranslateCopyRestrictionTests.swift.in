@@ -1,0 +1,228 @@
+import Foundation
+
+typealias PeerId = Int
+
+struct MessageId: Hashable {
+    let peerId: PeerId
+    let id: Int
+}
+
+class Peer {
+    var isGroup: Bool {
+        return false
+    }
+    var isSupergroup: Bool {
+        return false
+    }
+}
+
+final class TelegramGroup: Peer {
+    override var isGroup: Bool {
+        return true
+    }
+}
+
+final class Supergroup: Peer {
+    override var isSupergroup: Bool {
+        return true
+    }
+}
+
+final class TelegramUser: Peer {
+}
+
+final class Channel: Peer {
+}
+
+struct CachedFlags: OptionSet {
+    let rawValue: Int
+    static let copyProtectionEnabled = CachedFlags(rawValue: 1)
+    static let myCopyProtectionEnabled = CachedFlags(rawValue: 2)
+}
+
+final class CachedUserData {
+    let flags: CachedFlags
+
+    init(flags: CachedFlags) {
+        self.flags = flags
+    }
+}
+
+struct Message {
+    let id: MessageId
+    var peers: [PeerId: Peer] = [:]
+    var paidContent: Int?
+    var containsSecretMedia = false
+    var protected = false
+
+    func isCopyProtected() -> Bool {
+        return self.protected
+    }
+}
+
+struct Labels {
+    let copyRestrictedGroup = "group"
+    let copyRestrictedChat = "chat"
+    let copyRestrictedChannel = "channel"
+}
+
+func strings() -> Labels {
+    return Labels()
+}
+
+__TEXTS__
+
+final class Transaction {
+    var message: Message?
+    var peer: Peer?
+    var cachedData: AnyObject?
+
+    func getMessage(_ id: MessageId) -> Message? {
+        return self.message
+    }
+
+    func getPeer(_ id: PeerId) -> Peer? {
+        return self.peer
+    }
+
+    func getPeerCachedData(peerId: PeerId) -> AnyObject? {
+        return self.cachedData
+    }
+}
+
+final class Postbox {
+    let value: Transaction
+
+    init(_ value: Transaction) {
+        self.value = value
+    }
+
+    func transaction<T>(_ f: (Transaction) -> T) -> T {
+        return f(self.value)
+    }
+}
+
+struct Account {
+    let postbox: Postbox
+}
+
+struct Context {
+    let account: Account
+}
+
+func restriction(_ transaction: Transaction) -> String? {
+    let context = Context(account: Account(postbox: Postbox(transaction)))
+    let messageId = MessageId(peerId: 1, id: 1)
+__RESTRICTION__
+    return copyRestriction
+}
+
+enum DescriptionText {
+    case plain(String)
+}
+
+struct DescriptionData {
+    let color: Int
+    let viewType: Int
+}
+
+enum Entry {
+    case desc(sectionId: Int, index: Int, text: DescriptionText, data: DescriptionData)
+}
+
+struct RowState {
+    var copyRestriction: String?
+}
+
+struct ListColors {
+    let listGrayText = 0
+}
+
+struct RowTheme {
+    let colors = ListColors()
+}
+
+let theme = RowTheme()
+
+extension Int {
+    static let textTopItem = 1
+}
+
+struct ModalState {
+    var canCopy = false
+    var copyRestriction: String?
+}
+
+func applied(_ copyRestriction: String?) -> ModalState {
+    var state = ModalState()
+    func updateState(_ f: (ModalState) -> ModalState) {
+        state = f(state)
+    }
+__UPDATE__
+    return state
+}
+
+func rows(_ state: RowState) -> [String] {
+    var entries: [Entry] = []
+    let sectionId = 0
+    var index = 0
+__ROW__
+    _ = index
+    return entries.map { entry in
+        switch entry {
+        case let .desc(_, _, .plain(text), _):
+            return text
+        }
+    }
+}
+
+let id = MessageId(peerId: 1, id: 1)
+
+func message(_ peer: Peer, protected: Bool = false, secret: Bool = false, paid: Bool = false) -> Message {
+    var message = Message(id: id, peers: [1: peer])
+    message.protected = protected
+    message.containsSecretMedia = secret
+    message.paidContent = paid ? 1 : nil
+    return message
+}
+
+func transaction(_ message: Message?, peer: Peer? = nil, cached: CachedFlags? = nil) -> Transaction {
+    let transaction = Transaction()
+    transaction.message = message
+    transaction.peer = peer ?? message?.peers[1]
+    transaction.cachedData = cached.map { CachedUserData(flags: $0) }
+    return transaction
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+check("protected-channel-explains-the-channel", restriction(transaction(message(Channel(), protected: true))) == "channel")
+check("protected-group-explains-the-group", restriction(transaction(message(TelegramGroup(), protected: true))) == "group")
+check("protected-supergroup-explains-the-group", restriction(transaction(message(Supergroup(), protected: true))) == "group")
+check("protected-private-chat-explains-the-chat", restriction(transaction(message(TelegramUser()), cached: .copyProtectionEnabled)) == "chat")
+check("own-protection-explains-the-chat", restriction(transaction(message(TelegramUser()), cached: .myCopyProtectionEnabled)) == "chat")
+check("secret-media-is-restricted", restriction(transaction(message(TelegramUser(), secret: true))) == "chat")
+check("paid-post-explains-the-channel", restriction(transaction(message(Channel(), protected: true, paid: true))) == "channel")
+check("message-without-its-peer-still-explains", restriction(transaction(Message(id: id, protected: true))) == "chat")
+
+check("free-channel-has-no-restriction", restriction(transaction(message(Channel()))) == nil)
+check("free-private-chat-has-no-restriction", restriction(transaction(message(TelegramUser()), cached: [])) == nil)
+
+check("missing-message-uses-its-chat", restriction(transaction(nil, peer: Channel())) == "channel")
+check("missing-message-and-chat-stay-restricted", restriction(transaction(nil)) == "chat")
+
+check("restricted-window-shows-the-text", rows(RowState(copyRestriction: "channel")) == ["channel"])
+check("free-window-shows-nothing", rows(RowState(copyRestriction: nil)).isEmpty)
+
+check("restriction-turns-copying-off", !applied("channel").canCopy && applied("channel").copyRestriction == "channel")
+check("free-message-turns-copying-on", applied(nil).canCopy && applied(nil).copyRestriction == nil)
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)

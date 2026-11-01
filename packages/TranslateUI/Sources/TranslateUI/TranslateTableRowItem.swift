@@ -577,6 +577,7 @@ private final class TranslateTableRowView : GeneralContainableRowView {
                 // Clip so the collapsed (3-line capped) state crops the document instead of overflowing the row.
                 current.layer?.masksToBounds = true
                 current.context = item.context
+                current.canCopy = item.canCopy
                 current.update(layout: richLayout, theme: richTheme)
             } else {
                 if let view = self.richView {

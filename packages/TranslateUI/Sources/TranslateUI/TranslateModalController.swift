@@ -172,6 +172,7 @@ private struct State : Equatable {
     var translatedRich: InstantPage? = nil
     var richCache: [ComposeKey: InstantPage] = [:]
     var canCopy: Bool = true
+    var copyRestriction: String? = nil
 
     var cacheKey: ComposeKey {
         return ComposeKey(mode: mode, toLang: to, styleId: styleId, emojify: emojify, toneId: toneId, prompt: styleId == "prompt" ? customPrompt : "")
@@ -787,6 +788,11 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         let isStyleMode = arguments.isInputMode && state.mode == .style
         let isTranslateMode = !arguments.isInputMode || state.mode == .translate
 
+        if let copyRestriction = state.copyRestriction {
+            entries.append(.desc(sectionId: sectionId, index: index, text: .plain(copyRestriction), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
+            index += 1
+        }
+
         if showOriginal {
             let fromName: String
             if let fr = state.from, let value = Translate.find(fr) {
@@ -1063,22 +1069,24 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     }
 
     if let messageId {
-        let isCopyProtected = context.account.postbox.transaction { transaction -> Bool in
-            guard let message = transaction.getMessage(messageId) else {
-                return true
+        let copyRestriction = context.account.postbox.transaction { transaction -> String? in
+            var isProtected = true
+            if let message = transaction.getMessage(messageId) {
+                isProtected = message.containsSecretMedia || message.isCopyProtected()
+                if !isProtected, let cachedData = transaction.getPeerCachedData(peerId: messageId.peerId) as? CachedUserData {
+                    isProtected = cachedData.flags.contains(.copyProtectionEnabled) || cachedData.flags.contains(.myCopyProtectionEnabled)
+                }
             }
-            if message.containsSecretMedia || message.isCopyProtected() {
-                return true
+            if !isProtected {
+                return nil
             }
-            if let cachedData = transaction.getPeerCachedData(peerId: messageId.peerId) as? CachedUserData {
-                return cachedData.flags.contains(.copyProtectionEnabled) || cachedData.flags.contains(.myCopyProtectionEnabled)
-            }
-            return false
+            return transaction.getPeer(messageId.peerId).map(protectedCopyText) ?? strings().copyRestrictedChat
         }
-        actionsDisposable.add((isCopyProtected |> deliverOnMainQueue).start(next: { isCopyProtected in
+        actionsDisposable.add((copyRestriction |> deliverOnMainQueue).start(next: { copyRestriction in
             updateState { current in
                 var current = current
-                current.canCopy = !isCopyProtected
+                current.canCopy = copyRestriction == nil
+                current.copyRestriction = copyRestriction
                 return current
             }
         }))
