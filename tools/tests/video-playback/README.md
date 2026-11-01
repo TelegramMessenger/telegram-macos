@@ -17,7 +17,9 @@ later, with access to VideoToolbox and the window server.
 
 The tests check player routing, decoded video pixels and audio, stream codec and
 rotation discovery, capture protection, and moving displayed pixels across a
-playback loop. The fixtures contain only FFmpeg-generated test patterns and sine
+playback loop. Paused-seek cases exercise both chunked parts and direct readers,
+including forward/backward seeks, the final frame, rapid superseding seeks,
+clock stability, and resuming playback. The fixtures contain only FFmpeg-generated test patterns and sine
 waves. They have a three-second duration, 128×96 resolution, and ten frames per
 second.
 

@@ -191,6 +191,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         var notifiedHasSound: Bool = false
         var seekFromMinTimestamp: Double?
         var audioBufferTimingState: AudioBufferTimingState?
+        var lastVideoSeekFrame: CMSampleBuffer?
     }
     
     private static let sharedDataQueue = Queue(name: "ChunkMediaPlayerV2-DataQueue")
@@ -241,6 +242,8 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var seekId: Int = 0
     private var seekTimestamp: Double = 0.0
     private var pendingSeekTimestamp: Double?
+    private var pendingVideoFrameTimestamp: Double?
+    private let renderGeneration = Atomic<Int>(value: 0)
     private var pendingContinuePlaybackAfterSeekToTimestamp: Double?
     private var shouldNotifySeeked: Bool = false
     private var stoppedAtEnd: Bool = false
@@ -335,6 +338,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     }
     
     deinit {
+        let _ = self.renderGeneration.swap(-1)
         self.partsStateDisposable?.dispose()
         self.updateTimer?.invalidate()
         
@@ -369,7 +373,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     }
 
     private func updateTimerState() {
-        let isFast = self.isPlaying || self.pendingSeekTimestamp != nil || !self.didSeekOnce
+        let isFast = self.isPlaying || self.pendingSeekTimestamp != nil || self.pendingVideoFrameTimestamp != nil || !self.didSeekOnce
         if isFast == self.updateTimerIsFast, self.updateTimer != nil {
             return
         }
@@ -758,7 +762,9 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         }
 
         if effectiveRate != 0.0 || (isTooShortToPlay && self.isPlaying) {
-            self.triggerRequestMediaData(now: now)
+            self.triggerRequestMediaData(now: now, requestAudio: true)
+        } else if self.pendingVideoFrameTimestamp != nil {
+            self.triggerRequestMediaData(now: now, requestAudio: false)
         }
         
         if isBuffering {
@@ -795,7 +801,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             self.onSeeked?()
         }
 
-        if duration > 0.0 && timestampSeconds >= duration - ChunkMediaPlayerV2.endTolerance {
+        if self.isPlaying, duration > 0.0 && timestampSeconds >= duration - ChunkMediaPlayerV2.endTolerance {
             if !self.stoppedAtEnd {
                 switch self.actionAtEnd {
                 case let .loop(f):
@@ -939,6 +945,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             }
             if !self.didSetSourceSeek {
                 self.didSetSourceSeek = true
+                self.pendingVideoFrameTimestamp = timestamp
                 self.source.seek(id: self.seekId, position: timestamp)
             }
             self.resetMediaDataStarvation()
@@ -947,9 +954,11 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         }
         
         self.seekId += 1
+        let _ = self.renderGeneration.swap(self.seekId)
         self.seekTimestamp = timestamp
         let seekId = self.seekId
         self.pendingSeekTimestamp = timestamp
+        self.pendingVideoFrameTimestamp = timestamp
         self.pendingContinuePlaybackAfterSeekToTimestamp = timestamp
         if let play {
             self.isPlaying = play
@@ -985,6 +994,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             loadedPartsMediaData.directMediaData = nil
             loadedPartsMediaData.directReaderId = nil
             loadedPartsMediaData.audioBufferTimingState = nil
+            loadedPartsMediaData.lastVideoSeekFrame = nil
             
             Queue.mainQueue().async {
                 guard let self else {
@@ -1060,8 +1070,11 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         self.statusPromise.set(status)
     }
 
-    private func triggerRequestMediaData(now: Double) {
+    private func triggerRequestMediaData(now: Double, requestAudio: Bool) {
         let loadedPartsMediaData = self.loadedPartsMediaData
+        let seekId = self.seekId
+        let renderGeneration = self.renderGeneration
+        let pausedSeekTimestamp = self.isPlaying ? nil : self.pendingVideoFrameTimestamp
 
         if !self.videoIsRequestingMediaData, now >= self.videoRearmNotBefore {
             self.videoIsRequestingMediaData = true
@@ -1077,23 +1090,36 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             videoTarget.stopRequestingMediaData()
             videoTarget.requestMediaDataWhenReady(on: self.dataQueue.queue, using: { [weak self] in
                 if let loadedPartsMediaData = loadedPartsMediaData.unsafeGet() {
-                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: videoTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: true)
-                    if bufferFillResult.bufferIsReadyForMoreData {
+                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: videoTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: true, pausedSeekTimestamp: pausedSeekTimestamp, generation: renderGeneration, expectedGeneration: seekId)
+                    guard renderGeneration.with({ $0 == seekId }) else {
+                        return
+                    }
+                    let needsRearm = bufferFillResult.bufferIsReadyForMoreData
+                    let completedVideoSeek = bufferFillResult.completedVideoSeek
+                    if needsRearm {
                         // The renderer still wants data we do not have. Record the starvation instead of
                         // re-arming from here: re-arming would immediately invoke this block again.
                         videoTarget.stopRequestingMediaData()
+                    }
+                    if needsRearm || completedVideoSeek {
                         let didEnqueue = bufferFillResult.didEnqueue
                         Queue.mainQueue().async {
-                            guard let self else {
+                            guard let self, self.seekId == seekId else {
                                 return
                             }
-                            self.videoIsRequestingMediaData = false
-                            self.noteVideoStarvation(didEnqueue: didEnqueue)
+                            if completedVideoSeek {
+                                self.pendingVideoFrameTimestamp = nil
+                            }
+                            if needsRearm {
+                                self.videoIsRequestingMediaData = false
+                                self.noteVideoStarvation(didEnqueue: didEnqueue)
+                            }
+                            self.updateTimerState()
                         }
                     }
-                    if !didNotifySentVideoFrames {
+                    if !didNotifySentVideoFrames && bufferFillResult.didEnqueue {
                         Queue.mainQueue().async {
-                            guard let self else {
+                            guard let self, self.seekId == seekId else {
                                 return
                             }
                             if self.didNotifySentVideoFrames {
@@ -1110,19 +1136,22 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             })
         }
         
-        if !self.audioIsRequestingMediaData, now >= self.audioRearmNotBefore, let audioRenderer = self.audioRenderer {
+        if requestAudio, !self.audioIsRequestingMediaData, now >= self.audioRearmNotBefore, let audioRenderer = self.audioRenderer {
             self.audioIsRequestingMediaData = true
             let loadedPartsMediaData = self.loadedPartsMediaData
             let audioTarget = audioRenderer
             audioTarget.stopRequestingMediaData()
             audioTarget.requestMediaDataWhenReady(on: self.dataQueue.queue, using: { [weak self] in
                 if let loadedPartsMediaData = loadedPartsMediaData.unsafeGet() {
-                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: audioTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: false)
+                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: audioTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: false, pausedSeekTimestamp: nil, generation: renderGeneration, expectedGeneration: seekId)
+                    guard renderGeneration.with({ $0 == seekId }) else {
+                        return
+                    }
                     if bufferFillResult.bufferIsReadyForMoreData {
                         audioTarget.stopRequestingMediaData()
                         let didEnqueue = bufferFillResult.didEnqueue
                         Queue.mainQueue().async {
-                            guard let self else {
+                            guard let self, self.seekId == seekId else {
                                 return
                             }
                             self.audioIsRequestingMediaData = false
@@ -1134,129 +1163,117 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         }
     }
     
-    private static func fillRendererBuffer(bufferTarget: AVQueuedSampleBufferRendering, loadedPartsMediaData: LoadedPartsMediaData, isVideo: Bool) -> (bufferIsReadyForMoreData: Bool, didEnqueue: Bool) {
-        var bufferIsReadyForMoreData = true
-        var didEnqueue = false
-        outer: while true {
-            if !bufferTarget.isReadyForMoreMediaData {
-                bufferIsReadyForMoreData = false
-                break
-            }
-            var hasData = false
-            for partId in loadedPartsMediaData.ids {
-                guard let loadedPart = loadedPartsMediaData.parts[partId] else {
-                    continue
+    private static func sampleBufferForImmediateDisplay(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+        var copy: CMSampleBuffer?
+        guard CMSampleBufferCreateCopy(allocator: nil, sampleBuffer: sampleBuffer, sampleBufferOut: &copy) == noErr, let copy else {
+            return nil
+        }
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(copy, createIfNecessary: true) as? [NSMutableDictionary], let attachment = attachments.first {
+            attachment.removeObject(forKey: kCMSampleAttachmentKey_DoNotDisplay)
+            attachment[kCMSampleAttachmentKey_DisplayImmediately] = true
+        }
+        return copy
+    }
+
+    private static func fillRendererBuffer(bufferTarget: AVQueuedSampleBufferRendering, loadedPartsMediaData: LoadedPartsMediaData, isVideo: Bool, pausedSeekTimestamp: Double?, generation: Atomic<Int>, expectedGeneration: Int) -> (bufferIsReadyForMoreData: Bool, didEnqueue: Bool, completedVideoSeek: Bool) {
+        var result = (bufferIsReadyForMoreData: true, didEnqueue: false, completedVideoSeek: false)
+        func enqueue(_ sampleBuffer: CMSampleBuffer) -> Bool {
+            return generation.with { current in
+                guard current == expectedGeneration else {
+                    return false
                 }
-                guard let media = isVideo ? loadedPart.video : loadedPart.audio else {
-                    continue
-                }
-                if media.isFinished {
-                    continue
-                }
-                guard let reader = media.reader else {
-                    continue
-                }
-                media.didBeginReading = true
-                switch reader.readSampleBuffer() {
-                case let .frame(sampleBuffer):
-                    var sampleBuffer = sampleBuffer
-                    if media.offset != 0.0 {
-                        if let updatedSampleBuffer = createSampleBuffer(fromSampleBuffer: sampleBuffer, withTimeOffset: CMTimeMakeWithSeconds(Float64(media.offset), preferredTimescale: CMSampleBufferGetPresentationTimeStamp(sampleBuffer).timescale), duration: nil) {
-                            sampleBuffer = updatedSampleBuffer
-                        }
-                    }
-                    if let seekFromMinTimestamp = loadedPartsMediaData.seekFromMinTimestamp, CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds < seekFromMinTimestamp {
-                        if isVideo {
-                            var updatedSampleBuffer: CMSampleBuffer?
-                            CMSampleBufferCreateCopy(allocator: nil, sampleBuffer: sampleBuffer, sampleBufferOut: &updatedSampleBuffer)
-                            if let updatedSampleBuffer {
-                                if let attachments = CMSampleBufferGetSampleAttachmentsArray(updatedSampleBuffer, createIfNecessary: true) {
-                                    let attachments = attachments as NSArray
-                                    let dict = attachments[0] as! NSMutableDictionary
-                                    
-                                    dict.setValue(kCFBooleanTrue as AnyObject, forKey: kCMSampleAttachmentKey_DoNotDisplay as NSString as String)
-                                    
-                                    sampleBuffer = updatedSampleBuffer
-                                }
-                            }
-                        } else {
-                            continue outer
-                        }
-                    }
-                    if !isVideo {
-                        sampleBuffer = ChunkMediaPlayerV2.normalizeAudioSampleBuffer(
-                            sampleBuffer,
-                            state: &loadedPartsMediaData.audioBufferTimingState
-                        )
-                    }
-                    /*if !isVideo {
-                        print("Enqueue audio \(CMSampleBufferGetPresentationTimeStamp(sampleBuffer).value) next: \(CMSampleBufferGetPresentationTimeStamp(sampleBuffer).value + 1024)")
-                    }*/
-                    bufferTarget.enqueue(sampleBuffer)
-                    didEnqueue = true
-                    hasData = true
-                    continue outer
-                case .waitingForMoreData, .endOfStream, .error:
-                    media.isFinished = true
-                }
-            }
-            outerDirect: while true {
-                guard let directMediaData = loadedPartsMediaData.directMediaData else {
-                    break outer
-                }
-                guard let media = isVideo ? directMediaData.video : directMediaData.audio else {
-                    break outer
-                }
-                if media.isFinished {
-                    break outer
-                }
-                guard let reader = media.reader else {
-                    break outer
-                }
-                media.didBeginReading = true
-                switch reader.readSampleBuffer() {
-                case let .frame(sampleBuffer):
-                    var sampleBuffer = sampleBuffer
-                    if let seekFromMinTimestamp = loadedPartsMediaData.seekFromMinTimestamp, CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds < seekFromMinTimestamp {
-                        if isVideo {
-                            var updatedSampleBuffer: CMSampleBuffer?
-                            CMSampleBufferCreateCopy(allocator: nil, sampleBuffer: sampleBuffer, sampleBufferOut: &updatedSampleBuffer)
-                            if let updatedSampleBuffer {
-                                if let attachments = CMSampleBufferGetSampleAttachmentsArray(updatedSampleBuffer, createIfNecessary: true) {
-                                    let attachments = attachments as NSArray
-                                    let dict = attachments[0] as! NSMutableDictionary
-                                    
-                                    dict.setValue(kCFBooleanTrue as AnyObject, forKey: kCMSampleAttachmentKey_DoNotDisplay as NSString as String)
-                                    
-                                    sampleBuffer = updatedSampleBuffer
-                                }
-                            }
-                        } else {
-                            continue outer
-                        }
-                    }
-                    /*if isVideo {
-                        print("Enqueue video \(CMSampleBufferGetPresentationTimeStamp(sampleBuffer).value)")
-                    }*/
-                    /*if !isVideo {
-                        print("Enqueue audio \(CMSampleBufferGetPresentationTimeStamp(sampleBuffer).value) next: \(CMSampleBufferGetPresentationTimeStamp(sampleBuffer).value + 1024)")
-                    }*/
-                    bufferTarget.enqueue(sampleBuffer)
-                    didEnqueue = true
-                    hasData = true
-                    continue outer
-                case .waitingForMoreData:
-                    break outer
-                case .endOfStream, .error:
-                    media.isFinished = true
-                }
-            }
-            if !hasData {
-                break
+                bufferTarget.enqueue(sampleBuffer)
+                return true
             }
         }
-        
-        return (bufferIsReadyForMoreData: bufferIsReadyForMoreData, didEnqueue: didEnqueue)
+
+        while generation.with({ $0 == expectedGeneration }) {
+            guard bufferTarget.isReadyForMoreMediaData else {
+                result.bufferIsReadyForMoreData = false
+                break
+            }
+            var selectedMedia: (media: LoadedPart.Media, direct: Bool)?
+            var hasFinishedMedia = false
+            for id in loadedPartsMediaData.ids {
+                guard let part = loadedPartsMediaData.parts[id], let media = isVideo ? part.video : part.audio else {
+                    continue
+                }
+                hasFinishedMedia = hasFinishedMedia || media.isFinished
+                if !media.isFinished, media.reader != nil {
+                    selectedMedia = (media, false)
+                    break
+                }
+            }
+            if selectedMedia == nil, let direct = loadedPartsMediaData.directMediaData, let media = isVideo ? direct.video : direct.audio {
+                hasFinishedMedia = hasFinishedMedia || media.isFinished
+                if !media.isFinished, media.reader != nil {
+                    selectedMedia = (media, true)
+                }
+            }
+            guard let selectedMedia, let reader = selectedMedia.media.reader else {
+                if isVideo, pausedSeekTimestamp != nil, hasFinishedMedia {
+                    if let last = loadedPartsMediaData.lastVideoSeekFrame, let sample = sampleBufferForImmediateDisplay(last), enqueue(sample) {
+                        result.didEnqueue = true
+                    }
+                    loadedPartsMediaData.lastVideoSeekFrame = nil
+                    result.completedVideoSeek = true
+                }
+                break
+            }
+            let media = selectedMedia.media
+            media.didBeginReading = true
+            switch reader.readSampleBuffer() {
+            case let .frame(originalSample):
+                var sample = originalSample
+                if media.offset != 0.0, let shifted = createSampleBuffer(fromSampleBuffer: sample, withTimeOffset: CMTimeMakeWithSeconds(media.offset, preferredTimescale: CMSampleBufferGetPresentationTimeStamp(sample).timescale), duration: nil) {
+                    sample = shifted
+                }
+                let timestamp = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                let minimumTimestamp = loadedPartsMediaData.seekFromMinTimestamp ?? pausedSeekTimestamp
+                let isPreroll = minimumTimestamp.map { timestamp < $0 } ?? false
+                if isPreroll {
+                    if isVideo {
+                        if pausedSeekTimestamp != nil, CMSampleBufferGetImageBuffer(sample) != nil {
+                            loadedPartsMediaData.lastVideoSeekFrame = sample
+                            continue
+                        }
+                        var copy: CMSampleBuffer?
+                        CMSampleBufferCreateCopy(allocator: nil, sampleBuffer: sample, sampleBufferOut: &copy)
+                        if let copy, let attachments = CMSampleBufferGetSampleAttachmentsArray(copy, createIfNecessary: true) as? [NSMutableDictionary], let attachment = attachments.first {
+                            attachment[kCMSampleAttachmentKey_DoNotDisplay] = true
+                            sample = copy
+                        }
+                    } else {
+                        continue
+                    }
+                }
+                if isVideo, pausedSeekTimestamp != nil, !isPreroll {
+                    guard let immediate = sampleBufferForImmediateDisplay(sample) else {
+                        continue
+                    }
+                    sample = immediate
+                }
+                if !isVideo && !selectedMedia.direct {
+                    sample = normalizeAudioSampleBuffer(sample, state: &loadedPartsMediaData.audioBufferTimingState)
+                }
+                guard enqueue(sample) else {
+                    return result
+                }
+                result.didEnqueue = true
+                if isVideo && !isPreroll {
+                    loadedPartsMediaData.lastVideoSeekFrame = nil
+                    result.completedVideoSeek = true
+                    if pausedSeekTimestamp != nil {
+                        return result
+                    }
+                }
+            case .waitingForMoreData:
+                return result
+            case .endOfStream, .error:
+                media.isFinished = true
+            }
+        }
+        return result
     }
 
     private static func normalizeAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, state: inout AudioBufferTimingState?) -> CMSampleBuffer {

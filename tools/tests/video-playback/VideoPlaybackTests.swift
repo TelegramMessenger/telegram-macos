@@ -207,6 +207,123 @@ final class VideoPlaybackTests: XCTestCase {
         XCTAssertTrue(state.with { $0?.isEnded == true })
         withExtendedLifetime(lookahead) {}
     }
+
+    private func expectedFrameHash(codec: String, timestamp: Double) throws -> UInt64 {
+        let content = try tempFile(codec)
+        let reader: MediaDataReader
+        if codec == "av1", TelegramMediaPlayer.internal_isHardwareAv1Supported {
+            reader = AVAssetVideoDataReader(filePath: content.file.path, isVideo: true)
+        } else {
+            reader = FFMpegMediaDataReaderV2(content: .tempFile(content), isVideo: true, codecName: codec)
+        }
+        var last: UInt64?
+        for _ in 0 ..< 60 {
+            guard case let .frame(sample) = reader.readSampleBuffer() else {
+                break
+            }
+            last = pixelHash(try XCTUnwrap(CMSampleBufferGetImageBuffer(sample)))
+            if CMSampleBufferGetPresentationTimeStamp(sample).seconds >= timestamp {
+                return last!
+            }
+        }
+        return try XCTUnwrap(last)
+    }
+
+    private func checkPausedSeeks(codec: String, direct: Bool) throws {
+        let _ = NSApplication.shared
+        let content = try tempFile(codec)
+        let state = Promise<ChunkMediaPlayerPartsState>()
+        let part = ChunkMediaPlayerPart(startTime: 0.0, endTime: 3.0, content: content, codecName: codec, offsetTime: 0.0)
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("VideoPlaybackMedia-" + UUID().uuidString)
+        let mediaBox = MediaBox(basePath: directory.path, isMainProcess: true)
+        let data = try Data(contentsOf: URL(fileURLWithPath: content.file.path))
+        let resource = LocalFileMediaResource(fileId: Int64.random(in: 0 ... Int64.max), size: Int64(data.count))
+        mediaBox.storeResourceData(resource.id, data: data, synchronous: true)
+        let info = try XCTUnwrap(extractFFMpegMediaInfo(path: content.file.path))
+        let videoInfo = try XCTUnwrap(info.video)
+        func publish(id: Int, timestamp: Double) {
+            if direct {
+                let seek = (streamIndex: videoInfo.index, pts: CMTime(seconds: timestamp, preferredTimescale: videoInfo.timescale).value)
+                let video = ChunkMediaPlayerPartsState.DirectReader.Stream(mediaBox: mediaBox, resource: resource, size: Int64(data.count), index: videoInfo.index, seek: seek, maxReadablePts: nil, codecName: codec)
+                let audio = info.audio.map { audio in
+                    ChunkMediaPlayerPartsState.DirectReader.Stream(mediaBox: mediaBox, resource: resource, size: Int64(data.count), index: audio.index, seek: seek, maxReadablePts: nil, codecName: codec)
+                }
+                state.set(.single(ChunkMediaPlayerPartsState(duration: 3.0, content: .directReader(.init(id: id, seekPosition: timestamp, availableUntilPosition: 3.0, bufferedUntilEnd: true, impl: .init(video: video, audio: audio))))))
+            } else {
+                state.set(.single(ChunkMediaPlayerPartsState(duration: 3.0, content: .parts([part]))))
+            }
+        }
+        publish(id: 0, timestamp: 0.0)
+        let view = MediaPlayerView()
+        view.frame = CGRect(x: 0, y: 0, width: 128, height: 96)
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        window.orderFront(nil)
+        defer { window.close() }
+        let player = ChunkMediaPlayerV2(params: .init(useV2Reader: true), source: .externalParts(state.get()), video: true, enableSound: true, volume: 0.0, playerNode: view)
+        var endActions = 0
+        player.actionAtEnd = .loop({ endActions += 1 })
+        var status: MediaPlayerStatus?
+        let disposable = player.status.start(next: { status = $0 })
+        defer { disposable.dispose() }
+        let layer = try XCTUnwrap(view.videoLayer)
+        func displayedHash() -> UInt64? {
+            return layer.sampleBufferRenderer.displayedPixelBuffer().map(pixelHash)
+        }
+        player.play()
+        spin(timeout: 4.0, until: { displayedHash() != nil })
+        XCTAssertNotNil(displayedHash())
+        player.pause()
+        var id = 0
+        func seek(_ timestamp: Double) {
+            id += 1
+            player.seek(timestamp: timestamp, play: false)
+            publish(id: id, timestamp: timestamp)
+        }
+        for target in [2.0, 0.4, 2.95] {
+            let expected = try expectedFrameHash(codec: codec, timestamp: target)
+            seek(target)
+            spin(timeout: 5.0, until: { displayedHash() == expected && status?.seekId == id && abs((status?.timestamp ?? -1.0) - target) < 0.02 })
+            XCTAssertEqual(displayedHash(), expected, "\(codec) direct=\(direct) target=\(target)")
+            XCTAssertEqual(try XCTUnwrap(status).timestamp, target, accuracy: 0.02)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            XCTAssertEqual(try XCTUnwrap(status).timestamp, target, accuracy: 0.02)
+            XCTAssertEqual(displayedHash(), expected)
+            XCTAssertEqual(endActions, 0, "Paused seeking triggered the end action")
+            guard case .paused = status?.status else {
+                XCTFail("Paused seek started playback")
+                continue
+            }
+        }
+        for target in [0.2, 2.4, 0.8] {
+            seek(target)
+        }
+        let expected = try expectedFrameHash(codec: codec, timestamp: 0.8)
+        spin(timeout: 5.0, until: { displayedHash() == expected && status?.seekId == id && abs((status?.timestamp ?? -1.0) - 0.8) < 0.02 })
+        XCTAssertEqual(displayedHash(), expected, "Superseded seek displayed a stale frame")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(displayedHash(), expected)
+        XCTAssertEqual(try XCTUnwrap(status).timestamp, 0.8, accuracy: 0.02)
+        player.play()
+        spin(timeout: 3.0, until: { (status?.timestamp ?? 0.0) > 1.0 && displayedHash() != expected })
+        XCTAssertGreaterThan(status?.timestamp ?? 0.0, 1.0)
+        XCTAssertNotEqual(displayedHash(), expected)
+        player.pause()
+        withExtendedLifetime((player, mediaBox)) {}
+    }
+
+    @objc func testPausedSeeksForChunkedParts() throws {
+        for codec in ["av1", "h264", "hevc"] {
+            try checkPausedSeeks(codec: codec, direct: false)
+        }
+    }
+
+    @objc func testPausedSeeksForDirectReaders() throws {
+        for codec in ["av1", "h264", "hevc"] {
+            try checkPausedSeeks(codec: codec, direct: true)
+        }
+    }
 }
 
 let suite = XCTestSuite(forTestCaseClass: VideoPlaybackTests.self)
