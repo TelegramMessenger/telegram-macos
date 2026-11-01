@@ -58,7 +58,7 @@ final class WindowFixture {
 
 private func testRepeatedAttachmentAndResize() {
     let fixture = WindowFixture()
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 14, width: 83, height: 36))
     fixture.root.addSubview(controls)
     for _ in 0..<3 {
         controls.attach(to: fixture.window)
@@ -73,8 +73,10 @@ private func testRepeatedAttachmentAndResize() {
             check(button.superview === controls, "original native button reused")
             check(button.frame.size == fixture.frames[index].size, "native button dimensions preserved")
             check(controls.bounds.contains(button.frame), "button fits inside pill")
+            check(button.frame.minX == 11 + CGFloat(index) * 23, "traffic lights start 11 points in with 23-point centers")
+            check(button.frame.minY == 11, "traffic lights keep 11-point vertical insets")
             if index > 0 {
-                check(button.frame.minX - fixture.buttons[index - 1].frame.maxX == 6, "native controls separated")
+                check(button.frame.minX - fixture.buttons[index - 1].frame.maxX == 9, "native controls separated by 9 points")
             }
             let themeFrame = fixture.window.contentView!.superview!
             for inset: CGFloat in [3, 7, 11] {
@@ -102,7 +104,7 @@ private func testRepeatedAttachmentAndResize() {
 private func testAppKitRepositioningAndFullScreenNotifications() {
     let fixture = WindowFixture()
     let otherWindow = WindowFixture()
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 14, width: 83, height: 36))
     fixture.root.addSubview(controls)
     controls.attach(to: fixture.window)
     for name in [NSWindow.didUpdateNotification, NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
@@ -134,7 +136,7 @@ private func testWindowSwitchAndExistingChrome() {
     let second = WindowFixture(fullSize: true)
     second.window.titleVisibility = .hidden
     second.window.titlebarAppearsTransparent = true
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 14, width: 83, height: 36))
     controls.attach(to: first.window)
     controls.attach(to: second.window)
     first.checkRestored()
@@ -151,7 +153,7 @@ private func testDeinitializationRestoresChrome() {
     let fixture = WindowFixture()
     weak var releasedControls: NSView?
     autoreleasepool {
-        let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+        let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 14, width: 83, height: 36))
         releasedControls = controls
         controls.attach(to: fixture.window)
     }
@@ -164,29 +166,35 @@ private func testDeinitializationRestoresChrome() {
 }
 
 private func testLeadingHeaderLayout() {
-    for showsControls in [false, true] {
-        for hasBackButton in [false, true] {
-            let origin = NSPoint(x: 12, y: 12)
-            let layout = DetachedWindowHeaderLayout(origin: origin, showsControls: showsControls, hasBackButton: hasBackButton)
-            let expectedWidth: CGFloat = (showsControls ? 72 : 0) + (hasBackButton ? 40 : 0)
-            check(layout.leadingPillFrame == NSRect(x: 12, y: 12, width: expectedWidth, height: 40), "leading pill sized to visible controls")
-            check(layout.controlsFrame.width == (showsControls ? 72 : 0), "native controls retain their width")
-            check(layout.backButtonFrame.width == (hasBackButton ? 40 : 0), "back button retains a 40-point hit area")
-            check(layout.backButtonFrame.minX == layout.controlsFrame.maxX, "back button directly follows traffic lights inside shared pill")
-            check(layout.contentMinX == layout.leadingPillFrame.maxX + (expectedWidth > 0 ? 6 : 0), "consistent six-point gap after leading pill")
-            check((layout.dividerFrame != nil) == (showsControls && hasBackButton), "divider only separates traffic lights from a back button")
-            if showsControls && hasBackButton {
-                check(layout.leadingPillFrame.contains(layout.controlsFrame), "traffic lights contained in shared pill")
-                check(layout.leadingPillFrame.contains(layout.backButtonFrame), "back button contained in shared pill")
-                check(layout.leadingPillFrame.width == 112, "shared pill avoids a separate back-button gap")
-                if let divider = layout.dividerFrame {
-                    check(divider.midX == layout.controlsFrame.maxX, "divider sits on the traffic-light/back-button boundary")
-                    check(divider.width == 1 && divider.height == 18, "divider is a short hairline")
-                    check(divider.midY == layout.leadingPillFrame.midY, "divider is vertically centered in the pill")
-                }
-            }
-        }
+    let origin = NSPoint(x: 12, y: 12)
+    let full = DetachedWindowHeaderLayout(origin: origin, showsControls: true, hasBackButton: true)
+    let capsule = full.leadingPillFrame
+    check(capsule == NSRect(x: 12, y: 14, width: 120, height: 36), "capsule is 120 x 36 and centered on the 40-point header row")
+    check(full.controlsFrame.minX == capsule.minX && full.controlsFrame.width == 83, "native controls span the capsule up to the divider")
+    if let divider = full.dividerFrame {
+        check(divider.minX - capsule.minX == 83 && divider.minY - capsule.minY == 8, "divider origin is (83, 8) in the capsule")
+        check(divider.width == 1 && divider.height == 20, "divider is 1 x 20")
+        let greenMaxX = DetachedWindowHeaderLayout.controlsLeadingInset + DetachedWindowHeaderLayout.buttonSize * 3 + DetachedWindowHeaderLayout.buttonSpacing * 2
+        check(divider.minX - capsule.minX - greenMaxX == 12, "green edge to divider is 12 points")
+        check(full.backButtonFrame.minX - divider.maxX == 3, "back highlight starts 3 points after the divider")
+    } else {
+        check(false, "divider separates traffic lights from a back button")
     }
+    check(full.backButtonFrame.minX - capsule.minX == 87 && full.backButtonFrame.minY - capsule.minY == 3, "back highlight origin is (87, 3) in the capsule")
+    check(full.backButtonFrame.size == NSSize(width: 30, height: 30), "back highlight is 30 x 30")
+    check(capsule.maxX - full.backButtonFrame.maxX == 3 && capsule.maxY - full.backButtonFrame.maxY == 3, "back highlight keeps 3-point gaps to the capsule edge")
+    check(full.contentMinX == capsule.maxX + 6, "six-point gap after the capsule")
+
+    let controlsOnly = DetachedWindowHeaderLayout(origin: origin, showsControls: true, hasBackButton: false)
+    check(controlsOnly.dividerFrame == nil, "no divider without a back button")
+    check(controlsOnly.leadingPillFrame.width == 82, "controls-only capsule keeps 11-point insets on both sides")
+
+    let backOnly = DetachedWindowHeaderLayout(origin: origin, showsControls: false, hasBackButton: true)
+    check(backOnly.leadingPillFrame == NSRect(x: 12, y: 12, width: 40, height: 40), "standard back bubble keeps its 40-point size")
+    check(backOnly.dividerFrame == nil, "no divider without traffic lights")
+
+    let empty = DetachedWindowHeaderLayout(origin: origin, showsControls: false, hasBackButton: false)
+    check(empty.leadingPillFrame.width == 0 && empty.contentMinX == 12, "no leading capsule without controls or back button")
     print("PASS: shared profile/chat leading-pill geometry and back-button spacing")
 }
 
@@ -213,7 +221,7 @@ private func testChatToProfileHandoff() {
 
 private func testResponsiveCompactAndStandardChrome() {
     let fixture = WindowFixture()
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 14, width: 83, height: 36))
     fixture.root.addSubview(controls)
     controls.attach(to: fixture.window)
     for _ in 0..<3 {
@@ -233,6 +241,14 @@ private func testResponsiveCompactAndStandardChrome() {
             }
         }
     }
+    fixture.window.setContentSize(NSSize(width: 900, height: 600))
+    controls.restoresTitlebarWhenWide = false
+    controls.layout()
+    check(controls.showsControls, "views that keep the capsule show it in wide windows")
+    check(fixture.buttons.allSatisfy { $0.superview === controls }, "wide capsule hosts the native buttons")
+    controls.restoresTitlebarWhenWide = true
+    check(!controls.showsControls, "wide window returns to the standard titlebar when allowed")
+    check(fixture.window.titleVisibility == .visible, "native title restored after leaving the wide capsule")
     controls.detach()
     fixture.checkRestored()
     check(!DetachedWindowHeaderLayout.usesCompactLayout(width: 650), "cutoff uses standard layout")
@@ -242,26 +258,30 @@ private func testResponsiveCompactAndStandardChrome() {
 
 private func testTrafficLightHoverGroup() {
     let fixture = WindowFixture()
-    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 12, width: 72, height: 40))
+    let controls = DetachedWindowControlsView(frame: NSRect(x: 12, y: 14, width: 83, height: 36))
     fixture.root.addSubview(controls)
     controls.attach(to: fixture.window)
-    let selector = NSSelectorFromString("_mouseInGroup:")
-    check(controls.responds(to: selector), "controls answer the native hover-group query")
-    let inGroup: () -> Bool = {
-        typealias Query = @convention(c) (AnyObject, Selector, NSButton) -> Bool
-        let query = unsafeBitCast(controls.method(for: selector), to: Query.self)
-        return query(controls, selector, fixture.buttons[0])
+    let themeFrame = fixture.window.contentView!.superview!
+    let closeCenter: () -> NSPoint = {
+        let button = fixture.buttons[0]
+        return themeFrame.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), from: button)
     }
-    let event: (NSEvent.EventType) -> NSEvent = { type in
-        NSEvent.enterExitEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: fixture.window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil)!
+    let groupTracked: (NSPoint) -> Bool = { point in
+        themeFrame.trackingAreas.contains { ($0.userInfo ?? [:]).isEmpty && $0.rect.contains(point) }
     }
-    check(!inGroup(), "hover group starts inactive")
-    controls.mouseEntered(with: event(.mouseEntered))
-    check(inGroup(), "hovering the pill activates native glyphs")
-    controls.mouseExited(with: event(.mouseExited))
-    check(!inGroup(), "leaving the pill clears native glyphs")
+    let originalCenter = themeFrame.convert(NSPoint(x: fixture.frames[0].midX, y: fixture.frames[0].midY), from: fixture.parents[0])
+    check(groupTracked(closeCenter()), "native hover group tracks the moved traffic lights")
+    check(!groupTracked(originalCenter), "native hover group leaves the original titlebar position")
+    controls.frame.origin = NSPoint(x: 120, y: 80)
+    controls.layout()
+    check(groupTracked(closeCenter()), "native hover group follows the pill when it moves")
+    fixture.parents[0].addSubview(fixture.buttons[0])
+    RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    check(fixture.buttons[0].superview === controls, "traffic lights return after AppKit moves them back")
+    check(groupTracked(closeCenter()), "native hover group tracks the returned traffic lights")
     controls.detach()
     fixture.checkRestored()
+    check(groupTracked(closeCenter()), "native hover group returns to the titlebar")
     print("PASS: traffic-light hover group")
 }
 

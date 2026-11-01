@@ -12,8 +12,8 @@ The eight checks cover repeated attachment, traffic-light hover state, native bu
 
 This harness does not build Telegram, render the glass header, or replace visual verification of a chat opened through **Open in New Window**.
 
-The leading pill keeps a 72-point native-control area and a 40-point back-button target on one surface, with a six-point gap to the rest of the header. A centered 18-point hairline separates the traffic lights from the back button. Chat and profile views use the same layout values.
+The leading capsule is 120 x 36 points with an 18-point radius, vertically centered on the 40-point header row. The 14-point traffic lights start 11 points in, sit 23 points apart (9-point gaps) and keep 11-point vertical insets. A 1 x 20 divider sits 12 points after the green light, at (83, 8) in the capsule. The 30 x 30 back target starts at (87, 3), leaving 3 points on every side. A six-point gap separates the capsule from the rest of the header. Chat and profile views use the same layout values.
 
-Below 650 points the detached header uses compact glass controls. At 650 points and wider it returns the buttons to the standard titlebar and restores the original window chrome. The resize check crosses this boundary repeatedly in both directions.
+Below 650 points the detached header uses compact glass controls. At 650 points and wider it returns the buttons to the standard titlebar and restores the original window chrome. The resize check crosses this boundary repeatedly in both directions. Chat and profile windows opt out and keep the capsule at every width; the check also covers that opt-out.
 
 Compact detached profile headers fill the window width with square corners. Their action rows use the same 12-point outer inset as the leading pill. At the standard-layout threshold the profile returns to its centered card and regular action sizing.

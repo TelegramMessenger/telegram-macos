@@ -387,6 +387,7 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     private let navBgView = View()
     private let windowControls = DetachedWindowControlsView(frame: .zero)
     private let windowControlsDivider = View()
+    private weak var backInteractiveGlass: NSView?
     private let windowControlsGlass = GlassContainerView(frame: .zero, flipped: true, spacing: 5)
     private let windowControlsGhost = LiquidGlassView(frame: .zero, cornerRadius: DetachedWindowHeaderLayout.height / 2, hasShadow: false, hasBorder: false, tintAlpha: 0.4)
     private var detachedWindowControlsVisible = false
@@ -403,6 +404,7 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         addSubview(windowControls)
         addSubview(windowControlsDivider)
         windowControlsDivider.isHidden = true
+        windowControls.restoresTitlebarWhenWide = false
         windowControlsGlass.addGhost(windowControlsGhost)
         windowControlsGlass.isHidden = true
         windowControls.isHidden = true
@@ -487,7 +489,9 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         let showsControls = windowControls.showsControls
         let hasBackButton = leftBar is BackNavigationBar
         let leadingLayout = DetachedWindowHeaderLayout(origin: NSPoint(x: DetachedWindowHeaderLayout.sideInset, y: 12), showsControls: showsControls, hasBackButton: hasBackButton)
-        let controlsInset = showsControls ? DetachedWindowHeaderLayout.controlsWidth : 0
+        let backButtonWidth = (leftBar as? BackNavigationBar)?.button.frame.width ?? DetachedWindowHeaderLayout.height
+        let backButtonShift = showsControls && hasBackButton ? leadingLayout.backButtonFrame.midX - leadingLayout.controlsFrame.maxX - floor(backButtonWidth / 2) : 0
+        let controlsInset = (showsControls ? DetachedWindowHeaderLayout.controlsWidth : 0) + backButtonShift
         transition.updateFrame(view: navigationBarView, frame: NSMakeRect(controlsInset, navigationOverflow, max(0, size.width - controlsInset), 64))
         transition.updateFrame(view: navBgView, frame: NSMakeRect(0, navigationOverflow, size.width, 64))
         transition.updateFrame(view: windowControlsGlass, frame: navBgView.frame)
@@ -502,7 +506,15 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
             transition.updateFrame(view: windowControlsDivider, frame: dividerFrame.offsetBy(dx: 0, dy: navigationOverflow))
         }
         windowControlsDivider.isHidden = leadingLayout.dividerFrame == nil
-        (leftBar as? BackNavigationBar)?.button.setGlassEffectHidden(showsControls)
+        if let backButton = (leftBar as? BackNavigationBar)?.button {
+            if showsControls, let glass = backButton.interactiveGlassView {
+                backInteractiveGlass = glass
+                backButton.interactiveGlassView = nil
+            } else if !showsControls, backButton.interactiveGlassView == nil, let glass = backInteractiveGlass {
+                backButton.interactiveGlassView = glass
+            }
+            backButton.setGlassEffectHidden(showsControls)
+        }
         transition.updateFrame(view: tableView, frame: NSMakeRect(0, 0, size.width, size.height))
     }
 

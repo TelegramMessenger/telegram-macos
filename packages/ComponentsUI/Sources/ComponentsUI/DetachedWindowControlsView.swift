@@ -9,9 +9,13 @@ public final class DetachedWindowControlsView: View {
     private var enteringFullScreen = false
     private var compactChromeApplied = false
     private var updatingPresentation = false
-    private var mouseInGroup = false
-    private var hoverTrackingArea: NSTrackingArea?
+    private var trackedGroupRect: NSRect?
     public var visibilityChanged: (() -> Void)?
+    public var restoresTitlebarWhenWide = true {
+        didSet {
+            updatePresentation()
+        }
+    }
 
     public var showsControls: Bool {
         return !buttons.isEmpty
@@ -55,6 +59,9 @@ public final class DetachedWindowControlsView: View {
         if restoreChrome, let window, let chrome {
             applyOriginalChrome(chrome, to: window)
         }
+        if let window {
+            updateNativeHoverTracking(in: window)
+        }
         enteringFullScreen = false
         visibilityChanged?()
     }
@@ -74,7 +81,7 @@ public final class DetachedWindowControlsView: View {
         let hadControls = showsControls
         if window.styleMask.contains(.fullScreen) || enteringFullScreen {
             restoreButtons()
-        } else if DetachedWindowHeaderLayout.usesCompactLayout(width: window.frame.width) {
+        } else if !restoresTitlebarWhenWide || DetachedWindowHeaderLayout.usesCompactLayout(width: window.frame.width) {
             if !compactChromeApplied {
                 compactChromeApplied = true
                 window.styleMask.insert(.fullSizeContentView)
@@ -89,6 +96,9 @@ public final class DetachedWindowControlsView: View {
                 compactChromeApplied = false
                 applyOriginalChrome(chrome, to: window)
             }
+        }
+        if !showsControls {
+            updateNativeHoverTracking(in: window)
         }
         if hadControls != showsControls {
             visibilityChanged?()
@@ -109,7 +119,6 @@ public final class DetachedWindowControlsView: View {
     private func restoreButtons() {
         let previousButtons = buttons
         buttons.removeAll()
-        mouseInGroup = false
         for entry in previousButtons {
             entry.parent.addSubview(entry.button)
             entry.button.frame = entry.frame
@@ -122,54 +131,43 @@ public final class DetachedWindowControlsView: View {
         positionButtons()
     }
 
-    public override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let hoverTrackingArea {
-            removeTrackingArea(hoverTrackingArea)
+    public override func willRemoveSubview(_ subview: NSView) {
+        super.willRemoveSubview(subview)
+        if buttons.contains(where: { $0.button === subview }) {
+            DispatchQueue.main.async { [weak self] in
+                self?.positionButtons()
+            }
         }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
-        addTrackingArea(area)
-        hoverTrackingArea = area
     }
 
-    public override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        setMouseInGroup(true)
-    }
-
-    public override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        setMouseInGroup(false)
-    }
-
-    @objc func _mouseInGroup(_ button: NSButton) -> Bool {
-        return mouseInGroup
-    }
-
-    private func setMouseInGroup(_ value: Bool) {
-        guard mouseInGroup != value else { return }
-        mouseInGroup = value
-        for entry in buttons {
-            entry.button.needsDisplay = true
+    private func updateNativeHoverTracking(in window: NSWindow) {
+        let rect = buttons.isEmpty ? nil : convert(bounds, to: nil)
+        guard rect != trackedGroupRect else { return }
+        trackedGroupRect = rect
+        let selector = NSSelectorFromString("_updateMouseTracking")
+        if let themeFrame = window.contentView?.superview, themeFrame.responds(to: selector) {
+            themeFrame.perform(selector)
         }
     }
 
     private func positionButtons() {
         guard let window = attachedWindow, !window.styleMask.contains(.fullScreen), !enteringFullScreen, !buttons.isEmpty else { return }
-        let spacing: CGFloat = 6
-        let width = buttons.reduce(CGFloat(0)) { $0 + $1.frame.width } + CGFloat(max(0, buttons.count - 1)) * spacing
-        var x = floor((bounds.width - width) / 2)
+        let spacing = DetachedWindowHeaderLayout.buttonSpacing
+        var x = DetachedWindowHeaderLayout.controlsLeadingInset
         for entry in buttons {
             let size = entry.frame.size
             if entry.button.superview !== self {
                 addSubview(entry.button)
+                trackedGroupRect = nil
             }
             let frame = NSRect(x: x, y: floor((bounds.height - size.height) / 2), width: size.width, height: size.height)
             if entry.button.frame != frame {
                 entry.button.frame = frame
+                trackedGroupRect = nil
             }
             x += size.width + spacing
         }
+        updateNativeHoverTracking(in: window)
     }
 
     public override var mouseDownCanMoveWindow: Bool {

@@ -468,6 +468,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         addSubview(windowControls)
         addSubview(windowControlsDivider)
         windowControlsDivider.isHidden = true
+        windowControls.restoresTitlebarWhenWide = false
         windowControls.visibilityChanged = { [weak self] in
             self?.needsLayout = true
         }
@@ -576,7 +577,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         backButton.setGlassEffect(size: buttonSize)
         backButton.setGlassEffectHidden(compactDetachedHeader)
         if chatInteraction.interactionContext.isExternal {
-            backButton.interactiveGlassView = backButton
+            backButton.interactiveGlassView = windowControls.showsControls ? nil : backButton
         }
         backButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
@@ -1051,14 +1052,12 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             transition.updateFrame(view: windowControlsDivider, frame: dividerFrame)
         }
         windowControlsDivider.isHidden = leadingLayout.dividerFrame == nil
-        if showsWindowControls {
-            leftX = hasBackButton ? leadingLayout.backButtonFrame.minX : leadingLayout.contentMinX
-        }
         if chatInteraction.interactionContext.isExternal {
+            backButton.interactiveGlassView = showsWindowControls ? nil : backButton
             backButton.additionalGlassEffectView = showsWindowControls ? windowControlsGhost : backGhost
         }
         if hasBackButton {
-            let backFrame = NSRect(x: leftX, y: bubbleY, width: bubbleHeight, height: bubbleHeight)
+            let backFrame = showsWindowControls ? leadingLayout.backButtonFrame : NSRect(x: leftX, y: bubbleY, width: bubbleHeight, height: bubbleHeight)
             transition.updateFrame(view: backButton, frame: backFrame)
             syncGhost(backGhost, frame: backFrame, hidden: showsWindowControls, transition: transition)
             leftX += bubbleHeight + spacing
@@ -1068,6 +1067,10 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             let handleFrame = NSRect(x: 0, y: bubbleY, width: leftSideInset, height: bubbleHeight)
             transition.updateFrame(view: leftEdgeHandle, frame: handleFrame)
             leftEdgeHandle.isHidden = showsWindowControls
+        }
+
+        if showsWindowControls {
+            leftX = leadingLayout.contentMinX
         }
 
         let inDoneMode = (menuMode == .done)
