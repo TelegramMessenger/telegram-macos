@@ -186,6 +186,8 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
             guard let peer = chatInteraction.presentation.peer else {
                 return nil
             }
+            let cachedData = chatInteraction.presentation.cachedData
+            let ignoreDefault = canBypassChatRestrictions(cachedData)
             var items: [ContextMenuItem] = []
             if let editState = chatInteraction.presentation.interfaceState.editState, editState.message.pendingProcessingAttribute == nil {
                 if let media = editState.originalMedia, media is TelegramMediaFile || media is TelegramMediaImage {
@@ -245,25 +247,19 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                     return ContextMenu()
                 }
 
-                if let channel = peer as? TelegramChannel {
-                    if channel.hasPermission(.sendPhoto) && channel.hasPermission(.sendVideo) {
-                        items.append(ContextMenuItem(strings().inputAttachPopoverPhotoOrVideo, handler: { [weak self] in
-                            self?.chatInteraction.attachPhotoOrVideo(nil)
-                        }, itemImage: MenuAnimation.menu_shared_media.value))
-                    } else {
-                        if channel.hasPermission(.sendPhoto) {
-                            items.append(ContextMenuItem(strings().inputAttachPopoverPhoto, handler: { [weak self] in
-                                self?.chatInteraction.attachPhotoOrVideo(.photo)
-                            }, itemImage: MenuAnimation.menu_shared_media.value))
-                        } else if channel.hasPermission(.sendVideo) {
-                            items.append(ContextMenuItem(strings().inputAttachPopoverVideo, handler: { [weak self] in
-                                self?.chatInteraction.attachPhotoOrVideo(.video)
-                            }, itemImage: MenuAnimation.menu_shared_media.value))
-                        }
-                    }
-                } else {
+                let canSendPhotos = permissionText(from: peer, for: .banSendPhotos, cachedData: cachedData) == nil
+                let canSendVideos = permissionText(from: peer, for: .banSendVideos, cachedData: cachedData) == nil
+                if canSendPhotos && canSendVideos {
                     items.append(ContextMenuItem(strings().inputAttachPopoverPhotoOrVideo, handler: { [weak self] in
                         self?.chatInteraction.attachPhotoOrVideo(nil)
+                    }, itemImage: MenuAnimation.menu_shared_media.value))
+                } else if canSendPhotos {
+                    items.append(ContextMenuItem(strings().inputAttachPopoverPhoto, handler: { [weak self] in
+                        self?.chatInteraction.attachPhotoOrVideo(.photo)
+                    }, itemImage: MenuAnimation.menu_shared_media.value))
+                } else if canSendVideos {
+                    items.append(ContextMenuItem(strings().inputAttachPopoverVideo, handler: { [weak self] in
+                        self?.chatInteraction.attachPhotoOrVideo(.video)
                     }, itemImage: MenuAnimation.menu_shared_media.value))
                 }
 
@@ -334,36 +330,20 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                         }
                     }
                 }
-                if let channel = peer as? TelegramChannel {
-                    if permissionText(from: channel, for: .banSendFiles) == nil {
-                        items.append(ContextMenuItem(strings().inputAttachPopoverFile, handler: { [weak self] in
-                            self?.chatInteraction.attachFile(false)
-                        }, itemImage: MenuAnimation.menu_file.value))
-                    }
-                } else {
+                if chatInteraction.presentation.canAttachFiles {
                     items.append(ContextMenuItem(strings().inputAttachPopoverFile, handler: { [weak self] in
                         self?.chatInteraction.attachFile(false)
                     }, itemImage: MenuAnimation.menu_file.value))
                 }
 
-
-                if let channel = peer as? TelegramChannel {
-                    if channel.hasPermission(.sendPhoto) {
-                        items.append(ContextMenuItem(strings().inputAttachPopoverPicture, handler: { [weak self] in
-                            guard let `self` = self else { return }
-                            self.chatInteraction.attachPicture()
-                        }, itemImage: MenuAnimation.menu_camera.value))
-                    }
-                } else {
+                if canSendPhotos {
                     items.append(ContextMenuItem(strings().inputAttachPopoverPicture, handler: { [weak self] in
-                        guard let `self` = self else { return }
-                        self.chatInteraction.attachPicture()
+                        self?.chatInteraction.attachPicture()
                     }, itemImage: MenuAnimation.menu_camera.value))
                 }
 
-
                 var canAttachPoll: Bool = false
-                var canAttachLocation: Bool = true
+                var canAttachLocation = permissionText(from: peer, for: .banSendText, cachedData: cachedData) == nil
                 var canAttachTodo: Bool = true
 
                 if let peer = chatInteraction.presentation.peer, peer.isChannel {
@@ -378,20 +358,20 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                 }
 
                 if let peer = chatInteraction.presentation.peer as? TelegramChannel {
-                    if peer.hasPermission(.sendText) {
+                    if peer.hasPermission(.sendText, ignoreDefault: ignoreDefault) {
                         canAttachPoll = true
                     } else {
                         canAttachLocation = false
                     }
                 }
-                if canAttachPoll && permissionText(from: peer, for: .banSendPolls) != nil {
+                if canAttachPoll && permissionText(from: peer, for: .banSendPolls, cachedData: cachedData) != nil {
                     canAttachPoll = false
                 }
 
                 if canAttachPoll {
                     items.append(ContextMenuItem(strings().inputAttachPopoverPoll, handler: { [weak self] in
                         guard let `self` = self else { return }
-                        if let permissionText = permissionText(from: peer, for: .banSendPolls) {
+                        if let permissionText = permissionText(from: peer, for: .banSendPolls, cachedData: cachedData) {
                             showModalText(for: context.window, text: permissionText)
                             return
                         }
@@ -401,7 +381,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
 
                 items.append(ContextMenuItem(strings().inputAttachAudio, handler: { [weak self] in
                     guard let `self` = self else { return }
-                    if let permissionText = permissionText(from: peer, for: .banSendFiles) {
+                    if let permissionText = permissionText(from: peer, for: .banSendFiles, cachedData: cachedData) {
                         showModalText(for: context.window, text: permissionText)
                         return
                     }
@@ -411,7 +391,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                 if canAttachTodo, context.isPremium {
                     let item = ContextMenuItem(strings().inputAttachPopoverChecklist, handler: { [weak self] in
                         guard let `self` = self else { return }
-                        if let permissionText = permissionText(from: peer, for: .banSendPolls) {
+                        if let permissionText = permissionText(from: peer, for: .banSendPolls, cachedData: cachedData) {
                             showModalText(for: context.window, text: permissionText)
                             return
                         }
@@ -426,7 +406,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
 
                 if canAttachLocation {
                     items.append(ContextMenuItem(strings().inputAttachPopoverLocation, handler: { [weak self] in
-                        if let permissionText = permissionText(from: peer, for: .banSendText) {
+                        if let permissionText = permissionText(from: peer, for: .banSendText, cachedData: cachedData) {
                             showModalText(for: context.window, text: permissionText)
                             return
                         }
@@ -434,7 +414,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                     }, itemImage: MenuAnimation.menu_location.value))
                 }
 
-                if #available(macOS 12, *), chatInteraction.interactionContext.appConfiguration.isRichTextEditorEnabled {
+                if #available(macOS 12, *), chatInteraction.interactionContext.appConfiguration.isRichTextEditorEnabled, chatInteraction.presentation.textRestriction == nil {
                     items.append(ContextMenuItem(strings().richTextEditorAttachTitle, handler: { [weak self] in
                         guard let self = self else { return }
                         showRichTextEditor(chatInteraction: self.chatInteraction, morphSource: { [weak self] in self?.button })

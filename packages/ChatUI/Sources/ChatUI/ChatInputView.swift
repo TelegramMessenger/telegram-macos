@@ -99,6 +99,11 @@ public final class ChatInputContainerView: FlippableView {
     public let textFieldContainer: View
     public let textView: UITextView
     public let attachView: ChatInputAttachButton
+    private var textRestrictionIcon: ImageView?
+
+    private var textRestrictionIconInset: CGFloat {
+        return chatInteraction.presentation.state == .normal && chatInteraction.presentation.textRestriction != nil ? 12 : 0
+    }
 
     /// Top-right "open in rich editor" affordance, shown when the input grows to 4+ lines (mirrors the AI
     /// button trigger). Clicking opens the rich editor with the current input (works even for plain text).
@@ -300,7 +305,7 @@ public final class ChatInputContainerView: FlippableView {
         let sendAsInset: CGFloat = sendAsView != nil ? 34 + 3 : 0
         let sendSlot = self.sendSlot(gap: gap)
         let containerWidth = width - edge - leftInset - gap - sendSlot.outside - edge
-        let textLeftInset: CGFloat = 10 + sendAsInset
+        let textLeftInset: CGFloat = 10 + sendAsInset + textRestrictionIconInset
         let actionsWidth = actionsView.visibleWidth + sendSlot.inField
         let textWidth = max(0, containerWidth - textLeftInset - actionsWidth)
         let height = self.textView.height(for: textWidth)
@@ -312,6 +317,10 @@ public final class ChatInputContainerView: FlippableView {
             return (0, ChatInputSendButton.fieldInset + sendButton.desiredSize.width + ChatInputSendButton.fieldTextGap)
         }
         return (gap + sendButton.desiredSize.width, 0)
+    }
+
+    fileprivate func updateTextRestrictionIcon() {
+        textRestrictionIcon?.image = TelegramThemeHooks.shared.image(.iconSecretChatLock).precomposed(textView.inputTheme.grayTextColor)
     }
 
     public override func layout() {
@@ -482,8 +491,26 @@ public final class ChatInputContainerView: FlippableView {
             transition.updateFrame(view: view, frame: frame)
         }
 
-        let textLeftInset: CGFloat = 12 + sendAsInset
+        let textLeftInset: CGFloat = 12 + sendAsInset + textRestrictionIconInset
         let textRect = NSMakeRect(textLeftInset, textY, textSize.width, textSize.height)
+
+        if textRestrictionIconInset > 0 {
+            let icon: ImageView
+            if let current = textRestrictionIcon {
+                icon = current
+            } else {
+                icon = ImageView(frame: .zero)
+                icon.isEventLess = true
+                icon.isAccessibilityDecorative = true
+                textFieldContainer.addSubview(icon)
+                textRestrictionIcon = icon
+                updateTextRestrictionIcon()
+            }
+            transition.updateFrame(view: icon, frame: NSMakeRect(textRect.minX - textRestrictionIconInset, textRect.midY - 5, 8, 10))
+        } else if let icon = textRestrictionIcon {
+            icon.removeFromSuperview()
+            textRestrictionIcon = nil
+        }
 
         if let preview = richDraftPreview {
             // A rich draft IS the input content: hide the text field (and its placeholder) and render the
@@ -829,7 +856,7 @@ public class ChatInputView: View, Notifable {
         }
         richDraftDisposable.set((chatInteraction.richTextDraftSignal |> deliverOnMainQueue).start(next: { [weak self] page in
             guard let self = self else { return }
-            if self.container.setRichDraft(page, theme: self.currentChatTheme ?? theme) {
+            if self.container.setRichDraft(self.chatInteraction.presentation.textRestriction == nil ? page : nil, theme: self.currentChatTheme ?? theme) {
                 self.inputDidUpdateLayout(animated: true)
             }
             let sendState = ChatInputView.sendButtonState(
@@ -940,6 +967,10 @@ public class ChatInputView: View, Notifable {
         window.remove(object: self, for: .Z, modifierFlags: [.command], forceCheckFlags: true)
         window.remove(object: self, for: .Z, modifierFlags: [.command, .shift], forceCheckFlags: true)
 
+        guard chatInteraction.presentation.textRestriction == nil else {
+            return
+        }
+
         // Whether the draft is shown in the LIVE inline editor (vs the read-only preview). On macOS 12+ the
         // preview hosts every draft, media blocks included, in the inline editor. Both cases get a window Return
         // handler honoring the send preference; the inline case rejects non-send Returns so the editor adds a
@@ -1003,6 +1034,9 @@ public class ChatInputView: View, Notifable {
     }
     
     public func set(_ state: Updated_ChatTextInputState) {
+        guard chatInteraction.presentation.textRestriction == nil else {
+            return
+        }
         self.chatInteraction.update({
             $0.withUpdatedEffectiveInputState(state.textInputState())
         })
@@ -1100,8 +1134,10 @@ public class ChatInputView: View, Notifable {
     }
     
     private var textPlaceholder: String {
-        
-        
+        if chatInteraction.presentation.textRestriction != nil, chatInteraction.presentation.state == .normal {
+            return strings().channelPersmissionMessageBlock
+        }
+
         if let amount = chatInteraction.presentation.sendPaidMessageStars {
             return strings().messagePlaceholderPaidMessage(strings().starListItemCountOther(Int(amount.value)))
         }
@@ -1143,10 +1179,6 @@ public class ChatInputView: View, Notifable {
         
         guard let peer = chatInteraction.presentation.peer else {
             return strings().messagesPlaceholderSentMessage
-        }
-        
-        if let _ = permissionText(from: peer, for: .banSendText, cachedData: chatInteraction.presentation.cachedData), chatInteraction.presentation.state == .normal {
-            return strings().channelPersmissionMessageBlock
         }
         
 
@@ -1254,6 +1286,7 @@ public class ChatInputView: View, Notifable {
         textView.inputTheme = theme.inputTheme
             .withUpdatedQuote(colors)
             .withUpdatedPlaceholderColor(theme.colors.darkGrayText)
+        container.updateTextRestrictionIcon()
     }
     
     public func notify(with value: Any, oldValue:Any, animated:Bool) {
@@ -1285,7 +1318,7 @@ public class ChatInputView: View, Notifable {
         }
 
         if let value = value as? ChatPresentationInterfaceState, let oldValue = oldValue as? ChatPresentationInterfaceState {
-            let textPermissionChanged = permissionText(from: value.peer, for: .banSendText, cachedData: value.cachedData) != permissionText(from: oldValue.peer, for: .banSendText, cachedData: oldValue.cachedData)
+            let textPermissionChanged = value.textRestriction != oldValue.textRestriction
 
             if value.effectiveInput != oldValue.effectiveInput || oldValue.state != value.state || textPermissionChanged {
                 updateInput(value, prevState: oldValue, animated: animated)
@@ -1798,14 +1831,14 @@ public class ChatInputView: View, Notifable {
             morphGlassOut(into: glassMorphPanel, from: inputVisibleSlots)
         }
 
-        if let peer = chatInteraction.presentation.peer, let text = permissionText(from: peer, for: .banSendText, cachedData: chatInteraction.presentation.cachedData), state == .normal {
+        if let text = chatInteraction.presentation.textRestriction, state == .normal {
             let context = chatInteraction.interactionContext
             let current: Control
             if let view = self.disallowText {
                 current = view
             } else {
                 current = Control(frame: textView.frame)
-                self.contentView.addSubview(current)
+                self.textFieldContainer.addSubview(current)
                 self.disallowText = current
             }
             current.removeAllHandlers()
@@ -1826,7 +1859,7 @@ public class ChatInputView: View, Notifable {
     
     public func updateInput(_ state:ChatPresentationInterfaceState, prevState: ChatPresentationInterfaceState, animated:Bool = true, initial: Bool = false) -> Void {
         
-        if let peer = state.peer, let _ = permissionText(from: peer, for: .banSendText, cachedData: state.cachedData), state.state == .normal {
+        if state.textRestriction != nil, state.state == .normal {
             textView.inputView.isEditable = false
             textView.isHidden = false
         } else {
@@ -1841,7 +1874,16 @@ public class ChatInputView: View, Notifable {
             }
         }
         
-        let input = state.effectiveInput
+        let input = state.textRestriction != nil && state.state == .normal ? ChatTextInputState() : state.effectiveInput
+
+        if state.textRestriction != nil, container.richDraftPreview != nil {
+            cancelInlineRichDraftStore()
+            storeInlineRichDraft(threadId: state.chatLocation.threadId)
+        }
+        if container.setRichDraft(state.textRestriction == nil ? chatInteraction.richTextDraft : nil, theme: currentChatTheme ?? theme) {
+            inputDidUpdateLayout(animated: animated)
+        }
+        updateRichDraftKeyHandlers()
         
         self.textView.interactions.inputIsEnabled = self.isEnabled()
         self.textView.set(input)
@@ -2077,7 +2119,7 @@ public class ChatInputView: View, Notifable {
         return self.sendButton.currentActionView
     }
 
-    private static func sendButtonState(
+    static func sendButtonState(
         from value: ChatPresentationInterfaceState,
         hasRichDraft: Bool = false,
         canStopIncomingStreamingMessage: Bool = false
@@ -2133,7 +2175,8 @@ public class ChatInputView: View, Notifable {
             kind = .voice
         }
 
-        let isSendEnabled: Bool = value.chatMode.customChatLink == nil || !value.effectiveInput.inputText.isEmpty
+        let isSendEnabled = (value.chatMode.customChatLink == nil || !value.effectiveInput.inputText.isEmpty)
+            && (value.textRestriction == nil || (!hasRichDraft && value.effectiveInput.inputText.isEmpty))
 
         return ChatInputSendButton.State(
             kind: kind,
@@ -2217,7 +2260,7 @@ public class ChatInputView: View, Notifable {
            historyCount >= limit {
             return false
         }
-        return self.chatState == .normal || self.chatState == .editing
+        return (self.chatState == .normal && chatInteraction.presentation.textRestriction == nil) || self.chatState == .editing
     }
     
     
