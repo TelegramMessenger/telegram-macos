@@ -206,7 +206,13 @@ void TGDisableLayerActions(CALayer *layer) {
             } else {
                 [domainRegex enumerateMatchesInString:text options:0 range:NSMakeRange(0, text.length) usingBlock:^(NSTextCheckingResult *match, __unused NSMatchingFlags flags, __unused BOOL *stop) {
                     @try {
-                        [results addObject:[NSValue valueWithRange:match.range]];
+                        NSRange range = match.range;
+                        NSIndexSet *covered = [results indexesOfObjectsPassingTest:^BOOL(NSValue *value, __unused NSUInteger index, __unused BOOL *innerStop) {
+                            NSRange existing = value.rangeValue;
+                            return existing.location >= range.location && NSMaxRange(existing) <= NSMaxRange(range);
+                        }];
+                        [results removeObjectsAtIndexes:covered];
+                        [results addObject:[NSValue valueWithRange:range]];
                     } @catch (NSException *exception) {
                     }
                 }];
