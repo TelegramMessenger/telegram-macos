@@ -264,6 +264,7 @@ public class ChannelEventLogView : View {
 
 private struct State : Equatable {
     var revealed:Set<MessageId> = Set()
+    var mediaRevealed: Set<MessageId> = Set()
 }
 
 extension AdminLogEventsResult {
@@ -329,7 +330,7 @@ private func eventLogItems(_ entries:[ChannelAdminEventLogEntry], state: State, 
                 
                 let new = new.withUpdatedMedia([updatedMedia])
                 
-                let item = ChatRowItem.item(initialSize, from: .MessageEntry(new, MessageIndex(new), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme) as? ChatRowItem
+                let item = ChatRowItem.item(initialSize, from: .MessageEntry(new, MessageIndex(new), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event, isRevealed: state.mediaRevealed.contains(new.id)), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme) as? ChatRowItem
                 
                 if let item = item {
                     items.append(item)
@@ -346,13 +347,13 @@ private func eventLogItems(_ entries:[ChannelAdminEventLogEntry], state: State, 
                     message = message.withUpdatedReplyMarkupAttribute(attribute)
                 }
                 if group.count == 1 || state.revealed.contains(groupId) || i == group.count - 1 {
-                    items.append(ChatRowItem.item(initialSize, from: .MessageEntry(ChannelAdminUIHooks.shared.messageWithUpdatedTimestamp(message, entry.event.date), MessageIndex(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme))
+                    items.append(ChatRowItem.item(initialSize, from: .MessageEntry(ChannelAdminUIHooks.shared.messageWithUpdatedTimestamp(message, entry.event.date), MessageIndex(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event, isRevealed: state.mediaRevealed.contains(message.id)), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme))
                 }
             case let .sendMessage(message):
-                items.append(ChatRowItem.item(initialSize, from: .MessageEntry(ChannelAdminUIHooks.shared.messageWithUpdatedTimestamp(message, entry.event.date), MessageIndex(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme))
+                items.append(ChatRowItem.item(initialSize, from: .MessageEntry(ChannelAdminUIHooks.shared.messageWithUpdatedTimestamp(message, entry.event.date), MessageIndex(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event, isRevealed: state.mediaRevealed.contains(message.id)), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme))
             case let .updatePinned(message):
                 if let message = message {
-                    items.append(ChatRowItem.item(initialSize, from: .MessageEntry(ChannelAdminUIHooks.shared.messageWithUpdatedTimestamp(message, entry.event.date), MessageIndex(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme))
+                    items.append(ChatRowItem.item(initialSize, from: .MessageEntry(ChannelAdminUIHooks.shared.messageWithUpdatedTimestamp(message, entry.event.date), MessageIndex(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, ChatHistoryEntryData(nil, MessageEntryAdditionalData(highlightFoundText: .init(query: searchQuery, isMessage: true), eventLog: entry.event, isRevealed: state.mediaRevealed.contains(message.id)), AutoplayMediaPreferences.defaultSettings)), interaction: chatInteraction, theme: theme))
                 }
             default:
                 break
@@ -561,6 +562,27 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
         
         chatInteraction.executeReplymarkup = { messageId in
             arguments.toggleReveal(messageId)
+        }
+
+        chatInteraction.revealMedia = { message in
+            let reveal = {
+                updateState { current in
+                    var current = current
+                    current.mediaRevealed.insert(message.id)
+                    return current
+                }
+            }
+            if message.isSensitiveContent(platform: "ios"), !context.contentConfig.sensitiveContentEnabled {
+                if context.contentConfig.canAdjustSensitiveContent, context.appConfiguration.getBoolValue("need_age_video_verification", orElse: false) {
+                    ChatNavigationHooks.shared.showVerifyAgeAlert(context, context.window)
+                    return
+                }
+                verifyAlert(for: context.window, header: strings().chatSensitiveContent, information: strings().chatSensitiveContentConfirm, ok: strings().chatSensitiveContentConfirmOk, successHandler: { _ in
+                    reveal()
+                })
+            } else {
+                reveal()
+            }
         }
         
         chatInteraction.focusMessageId = { [weak self] messageId, focusTarget, _ in
