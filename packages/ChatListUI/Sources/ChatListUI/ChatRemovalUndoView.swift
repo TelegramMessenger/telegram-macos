@@ -137,6 +137,7 @@ final class ChatRemovalUndoView: Control {
 
         let view = ImageView(frame: secondsView.bounds)
         view.image = countdownDigitImage(value, size: secondsView.frame.size)
+        view.isAccessibilityDecorative = true
 
         if animated {
             for previous in secondsView.subviews {

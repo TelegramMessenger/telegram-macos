@@ -477,6 +477,7 @@ final class EditImageCanvasColorPickerView: View {
             swatch.set(handler: { [weak self] _ in
                 self?.apply(swatchColor)
             }, for: .Click)
+            swatch.setAccessibilityLabel("\(strings().voiceOverCommonColor) #\(swatchColor.hexString)")
             fixed.append(swatch)
             addSubview(swatch)
         }
@@ -484,9 +485,11 @@ final class EditImageCanvasColorPickerView: View {
         close.set(handler: { [weak self] _ in
             self?.onClose?()
         }, for: .Click)
+        close.setAccessibilityLabel(strings().voiceOverCommonClose)
         eyedropper.set(handler: { [weak self] _ in
             self?.onEyedropper?()
         }, for: .Click)
+        eyedropper.setAccessibilityLabel("Pick Color from Image") //TODOLANG
 
         grid.onChange = { [weak self] color in
             self?.apply(color)

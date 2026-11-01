@@ -275,6 +275,10 @@ private final class MoveGiftToWalletRowItem: TableRowItem {
         return textLayout.layoutSize.height + 16 + addressBlockHeight + 16 + appearLayout.layoutSize.height + 4 + pathHeight + 8
     }
 
+    override var accessibilityLabel: String? {
+        return textLayout.attributedString.string
+    }
+
     override func viewClass() -> AnyClass {
         return MoveGiftToWalletRowView.self
     }

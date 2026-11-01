@@ -196,6 +196,11 @@ private final class EditVideoTintSectionView: View {
             swatch.set(handler: { [weak self] _ in
                 self?.onSelect?(color)
             }, for: .Click)
+            if let color = color {
+                swatch.setAccessibilityLabel("\(strings().voiceOverCommonColor) #\(String(format: "%06X", color))")
+            } else {
+                swatch.setAccessibilityLabel(strings().voiceOverCommonClear)
+            }
             swatches.append(swatch)
             addSubview(swatch)
         }
@@ -260,13 +265,14 @@ final class EditVideoToolsView: View {
     var imageSize: NSSize = NSMakeSize(16, 9)
 
     required init(frame frameRect: NSRect) {
-        self.toolsTab = makeGlassIconButton(NSImage(resource: .iconEditVideoTools).precomposed(.white))
-        self.tintTab = makeGlassIconButton(NSImage(resource: .iconEditVideoTint).precomposed(.white))
+        self.toolsTab = makeGlassIconButton(NSImage(resource: .iconEditVideoTools).precomposed(.white), label: strings().editVideoToolsControllerTools)
+        self.tintTab = makeGlassIconButton(NSImage(resource: .iconEditVideoTint).precomposed(.white), label: strings().editVideoToolsControllerTint)
         super.init(frame: frameRect)
         preview.contentGravity = .resizeAspect
         preview.isAccessibilityDecorative = true
         addSubview(preview)
         addSubview(previewControl)
+        previewControl.setAccessibilityLabel(strings().editVideoToolsControllerOriginal)
 
         panel.backgroundColor = NSColor.black.withAlphaComponent(0.6)
         panel.layer?.cornerRadius = 12
@@ -286,8 +292,6 @@ final class EditVideoToolsView: View {
         tintView.addSubview(highlightsSection)
         panel.addSubview(tintView)
 
-        toolsTab.setAccessibilityLabel(strings().editVideoToolsControllerTools)
-        tintTab.setAccessibilityLabel(strings().editVideoToolsControllerTint)
         for view in [cancel, done, toolsTab, tintTab] as [NSView] {
             addSubview(view)
         }
