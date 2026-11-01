@@ -344,11 +344,17 @@ private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, adPeer:
     switch arguments.target {
     case .common, .community:
         items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+            let context = arguments.context
+            let openPeerId = chatPeerId ?? peer.id
             if let adPeer {
-                arguments.context.engine.messages.markAdAction(opaqueId: adPeer.opaqueId, media: false, fullscreen: false)
+                context.engine.messages.markAdAction(opaqueId: adPeer.opaqueId, media: false, fullscreen: false)
             }
-            ChatListUIHooks.shared.openPeerInNewWindow(arguments.context, chatPeerId ?? peer.id)
+            _ = context.engine.peers.addRecentlySearchedPeer(peerId: openPeerId).start()
+            _ = (storedMessageFromSearchPeer(account: context.account, peer: peer) |> deliverOnMainQueue).start(completed: {
+                ChatListUIHooks.shared.openPeerInNewWindow(context, openPeerId)
+            })
         }, itemImage: MenuAnimation.menu_open_with.value))
+        items.append(ContextSeparatorItem())
     case .forum, .savedMessages:
         break
     }
