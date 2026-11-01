@@ -1426,12 +1426,15 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         appliedChromeMode = mode
         leftController.genericView.compactCorners = (mode == .compact)
         window.applyChrome(mode)
+#if compiler(<6.4)
         window.applyCornerRadius(for: mode)
+#endif
         window.clampToScreen()
     }
 
 }
 
+#if compiler(<6.4)
 extension Window {
     func applyCornerRadius(for mode: Window.ChromeMode) {
         if #available(macOS 27.0, *) {
@@ -1444,3 +1447,5 @@ extension Window {
         }
     }
 }
+
+#endif

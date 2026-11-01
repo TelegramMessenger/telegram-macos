@@ -18,6 +18,34 @@ public final class EntertainmentSidebarView: View {
         return 8
     }
 
+    private var currentCornerRadius: CGFloat {
+#if compiler(>=6.4)
+        if #available(macOS 27.0, *), let radii = effectiveCornerRadii {
+            return radii.topLeft
+        }
+#endif
+        return EntertainmentSidebarView.cornerRadius
+    }
+
+#if compiler(>=6.4)
+    @available(macOS 27.0, *)
+    public override var cornerConfiguration: NSViewCornerConfiguration? {
+        .uniformCorners(radius: .containerConcentric(8))
+    }
+
+    @available(macOS 27.0, *)
+    public override func viewDidChangeEffectiveCornerRadii() {
+        super.viewDidChangeEffectiveCornerRadii()
+        applyCornerRadius()
+    }
+#endif
+
+    private func applyCornerRadius() {
+        let radius = currentCornerRadius
+        glassView.cornerRadius = radius
+        contentView.layer?.cornerRadius = radius
+    }
+
     public required init(frame frameRect: NSRect) {
         let radius = EntertainmentSidebarView.cornerRadius
         glassView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: radius, hasShadow: true, hasBorder: true, tintAlpha: 0, customTint: theme.colors.background.withAlphaComponent(EntertainmentView.glassTintAlpha), forceBlur: true)
@@ -45,6 +73,7 @@ public final class EntertainmentSidebarView: View {
 
     public override func layout() {
         super.layout()
+        applyCornerRadius()
         glassView.frame = bounds
         glassView.updateLayout(size: bounds.size, transition: .immediate)
         contentView.frame = bounds

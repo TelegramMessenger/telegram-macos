@@ -92,15 +92,25 @@ public final class LeftSidebarView: LiquidGlassView {
     fileprivate var environment: SidebarUIEnvironment?
     fileprivate let edit = ImageButton()
 
-    /// 20pt on macOS 26+ to match the liquid-glass look (on macOS 27 the
-    /// window radius is raised to 28pt through private API, keeping this
-    /// inset sidebar concentric). Older systems keep the subtle 8pt.
     private static var glassCornerRadius: CGFloat {
         if #available(macOS 26.0, *) {
             return 20
         }
         return 8
     }
+#if compiler(>=6.4)
+    @available(macOS 27.0, *)
+    public override var cornerConfiguration: NSViewCornerConfiguration? {
+        .uniformCorners(radius: .containerConcentric(8))
+    }
+
+    @available(macOS 27.0, *)
+    public override func viewDidChangeEffectiveCornerRadii() {
+        super.viewDidChangeEffectiveCornerRadii()
+        cornerRadius = effectiveCornerRadii?.topLeft ?? LeftSidebarView.glassCornerRadius
+    }
+#endif
+
     public static let inset = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
 
     public required init(frame frameRect: NSRect) {

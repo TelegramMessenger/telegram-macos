@@ -303,9 +303,6 @@ final class MainController_View: View {
     private let bgView: View = View()
     private let glassView: LiquidGlassView
 
-    /// 20pt on macOS 26+ to match the liquid-glass aesthetic (on macOS 27
-    /// the window radius is raised to 28pt through private API, keeping
-    /// this inset pane concentric). Older systems keep the subtle 8pt.
     private static var containerCornerRadius: CGFloat {
         if #available(macOS 26.0, *) {
             return 20
@@ -313,12 +310,12 @@ final class MainController_View: View {
         return 8
     }
 
-    /// In single-window mode the surrounding chrome is smaller, so the
-    /// inner corner shrinks to match: 14pt on macOS Tahoe (liquid glass),
-    /// 4pt on older systems where the curve is already subtle.
     var compactCorners: Bool = false {
         didSet {
             if compactCorners != oldValue {
+#if compiler(>=6.4)
+                if #available(macOS 27.0, *) { invalidateCornerConfiguration() }
+#endif
                 applyCornerRadius()
             }
         }
@@ -328,8 +325,26 @@ final class MainController_View: View {
         if compactCorners {
             return 0
         }
+#if compiler(>=6.4)
+        if #available(macOS 27.0, *), let radii = effectiveCornerRadii {
+            return radii.topLeft
+        }
+#endif
         return MainController_View.containerCornerRadius
     }
+
+#if compiler(>=6.4)
+    @available(macOS 27.0, *)
+    override var cornerConfiguration: NSViewCornerConfiguration? {
+        .uniformCorners(radius: compactCorners ? .fixed(0) : .containerConcentric(8))
+    }
+
+    @available(macOS 27.0, *)
+    override func viewDidChangeEffectiveCornerRadii() {
+        super.viewDidChangeEffectiveCornerRadii()
+        applyCornerRadius()
+    }
+#endif
 
     private func applyCornerRadius() {
         let radius = currentCornerRadius
