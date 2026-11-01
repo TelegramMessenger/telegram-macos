@@ -921,21 +921,28 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             }
         }
 
+        let connectionText: String?
         switch connectionStatus {
         case let .connecting(proxy, _):
-            result = result.withUpdatedStatus((proxy != nil ? strings().chatConnectingStatusConnectingToProxy : strings().chatConnectingStatusConnecting).lowercased())
+            connectionText = (proxy != nil ? strings().chatConnectingStatusConnectingToProxy : strings().chatConnectingStatusConnecting).lowercased()
         case .updating:
-            result = result.withUpdatedStatus(strings().chatConnectingStatusUpdating.lowercased())
+            connectionText = strings().chatConnectingStatusUpdating.lowercased()
         case .waitingForNetwork:
-            result = result.withUpdatedStatus(strings().chatConnectingStatusWaitingNetwork.lowercased())
+            connectionText = strings().chatConnectingStatusWaitingNetwork.lowercased()
         case .online:
-            break
+            connectionText = nil
+        }
+        if let connectionText {
+            result = PeerStatusStringResult(result.title, .initialize(string: connectionText, color: theme.colors.grayText, font: .normal(.small)), presence: result.presence)
         }
 
         return result
     }
 
     private func updateStatusText(presentation: ChatPresentationInterfaceState, force: Bool = false) {
+        defer {
+            needsLayout = true
+        }
         guard let result = computeTitleStatus(presentation: presentation) else {
             titleView.update(nil)
             statusView.update(nil)
