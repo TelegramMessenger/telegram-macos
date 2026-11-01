@@ -81,10 +81,7 @@ private final class PopularPeerItem : TableRowItem {
             items.append(ContextMenuItem(strings().searchPopularDelete, handler: {
                 _ = context.engine.peers.removeRecentPeer(peerId: peer.id).start()
             }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
-            return searchPeerReadMenuItem(context: context, peerId: peer.id) |> map { readItem in
-                guard let readItem else { return items }
-                return [readItem, ContextSeparatorItem()] + items
-            }
+            return searchPeerContextMenuItems(peer: peer, context: context, remove: items.first)
         case let .savedMessages(peer):
             return searchPeerReadMenuItem(context: context, peerId: peer.id) |> map { readItem in
                 return readItem.map { [$0] } ?? []

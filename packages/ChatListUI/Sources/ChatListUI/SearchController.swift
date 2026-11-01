@@ -338,113 +338,20 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 }
 
 
-private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
-    var items:[ContextMenuItem] = []
-    
-    let togglePin:(Peer) -> Void = { peer in
-        let updatePeer = arguments.context.account.postbox.transaction { transaction -> Void in
-            updatePeersCustom(transaction: transaction, peers: [peer], update: { (_, updated) -> Peer? in
-                return updated
-            })
-            } |> mapToSignal { _ -> Signal<TogglePeerChatPinnedResult, NoError> in
-                return arguments.context.engine.peers.toggleItemPinned(location: .group(.root), itemId: .peer(peer.id))
-            } |> deliverOnMainQueue
-        
-        _ = updatePeer.start(next: { result in
-            switch result {
-            case .limitExceeded:
-                verifyAlert_button(for: arguments.context.window, information: strings().chatListContextPinErrorNew2, ok: strings().alertOK, cancel: "", option: strings().chatListContextPinErrorNewSetupFolders, successHandler: { result in
-                    switch result {
-                    case .thrid:
-                        arguments.context.bindings.rootNavigation().push(ChatListUIHooks.shared.makeChatListFiltersListController(arguments.context))
-                    default:
-                        break
-                    }
-                })
-            default:
-                break
-            }
-        })
+private func peerContextMenuItems(peer: Peer, arguments: SearchControllerArguments, isRecent: Bool, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
+    let remove: ContextMenuItem?
+    if isRecent {
+        remove = ContextMenuItem(strings().searchRemoveFromRecent, handler: {
+            arguments.removeRecentPeerId(peer.id)
+        }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value)
+    } else {
+        remove = nil
     }
-    
-    var isPinned: Bool = false
-    for item in pinnedItems {
-        switch item {
-        case let .peer(peerId):
-            if peerId == peer.id {
-                isPinned = true
-                break
-            }
-        }
-    }
-    
-    items.append(ContextMenuItem(isPinned ? strings().chatListContextUnpin : strings().chatListContextPin, handler: {
-        togglePin(peer)
-    }, itemImage: isPinned ? MenuAnimation.menu_unpin.value : MenuAnimation.menu_pin.value))
-    
-    let peerId = peer.id
-    
-    return combineLatest(searchPeerReadMenuItem(context: arguments.context, peerId: peerId, target: arguments.target), chatListFilterPreferences(engine: arguments.context.engine)) |> take(1) |> deliverOnMainQueue |> map { readItem, filters -> [ContextMenuItem] in
-        var items = items
-        if let readItem {
-            items.append(readItem)
-        }
-        var submenu: [ContextMenuItem] = []
-        if peerId.namespace != Namespaces.Peer.SecretChat {
-            for item in filters.list {
-                loop: switch item {
-                case .allChats:
-                    break loop
-                case let .filter(_, _, _, data):
-                    submenu.append(ContextMenuItem(item.title, handler: {
-                        _ = arguments.context.engine.peers.updateChatListFiltersInteractively({ list in
-                            var list = list
-                            for (i, folder) in list.enumerated() {
-                                if ChatListUIHooks.shared.chatListFilterId(folder) == ChatListUIHooks.shared.chatListFilterId(item), var folderData = folder.data {
-                                    if data.includePeers.peers.contains(peerId) {
-                                        var peers = folderData.includePeers.peers
-                                        peers.removeAll(where: { $0 == peerId })
-                                        folderData.includePeers.setPeers(peers)
-                                    } else {
-                                        folderData.excludePeers.removeAll(where: { $0 == peerId })
-                                        folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
-                                    }
-                                    list[i] = list[i].withUpdatedData(folderData)
-                                }
-                            }
-                            return list
-                        }).start()
-                    }, state: data.includePeers.peers.contains(peerId) ? NSControl.StateValue.on : nil))
-                }
-
-            }
-        }
-
-        if !submenu.isEmpty {
-            items.append(ContextSeparatorItem())
-            let item = ContextMenuItem(strings().chatListFilterAddToFolder, itemImage: MenuAnimation.menu_add_to_folder.value)
-            let menu = ContextMenu()
-            for item in submenu {
-                menu.addItem(item)
-            }
-            item.submenu = menu
-            items.append(item)
-        }
-
-        if isRecent {
-            items.append(ContextSeparatorItem())
-
-            items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
-                arguments.removeRecentPeerId(peer.id)
-            }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
-        }
-
-        return items
-    }
+    return searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove, adPeer: adPeer)
 }
 
 
-fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry>]?, to:[AppearanceWrapperEntry<ChatListSearchEntry>], arguments:SearchControllerArguments, pinnedItems:[PinnedItemId], initialSize:NSSize, animated: Bool, target: SearchController.Target) -> TableEntriesTransition<[AppearanceWrapperEntry<ChatListSearchEntry>]> {
+fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry>]?, to:[AppearanceWrapperEntry<ChatListSearchEntry>], arguments:SearchControllerArguments, initialSize:NSSize, animated: Bool, target: SearchController.Target) -> TableEntriesTransition<[AppearanceWrapperEntry<ChatListSearchEntry>]> {
     
     let (deleted, inserted, updated) = proccessEntriesWithoutReverse(from, right: to, { entry -> TableRowItem in
         switch entry.entry {
@@ -499,7 +406,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                 }
             }
             return RecentPeerRowItem(initialSize, peer: foundPeer.peer._asPeer(), account: arguments.context.account, context: arguments.context, stableId: entry.stableId, statusStyle:ControlStyle(font:.normal(.text), foregroundColor: theme.colors.grayText, highlightColor:.white), status: status, borderType: [.Right], contextMenuItems: {
-                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), arguments: arguments, isRecent: false, adPeer: adPeer)
             }, unreadBadge: badge, adPeer: adPeer, removeAd: arguments.removeAd)
         case let .localPeer(renderedPeer, _, secretChat, badge, drawBorder, canAddAsTag, storyStats):
             
@@ -525,7 +432,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: secretChat != nil ? theme.colors.accent : theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: drawBorder, isLookSavedMessage: true, drawLastSeparator: true, canRemoveFromRecent: false, controlAction: {
                 arguments.setPeerAsTag(peer)
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: peer, arguments: arguments, isRecent: false)
             }, unreadBadge: badge, canAddAsTag: canAddAsTag, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, monoforumPeer: chatOrMonoforum)
         case let .topic(item, _, _, _, _):
             return SearchTopicRowItem(initialSize, stableId: entry.stableId, item: item, context: arguments.context)
@@ -556,11 +463,11 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                     arguments.removeRecentPeerId(peer.id)
                 }
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: true)
+                return peerContextMenuItems(peer: peer, arguments: arguments, isRecent: true)
             }, unreadBadge: badge, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, isGrossingApp: isGrossingApp, isRecentApp: isRecentApp, monoforumPeer: chatOrMonoforum)
         case let .savedMessages(peer):
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: true, isLookSavedMessage: true, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: peer, arguments: arguments, isRecent: false)
             })
         case let .separator(text, index, state):
             let right:String?
@@ -833,7 +740,6 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
     private let openPeerDisposable:MetaDisposable = MetaDisposable()
     private let statePromise:Promise<(SeparatorBlockState,SeparatorBlockState)> = Promise((SeparatorBlockState.short, SeparatorBlockState.short))
     private let disposable:MetaDisposable = MetaDisposable()
-    private let pinnedPromise: ValuePromise<[PinnedItemId]> = ValuePromise([], ignoreRepeated: true)
     
     private let isRevealed: ValuePromise<Bool> = ValuePromise(false, ignoreRepeated: true)
     private let isChannelsRevealed: ValuePromise<Bool> = ValuePromise(false, ignoreRepeated: true)
@@ -862,12 +768,6 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
 
     
     public var setPeerAsTag: ((Peer?)->Void)? = nil
-    
-    public var pinnedItems:[PinnedItemId] = [] {
-        didSet {
-            pinnedPromise.set(pinnedItems)
-        }
-    }
     
     public let isLoading = Promise<Bool>(false)
     public private(set) var searchTags: SearchTags?
@@ -1829,11 +1729,11 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         }
         
         
-        let transition = combineLatest(queue: prepareQueue, searchItems, appearanceSignal, context.globalPeerHandler.get() |> distinctUntilChanged, pinnedPromise.get()) |> map { value, appearance, location, pinnedItems in
-            return (value.0.map {AppearanceWrapperEntry(entry: $0, appearance: appearance)}, value.1, value.2 ? nil : location, value.2, pinnedItems, value.3, value.4)
+        let transition = combineLatest(queue: prepareQueue, searchItems, appearanceSignal, context.globalPeerHandler.get() |> distinctUntilChanged) |> map { value, appearance, location in
+            return (value.0.map {AppearanceWrapperEntry(entry: $0, appearance: appearance)}, value.1, value.2 ? nil : location, value.2, value.3, value.4)
         }
-        |> map { entries, loading, location, animated, pinnedItems, searchMessagesState, searchMessagesResult -> (TableUpdateTransition, Bool, ChatLocation?, SearchMessagesState?, SearchMessagesResult?) in
-            let transition = prepareEntries(from: previousSearchItems.swap(entries) , to: entries, arguments: arguments, pinnedItems: pinnedItems, initialSize: atomicSize.modify { $0 }, animated: animated, target: target)
+        |> map { entries, loading, location, animated, searchMessagesState, searchMessagesResult -> (TableUpdateTransition, Bool, ChatLocation?, SearchMessagesState?, SearchMessagesResult?) in
+            let transition = prepareEntries(from: previousSearchItems.swap(entries) , to: entries, arguments: arguments, initialSize: atomicSize.modify { $0 }, animated: animated, target: target)
             return (transition, loading, location, searchMessagesState, searchMessagesResult)
         } |> deliverOnMainQueue
         

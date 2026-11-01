@@ -54,14 +54,6 @@ public final class SearchTabsController<Context: AccountContextProtocol>: Generi
 
     public var clearQuery: (() -> Void)?
 
-    public var pinnedItems: [PinnedItemId] = [] {
-        didSet {
-            for item in section?.sections ?? [] {
-                (item.controller as? SearchController<Context>)?.pinnedItems = pinnedItems
-            }
-        }
-    }
-
     public var isLoading: Signal<Bool, NoError> {
         return loading.get()
     }
@@ -108,7 +100,6 @@ public final class SearchTabsController<Context: AccountContextProtocol>: Generi
                 self?.open(id, messageId: messageId, close: close)
             }, options: tag.searchOptions, frame: rect, target: .common(.root), tags: tag.searchTags(nil, hashtag: nil))
             controller.navigationController = self.navigationController
-            controller.pinnedItems = self.pinnedItems
             controller.setPeerAsTag = { [weak self] peer in
                 self?.clearQuery?()
                 self?.update(peerTag: peer)
