@@ -718,12 +718,24 @@ public final class ChatInteraction : InterfaceObserver  {
             return selectedRange.lowerBound ..< selectedRange.lowerBound
         }
         
-        if selectedRange.lowerBound - 1 >= 0 {
+        if selectedRange.lowerBound - 1 >= 0 && chatTextAttributes(from: text).allSatisfy({ attribute in
+            switch attribute {
+            case .animated, .uid, .url, .date:
+                return true
+            default:
+                return false
+            }
+        }) {
             let attributes = inputText.attributes(at: selectedRange.lowerBound - 1, effectiveRange: nil)
                 .filter { (key, value) in
-                    if value is TextInputTextCustomEmojiAttribute {
+                    switch key {
+                    case TextInputAttributes.customEmoji, TextInputAttributes.embedded:
                         return false
-                    } else {
+                    case TextInputAttributes.textMention, TextInputAttributes.textUrl, TextInputAttributes.formattedDate:
+                        var semanticRange = NSRange()
+                        _ = inputText.attribute(key, at: selectedRange.lowerBound - 1, longestEffectiveRange: &semanticRange, in: inputText.range)
+                        return selectedRange.lowerBound > semanticRange.location && selectedRange.lowerBound < NSMaxRange(semanticRange) && selectedRange.upperBound <= NSMaxRange(semanticRange) && (text.length == 0 || text.attribute(key, at: 0, effectiveRange: nil) == nil)
+                    default:
                         return true
                     }
                 }
