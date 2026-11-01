@@ -103,6 +103,7 @@ func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes:
 @available(macOS 12, *)
 public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: (() -> NSView?)? = nil) {
     let context = chatInteraction.interactionContext
+    chatInteraction.storePendingRichTextDraft?()
 
     // Seed the editor from whatever draft the composer currently holds, consuming the source:
     //   • an existing structural rich draft (the InstantPage preview shown above the input), or
@@ -112,7 +113,7 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
     if let draft = chatInteraction.richTextDraft {
         // Reopen the structural draft WITH its media (text→photo→text round-trips).
         initialDraft = richTextOutgoing(from: draft)
-        chatInteraction.setRichTextDraft(nil)
+        chatInteraction.setRichTextDraft(nil, persist: false)
     } else {
         let inputState = chatInteraction.presentation.effectiveInput
         let composerText = inputState.inputText
@@ -125,7 +126,10 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
         }
     }
 
+    let flushDraft = ActionBox()
+    chatInteraction.storePendingRichTextEditorDraft = { flushDraft.action?() }
     let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, requestScheduleDate: richTextScheduleRequest(chatInteraction: chatInteraction), sendMenuItems: richTextSendMenuItems(chatInteraction: chatInteraction), onCancel: { composed in
+        chatInteraction.storePendingRichTextEditorDraft = nil
         switch composed {
         case let .rich(instantPage):
             chatInteraction.setRichTextDraft(instantPage)
@@ -144,7 +148,10 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
         case .empty:
             chatInteraction.setRichTextDraft(nil)
         }
-    }, send: { text, attributes in
+    }, autosaveDraft: { [weak chatInteraction] page in
+        chatInteraction?.persistRichTextDraft(page)
+    }, flushDraft: flushDraft, send: { text, attributes in
+        chatInteraction.storePendingRichTextEditorDraft = nil
         chatInteraction.setRichTextDraft(nil)
         richTextEnqueue(chatInteraction: chatInteraction, text: text, attributes: attributes)
     })
@@ -156,7 +163,10 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
 @available(macOS 12, *)
 private func composerEditorController(chatInteraction: ChatInteraction, initialDocument: Document?, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])?) -> InputDataModalController {
     let context = chatInteraction.interactionContext
+    let flushDraft = ActionBox()
+    chatInteraction.storePendingRichTextEditorDraft = { flushDraft.action?() }
     let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, requestScheduleDate: richTextScheduleRequest(chatInteraction: chatInteraction), sendMenuItems: richTextSendMenuItems(chatInteraction: chatInteraction), onCancel: { composed in
+        chatInteraction.storePendingRichTextEditorDraft = nil
         switch composed {
         case let .rich(instantPage):
             chatInteraction.setRichTextDraft(instantPage)
@@ -172,7 +182,10 @@ private func composerEditorController(chatInteraction: ChatInteraction, initialD
         case .empty:
             chatInteraction.setRichTextDraft(nil)
         }
-    }, send: { text, attributes in
+    }, autosaveDraft: { [weak chatInteraction] page in
+        chatInteraction?.persistRichTextDraft(page)
+    }, flushDraft: flushDraft, send: { text, attributes in
+        chatInteraction.storePendingRichTextEditorDraft = nil
         chatInteraction.setRichTextDraft(nil)
         richTextEnqueue(chatInteraction: chatInteraction, text: text, attributes: attributes)
     })
@@ -277,7 +290,7 @@ private func richTextEditorEntries(_ state: RichTextEditorState, coordinator: Ri
 }
 
 @available(macOS 12, *)
-public func RichTextEditorController(context: any AccountContextProtocol, initialDocument: Document? = nil, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])? = nil, isEditing: Bool = false, requestScheduleDate: ((@escaping (Date, Int32?) -> Void) -> Void)? = nil, sendMenuItems: ((@escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]?)? = nil, onDeleteMessage: (() -> Void)? = nil, onCancel: ((ComposedRichMessage) -> Void)? = nil, send: @escaping (_ text: String, _ attributes: [MessageAttribute]) -> Void) -> InputDataModalController {
+public func RichTextEditorController(context: any AccountContextProtocol, initialDocument: Document? = nil, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])? = nil, isEditing: Bool = false, requestScheduleDate: ((@escaping (Date, Int32?) -> Void) -> Void)? = nil, sendMenuItems: ((@escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]?)? = nil, onDeleteMessage: (() -> Void)? = nil, onCancel: ((ComposedRichMessage) -> Void)? = nil, autosaveDraft: ((InstantPage?) -> Void)? = nil, flushDraft: ActionBox? = nil, send: @escaping (_ text: String, _ attributes: [MessageAttribute]) -> Void) -> InputDataModalController {
     let coordinator = RichTextEditorCoordinator(context: context)
     coordinator.editor.withPasteContext = { paste in
         paste()
@@ -306,6 +319,23 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
         }
         return false
     }
+    let autosaveDisposable = MetaDisposable()
+    var lastAutosavedPage: InstantPage? = initialDraft.flatMap { richTextInstantPage(from: $0.blocks, media: $0.media) }
+    var awaitsInitialDraft = initialDraft != nil
+    let storeDraftNow: () -> Void = { [weak coordinator] in
+        autosaveDisposable.set(nil)
+        guard let autosaveDraft, let coordinator, !didSend, !isClosed, !awaitsInitialDraft, !contentNeedsPremium() else {
+            return
+        }
+        let outgoing = coordinator.editor.outgoingBlocks()
+        let page = richTextOutgoingHasContent(outgoing) ? richTextInstantPage(from: outgoing, media: coordinator.pickedMedia) : nil
+        guard page != lastAutosavedPage else {
+            return
+        }
+        lastAutosavedPage = page
+        autosaveDraft(page)
+    }
+    flushDraft?.action = storeDraftNow
     // Assigned once `updateState` exists below; pushes the toast's reserved height into the entries state.
     var applyPremiumToastReserve: ((CGFloat) -> Void)? = nil
     let updatePremiumGate: () -> Void = { [weak coordinator] in
@@ -432,7 +462,12 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
             controller.tableView.addSubview(toast)
             premiumToastView = toast
         }
-        coordinator.editor.onFormatStateChange = { updatePremiumGate() }
+        coordinator.editor.onFormatStateChange = {
+            updatePremiumGate()
+            if autosaveDraft != nil {
+                autosaveDisposable.set((Signal<Void, NoError>.single(Void()) |> delay(0.5, queue: .mainQueue())).start(completed: storeDraftNow))
+            }
+        }
         updatePremiumGate()
         // A media-bearing draft is seeded here (its async image loads need the laid-out editor); a plain
         // document was already seeded + pre-measured at creation (didSeedInitial), so it is NOT re-seeded —
@@ -441,6 +476,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
         if !didSeedInitial, let initialDraft = initialDraft {
             didSeedInitial = true
             coordinator.seedDraft(blocks: initialDraft.blocks, media: initialDraft.media)
+            awaitsInitialDraft = false
         }
         if !didPositionInitialCaret {
             didPositionInitialCaret = true
@@ -468,6 +504,8 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
     }
     controller.willDisappear = { controller in
         isClosed = true
+        autosaveDisposable.set(nil)
+        flushDraft?.action = nil
         controller.window?.removeAllHandlers(for: controller)
         // Dismissed without sending → hand the editor's composed content back to the caller (chat composer):
         // a structural InstantPage becomes a rich draft, plain text returns to the input.
