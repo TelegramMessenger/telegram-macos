@@ -713,7 +713,11 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     }
 
     fileprivate var expandedAvatarHeight: CGFloat {
-        return floor(blockWidth * 0.75)
+        let height = floor(blockWidth * 0.75)
+        if let tableHeight = table?.frame.height, tableHeight > 0 {
+            return min(height, floor(tableHeight * 0.6))
+        }
+        return height
     }
 
     fileprivate var effectiveNameLayout: TextViewLayout {
@@ -1606,7 +1610,8 @@ private final class SpawnGiftsView: View {
             let relative = effectivePosition.relativeCartesian
             let absolutePosition = CGPoint(x: avatarCenter.x + relative.x, y: avatarCenter.y + relative.y)
 
-            iconTransition.updateFrame(layer: iconLayer, frame: iconSize.centered(around: absolutePosition))
+            iconLayer.bounds = CGRect(origin: .zero, size: iconSize)
+            iconLayer.position = absolutePosition
             iconTransition.updateTransformScale(layer: iconLayer, scale: iconPosition.scale * (1.0 - itemScaleFraction))
             iconTransition.updateAlpha(layer: iconLayer, alpha: self.scheduledAnimateIn ? 0 : 1.0 - itemScaleFraction)
             
@@ -1661,7 +1666,6 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     private var expandedClipView: View?
     private var collapsingClipView: View?
     private var expandedBlurView: View?
-    private var isScrollCollapsing = false
     private let expandedBlurDisposable = MetaDisposable()
     private var expandedShadeView: ExpandedAvatarShadeView?
     private var liveStreamView: ImageView?
@@ -1792,18 +1796,35 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     }
     
     private var isTogglingAvatar = false
+    private var avatarGestureStartOffset: CGFloat?
+    private var avatarGestureDidExpand = false
+    private var avatarGestureDidCollapse = false
+    private var avatarGestureCollapseBaseline: CGFloat?
+    private var avatarGestureHorizontal = false
+    private var avatarPullProgress: CGFloat = 0
+    private let avatarPullDistance: CGFloat = 12
+    private var avatarGestureObservers: [NSObjectProtocol] = []
+    private weak var avatarGestureTable: TableView?
+    private weak var avatarScrollHandlerWindow: Window?
 
-    private func setAvatarExpanded(_ expanded: Bool, animated: Bool = true) {
+    private func setAvatarExpanded(_ expanded: Bool) {
         guard !isTogglingAvatar, let item = self.item as? PeerInfoHeadItem<Context>, item.isAvatarExpanded != expanded else {
             return
         }
         isTogglingAvatar = true
         item.isAvatarExpanded = expanded
-        item.noteHeightOfRow(animated: animated)
-        delay(animated ? 0.35 : 0.1) { [weak self] in
+        item.noteHeightOfRow(animated: true)
+        delay(0.35) { [weak self] in
             self?.isTogglingAvatar = false
             self?.updateSpawnerFraction()
         }
+    }
+
+    private func updateCollapsedPhotoVisibility() {
+        guard let item = self.item as? PeerInfoHeadItem<Context> else {
+            return
+        }
+        photoView.isHidden = item.isTopic || (item.isAvatarExpanded && expandedPhotoView?.hasImage == true)
     }
 
     private func collapsedPhotoCornerRadius(_ item: PeerInfoHeadItem<Context>) -> CGFloat {
@@ -1851,6 +1872,9 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
                 } else {
                     reference = .standalone(media: image)
                 }
+                photoView.imageUpdated = { [weak self] _ in
+                    self?.updateCollapsedPhotoVisibility()
+                }
                 photoView.setSignal(chatMessagePhoto(account: item.context.account, imageReference: reference, scale: backingScaleFactor))
 
                 blurView.layer?.contents = nil
@@ -1886,12 +1910,10 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             if let clipView = self.expandedClipView {
                 self.expandedClipView = nil
                 self.expandedPhotoView = nil
-                if animated || isScrollCollapsing {
+                if animated {
                     self.collapsingClipView = clipView
-                    if !isScrollCollapsing {
-                        clipView.layer?.animate(from: NSNumber(value: 0), to: NSNumber(value: Float(circleRadius)), keyPath: "cornerRadius", timingFunction: .easeOut, duration: 0.25)
-                        clipView.layer?.cornerRadius = circleRadius
-                    }
+                    clipView.layer?.animate(from: NSNumber(value: 0), to: NSNumber(value: Float(circleRadius)), keyPath: "cornerRadius", timingFunction: .easeOut, duration: 0.25)
+                    clipView.layer?.cornerRadius = circleRadius
                     delay(0.3) { [weak self, weak clipView] in
                         clipView?.removeFromSuperview()
                         if self?.collapsingClipView === clipView {
@@ -1920,35 +1942,8 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
 
     private func updateSpawnerFraction() {
         if let item = self.item as? PeerInfoHeadItem<Context>, let table = item.table {
-            if item.isAvatarExpanded, !isTogglingAvatar, table.documentOffset.y > 30 {
-                let heightBefore = item.height
-                let morphView = expandedClipView
-                let morphStart = morphView.map { photoContainer.convert($0.frame, to: self) }
-                isScrollCollapsing = true
-                setAvatarExpanded(false, animated: false)
-                isScrollCollapsing = false
-                let delta = heightBefore - item.height
-                var scrolledBack: CGFloat = 0
-                if delta > 0 {
-                    let offset = table.documentOffset
-                    scrolledBack = min(offset.y, delta)
-                    table.clipView.scroll(to: NSMakePoint(offset.x, offset.y - scrolledBack))
-                }
-                if let morphView, var start = morphStart {
-                    start.origin.y -= scrolledBack
-                    morphView.frame = photoContainer.convert(start, from: self)
-                    let photoView = morphView.subviews.first
-                    photoView?.frame = morphView.bounds
-                    let target = photoContainer.bounds
-                    let morphTransition: ContainedViewLayoutTransition = .animated(duration: 0.3, curve: .easeOut)
-                    morphTransition.updateFrame(view: morphView, frame: target)
-                    if let photoView {
-                        morphTransition.updateFrame(view: photoView, frame: target.size.bounds)
-                    }
-                    let radius = collapsedPhotoCornerRadius(item)
-                    morphView.layer?.animate(from: NSNumber(value: 0), to: NSNumber(value: Float(radius)), keyPath: "cornerRadius", timingFunction: .easeOut, duration: 0.3)
-                    morphView.layer?.cornerRadius = radius
-                }
+            if item.isAvatarExpanded, !isTogglingAvatar, !table.liveScrolling, table.documentOffset.y > 30 {
+                setAvatarExpanded(false)
             }
             let position = table.scrollPosition().current
             let y = position.rect.minY - table.frame.height
@@ -1959,15 +1954,15 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             self.emojiSpawn?.fraction = fraction
             self.uniqueBackground?.patternTransitionFraction = photoFraction
             
+            var scale = 1 + avatarPullProgress * 0.15
+            if self.emojiSpawn != nil || self.uniqueBackground != nil, !item.isAvatarExpanded {
+                scale *= 1 - photoFraction
+            }
             var tr = CATransform3DIdentity
             tr = CATransform3DTranslate(tr, photoContainer.frame.width / 2, photoContainer.frame.height / 2, 0)
-            tr = CATransform3DScale(tr,  1 - photoFraction,  1 - photoFraction, 1)
+            tr = CATransform3DScale(tr, scale, scale, 1)
             tr = CATransform3DTranslate(tr, -photoContainer.frame.width / 2, -photoContainer.frame.height / 2, 0)
-            if self.emojiSpawn != nil || self.uniqueBackground != nil, !item.isAvatarExpanded {
-                photoContainer.layer?.transform = tr
-            } else {
-                photoContainer.layer?.transform = CATransform3DIdentity
-            }
+            photoContainer.layer?.transform = scale == 1 ? CATransform3DIdentity : tr
             if let peer = item.peer, let giftsContext = item.giftsContext {
                 spawnGiftsView.update(context: item.context, giftsContext: giftsContext, peer: .init(peer), transition: .immediate, avatarTransitionFraction: photoFraction)
             }
@@ -2052,10 +2047,104 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         updateListeners()
         updatePlayerIfNeeded()
         updateAnimatableContent()
-        installAvatarScrollHandlerIfNeeded()
     }
 
-    private weak var avatarScrollHandlerWindow: Window?
+    private func avatarGestureStarted() {
+        let offset = (self.item as? PeerInfoHeadItem<Context>)?.table?.documentOffset.y
+        avatarGestureStartOffset = offset
+        avatarGestureDidExpand = false
+        avatarGestureDidCollapse = false
+        avatarGestureCollapseBaseline = nil
+    }
+
+    private func avatarGestureChanged() {
+        guard let startOffset = avatarGestureStartOffset, let item = self.item as? PeerInfoHeadItem<Context>, let table = item.table else {
+            return
+        }
+        let offset = table.documentOffset.y
+        if avatarGestureDidCollapse, offset > 30 {
+            avatarGestureDidCollapse = false
+            avatarGestureDidExpand = false
+            avatarGestureCollapseBaseline = nil
+        }
+        guard !avatarGestureDidCollapse, !isTogglingAvatar, !avatarGestureHorizontal else {
+            return
+        }
+        if item.isAvatarExpanded {
+            if avatarGestureDidExpand {
+                guard let baseline = avatarGestureCollapseBaseline else {
+                    avatarGestureCollapseBaseline = offset
+                    return
+                }
+                if offset - baseline > 30 {
+                    toggleAvatarByGesture(false)
+                }
+            } else if offset - max(startOffset, 0) > 4 {
+                toggleAvatarByGesture(false)
+            }
+        } else if !avatarGestureDidExpand, item.canExpandAvatar {
+            let progress = min(max(-offset / avatarPullDistance, 0), 1)
+            if progress >= 1 {
+                toggleAvatarByGesture(true)
+            } else if progress != avatarPullProgress {
+                avatarPullProgress = progress
+                updateSpawnerFraction()
+            }
+        }
+    }
+
+    private func avatarGestureEnded() {
+        avatarGestureStartOffset = nil
+        resetAvatarPull(animated: true)
+    }
+
+    private func toggleAvatarByGesture(_ expanded: Bool) {
+        if expanded {
+            avatarGestureDidExpand = true
+        } else {
+            avatarGestureDidCollapse = true
+        }
+        resetAvatarPull(animated: false)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .drawCompleted)
+        setAvatarExpanded(expanded)
+    }
+
+    private func resetAvatarPull(animated: Bool) {
+        guard avatarPullProgress > 0 else {
+            return
+        }
+        let scale = 1 + avatarPullProgress * 0.15
+        avatarPullProgress = 0
+        updateSpawnerFraction()
+        if animated {
+            photoContainer.layer?.animateScaleCenter(from: scale, to: 1, duration: 0.2, timingFunction: .easeOut)
+        }
+    }
+
+    private func updateAvatarGestureObservers() {
+        let table = item?.table
+        if table === avatarGestureTable, !avatarGestureObservers.isEmpty {
+            return
+        }
+        removeAvatarGestureObservers()
+        guard let table else {
+            return
+        }
+        avatarGestureTable = table
+        table.verticalScrollElasticity = .allowed
+        let center = NotificationCenter.default
+        avatarGestureObservers = [
+            center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: table, queue: nil, using: { [weak self] _ in
+                self?.avatarGestureStarted()
+            }),
+            center.addObserver(forName: NSScrollView.didLiveScrollNotification, object: table, queue: nil, using: { [weak self] _ in
+                self?.avatarGestureChanged()
+            }),
+            center.addObserver(forName: NSScrollView.didEndLiveScrollNotification, object: table, queue: nil, using: { [weak self] _ in
+                self?.avatarGestureEnded()
+            })
+        ]
+    }
 
     private func installAvatarScrollHandlerIfNeeded() {
         guard let window = self.window as? Window, avatarScrollHandlerWindow !== window else {
@@ -2063,29 +2152,39 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         }
         avatarScrollHandlerWindow = window
         window.set(mouseHandler: { [weak self] event in
-            guard let self, let window = self.window, let item = self.item as? PeerInfoHeadItem<Context>, let table = item.table, item.canExpandAvatar, event.momentumPhase.isEmpty else {
+            guard let self, let item = self.item as? PeerInfoHeadItem<Context>, let table = item.table else {
                 return .rejected
             }
             let point = table.convert(event.locationInWindow, from: nil)
             guard NSPointInRect(point, table.bounds), let contentView = window.contentView, let hit = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil)), hit.isDescendant(of: table) else {
                 return .rejected
             }
-            let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
-            let deltaY = event.scrollingDeltaY * scale
-            guard abs(deltaY) > abs(event.scrollingDeltaX * scale) else {
+            if event.phase == .began {
+                self.avatarGestureHorizontal = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+                self.avatarGestureStarted()
+            }
+            guard !event.hasPreciseScrollingDeltas, abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX), item.canExpandAvatar else {
                 return .rejected
             }
-            if !item.isAvatarExpanded {
-                if deltaY > 4, table.documentOffset.y <= 0 {
-                    self.setAvatarExpanded(true)
+            if item.isAvatarExpanded {
+                if event.scrollingDeltaY < 0 {
+                    self.setAvatarExpanded(false)
                 }
-            } else if deltaY < -4 {
-                self.setAvatarExpanded(false)
+            } else if event.scrollingDeltaY > 0, table.documentOffset.y <= 0 {
+                self.setAvatarExpanded(true)
             }
             return .rejected
         }, with: self, for: .scrollWheel, priority: .low)
     }
-    
+
+    private func removeAvatarGestureObservers() {
+        for observer in avatarGestureObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        avatarGestureObservers = []
+        avatarGestureTable = nil
+    }
+
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         updateListeners()
@@ -2105,6 +2204,8 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         } else {
             removeNotificationListeners()
         }
+        updateAvatarGestureObservers()
+        installAvatarScrollHandlerIfNeeded()
     }
     
     func removeNotificationListeners() {
@@ -2113,6 +2214,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     
     deinit {
         removeNotificationListeners()
+        removeAvatarGestureObservers()
         expandedBlurDisposable.dispose()
     }
     
@@ -2134,11 +2236,12 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
 
+        let collapsedPhotoFrame = NSMakeRect(floorToScreenPixels(backingScaleFactor, (containerView.frame.width - 120) / 2), 20, 120, 120)
         let photoContainerFrame: NSRect
         if item.isAvatarExpanded {
             photoContainerFrame = NSMakeRect(0, 0, containerView.frame.width, item.expandedAvatarHeight)
         } else {
-            photoContainerFrame = NSMakeRect(floorToScreenPixels(backingScaleFactor, (containerView.frame.width - 120) / 2), 20, 120, 120)
+            photoContainerFrame = collapsedPhotoFrame
         }
         transition.updateFrame(view: photoContainer, frame: photoContainerFrame)
         let photoDimensions = item.peer?.largeProfileImage?.dimensions.size ?? NSMakeSize(640, 640)
@@ -2155,7 +2258,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
                 photoView.set(arguments: TransformImageArguments(corners: ImageCorners(), imageSize: fitted, boundingSize: fitted, intrinsicInsets: NSEdgeInsets()))
             }
         }
-        if let clipView = collapsingClipView, !isScrollCollapsing {
+        if let clipView = collapsingClipView {
             let bounds = photoContainerFrame.size.bounds
             transition.updateFrame(view: clipView, frame: bounds)
             if let photoView = clipView.subviews.first as? TransformImageView {
@@ -2170,8 +2273,8 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         if let uniqueBackground, let content = uniqueBackgroundContent {
             let backgroundFrame = NSRect(x: 0, y: -110, width: containerView.frame.width, height: containerView.frame.height + 110)
             transition.updateFrame(view: uniqueBackground, frame: backgroundFrame)
-            let avatarCenter = NSMakePoint(backgroundFrame.width / 2, photoContainer.frame.midY - backgroundFrame.minY)
-            uniqueBackground.update(context: item.context, content: content, style: .profile(avatarCenter: avatarCenter, avatarSize: photoContainer.frame.width, defaultHeight: containerView.frame.height, gradientCenter: NSMakePoint(0.5, 0.45)))
+            let avatarCenter = NSMakePoint(backgroundFrame.width / 2, collapsedPhotoFrame.midY - backgroundFrame.minY)
+            uniqueBackground.update(context: item.context, content: content, style: .profile(avatarCenter: avatarCenter, avatarSize: collapsedPhotoFrame.width, defaultHeight: containerView.frame.height, gradientCenter: NSMakePoint(0.5, 0.45)))
         }
         transition.updateFrame(view: photoView, frame: photoView.centerFrame())
         if let editable = photoEditableView {
@@ -2422,7 +2525,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
 
         updatePhoto(item, animated: animated)
         
-        photoView.isHidden = item.isTopic || item.isAvatarExpanded
+        updateCollapsedPhotoVisibility()
         photoContainer.setAccessibilityLabel(strings().voiceOverCommonPhotoOf(item.effectivePeer?.displayTitle ?? item.nameLayout.attributedString.string))
 
         if !item.photos.isEmpty {
