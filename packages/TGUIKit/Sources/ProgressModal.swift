@@ -313,6 +313,14 @@ private final class TextAndLabelModalView : View {
         glassView.customTint = theme.colors.background.withAlphaComponent(0.9)
         super.updateLocalizationAndTheme(theme: theme)
 
+        layer?.masksToBounds = theme.colors.isDark
+        layer?.shadowColor = theme.colors.text.cgColor
+        layer?.shadowOpacity = theme.colors.isDark ? 0 : 0.12
+        layer?.shadowRadius = 8
+        layer?.shadowOffset = NSMakeSize(0, -2)
+        overlay.layer?.borderColor = theme.colors.text.withAlphaComponent(0.12).cgColor
+        overlay.layer?.borderWidth = theme.colors.isDark ? 0 : System.pixel
+
         if let content = content {
             _ = update(text: content.text, title: content.title, button: content.button, callback: content.callback, maxSize: content.maxSize)
         }
@@ -410,7 +418,9 @@ private final class TextAndLabelModalView : View {
         super.layout()
         let radius = min(bounds.height / 2, 20)
         layer?.cornerRadius = radius
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
         overlay.frame = bounds
+        overlay.layer?.cornerRadius = radius
         glassView.frame = bounds
         glassView.cornerRadius = radius
 
