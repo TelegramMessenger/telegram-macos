@@ -134,8 +134,8 @@ private final class SVideoPipControls : Control {
             playOrPause.setAccessibilityLabel(strings().voiceOverMediaPlaybackPause)
             progress.set(progress: status.duration == 0 ? 0 : CGFloat(status.timestamp / status.duration), animated: animated, duration: status.duration, beginTime: status.generationTimestamp, offset: status.timestamp, speed: Float(status.baseRate), seekId: status.seekId)
         case .paused:
-            playOrPause.set(image: status.generationTimestamp == 0 ? theme.icons.gallery_pip_pause : theme.icons.videoPlayerPlay, for: .Normal)
-            playOrPause.setAccessibilityLabel(status.generationTimestamp == 0 ? strings().voiceOverMediaPlaybackPause : strings().voiceOverMediaPlaybackPlay)
+            playOrPause.set(image: theme.icons.gallery_pip_play, for: .Normal)
+            playOrPause.setAccessibilityLabel(strings().voiceOverMediaPlaybackPlay)
             progress.set(progress: status.duration == 0 ? 0 : CGFloat(status.timestamp / status.duration), animated: false)
         case let .buffering(_, whilePlaying):
             playOrPause.set(image: whilePlaying ? theme.icons.gallery_pip_pause : theme.icons.gallery_pip_play, for: .Normal)
@@ -838,8 +838,8 @@ private final class SVideoControlsView : Control {
             playOrPause.setAccessibilityLabel(strings().voiceOverMediaPlaybackPause)
             progress.set(progress: status.duration == 0 ? 0 : CGFloat(status.timestamp / status.duration), animated: animated, duration: status.duration, beginTime: status.generationTimestamp, offset: status.timestamp, speed: Float(status.baseRate), seekId: status.seekId)
         case .paused:
-            playOrPause.set(image: status.generationTimestamp == 0 ? theme.icons.videoPlayerPause : theme.icons.videoPlayerPlay, for: .Normal)
-            playOrPause.setAccessibilityLabel(status.generationTimestamp == 0 ? strings().voiceOverMediaPlaybackPause : strings().voiceOverMediaPlaybackPlay)
+            playOrPause.set(image: theme.icons.videoPlayerPlay, for: .Normal)
+            playOrPause.setAccessibilityLabel(strings().voiceOverMediaPlaybackPlay)
             progress.set(progress: status.duration == 0 ? 0 : CGFloat(status.timestamp / status.duration), animated: false)
         case let .buffering(_, whilePlaying):
             playOrPause.set(image: whilePlaying ? theme.icons.videoPlayerPause : theme.icons.videoPlayerPlay, for: .Normal)
