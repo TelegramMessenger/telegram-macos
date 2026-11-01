@@ -178,13 +178,14 @@ private func segments(_ emoji: [EmojiSegment : [String]], skinModifiers: [EmojiS
     var segments:[EmojiSegment:[[NSAttributedString]]] = [:]
     for (key,list) in emoji {
         let items = list.map { emoji -> NSAttributedString in
+            if key == .Recent {
+                let attributed = NSMutableAttributedString(attributedString: .initialize(string: emoji, font: .normal(26.0)))
+                attributed.addAttribute(recentEmojiSourceKey, value: emoji, range: NSRange(location: 0, length: attributed.length))
+                return attributed
+            }
             let unmodified = emoji.emojiUnmodified
             let value = skinModifiers.first(where: { $0.emoji == unmodified }).map { unmodified.emojiWithSkinModifier($0.modifier) } ?? emoji
-            let attributed = NSMutableAttributedString(attributedString: .initialize(string: value.normalizedEmoji, font: .normal(26.0)))
-            if key == .Recent {
-                attributed.addAttribute(recentEmojiSourceKey, value: emoji, range: NSRange(location: 0, length: attributed.length))
-            }
-            return attributed
+            return .initialize(string: value.normalizedEmoji, font: .normal(26.0))
         }
         let lines = stride(from: 0, to: items.count, by: 8).map {
             Array(items[$0 ..< min($0 + 8, items.count)])

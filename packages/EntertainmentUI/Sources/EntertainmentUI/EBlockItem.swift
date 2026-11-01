@@ -74,16 +74,17 @@ public class EBlockItem: TableRowItem {
         let postbox = self.account.postbox
         if let view = self.view as? EBlockRowView, let selectedEmoji = view.emoji(at: location) {
             let emoji = selectedEmoji.string.emojiUnmodified
+            let source = selectedEmoji.attribute(recentEmojiSourceKey, at: 0, effectiveRange: nil) as? String ?? selectedEmoji.string
             if emoji.canHaveSkinToneModifier {
+                let recentEmoji = removeRecent != nil ? source : nil
                 items.append(EmojiToleranceContextMenuItem(emoji: emoji, callback: { value in
-                    _ = modifySkinEmoji(emoji, modifier: value, postbox: postbox).start()
+                    _ = modifySkinEmoji(emoji, modifier: value, recentEmoji: recentEmoji, postbox: postbox).start()
                 }))
             }
             if let removeRecent = removeRecent {
                 if !items.isEmpty {
                     items.append(ContextSeparatorItem())
                 }
-                let source = selectedEmoji.attribute(recentEmojiSourceKey, at: 0, effectiveRange: nil) as? String ?? selectedEmoji.string
                 items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
                     removeRecent(source)
                 }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
