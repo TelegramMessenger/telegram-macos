@@ -283,7 +283,8 @@ public class GalleryViewer: NSResponder {
         self.cachedPeerData = cachedPeerData
         self.reversed = reversed
         self.contentInteractions = contentInteractions
-        if let screen = NSScreen.main {
+        let galleryScreen = context.window.screen ?? NSScreen.main
+        if let screen = galleryScreen {
             let bounds = NSMakeRect(0, 0, screen.frame.width, screen.frame.height)
             self.window = Window(contentRect: bounds, styleMask: [.borderless], backing: .buffered, defer: false, screen: screen)
             self.window.contentView?.wantsLayer = true
@@ -492,8 +493,25 @@ public class GalleryViewer: NSResponder {
     
     
     @objc open func windowDidResignKey() {
+      // Keep system focus behavior intact to avoid stuck key-window state across displays.
+    }
+
+    /// Brings the viewer window back in front of the app window. Called from
+    /// AppDelegate when the application becomes active or is reopened.
+    public func restoreKeyWindow() {
         self.window.makeKeyAndOrderFront(self)
-      //  window.makeFirstResponder(self)
+    }
+
+    @objc private func screenParametersDidChange() {
+        guard self.window.isVisible else {
+            return
+        }
+        guard let appScreen = self.context.window.screen, let viewerScreen = self.window.screen else {
+            return
+        }
+        if appScreen != viewerScreen {
+            self.close(false)
+        }
     }
     
     public var pagerSize: NSSize {
@@ -1664,6 +1682,7 @@ public class GalleryViewer: NSResponder {
         NotificationCenter.default.removeObserver(self)
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidBecomeKey), name: NSWindow.didBecomeKeyNotification, object: window)
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidResignKey), name: NSWindow.didResignKeyNotification, object: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(screenParametersDidChange), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         context.window.resignFirstResponder()
         self.window.makeKeyAndOrderFront(nil)
         //window.makeFirstResponder(self)
