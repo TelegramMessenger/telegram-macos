@@ -18,7 +18,7 @@
   "configuration": "Debug, macOS arm64, Xcode 27.2",
   "date": "2026-11-01",
   "developmentSignatureVerification": "passed",
-  "finalDevelopmentAppRelaunch": "Blocked by the Mac locking; the preceding signed build passed live System accent verification.",
+  "finalDevelopmentAppRelaunch": "Passed: the final signed development build was quit, relaunched, loaded the account UI and opened Settings successfully.",
   "measurementNotes": [
     "The baseline reproduces the previous downloaded-theme preparation algorithm using the current palette primitives.",
     "Both paths use the same 32 synthetic downloaded themes and 20 presentation changes.",
