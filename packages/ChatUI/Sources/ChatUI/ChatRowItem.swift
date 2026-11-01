@@ -4272,7 +4272,7 @@ public class ChatRowItem: TableRowItem {
                 let rect = NSMakeRect(0, 0, w_width, 40 + 20 + (aboveLayout != nil ? aboveLayout!.layoutSize.height + 4 : 0))
                 
                 
-                let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+                let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
                 panel._canBecomeMain = false
                 panel._canBecomeKey = false
                 panel.level = .popUpMenu
@@ -4282,6 +4282,7 @@ public class ChatRowItem: TableRowItem {
                 
 
                 let reveal:((ContextAddReactionsListView & StickerFramesCollector)->Void)?
+                let prepareReveal: (() -> Void)?
                 
                 
                 var selectedItems: [ChatHistoryEmojiSelectedItem] = []
@@ -4304,7 +4305,11 @@ public class ChatRowItem: TableRowItem {
                 let orderedTagItems: [RecentReactionItem]? = isTags ? reactions : nil
 
                 if accessToAll {
-                    reveal = { view in
+                    var preparedWindow: ChatHistoryReactionsWindow?
+                    let prepareWindow: () -> ChatHistoryReactionsWindow = {
+                        if let preparedWindow {
+                            return preparedWindow
+                        }
                         let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
                             guard isTags || canApplyReaction() else { return }
                             let parsedFile = sticker.file._parse()
@@ -4344,12 +4349,19 @@ public class ChatRowItem: TableRowItem {
                         }, isTags ? nil : { sticker, fromRect in
                             react(sticker, fromRect, true)
                         })
-//                        let transition = ContainedViewLayoutTransition.animated(duration: 0.2, curve: .easeOut)
-//                        transition.updateFrame(view: view, frame: CGRect(origin: view.frame.origin, size: NSMakeSize(view.frame.width, 60)))
-//                        view.updateLayout(size: view.frame.size, transition: transition)
+                        preparedWindow = window
+                        return window
+                    }
+                    prepareReveal = {
+                        _ = prepareWindow()
+                    }
+                    reveal = { view in
+                        let window = prepareWindow()
+                        preparedWindow = nil
                         window.showChatHistoryReactions(view)
                     }
                 } else {
+                    prepareReveal = nil
                     reveal = nil
                 }
                 
@@ -4369,8 +4381,8 @@ public class ChatRowItem: TableRowItem {
                     guard isTags || canApplyReaction() else { return }
                     applyReaction(value.toUpdate(), fromRect, true)
                 }, radiusLayer: nil, revealReactions: reveal, aboveText: aboveLayout, message: message)
-                
-                
+                view.prepareReveal = prepareReveal
+
                 panel.contentView?.addSubview(view)
                 panel.contentView?.wantsLayer = true
                 view.autoresizingMask = [.width, .height]

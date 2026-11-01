@@ -20,7 +20,7 @@ import InlineStickerLayer
 
 private let largeReactionHoldDuration: Double = 0.8
 
-public final class ContextAddReactionsListView : View, StickerFramesCollector  {
+public final class ContextAddReactionsListView : View, StickerFramesCollector, AppMenuCursorAppearance  {
     
     
     private final class ReactionView : Control {
@@ -36,7 +36,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         private var selectAnimationData: Data?
         private var currentKey: String?
         
-        private var selectionView : View?
+        private var selectionView : NSView?
         private let presentation: TelegramPresentationTheme
         
         private var starEffect: StarsButtonEffectLayer?
@@ -206,11 +206,25 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             
             
             if reaction.isSelected {
-                let view = View()
+                let size = ContextAddReactionsListView.showMoreSize
+                let view: NSView
+                if TelegramUtilsHooks.shared.isLite(.blur) {
+                    let solid = View()
+                    solid.backgroundColor = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
+                    view = solid
+                } else {
+                    let frost = NSVisualEffectView()
+                    frost.wantsLayer = true
+                    frost.material = .selection
+                    frost.blendingMode = .withinWindow
+                    frost.state = .active
+                    frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+                    frost.layer?.masksToBounds = true
+                    view = frost
+                }
                 self.selectionView = view
-                view.frame = NSMakeRect(0, 0, 34, 34)
-                view.layer?.cornerRadius = view.frame.height / 2
-                view.backgroundColor = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
+                view.frame = NSMakeRect(0, 0, size, size)
+                view.layer?.cornerRadius = size / 2
                 self.addSubview(view, positioned: .below, relativeTo: self.subviews.first)
                 
                 if case .custom = reaction.value {
@@ -366,11 +380,27 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     public class ShowMore : Control {
         private let imageView = ImageView()
         private var loadingViews: [ImageView] = []
+        private let frost = NSVisualEffectView()
+        var onEnter: (() -> Void)?
+        public override func mouseEntered(with event: NSEvent) {
+            super.mouseEntered(with: event)
+            onEnter?()
+        }
         public required init(frame frameRect: NSRect, theme: TelegramPresentationTheme) {
             super.init(frame: frameRect)
-            self.backgroundColor = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
             self.scaleOnClick = true
             self.layer?.cornerRadius = frameRect.height / 2
+            if TelegramUtilsHooks.shared.isLite(.blur) {
+                self.backgroundColor = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
+            } else {
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+                frost.layer?.masksToBounds = true
+                addSubview(frost)
+            }
             addSubview(self.imageView)
             self.imageView.isAccessibilityDecorative = true
             self.setAccessibilityLabel(strings().voiceOverCommonMore)
@@ -380,6 +410,9 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         public override func layout() {
             super.layout()
+            frost.frame = bounds
+            frost.layer?.cornerRadius = bounds.height / 2
+            layer?.cornerRadius = bounds.height / 2
             imageView.center()
             for view in loadingViews {
                 view.frame = imageView.frame
@@ -443,12 +476,15 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
 
     private let backgroundView = View()
     private let visualEffect = NSVisualEffectView(frame: .zero)
+    private var glassContainer: NSView?
+    private var glassShapes: [NSView] = []
     private let radiusLayer: CGFloat?
     
     private var aboveTextView: TextView?
     
     private let showMore: ShowMore
     private let revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)?
+    public var prepareReveal: (() -> Void)?
     
     private let maskLayer = SimpleShapeLayer()
     private let backgroundColorView = View()
@@ -458,7 +494,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     private let aboveText: TextViewLayout?
     public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
         self.list = list
-        self.showMore = ShowMore(frame: NSMakeRect(0, 0, 34, 34), theme: presentation)
+        self.showMore = ShowMore(frame: NSMakeRect(0, 0, ContextAddReactionsListView.showMoreSize, ContextAddReactionsListView.showMoreSize), theme: presentation)
         self.revealReactions = revealReactions
         self.radiusLayer = radiusLayer
         self.presentation = presentation
@@ -469,6 +505,23 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         let theme = presentation
         
+        if #available(macOS 26.0, *), System.liquidGlass, System.liquidGlassAvailable, !TelegramUtilsHooks.shared.isLite(.blur) {
+            let container = FlippedGlassEffectContainerView(frame: frameRect.size.bounds, flipped: true)
+            container.spacing = 8
+            let content = GlassContentView(frame: frameRect.size.bounds)
+            container.contentView = content
+            let appearance = NSAppearance.themed(isDark: presentation.colors.isDark)
+            for _ in 0 ..< (hasBubble ? 2 : 1) {
+                let glass = NSGlassEffectView(frame: .zero)
+                glass.style = .regular
+                glass.tintColor = presentation.colors.background.withAlphaComponent(0.3)
+                glass.appearance = appearance
+                content.addSubview(glass)
+                glassShapes.append(glass)
+            }
+            self.glassContainer = container
+            addSubview(container)
+        }
         backgroundView.layer?.mask = maskLayer
         if !TelegramUtilsHooks.shared.isLite(.blur) {
             self.visualEffect.state = .active
@@ -480,10 +533,23 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         showMore.isHidden = revealReactions == nil
         
+        showMore.onEnter = { [weak self] in
+            self?.prepareReveal?()
+        }
+
+        showMore.set(handler: { [weak self] _ in
+            AppMenu.keepsOpenOnNextMouseUp = true
+            self?.prepareReveal?()
+        }, for: .Down)
+
         showMore.set(handler: { [weak self] control in
             if let view = self {
-                view.hasBubble = false
-                view.updateLayout(size: view.frame.size, transition: .immediate)
+                if view.glassContainer != nil, view.hasBubble {
+                    view.collapseTail()
+                } else {
+                    view.hasBubble = false
+                    view.updateLayout(size: view.frame.size, transition: .immediate)
+                }
                 view.showMore.startLoading()
                 revealReactions?(view)
             }
@@ -494,23 +560,26 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         shadowLayer.shadowRadius = 2
         shadowLayer.shadowOpacity = 0.2
         shadowLayer.fillColor = NSColor.clear.cgColor
-        self.layer?.addSublayer(shadowLayer)
+        if glassContainer == nil {
+            self.layer?.addSublayer(shadowLayer)
+        }
 
         bottomGradient.shadowBackground = theme.colors.background.withAlphaComponent(1)
         bottomGradient.direction = .horizontal(true)
         topGradient.shadowBackground = theme.colors.background.withAlphaComponent(1)
         topGradient.direction = .horizontal(false)
         
-        if !TelegramUtilsHooks.shared.isLite(.blur) {
-            visualEffect.material = theme.colors.isDark ? .dark : .mediumLight
-        }
-        
+        let usesMaterial: Bool
         if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur) {
-            backgroundColorView.backgroundColor = theme.colors.background.withAlphaComponent(0.7)
+            usesMaterial = true
+            visualEffect.material = .menu
+            visualEffect.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+            backgroundColorView.backgroundColor = glassContainer == nil ? .menuFallbackVeil(isDark: theme.colors.isDark) : .clear
         } else {
+            usesMaterial = false
             backgroundColorView.backgroundColor = theme.colors.background
         }
-        if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur) {
+        if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur), glassContainer == nil {
             backgroundView.addSubview(visualEffect)
         }
         backgroundView.addSubview(backgroundColorView)
@@ -521,8 +590,10 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         backgroundView.addSubview(scrollView)
         addSubview(showMore)
         
-        backgroundView.addSubview(topGradient)
-        backgroundView.addSubview(bottomGradient)
+        if !usesMaterial {
+            backgroundView.addSubview(topGradient)
+            backgroundView.addSubview(bottomGradient)
+        }
 
         
         if revealReactions == nil {
@@ -718,9 +789,207 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     }
 
     deinit {
+        appearTimer?.invalidate()
+        tailTimer?.invalidate()
         if let boundsObserver {
             NotificationCenter.default.removeObserver(boundsObserver)
         }
+    }
+
+    private var appearTimer: Foundation.Timer?
+    private var tailTimer: Foundation.Timer?
+    private var isAppearing: Bool = false
+
+    private func collapseTail() {
+        guard glassShapes.count == 2 else {
+            return
+        }
+        let tail = glassShapes[1]
+        let bar = barRect(size: frame.size)
+        let from = tail.frame
+        var start: CFTimeInterval?
+        isAppearing = true
+        tailTimer?.invalidate()
+        let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+            let now = CACurrentMediaTime()
+            let begin = start ?? now
+            start = begin
+            let progress = min(1, (now - begin) / 0.04)
+            let suck = CGFloat(progress * progress)
+            let size = from.width - (from.width - 8) * suck
+            let centerY = from.midY + (bar.midY - from.midY) * suck
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            tail.frame = NSMakeRect(from.midX - size / 2, centerY - size / 2, size, size)
+            if #available(macOS 26.0, *) {
+                (tail as? NSGlassEffectView)?.cornerRadius = size / 2
+            }
+            CATransaction.commit()
+            if progress >= 1 {
+                timer.invalidate()
+                tail.isHidden = true
+                guard let self else {
+                    return
+                }
+                self.tailTimer = nil
+                self.isAppearing = false
+                self.hasBubble = false
+                self.updateLayout(size: self.frame.size, transition: .immediate)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        tailTimer = timer
+    }
+
+    public var canAppearFromCursor: Bool {
+        return glassContainer != nil && hasBubble && !TelegramUtilsHooks.shared.isLite(.animations)
+    }
+
+    public func appearFromCursor(_ point: NSPoint) {
+        guard let glassContainer, glassShapes.count == 2 else {
+            return
+        }
+        let bar = barRect(size: frame.size)
+        let tailFinal = glassShapeRects(rect: bar)[1]
+        let pill = glassShapes[0]
+        let tail = glassShapes[1]
+        let radius = bar.height / 2
+        let startX = min(max(point.x, bar.minX + radius), bar.maxX - radius)
+        let dot = NSMakeRect(startX - 5, min(point.y, frame.height + AppMenuCursorAppearanceExtraHeight - 10) - 9, 10, 10)
+        let circle = NSMakeRect(startX - radius, bar.minY, radius * 2, radius * 2)
+
+        isAppearing = true
+        layer?.masksToBounds = false
+        glassContainer.frame = NSMakeRect(0, 0, frame.width, frame.height + AppMenuCursorAppearanceExtraHeight)
+        let savedMask = backgroundView.layer?.mask
+        backgroundView.layer?.mask = nil
+        backgroundView.layer?.masksToBounds = false
+        scrollView.layer?.masksToBounds = false
+        scrollView.contentView.layer?.masksToBounds = false
+
+        var revealed: [(NSView, CGFloat)] = documentView.subviews.map { ($0, documentView.convert($0.frame, to: self).midX) }
+        revealed.append((showMore, showMore.frame.midX))
+        let textMask = CAGradientLayer()
+        let hint = aboveTextView
+        if let aboveTextView {
+            textMask.startPoint = CGPoint(x: 0, y: 0.5)
+            textMask.endPoint = CGPoint(x: 1, y: 0.5)
+            textMask.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+            textMask.frame = .zero
+            aboveTextView.layer?.mask = textMask
+            aboveTextView.layer?.opacity = 0
+        }
+        for (view, _) in revealed {
+            view.layer?.opacity = 0
+        }
+        pill.frame = dot
+        tail.frame = NSMakeRect(tailFinal.midX, tailFinal.midY, 0, 0)
+        if #available(macOS 26.0, *) {
+            (pill as? NSGlassEffectView)?.cornerRadius = dot.height / 2
+            (tail as? NSGlassEffectView)?.cornerRadius = 0
+        }
+
+        let duration: Double = 1.1
+        let start = CACurrentMediaTime()
+        var revealStarts: [Int: Double] = [:]
+        var tailStart: Double?
+
+        let finish: () -> Void = { [weak self] in
+            guard let self else {
+                return
+            }
+            self.appearTimer?.invalidate()
+            self.appearTimer = nil
+            self.isAppearing = false
+            for (view, _) in revealed {
+                view.layer?.opacity = 1
+                view.layer?.transform = CATransform3DIdentity
+            }
+            self.aboveTextView?.layer?.mask = nil
+            self.aboveTextView?.layer?.opacity = 1
+            self.backgroundView.layer?.mask = savedMask
+            self.backgroundView.layer?.masksToBounds = true
+            self.scrollView.layer?.masksToBounds = true
+            self.scrollView.contentView.layer?.masksToBounds = true
+            self.updateLayout(size: self.frame.size, transition: .immediate)
+            self.updateScroll()
+        }
+
+        let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { timer in
+            let seconds = CACurrentMediaTime() - start
+            if seconds >= duration {
+                timer.invalidate()
+                finish()
+                return
+            }
+            let rise = bubbleSpring(seconds, omega: 17, damping: 0.55)
+            let grow = bubbleSpring(seconds, omega: 22, damping: 0.8)
+            let size = dot.height + (circle.height - dot.height) * grow
+            let centerY = dot.midY + (circle.midY - dot.midY) * rise
+            let base = NSMakeRect(startX - size / 2, centerY - size / 2, size, size)
+            let stretch = seconds < 0.1 ? 0 : bubbleSpring(seconds - 0.1, omega: 15, damping: 0.72)
+            let left = base.minX + (bar.minX - circle.minX) * stretch
+            let right = base.maxX + (bar.maxX - circle.maxX) * stretch
+            let current = NSMakeRect(left, base.minY, right - left, base.height)
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            pill.frame = current
+            if #available(macOS 26.0, *) {
+                (pill as? NSGlassEffectView)?.cornerRadius = min(20, current.height / 2)
+            }
+
+            if tailStart == nil, current.maxX >= tailFinal.midX + 14 {
+                tailStart = seconds
+            }
+            if let tailStart {
+                let pull = bubbleSpring(seconds - tailStart, omega: 16, damping: 0.6)
+                let tailSize = 12 + (tailFinal.width - 12) * min(1, pull)
+                let tailY = current.midY + (tailFinal.midY - current.midY) * pull
+                tail.frame = NSMakeRect(tailFinal.midX - tailSize / 2, tailY - tailSize / 2, tailSize, tailSize)
+                if #available(macOS 26.0, *) {
+                    (tail as? NSGlassEffectView)?.cornerRadius = tailSize / 2
+                }
+            }
+
+            if let aboveTextView = hint {
+                let text = aboveTextView.frame
+                let feather: CGFloat = 24
+                let span = NSMakeRect(current.minX - text.minX - feather / 2, 0, current.width + feather, text.height)
+                textMask.frame = span
+                let edge = NSNumber(value: Double(min(0.5, feather / max(1, span.width))))
+                textMask.locations = [0, edge, NSNumber(value: 1 - edge.doubleValue), 1]
+                let coverage = min(1, max(0, (text.maxY - current.minY) / max(1, text.height)))
+                aboveTextView.layer?.opacity = Float(coverage)
+            }
+
+            let offsetY = current.midY - bar.midY
+            for (index, (view, centerX)) in revealed.enumerated() {
+                if revealStarts[index] == nil, seconds > 0.08, current.minX <= centerX - 8, current.maxX >= centerX + 8 {
+                    revealStarts[index] = seconds
+                }
+                guard let revealStart = revealStarts[index] else {
+                    continue
+                }
+                let progress = 1 - pow(1 - min(1, (seconds - revealStart) / 0.18), 3)
+                let scale = 0.6 + 0.4 * progress
+                let w = view.frame.width / 2, h = view.frame.height / 2
+                var transform = CATransform3DMakeTranslation(w, h + offsetY, 0)
+                transform = CATransform3DScale(transform, scale, scale, 1)
+                transform = CATransform3DTranslate(transform, -w, -h, 0)
+                view.layer?.transform = transform
+                view.layer?.opacity = Float(progress)
+            }
+            CATransaction.commit()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        appearTimer = timer
+    }
+
+    private func barRect(size: NSSize) -> NSRect {
+        var rect = size.bounds.insetBy(dx: 10, dy: 10)
+        rect.origin.y -= 5
+        return rect
     }
     
     public func update(list: [AvailableReactions.Reaction]) {
@@ -729,8 +998,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     
     public func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         
-        var rect = size.bounds.insetBy(dx: 10, dy: 10)
-        rect.origin.y -= 5
+        let rect = barRect(size: size)
         
         for subview in documentView.subviews {
             let point: NSPoint
@@ -761,12 +1029,26 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         transition.updateFrame(view: visualEffect, frame: size.bounds)
         transition.updateFrame(view: backgroundView, frame: size.bounds)
+        if let glassContainer, !isAppearing {
+            transition.updateFrame(view: glassContainer, frame: size.bounds)
+            let shapes = hasBubble ? glassShapeRects(rect: rect) : [rect]
+            for (index, glass) in glassShapes.enumerated() {
+                glass.isHidden = index >= shapes.count
+            }
+            for (glass, shape) in zip(glassShapes, shapes) {
+                transition.updateFrame(view: glass, frame: shape)
+                if #available(macOS 26.0, *), let glass = glass as? NSGlassEffectView {
+                    glass.cornerRadius = min(20, shape.height / 2)
+                }
+            }
+        }
         transition.updateFrame(view: backgroundColorView, frame: size.bounds)
         
+        let showMoreInset = ContextAddReactionsListView.showMoreInset
         if let aboveText = aboveText {
-            transition.updateFrame(view: showMore, frame: NSMakeRect(rect.maxX - showMore.frame.width - 3, rect.minY + 3 + aboveText.layoutSize.height + 2, showMore.frame.width, showMore.frame.height))
+            transition.updateFrame(view: showMore, frame: NSMakeRect(rect.maxX - showMore.frame.width - showMoreInset, rect.minY + showMoreInset + aboveText.layoutSize.height + 2, showMore.frame.width, showMore.frame.height))
         } else {
-            transition.updateFrame(view: showMore, frame: NSMakeRect(rect.maxX - showMore.frame.width - 3, rect.minY + 3, showMore.frame.width, showMore.frame.height))
+            transition.updateFrame(view: showMore, frame: NSMakeRect(rect.maxX - showMore.frame.width - showMoreInset, rect.minY + showMoreInset, showMore.frame.width, showMore.frame.height))
         }
         
 //        transition.updateFrame(layer: maskLayer, frame: rect.size.bounds)
@@ -783,14 +1065,25 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         }
     }
     
+    private static let showMoreInset: CGFloat = 5
+    private static var showMoreSize: CGFloat {
+        return size.height + 6 - showMoreInset * 2
+    }
+    
+    private func glassShapeRects(rect: CGRect) -> [CGRect] {
+        let bubbleRect = NSMakeRect(rect.width - 40, rect.maxY - 10, 20, 20)
+        return [rect, bubbleRect]
+    }
+    
     private func getMaskPath(rect: CGRect, hasBubble: Bool = true) -> CGPath {
         
         let mutablePath = CGMutablePath()
         mutablePath.addRoundedRect(in: rect, cornerWidth: 20, cornerHeight: 20)
         
         if hasBubble {
-            let bubbleRect = NSMakeRect(rect.width - 40, rect.maxY - 10, 20, 20)
-            mutablePath.addRoundedRect(in: bubbleRect, cornerWidth: bubbleRect.width / 2, cornerHeight: bubbleRect.width / 2)
+            for shape in glassShapeRects(rect: rect).dropFirst() {
+                mutablePath.addRoundedRect(in: shape, cornerWidth: shape.width / 2, cornerHeight: shape.width / 2)
+            }
         }
 
         return mutablePath
@@ -812,4 +1105,8 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
 //                        NSLog("\(log2(mappingRange(dst, 0, 50, 1, 100)))")
                         
 //                        let updated = base.insetBy(dx: -3 * (multiplier / 7), dy: -3 * (multiplier / 7))
-                        
+
+private func bubbleSpring(_ seconds: Double, omega: Double, damping: Double) -> CGFloat {
+    let dampedOmega = omega * (1 - damping * damping).squareRoot()
+    return CGFloat(1 - exp(-damping * omega * seconds) * (cos(dampedOmega * seconds) + damping * omega / dampedOmega * sin(dampedOmega * seconds)))
+}

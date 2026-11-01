@@ -405,7 +405,7 @@ private enum StickerPackEntry : TableItemListNodeEntry {
     func item(_ arguments: StickerPanelArguments, initialSize: NSSize) -> TableRowItem {
         switch self {
         case let .whitespace(_, value):
-            return GeneralRowItem.init(initialSize, height: value, stableId: stableId)
+            return GeneralRowItem.init(initialSize, height: value, stableId: stableId, backgroundColor: .clear)
         case let .pack(_, files, packInfo, collectionId, hasCreate):
             let addTile = hasCreate ? arguments.createSticker.map { action in
                 return StickerPackPanelAddTile(position: .leading, accessibilityLabel: strings().stickersViewControllerCreateSticker, action: action)
@@ -754,10 +754,22 @@ public class NStickersView : View {
 
     private let searchInside = View()
     private let searchBackdrop = View()
+    private let searchFrost = PickerFrostView()
+    private var selectionFrost: NSVisualEffectView?
+    private let headerBlurFilter = PickerHeaderBlur()
 
     public var isGlass: Bool = false {
         didSet {
             if oldValue != isGlass {
+                updateLocalizationAndTheme(theme: presentation ?? theme)
+                needsLayout = true
+            }
+        }
+    }
+
+    public var usesMenuPanel: Bool = false {
+        didSet {
+            if oldValue != usesMenuPanel {
                 updateLocalizationAndTheme(theme: presentation ?? theme)
                 needsLayout = true
             }
@@ -768,11 +780,25 @@ public class NStickersView : View {
         super.init(frame: frameRect)
         
         addSubview(tableView)
+        tableView.getBackgroundColor = { [weak self] in
+            return self?.usesMenuPanel == true ? .clear : (self?.presentation ?? theme).colors.background
+        }
                 
         searchView.isLeftOrientated = true
         searchView.layer?.cornerRadius = 15
 
+        searchFrost.wantsLayer = true
+        searchFrost.material = .selection
+        searchFrost.blendingMode = .withinWindow
+        searchFrost.state = .active
+        searchFrost.layer?.cornerRadius = 15
+        if #available(macOS 10.15, *) {
+            searchFrost.layer?.cornerCurve = .continuous
+        }
+        searchFrost.layer?.masksToBounds = true
+        searchFrost.isHidden = true
         searchInside.addSubview(searchView)
+        searchInside.addSubview(searchFrost, positioned: .below, relativeTo: searchView)
 
         addSubview(searchContainer)
         
@@ -829,7 +855,7 @@ public class NStickersView : View {
     
     func updateSearchStatus(isSearching: Bool, isLoading: Bool) {
         searchStatus = .resolve(isSearching: isSearching, isLoading: isLoading, hasResults: !isSearching || stickerSearchHasResults(tableView))
-        searchStatusView.updateSearchStatus(searchStatus, kind: .stickers, query: searchView.query, theme: searchPresentationTheme ?? theme)
+        searchStatusView.updateSearchStatus(searchStatus, kind: .stickers, query: searchView.query, theme: searchPresentationTheme ?? theme, clearBackground: usesMenuPanel)
         needsLayout = true
     }
 
@@ -903,6 +929,7 @@ public class NStickersView : View {
                 current = view
             } else {
                 current = AnimatedEmojiesCategories(frame: categoryRect, presentation: presentation)
+                current.iconColor = pickerChromeColor(isGlass || usesMenuPanel)
                 self.categories = current
                 searchInside.addSubview(current)
                 
@@ -958,7 +985,27 @@ public class NStickersView : View {
         let rect = NSMakeRect(view.frame.origin.y - point.y, 5, item.height, packsView.frame.height)
         
         selectionView.layer?.cornerRadius = item.height == item.width ? .cornerRadius : item.width / 2
-        selectionView.background = isGlass ? theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1) : theme.colors.grayBackground
+        if isGlass || usesMenuPanel, !TelegramUtilsHooks.shared.isLite(.blur) {
+            let frost: NSVisualEffectView
+            if let current = selectionFrost {
+                frost = current
+            } else {
+                frost = PickerFrostView(frame: selectionView.bounds)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                frost.autoresizingMask = [.width, .height]
+                selectionView.addSubview(frost)
+                selectionFrost = frost
+            }
+            frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+            selectionView.background = .clear
+        } else {
+            selectionFrost?.removeFromSuperview()
+            selectionFrost = nil
+            selectionView.background = isGlass ? theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1) : theme.colors.grayBackground
+        }
         if animated {
             selectionView.layer?.animateCornerRadius()
         }
@@ -1057,26 +1104,42 @@ public class NStickersView : View {
         let border: NSColor = isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
         self.separator.backgroundColor = border
         self.tableView.updateLocalizationAndTheme(theme: theme)
+        self.tableView.layer?.backgroundColor = self.tableView.getBackgroundColor().cgColor
         self.tableView.backgroundColor = background
         self.tableView.documentView?.background = background
         searchPresentationTheme = theme
-        self.searchStatusView.updateSearchStatus(searchStatus, kind: .stickers, query: searchView.query, theme: theme)
+        self.searchStatusView.updateSearchStatus(searchStatus, kind: .stickers, query: searchView.query, theme: theme, clearBackground: usesMenuPanel)
         self.searchContainer.backgroundColor = background
         self.tabsContainer.backgroundColor = background
         self.searchBorder.backgroundColor = border
         self.searchBackdrop.backgroundColor = theme.colors.background.withAlphaComponent(0.85)
-        self.searchBackdrop.isHidden = !isGlass
+        self.searchBackdrop.isHidden = !isGlass || usesMenuPanel
 
+        self.searchFrost.isHidden = !usesMenuPanel || TelegramUtilsHooks.shared.isLite(.blur)
+        self.searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         if isGlass {
-            let searchBackground = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
-            let searchTheme = SearchTheme(searchBackground, theme.search.searchImage, theme.search.clearImage, theme.search.placeholder, theme.search.textColor, theme.search.placeholderColor)
+            let searchBackground = searchFrost.isHidden ? theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1) : .clear
+            let searchTheme = pickerSearchTheme(searchBackground, theme: theme, black: isGlass || usesMenuPanel)
             self.searchView.searchTheme = searchTheme
             self.categories?.searchTheme = searchTheme
+            self.categories?.iconColor = pickerChromeColor(isGlass || usesMenuPanel)
         } else {
             self.searchView.searchTheme = theme.search
             self.categories?.searchTheme = theme.search
         }
         self.searchView.updateLocalizationAndTheme(theme: theme)
+        applyChromeTint()
+    }
+
+    func applyChromeTint() {
+        let tint = pickerChromeColor(isGlass || usesMenuPanel)
+        packsView.enumerateItems(with: { item in
+            if let item = item as? RecentPackRowItem, item.tint != tint {
+                item.tint = tint
+                item.redraw()
+            }
+            return true
+        })
     }
     
     public func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
@@ -1090,7 +1153,17 @@ public class NStickersView : View {
         transition.updateFrame(view: packsView, frame: tabsContainer.focus(NSMakeSize(size.width, 36)))
 
         
-        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y), 46))
+        let headerInset: CGFloat = usesMenuPanel && !TelegramUtilsHooks.shared.isLite(.blur) ? 46 : 0
+        let tableY = headerInset > 0 ? max(0, tabsContainer.frame.maxY - headerInset) : tabsContainer.frame.maxY
+        let topInset = headerInset > 0 ? tabsContainer.frame.maxY - tableY : 0
+        if tableView.contentInsets.top != topInset {
+            var insets = tableView.contentInsets
+            insets.top = topInset
+            tableView.contentInsets = insets
+        }
+        separator.isHidden = usesMenuPanel
+
+        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y) + topInset, 46))
 
         let searchDest = inSearch ? 0 : dest
                 
@@ -1103,8 +1176,9 @@ public class NStickersView : View {
 
         
         transition.updateFrame(view: searchView, frame: searchInside.focus(NSMakeSize(size.width - 16, 30)))
+        transition.updateFrame(view: searchFrost, frame: searchView.frame)
         transition.updateFrame(view: searchBorder, frame: NSMakeRect(0, searchContainer.frame.height - .borderSize, size.width, .borderSize))
-        let alpha: CGFloat = inSearch && tableView.documentOffset.y > 0 ? 1 : 0
+        let alpha: CGFloat = inSearch && tableView.documentOffset.y > -topInset ? 1 : 0
         transition.updateAlpha(view: searchBorder, alpha: alpha)
         if isGlass {
             transition.updateAlpha(view: searchBackdrop, alpha: alpha)
@@ -1121,7 +1195,8 @@ public class NStickersView : View {
         if let restrictedView = restrictedView {
             transition.updateFrame(view: restrictedView, frame: size.bounds)
         }
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tabsContainer.frame.maxY, size.width, size.height))
+        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tableY, size.width, headerInset > 0 ? size.height - tableY : size.height))
+        _ = headerBlurFilter.update(tableView, enabled: headerInset > 0, height: 46 - tableView.frame.minY)
 
                 
         transition.updateFrame(view: searchStatusView, frame: NSMakeRect(0, searchContainer.frame.maxY, size.width, max(0, size.height - searchContainer.frame.maxY - 56)))
@@ -1357,7 +1432,16 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
             guard let `self` = self, position.visibleRows.length > 0 else {
                 return
             }
-            let item = self.genericView.tableView.item(at: position.visibleRows.location)
+            let tableView = self.genericView.tableView
+            var firstRow = position.visibleRows.location
+            let headerInset = tableView.contentInsets.top
+            if headerInset > 0 {
+                let row = tableView.row(at: NSMakePoint(1, tableView.documentOffset.y + headerInset + 1))
+                if row >= 0 {
+                    firstRow = row
+                }
+            }
+            let item = tableView.item(at: min(firstRow, tableView.count - 1))
             self.genericView.packsView.changeSelection(stableId: item.stableId)
             self.genericView.packsView.scroll(to: .center(id: item.stableId, innerId: nil, animated: true, focus: .init(focus: false), inset: 0))
             self.genericView.updateSelectionState(animated: true)
@@ -1679,6 +1763,7 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
             self.genericView.tableView.removeScroll(listener: self.listener)
             self.genericView.tableView.merge(with: transition)
             self.genericView.packsView.merge(with: packTransition)
+            self.genericView.applyChromeTint()
             self.genericView.updateSearchStatus(isSearching: data.searchData != nil, isLoading: data.searchData?.loading ?? false)
             self.genericView.tableView.addScroll(listener: self.listener)
             

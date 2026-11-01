@@ -2486,7 +2486,7 @@ public func ==(lhs:TextSelectedRange, rhs:TextSelectedRange) -> Bool {
 //    
 //}
 
-private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, size: NSSize, drawingSize: NSSize, backingScaleFactor: CGFloat, backgroundColor: NSColor = .clear, disableBackgroundDrawing: Bool = true, hasBackground: Bool = false, isSelectable: Bool = false, isKeyWindow: Bool = false, clearExceptRevealed: Bool = false, inAnimation: Bool = false, canDrawBlocks: Bool = true) -> [(NSRect, NSRange)] {
+private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, size: NSSize, drawingSize: NSSize, backingScaleFactor: CGFloat, backgroundColor: NSColor = .clear, disableBackgroundDrawing: Bool = true, hasBackground: Bool = false, isSelectable: Bool = false, isKeyWindow: Bool = false, clearExceptRevealed: Bool = false, inAnimation: Bool = false, canDrawBlocks: Bool = true, smoothFonts: Bool = false) -> [(NSRect, NSRange)] {
     var blockHeaderRects: [(NSRect, NSRange)] = []
     if let layout {
 
@@ -2495,8 +2495,8 @@ private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, s
         if !System.supportsTransparentFontDrawing {
             ctx.setAllowsAntialiasing(true)
 
-            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0)
-            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0)
+            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0 || smoothFonts)
+            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0 || smoothFonts)
 
             if backingScaleFactor == 1.0 && !disableBackgroundDrawing {
                 ctx.setFillColor(backgroundColor.cgColor)
@@ -2507,8 +2507,8 @@ private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, s
         } else {
             ctx.setAllowsAntialiasing(true)
             ctx.setShouldAntialias(true)
-            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0)
-            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0)
+            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0 || smoothFonts)
+            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0 || smoothFonts)
         }
 
         if clearExceptRevealed {
@@ -3015,6 +3015,14 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             drawLayer.needsDisplay()
         }
     }
+
+    public var smoothFonts: Bool = false {
+        didSet {
+            if smoothFonts != oldValue {
+                drawLayer.needsDisplay()
+            }
+        }
+    }
     
     private var menuDisposable: TextViewMenuState?
 
@@ -3124,7 +3132,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             return
         }
         lastDrawnSelectionState = currentSelectionState
-        blockHeaderRects = drawTextViewContent(textLayout, in: ctx, size: frame.size, drawingSize: layer.frame.size, backingScaleFactor: backingScaleFactor, backgroundColor: backgroundColor, disableBackgroundDrawing: disableBackgroundDrawing, hasBackground: hasBackground, isSelectable: isSelectable, isKeyWindow: window?.isKeyWindow == true, clearExceptRevealed: clearExceptRevealed, inAnimation: inAnimation, canDrawBlocks: canDrawBlocks)
+        blockHeaderRects = drawTextViewContent(textLayout, in: ctx, size: frame.size, drawingSize: layer.frame.size, backingScaleFactor: backingScaleFactor, backgroundColor: backgroundColor, disableBackgroundDrawing: disableBackgroundDrawing, hasBackground: hasBackground, isSelectable: isSelectable, isKeyWindow: window?.isKeyWindow == true, clearExceptRevealed: clearExceptRevealed, inAnimation: inAnimation, canDrawBlocks: canDrawBlocks, smoothFonts: smoothFonts)
     }
 
     private func acceptsMenuRequest(_ state: TextViewMenuState, version: UInt64) -> Bool {

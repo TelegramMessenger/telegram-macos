@@ -70,6 +70,7 @@ public final class EntertainmentView : View {
     static let glassTintAlpha: CGFloat = 0.55
 
     fileprivate var sectionView: NSView
+    private let contentHost = View()
     private let glassView = LiquidGlassView(frame: NSZeroRect, cornerRadius: 18, hasShadow: false, hasBorder: true, tintAlpha: 0, forceBlur: true)
     private let edgeView = ShadowView()
     private let tabs = GlassSegmentView(frame: NSZeroRect)
@@ -83,9 +84,23 @@ public final class EntertainmentView : View {
         }
     }
 
+    private var menuGlass: NSView?
+    private var menuRim: CALayer?
+    private var menuHairline: CALayer?
+    private var menuVeil: View?
+    private var glassSettingObserver: NSObjectProtocol?
+    var didChangeGlassBackground: ((Bool) -> Void)?
+
     var showsGlassBackground: Bool = true {
         didSet {
-            glassView.isHidden = !showsGlassBackground
+            glassView.isHidden = !showsGlassBackground || menuGlass != nil
+            menuGlass?.isHidden = !showsGlassBackground
+            menuRim?.isHidden = !showsGlassBackground
+            menuHairline?.isHidden = !showsGlassBackground
+            if oldValue != showsGlassBackground {
+                placeContent()
+                didChangeGlassBackground?(showsGlassBackground)
+            }
         }
     }
     
@@ -115,12 +130,18 @@ public final class EntertainmentView : View {
         self.sectionView = sectionView
         super.init(frame: frame)
         self.addSubview(self.glassView)
-        self.addSubview(self.sectionView)
-        self.addSubview(self.edgeView)
-        self.addSubview(self.tabs)
+        self.contentHost.addSubview(self.sectionView)
+        self.contentHost.addSubview(self.edgeView)
+        self.contentHost.addSubview(self.tabs)
+        self.installMenuBackground(retheme: false)
 
         self.edgeView.direction = .vertical(true)
         self.edgeView.isEventLess = true
+        self.tabs.usesMenuMaterial = !TelegramUtilsHooks.shared.isLite(.blur)
+
+        self.glassSettingObserver = NotificationCenter.default.addObserver(forName: systemLiquidGlassDidChange, object: nil, queue: .main) { [weak self] _ in
+            self?.installMenuBackground(retheme: true)
+        }
 
         self.tabs.didSelect = { [weak self] index in
             guard let self, index < self.tabStates.count else {
@@ -130,11 +151,109 @@ public final class EntertainmentView : View {
         }
     }
     
+    deinit {
+        if let glassSettingObserver {
+            NotificationCenter.default.removeObserver(glassSettingObserver)
+        }
+    }
+
+    private var currentTheme: PresentationTheme?
+
+    private func placeContent() {
+        if #available(macOS 26.0, *), let glass = menuGlass as? NSGlassEffectView, showsGlassBackground {
+            if glass.contentView !== contentHost {
+                contentHost.removeFromSuperview()
+                glass.contentView = contentHost
+            }
+        } else {
+            if #available(macOS 26.0, *), let glass = menuGlass as? NSGlassEffectView, glass.contentView === contentHost {
+                glass.contentView = nil
+            }
+            if contentHost.superview !== self {
+                contentHost.removeFromSuperview()
+                addSubview(contentHost, positioned: .above, relativeTo: menuGlass ?? glassView)
+            }
+        }
+        needsLayout = true
+    }
+
+    private func installMenuBackground(retheme: Bool) {
+        if #available(macOS 26.0, *), let glass = menuGlass as? NSGlassEffectView, glass.contentView === contentHost {
+            glass.contentView = nil
+        }
+        menuGlass?.removeFromSuperview()
+        menuRim?.removeFromSuperlayer()
+        menuHairline?.removeFromSuperlayer()
+        menuGlass = nil
+        menuVeil = nil
+        menuRim = nil
+        menuHairline = nil
+        if #available(macOS 26.0, *), System.liquidGlass, System.liquidGlassAvailable, !TelegramUtilsHooks.shared.isLite(.blur) {
+            let glass = NSGlassEffectView(frame: .zero)
+            glass.style = .regular
+            glass.cornerRadius = 18
+            glass.tintColor = nil
+            menuGlass = glass
+        } else if System.blurEnabled, !TelegramUtilsHooks.shared.isLite(.blur) {
+            let blur = NSVisualEffectView(frame: .zero)
+            blur.wantsLayer = true
+            blur.material = .menu
+            blur.blendingMode = .withinWindow
+            blur.state = .active
+            blur.layer?.cornerRadius = 18
+            if #available(macOS 10.15, *) {
+                blur.layer?.cornerCurve = .continuous
+            }
+            blur.layer?.masksToBounds = true
+            let veil = View(frame: blur.bounds)
+            veil.autoresizingMask = [.width, .height]
+            blur.addSubview(veil)
+            menuVeil = veil
+            menuGlass = blur
+            let rim = CALayer()
+            rim.borderWidth = 1
+            let hairline = CALayer()
+            hairline.borderWidth = 0.5
+            for layer in [rim, hairline] {
+                layer.cornerRadius = 18
+                if #available(macOS 10.15, *) {
+                    layer.cornerCurve = .continuous
+                }
+                layer.zPosition = 1
+                self.layer?.addSublayer(layer)
+            }
+            menuRim = rim
+            menuHairline = hairline
+        }
+        if let menuGlass {
+            addSubview(menuGlass, positioned: .above, relativeTo: glassView)
+        }
+        contentHost.removeFromSuperview()
+        placeContent()
+        glassView.isHidden = !showsGlassBackground || menuGlass != nil
+        menuGlass?.isHidden = !showsGlassBackground
+        menuRim?.isHidden = !showsGlassBackground
+        menuHairline?.isHidden = !showsGlassBackground
+        if retheme {
+            tabs.refreshMenuMaterial()
+            updateLocalizationAndTheme(theme: currentTheme ?? theme)
+        }
+        needsLayout = true
+    }
+
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
+        self.currentTheme = theme
+        if contentHost.superview !== self {
+            contentHost.updateLocalizationAndTheme(theme: theme)
+        }
         self.edgeView.shadowBackground = theme.colors.background.withAlphaComponent(0.6)
         self.glassView.customTint = theme.colors.background.withAlphaComponent(EntertainmentView.glassTintAlpha)
         self.glassView.updateLocalizationAndTheme(theme: theme)
+        self.menuGlass?.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+        self.menuVeil?.backgroundColor = .menuFallbackVeil(isDark: theme.colors.isDark)
+        self.menuRim?.borderColor = NSColor.white.withAlphaComponent(theme.colors.isDark ? 0.1 : 0.5).cgColor
+        self.menuHairline?.borderColor = NSColor.black.withAlphaComponent(theme.colors.isDark ? 0.85 : 0.2).cgColor
         self.updateTabs(animated: false)
     }
     
@@ -208,6 +327,14 @@ public final class EntertainmentView : View {
         let tabsAreaHeight = EntertainmentView.tabsAreaHeight
         self.glassView.frame = bounds
         self.glassView.updateLayout(size: bounds.size, transition: .immediate)
+        self.menuGlass?.frame = bounds
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        self.menuRim?.frame = bounds
+        self.menuHairline?.frame = bounds.insetBy(dx: -0.5, dy: -0.5)
+        self.menuHairline?.cornerRadius = 18.5
+        CATransaction.commit()
+        self.contentHost.frame = bounds
         self.sectionView.frame = bounds
         self.edgeView.frame = NSMakeRect(0, frame.height - tabsAreaHeight, frame.width, tabsAreaHeight)
         let tabsSize = self.tabs.contentSize
@@ -420,16 +547,20 @@ public class EntertainmentViewController<Context: AccountContextProtocol>: Teleg
         if self.section.genericView._backgroundColor != .clear {
             self.section.genericView._backgroundColor = .clear
         }
+        let usesMenuPanel = isLoaded() ? genericView.showsGlassBackground : true
+        emoji.usesMenuPanel = usesMenuPanel
         if emoji.isLoaded() {
             emoji.view.background = .clear
         }
         if stickers.isLoaded() {
             stickers.view.background = .clear
             stickers.genericView.isGlass = true
+            stickers.genericView.usesMenuPanel = usesMenuPanel
         }
         if gifs.isLoaded() {
             gifs.view.background = .clear
             gifs.genericView.isGlass = true
+            gifs.genericView.usesMenuPanel = usesMenuPanel
         }
     }
     
@@ -531,6 +662,10 @@ public class EntertainmentViewController<Context: AccountContextProtocol>: Teleg
     
     public override func viewDidLoad() {
         super.viewDidLoad()
+
+        genericView.didChangeGlassBackground = { [weak self] _ in
+            self?.applyGlassStyle()
+        }
 
         let state:EntertainmentState
         if mode == .selectAvatar {

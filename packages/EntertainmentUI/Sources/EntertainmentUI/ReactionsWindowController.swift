@@ -17,19 +17,37 @@ public final class ReactionsWindowController : NSObject {
     
     private class V : View {
         private let visualView: NSVisualEffectView
+        private let glassView: NSView?
         private let contentView: NSView
         private let backgroundView = View()
         private let container = View()
-        private var mask: SimpleShapeLayer?
+        private let theme: TelegramPresentationTheme
+        private var tintGlass: NSView?
+        private var morphTimer: Foundation.Timer?
+        private var isMorphing = false
         init(_ content: NSView, theme: TelegramPresentationTheme) {
             
-            
+            self.theme = theme
             self.contentView = content
             self.visualView = NSVisualEffectView(frame: content.bounds)
+            if #available(macOS 26.0, *), System.liquidGlass, System.liquidGlassAvailable, !TelegramUtilsHooks.shared.isLite(.blur) {
+                let glass = NSGlassEffectView(frame: .zero)
+                glass.style = .regular
+                glass.cornerRadius = 20
+                glass.tintColor = nil
+                glass.wantsLayer = true
+                glass.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+                self.glassView = glass
+            } else {
+                self.glassView = nil
+            }
             super.init(frame: content.bounds)
-            if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur) {
+            if let glassView {
+                container.addSubview(glassView)
+                backgroundView.backgroundColor = .clear
+            } else if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur) {
                 container.addSubview(visualView)
-                backgroundView.backgroundColor = theme.colors.background.withAlphaComponent(0.7)
+                backgroundView.backgroundColor = .menuFallbackVeil(isDark: theme.colors.isDark)
             } else {
                 backgroundView.backgroundColor = theme.colors.background
             }
@@ -45,7 +63,8 @@ public final class ReactionsWindowController : NSObject {
                 self.visualView.state = .active
                 self.visualView.blendingMode = .behindWindow
                 self.visualView.autoresizingMask = []
-                self.visualView.material = theme.colors.isDark ? .dark : .light
+                self.visualView.material = .menu
+                self.visualView.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
             }
             
             self.autoresizesSubviews = false
@@ -53,80 +72,113 @@ public final class ReactionsWindowController : NSObject {
             
             self.layer?.isOpaque = false
             
-            self.layer?.cornerRadius = 20
-            contentView.layer?.cornerRadius = 20
-            self.visualView.layer?.cornerRadius = 20
-            self.backgroundView.layer?.cornerRadius = 20
-            self.container.layer?.cornerRadius = 20
+            let layers = [self.layer, contentView.layer, self.visualView.layer, self.backgroundView.layer, self.container.layer]
+            for layer in layers {
+                layer?.cornerRadius = 20
+                if #available(macOS 10.15, *) {
+                    layer?.cornerCurve = .continuous
+                }
+            }
             contentView.layer?.opacity = 0
         }
         
-        func appearAnimated(from: NSRect, to: NSRect) {
-            
-            let shadow = NSShadow()
-            shadow.shadowBlurRadius = 2
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
-            shadow.shadowOffset = NSMakeSize(0, 0)
-            self.shadow = shadow
-            
-            container.isHidden = false
+        func appearAnimated(from bar: NSRect) {
             contentView.layer?.opacity = 1
-            let duration: Double = 0.35
-            
-            self.container.layer?.mask = nil
-            self.mask = nil
-
-            
-            var offset: NSPoint = .zero
-            offset.y = to.height - from.height / 2 - from.origin.y - 5
-            offset.x = 10
-            
-            self.container.layer?.animateBounds(from: from.size.bounds.offsetBy(dx: offset.x, dy: offset.y), to: to.size.bounds, duration: duration, timingFunction: .spring)
-            
-            self.container.layer?.animatePosition(from: offset, to: .zero, duration: duration, timingFunction: .spring)
-            
-            let fromRect = NSRect(origin: offset, size: from.size).insetBy(dx: 10, dy: 10)
-            let fromRadius = min(20, fromRect.height / 2)
-            let fromPath = CGPath(roundedRect: fromRect, cornerWidth: fromRadius, cornerHeight: fromRadius, transform: nil)
-            let toPath = CGPath(roundedRect: bounds, cornerWidth: 20, cornerHeight: 20, transform: nil)
-            self.layer?.shadowPath = toPath
-            self.layer?.animate(from: fromPath, to: toPath, keyPath: "shadowPath", timingFunction: .spring, duration: duration)
-        }
-        
-        func initFake(_ from: NSRect, to: NSRect) {
-            
-            var offset: NSPoint = .zero
-            offset.y = to.height - from.height / 2 - from.origin.y - 5
-            offset.x = 10
-            
-            var rect = from.size.bounds.offsetBy(dx: offset.x, dy: offset.y)
-            rect.size.width -= 20
-            rect.size.height = 20
-            
-            if from.height > 60 {
-                rect.size.height += (from.height - 60)
-                offset.y -= (from.height - 60) / 2
+            tintGlass?.alphaValue = 1
+            let target = bounds
+            let swell = bar.insetBy(dx: -2, dy: -1.5)
+            let start = CACurrentMediaTime()
+            morphTimer?.invalidate()
+            let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+                guard let self else {
+                    timer.invalidate()
+                    return
+                }
+                let seconds = CACurrentMediaTime() - start
+                if seconds >= 0.3 {
+                    self.finishMorph()
+                    return
+                }
+                let anticipation = CGFloat(sin(min(1, seconds / 0.05) * .pi / 2))
+                let from = NSMakeRect(bar.minX + (swell.minX - bar.minX) * anticipation, bar.minY + (swell.minY - bar.minY) * anticipation, bar.width + (swell.width - bar.width) * anticipation, bar.height + (swell.height - bar.height) * anticipation)
+                let eased = min(1, max(0, (seconds - 0.03) / 0.25))
+                let progress = CGFloat(1 - pow(1 - eased, 3))
+                let rect = NSMakeRect(from.minX + (target.minX - from.minX) * progress, from.minY + (target.minY - from.minY) * progress, from.width + (target.width - from.width) * progress, from.height + (target.height - from.height) * progress)
+                self.applyMorph(rect)
+                let linear = min(1, seconds / 0.3)
+                let material = linear * linear * (3 - 2 * linear)
+                self.glassView?.alphaValue = min(1, material / 0.4)
+                self.tintGlass?.alphaValue = 1 - max(0, (material - 0.25) / 0.75)
             }
-            
-           // rect.size.height += 20
+            RunLoop.main.add(timer, forMode: .common)
+            morphTimer = timer
+        }
 
-            let mask = SimpleShapeLayer()
-            self.mask = mask
+        deinit {
+            morphTimer?.invalidate()
+        }
 
-            let path = CGMutablePath()
-            path.addRoundedRect(in: rect.size.bounds, cornerWidth: rect.height / 2, cornerHeight: rect.height / 2)
-            mask.path = path
-            mask.frame = rect
-            mask.cornerRadius = 20
-            container.layer?.mask = mask
-            container.isHidden = true
+        private func finishMorph() {
+            morphTimer?.invalidate()
+            morphTimer = nil
+            isMorphing = false
+            tintGlass?.removeFromSuperview()
+            tintGlass = nil
+            glassView?.alphaValue = 1
+            applyMorph(bounds)
+            if glassView == nil {
+                let shadow = NSShadow()
+                shadow.shadowBlurRadius = 2
+                shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
+                shadow.shadowOffset = NSMakeSize(0, 0)
+                self.shadow = shadow
+                self.layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 20, cornerHeight: 20, transform: nil)
+            }
+            needsLayout = true
+        }
+
+        var usesGlass: Bool {
+            return glassView != nil
+        }
+
+        func initFake(_ bar: NSRect) {
+            isMorphing = true
+            if #available(macOS 26.0, *), let glassView {
+                let tint = NSGlassEffectView(frame: .zero)
+                tint.style = .regular
+                tint.cornerRadius = 20
+                tint.tintColor = theme.colors.background.withAlphaComponent(0.3)
+                tint.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+                container.addSubview(tint, positioned: .above, relativeTo: glassView)
+                tintGlass = tint
+                tint.alphaValue = 0
+                glassView.alphaValue = 0
+            }
+            applyMorph(bar)
+        }
+
+        private func applyMorph(_ rect: NSRect) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            container.frame = rect
+            let inner = rect.size.bounds
+            glassView?.frame = inner
+            tintGlass?.frame = inner
+            visualView.frame = inner
+            backgroundView.frame = inner
+            contentView.frame = NSRect(origin: NSMakePoint(-rect.minX, -rect.minY), size: bounds.size)
+            CATransaction.commit()
         }
         
         override func layout() {
             super.layout()
+            if isMorphing {
+                return
+            }
             self.container.frame = bounds
             self.contentView.frame = bounds
             self.visualView.frame = bounds
+            self.glassView?.frame = bounds
             self.backgroundView.frame = bounds
         }
         
@@ -146,6 +198,8 @@ public final class ReactionsWindowController : NSObject {
     private let overlay = OverlayControl()
     
     private var initialPlayers:[Int: LottiePlayerView] = [:]
+    private var isRevealed: Bool = false
+    private var pendingAppearance: [TableRowItem]?
 
     
     private var keyDisposable: Disposable?
@@ -168,7 +222,7 @@ public final class ReactionsWindowController : NSObject {
             }
         }
         
-        let panel = Window(contentRect: NSMakeRect(initialRect.minX - 21, initialRect.maxY - 320 + (initialRect.height + 20) - 32 + 36 - wAdd, 390, 340), styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+        let panel = MenuPanelWindow(contentRect: NSMakeRect(initialRect.minX - 21, initialRect.maxY - 320 + (initialRect.height + 20) - 32 + 36 - wAdd, 390, 340), styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
         panel._canBecomeMain = false
         panel._canBecomeKey = false
         panel.level = .popUpMenu
@@ -235,7 +289,14 @@ public final class ReactionsWindowController : NSObject {
             self?.close(animated: true)
         }
         emojies.animateAppearance = { [weak self] items in
-            self?.animateAppearanceItems(items, initialPlayers: self?.initialPlayers ?? [:])
+            guard let self else {
+                return
+            }
+            if self.isRevealed {
+                self.animateAppearanceItems(items, initialPlayers: self.initialPlayers)
+            } else {
+                self.pendingAppearance = items
+            }
         }
     }
     
@@ -375,7 +436,9 @@ public final class ReactionsWindowController : NSObject {
             }
         })
         
-        view.initFake(initialView.frame, to: view.frame)
+        let barInInitial = NSMakeRect(10, 5, initialView.frame.width - 20, initialView.frame.height - 20)
+        let barRect = view.convert(barInInitial, from: initialView)
+        view.initFake(barRect)
 
         overlay.frame = context.window.bounds
         context.window.contentView?.addSubview(overlay)
@@ -386,15 +449,21 @@ public final class ReactionsWindowController : NSObject {
             guard let view = view, let initialView = initialView, let `self` = self else {
                 return
             }
+            AppMenu.closeAll()
             initialView.revealDidStart()
             CATransaction.begin()
             initialView.removeFromSuperview()
             CATransaction.commit()
 
             self.initialPlayers = initialView.collect()
+            self.isRevealed = true
             CATransaction.begin()
-            view.appearAnimated(from: initialView.frame, to: view.frame)
+            view.appearAnimated(from: barRect)
             CATransaction.commit()
+            if let pending = self.pendingAppearance {
+                self.pendingAppearance = nil
+                self.animateAppearanceItems(pending, initialPlayers: self.initialPlayers)
+            }
             
             if initialScreenRect.origin.y - 200 < 0, let panel = self.panel {
                 self.skipAppearAnimation = true
@@ -428,10 +497,9 @@ public final class ReactionsWindowController : NSObject {
         
         var panel: Window? = self.panel
         if animated {
-            if let v = panel?.contentView?.subviews.first(where: { $0 is V }) {
+            if let v = panel?.contentView?.subviews.first(where: { $0 is V }) as? V, !v.usesGlass {
                 v.layer?.rasterizationScale = System.backingScale
                 v.layer?.shouldRasterize = true
-                v.layer?.animateScaleCenter(from: 1, to: 0.9, duration: 0.2, removeOnCompletion: false, timingFunction: .easeIn)
             }
             panel?.contentView?.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { _ in
                 panel?.orderOut(nil)
@@ -443,3 +511,4 @@ public final class ReactionsWindowController : NSObject {
         reactions = nil
     }
 }
+

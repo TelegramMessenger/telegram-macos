@@ -242,6 +242,7 @@ public final class GifKeyboardView : View {
     private let searchContainer = View()
     private let searchBorder = View()
     private let searchBackdrop = View()
+    private let searchFrost = PickerFrostView()
     private let searchStatusView = PanelSearchStatusView(frame: .zero)
     private var searchStatus: PanelSearchPresentation = .hidden
 
@@ -256,6 +257,16 @@ public final class GifKeyboardView : View {
             }
         }
     }
+
+    public var usesMenuPanel: Bool = false {
+        didSet {
+            if oldValue != usesMenuPanel {
+                updateLocalizationAndTheme(theme: presentation ?? theme)
+                needsLayout = true
+            }
+        }
+    }
+    private let headerBlurFilter = PickerHeaderBlur()
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -269,7 +280,18 @@ public final class GifKeyboardView : View {
         }
         addSubview(self.tableView)
 
+        searchFrost.wantsLayer = true
+        searchFrost.material = .selection
+        searchFrost.blendingMode = .withinWindow
+        searchFrost.state = .active
+        searchFrost.layer?.cornerRadius = 15
+        if #available(macOS 10.15, *) {
+            searchFrost.layer?.cornerCurve = .continuous
+        }
+        searchFrost.layer?.masksToBounds = true
+        searchFrost.isHidden = true
         searchContainer.addSubview(searchBackdrop)
+        searchContainer.addSubview(searchFrost)
         searchContainer.addSubview(searchView)
         searchContainer.addSubview(searchBorder)
         addSubview(searchContainer)
@@ -325,15 +347,26 @@ public final class GifKeyboardView : View {
         transition.updateFrame(view: tabs, frame: NSMakeRect(0, initial, size.width, 46))
         transition.updateFrame(view: packsView, frame: tabs.focus(NSMakeSize(size.width, 36)))
         transition.updateFrame(view: borderView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, .borderSize))
+        borderView.isHidden = usesMenuPanel
 
-        
-        let searchDest = max(0, min((tableView.firstItem?.frame.minY ?? 0) + (tableView.clipView.destination?.y ?? tableView.documentOffset.y), 46))
+        let headerInset: CGFloat = usesMenuPanel && !TelegramUtilsHooks.shared.isLite(.blur) ? 46 : 0
+        let tableY = headerInset > 0 ? max(0, tabs.frame.maxY - headerInset) : tabs.frame.maxY
+        let topInset = headerInset > 0 ? tabs.frame.maxY - tableY : 0
+        if tableView.contentInsets.top != topInset {
+            var insets = tableView.contentInsets
+            insets.top = topInset
+            tableView.contentInsets = insets
+        }
+
+        let searchDest = max(0, min((tableView.firstItem?.frame.minY ?? 0) + (tableView.clipView.destination?.y ?? tableView.documentOffset.y) + topInset, 46))
                 
         transition.updateFrame(view: searchContainer, frame: NSMakeRect(0, min(max(tabs.frame.maxY - searchDest, 0), tabs.frame.maxY), size.width, 46))
         transition.updateFrame(view: searchView, frame: searchContainer.focus(NSMakeSize(size.width - 16, 30)))
+        transition.updateFrame(view: searchFrost, frame: searchView.frame)
         transition.updateFrame(view: searchBorder, frame: NSMakeRect(0, searchContainer.frame.height - .borderSize, size.width, .borderSize))
         
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, size.height))
+        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tableY, size.width, headerInset > 0 ? size.height - tableY : size.height))
+        _ = headerBlurFilter.update(tableView, enabled: headerInset > 0, height: 46 - tableView.frame.minY)
 
         transition.updateFrame(view: searchStatusView, frame: NSMakeRect(0, searchContainer.frame.maxY, size.width, max(0, size.height - searchContainer.frame.maxY - 56)))
 
@@ -357,20 +390,36 @@ public final class GifKeyboardView : View {
         super.updateLocalizationAndTheme(theme: theme)
         let border: NSColor = isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
         self.backgroundColor = isGlass ? .clear : theme.colors.background
-        searchStatusView.updateSearchStatus(searchStatus, kind: .gifs, query: searchView.query, theme: presentation ?? (theme as! TelegramPresentationTheme))
+        searchStatusView.updateSearchStatus(searchStatus, kind: .gifs, query: searchView.query, theme: presentation ?? (theme as! TelegramPresentationTheme), clearBackground: usesMenuPanel)
         borderView.backgroundColor = border
         tabs.backgroundColor = isGlass ? .clear : theme.colors.background
         searchContainer.backgroundColor = isGlass ? .clear : theme.colors.background
         searchBorder.backgroundColor = border
         searchBackdrop.backgroundColor = theme.colors.background.withAlphaComponent(0.85)
-        searchBackdrop.isHidden = !isGlass
+        searchBackdrop.isHidden = !isGlass || usesMenuPanel
         self.searchView.updateLocalizationAndTheme(theme: theme)
+        searchFrost.isHidden = !usesMenuPanel || TelegramUtilsHooks.shared.isLite(.blur)
+        searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         if isGlass {
-            let searchBackground = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
-            self.searchView.searchTheme = SearchTheme(searchBackground, theme.search.searchImage, theme.search.clearImage, theme.search.placeholder, theme.search.textColor, theme.search.placeholderColor)
+            let searchBackground = searchFrost.isHidden ? theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1) : .clear
+            self.searchView.searchTheme = pickerSearchTheme(searchBackground, theme: theme, black: true)
         } else {
             self.searchView.searchTheme = theme.search
         }
+        applyChromeTint()
+    }
+
+    private func applyChromeTint() {
+        let tint = pickerChromeColor(isGlass)
+        let frosted = isGlass && !TelegramUtilsHooks.shared.isLite(.blur)
+        packsView.enumerateItems(with: { item in
+            if let item = item as? GifKeyboardTabRowItem, item.tint != tint || item.frosted != frosted {
+                item.tint = tint
+                item.frosted = frosted
+                item.redraw()
+            }
+            return true
+        })
     }
     
     public required init?(coder: NSCoder) {
@@ -392,9 +441,10 @@ public final class GifKeyboardView : View {
     
     func update(sections: TableUpdateTransition, packs: TableUpdateTransition, searchStatus: PanelSearchPresentation) {
         self.searchStatus = searchStatus
-        searchStatusView.updateSearchStatus(searchStatus, kind: .gifs, query: searchView.query, theme: presentation ?? theme)
+        searchStatusView.updateSearchStatus(searchStatus, kind: .gifs, query: searchView.query, theme: presentation ?? theme, clearBackground: usesMenuPanel)
         self.tableView.merge(with: sections)
         self.packsView.merge(with: packs)
+        applyChromeTint()
     }
 }
 

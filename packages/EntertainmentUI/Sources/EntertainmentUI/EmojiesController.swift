@@ -299,8 +299,12 @@ private struct State : Equatable {
     var availableReactions: AvailableReactions?
     
     var color: NSColor? = nil
+    var blackChrome: Bool = false
     
     static func ==(lhs: State, rhs: State) -> Bool {
+        if lhs.blackChrome != rhs.blackChrome {
+            return false
+        }
         
         if lhs.sections != rhs.sections {
             return false
@@ -420,6 +424,20 @@ private func emojiesRowSelection(_ selected: [EmojiesSectionRowItem.SelectedItem
     }
 }
 
+private struct EmojiTabsEquatable: Equatable {
+    let state: State.EmojiState
+    let blackChrome: Bool
+}
+
+func pickerChromeColor(_ enabled: Bool) -> NSColor? {
+    return enabled && !theme.colors.isDark ? theme.colors.text : nil
+}
+
+func pickerSearchTheme(_ background: NSColor, theme: PresentationTheme, black: Bool) -> SearchTheme {
+    let chrome: NSColor? = black && !theme.colors.isDark ? theme.colors.text : nil
+    return SearchTheme(background, chrome.map { theme.search.searchImage._NSImage.precomposed($0) } ?? theme.search.searchImage, theme.search.clearImage, theme.search.placeholder, theme.search.textColor, chrome ?? theme.search.placeholderColor)
+}
+
 private func packEntries(_ state: State, arguments: Arguments, presentation: TelegramPresentationTheme?) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
     
@@ -452,9 +470,9 @@ private func packEntries(_ state: State, arguments: Arguments, presentation: Tel
     }
     if hasRecent {
         let recentImage = TelegramThemeHooks.shared.image(.iconEmojiTabRecent)
-        let color = state.color ?? theme.colors.grayIcon
+        let color = state.color ?? pickerChromeColor(state.blackChrome) ?? theme.colors.grayIcon
         let icon = recentImage.precomposed(color.withAlphaComponent(0.8))
-        let activeIcon = recentImage.precomposed((state.color ?? theme.colors.grayIcon.darker()))
+        let activeIcon = recentImage.precomposed((state.color ?? pickerChromeColor(state.blackChrome) ?? theme.colors.grayIcon.darker()))
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_recent_pack, equatable: .init(color), comparable: nil, item: { initialSize, stableId in
             return ETabRowItem(initialSize, stableId: stableId, icon: icon, iconSelected: activeIcon)
         }))
@@ -463,8 +481,8 @@ private func packEntries(_ state: State, arguments: Arguments, presentation: Tel
    
 
     if arguments.mode == .emoji || arguments.mode == .stories {
-        entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_segments_pack, equatable: InputDataEquatable(state.emojiState), comparable: nil, item: { initialSize, stableId in
-            return EmojiTabsItem(initialSize, stableId: stableId, segments: EmojiSegment.all, selected: state.emojiState.selected, select: arguments.selectEmojiSegment, presentation: presentation)
+        entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_segments_pack, equatable: InputDataEquatable(EmojiTabsEquatable(state: state.emojiState, blackChrome: state.blackChrome)), comparable: nil, item: { initialSize, stableId in
+            return EmojiTabsItem(initialSize, stableId: stableId, segments: EmojiSegment.all, selected: state.emojiState.selected, select: arguments.selectEmojiSegment, presentation: presentation, tint: pickerChromeColor(state.blackChrome))
         }))
         index += 1
     }
@@ -1068,10 +1086,12 @@ public final class AnimatedEmojiesCategories : Control {
         
         private var selectionView : SimpleLayer?
         private var presenation: TelegramPresentationTheme? = nil
+        private var iconColor: NSColor?
         
-        required init(frame frameRect: NSRect, context: any AccountContextProtocol, category: EmojiSearchCategories.Group, isSelected: Bool, presenation: TelegramPresentationTheme? = nil) {
+        required init(frame frameRect: NSRect, context: any AccountContextProtocol, category: EmojiSearchCategories.Group, isSelected: Bool, presenation: TelegramPresentationTheme? = nil, iconColor: NSColor? = nil) {
             
             self.presenation = presenation
+            self.iconColor = iconColor
             self.category = category
             self.context = context
            
@@ -1084,7 +1104,7 @@ public final class AnimatedEmojiesCategories : Control {
             let lite = self.isLite
             if let image = category.icon {
                 let imageView = ImageView()
-                imageView.image = image
+                imageView.image = iconColor.map { image._NSImage.precomposed($0) } ?? image
                 imageView.sizeToFit()
                 imageView.isAccessibilityDecorative = true
                 addSubview(imageView)
@@ -1106,7 +1126,7 @@ public final class AnimatedEmojiesCategories : Control {
                 if let player = self.player {
                     performSublayerRemoval(player, animated: animated)
                 }
-                let color = presentation.colors.grayIcon.withAlphaComponent(0.8)
+                let color = self.iconColor ?? presentation.colors.grayIcon.withAlphaComponent(0.8)
                 let inline = InlineStickerItemLayer(account: context.account, inlinePacksContext: context.inlinePacksContext, emoji: .init(fileId: category.id, file: self.player?.file, emoji: ""), size: NSMakeSize(23, 23), playPolicy: policy, getColors: { _ in
                     return [.init(keyPath: "", color: color)]
                 }, ignorePreview: true)
@@ -1145,6 +1165,19 @@ public final class AnimatedEmojiesCategories : Control {
         
         var isLite: Bool {
             return self.context.isLite(.emoji)
+        }
+
+        func updateIconColor(_ color: NSColor?) {
+            guard self.iconColor != color else {
+                return
+            }
+            self.iconColor = color
+            if let imageView = self.imageView, let image = category.icon {
+                imageView.image = color.map { image._NSImage.precomposed($0) } ?? image
+            } else {
+                self.currentKey = nil
+                self.apply(key: "select", policy: .toEnd(from: .max))
+            }
         }
         
         func playAppearAnimation() {
@@ -1237,6 +1270,17 @@ public final class AnimatedEmojiesCategories : Control {
             updateLocalizationAndTheme(theme: presentation ?? theme)
         }
     }
+
+    public var iconColor: NSColor? {
+        didSet {
+            guard oldValue != iconColor else {
+                return
+            }
+            for view in documentView.subviews.compactMap({ $0 as? CategoryView }) {
+                view.updateIconColor(iconColor)
+            }
+        }
+    }
     
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
@@ -1308,7 +1352,7 @@ public final class AnimatedEmojiesCategories : Control {
         
         
         for (idx, item, _) in indicesAndItems {
-            let subview = CategoryView(frame: NSMakeRect(CGFloat(idx) * 30, 0, 30, 30), context: context, category: item, isSelected: selected == item, presenation: presentation)
+            let subview = CategoryView(frame: NSMakeRect(CGFloat(idx) * 30, 0, 30, 30), context: context, category: item, isSelected: selected == item, presenation: presentation, iconColor: iconColor)
             subview.set(handler: { [weak self] _ in
                 self?.select?(item)
             }, for: .Click)
@@ -1398,14 +1442,18 @@ public final class AnimatedEmojiesView : Control {
     private let borderView = View()
     private let tabs = View()
     private let selectionView: View = View(frame: NSMakeRect(0, 0, 36, 36))
+    private var selectionFrost: NSVisualEffectView?
     
     public let searchView = SearchView(frame: .zero)
     fileprivate let searchContainer = View()
     private let visualEffect = NSVisualEffectView()
+    private let searchFrost = PickerFrostView()
     private let searchInside = View()
     private let searchBackdrop = View()
     
     private let searchBorder = View()
+    private let headerBlur = PassthroughVisualEffectView()
+    private let headerBlurFilter = PickerHeaderBlur()
     private let searchStatusView = PanelSearchStatusView(frame: .zero)
     private var searchStatus: PanelSearchPresentation = .hidden
     
@@ -1433,6 +1481,17 @@ public final class AnimatedEmojiesView : Control {
     private var glassSurface: LiquidGlassView?
     private var isClearBackground: Bool {
         return mode.isTransparent || isGlass
+    }
+    public var usesMenuPanel: Bool = false {
+        didSet {
+            if oldValue != usesMenuPanel {
+                updateLocalizationAndTheme(theme: presentation ?? theme)
+                needsLayout = true
+            }
+        }
+    }
+    private var usesPickerStyle: Bool {
+        return mode.isTransparent || usesMenuPanel
     }
 
     private func updateGlassSurface() {
@@ -1470,11 +1529,28 @@ public final class AnimatedEmojiesView : Control {
             .clear
         }
         addSubview(self.tableView)
+        headerBlur.blendingMode = .withinWindow
+        headerBlur.state = .active
+        headerBlur.material = .menu
+        addSubview(headerBlur)
         
         searchView.isLeftOrientated = true
         searchView.layer?.cornerRadius = 15
 
+        searchFrost.wantsLayer = true
+        if #available(macOS 10.14, *) {
+            searchFrost.material = .selection
+        }
+        searchFrost.blendingMode = .withinWindow
+        searchFrost.state = .active
+        searchFrost.layer?.cornerRadius = 15
+        if #available(macOS 10.15, *) {
+            searchFrost.layer?.cornerCurve = .continuous
+        }
+        searchFrost.layer?.masksToBounds = true
+        searchFrost.isHidden = true
         searchInside.addSubview(searchView)
+        searchInside.addSubview(searchFrost, positioned: .below, relativeTo: searchView)
         
         visualEffect.wantsLayer = true
         
@@ -1535,12 +1611,21 @@ public final class AnimatedEmojiesView : Control {
         transition.updateFrame(view: tabs, frame: NSMakeRect(0, initial, size.width, 46))
         transition.updateFrame(view: packsView, frame: tabs.focus(NSMakeSize(size.width, 36)))
         transition.updateFrame(view: borderView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, .borderSize))
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, size.height - initial))
+        let blursUnderHeader = usesPickerStyle && !TelegramUtilsHooks.shared.isLite(.blur)
+        let headerInset: CGFloat = blursUnderHeader ? 46 : 0
+        let tableY = headerInset > 0 ? max(0, tabs.frame.maxY - headerInset) : tabs.frame.maxY
+        let topInset = headerInset > 0 ? tabs.frame.maxY - tableY : 0
+        if tableView.contentInsets.top != topInset {
+            var insets = tableView.contentInsets
+            insets.top = topInset
+            tableView.contentInsets = insets
+        }
+        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tableY, size.width, headerInset > 0 ? size.height - tableY : size.height - initial))
         
-        transition.updateAlpha(view: borderView, alpha: inSearch ? 0 : 1)
+        transition.updateAlpha(view: borderView, alpha: inSearch || usesPickerStyle ? 0 : 1)
 
         
-        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y), 46))
+        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y) + headerInset, 46))
 
         let searchDest = inSearch ? 0 : dest
         transition.updateFrame(view: searchContainer, frame: NSMakeRect(0, tabs.frame.maxY, size.width, 46 - min(searchDest, 46)))
@@ -1554,13 +1639,21 @@ public final class AnimatedEmojiesView : Control {
         
         
         transition.updateFrame(view: searchView, frame: searchInside.focus(NSMakeSize(size.width - 16, 30)))
+        transition.updateFrame(view: searchFrost, frame: searchView.frame)
+        searchFrost.layer?.cornerRadius = 15
         transition.updateFrame(view: searchBorder, frame: NSMakeRect(0, searchContainer.frame.height - .borderSize, size.width, .borderSize))
-        let alpha: CGFloat = inSearch && tableView.documentOffset.y > 0 ? 1 : 0
+        let alpha: CGFloat = inSearch && tableView.documentOffset.y > -headerInset ? 1 : 0
         transition.updateAlpha(view: searchBorder, alpha: alpha)
         if isGlass {
             transition.updateAlpha(view: searchBackdrop, alpha: alpha)
         }
         transition.updateFrame(view: searchBackdrop, frame: searchInsideRect)
+        
+        let blursTableContent = headerBlurFilter.update(tableView, enabled: blursUnderHeader, height: 46 - tableView.frame.minY)
+        headerBlur.isHidden = !blursUnderHeader || blursTableContent
+        if blursUnderHeader && !blursTableContent {
+            transition.updateFrame(view: headerBlur, frame: NSMakeRect(0, 0, size.width, 46))
+        }
         
         if let categories = categories {
             transition.updateFrame(view: categories, frame: categories.centerFrameY(x: searchInside.frame.width - categories.frame.width - searchView.frame.minX))
@@ -1584,35 +1677,39 @@ public final class AnimatedEmojiesView : Control {
         super.updateLocalizationAndTheme(theme: theme)
         
         self.borderView.backgroundColor = mode == .reactions || isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
-        self.tabs.backgroundColor = isClearBackground ? .clear : theme.colors.background
+        self.tabs.backgroundColor = isClearBackground || usesPickerStyle ? .clear : theme.colors.background
         self.backgroundColor = isClearBackground ? .clear : theme.colors.background
-        self.searchContainer.background = isClearBackground ? .clear : theme.colors.background
+        self.searchContainer.background = isClearBackground || usesPickerStyle ? .clear : theme.colors.background
         self.searchBorder.backgroundColor = mode.isTransparent ? .clear : isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
         visualEffect.material = theme.colors.isDark ? .dark : .light
-        visualEffect.isHidden = isGlass
+        visualEffect.isHidden = isGlass || mode.isTransparent
+        headerBlur.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+        searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+        searchFrost.isHidden = !usesPickerStyle || TelegramUtilsHooks.shared.isLite(.blur)
         if let glassSurface {
             glassSurface.customTint = theme.colors.background.withAlphaComponent(EntertainmentView.glassTintAlpha)
             glassSurface.updateLocalizationAndTheme(theme: theme)
         }
         searchBackdrop.backgroundColor = theme.colors.background.withAlphaComponent(0.85)
-        searchBackdrop.isHidden = !isGlass
-        if isGlass {
+        searchBackdrop.isHidden = !isGlass || usesPickerStyle
+        if isGlass || (usesPickerStyle && !searchFrost.isHidden) {
             searchInside.backgroundColor = .clear
         } else {
             searchInside.backgroundColor = mode.isTransparent ? theme.colors.background.withAlphaComponent(0.7) : theme.colors.background
         }
-        if isClearBackground {
+        if isClearBackground || usesPickerStyle {
             let background = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
-            let searchTheme = SearchTheme(background, theme.search.searchImage, theme.search.clearImage, theme.search.placeholder, theme.search.textColor, theme.search.placeholderColor)
+            let searchTheme = pickerSearchTheme(!searchFrost.isHidden ? .clear : background, theme: theme, black: usesPickerStyle || isGlass)
             self.searchView.searchTheme = searchTheme
             self.categories?.searchTheme = searchTheme
+            self.categories?.iconColor = pickerChromeColor(usesPickerStyle || isGlass)
         } else {
             self.searchView.searchTheme = theme.search
             self.categories?.searchTheme = theme.search
         }
         
         self.searchView.updateLocalizationAndTheme(theme: theme)
-        searchStatusView.updateSearchStatus(searchStatus, kind: .emoji, query: searchView.query, theme: presentation ?? (theme as! TelegramPresentationTheme))
+        searchStatusView.updateSearchStatus(searchStatus, kind: .emoji, query: searchView.query, theme: presentation ?? (theme as! TelegramPresentationTheme), clearBackground: usesPickerStyle)
     }
     
     public required init?(coder: NSCoder) {
@@ -1652,7 +1749,11 @@ public final class AnimatedEmojiesView : Control {
     }
     
     fileprivate func update(sections: TableUpdateTransition, packs: TableUpdateTransition, state: State, context: any AccountContextProtocol, arguments: Arguments, mode: EmojiesController.Mode) {
+        let modeChanged = self.mode != mode
         self.mode = mode
+        if modeChanged {
+            updateLocalizationAndTheme(theme: presentation ?? theme)
+        }
         
         let previous = self.state
         self.state = state
@@ -1680,7 +1781,7 @@ public final class AnimatedEmojiesView : Control {
             }
         }
         searchStatus = .resolve(isSearching: state.search != nil, isLoading: state.searchLoading, hasResults: hasSearchResults)
-        searchStatusView.updateSearchStatus(searchStatus, kind: .emoji, query: searchView.query, theme: presentation ?? theme)
+        searchStatusView.updateSearchStatus(searchStatus, kind: .emoji, query: searchView.query, theme: presentation ?? theme, clearBackground: usesPickerStyle)
         
 //        searchContainer.isHidden = mode == .reactions
 //        tableView.scrollerInsets = mode == .reactions ? .init() : .init(left: 0, right: 0, top: 46, bottom: 50)
@@ -1812,6 +1913,7 @@ public final class AnimatedEmojiesView : Control {
                 current = view
             } else {
                 current = AnimatedEmojiesCategories(frame: categoryRect, presentation: presentation)
+                current.iconColor = pickerChromeColor(usesPickerStyle || isGlass)
                 self.categories = current
                 searchInside.addSubview(current)
                 
@@ -1870,9 +1972,29 @@ public final class AnimatedEmojiesView : Control {
         let rect = NSMakeRect(viewPoint.y - point.y, 5, item.height, packsView.frame.height)
         
         selectionView.layer?.cornerRadius = item.height == item.width && item.index != 1 ? .cornerRadius : item.width / 2
-        if mode == .reactions || isGlass {
+        if usesPickerStyle || isGlass, !TelegramUtilsHooks.shared.isLite(.blur) {
+            let frost: NSVisualEffectView
+            if let current = selectionFrost {
+                frost = current
+            } else {
+                frost = PickerFrostView(frame: selectionView.bounds)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                frost.autoresizingMask = [.width, .height]
+                selectionView.addSubview(frost)
+                selectionFrost = frost
+            }
+            frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+            selectionView.background = .clear
+        } else if mode == .reactions || isGlass {
+            selectionFrost?.removeFromSuperview()
+            selectionFrost = nil
             selectionView.background = theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1)
         } else {
+            selectionFrost?.removeFromSuperview()
+            selectionFrost = nil
             selectionView.background = theme.colors.grayBackground.withAlphaComponent(item.height == item.width ? 1 : 0.9)
         }
         if animated {
@@ -1929,7 +2051,15 @@ public final class AnimatedEmojiesView : Control {
             return nil
         }
         
-        let stableId = tableView.item(at: max(1, tableView.visibleRows().location)).stableId
+        var firstRow = tableView.visibleRows().location
+        let headerInset = tableView.contentInsets.top
+        if headerInset > 0 {
+            let row = tableView.row(at: NSMakePoint(1, tableView.documentOffset.y + headerInset + 1))
+            if row >= 0 {
+                firstRow = row
+            }
+        }
+        let stableId = tableView.item(at: max(1, min(firstRow, tableView.count - 1))).stableId
         var _stableId: AnyHashable?
         var _segment: EmojiSegment?
 
@@ -2013,7 +2143,7 @@ public enum EmojiesControllerMode {
     }
     public var isTransparent: Bool {
         switch self {
-        case .reactions:
+        case .reactions, .defaultTags, .status:
             return true
         case .messageEffects:
             return true
@@ -2055,6 +2185,12 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
             if isLoaded() {
                 genericView.isGlass = isGlass
             }
+            let blackChrome = mode.isTransparent || usesMenuPanel || isGlass
+            self.updateState?({ current in
+                var current = current
+                current.blackChrome = blackChrome
+                return current
+            })
         }
     }
 
@@ -2063,6 +2199,20 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
             if isLoaded() {
                 genericView.showsGlassSurface = showsGlassSurface
             }
+        }
+    }
+
+    public var usesMenuPanel: Bool = false {
+        didSet {
+            if isLoaded() {
+                genericView.usesMenuPanel = usesMenuPanel
+            }
+            let blackChrome = mode.isTransparent || usesMenuPanel || isGlass
+            self.updateState?({ current in
+                var current = current
+                current.blackChrome = blackChrome
+                return current
+            })
         }
     }
 
@@ -2229,6 +2379,7 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
         genericView.presentation = self.presentation
         genericView.isGlass = isGlass || showsGlassSurface
         genericView.showsGlassSurface = showsGlassSurface
+        genericView.usesMenuPanel = usesMenuPanel
         genericView.packsView.delegate = self
         
        
@@ -2240,7 +2391,8 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
         let mode = self.mode
         let actionsDisposable = DisposableSet()
         
-        let initialState = State(sections: [], itemsDict: [:], selectedItems: self.selectedItems, color: self.color)
+        var initialState = State(sections: [], itemsDict: [:], selectedItems: self.selectedItems, color: self.color)
+        initialState.blackChrome = mode.isTransparent || self.usesMenuPanel || self.isGlass
         
         let statePromise = ValuePromise<State>(ignoreRepeated: true)
         let stateValue = Atomic(value: initialState)
@@ -3049,5 +3201,67 @@ public extension MessageReaction.Reaction {
         default:
             return ""
         }
+    }
+}
+
+private final class PassthroughVisualEffectView: NSVisualEffectView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil
+    }
+}
+
+final class PickerFrostView: NSVisualEffectView {
+    override var isEmphasized: Bool {
+        get { false }
+        set {}
+    }
+}
+
+final class PickerHeaderBlur {
+    private var filter: NSObject?
+    private var maskKey: NSSize?
+
+    func update(_ view: NSView, enabled: Bool, height: CGFloat) -> Bool {
+        guard #available(macOS 26.0, *), enabled, let layer = view.layer else {
+            if filter != nil {
+                view.layer?.filters = nil
+                filter = nil
+                maskKey = nil
+            }
+            return false
+        }
+        if filter == nil {
+            guard let created = ee2_makeVariableBlurFilter() else {
+                return false
+            }
+            created.setValue(14, forKey: "inputRadius")
+            created.setValue(false, forKey: "inputNormalizeEdges")
+            filter = created
+        }
+        guard let filter else {
+            return false
+        }
+        let key = NSMakeSize(floor(max(0, height)), floor(layer.bounds.height))
+        if key != maskKey, key.height > 0 {
+            maskKey = key
+            filter.setValue(PickerHeaderBlur.mask(blurHeight: key.width, height: key.height), forKey: "inputMaskImage")
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.filters = [filter]
+            CATransaction.commit()
+        }
+        return true
+    }
+
+    private static func mask(blurHeight: CGFloat, height: CGFloat) -> CGImage? {
+        let scale = System.backingScale
+        let pixelHeight = Int(min(2048, height * scale))
+        let unit = CGFloat(pixelHeight) / height
+        guard pixelHeight > 0, let context = CGContext(data: nil, width: 1, height: pixelHeight, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return nil
+        }
+        context.setFillColor(NSColor.black.cgColor)
+        context.fill(CGRect(x: 0, y: CGFloat(pixelHeight) - blurHeight * unit, width: 1, height: blurHeight * unit))
+        return context.makeImage()
     }
 }
