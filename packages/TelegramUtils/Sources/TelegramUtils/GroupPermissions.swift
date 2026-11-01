@@ -67,33 +67,42 @@ public let publicGroupRestrictedPermissions: TelegramChatBannedRightsFlags = [
     .banChangeInfo
 ]
 
-public func checkMediaPermission(_ media: Media, for peer: Peer?) -> String? {
+public func canBypassChatRestrictions(_ cachedData: CachedPeerData?) -> Bool {
+    guard let cachedData = cachedData as? CachedChannelData,
+          let required = cachedData.boostsToUnrestrict, required > 0,
+          let applied = cachedData.appliedBoosts else {
+        return false
+    }
+    return applied >= required
+}
+
+public func checkMediaPermission(_ media: Media, for peer: Peer?, cachedData: CachedPeerData? = nil) -> String? {
     guard let peer = peer else {
         return nil
     }
     switch media {
     case _ as TelegramMediaPoll:
-        return permissionText(from: peer, for: .banSendPolls)
+        return permissionText(from: peer, for: .banSendPolls, cachedData: cachedData)
     case _ as TelegramMediaImage:
-        return permissionText(from: peer, for: .banSendPhotos)
+        return permissionText(from: peer, for: .banSendPhotos, cachedData: cachedData)
     case let file as TelegramMediaFile:
         if file.isAnimated && file.isVideo {
-            return permissionText(from: peer, for: .banSendGifs)
+            return permissionText(from: peer, for: .banSendGifs, cachedData: cachedData)
         } else if file.isStaticSticker {
-            return permissionText(from: peer, for: .banSendStickers)
+            return permissionText(from: peer, for: .banSendStickers, cachedData: cachedData)
         } else if file.isMusic {
-            return permissionText(from: peer, for: .banSendMusic)
+            return permissionText(from: peer, for: .banSendMusic, cachedData: cachedData)
         } else if file.isVoice {
-            return permissionText(from: peer, for: .banSendVoice)
+            return permissionText(from: peer, for: .banSendVoice, cachedData: cachedData)
         } else if file.isInstantVideo {
-            return permissionText(from: peer, for: .banSendInstantVideos)
+            return permissionText(from: peer, for: .banSendInstantVideos, cachedData: cachedData)
         } else if file.isVideo {
-            return permissionText(from: peer, for: .banSendVideos)
+            return permissionText(from: peer, for: .banSendVideos, cachedData: cachedData)
         } else {
-            return permissionText(from: peer, for: .banSendFiles)
+            return permissionText(from: peer, for: .banSendFiles, cachedData: cachedData)
         }
     case _ as TelegramMediaGame:
-        return permissionText(from: peer, for: .banSendGames)
+        return permissionText(from: peer, for: .banSendGames, cachedData: cachedData)
     default:
         return nil
     }
@@ -105,18 +114,11 @@ public func permissionText(from peer: Peer?, for flags: TelegramChatBannedRights
     }
     var bannedPermission: (Int32, Bool)?
     
-    if let cachedData = cachedData as? CachedChannelData, !peer.isAdmin {
-        if let boostsToUnrestrict = cachedData.boostsToUnrestrict {
-            let appliedBoosts = cachedData.appliedBoosts ?? 0
-            if boostsToUnrestrict <= appliedBoosts {
-                return nil
-            }
-        }
-    }
+    let ignoreDefault = canBypassChatRestrictions(cachedData)
     
     let get:(TelegramChatBannedRightsFlags) -> (Int32, Bool)? = { flags in
         if let channel = peer as? TelegramChannel {
-            return channel.hasBannedPermission(flags)
+            return channel.hasBannedPermission(flags, ignoreDefault: ignoreDefault)
         } else if let group = peer as? TelegramGroup {
             if group.hasBannedPermission(flags) {
                 return (Int32.max, false)
@@ -246,10 +248,11 @@ public extension Peer {
         if self.id == repliesPeerId {
             return false
         }
+        let ignoreDefault = canBypassChatRestrictions(cachedData)
         if let channel = self as? TelegramChannel {
             if case .broadcast(_) = channel.info {
                 if let media = media, channel.hasPermission(.sendSomething) {
-                    return checkMediaPermission(media, for: channel) == nil
+                    return checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
                 } else {
                     return channel.hasPermission(.sendText)
                 }
@@ -261,27 +264,18 @@ public extension Peer {
                     }
                 }
                 
-                if let cachedData = cachedData as? CachedChannelData, let boostsToUnrestrict = cachedData.boostsToUnrestrict {
-                    let appliedBoosts = cachedData.appliedBoosts ?? 0
-                    if boostsToUnrestrict <= appliedBoosts {
-                        return true
-                    }
-                }
-                
                 switch channel.participationStatus {
                 case .member:
-                    if let media = media, channel.hasPermission(.sendSomething) {
-                        return checkMediaPermission(media, for: channel) == nil
-                    } else {
-                        return channel.hasPermission(.sendText)
+                    if let media = media {
+                        return channel.hasPermission(.sendSomething, ignoreDefault: ignoreDefault) && checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
                     }
+                    return channel.hasPermission(.sendText, ignoreDefault: ignoreDefault)
                 case .left:
                     if isThreadMode {
-                        if let media = media, channel.hasPermission(.sendSomething) {
-                            return checkMediaPermission(media, for: channel) == nil
-                        } else {
-                            return channel.hasPermission(.sendText)
+                        if let media = media {
+                            return channel.hasPermission(.sendSomething, ignoreDefault: ignoreDefault) && checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
                         }
+                        return channel.hasPermission(.sendText, ignoreDefault: ignoreDefault)
                     }
                     return false
                 case .kicked:
@@ -289,6 +283,9 @@ public extension Peer {
                 }
             }
         } else if let group = self as? TelegramGroup {
+            if let media = media {
+                return group.membership == .Member && group.hasPermission(.sendSomething) && checkMediaPermission(media, for: group) == nil
+            }
             return group.membership == .Member && !group.hasBannedPermission(.banSendText)
         } else if let secret = self as? TelegramSecretChat {
             switch secret.embeddedState {

@@ -66,13 +66,6 @@ private func chatHistoryKeepsReadState(peer: Peer?, chatLocation: ChatLocation) 
     return channel.flags.contains(.isMonoforum) || channel.participationStatus == .member
 }
 
-private func canBypassChatRestrictions(_ cachedData: CachedChannelData) -> Bool {
-    guard let required = cachedData.boostsToUnrestrict, required > 0, let applied = cachedData.appliedBoosts else {
-        return false
-    }
-    return applied >= required
-}
-
 private var nextClientId: Int32 = 1
 
 
@@ -4758,6 +4751,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             #endif
             // Flush the live inline editor (if any) into the stored draft / composer text first, so this send
             // posts the current edited content (we don't continuously sync — that loops).
+            if let interaction = self?.chatInteraction,
+               let restriction = interaction.presentation.textRestriction,
+               interaction.richTextDraft != nil || !interaction.presentation.effectiveInput.inputText.isEmpty {
+                showModalText(for: context.window, text: restriction)
+                return
+            }
             self?.chatInteraction.flushRichTextDraft?()
             let deferredSendAction = self?.chatInteraction.captureDeferredSendAction()
             // A structural rich-text draft (composed in the rich editor, shown as the composer preview) sends
@@ -4767,7 +4766,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             let canSendRichDraft: Bool = {
                 guard let strongSelf = self else { return false }
                 let p = strongSelf.chatInteraction.presentation
-                guard p.state == .normal else { return false }
+                guard p.state == .normal, p.textRestriction == nil else { return false }
                 if let suggestPost = p.interfaceState.suggestPost, suggestPost.amount == nil { return false }
                 if let slowMode = p.slowMode, slowMode.hasLocked || p.slowModeMultipleLocked { return false }
                 return true
@@ -4887,10 +4886,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                                 }
 
                                                 if let media = message.anyMedia {
-                                                    return checkMediaPermission(media, for: peer)
+                                                    return checkMediaPermission(media, for: peer, cachedData: cachedData)
                                                 }
 
-                                                return nil
+                                                return permissionText(from: peer, for: .banSendText, cachedData: cachedData)
                                             }
 
                                             if !errors.isEmpty {
@@ -6608,12 +6607,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if let last = slowMode.sendingIds.last {
                         self.chatInteraction.focusMessageId(nil, .init(messageId: last, string: nil), .CenterEmpty)
                     }
-                } else if let peer = self.chatInteraction.peer {
-                    
-                    let canSend = peer.canSendMessage(self.mode.isThreadMode, threadData: self.chatInteraction.presentation.threadInfo, cachedData: self.chatInteraction.presentation.cachedData)
-
-                    
-                    if canSend {
+                } else {
+                    if self.chatInteraction.presentation.canAttachFiles {
                         filePanel(allowMultiple: true, canChooseDirectories: true, for: window, cancelled: {
                             guard selectionAction.takeIfCurrent(onInvalidated: {}) else { return }
                         }, completion: { [weak self] result in
@@ -6879,7 +6874,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 
                 let canSend = medias.map {
                     return peer.canSendMessage(strongSelf.mode.isThreadMode, media: $0, threadData: strongSelf.chatInteraction.presentation.threadInfo, cachedData: strongSelf.chatInteraction.presentation.cachedData)
-                }.allSatisfy { $0 }
+                }.allSatisfy { $0 } && ((additionText?.inputText.isEmpty ?? true) || presentation.textRestriction == nil)
                 
                 if canSend {
                     
