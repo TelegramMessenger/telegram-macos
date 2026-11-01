@@ -1283,7 +1283,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
                                 
                                 let autoplayPlayerView = MediaPlayerView(backgroundThread: true)
                                 let autoplayPlayer: ChatVideoAutoplayPlayer
-                                if isAV1Video(file: fileReference.media) {
+                                if shouldUseChunkedVideoPlayer(file: fileReference.media) {
                                     autoplayPlayer = ChatVideoChunkedAutoplayPlayer(postbox: context.account.postbox, fileReference: fileReference, volume: 0.0, view: autoplayPlayerView)
                                 } else {
                                     autoplayPlayer = MediaPlayer(postbox: context.account.postbox, userLocation: fileReference.userLocation, userContentType: fileReference.userContentType, reference: fileReference.resourceReference(fileReference.media.resource), streamable: file.isStreamable, video: true, preferSoftwareDecoding: false, enableSound: false, volume: 0.0, fetchAutomatically: false)
