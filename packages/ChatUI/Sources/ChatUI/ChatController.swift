@@ -1321,8 +1321,8 @@ public class ChatControllerView : View, ChatInputDelegate {
             } else if let pinnedMessageId = interfaceState.pinnedMessageId, !interfaceState.interfaceState.dismissedPinnedMessageId.contains(pinnedMessageId.messageId), !interfaceState.hidePinnedMessage, interfaceState.chatMode != .pinned {
                 
                 let translation: ChatLiveTranslateContext.State.Result?
-                if let translate = interfaceState.translateState {
-                    translation = translate.result[.Key(id: pinnedMessageId.messageId, toLang: translate.to)]
+                if let translate = interfaceState.translateState, let message = pinnedMessageId.message {
+                    translation = translate.pinnedTranslationResult(for: message, accountPeerId: chatInteraction.interactionContext.peerId)
                 } else {
                     translation = nil
                 }
@@ -1339,8 +1339,8 @@ public class ChatControllerView : View, ChatInputDelegate {
             if pinnedMessageId.message?.restrictedText(chatInteraction.interactionContext.contentSettings) == nil {
                 
                 let translation: ChatLiveTranslateContext.State.Result?
-                if let translate = interfaceState.translateState {
-                    translation = translate.result[.Key(id: pinnedMessageId.messageId, toLang: translate.to)]
+                if let translate = interfaceState.translateState, let message = pinnedMessageId.message {
+                    translation = translate.pinnedTranslationResult(for: message, accountPeerId: chatInteraction.interactionContext.peerId)
                 } else {
                     translation = nil
                 }
@@ -4017,7 +4017,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             appearanceReady.set(true)
             if let state = translate {
                 self?.chatInteraction.update({ current in
-                    return current.withUpdatedTranslateState(.init(canTranslate: state.canTranslate, translate: state.translate, from: state.from, to: state.to, paywall: state.paywall, tone: state.tone, result: state.result))
+                    return current.withUpdatedTranslateState(.init(state))
                 })
                 self?.genericView.tableView.notifyScrollHandlers()
             }
@@ -9042,6 +9042,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
 
                 var messagesToTranslate: [Message] = []
+                var repliesToTranslate: [Message] = []
                 var messagesToTranslateTranscribe: [Message] = []
 
                 
@@ -9215,23 +9216,21 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 messageIdsWithReactions.append(message.id)
                             }
                             if message.id.namespace == Namespaces.Message.Cloud {
-                                if message.author?.id != strongSelf.context.peerId, message.effectivelyIncoming(strongSelf.context.peerId) {
-                                    if !message.text.isEmpty {
-                                        messagesToTranslate.append(message)
-                                    } else if let _ = message.media.first as? TelegramMediaPoll {
-                                        messagesToTranslate.append(message)
-                                    } else if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
-                                        messagesToTranslate.append(message)
-                                    }
-                                    if let media = message.media.first as? TelegramMediaFile, media.isVoice || media.isInstantVideo {
-                                        if case .revealed(true) = state.transribe[message.id] {
-                                            messagesToTranslateTranscribe.append(message)
-                                        }
+                                if !message.text.isEmpty {
+                                    messagesToTranslate.append(message)
+                                } else if let _ = message.media.first as? TelegramMediaPoll {
+                                    messagesToTranslate.append(message)
+                                } else if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
+                                    messagesToTranslate.append(message)
+                                }
+                                if let media = message.media.first as? TelegramMediaFile, media.isVoice || media.isInstantVideo {
+                                    if case .revealed(true) = state.transribe[message.id] {
+                                        messagesToTranslateTranscribe.append(message)
                                     }
                                 }
                                 if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
                                     if !replyMessage.text.isEmpty {
-                                        messagesToTranslate.append(replyMessage)
+                                        repliesToTranslate.append(replyMessage)
                                     }
                                 }
                             }
@@ -9291,12 +9290,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     strongSelf.updateMaxVisibleReadIncomingMessageIndex(MessageIndex(message))
                 }
                 
-                if let pinned = strongSelf.chatInteraction.presentation.pinnedMessageId, let message = pinned.message, !message.text.isEmpty, message.author?.id != strongSelf.context.peerId {
+                if let pinned = strongSelf.chatInteraction.presentation.pinnedMessageId, let message = pinned.message, !message.text.isEmpty {
                     messagesToTranslate.append(message)
                 }
                 
-                if !messagesToTranslate.isEmpty {
-                    strongSelf.liveTranslate?.translate(messagesToTranslate.sorted(by: { $0.id < $1.id}))
+                if !messagesToTranslate.isEmpty || !repliesToTranslate.isEmpty {
+                    strongSelf.liveTranslate?.translate(messagesToTranslate, replies: repliesToTranslate)
                 }
                 if !messagesToTranslateTranscribe.isEmpty {
                     strongSelf.liveTranslate?.translateTranscription(messagesToTranslateTranscribe.sorted(by: { $0.id < $1.id}))
@@ -11695,6 +11694,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
             
             
+            if value.pinnedMessageId != oldValue.pinnedMessageId {
+                genericView.tableView.notifyScrollHandlers()
+            }
+
             if value.monoforumState != oldValue.monoforumState || value.monoforumTopics != oldValue.monoforumTopics || value.chatLocation != oldValue.chatLocation {
                 genericView.updateMonoforumState(state: value.monoforumState, items: value.monoforumTopics, threadId: value.chatLocation.threadId, animated: animated)
             }
