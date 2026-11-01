@@ -1,7 +1,6 @@
 import Cocoa
 import SwiftSignalKit
 import AppKit
-import ColorPalette
 
 private final class ProgressModalView : NSVisualEffectView {
     private let progressView = ProgressIndicator(frame: NSMakeRect(0, 0, 32, 32))
@@ -269,26 +268,16 @@ public func showModalSuccess(for window: Window, icon: CGImage, text: TextViewLa
 private final class TextAndLabelModalView : View {
     private let textView: TextView = TextView()
     private var titleView: TextView?
-    private var visualEffectView: NSVisualEffectView?
-    private var glassView: LiquidGlassView?
+    private let glassView = LiquidGlassView(frame: NSZeroRect, cornerRadius: 20, hasShadow: System.liquidGlass, hasBorder: System.liquidGlass, tintAlpha: 0.9)
     private let overlay = Control()
     private var button: TextButton?
+    private var theme: PresentationTheme = presentation
+    private var content: (text: String, title: String?, button: String?, callback: ((String) -> Void)?, maxSize: NSSize)?
+    private let themeDisposable = MetaDisposable()
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
 
-        if System.liquidGlass {
-            let glass = LiquidGlassView(frame: NSZeroRect, cornerRadius: 20, hasShadow: true, hasBorder: true, tintAlpha: 0.9, forceAppearance: .forceDark)
-            addSubview(glass)
-            glassView = glass
-        } else {
-            let ve = NSVisualEffectView(frame: NSZeroRect)
-            ve.material = .ultraDark
-            ve.blendingMode = .withinWindow
-            ve.state = .active
-            ve.wantsLayer = true
-            addSubview(ve)
-            visualEffectView = ve
-        }
+        addSubview(glassView)
 
         self.textView.disableBackgroundDrawing = true
         self.textView.isSelectable = false
@@ -301,6 +290,14 @@ private final class TextAndLabelModalView : View {
         self.textView.set(handler: { [weak self] _ in
             self?.button?.send(event: .Down)
         }, for: .Down)
+
+        themeDisposable.set(presentationThemeUpdates.signal().start(next: { [weak self] theme in
+            self?.updateLocalizationAndTheme(theme: theme)
+        }))
+    }
+
+    deinit {
+        themeDisposable.dispose()
     }
 
     required public init?(coder: NSCoder) {
@@ -311,14 +308,27 @@ private final class TextAndLabelModalView : View {
         super.mouseDown(with: event)
     }
 
-    func update(text: String, title: String?, button: String?, callback: ((String)->Void)?, maxSize: NSSize) -> NSSize {
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        self.theme = theme
+        glassView.customTint = theme.colors.background.withAlphaComponent(0.9)
+        super.updateLocalizationAndTheme(theme: theme)
 
-        let textColor: NSColor = .white
-        let linkColor: NSColor = nightAccentPalette.link
+        if let content = content {
+            _ = update(text: content.text, title: content.title, button: content.button, callback: content.callback, maxSize: content.maxSize)
+        }
+    }
+
+    func update(text: String, title: String?, button: String?, callback: ((String)->Void)?, maxSize: NSSize) -> NSSize {
+        self.content = (text, title, button, callback, maxSize)
+
+        let textColor = theme.colors.text
+        let linkColor = theme.colors.link
 
         if let title = title {
-            self.titleView = TextView()
-            addSubview(self.titleView!)
+            if self.titleView == nil {
+                self.titleView = TextView()
+                addSubview(self.titleView!)
+            }
 
             self.titleView?.disableBackgroundDrawing = true
             self.titleView?.isSelectable = false
@@ -326,6 +336,9 @@ private final class TextAndLabelModalView : View {
             let titleLayout = TextViewLayout(.initialize(string: title, color: textColor, font: .medium(.title)), maximumNumberOfLines: 1)
             titleLayout.measure(width: min(380, maxSize.width - 120))
             self.titleView?.update(titleLayout)
+        } else if let titleView = self.titleView {
+            titleView.removeFromSuperview()
+            self.titleView = nil
         }
 
         let attr = parseMarkdownIntoAttributedString(text, attributes: MarkdownAttributes(body: MarkdownAttributeSet(font: .normal(.text), textColor: textColor), bold: MarkdownAttributeSet(font: .bold(.text), textColor: textColor), link: MarkdownAttributeSet(font: .normal(.title), textColor: linkColor), linkAttribute: { contents in
@@ -341,7 +354,7 @@ private final class TextAndLabelModalView : View {
             }
         })
 
-        overlay.set(handler: { _ in
+        overlay.setSingle(handler: { _ in
             callback?("")
         }, for: .Down)
 
@@ -388,7 +401,8 @@ private final class TextAndLabelModalView : View {
         if let button = self.button {
             size.width += button.frame.width
         }
-        
+
+        needsLayout = true
         return size
     }
 
@@ -397,10 +411,8 @@ private final class TextAndLabelModalView : View {
         let radius = min(bounds.height / 2, 20)
         layer?.cornerRadius = radius
         overlay.frame = bounds
-        visualEffectView?.frame = bounds
-        visualEffectView?.layer?.cornerRadius = radius
-        glassView?.frame = bounds
-        glassView?.cornerRadius = radius
+        glassView.frame = bounds
+        glassView.cornerRadius = radius
 
         if let titleView = titleView {
             titleView.setFrameOrigin(NSMakePoint(10, 10))
@@ -454,6 +466,7 @@ class TextAndLabelModalController: ModalViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        self.genericView.updateLocalizationAndTheme(theme: initialTheme)
         let size = self.genericView.update(text: text, title: title, button: button, callback: self.callback, maxSize: windowSize)
         self.modal?.resize(with: size, animated: false)
 
@@ -498,12 +511,14 @@ class TextAndLabelModalController: ModalViewController {
     private let button: String?
     private let windowSize: NSSize
     private let callback:((String)->Void)?
-    init(text: String, title: String?, button: String?, callback:((String)->Void)?, windowSize: NSSize) {
+    private let initialTheme: PresentationTheme
+    init(text: String, title: String?, button: String?, theme: PresentationTheme, callback:((String)->Void)?, windowSize: NSSize) {
         self.text = text
         self.windowSize = windowSize
         self.title = title
         self.callback = callback
         self.button = button
+        self.initialTheme = theme
         super.init(frame:NSMakeRect(0, 0, 80, 80))
         self.bar = .init(height: 0)
     }
@@ -511,8 +526,8 @@ class TextAndLabelModalController: ModalViewController {
 
 }
 
-public func showModalText(for window: Window, text: String, title: String? = nil, button: String? = nil, callback:((String)->Void)? = nil) {
-    let modal = TextAndLabelModalController(text: text, title: title, button: button, callback: callback, windowSize: window.frame.size)
+public func showModalText(for window: Window, text: String, title: String? = nil, button: String? = nil, theme: PresentationTheme = presentation, callback:((String)->Void)? = nil) {
+    let modal = TextAndLabelModalController(text: text, title: title, button: button, theme: theme, callback: callback, windowSize: window.frame.size)
 
     showModal(with: modal, for: window, isOverlay: true, animationType: .scaleCenter)
 
