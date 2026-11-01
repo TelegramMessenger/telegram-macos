@@ -1342,7 +1342,7 @@ public class ChatListRowItem: TableRowItem {
         }
         
         if let openMiniApp {
-            w += openMiniApp.layoutSize.width + 20
+            w += openMiniApp.layoutSize.width + 28
         }
         
         w += (leftInset - 20)

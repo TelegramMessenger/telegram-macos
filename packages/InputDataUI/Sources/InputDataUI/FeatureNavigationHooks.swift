@@ -207,6 +207,7 @@ public struct FeatureNavigationHooks {
     public var emptyChatControllerType: () -> ViewController.Type? = { nil }
     public var openInstantView: (any AccountContextProtocol, String, TelegramMediaWebpage) -> Void = { _, _, _ in }
     public var requestUserLocation: () -> Signal<UserLocationRequestResult, NoError> = { .single(.disabled) }
+    public var makeLocationPreviewController: (any AccountContextProtocol, String) -> Signal<ModalViewController?, NoError> = { _, _ in .single(nil) }
     public var fullExportRowTitle: () -> String = { "" }
     public var fullExportRowInfo: () -> String = { "" }
     public var showFullExportModal: (any AccountContextProtocol) -> Void = { _ in }
