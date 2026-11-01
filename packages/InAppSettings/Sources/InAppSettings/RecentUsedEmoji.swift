@@ -133,6 +133,15 @@ public class RecentUsedEmoji: Codable, Equatable {
     }
     
     
+    public func removingEmoji(_ emoji: String) -> RecentUsedEmoji {
+        let emoji = emoji.recentEmojiCanonical
+        return RecentUsedEmoji(emojies: emojies.filter { $0.recentEmojiCanonical != emoji }, animated: animated, skinModifiers: skinModifiers)
+    }
+
+    public func removingAnimatedEmoji(_ id: MediaId) -> RecentUsedEmoji {
+        return RecentUsedEmoji(emojies: emojies, animated: animated.filter { $0 != id }, skinModifiers: skinModifiers)
+    }
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: StringCodingKey.self)
         try container.encode(emojies, forKey: "e")
@@ -200,6 +209,24 @@ public func modifySkinEmoji(_ emoji:String, modifier: String?, recentEmoji: Stri
             }
             return PreferencesEntry(RecentUsedEmoji(emojies: emojies, animated: settings.animated, skinModifiers: skinModifiers))
             
+        })
+    }
+}
+
+public func removeUsedEmoji(_ emoji: String, postbox: Postbox) -> Signal<Void, NoError> {
+    return postbox.transaction { transaction -> Void in
+        transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
+            let value = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
+            return PreferencesEntry(value.removingEmoji(emoji))
+        })
+    }
+}
+
+public func removeAnimatedUsedEmoji(_ id: MediaId, postbox: Postbox) -> Signal<Void, NoError> {
+    return postbox.transaction { transaction -> Void in
+        transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
+            let value = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
+            return PreferencesEntry(value.removingAnimatedEmoji(id))
         })
     }
 }

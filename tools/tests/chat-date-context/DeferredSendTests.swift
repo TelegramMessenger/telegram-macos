@@ -57,7 +57,7 @@ private struct DraftPeerId {
 private struct DraftLocation { let threadId: Int64? }
 private enum DraftKind { case welcomeMessages }
 private struct DraftContents { let kind: DraftKind }
-private struct DraftMode { let customChatContents: DraftContents? }
+private struct DraftMode { let customChatContents: DraftContents?; var customChatLink: DraftContents? = nil }
 private final class ComposerPreparationFixture { var resets = 0; func reset() { resets += 1 } }
 private final class ChatInteraction {
     let composerForwardPreparation = ComposerPreparationFixture()

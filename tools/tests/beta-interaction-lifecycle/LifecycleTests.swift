@@ -31,7 +31,7 @@ final class LifecycleTests: XCTestCase {
         let store = ChatRichTextDraftStore<String>()
         store.set("first", for: key)
         let revision = store.captureRevision(for: key)
-        for other in [ChatRichTextDraftKey(accountId: 3, peerId: 2, threadId: nil, isWelcome: false), ChatRichTextDraftKey(accountId: 1, peerId: 3, threadId: nil, isWelcome: false), ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: 0, isWelcome: false), ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: nil, isWelcome: true)] {
+        for other in [ChatRichTextDraftKey(accountId: 3, peerId: 2, threadId: nil, isWelcome: false), ChatRichTextDraftKey(accountId: 1, peerId: 3, threadId: nil, isWelcome: false), ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: 0, isWelcome: false), ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: nil, isWelcome: true), ChatRichTextDraftKey(accountId: 1, peerId: 2, threadId: nil, isWelcome: false, isCustomEditor: true)] {
             store.set("other", for: other)
             XCTAssertTrue(revision.isValid)
         }

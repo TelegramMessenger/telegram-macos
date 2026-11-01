@@ -503,7 +503,7 @@ public final class ChatReactionsLayout {
     public let mode: Mode
     
     
-    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}) {
+    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, sendStars: @escaping () -> Void, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}) {
         
         var mode: Mode = .full
         if message.id.peerId == context.peerId {
@@ -605,7 +605,7 @@ public final class ChatReactionsLayout {
                             return
                         }
                         if value == .stars {
-                            engine.sendStarsReaction(message.id, count: 1)
+                            sendStars()
                         } else {
                             engine.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(source.file), context.peerId == message.id.peerId))
                         }

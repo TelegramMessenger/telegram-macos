@@ -3536,7 +3536,9 @@ public class ChatListRowView: TableRowView, RevealTableView {
                 offset += theme.icons.pinnedImage.systemSize.width + 5
             }
             
-            openMiniApp.setFrameOrigin(NSMakePoint(frame.width - openMiniApp.frame.width - offset, frame.height - openMiniApp.frame.height - (item.margin + 1)))
+            let rowHeight = theme.icons.pinnedImage.backingSize.height
+            let centerY = frame.height - (item.margin + 1) - rowHeight / 2
+            openMiniApp.setFrameOrigin(NSMakePoint(frame.width - openMiniApp.frame.width - offset, floorToScreenPixels(centerY - openMiniApp.frame.height / 2)))
         }
 
         updateInlineTextAnimatableContent()

@@ -27,14 +27,17 @@ public extension MessageTextEntity {
             return self.weight == rhs.weight
         case .Code:
             return self.weight == rhs.weight
-        case .Pre(language: _):
-            return self.weight == rhs.weight
+        case let .Pre(language):
+            if case let .Pre(otherLanguage) = rhs.type {
+                return language == otherLanguage
+            }
+            return false
         case .PhoneNumber:
             return self.weight == rhs.weight
         case .Strikethrough:
             return self.weight == rhs.weight
         case .BlockQuote:
-            return self.weight == rhs.weight
+            return false
         case .Underline:
             return self.weight == rhs.weight
         case .BankCard:

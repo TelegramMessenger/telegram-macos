@@ -384,61 +384,62 @@ private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], argume
     
     let peerId = peer.id
     
-    return .single(items) |> mapToSignal { items in
-        return chatListFilterPreferences(engine: arguments.context.engine) |> deliverOnMainQueue |> take(1) |> map { filters -> [ContextMenuItem] in
-            var items = items
-            var submenu: [ContextMenuItem] = []
-            if peerId.namespace != Namespaces.Peer.SecretChat {
-                for item in filters.list {
-                    loop: switch item {
-                    case .allChats:
-                        break loop
-                    case let .filter(_, _, _, data):
-                        submenu.append(ContextMenuItem(item.title, handler: {
-                            _ = arguments.context.engine.peers.updateChatListFiltersInteractively({ list in
-                                var list = list
-                                for (i, folder) in list.enumerated() {
-                                    if ChatListUIHooks.shared.chatListFilterId(folder) == ChatListUIHooks.shared.chatListFilterId(item), var folderData = folder.data {
-                                        if data.includePeers.peers.contains(peerId) {
-                                            var peers = folderData.includePeers.peers
-                                            peers.removeAll(where: { $0 == peerId })
-                                            folderData.includePeers.setPeers(peers)
-                                        } else {
-                                            folderData.excludePeers.removeAll(where: { $0 == peerId })
-                                            folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
-                                        }
-                                        list[i] = list[i].withUpdatedData(folderData)
-                                    }
-                                }
-                                return list
-                            }).start()
-                        }, state: data.includePeers.peers.contains(peerId) ? NSControl.StateValue.on : nil))
-                    }
-                    
-                }
-            }
-            
-            if !submenu.isEmpty {
-                items.append(ContextSeparatorItem())
-                let item = ContextMenuItem(strings().chatListFilterAddToFolder, itemImage: MenuAnimation.menu_add_to_folder.value)
-                let menu = ContextMenu()
-                for item in submenu {
-                    menu.addItem(item)
-                }
-                item.submenu = menu
-                items.append(item)
-            }
-            
-            if isRecent {
-                items.append(ContextSeparatorItem())
-                
-                items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
-                    arguments.removeRecentPeerId(peer.id)
-                }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
-            }
-            
-            return items
+    return combineLatest(searchPeerReadMenuItem(context: arguments.context, peerId: peerId, target: arguments.target), chatListFilterPreferences(engine: arguments.context.engine)) |> take(1) |> deliverOnMainQueue |> map { readItem, filters -> [ContextMenuItem] in
+        var items = items
+        if let readItem {
+            items.append(readItem)
         }
+        var submenu: [ContextMenuItem] = []
+        if peerId.namespace != Namespaces.Peer.SecretChat {
+            for item in filters.list {
+                loop: switch item {
+                case .allChats:
+                    break loop
+                case let .filter(_, _, _, data):
+                    submenu.append(ContextMenuItem(item.title, handler: {
+                        _ = arguments.context.engine.peers.updateChatListFiltersInteractively({ list in
+                            var list = list
+                            for (i, folder) in list.enumerated() {
+                                if ChatListUIHooks.shared.chatListFilterId(folder) == ChatListUIHooks.shared.chatListFilterId(item), var folderData = folder.data {
+                                    if data.includePeers.peers.contains(peerId) {
+                                        var peers = folderData.includePeers.peers
+                                        peers.removeAll(where: { $0 == peerId })
+                                        folderData.includePeers.setPeers(peers)
+                                    } else {
+                                        folderData.excludePeers.removeAll(where: { $0 == peerId })
+                                        folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
+                                    }
+                                    list[i] = list[i].withUpdatedData(folderData)
+                                }
+                            }
+                            return list
+                        }).start()
+                    }, state: data.includePeers.peers.contains(peerId) ? NSControl.StateValue.on : nil))
+                }
+
+            }
+        }
+
+        if !submenu.isEmpty {
+            items.append(ContextSeparatorItem())
+            let item = ContextMenuItem(strings().chatListFilterAddToFolder, itemImage: MenuAnimation.menu_add_to_folder.value)
+            let menu = ContextMenu()
+            for item in submenu {
+                menu.addItem(item)
+            }
+            item.submenu = menu
+            items.append(item)
+        }
+
+        if isRecent {
+            items.append(ContextSeparatorItem())
+
+            items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
+                arguments.removeRecentPeerId(peer.id)
+            }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+        }
+
+        return items
     }
 }
 

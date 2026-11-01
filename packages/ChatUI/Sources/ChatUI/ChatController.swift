@@ -1321,8 +1321,8 @@ public class ChatControllerView : View, ChatInputDelegate {
             } else if let pinnedMessageId = interfaceState.pinnedMessageId, !interfaceState.interfaceState.dismissedPinnedMessageId.contains(pinnedMessageId.messageId), !interfaceState.hidePinnedMessage, interfaceState.chatMode != .pinned {
                 
                 let translation: ChatLiveTranslateContext.State.Result?
-                if let translate = interfaceState.translateState {
-                    translation = translate.result[.Key(id: pinnedMessageId.messageId, toLang: translate.to)]
+                if let translate = interfaceState.translateState, let message = pinnedMessageId.message {
+                    translation = translate.pinnedTranslationResult(for: message, accountPeerId: chatInteraction.interactionContext.peerId)
                 } else {
                     translation = nil
                 }
@@ -1339,8 +1339,8 @@ public class ChatControllerView : View, ChatInputDelegate {
             if pinnedMessageId.message?.restrictedText(chatInteraction.interactionContext.contentSettings) == nil {
                 
                 let translation: ChatLiveTranslateContext.State.Result?
-                if let translate = interfaceState.translateState {
-                    translation = translate.result[.Key(id: pinnedMessageId.messageId, toLang: translate.to)]
+                if let translate = interfaceState.translateState, let message = pinnedMessageId.message {
+                    translation = translate.pinnedTranslationResult(for: message, accountPeerId: chatInteraction.interactionContext.peerId)
                 } else {
                     translation = nil
                 }
@@ -4017,7 +4017,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             appearanceReady.set(true)
             if let state = translate {
                 self?.chatInteraction.update({ current in
-                    return current.withUpdatedTranslateState(.init(canTranslate: state.canTranslate, translate: state.translate, from: state.from, to: state.to, paywall: state.paywall, tone: state.tone, result: state.result))
+                    return current.withUpdatedTranslateState(.init(state))
                 })
                 self?.genericView.tableView.notifyScrollHandlers()
             }
@@ -4518,19 +4518,19 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         let _afterSentTransition:(Bool)->Void = { [weak self] flushInput in
             self?.chatInteraction.update({ presentation in
-                return presentation.updatedInputQueryResult {_ in
-                    return nil
+                let keepsInput = !flushInput && presentation.interfaceState.editState == nil && !presentation.interfaceState.inputState.inputText.isEmpty
+                return presentation.updatedInputQueryResult { current in
+                    return keepsInput ? current : nil
                 }.updatedInterfaceState { current in
                 
                     var value: ChatInterfaceState = current
-                    if flushInput {
+                    if !keepsInput {
                         value = value
                             .withUpdatedInputState(ChatTextInputState())
+                            .withUpdatedComposeDisableUrlPreview(nil)
                     }
                     value = value.withUpdatedReplyMessageId(nil)
-                        .withUpdatedInputState(ChatTextInputState())
                         .withUpdatedForwardMessageIds([])
-                        .withUpdatedComposeDisableUrlPreview(nil)
                         .withUpdatedMessageEffect(nil)
                         .withUpdatedSuggestPost(nil)
                         .withoutEditMessage()
@@ -4541,7 +4541,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                     }
                     return value
-                }.updatedUrlPreview(nil).updateBotMenu({ current in
+                }.updatedUrlPreview(keepsInput ? presentation.urlPreview : nil).updateBotMenu({ current in
                     var current = current
                     current?.revealed = false
                     return current
@@ -6761,18 +6761,20 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             if peer.canSendMessage(strongSelf.mode.isThreadMode, media: file, threadData: strongSelf.chatInteraction.presentation.threadInfo, cachedData: strongSelf.chatInteraction.presentation.cachedData) {
 
                 let invoke:()->Void = { [strongSelf] in
-                    let hasFwd = !strongSelf.chatInteraction.presentation.interfaceState.forwardMessageIds.isEmpty
                     func apply(_ controller: ChatController, atDate: Date?, repeatPeriod: Int32?) {
+                        let replyId = takeReplyId()
+                        _ = controller.nextTransaction.execute()
+                        let hasFwd = !controller.chatInteraction.presentation.interfaceState.forwardMessageIds.isEmpty
                         let completed: () -> Void = {
                             scrollAfterSend()
                         }
                         if let caption = caption {
-                            let _ = (Sender.enqueue(media: [file], caption: caption, context: context, peerId: makePeerId(), replyId: takeReplyId(), threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(completed: completed)
+                            let _ = (Sender.enqueue(media: [file], caption: caption, context: context, peerId: makePeerId(), replyId: replyId, threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(completed: completed)
                         } else {
-                            let _ = (Sender.enqueue(media: file, context: context, peerId: makePeerId(), replyId: takeReplyId(), threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(next: { ids in
+                            let _ = (Sender.enqueue(media: file, context: context, peerId: makePeerId(), replyId: replyId, threadId: threadId64(), silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: takePaidMessageStars()) |> deliverOnMainQueue).start(next: { ids in
                             }, completed: completed)
                         }
-                        controller.nextTransaction.set(handler: {
+                        let afterSent: () -> Void = {
                             if hasFwd {
                                 DispatchQueue.main.async {
                                     self?.chatInteraction.sendMessage(false, nil, self?.chatInteraction.presentation.messageEffect)
@@ -6780,7 +6782,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             } else {
                                 _afterSentTransition(false)
                             }
-                        })
+                        }
+                        if atDate != nil {
+                            afterSent()
+                        } else {
+                            controller.nextTransaction.set(handler: afterSent)
+                        }
                     }
 
                     if let preSchedule = preSchedule {
@@ -7684,7 +7691,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
                 
                 items.append(ContextMenuItem(isMuted ? strings().chatListContextUnmute : strings().chatListContextMute, handler: {
-                    _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    if isMuted, threadData.notificationSettings.muteState == .default {
+                        _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).startStandalone()
+                    } else {
+                        _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    }
                 }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
         
                 
@@ -7731,7 +7742,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                
                 
                 items.append(ContextMenuItem(isMuted ? strings().chatListContextUnmute : strings().chatListContextMute, handler: {
-                    _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    if isMuted, item.threadData?.notificationSettings.muteState == .default {
+                        _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).startStandalone()
+                    } else {
+                        _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).startStandalone()
+                    }
                 }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
         
                 items.append(ContextSeparatorItem())
@@ -8155,6 +8170,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
             guard let initialData = combinedInitialData.initialData else {
                 self.genericView.inputView.updateInterface(with: self.chatInteraction)
+                self.chatInteraction.loadPersistentRichTextDraft()
                 return
             }
                         
@@ -8295,6 +8311,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             
             
             self.state = self.chatInteraction.presentation.state == .selecting ? .Edit : .Normal
+            self.chatInteraction.loadPersistentRichTextDraft()
             
             
         } |> map {_ in}
@@ -9042,6 +9059,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
 
                 var messagesToTranslate: [Message] = []
+                var repliesToTranslate: [Message] = []
                 var messagesToTranslateTranscribe: [Message] = []
 
                 
@@ -9215,23 +9233,21 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 messageIdsWithReactions.append(message.id)
                             }
                             if message.id.namespace == Namespaces.Message.Cloud {
-                                if message.author?.id != strongSelf.context.peerId, message.effectivelyIncoming(strongSelf.context.peerId) {
-                                    if !message.text.isEmpty {
-                                        messagesToTranslate.append(message)
-                                    } else if let _ = message.media.first as? TelegramMediaPoll {
-                                        messagesToTranslate.append(message)
-                                    } else if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
-                                        messagesToTranslate.append(message)
-                                    }
-                                    if let media = message.media.first as? TelegramMediaFile, media.isVoice || media.isInstantVideo {
-                                        if case .revealed(true) = state.transribe[message.id] {
-                                            messagesToTranslateTranscribe.append(message)
-                                        }
+                                if !message.text.isEmpty {
+                                    messagesToTranslate.append(message)
+                                } else if let _ = message.media.first as? TelegramMediaPoll {
+                                    messagesToTranslate.append(message)
+                                } else if message.attributes.contains(where: { $0 is RichTextMessageAttribute }) {
+                                    messagesToTranslate.append(message)
+                                }
+                                if let media = message.media.first as? TelegramMediaFile, media.isVoice || media.isInstantVideo {
+                                    if case .revealed(true) = state.transribe[message.id] {
+                                        messagesToTranslateTranscribe.append(message)
                                     }
                                 }
                                 if let reply = message.replyAttribute, let replyMessage = message.associatedMessages[reply.messageId] {
                                     if !replyMessage.text.isEmpty {
-                                        messagesToTranslate.append(replyMessage)
+                                        repliesToTranslate.append(replyMessage)
                                     }
                                 }
                             }
@@ -9291,12 +9307,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     strongSelf.updateMaxVisibleReadIncomingMessageIndex(MessageIndex(message))
                 }
                 
-                if let pinned = strongSelf.chatInteraction.presentation.pinnedMessageId, let message = pinned.message, !message.text.isEmpty, message.author?.id != strongSelf.context.peerId {
+                if let pinned = strongSelf.chatInteraction.presentation.pinnedMessageId, let message = pinned.message, !message.text.isEmpty {
                     messagesToTranslate.append(message)
                 }
                 
-                if !messagesToTranslate.isEmpty {
-                    strongSelf.liveTranslate?.translate(messagesToTranslate.sorted(by: { $0.id < $1.id}))
+                if !messagesToTranslate.isEmpty || !repliesToTranslate.isEmpty {
+                    strongSelf.liveTranslate?.translate(messagesToTranslate, replies: repliesToTranslate)
                 }
                 if !messagesToTranslateTranscribe.isEmpty {
                     strongSelf.liveTranslate?.translateTranscription(messagesToTranslateTranscribe.sorted(by: { $0.id < $1.id}))
@@ -11695,6 +11711,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
             
             
+            if value.pinnedMessageId != oldValue.pinnedMessageId {
+                genericView.tableView.notifyScrollHandlers()
+            }
+
             if value.monoforumState != oldValue.monoforumState || value.monoforumTopics != oldValue.monoforumTopics || value.chatLocation != oldValue.chatLocation {
                 genericView.updateMonoforumState(state: value.monoforumState, items: value.monoforumTopics, threadId: value.chatLocation.threadId, animated: animated)
             }

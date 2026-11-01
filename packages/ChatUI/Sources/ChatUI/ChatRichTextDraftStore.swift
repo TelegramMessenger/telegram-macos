@@ -5,6 +5,7 @@ struct ChatRichTextDraftKey: Hashable {
     let peerId: Int64
     let threadId: Int64?
     let isWelcome: Bool
+    var isCustomEditor: Bool = false
 }
 
 final class ChatRichTextDraftRevision {

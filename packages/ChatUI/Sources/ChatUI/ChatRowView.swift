@@ -1434,11 +1434,6 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         
         if let peer = item.peer {
             avatar.setPeer(item: item, peer: peer, storyStats: item.entry.additionalData.authorStoryStats, message: item.message)
-            if peer.id.id._internalGetInt64Value() != 0 {
-                avatar.contextMenu = photoContextMenu(item, peer: peer, setOpenProgress: { [weak avatar] signal in
-                    avatar?.setOpenProgress(signal)
-                })
-            }
         }
         return avatar
     }
@@ -1517,7 +1512,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                             }, itemImage: MenuAnimation.menu_tag_rename.value))
                         }
 
-                        if channel.hasPermission(.banMembers) {
+                        if chatInteraction?.isLogInteraction == true {
+                            menu.items += ChatHistoryUIHooks.shared.participantModerationMenuItems(context, channel, peer, nil)
+                        } else if channel.hasPermission(.banMembers) {
                             menu.addItem(ContextMenuItem(strings().channelMemberRestrict, handler: {
                                 _ = fetchParticipant.start(next: { rendered in
                                     if let rendered = rendered {
@@ -1553,6 +1550,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             
         } else {
             if let view = avatar {
+                view.updateContextMenu(nil)
                 performSubviewRemoval(view, animated: animated, scale: true)
                 self.avatar = nil
             }
