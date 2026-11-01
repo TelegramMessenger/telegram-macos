@@ -1370,7 +1370,7 @@ public class SVideoView: NSView {
                 } else {
                     bufferingIndicatorValue.set(.single(!isStreamable))
                 }
-                if let status = status, status.status != oldValue?.status {
+                if let status = status, status.status != oldValue?.status, !self.mouseDownIncontrols {
                     switch status.status {
                     case .playing, .paused:
                         self.hideScrubblerPreviewIfNeeded(live: true)

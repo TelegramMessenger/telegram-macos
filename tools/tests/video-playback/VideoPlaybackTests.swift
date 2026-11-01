@@ -283,9 +283,20 @@ final class VideoPlaybackTests: XCTestCase {
         }
         for target in [2.0, 0.4, 2.95] {
             let expected = try expectedFrameHash(codec: codec, timestamp: target)
+            var didReportReady = false
+            var frameWhenReady: UInt64?
+            let readiness = player.status.start(next: { value in
+                if value.seekId == id, abs(value.timestamp - target) < 0.02, case .paused = value.status, !didReportReady {
+                    didReportReady = true
+                    frameWhenReady = displayedHash()
+                }
+            })
             seek(target)
-            spin(timeout: 5.0, until: { displayedHash() == expected && status?.seekId == id && abs((status?.timestamp ?? -1.0) - target) < 0.02 })
+            spin(timeout: 5.0, until: { didReportReady && displayedHash() == expected && status?.seekId == id && abs((status?.timestamp ?? -1.0) - target) < 0.02 })
+            readiness.dispose()
             XCTAssertEqual(displayedHash(), expected, "\(codec) direct=\(direct) target=\(target)")
+            XCTAssertTrue(didReportReady)
+            XCTAssertEqual(frameWhenReady, expected, "Seek was reported ready before the target frame was displayed")
             XCTAssertEqual(try XCTUnwrap(status).timestamp, target, accuracy: 0.02)
             RunLoop.main.run(until: Date().addingTimeInterval(0.2))
             XCTAssertEqual(try XCTUnwrap(status).timestamp, target, accuracy: 0.02)
@@ -309,7 +320,47 @@ final class VideoPlaybackTests: XCTestCase {
         spin(timeout: 3.0, until: { (status?.timestamp ?? 0.0) > 1.0 && displayedHash() != expected })
         XCTAssertGreaterThan(status?.timestamp ?? 0.0, 1.0)
         XCTAssertNotEqual(displayedHash(), expected)
+        for target in [2.0, 0.4, 2.4] {
+            player.pause()
+            seek(target)
+            player.play()
+            var displayed = Set<UInt64>()
+            spin(timeout: 3.0, until: {
+                if let hash = displayedHash() {
+                    displayed.insert(hash)
+                }
+                return (status?.timestamp ?? 0.0) > target + 0.2 && displayed.count > 1
+            })
+            XCTAssertGreaterThan(status?.timestamp ?? 0.0, target + 0.2, "Scrubbing did not resume playback")
+            XCTAssertGreaterThan(displayed.count, 1, "Scrubbing left the picture stuck")
+        }
         player.pause()
+        view.preventsCapture = true
+        seek(1.0)
+        spin(timeout: 2.0, until: {
+            if status?.seekId == id, case .paused = status?.status {
+                return true
+            }
+            return false
+        })
+        XCTAssertEqual(status?.seekId, id)
+        XCTAssertEqual(status?.timestamp ?? -1.0, 1.0, accuracy: 0.02)
+        XCTAssertEqual(status?.status, .paused, "Capture protection prevented the seek from completing")
+        player.play()
+        spin(timeout: 2.0, until: { (status?.timestamp ?? 0.0) > 1.2 })
+        XCTAssertGreaterThan(status?.timestamp ?? 0.0, 1.2)
+        player.pause()
+        view.preventsCapture = false
+        window.orderOut(nil)
+        seek(0.2)
+        spin(timeout: 2.0, until: {
+            if status?.seekId == id, case .paused = status?.status {
+                return true
+            }
+            return false
+        })
+        XCTAssertEqual(status?.status, .paused, "An unavailable displayed frame prevented the seek from completing")
+        XCTAssertEqual(status?.timestamp ?? -1.0, 0.2, accuracy: 0.02)
         withExtendedLifetime((player, mediaBox)) {}
     }
 

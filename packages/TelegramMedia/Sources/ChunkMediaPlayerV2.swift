@@ -4,6 +4,7 @@ import TelegramCore
 import SwiftSignalKit
 import Postbox
 import VideoToolbox
+import IOSurface
 import TelegramMediaPlayer
 import TelegramMediaResources
 
@@ -243,6 +244,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var seekTimestamp: Double = 0.0
     private var pendingSeekTimestamp: Double?
     private var pendingVideoFrameTimestamp: Double?
+    private var pendingVideoFramePresentation: (surfaceId: IOSurfaceID?, enqueuedAt: Double)?
     private let renderGeneration = Atomic<Int>(value: 0)
     private var pendingContinuePlaybackAfterSeekToTimestamp: Double?
     private var shouldNotifySeeked: Bool = false
@@ -390,6 +392,27 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private func updateInternalState() {
         defer {
             self.updateTimerState()
+        }
+
+        if let presentation = self.pendingVideoFramePresentation {
+            let elapsed = CACurrentMediaTime() - presentation.enqueuedAt
+            let isReady: Bool
+            if elapsed >= 0.25 {
+                isReady = true
+            } else if #available(macOS 14.4, *), let surfaceId = presentation.surfaceId, self.playerNode?.preventsCapture != true {
+                let displayedSurface = self.videoRenderer.sampleBufferRenderer.displayedPixelBuffer().flatMap { CVPixelBufferGetIOSurface($0)?.takeUnretainedValue() }
+                isReady = displayedSurface.map { IOSurfaceGetID($0) } == surfaceId
+            } else if #available(macOS 14.4, *) {
+                isReady = elapsed >= 1.0 / 30.0 && self.videoRenderer.isReadyForDisplay
+            } else {
+                isReady = elapsed >= 1.0 / 30.0
+            }
+            if isReady {
+                self.pendingVideoFrameTimestamp = nil
+                self.pendingVideoFramePresentation = nil
+                self.videoIsRequestingMediaData = false
+                self.resetMediaDataStarvation()
+            }
         }
 
         if self.isSoundEnabled && self.hasSound {
@@ -737,7 +760,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
 
         var effectiveRate: Double = 0.0
         if self.isPlaying {
-            if !isBuffering && !isTooShortToPlay {
+            if !isBuffering && self.pendingVideoFrameTimestamp == nil && !isTooShortToPlay {
                 effectiveRate = self.baseRate
             }
         }
@@ -761,7 +784,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             self.renderSynchronizer.setRate(0.0, time: .invalid)
         }
 
-        if effectiveRate != 0.0 || (isTooShortToPlay && self.isPlaying) {
+        if effectiveRate != 0.0 || (isTooShortToPlay && self.isPlaying) || (self.isPlaying && self.pendingVideoFrameTimestamp != nil) {
             self.triggerRequestMediaData(now: now, requestAudio: true)
         } else if self.pendingVideoFrameTimestamp != nil {
             self.triggerRequestMediaData(now: now, requestAudio: false)
@@ -776,7 +799,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         }
         
         let playbackStatus: MediaPlayerPlaybackStatus
-        if isBuffering {
+        if isBuffering || self.pendingVideoFrameTimestamp != nil {
             playbackStatus = .buffering(initial: false, whilePlaying: self.isPlaying)
         } else if self.isPlaying {
             playbackStatus = .playing
@@ -959,6 +982,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         let seekId = self.seekId
         self.pendingSeekTimestamp = timestamp
         self.pendingVideoFrameTimestamp = timestamp
+        self.pendingVideoFramePresentation = nil
         self.pendingContinuePlaybackAfterSeekToTimestamp = timestamp
         if let play {
             self.isPlaying = play
@@ -969,21 +993,24 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         
         //print("Seek to \(timestamp)")
         self.renderSynchronizerRate = 0.0
-        self.renderSynchronizer.setRate(0.0, time: CMTimeMakeWithSeconds(timestamp, preferredTimescale: 44000))
-        
-        self.updateInternalState()
-        
+        self.renderSynchronizer.setRate(0.0, time: .invalid)
+
         self.videoIsRequestingMediaData = false
         if #available(macOS 14.0, *) {
             self.videoRenderer.sampleBufferRenderer.stopRequestingMediaData()
+            self.videoRenderer.sampleBufferRenderer.flush()
         } else {
             self.videoRenderer.stopRequestingMediaData()
+            self.videoRenderer.flush()
         }
         if let audioRenderer = self.audioRenderer {
             self.audioIsRequestingMediaData = false
             audioRenderer.stopRequestingMediaData()
+            audioRenderer.flush()
         }
+        self.renderSynchronizer.setRate(0.0, time: CMTimeMakeWithSeconds(timestamp, preferredTimescale: 44000))
         self.resetMediaDataStarvation()
+        self.updateInternalState()
 
         self.didSetSourceSeek = true
         self.source.seek(id: self.seekId, position: timestamp)
@@ -1002,15 +1029,6 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                 }
                 
                 if self.seekId == seekId {
-                    if #available(macOS 14.0, *) {
-                        self.videoRenderer.sampleBufferRenderer.flush()
-                    } else {
-                        self.videoRenderer.flush()
-                    }
-                    if let audioRenderer = self.audioRenderer {
-                        audioRenderer.flush()
-                    }
-                    
                     self.pendingSeekTimestamp = nil
                     self.stoppedAtEnd = false
                     self.updateInternalState()
@@ -1074,7 +1092,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         let loadedPartsMediaData = self.loadedPartsMediaData
         let seekId = self.seekId
         let renderGeneration = self.renderGeneration
-        let pausedSeekTimestamp = self.isPlaying ? nil : self.pendingVideoFrameTimestamp
+        let videoSeekTimestamp = self.pendingVideoFrameTimestamp
 
         if !self.videoIsRequestingMediaData, now >= self.videoRearmNotBefore {
             self.videoIsRequestingMediaData = true
@@ -1090,27 +1108,26 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             videoTarget.stopRequestingMediaData()
             videoTarget.requestMediaDataWhenReady(on: self.dataQueue.queue, using: { [weak self] in
                 if let loadedPartsMediaData = loadedPartsMediaData.unsafeGet() {
-                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: videoTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: true, pausedSeekTimestamp: pausedSeekTimestamp, generation: renderGeneration, expectedGeneration: seekId)
+                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: videoTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: true, videoSeekTimestamp: videoSeekTimestamp, generation: renderGeneration, expectedGeneration: seekId)
                     guard renderGeneration.with({ $0 == seekId }) else {
                         return
                     }
                     let needsRearm = bufferFillResult.bufferIsReadyForMoreData
-                    let completedVideoSeek = bufferFillResult.completedVideoSeek
+                    let seekFrame = bufferFillResult.seekFrame
                     if needsRearm {
                         // The renderer still wants data we do not have. Record the starvation instead of
                         // re-arming from here: re-arming would immediately invoke this block again.
                         videoTarget.stopRequestingMediaData()
                     }
-                    if needsRearm || completedVideoSeek {
+                    if needsRearm || seekFrame != nil {
                         let didEnqueue = bufferFillResult.didEnqueue
                         Queue.mainQueue().async {
                             guard let self, self.seekId == seekId else {
                                 return
                             }
-                            if completedVideoSeek {
-                                self.pendingVideoFrameTimestamp = nil
-                            }
-                            if needsRearm {
+                            if let seekFrame {
+                                self.presentVideoSeekFrame(seekFrame, seekId: seekId)
+                            } else if needsRearm {
                                 self.videoIsRequestingMediaData = false
                                 self.noteVideoStarvation(didEnqueue: didEnqueue)
                             }
@@ -1143,7 +1160,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             audioTarget.stopRequestingMediaData()
             audioTarget.requestMediaDataWhenReady(on: self.dataQueue.queue, using: { [weak self] in
                 if let loadedPartsMediaData = loadedPartsMediaData.unsafeGet() {
-                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: audioTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: false, pausedSeekTimestamp: nil, generation: renderGeneration, expectedGeneration: seekId)
+                    let bufferFillResult = ChunkMediaPlayerV2.fillRendererBuffer(bufferTarget: audioTarget, loadedPartsMediaData: loadedPartsMediaData, isVideo: false, videoSeekTimestamp: nil, generation: renderGeneration, expectedGeneration: seekId)
                     guard renderGeneration.with({ $0 == seekId }) else {
                         return
                     }
@@ -1162,7 +1179,34 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             })
         }
     }
-    
+
+    private func presentVideoSeekFrame(_ sampleBuffer: CMSampleBuffer, seekId: Int) {
+        let didEnqueue = self.renderGeneration.with { generation in
+            guard generation == seekId else {
+                return false
+            }
+            if #available(macOS 14.0, *) {
+                self.videoRenderer.sampleBufferRenderer.enqueue(sampleBuffer)
+            } else {
+                self.videoRenderer.enqueue(sampleBuffer)
+            }
+            return true
+        }
+        guard didEnqueue else {
+            return
+        }
+        let surface = CMSampleBufferGetImageBuffer(sampleBuffer).flatMap { CVPixelBufferGetIOSurface($0)?.takeUnretainedValue() }
+        self.pendingVideoFramePresentation = (surface.map { IOSurfaceGetID($0) }, CACurrentMediaTime())
+        if !self.didNotifySentVideoFrames {
+            self.didNotifySentVideoFrames = true
+            if #available(macOS 14.4, *) {
+            } else {
+                self.playerNode?.hasSentFramesToDisplay?()
+            }
+        }
+        self.updateInternalState()
+    }
+
     private static func sampleBufferForImmediateDisplay(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
         var copy: CMSampleBuffer?
         guard CMSampleBufferCreateCopy(allocator: nil, sampleBuffer: sampleBuffer, sampleBufferOut: &copy) == noErr, let copy else {
@@ -1175,8 +1219,8 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         return copy
     }
 
-    private static func fillRendererBuffer(bufferTarget: AVQueuedSampleBufferRendering, loadedPartsMediaData: LoadedPartsMediaData, isVideo: Bool, pausedSeekTimestamp: Double?, generation: Atomic<Int>, expectedGeneration: Int) -> (bufferIsReadyForMoreData: Bool, didEnqueue: Bool, completedVideoSeek: Bool) {
-        var result = (bufferIsReadyForMoreData: true, didEnqueue: false, completedVideoSeek: false)
+    private static func fillRendererBuffer(bufferTarget: AVQueuedSampleBufferRendering, loadedPartsMediaData: LoadedPartsMediaData, isVideo: Bool, videoSeekTimestamp: Double?, generation: Atomic<Int>, expectedGeneration: Int) -> (bufferIsReadyForMoreData: Bool, didEnqueue: Bool, seekFrame: CMSampleBuffer?) {
+        var result = (bufferIsReadyForMoreData: true, didEnqueue: false, seekFrame: Optional<CMSampleBuffer>.none)
         func enqueue(_ sampleBuffer: CMSampleBuffer) -> Bool {
             return generation.with { current in
                 guard current == expectedGeneration else {
@@ -1211,12 +1255,11 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                 }
             }
             guard let selectedMedia, let reader = selectedMedia.media.reader else {
-                if isVideo, pausedSeekTimestamp != nil, hasFinishedMedia {
-                    if let last = loadedPartsMediaData.lastVideoSeekFrame, let sample = sampleBufferForImmediateDisplay(last), enqueue(sample) {
-                        result.didEnqueue = true
+                if isVideo, videoSeekTimestamp != nil, hasFinishedMedia {
+                    if let last = loadedPartsMediaData.lastVideoSeekFrame {
+                        result.seekFrame = sampleBufferForImmediateDisplay(last)
                     }
                     loadedPartsMediaData.lastVideoSeekFrame = nil
-                    result.completedVideoSeek = true
                 }
                 break
             }
@@ -1229,11 +1272,11 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                     sample = shifted
                 }
                 let timestamp = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-                let minimumTimestamp = loadedPartsMediaData.seekFromMinTimestamp ?? pausedSeekTimestamp
+                let minimumTimestamp = loadedPartsMediaData.seekFromMinTimestamp ?? videoSeekTimestamp
                 let isPreroll = minimumTimestamp.map { timestamp < $0 } ?? false
                 if isPreroll {
                     if isVideo {
-                        if pausedSeekTimestamp != nil, CMSampleBufferGetImageBuffer(sample) != nil {
+                        if videoSeekTimestamp != nil, CMSampleBufferGetImageBuffer(sample) != nil {
                             loadedPartsMediaData.lastVideoSeekFrame = sample
                             continue
                         }
@@ -1247,11 +1290,10 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                         continue
                     }
                 }
-                if isVideo, pausedSeekTimestamp != nil, !isPreroll {
-                    guard let immediate = sampleBufferForImmediateDisplay(sample) else {
-                        continue
-                    }
-                    sample = immediate
+                if isVideo, videoSeekTimestamp != nil, !isPreroll {
+                    result.seekFrame = sampleBufferForImmediateDisplay(sample)
+                    loadedPartsMediaData.lastVideoSeekFrame = nil
+                    return result
                 }
                 if !isVideo && !selectedMedia.direct {
                     sample = normalizeAudioSampleBuffer(sample, state: &loadedPartsMediaData.audioBufferTimingState)
@@ -1262,10 +1304,6 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                 result.didEnqueue = true
                 if isVideo && !isPreroll {
                     loadedPartsMediaData.lastVideoSeekFrame = nil
-                    result.completedVideoSeek = true
-                    if pausedSeekTimestamp != nil {
-                        return result
-                    }
                 }
             case .waitingForMoreData:
                 return result
