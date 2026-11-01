@@ -1,0 +1,531 @@
+import Foundation
+
+enum NoError: Error {}
+
+struct Disposable {}
+
+final class MetaDisposable {
+    func set(_ disposable: Disposable?) {}
+}
+
+struct Signal<T, E> {
+    let subscribe: (@escaping (T) -> Void) -> Void
+
+    func start(next: @escaping (T) -> Void = { _ in }) -> Disposable {
+        self.subscribe(next)
+        return Disposable()
+    }
+}
+
+infix operator |> : AdditionPrecedence
+func |> <A, B>(value: A, transform: (A) -> B) -> B {
+    return transform(value)
+}
+
+func deliverOnMainQueue<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
+    return signal
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+
+    func swap(_ value: T) -> T {
+        let previous = self.value
+        self.value = value
+        return previous
+    }
+}
+
+final class Promise<T> {
+    func set(_ signal: Signal<T, NoError>) {}
+}
+
+extension Signal {
+    static func single(_ value: T) -> Signal<T, E> {
+        return Signal(subscribe: { next in
+            next(value)
+        })
+    }
+}
+
+enum NSSound {
+    static func beep() {}
+}
+
+struct Event {
+    struct Flags: OptionSet {
+        let rawValue: Int
+        static let shift = Flags(rawValue: 1)
+    }
+    let modifierFlags: Flags
+}
+
+final class Application {
+    var currentEvent: Event?
+}
+
+let NSApp = Application()
+
+typealias PeerId = Int64
+
+struct MessageId: Hashable, Comparable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+
+    static func <(lhs: MessageId, rhs: MessageId) -> Bool {
+        if lhs.namespace == rhs.namespace {
+            if lhs.id == rhs.id {
+                return lhs.peerId < rhs.peerId
+            } else {
+                return lhs.id < rhs.id
+            }
+        } else {
+            return lhs.namespace < rhs.namespace
+        }
+    }
+}
+
+enum Namespaces {
+    enum Message {
+        static let Cloud: Int32 = 0
+        static let Local: Int32 = 1
+        static let ScheduledCloud: Int32 = 3
+        static let ScheduledLocal: Int32 = 4
+    }
+}
+
+struct MessageTags: OptionSet {
+    let rawValue: UInt32
+    static let photo = MessageTags(rawValue: 1 << 0)
+    static let pinned = MessageTags(rawValue: 1 << 9)
+}
+
+struct MemoryBuffer: Hashable {
+    let value: Int
+}
+
+enum HistoryViewInputTag: Equatable {
+    case tag(MessageTags)
+    case customTag(MemoryBuffer, MessageTags?)
+}
+
+struct Message {
+    let id: MessageId
+    let threadId: Int64?
+    let tags: MessageTags
+    let customTags: [MemoryBuffer]
+}
+
+final class Transaction {
+    let messages: [MessageId: Message]
+
+    init(messages: [Message]) {
+        self.messages = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
+    }
+
+    func getMessage(_ id: MessageId) -> Message? {
+        return self.messages[id]
+    }
+}
+
+final class Postbox {
+    let transactionValue: Transaction
+    var holdsResults = false
+    var heldResults: [() -> Void] = []
+
+    init(transaction: Transaction) {
+        self.transactionValue = transaction
+    }
+
+    func transaction<T>(_ body: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal(subscribe: { next in
+            let result = body(self.transactionValue)
+            if self.holdsResults {
+                self.heldResults.append({ next(result) })
+            } else {
+                next(result)
+            }
+        })
+    }
+
+    func deliverHeldResults() {
+        let results = self.heldResults
+        self.heldResults = []
+        results.forEach { $0() }
+    }
+}
+
+final class Account {
+    let postbox: Postbox
+
+    init(postbox: Postbox) {
+        self.postbox = postbox
+    }
+}
+
+final class Context {
+    let account: Account
+
+    init(transaction: Transaction) {
+        self.account = Account(postbox: Postbox(transaction: transaction))
+    }
+}
+
+struct ChatReplyThreadMessage: Equatable {
+    let peerId: PeerId
+    let threadId: Int64
+}
+
+enum ChatLocation: Equatable {
+    case peer(PeerId)
+    case thread(ChatReplyThreadMessage)
+}
+
+extension ChatLocation {
+__THREAD_ID__
+}
+
+protocol ChatCustomContentsProtocol: AnyObject {}
+
+final class ChatCustomContents: ChatCustomContentsProtocol {}
+
+enum ChatMode: Equatable {
+    case history
+    case scheduled
+    case pinned
+    case customChatContents(contents: ChatCustomContentsProtocol)
+
+    static func == (lhs: ChatMode, rhs: ChatMode) -> Bool {
+        switch (lhs, rhs) {
+        case (.history, .history), (.scheduled, .scheduled), (.pinned, .pinned), (.customChatContents, .customChatContents):
+            return true
+        default:
+            return false
+        }
+    }
+
+__TAG_MASK__
+
+__CUSTOM_CONTENTS__
+}
+
+enum MessageHistoryAnchorIndex {
+    case upperBound
+}
+
+enum TableScrollState: Equatable {
+    case down(Bool)
+}
+
+enum ChatHistoryLocation: Equatable {
+    case Initial(count: Int, scrollPosition: TableScrollState?)
+    case Scroll(index: MessageHistoryAnchorIndex, anchorIndex: MessageHistoryAnchorIndex, sourceIndex: MessageHistoryAnchorIndex, scrollPosition: TableScrollState, count: Int, animated: Bool)
+}
+
+__LOCATION_INPUT__
+
+struct EnginePeer: Equatable {}
+
+__SEARCH_MODE__
+
+__SELECTION_STATE__
+
+struct ChatPresentationInterfaceState {
+    var selectionState: ChatInterfaceSelectionState?
+    var chatLocation: ChatLocation
+    var searchMode = ChatSearchModeState(inSearch: false)
+
+    func updated(selectionState: ChatInterfaceSelectionState?) -> ChatPresentationInterfaceState {
+        var state = self
+        state.selectionState = selectionState
+        return state
+    }
+
+    func withUpdatedChatLocation(_ chatLocation: ChatLocation) -> ChatPresentationInterfaceState {
+        var state = self
+        state.chatLocation = chatLocation
+        return state
+    }
+
+    func updatedSearchMode(_ searchMode: ChatSearchModeState) -> ChatPresentationInterfaceState {
+        var state = self
+        state.searchMode = searchMode
+        return state
+    }
+
+__SELECTION_METHODS__
+}
+
+final class ChatInteraction {
+    var presentation: ChatPresentationInterfaceState
+    var withToggledSelectedMessage: ((ChatPresentationInterfaceState) -> ChatPresentationInterfaceState) -> Void = { _ in }
+    var setLocationTag: (HistoryViewInputTag?) -> Void = { _ in }
+    var notify: (ChatPresentationInterfaceState, ChatPresentationInterfaceState) -> Void = { _, _ in }
+
+    var chatLocation: ChatLocation {
+        return self.presentation.chatLocation
+    }
+
+    init(chatLocation: ChatLocation) {
+        self.presentation = ChatPresentationInterfaceState(selectionState: ChatInterfaceSelectionState(selectedIds: [], lastSelectedId: nil), chatLocation: chatLocation)
+    }
+
+    func update(_ f: (ChatPresentationInterfaceState) -> ChatPresentationInterfaceState) {
+        let oldValue = self.presentation
+        self.presentation = f(oldValue)
+        self.notify(self.presentation, oldValue)
+    }
+}
+
+__HELPER__
+
+final class Chat {
+    let context: Context
+    let chatInteraction: ChatInteraction
+    let mode: ChatMode
+    let shiftSelectedDisposable = MetaDisposable()
+    let requestCount = 50
+
+    var chatLocation: ChatLocation {
+        return self.chatInteraction.chatLocation
+    }
+
+__LOCATION_VALUE__
+
+__NEXT_LOCATION_ID__
+
+    private func cancelMessageFocus() {}
+
+    init(messages: [Message], chatLocation: ChatLocation, mode: ChatMode) {
+        self.context = Context(transaction: Transaction(messages: messages))
+        self.chatInteraction = ChatInteraction(chatLocation: chatLocation)
+        self.mode = mode
+        self.install()
+        let location: ChatHistoryLocation = .Initial(count: self.requestCount, scrollPosition: nil)
+        let id = self.takeNextHistoryLocationId()
+__INITIAL_LOCATION__
+    }
+
+    private func install() {
+        let context = self.context
+        let chatInteraction = self.chatInteraction
+__SELECTION__
+__SET_LOCATION_TAG__
+        chatInteraction.notify = { [weak self] value, oldValue in
+            self?.notify(value, oldValue)
+        }
+    }
+
+    private func notify(_ value: ChatPresentationInterfaceState, _ oldValue: ChatPresentationInterfaceState) {
+__TAG_UPDATE__
+__LOCATION_UPDATE__
+    }
+
+    func open(_ chatLocation: ChatLocation) {
+        self.chatInteraction.update {
+            $0.withUpdatedChatLocation(chatLocation)
+        }
+    }
+
+    func filter(_ tag: HistoryViewInputTag?) {
+        self.chatInteraction.setLocationTag(tag)
+    }
+
+    func toggleShowAll() {
+        let chatInteraction = self.chatInteraction
+__SHOW_ALL__
+    }
+
+    func click(_ id: MessageId, shift: Bool = false) {
+        NSApp.currentEvent = Event(modifierFlags: shift ? [.shift] : [])
+        self.chatInteraction.withToggledSelectedMessage({
+            $0.withToggledSelectedMessage(id)
+        })
+    }
+
+    func deliverHeldResults() {
+        self.context.account.postbox.deliverHeldResults()
+    }
+
+    var selected: Set<Int32> {
+        return Set(self.chatInteraction.presentation.selectionState?.selectedIds.map { $0.id } ?? [])
+    }
+}
+
+let group: PeerId = 1
+let accountPeer: PeerId = 2
+let directMessages: PeerId = 3
+let discussion: PeerId = 4
+
+let general: Int64 = 1
+let topicA: Int64 = 10
+let topicB: Int64 = 20
+let myNotes: Int64 = accountPeer
+let savedChat: Int64 = 200
+let userA: Int64 = 300
+let userB: Int64 = 400
+let repliesRoot: Int64 = 500
+
+let redTag = MemoryBuffer(value: 1)
+let blueTag = MemoryBuffer(value: 2)
+
+func message(_ id: Int32, namespace: Int32 = Namespaces.Message.Cloud, thread: Int64?, peerId: PeerId = group, tags: MessageTags = [], customTags: [MemoryBuffer] = []) -> Message {
+    return Message(id: MessageId(peerId: peerId, namespace: namespace, id: id), threadId: thread, tags: tags, customTags: customTags)
+}
+
+func scheduled(_ id: Int32, thread: Int64?) -> Message {
+    return message(id, namespace: Namespaces.Message.ScheduledCloud, thread: thread)
+}
+
+func pending(_ id: Int32, thread: Int64?) -> Message {
+    return message(id, namespace: Namespaces.Message.Local, thread: thread)
+}
+
+func pinned(_ id: Int32, thread: Int64?) -> Message {
+    return message(id, thread: thread, tags: .pinned)
+}
+
+func thread(_ threadId: Int64, peerId: PeerId = group) -> ChatLocation {
+    return .thread(ChatReplyThreadMessage(peerId: peerId, threadId: threadId))
+}
+
+func range(_ messages: [Message], _ location: ChatLocation, mode: ChatMode = .history, tag: HistoryViewInputTag? = nil, from first: Message? = nil, to last: Message? = nil) -> Set<Int32> {
+    let chat = Chat(messages: messages, chatLocation: location, mode: mode)
+    if let tag = tag {
+        chat.filter(tag)
+    }
+    chat.click((first ?? messages[0]).id)
+    chat.click((last ?? messages[messages.count - 1]).id, shift: true)
+    return chat.selected
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+let twoTopics = [message(11, thread: topicA), message(12, thread: topicB), message(13, thread: topicA)]
+check("topic-skips-other-topics", range(twoTopics, thread(topicA)) == [11, 13])
+check("topic-skips-other-topics-upwards", range(twoTopics, thread(topicA), from: twoTopics[2], to: twoTopics[0]) == [11, 13])
+check("topic-skips-general", range([message(11, thread: topicA), message(12, thread: general), message(13, thread: topicA)], thread(topicA)) == [11, 13])
+check("topic-keeps-its-own-messages", range([message(11, thread: topicA), message(12, thread: topicA), message(13, thread: topicA)], thread(topicA)) == [11, 12, 13])
+check("topic-keeps-unsent-messages", range([message(11, thread: topicA), pending(12, thread: topicA), message(13, thread: topicA)], thread(topicA)) == [11, 12, 13])
+check("topic-skips-unsent-messages-of-other-topics", range([message(11, thread: topicA), pending(12, thread: topicB), message(13, thread: topicA)], thread(topicA)) == [11, 13])
+
+check("general-skips-topics", range([message(11, thread: general), message(12, thread: topicA), message(13, thread: general)], thread(general)) == [11, 13])
+check("general-keeps-its-own-messages", range([message(11, thread: general), message(12, thread: general), message(13, thread: general)], thread(general)) == [11, 12, 13])
+
+check("whole-forum-keeps-every-topic", range([message(11, thread: topicA), message(12, thread: topicB), message(13, thread: general)], .peer(group)) == [11, 12, 13])
+check("regular-chat-keeps-every-message", range([message(11, thread: nil), message(12, thread: nil), message(13, thread: nil)], .peer(group)) == [11, 12, 13])
+check("regular-group-keeps-reply-threads", range([message(11, thread: general), message(12, thread: 11), message(13, thread: general)], .peer(group)) == [11, 12, 13])
+
+let saved = [message(11, thread: myNotes, peerId: accountPeer), message(12, thread: savedChat, peerId: accountPeer), message(13, thread: myNotes, peerId: accountPeer)]
+check("my-notes-skips-other-saved-chats", range(saved, thread(myNotes, peerId: accountPeer)) == [11, 13])
+check("all-saved-messages-keep-every-saved-chat", range(saved, .peer(accountPeer)) == [11, 12, 13])
+let savedThread = [message(11, thread: savedChat, peerId: accountPeer), message(12, thread: myNotes, peerId: accountPeer), message(13, thread: savedChat, peerId: accountPeer)]
+check("saved-chat-skips-my-notes", range(savedThread, thread(savedChat, peerId: accountPeer)) == [11, 13])
+
+let direct = [message(11, thread: userA, peerId: directMessages), message(12, thread: userB, peerId: directMessages), message(13, thread: userA, peerId: directMessages)]
+check("direct-messages-thread-skips-other-users", range(direct, thread(userA, peerId: directMessages)) == [11, 13])
+check("all-direct-messages-keep-every-user", range(direct, .peer(directMessages)) == [11, 12, 13])
+
+let replies = [message(501, thread: repliesRoot, peerId: discussion), message(502, thread: general, peerId: discussion), message(503, thread: repliesRoot, peerId: discussion)]
+check("reply-thread-skips-the-rest-of-the-group", range(replies, thread(repliesRoot, peerId: discussion)) == [501, 503])
+
+let scheduledTopics = [scheduled(11, thread: topicA), scheduled(12, thread: topicB), scheduled(13, thread: topicA)]
+check("scheduled-in-topic-skips-other-topics", range(scheduledTopics, thread(topicA), mode: .scheduled) == [11, 13])
+check("scheduled-in-whole-chat-keeps-every-topic", range(scheduledTopics, .peer(group), mode: .scheduled) == [11, 12, 13])
+check("scheduled-skips-sent-messages", range([scheduled(11, thread: topicA), message(12, thread: topicA), scheduled(13, thread: topicA)], thread(topicA), mode: .scheduled) == [11, 13])
+
+let pinnedChat = [pinned(11, thread: nil), message(12, thread: nil), pinned(13, thread: nil)]
+check("pinned-list-skips-unpinned-messages", range(pinnedChat, .peer(group), mode: .pinned) == [11, 13])
+check("pinned-list-keeps-pinned-messages-between-the-clicks", range([pinned(11, thread: nil), message(12, thread: nil), pinned(13, thread: nil), message(14, thread: nil), pinned(15, thread: nil)], .peer(group), mode: .pinned) == [11, 13, 15])
+check("pinned-list-in-topic-skips-other-topics", range([pinned(11, thread: topicA), pinned(12, thread: topicB), pinned(13, thread: topicA), message(14, thread: topicA), pinned(15, thread: topicA)], thread(topicA), mode: .pinned) == [11, 13, 15])
+check("pinned-list-in-whole-chat-keeps-every-topic", range([pinned(11, thread: topicA), pinned(12, thread: topicB), pinned(13, thread: topicA)], .peer(group), mode: .pinned) == [11, 12, 13])
+check("pinned-message-counts-outside-the-pinned-list", range(pinnedChat, .peer(group)) == [11, 12, 13])
+check("pinned-list-keeps-messages-with-more-tags", range([pinned(11, thread: nil), message(12, thread: nil, tags: [.pinned, .photo]), pinned(13, thread: nil)], .peer(group), mode: .pinned) == [11, 12, 13])
+
+let tagged = [message(11, thread: myNotes, peerId: accountPeer, customTags: [redTag]), message(12, thread: myNotes, peerId: accountPeer, customTags: [blueTag]), message(13, thread: myNotes, peerId: accountPeer), message(14, thread: myNotes, peerId: accountPeer, customTags: [blueTag, redTag]), message(15, thread: myNotes, peerId: accountPeer, customTags: [redTag])]
+check("tag-filter-skips-other-messages", range(tagged, .peer(accountPeer), tag: .customTag(redTag, nil)) == [11, 14, 15])
+check("tag-filter-needs-the-regular-tag-too", range([message(11, thread: nil, peerId: accountPeer, tags: .photo, customTags: [redTag]), message(12, thread: nil, peerId: accountPeer, customTags: [redTag]), message(13, thread: nil, peerId: accountPeer, tags: .photo, customTags: [redTag]), message(14, thread: nil, peerId: accountPeer, tags: .photo, customTags: [redTag])], .peer(accountPeer), tag: .customTag(redTag, .photo)) == [11, 13, 14])
+check("tag-filter-in-saved-chat-skips-other-saved-chats", range([message(11, thread: savedChat, peerId: accountPeer, customTags: [redTag]), message(12, thread: myNotes, peerId: accountPeer, customTags: [redTag]), message(13, thread: savedChat, peerId: accountPeer, customTags: [redTag]), message(14, thread: savedChat, peerId: accountPeer), message(15, thread: savedChat, peerId: accountPeer, customTags: [redTag])], thread(savedChat, peerId: accountPeer), tag: .customTag(redTag, nil)) == [11, 13, 15])
+
+let showingAll = Chat(messages: tagged, chatLocation: .peer(accountPeer), mode: .history)
+showingAll.filter(.customTag(redTag, nil))
+showingAll.toggleShowAll()
+showingAll.click(tagged[0].id)
+showingAll.click(tagged[4].id, shift: true)
+check("show-other-messages-keeps-everything", showingAll.selected == [11, 12, 13, 14, 15])
+
+let switching = Chat(messages: [message(11, thread: topicB), message(12, thread: topicA), message(13, thread: topicB)], chatLocation: thread(topicA), mode: .history)
+switching.open(thread(topicB))
+switching.click(MessageId(peerId: group, namespace: Namespaces.Message.Cloud, id: 11))
+switching.click(MessageId(peerId: group, namespace: Namespaces.Message.Cloud, id: 13), shift: true)
+check("switching-topics-follows-the-open-topic", switching.selected == [11, 13])
+
+let leavingTopic = Chat(messages: twoTopics, chatLocation: thread(topicA), mode: .history)
+leavingTopic.open(.peer(group))
+leavingTopic.click(twoTopics[0].id)
+leavingTopic.click(twoTopics[2].id, shift: true)
+check("switching-to-all-topics-keeps-every-topic", leavingTopic.selected == [11, 12, 13])
+
+let enteringTopic = Chat(messages: twoTopics, chatLocation: .peer(group), mode: .history)
+enteringTopic.open(thread(topicA))
+enteringTopic.click(twoTopics[0].id)
+enteringTopic.click(twoTopics[2].id, shift: true)
+check("switching-to-a-topic-skips-other-topics", enteringTopic.selected == [11, 13])
+
+let customContents = [message(11, thread: nil), message(12, thread: nil), message(13, thread: nil)]
+check("custom-list-adds-only-the-clicked-messages", range(customContents, .peer(accountPeer), mode: .customChatContents(contents: ChatCustomContents())) == [11, 13])
+
+let oneTopic = [message(11, thread: topicA), message(12, thread: topicA), message(13, thread: topicA)]
+
+let lateAfterSwitch = Chat(messages: oneTopic, chatLocation: thread(topicA), mode: .history)
+lateAfterSwitch.context.account.postbox.holdsResults = true
+lateAfterSwitch.click(oneTopic[0].id)
+lateAfterSwitch.click(oneTopic[2].id, shift: true)
+lateAfterSwitch.open(thread(topicB))
+lateAfterSwitch.deliverHeldResults()
+check("late-range-is-dropped-after-switching-topics", lateAfterSwitch.selected == [11, 13])
+
+let lateAfterFilter = Chat(messages: tagged, chatLocation: .peer(accountPeer), mode: .history)
+lateAfterFilter.context.account.postbox.holdsResults = true
+lateAfterFilter.click(tagged[0].id)
+lateAfterFilter.click(tagged[4].id, shift: true)
+lateAfterFilter.filter(.customTag(blueTag, nil))
+lateAfterFilter.deliverHeldResults()
+check("late-range-is-dropped-after-changing-the-filter", lateAfterFilter.selected == [11, 15])
+
+let plain = Chat(messages: twoTopics, chatLocation: .peer(group), mode: .history)
+plain.click(twoTopics[0].id)
+plain.click(twoTopics[2].id)
+check("click-without-shift-adds-no-range", plain.selected == [11, 13])
+
+let deselecting = Chat(messages: twoTopics, chatLocation: .peer(group), mode: .history)
+deselecting.click(twoTopics[0].id)
+deselecting.click(twoTopics[2].id)
+deselecting.click(twoTopics[2].id, shift: true)
+check("shift-click-on-a-selected-message-adds-no-range", deselecting.selected == [11])
+
+var crowdedTopic: [Message] = []
+for id in Int32(1000) ... 1300 {
+    crowdedTopic.append(message(id, thread: id % 100 == 0 ? topicA : topicB))
+}
+check("hidden-messages-do-not-use-up-the-limit", range(crowdedTopic, thread(topicA), from: crowdedTopic[0], to: crowdedTopic[300]) == [1000, 1100, 1200, 1300])
+check("whole-chat-keeps-the-limit", range(crowdedTopic, .peer(group), from: crowdedTopic[0], to: crowdedTopic[300]).count == 100)
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)

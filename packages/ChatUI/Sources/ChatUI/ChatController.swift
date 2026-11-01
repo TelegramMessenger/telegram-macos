@@ -56,6 +56,23 @@ private func calculateAdjustedPoint(for point: CGPoint,
     return adjustedPoint
 }
 
+private func chatHistoryContains(_ message: Message, threadId: Int64?, tag: HistoryViewInputTag?) -> Bool {
+    if let threadId, message.threadId != threadId {
+        return false
+    }
+    switch tag {
+    case let .tag(tags):
+        return message.tags.contains(tags)
+    case let .customTag(customTag, regularTag):
+        if let regularTag, !message.tags.contains(regularTag) {
+            return false
+        }
+        return message.customTags.contains(customTag)
+    case nil:
+        return true
+    }
+}
+
 private func chatHistoryKeepsReadState(peer: Peer?, chatLocation: ChatLocation) -> Bool {
     if case .thread = chatLocation {
         return true
@@ -7911,20 +7928,22 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             let previous = self.chatInteraction.presentation.selectionState?.selectedIds
             self.chatInteraction.update(f)
             
-            if let event = NSApp.currentEvent, event.modifierFlags.contains(.shift) {
+            if let event = NSApp.currentEvent, event.modifierFlags.contains(.shift), self.mode.customChatContents == nil {
                 if let selectionState = self.chatInteraction.presentation.selectionState, let lastMessageId = selectionState.lastSelectedId, let previous = previous {
                     if let messageId = selectionState.selectedIds.subtracting(previous).first {
                         let minId = min(lastMessageId.id, messageId.id)
                         let maxId = max(lastMessageId.id, messageId.id)
                         let cloudNamespace = self.mode == .scheduled ? Namespaces.Message.ScheduledCloud : Namespaces.Message.Cloud
                         let localNamespace = self.mode == .scheduled ? Namespaces.Message.ScheduledLocal : Namespaces.Message.Local
+                        let threadId = self.chatLocation.threadId
+                        let tag = self.locationValue?.tag
                         let selectMessages = context.account.postbox.transaction { transaction -> [Message] in
                             var messages:[Message] = []
                             for id in minId ..< maxId {
                                 let cloudId = MessageId(peerId: lastMessageId.peerId, namespace: cloudNamespace, id: id)
                                 let localId = MessageId(peerId: lastMessageId.peerId, namespace: localNamespace, id: id)
                                 let message = transaction.getMessage(cloudId) ?? transaction.getMessage(localId)
-                                if let message = message {
+                                if let message = message, chatHistoryContains(message, threadId: threadId, tag: tag) {
                                     if minId > maxId {
                                         messages.append(message)
                                     } else {
@@ -7936,7 +7955,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         } |> deliverOnMainQueue
                         
                         self.shiftSelectedDisposable.set(selectMessages.start(next: { [weak self] messages in
-                            guard let `self` = self else {
+                            guard let `self` = self, self.chatLocation.threadId == threadId, self.locationValue?.tag == tag else {
                                 return
                             }
                             self.chatInteraction.update({ current in
