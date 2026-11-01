@@ -420,22 +420,6 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     return modalController
 }
 
-private func canModerateChannelParticipant(channel: TelegramChannel, accountPeerId: PeerId, member: Peer, participant: ChannelParticipant?) -> Bool {
-    guard !channel.isChannel, channel.hasPermission(.banMembers), member.id != accountPeerId, member.isUser || member.isBot,
-          let participant = participant, participant.peerId == member.id else {
-        return false
-    }
-    switch participant {
-    case .creator:
-        return false
-    case let .member(_, _, adminInfo, _, _, _):
-        if let adminInfo = adminInfo {
-            return channel.flags.contains(.isCreator) || adminInfo.canBeEditedByAccountPeer || adminInfo.promotedBy == accountPeerId
-        }
-        return true
-    }
-}
-
 private func channelParticipantHasBannedRights(_ participant: ChannelParticipant?, rights: TelegramChatBannedRights) -> Bool {
     guard case let .member(_, _, _, banInfo, _, _)? = participant else {
         return false
@@ -461,26 +445,17 @@ private enum ChannelParticipantModerationResult {
 }
 
 public func channelParticipantModerationMenuItems(context: any AccountContextProtocol, channel: TelegramChannel, member: Peer, participant: ChannelParticipant? = nil) -> [ContextMenuItem] {
-    guard !channel.isChannel, channel.hasPermission(.banMembers), member.id != context.peerId, member.isUser || member.isBot else {
-        return []
-    }
-    if let participant = participant, !canModerateChannelParticipant(channel: channel, accountPeerId: context.peerId, member: member, participant: participant) {
-        return []
-    }
     let peerId = channel.id
-    let authorizedParticipant = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
-    |> mapToSignal { peer -> Signal<ChannelParticipant?, NoError> in
+    let currentParticipant = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+    |> mapToSignal { peer -> Signal<(TelegramChannel?, ChannelParticipant?), NoError> in
         guard let channel = peer?._asPeer() as? TelegramChannel, !channel.isChannel, channel.hasPermission(.banMembers) else {
-            return .single(nil)
+            return .single((nil, nil))
         }
         return context.engine.peers.fetchChannelParticipant(peerId: peerId, participantId: member.id)
-        |> map { participant in
-            return canModerateChannelParticipant(channel: channel, accountPeerId: context.peerId, member: member, participant: participant) ? participant : nil
-        }
+        |> map { (channel, $0) }
     }
-    |> take(1)
-    |> timeout(10.0, queue: .mainQueue(), alternate: .single(nil))
-    |> deliverOnMainQueue
+    let moderationMenu = ChannelParticipantModerationMenu(accountPeerId: context.peerId, member: member, participant: currentParticipant)
+    let authorizedParticipant = moderationMenu.authorizedParticipant
 
     let updateRights: (TelegramChatBannedRights) -> Void = { rights in
         let update = authorizedParticipant |> mapToSignal { participant -> Signal<ChannelParticipantModerationResult, NoError> in
@@ -521,7 +496,7 @@ public func channelParticipantModerationMenuItems(context: any AccountContextPro
         })
     }
 
-    return [ContextMenuItem(strings().chatContextRestrict, handler: {
+    return moderationMenu.items(channel: channel, participant: participant, restrict: {
         _ = showModalProgress(signal: authorizedParticipant, for: context.window).startStandalone(next: { participant in
             guard let participant = participant else {
                 alert(for: context.window, info: strings().unknownError)
@@ -529,7 +504,7 @@ public func channelParticipantModerationMenuItems(context: any AccountContextPro
             }
             showModal(with: RestrictedModalController(context, peerId: peerId, memberId: member.id, initialParticipant: participant, updated: updateRights), for: context.window)
         })
-    }, itemImage: MenuAnimation.menu_restrict.value), ContextMenuItem(strings().chatContextBan, handler: {
+    }, ban: {
         updateRights(TelegramChatBannedRights(flags: [.banReadMessages], untilDate: Int32.max))
-    }, itemMode: .destruct, itemImage: MenuAnimation.menu_ban.value)]
+    })
 }
