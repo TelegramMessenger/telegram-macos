@@ -2198,7 +2198,7 @@ public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bub
 }
 
 
-public func updateTheme(with settings: ThemePaletteSettings, for window: Window? = nil, animated: Bool = false) -> TelegramPresentationTheme {
+public func updateTheme(with settings: ThemePaletteSettings, for window: Window? = nil, animated: Bool = false, resolvedSystemPalette: ColorPalette? = nil) -> TelegramPresentationTheme {
     let palette: ColorPalette
     switch settings.palette.name {
     case whitePalette.name:
@@ -2226,7 +2226,7 @@ public func updateTheme(with settings: ThemePaletteSettings, for window: Window?
             palette = settings.palette
         }
     case systemPalette.name:
-        palette = systemPalette
+        palette = resolvedSystemPalette ?? systemPalette.withUpdatedName(systemPalette.name)
     default:
         palette = settings.palette
     }
