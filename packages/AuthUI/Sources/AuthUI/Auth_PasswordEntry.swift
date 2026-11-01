@@ -95,10 +95,28 @@ private final class Auth_PasswordInputSourceGuard {
         })
     }
 
+    private static func identifier(of source: TISInputSource) -> String? {
+        guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else {
+            return nil
+        }
+        return Unmanaged<AnyObject>.fromOpaque(value).takeUnretainedValue() as? String
+    }
+
+    private var selectedEnglishIdentifier: String?
+    private var userPickedLayout = false
+
     var isPaused = false
 
+    func begin() {
+        guard !isPaused else {
+            return
+        }
+        userPickedLayout = false
+        activate()
+    }
+
     func activate() {
-        guard previous == nil, !isPaused else {
+        guard previous == nil, !isPaused, !userPickedLayout, NSApp.isActive else {
             return
         }
         let selected = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
@@ -106,6 +124,7 @@ private final class Auth_PasswordInputSourceGuard {
             return
         }
         previous = selected
+        selectedEnglishIdentifier = Auth_PasswordInputSourceGuard.identifier(of: english)
         TISSelectInputSource(english)
     }
 
@@ -113,8 +132,20 @@ private final class Auth_PasswordInputSourceGuard {
         guard let previous = previous, !isPaused else {
             return
         }
+        let current = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        if Auth_PasswordInputSourceGuard.identifier(of: current) != selectedEnglishIdentifier {
+            userPickedLayout = true
+        }
         self.previous = nil
         TISSelectInputSource(previous)
+    }
+
+    func end() {
+        guard !isPaused else {
+            return
+        }
+        deactivate()
+        userPickedLayout = false
     }
 
     deinit {
@@ -127,7 +158,7 @@ private final class Auth_PasswordSecureField : NSSecureTextField {
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
         if result {
-            inputSourceGuard?.activate()
+            inputSourceGuard?.begin()
         }
         return result
     }
@@ -138,7 +169,7 @@ private final class Auth_PasswordPlainField : NSTextField {
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
         if result {
-            inputSourceGuard?.activate()
+            inputSourceGuard?.begin()
         }
         return result
     }
@@ -263,7 +294,7 @@ private final class Auth_PasswordEntryInputView : View, NSTextFieldDelegate {
     }
 
     public func controlTextDidEndEditing(_ obj: Notification) {
-        inputSourceGuard.deactivate()
+        inputSourceGuard.end()
     }
     
     public func update(locked: Bool, hint: String?, invoke: @escaping()->Void, takeError:@escaping()->Void) {
