@@ -17,7 +17,7 @@ harness=Path(__file__).with_name('SearchUnreadHarness.swift').read_text()
 lease=harness[harness.index('private enum SearchReadRunLease'):harness.index('private final class SearchReadButton')]
 fixture=fixture.replace('__LEASE__',lease)
 if not args.revision:
- assert 'searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove)' in source('SearchController')
+ assert 'searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove, adPeer: adPeer)' in source('SearchController')
  context=source('SearchPeerContextMenu')
  assert 'searchPeerReadMenuItem(context: context, peerId: peerId, target: target ?? .common(.root))' in context
  assert context.index('if case let .savedMessages(savedPeerId)? = target') < context.index('let readItem = searchPeerReadMenuItem(')

@@ -140,6 +140,77 @@ final class SearchPeerContextMenuTests: XCTestCase {
         XCTAssertTrue(removalOnly[0] === remove)
     }
 
+    private func sponsoredPeer(opaqueId: Data) -> AdPeer {
+        let peer = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(42)), accessHash: nil, firstName: "Sponsored", lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, subscriberCount: nil, verificationIconFileId: nil)
+        return AdPeer(opaqueId: opaqueId, peer: .user(peer), subscribers: nil, sponsorInfo: nil, additionalInfo: nil)
+    }
+
+    func testSponsoredProfileSelectionCountsClickBeforeOpening() throws {
+        let ad = sponsoredPeer(opaqueId: Data([1, 2, 3]))
+        var calls: [String] = []
+        let open = searchPeerOpenProfileAction(adPeer: ad, markAdAction: { opaqueId, media, fullscreen in
+            XCTAssertEqual(opaqueId, ad.opaqueId)
+            XCTAssertFalse(media)
+            XCTAssertFalse(fullscreen)
+            calls.append("ad")
+        }, openProfile: { calls.append("profile") })
+        let callbacks = SearchPeerMenuActions(openProfile: open, toggleMute: { calls.append("mute") }, mute: { _ in }, muteUntil: {}, togglePin: { calls.append("pin") })
+        let items = searchPeerMenuItems(state: state(canPin: true), profileTitle: "Profile", actions: callbacks, readItem: nil, folders: [], remove: nil)
+        XCTAssertTrue(calls.isEmpty)
+        try XCTUnwrap(items.first { $0.title == strings().chatListContextMute }).handler?()
+        try XCTUnwrap(items.first { $0.title == strings().chatListContextPin }).handler?()
+        XCTAssertEqual(calls, ["mute", "pin"])
+        try XCTUnwrap(items.first { $0.title == "Profile" }).handler?()
+        XCTAssertEqual(calls, ["mute", "pin", "ad", "profile"])
+    }
+
+    func testOrdinaryProfileSelectionDoesNotCountAnAdClick() throws {
+        var opened = 0
+        let open = searchPeerOpenProfileAction(adPeer: nil, markAdAction: { _, _, _ in XCTFail("Ordinary peer must not report an ad click") }, openProfile: { opened += 1 })
+        let callbacks = SearchPeerMenuActions(openProfile: open, toggleMute: {}, mute: { _ in }, muteUntil: {}, togglePin: {})
+        let items = searchPeerMenuItems(state: state(), profileTitle: "Profile", actions: callbacks, readItem: nil, folders: [], remove: nil)
+        XCTAssertEqual(opened, 0)
+        try XCTUnwrap(items.first).handler?()
+        XCTAssertEqual(opened, 1)
+    }
+
+    func testSponsoredResultsForSamePeerKeepTheirOwnOpaqueIds() {
+        let first = sponsoredPeer(opaqueId: Data([4, 5]))
+        let second = sponsoredPeer(opaqueId: Data([6, 7]))
+        XCTAssertEqual(first.peer.id, second.peer.id)
+        var recorded: [Data] = []
+        var opened = 0
+        let actions = [first, second].map { ad in
+            searchPeerOpenProfileAction(adPeer: ad, markAdAction: { opaqueId, _, _ in recorded.append(opaqueId) }, openProfile: { opened += 1 })
+        }
+        XCTAssertTrue(recorded.isEmpty)
+        actions[1]()
+        actions[0]()
+        XCTAssertEqual(recorded, [second.opaqueId, first.opaqueId])
+        XCTAssertEqual(opened, 2)
+    }
+
+    func testReopeningSponsoredMenusOnlyCountsChosenProfileActions() throws {
+        let ad = sponsoredPeer(opaqueId: Data([8, 9]))
+        var clicks = 0
+        var opened = 0
+        func menu() -> [ContextMenuItem] {
+            let open = searchPeerOpenProfileAction(adPeer: ad, markAdAction: { _, _, _ in clicks += 1 }, openProfile: { opened += 1 })
+            return searchPeerMenuItems(state: state(), profileTitle: "Profile", actions: SearchPeerMenuActions(openProfile: open, toggleMute: {}, mute: { _ in }, muteUntil: {}, togglePin: {}), readItem: nil, folders: [], remove: nil)
+        }
+        _ = menu()
+        let selected = menu()
+        _ = menu()
+        XCTAssertEqual(clicks, 0)
+        XCTAssertEqual(opened, 0)
+        try XCTUnwrap(selected.first).handler?()
+        XCTAssertEqual(clicks, 1)
+        XCTAssertEqual(opened, 1)
+        try XCTUnwrap(menu().first).handler?()
+        XCTAssertEqual(clicks, 2)
+        XCTAssertEqual(opened, 2)
+    }
+
     func testSavedMessagesAccountRetainsReadActionWithoutProfileOrMute() {
         for unread in [false, true] {
             var calls = 0

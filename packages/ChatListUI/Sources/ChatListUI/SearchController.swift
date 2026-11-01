@@ -338,7 +338,7 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 }
 
 
-private func peerContextMenuItems(peer: Peer, arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
+private func peerContextMenuItems(peer: Peer, arguments: SearchControllerArguments, isRecent: Bool, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
     let remove: ContextMenuItem?
     if isRecent {
         remove = ContextMenuItem(strings().searchRemoveFromRecent, handler: {
@@ -347,7 +347,7 @@ private func peerContextMenuItems(peer: Peer, arguments: SearchControllerArgumen
     } else {
         remove = nil
     }
-    return searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove)
+    return searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove, adPeer: adPeer)
 }
 
 
@@ -406,7 +406,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                 }
             }
             return RecentPeerRowItem(initialSize, peer: foundPeer.peer._asPeer(), account: arguments.context.account, context: arguments.context, stableId: entry.stableId, statusStyle:ControlStyle(font:.normal(.text), foregroundColor: theme.colors.grayText, highlightColor:.white), status: status, borderType: [.Right], contextMenuItems: {
-                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), arguments: arguments, isRecent: false, adPeer: adPeer)
             }, unreadBadge: badge, adPeer: adPeer, removeAd: arguments.removeAd)
         case let .localPeer(renderedPeer, _, secretChat, badge, drawBorder, canAddAsTag, storyStats):
             

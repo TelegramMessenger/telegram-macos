@@ -76,6 +76,15 @@ func searchPeerMenuItems(state: SearchPeerMenuState, profileTitle: String, actio
     return items
 }
 
+func searchPeerOpenProfileAction(adPeer: AdPeer?, markAdAction: @escaping (Data, Bool, Bool) -> Void, openProfile: @escaping () -> Void) -> () -> Void {
+    return {
+        if let adPeer {
+            markAdAction(adPeer.opaqueId, false, false)
+        }
+        openProfile()
+    }
+}
+
 func searchPeerNotificationPeerId(_ peer: Peer) -> PeerId {
     return peer.notificationSettingsPeerId ?? peer.id
 }
@@ -90,7 +99,7 @@ func searchSavedPeerMenuItems(profileTitle: String?, isPinned: Bool, openProfile
     return items
 }
 
-func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol, target: SearchControllerTarget? = nil, canPin: Bool = false, remove: ContextMenuItem? = nil) -> Signal<[ContextMenuItem], NoError> {
+func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol, target: SearchControllerTarget? = nil, canPin: Bool = false, remove: ContextMenuItem? = nil, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
     if case let .savedMessages(savedPeerId)? = target {
         let threadId = peer.id.toInt64()
         return context.account.postbox.transaction { transaction in
@@ -144,11 +153,11 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
                 updatePeersCustom(transaction: transaction, peers: [peer], update: { _, updated in updated })
             }
         } |> deliverOnMainQueue
-        let actions = SearchPeerMenuActions(openProfile: {
+        let actions = SearchPeerMenuActions(openProfile: searchPeerOpenProfileAction(adPeer: adPeer, markAdAction: context.engine.messages.markAdAction, openProfile: {
             _ = storePeer.start(completed: {
                 ChatListUIHooks.shared.pushPeerInfo(context.bindings.rootNavigation(), context, peer.id)
             })
-        }, toggleMute: {
+        }), toggleMute: {
             ChatListRowItem.toggleMuted(context: context, peerId: notificationPeerId, isMuted: state.isMuted, threadId: nil)
         }, mute: { interval in
             _ = context.engine.peers.updatePeerMuteSetting(peerId: notificationPeerId, threadId: nil, muteInterval: interval).start()
