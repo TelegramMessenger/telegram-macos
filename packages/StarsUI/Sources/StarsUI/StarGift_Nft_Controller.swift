@@ -1322,8 +1322,11 @@ private final class HeaderView : GeneralRowView {
 
             current.contextMenu = {
                 let menu = ContextMenu()
-                
-                
+                if case .quickLook = item.state.source, let profileGiftMenu = item.arguments.profileGiftMenu {
+                    menu.items = profileGiftMenu()
+                    return menu
+                }
+
                 let owner = item.state.owner?._asPeer()
                 let visibility = item.state.profileVisibility
 
@@ -1751,6 +1754,7 @@ private final class Arguments {
     public let showCraftSuccess:(StarGift.UniqueGift)->Void
     public let okAction:()->Void
     public var toggleProfileVisibility:()->Void = {}
+    var profileGiftMenu: (() -> [ContextMenuItem])?
 
     public init(context: (any AccountContextProtocol), window: @escaping () -> Window, dismiss:@escaping()->Void, toggleName:@escaping()->Void, transfer:@escaping()->Void, copyNftLink:@escaping(StarGift.UniqueGift)->Void, shareNft:@escaping(StarGift.UniqueGift)->Void, sellNft:@escaping(StarGift.UniqueGift, Bool)->Void, toggleWear:@escaping(StarGift.UniqueGift)->Void, togglePin:@escaping()->Void, openPeer:@escaping(EnginePeer, Bool)->Void, openValue:@escaping(StarGift.UniqueGift)->Void, setAsTheme:@escaping(StarGift.UniqueGift)->Void, deleteOriginalInfo:@escaping(StarGift.UniqueGift, NSAttributedString)->Void, makeOffer:@escaping(StarGift.UniqueGift, EnginePeer)->Void, showModels:@escaping(StarGift, StarGift_Builder_Section)->Void, startCrafting:@escaping()->Void, toggleCraftGift:@escaping(ProfileGiftsContext.State.StarGift)->Void, showCraftModels:@escaping(StarGift.UniqueGift, StarGift_Builder_Section)->Void, showCraftMarketplace:@escaping(Int)->Void, showCraftAbout:@escaping()->Void, showBackdropChanceHint:@escaping(String, Int)->Void, showPatternChanceHint:@escaping(String, Int)->Void, openCraftAbout:@escaping(StarGift.UniqueGift)->Void, performCraft:@escaping(@escaping()->Void, @escaping(ProfileGiftsContext.State.StarGift)->Void, @escaping([ProfileGiftsContext.State.StarGift])->Void, @escaping()->Void)->Void, showCraftVariants:@escaping()->Void, craftAnother:@escaping()->Void, showCraftSuccess:@escaping(StarGift.UniqueGift)->Void, okAction:@escaping()->Void) {
         self.context = context
@@ -2640,7 +2644,7 @@ public struct GiftPinnedInfo : Equatable {
     }
 }
 
-public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift: StarGift, source: StarGiftNftSource, transaction: StarsContext.State.Transaction? = nil, purpose: Star_TransactionPurpose? = nil, giftsContext: ProfileGiftsContext? = nil, resaleContext: ResaleGiftsContext? = nil, pinnedInfo: GiftPinnedInfo? = nil, toPeerId: PeerId? = nil, onPurchase: ((ProfileGiftsContext.State.StarGift) -> Void)? = nil) -> InputDataModalController {
+public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift: StarGift, source: StarGiftNftSource, transaction: StarsContext.State.Transaction? = nil, purpose: Star_TransactionPurpose? = nil, giftsContext: ProfileGiftsContext? = nil, resaleContext: ResaleGiftsContext? = nil, pinnedInfo: GiftPinnedInfo? = nil, toPeerId: PeerId? = nil, onPurchase: ((ProfileGiftsContext.State.StarGift) -> Void)? = nil, giftMenuItems: (() -> [ContextMenuItem])? = nil, openCrafting: Bool = false) -> InputDataModalController {
 
     
     
@@ -3223,35 +3227,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
             }
         })
     }, setAsTheme: { gift in
-        _ = StarsHooks.shared.selectContact(context, window, strings().selectPeersTitleSelectChat, { peerIds in
-            if gift.themePeerId == peerIds.first {
-                return .single(true)
-            } else if let themePeerId = gift.themePeerId {
-                return context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: themePeerId))
-                |> deliverOnMainQueue
-                |> mapToSignal { peer in
-                    if let peer {
-                        return verifyAlertSignal(for: window, header: "", information: strings().chatThemeUniqueGiftReplaceConfirm(peer._asPeer().displayTitle), ok: strings().modalYes, headerItem: ModalAlertData.Header(id: "header", value: { initialSize, stableId, theme in
-                            return TransferUniqueGiftHeaderItem(initialSize, stableId: stableId, gift: gift, toPeer: peer, context: context, transferType: .resetTheme)
-                        })) |> map {
-                            $0 != nil
-                        }
-                    } else {
-                        return .single(false)
-                    }
-                }
-            } else {
-                return .single(true)
-            }
-        }).start(next: { peerIds in
-            if let peerId = peerIds.first {
-                let signal = context.engine.themes.setChatTheme(peerId: peerId, chatTheme: .gift(.unique(gift), []) ) |> deliverOnMainQueue
-                actionsDisposable.add(signal.start(completed: {
-                    close?()
-                    StarsHooks.shared.openChat(context, peerId, nil)
-                }))
-            }
-        })
+        actionsDisposable.add(setStarGiftAsChatTheme(context: context, window: window, gift: gift, completion: { close?() }))
     }, deleteOriginalInfo: { gift, string in
         
         let price = stateValue.with { $0.dropDetailsStars}
@@ -3513,6 +3489,26 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
         _ = getController?()?.returnKeyAction()
     })
 
+    if let giftMenuItems {
+        arguments.profileGiftMenu = {
+            let items = giftMenuItems()
+            func prepare(_ items: [NSMenuItem]) {
+                for case let item as ContextMenuItem in items {
+                    if let submenu = item.submenu {
+                        prepare(submenu.items)
+                    } else if !item.isSeparatorItem, let action = item.handler {
+                        item.handler = {
+                            close?()
+                            action()
+                        }
+                    }
+                }
+            }
+            prepare(items)
+            return items
+        }
+    }
+
     arguments.toggleProfileVisibility = {
         guard let visibility = stateValue.with({ $0.profileVisibility }) else {
             return
@@ -3535,6 +3531,9 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     controller.didLoad = { controller, _ in
         controller.tableView.getBackgroundColor = {
             return theme.colors.background
+        }
+        if openCrafting, let gift = gift.unique {
+            arguments.openCraftAbout(gift)
         }
     }
     
