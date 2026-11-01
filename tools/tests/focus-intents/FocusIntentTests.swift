@@ -95,9 +95,12 @@ private enum FocusIntentTests {
         let query = FocusFolderQuery(catalogProvider: { catalog })
         let suggested = try await query.suggestedEntities()
         let restored = try await query.entities(for: suggested.map(\.id))
-        let expected = ["All Chats (6123456789)", "Work (6123456789)", "Work (7123456789)", "Work"]
+        let expected = ["All Chats", "Work", "Work", "Work"]
+        let expectedAccounts = ["Account (6123456789)", "Account (6123456789)", "Account (7123456789)", "Legacy"]
         precondition(suggested.map { String(localized: $0.displayRepresentation.title) } == expected)
         precondition(restored.map { String(localized: $0.displayRepresentation.title) } == expected)
+        precondition(suggested.map { String(localized: $0.displayRepresentation.subtitle!) } == expectedAccounts)
+        precondition(restored.map { String(localized: $0.displayRepresentation.subtitle!) } == expectedAccounts)
         let matchingAccount = try await query.entities(matching: "6123456789")
         let matchingFolder = try await query.entities(matching: "Work")
         let matchingInternal = try await query.entities(matching: "-71:7")
@@ -105,7 +108,8 @@ private enum FocusIntentTests {
         precondition(matchingFolder.map(\.id) == ["-71:7", "72:7", "73:7"])
         precondition(matchingInternal.isEmpty)
         let unavailable = try await query.entities(for: ["-71:99", "74:7"])
-        precondition(String(localized: unavailable[0].displayRepresentation.title) == "\(String(localized: "Unavailable folder")) (6123456789)")
+        precondition(String(localized: unavailable[0].displayRepresentation.title) == String(localized: "Unavailable folder"))
+        precondition(String(localized: unavailable[0].displayRepresentation.subtitle!) == "Account (6123456789)")
         precondition(String(localized: unavailable[1].displayRepresentation.title) == String(localized: "Unavailable folder"))
         let intent = TelegramFocusFilter()
         intent.folders = Set(restored)
@@ -218,10 +222,10 @@ private enum FocusIntentTests {
         precondition(intent.configuration.folderIds.count == 3)
         precondition(intent.configuration.chatIds.count == 4)
         precondition(String(localized: account.displayRepresentation.title) == "Same (101)")
-        precondition(String(localized: folder.displayRepresentation.title) == "Same (101)")
+        precondition(String(localized: folder.displayRepresentation.title) == "Same")
         precondition(String(localized: chat.displayRepresentation.title) == "Same (42)")
         precondition(Set([account, otherAccount].map { String(localized: $0.displayRepresentation.title) }).count == 2)
-        precondition(Set([folder, otherFolder, crossAccountFolder].map { String(localized: $0.displayRepresentation.title) }).count == 2)
+        precondition(Set([folder, otherFolder, crossAccountFolder].map { String(localized: $0.displayRepresentation.title) }).count == 1)
         precondition(Set([chat, otherChat, crossAccountChat, secretChat].map { String(localized: $0.displayRepresentation.title) }).count == 3)
 
         let catalog = FocusFilterCatalog(

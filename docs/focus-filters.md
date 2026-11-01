@@ -58,13 +58,13 @@ local record keys are never substituted for Telegram IDs. The same chat selected
 through different accounts retains separate internal identity and an account
 subtitle even when its primary `Name (TelegramID)` title is identical.
 
-Folder titles use `Folder name (AccountTelegramID)`, where the number is the Telegram
-user ID of the account that owns the folder. This applies to suggestions, searches
-and restored selections. Folder searches match the folder name, account name or
-account's Telegram user ID. Local account record keys and folder identifiers remain
-internal. If the account's Telegram ID is unavailable, only the folder name is shown.
-Their account subtitle uses the same account display format. The filter summary
-sorts accounts by stable local identity.
+Folder titles show only the folder name. The subtitle identifies the owning account
+as `Account name (TelegramUserID)`, without repeating its ID in the folder title.
+This applies to suggestions, searches and restored selections. Folder searches
+match the folder name, account name or account's Telegram user ID. Local account
+record keys and folder identifiers remain internal. If the account's Telegram ID
+is unavailable, the subtitle shows only the account name. The filter summary sorts
+accounts by stable local identity.
 
 After installing a signed build, check in System Settings that each picker
 prevents adding the same item twice, removing and re-adding still works, same-name

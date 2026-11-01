@@ -84,9 +84,6 @@ struct FocusFolderEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        if let telegramAccountId {
-            return DisplayRepresentation(title: "\(title) (\(String(telegramAccountId)))", subtitle: "\(accountTitle)")
-        }
         return DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
     }
 }
