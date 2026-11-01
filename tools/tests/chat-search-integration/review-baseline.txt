@@ -1,0 +1,1 @@
+Baseline reproduced cramped input and stale result-panel geometry (57 failed checks).

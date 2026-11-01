@@ -290,13 +290,15 @@ public final class LeftSidebarController: SidebarViewController<LeftSidebarView>
 
             let range = sidebarResortRange(rowCount: self.genericView.tableView.count, isPremium: context.isPremium)
             if self.genericView.tableView.resortController?.resortRange != range {
-                self.genericView.tableView.resortController = TableResortController(resortRange: range, start: { _ in }, resort: { _ in }, complete: { from, to in
+                let resortController = TableResortController(resortRange: range, start: { _ in }, resort: { _ in }, complete: { from, to in
                     _ = context.engine.peers.updateChatListFiltersInteractively({ filters in
                         var filters = filters
                         filters = sidebarReorderedFilters(filters, from: from, to: to, rangeLocation: 1, offset: 0)
                         return filters
                     }).start()
                 })
+                resortController.completeDelay = 0
+                self.genericView.tableView.resortController = resortController
             }
         }))
     }

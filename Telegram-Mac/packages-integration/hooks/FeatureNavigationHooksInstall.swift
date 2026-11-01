@@ -279,6 +279,9 @@ func installFeatureNavigationHooks() {
             }
         }
     }
+    hooks.makeLocationPreviewController = { context, address in
+        return LocationModalPreview(context, address: address) |> map { $0 as ModalViewController? }
+    }
     hooks.fullExportRowTitle = {
         return fullExportRowTitle()
     }

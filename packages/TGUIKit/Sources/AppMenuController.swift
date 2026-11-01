@@ -795,7 +795,9 @@ final class AppMenuController : NSObject  {
         self.windows = self.windows.filter({
             $0.key.submenuId != submenu.view.submenuId
         })
-        submenu.view.parentView?.view.tableView.cancelSelection()
+        if let tableView = submenu.view.parentView?.view.tableView, let submenuId = submenu.view.submenuId, tableView.selectedItem()?.stableId == AnyHashable(submenuId) {
+            tableView.cancelSelection()
+        }
         
         submenu.view.parentView?.view.childView = nil
         submenu.view.parentView = nil
@@ -850,7 +852,27 @@ final class AppMenuController : NSObject  {
         if parentView.view.dismissed {
             return
         }
-        menu.loadProvidedItems()
+        menu.loadAsyncItems()
+        if menu.isLoadingAsyncItems {
+            menu.asyncItemsLoaded = { [weak self, weak parentView, weak menu] in
+                guard let self, let parentView, let menu, !self.isClosed, !menu.contextItems.isEmpty else {
+                    return
+                }
+                guard let parentItem = parentView.view.item(for: id) else {
+                    return
+                }
+                let isHovered = parentItem.view?.mouseInside() == true
+                guard isHovered || parentItem.isSelected else {
+                    return
+                }
+                self.presentSubmenu(menu, parentView: parentView, for: id)
+                if !isHovered, let view = self.findSubmenu(id)?.view {
+                    view.tableView.selectNext()
+                    view.updateScroll()
+                }
+            }
+            return
+        }
         
         let view = self.getView(for: menu, screen: screen, parentView: parentView, submenuId: id)
         guard let parentItem = parentView.view.item(for: id), let parentItemView = parentItem.view else {

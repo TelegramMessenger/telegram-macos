@@ -1330,6 +1330,7 @@ public final class RichTextDraftPreviewView: View {
     public var onSend: (() -> Void)?
     /// Fired when the inline editor's content height changes (the host re-measures the row).
     public var onEditorHeightChange: (() -> Void)?
+    public var onEditorContentChange: (() -> Void)?
 
     @available(macOS 12, *)
     private var richEditor: RichTextEditorView? { editorView as? RichTextEditorView }
@@ -1351,6 +1352,10 @@ public final class RichTextDraftPreviewView: View {
 
     /// True while the live inline editor is shown (vs the read-only preview).
     public var isInlineEditing: Bool { isEditable }
+    private var reseedsEditor = false
+    public func reseedEditorOnNextUpdate() {
+        reseedsEditor = true
+    }
 
     /// Undo / redo on the inline editor (host wires ⌘Z / ⌘⇧Z to these).
     public func undoInline() { if #available(macOS 12, *) { richEditor?.undo() } }
@@ -1425,6 +1430,7 @@ public final class RichTextDraftPreviewView: View {
                 return true
             }
             editor.onContentHeightChange = { [weak self] in self?.onEditorHeightChange?() }
+            editor.onFormatStateChange = { [weak self] in self?.onEditorContentChange?() }
             // Render custom-emoji atoms as the app's animated inline stickers (same provider as the modal
             // editor) — without this an inline draft's custom emoji draw as blanks.
             if let context = self.chatInteraction?.interactionContext {
@@ -1520,10 +1526,15 @@ public final class RichTextDraftPreviewView: View {
         // user is actively editing, the editor is the live source of truth — re-seeding (e.g. from our own
         // draft-sync round-trip) would reset the caret.
         let focused = (window?.firstResponder as? NSView).map { $0 === editor || $0.isDescendant(of: editor) } ?? false
-        if isNew || !focused {
+        if isNew || !focused || reseedsEditor {
+            let clearsUndo = reseedsEditor
+            reseedsEditor = false
             let (blocks, media) = richTextOutgoing(from: instantPage)
             self.mediaCache = media
             editor.setOutgoingBlocks(blocks)
+            if clearsUndo {
+                editor.removeAllUndoActions()
+            }
             editor.moveCaretToEnd()
         }
         return measureEditable(width: width)

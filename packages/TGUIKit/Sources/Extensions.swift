@@ -3388,7 +3388,7 @@ private func extractRelativeDates(from text: String, referenceDate: Date) -> [Ex
         { s in
             let u = s
             if u.hasPrefix("hour") || u == "h" || u.hasPrefix("hr")
-                || u.hasPrefix("час") || u.hasPrefix("год") || u.hasPrefix("гад") // ru/uk/be
+                || u.hasPrefix("час") || u.hasPrefix("годин") || u.hasPrefix("гадз") // ru/uk/be
                 || u.hasPrefix("st") || u.hasPrefix("std") // de Stunde
                 || u.hasPrefix("heure") || u.hasPrefix("heures") // fr
                 || u.hasPrefix("hora") || u.hasPrefix("horas") // es
@@ -3480,7 +3480,7 @@ private func extractRelativeDates(from text: String, referenceDate: Date) -> [Ex
 
     // Pattern B examples:
     // "20m", "2h", "3d", "1w", "20 min", "10мин", "5хв", "2soat"
-    let patternB = #"\b(\d+(?:[.,]\d+)?)\s*([[:alpha:]\p{M}]{1,12}\.?)\b"#
+    let patternB = #"(?<!\S)(\d+(?:[.,]\d+)?)\s*([[:alpha:]\p{M}]{1,12}\.?)\b"#
 
     // Pattern C examples (implied "1"):
     // "через минуту", "через час", "in a minute", "in an hour", "nach einer Stunde"

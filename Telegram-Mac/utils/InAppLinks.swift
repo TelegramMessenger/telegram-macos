@@ -460,6 +460,17 @@ private func openNoPaidMessagesPeer(_ peer: EnginePeer, token: String, context: 
 
 private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: ChatInitialAction?, forceProfile: Bool, context: AccountContext, window: Window, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
     do {
+        var joinVoiceChatAction: ChatInitialAction?
+        if case .joinVoiceChat = action {
+            joinVoiceChatAction = action
+        }
+        let current = context.bindings.rootNavigation().controller as? ChatController
+        if peer.isForum, messageId == nil, let joinVoiceChatAction, let current, current.chatLocation.peerId == peer.id, current.mode == .history || current.mode.isTopicMode {
+            closeAllModals(window: window)
+            context.window.makeKeyAndOrderFront(nil)
+            current.chatInteraction.invokeInitialAction(action: joinVoiceChatAction)
+            return
+        }
         if peer.isForum {
             closeAllModals(window: window)
             if let messageId {
@@ -472,7 +483,8 @@ private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: C
                 |> deliverOnMainQueue
                 _ = (signal).start(next: { result in
                     if case let .result(messages) = result, let threadId = messages.first?.threadId {
-                        let ready = ForumUI.openTopic(threadId, peerId: peer.id, context: context, messageId: nil, animated: true, addition: true)
+                        let focusMessageId = threadId == Int64(messageId.id) ? nil : messageId
+                        let ready = ForumUI.openTopic(threadId, peerId: peer.id, context: context, messageId: focusMessageId, animated: true, addition: true)
                         _ = (ready |> take(1)).start(next: { opened in
                             if !opened {
                                 ForumUI.open(peer.id, addition: true, context: context)
@@ -481,7 +493,8 @@ private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: C
                     }
                 })
             } else {
-                ForumUI.open(peer.id, addition: true, context: context)
+                let reusesCurrentView = current?.chatLocation == ChatLocation.peer(peer.id)
+                ForumUI.open(peer.id, addition: true, context: context, initialAction: reusesCurrentView ? nil : joinVoiceChatAction)
             }
         } else {
             let openChat: Bool
