@@ -338,12 +338,15 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 }
 
 
-private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
+private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, adPeer: AdPeer? = nil, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
     var items:[ContextMenuItem] = []
 
     switch arguments.target {
     case .common, .community:
         items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+            if let adPeer {
+                arguments.context.engine.messages.markAdAction(opaqueId: adPeer.opaqueId, media: false, fullscreen: false)
+            }
             ChatListUIHooks.shared.openPeerInNewWindow(arguments.context, chatPeerId ?? peer.id)
         }, itemImage: MenuAnimation.menu_open_with.value))
     case .forum, .savedMessages:
@@ -507,7 +510,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                 }
             }
             return RecentPeerRowItem(initialSize, peer: foundPeer.peer._asPeer(), account: arguments.context.account, context: arguments.context, stableId: entry.stableId, statusStyle:ControlStyle(font:.normal(.text), foregroundColor: theme.colors.grayText, highlightColor:.white), status: status, borderType: [.Right], contextMenuItems: {
-                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), adPeer: adPeer, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
             }, unreadBadge: badge, adPeer: adPeer, removeAd: arguments.removeAd)
         case let .localPeer(renderedPeer, _, secretChat, badge, drawBorder, canAddAsTag, storyStats):
             
