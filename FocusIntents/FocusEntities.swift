@@ -66,6 +66,14 @@ struct FocusFolderEntity: AppEntity, Hashable {
     let id: String
     let title: String
     let accountTitle: String
+    let telegramAccountId: Int64?
+
+    init(id: String, title: String, accountTitle: String, telegramAccountId: Int64? = nil) {
+        self.id = id
+        self.title = title
+        self.accountTitle = accountTitle
+        self.telegramAccountId = telegramAccountId
+    }
 
     static func == (lhs: FocusFolderEntity, rhs: FocusFolderEntity) -> Bool {
         lhs.id == rhs.id
@@ -76,7 +84,10 @@ struct FocusFolderEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title) (ID: \(id))", subtitle: "\(accountTitle)")
+        if let telegramAccountId {
+            return DisplayRepresentation(title: "\(title) (\(String(telegramAccountId)))", subtitle: "\(accountTitle)")
+        }
+        return DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
     }
 }
 
@@ -102,7 +113,7 @@ struct FocusFolderQuery: EntityStringQuery {
     func entities(matching string: String) async throws -> [FocusFolderEntity] {
         try await suggestedEntities().filter {
             $0.title.localizedStandardContains(string)
-                || $0.id.localizedStandardContains(string)
+                || $0.telegramAccountId.map { String($0).localizedStandardContains(string) } == true
                 || $0.accountTitle.localizedStandardContains(string)
         }
     }
@@ -192,7 +203,7 @@ private struct FocusEntityCatalog {
 
     var folders: [FocusFolderEntity] {
         uniqueEntities(catalog.folders.map {
-            FocusFolderEntity(id: $0.id.rawValue, title: $0.title, accountTitle: accountTitle($0.id.accountId))
+            FocusFolderEntity(id: $0.id.rawValue, title: $0.title, accountTitle: accountTitle($0.id.accountId), telegramAccountId: accountUserId($0.id.accountId))
         })
     }
 
@@ -200,7 +211,7 @@ private struct FocusEntityCatalog {
         uniqueEntities(identifiers.compactMap { rawValue in
             guard let id = FocusFolderIdentifier(rawValue: rawValue) else { return nil }
             let title = catalog.folders.first(where: { $0.id == id })?.title ?? String(localized: "Unavailable folder")
-            return FocusFolderEntity(id: id.rawValue, title: title, accountTitle: accountTitle(id.accountId))
+            return FocusFolderEntity(id: id.rawValue, title: title, accountTitle: accountTitle(id.accountId), telegramAccountId: accountUserId(id.accountId))
         })
     }
 
@@ -222,6 +233,10 @@ private struct FocusEntityCatalog {
     private func uniqueEntities<Entity: AppEntity>(_ entities: [Entity]) -> [Entity] {
         var identifiers = Set<Entity.ID>()
         return entities.filter { identifiers.insert($0.id).inserted }
+    }
+
+    private func accountUserId(_ accountId: Int64) -> Int64? {
+        catalog.accounts.first(where: { $0.id == accountId })?.telegramUserId
     }
 
     private func accountTitle(_ accountId: Int64) -> String {

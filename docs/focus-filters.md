@@ -58,9 +58,13 @@ local record keys are never substituted for Telegram IDs. The same chat selected
 through different accounts retains separate internal identity and an account
 subtitle even when its primary `Name (TelegramID)` title is identical.
 
-Folders retain their account-qualified `accountId:folderId` labels because they do
-not have a Telegram dialog ID. Their account subtitle uses the same account display
-format. The filter summary sorts accounts by stable local identity.
+Folder titles use `Folder name (AccountTelegramID)`, where the number is the Telegram
+user ID of the account that owns the folder. This applies to suggestions, searches
+and restored selections. Folder searches match the folder name, account name or
+account's Telegram user ID. Local account record keys and folder identifiers remain
+internal. If the account's Telegram ID is unavailable, only the folder name is shown.
+Their account subtitle uses the same account display format. The filter summary
+sorts accounts by stable local identity.
 
 After installing a signed build, check in System Settings that each picker
 prevents adding the same item twice, removing and re-adding still works, same-name
@@ -71,6 +75,13 @@ choices.
 After upgrading, also open Telegram and reopen an existing Focus filter: account
 rows and the filter summary should show the positive Telegram user ID while
 retaining the original selection and filtering behavior.
+
+When replacing a development build, close System Settings and ensure the previous
+`FocusIntents` extension process has exited before reopening the Focus picker.
+macOS can keep the old extension executable running after its app bundle has been
+replaced or moved to Trash, so launching the newly built app alone may still leave
+old picker labels visible. Confirm the running extension belongs to the intended
+app copy before comparing its menus with the current sources.
 
 ## Dependency boundaries
 

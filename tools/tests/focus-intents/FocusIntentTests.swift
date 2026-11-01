@@ -78,6 +78,42 @@ private final class TestCatalogSource: @unchecked Sendable {
 
 @main
 private enum FocusIntentTests {
+    private static func testFolderAccountIdentifiers() async throws {
+        let catalog = FocusFilterCatalog(
+            accounts: [
+                .init(id: -71, title: "Account", telegramUserId: 6_123_456_789),
+                .init(id: 72, title: "Account", telegramUserId: 7_123_456_789),
+                .init(id: 73, title: "Legacy")
+            ],
+            folders: [
+                .init(id: .init(accountId: -71, folderId: -1), title: "All Chats", peerIds: []),
+                .init(id: .init(accountId: -71, folderId: 7), title: "Work", peerIds: []),
+                .init(id: .init(accountId: 72, folderId: 7), title: "Work", peerIds: []),
+                .init(id: .init(accountId: 73, folderId: 7), title: "Work", peerIds: [])
+            ]
+        )
+        let query = FocusFolderQuery(catalogProvider: { catalog })
+        let suggested = try await query.suggestedEntities()
+        let restored = try await query.entities(for: suggested.map(\.id))
+        let expected = ["All Chats (6123456789)", "Work (6123456789)", "Work (7123456789)", "Work"]
+        precondition(suggested.map { String(localized: $0.displayRepresentation.title) } == expected)
+        precondition(restored.map { String(localized: $0.displayRepresentation.title) } == expected)
+        let matchingAccount = try await query.entities(matching: "6123456789")
+        let matchingFolder = try await query.entities(matching: "Work")
+        let matchingInternal = try await query.entities(matching: "-71:7")
+        precondition(matchingAccount.map(\.id) == ["-71:-1", "-71:7"])
+        precondition(matchingFolder.map(\.id) == ["-71:7", "72:7", "73:7"])
+        precondition(matchingInternal.isEmpty)
+        let unavailable = try await query.entities(for: ["-71:99", "74:7"])
+        precondition(String(localized: unavailable[0].displayRepresentation.title) == "\(String(localized: "Unavailable folder")) (6123456789)")
+        precondition(String(localized: unavailable[1].displayRepresentation.title) == String(localized: "Unavailable folder"))
+        let intent = TelegramFocusFilter()
+        intent.folders = Set(restored)
+        precondition(intent.configuration.folderIds == Set(catalog.folders.map(\.id)))
+        let renamed = FocusFolderEntity(id: "-71:7", title: "Renamed", accountTitle: "Account", telegramAccountId: 6_123_456_789)
+        precondition(!intent.folders!.insert(renamed).inserted)
+    }
+
     private static func testTelegramChatIdentifiers() async throws {
         let catalog = FocusFilterCatalog(
             accounts: [.init(id: -71, title: "Account", telegramUserId: 6_123_456_789)],
@@ -151,10 +187,10 @@ private enum FocusIntentTests {
         let account = FocusAccountEntity(id: "1", title: "Same", telegramUserId: 101)
         let renamedAccount = FocusAccountEntity(id: "1", title: "Renamed", telegramUserId: 101)
         let otherAccount = FocusAccountEntity(id: "2", title: "Same", telegramUserId: 202)
-        let folder = FocusFolderEntity(id: "1:7", title: "Same", accountTitle: "Same")
-        let renamedFolder = FocusFolderEntity(id: "1:7", title: "Renamed", accountTitle: "Renamed")
-        let otherFolder = FocusFolderEntity(id: "1:8", title: "Same", accountTitle: "Same")
-        let crossAccountFolder = FocusFolderEntity(id: "2:7", title: "Same", accountTitle: "Same")
+        let folder = FocusFolderEntity(id: "1:7", title: "Same", accountTitle: "Same", telegramAccountId: 101)
+        let renamedFolder = FocusFolderEntity(id: "1:7", title: "Renamed", accountTitle: "Renamed", telegramAccountId: 101)
+        let otherFolder = FocusFolderEntity(id: "1:8", title: "Same", accountTitle: "Same", telegramAccountId: 101)
+        let crossAccountFolder = FocusFolderEntity(id: "2:7", title: "Same", accountTitle: "Same", telegramAccountId: 202)
         let chat = FocusChatEntity(id: "1:42", title: "Same", accountTitle: "Same", telegramChatId: 42)
         let renamedChat = FocusChatEntity(id: "1:42", title: "Renamed", accountTitle: "Renamed", telegramChatId: 42)
         let otherChat = FocusChatEntity(id: "1:43", title: "Same", accountTitle: "Same", telegramChatId: 43)
@@ -182,10 +218,10 @@ private enum FocusIntentTests {
         precondition(intent.configuration.folderIds.count == 3)
         precondition(intent.configuration.chatIds.count == 4)
         precondition(String(localized: account.displayRepresentation.title) == "Same (101)")
-        precondition(String(localized: folder.displayRepresentation.title) == "Same (ID: 1:7)")
+        precondition(String(localized: folder.displayRepresentation.title) == "Same (101)")
         precondition(String(localized: chat.displayRepresentation.title) == "Same (42)")
         precondition(Set([account, otherAccount].map { String(localized: $0.displayRepresentation.title) }).count == 2)
-        precondition(Set([folder, otherFolder, crossAccountFolder].map { String(localized: $0.displayRepresentation.title) }).count == 3)
+        precondition(Set([folder, otherFolder, crossAccountFolder].map { String(localized: $0.displayRepresentation.title) }).count == 2)
         precondition(Set([chat, otherChat, crossAccountChat, secretChat].map { String(localized: $0.displayRepresentation.title) }).count == 3)
 
         let catalog = FocusFilterCatalog(
@@ -211,7 +247,7 @@ private enum FocusIntentTests {
         precondition(folders.map(\.id) == ["1:7", "2:7", "3:7"])
         precondition(chats.map(\.id) == ["1:42", "2:42", "3:42"])
         precondition(String(localized: accounts[2].displayRepresentation.title) == String(localized: "Unavailable account"))
-        precondition(String(localized: folders[2].displayRepresentation.title).contains("ID: 3:7"))
+        precondition(String(localized: folders[2].displayRepresentation.title) == String(localized: "Unavailable folder"))
         precondition(String(localized: chats[2].displayRepresentation.title) == String(localized: "Unavailable chat"))
         let suggestedAccounts = try await accountQuery.suggestedEntities()
         let suggestedFolders = try await folderQuery.suggestedEntities()
@@ -220,7 +256,7 @@ private enum FocusIntentTests {
         precondition(suggestedFolders.map(\.id) == ["1:7", "2:7"])
         precondition(suggestedChats.map(\.id) == ["1:42", "2:42"])
         let matchingAccounts = try await accountQuery.entities(matching: "2")
-        let matchingFolders = try await folderQuery.entities(matching: "2:7")
+        let matchingFolders = try await folderQuery.entities(matching: "202")
         let matchingChats = try await chatQuery.entities(matching: "42")
         precondition(matchingAccounts.map(\.id) == ["2"])
         precondition(matchingFolders.map(\.id) == ["2:7"])
@@ -228,6 +264,7 @@ private enum FocusIntentTests {
     }
 
     static func main() async throws {
+        try await testFolderAccountIdentifiers()
         try await testTelegramChatIdentifiers()
         try await testTelegramAccountIdentifiers()
         try await testLegacyAccountIdentifiers()
