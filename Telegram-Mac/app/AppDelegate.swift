@@ -680,13 +680,13 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 let previousBackingScale: Atomic<CGFloat> = Atomic(value: System.backingScale)
                 let signal: Signal<TelegramPresentationTheme?, NoError> = combineLatest(queue: .mainQueue(), themeSettingsView(accountManager: accountManager), backingProperties.get(), systemThemeColorsSignal()) |> map { settings, backingScale, systemColors in
                     System.legacyMenu = settings.legacyMenu
-                    let resolved = settings.palette.parent == .system ? settings.withUpdatedPalette(systemColors) : settings
+                    let resolved = settings.palette.name == systemPalette.name ? settings.withUpdatedPalette(systemColors) : settings
                     return (resolved, backingScale)
                 } |> deliverOn(resourcesQueue) |> map { settings, backingScale in
                     let previous = basicTheme.swap(settings)
                     let previousScale = previousBackingScale.swap(backingScale)
                     if previous?.palette != settings.palette || previous?.bubbled != settings.bubbled || previous?.wallpaper != settings.wallpaper || previous?.fontSize != settings.fontSize || previous?.cloudTheme != settings.cloudTheme || previousScale != backingScale  {
-                        return updateTheme(with: settings, resolvedSystemPalette: settings.palette)
+                        return updateTheme(with: settings, resolvedSystemPalette: settings.palette, scaleFactor: backingScale)
                     } else {
                         return nil
                     }

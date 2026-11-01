@@ -2171,7 +2171,7 @@ public func generateIcons(from palette: ColorPalette, bubbled: Bool) -> Telegram
 }
 
 
-public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bubbled: Bool, fontSize: CGFloat, wallpaper: ThemeWallpaper, backgroundSize: NSSize = NSMakeSize(1040, 1580), liquidGlass: Bool = System.liquidGlass) -> TelegramPresentationTheme {
+public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bubbled: Bool, fontSize: CGFloat, wallpaper: ThemeWallpaper, backgroundSize: NSSize = NSMakeSize(1040, 1580), liquidGlass: Bool = System.liquidGlass, scaleFactor: CGFloat = System.backingScale) -> TelegramPresentationTheme {
     
     let chatList = TelegramChatListTheme(selectedBackgroundColor: palette.accentSelect,
                                          singleLayoutSelectedBackgroundColor: palette.grayBackground,
@@ -2194,11 +2194,11 @@ public func generateTheme(palette: ColorPalette, cloudTheme: TelegramTheme?, bub
                                          badgeMutedBackgroundColor: palette.badgeMuted)
     
     let tabBar = TelegramTabBarTheme(color: palette.grayIcon, selectedColor: palette.accentIcon, badgeTextColor: .white, badgeColor: palette.redUI)
-    return TelegramPresentationTheme(colors: palette, cloudTheme: cloudTheme, search: SearchTheme(palette.grayBackground, TelegramThemeHooks.shared.image(.iconSearchField).precomposed(palette.grayIcon), TelegramThemeHooks.shared.image(.iconSearchClear).precomposed(palette.grayIcon), { strings().searchFieldSearch }, palette.text, palette.grayText), chatList: chatList, tabBar: tabBar, icons: generateIcons(from: palette, bubbled: bubbled), bubbled: bubbled, fontSize: fontSize, wallpaper: wallpaper, generated: true, backgroundSize: backgroundSize, liquidGlass: liquidGlass)
+    return TelegramPresentationTheme(colors: palette, cloudTheme: cloudTheme, search: SearchTheme(palette.grayBackground, TelegramThemeHooks.shared.image(.iconSearchField).precomposed(palette.grayIcon), TelegramThemeHooks.shared.image(.iconSearchClear).precomposed(palette.grayIcon), { strings().searchFieldSearch }, palette.text, palette.grayText), chatList: chatList, tabBar: tabBar, icons: generateIcons(from: palette, bubbled: bubbled), bubbled: bubbled, fontSize: fontSize, wallpaper: wallpaper, generated: true, backgroundSize: backgroundSize, liquidGlass: liquidGlass, scaleFactor: scaleFactor)
 }
 
 
-public func updateTheme(with settings: ThemePaletteSettings, for window: Window? = nil, animated: Bool = false, resolvedSystemPalette: ColorPalette? = nil) -> TelegramPresentationTheme {
+public func updateTheme(with settings: ThemePaletteSettings, for window: Window? = nil, animated: Bool = false, resolvedSystemPalette: ColorPalette? = nil, scaleFactor: CGFloat = System.backingScale) -> TelegramPresentationTheme {
     let palette: ColorPalette
     switch settings.palette.name {
     case whitePalette.name:
@@ -2230,7 +2230,7 @@ public func updateTheme(with settings: ThemePaletteSettings, for window: Window?
     default:
         palette = settings.palette
     }
-    let theme = generateTheme(palette: palette, cloudTheme: settings.cloudTheme, bubbled: settings.bubbled, fontSize: settings.fontSize, wallpaper: settings.wallpaper)
+    let theme = generateTheme(palette: palette, cloudTheme: settings.cloudTheme, bubbled: settings.bubbled, fontSize: settings.fontSize, wallpaper: settings.wallpaper, scaleFactor: scaleFactor)
     return theme
 }
 

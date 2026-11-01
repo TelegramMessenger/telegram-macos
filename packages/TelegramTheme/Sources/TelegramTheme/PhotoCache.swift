@@ -177,8 +177,13 @@ public enum PhotoCacheKeyEntry : Hashable {
             hasher.combine(scale)
         case let .background(wallpaper, palette, size):
             hasher.combine("wallpaper")
-            hasher.combine(palette.name)
-            hasher.combine(palette.colorSignature)
+            switch wallpaper {
+            case .none, .builtin, .emoticon:
+                hasher.combine(palette.name)
+                hasher.combine(palette.colorSignature)
+            default:
+                break
+            }
             hasher.combine(palette.isDark)
             // Key by the longest side (rounded): it is what the decode cap, and therefore the cached bitmap
             // resolution, is derived from — and it avoids spurious entries from sub-pixel float differences.
@@ -318,7 +323,15 @@ public enum PhotoCacheKeyEntry : Hashable {
             }
         case let .background(wallpaper, colors, size):
             if case let .background(otherWallpaper, otherColors, otherSize) = rhs {
-                return wallpaper == otherWallpaper && colors == otherColors && Int(max(size.width, size.height).rounded()) == Int(max(otherSize.width, otherSize.height).rounded())
+                guard wallpaper == otherWallpaper, colors.isDark == otherColors.isDark, Int(max(size.width, size.height).rounded()) == Int(max(otherSize.width, otherSize.height).rounded()) else {
+                    return false
+                }
+                switch wallpaper {
+                case .none, .builtin, .emoticon:
+                    return colors == otherColors
+                default:
+                    return true
+                }
             } else {
                 return false
             }
