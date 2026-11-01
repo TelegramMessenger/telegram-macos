@@ -308,6 +308,11 @@ private final class TextAndLabelModalView : View {
         super.mouseDown(with: event)
     }
 
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        center()
+    }
+
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         self.theme = theme
         glassView.customTint = theme.colors.background.withAlphaComponent(0.9)
@@ -476,6 +481,7 @@ class TextAndLabelModalController: ModalViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        self.genericView.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
         self.genericView.updateLocalizationAndTheme(theme: initialTheme)
         let size = self.genericView.update(text: text, title: title, button: button, callback: self.callback, maxSize: windowSize)
         self.modal?.resize(with: size, animated: false)
