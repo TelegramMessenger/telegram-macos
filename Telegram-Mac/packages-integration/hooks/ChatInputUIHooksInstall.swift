@@ -85,8 +85,8 @@ func installChatInputUIHooks() {
         return ForwardPanelModel(forwardMessages: forwardMessages, hideNames: hideNames, context: context as! AccountContext)
     }, makeForwardMessagesModal: { context, messages in
         return ShareModalController(ForwardMessagesObject(context as! AccountContext, messages: messages, emptyPerformOnClose: true))
-    }, makeTranslateModal: { context, from, toLang, text, onUse, onSend in
-        return TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, onUse: onUse, onSend: onSend)
+    }, makeTranslateModal: { context, from, toLang, text, entities, onUse, onSend in
+        return TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, entities: entities, onUse: onUse, onSend: onSend)
     }, makeRichTranslateModal: { context, from, toLang, text, entities, richBlocks, onUseRich in
         return TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, entities: entities, richBlocks: richBlocks, onUseRich: onUseRich)
     }, wallet: makeChatInputWalletHooks(), getAudioPlayer: { context in
@@ -151,8 +151,8 @@ func installChatInputUIHooks() {
         }
         return result
     })
-    hooks.makeTranslateModalWithContext = { context, from, toLang, text, onUse, onSend in
-        TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, onUse: onUse, onSend: onSend)
+    hooks.makeTranslateModalWithContext = { context, from, toLang, text, entities, onUse, onSend in
+        TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, entities: entities, onUse: onUse, onSend: onSend)
     }
     hooks.makeRichTranslateModalWithContext = { context, from, toLang, text, entities, blocks, onUse in
         TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, entities: entities, richBlocks: blocks, onUseRich: onUse)

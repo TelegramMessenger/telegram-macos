@@ -1,0 +1,191 @@
+import Foundation
+
+enum EntityType: Equatable {
+    case Bold
+    case Pre
+    case BlockQuote
+    case FormattedDate
+}
+
+struct MessageTextEntity: Equatable {
+    let type: EntityType
+}
+
+struct Context {
+    let window = 0
+}
+
+struct InstantPage {
+}
+
+struct State {
+    var text: String
+    var textEntities: [MessageTextEntity]
+    var translated: String?
+    var translatedEntities: [MessageTextEntity] = []
+    var limitExceeded = false
+    var translatedRich: InstantPage?
+
+    func translatedAttr(context: Context) -> NSAttributedString? {
+        if let translated {
+            return NSAttributedString(string: "rendered: \(translated)")
+        }
+        return nil
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+struct TextEntitiesMessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+func chatTextAttributes(from attribute: TextEntitiesMessageAttribute, associatedMedia: [Int: Int]) -> [MessageTextEntity] {
+    return attribute.entities
+}
+
+struct ChatTextInputState {
+    let inputText: String
+    let selectionRange: Range<Int>
+    let attributes: [MessageTextEntity]
+
+    func marks(pre: Bool) -> String {
+        var text = self.inputText
+        if self.attributes.contains(MessageTextEntity(type: .BlockQuote)) {
+            text += " quote"
+        }
+        if self.attributes.contains(MessageTextEntity(type: .FormattedDate)) {
+            text += " date"
+        }
+        if pre, self.attributes.contains(MessageTextEntity(type: .Pre)) {
+            text += " fences"
+        }
+        return text
+    }
+
+    func attributedString() -> NSAttributedString {
+        return NSAttributedString(string: self.marks(pre: false))
+    }
+
+    func makeAttributeString(addPreAsBlock: Bool = false) -> NSAttributedString {
+        return NSAttributedString(string: self.marks(pre: addPreAsBlock))
+    }
+}
+
+struct Labels {
+    let translateApply = "Apply"
+}
+
+func strings() -> Labels {
+    return Labels()
+}
+
+enum PremiumSource {
+    case aiCompose
+}
+
+final class NavigationHooks {
+    var premiumShown = false
+
+    func showPremiumBoardingObserved(_ context: Context, _ window: Int, _ source: PremiumSource, _ a: Bool, _ b: Int?) {
+        self.premiumShown = true
+    }
+}
+
+final class FeatureNavigationHooks {
+    static let shared = NavigationHooks()
+}
+
+func richTextOutgoing(from page: InstantPage) -> ([Int], Int) {
+    return ([], 0)
+}
+
+func coreBlocks(fromOutgoing blocks: [Int]) -> [Int] {
+    return blocks
+}
+
+struct ModalInteractions {
+    let accept: () -> Void
+    let extraAction: (() -> Void)?
+
+    init(acceptTitle: String, accept: @escaping () -> Void, singleButton: Bool, extraActionImage: Int?, extraAction: (() -> Void)?) {
+        self.accept = accept
+        self.extraAction = extraAction
+    }
+}
+
+func makeInteractions(text: String, entities: [MessageTextEntity], translated: String?, translatedEntities: [MessageTextEntity]? = nil, limitExceeded: Bool = false, onUse: ((NSAttributedString) -> Void)?, onSend: ((NSAttributedString) -> Void)?, closed: @escaping () -> Void) -> (ModalInteractions, [MessageTextEntity]) {
+    let context = Context()
+__SETUP__
+    var state = State(text: text, textEntities: entities, translated: translated, translatedEntities: translatedEntities ?? entities)
+    state.limitExceeded = limitExceeded
+    let stateValue = Atomic(value: state)
+    let sendIcon: Int? = nil
+    let onUseRich: (([Int]) -> Void)? = nil
+    var close: (() -> Void)? = closed
+__APPLIED_TEXT__
+    let modalInteractions: ModalInteractions
+    if onUse != nil {
+__APPLY__
+    } else {
+        modalInteractions = ModalInteractions(acceptTitle: "", accept: {}, singleButton: true, extraActionImage: nil, extraAction: nil)
+    }
+    close = closed
+    return (modalInteractions, entities)
+}
+
+func apply(_ translated: String?, translatedEntities: [MessageTextEntity]? = nil, limitExceeded: Bool = false) -> (used: String?, closed: Bool) {
+    var used: String?
+    var closed = false
+    makeInteractions(text: "hello", entities: draftEntities, translated: translated, translatedEntities: translatedEntities, limitExceeded: limitExceeded, onUse: { used = $0.string }, onSend: nil, closed: { closed = true }).0.accept()
+    return (used, closed)
+}
+
+func send(_ translated: String?, translatedEntities: [MessageTextEntity]? = nil) -> (sent: String?, closed: Bool) {
+    var sent: String?
+    var closed = false
+    makeInteractions(text: "hello", entities: draftEntities, translated: translated, translatedEntities: translatedEntities, onUse: { _ in }, onSend: { sent = $0.string }, closed: { closed = true }).0.extraAction?()
+    return (sent, closed)
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+let plainEntities = [MessageTextEntity(type: .Pre), MessageTextEntity(type: .BlockQuote)]
+let draftEntities = plainEntities + [MessageTextEntity(type: .FormattedDate)]
+let keptDraft = "hello quote date fences"
+let requestEntities = makeInteractions(text: "hello", entities: draftEntities, translated: nil, onUse: { _ in }, onSend: nil, closed: {}).1
+let messageEntities = makeInteractions(text: "hello", entities: draftEntities, translated: nil, onUse: nil, onSend: nil, closed: {}).1
+
+check("apply-keeps-quote-code-and-date", apply("hello", translatedEntities: plainEntities).used == keptDraft && apply("hello", translatedEntities: plainEntities).closed)
+check("send-keeps-quote-code-and-date", send("hello", translatedEntities: plainEntities).sent == keptDraft && send("hello", translatedEntities: plainEntities).closed)
+check("changed-text-applies-the-result", apply("hi", translatedEntities: plainEntities).used == "rendered: hi")
+check("changed-text-sends-the-result", send("hi", translatedEntities: plainEntities).sent == "rendered: hi")
+check("changed-formatting-applies-the-result", apply("hello", translatedEntities: [MessageTextEntity(type: .Bold)]).used == "rendered: hello")
+check("no-result-applies-nothing", apply(nil).used == nil && !apply(nil).closed)
+check("no-result-sends-nothing", send(nil).sent == nil && !send(nil).closed)
+
+let limitedResult = apply("hello", translatedEntities: plainEntities, limitExceeded: true)
+check("limit-opens-premium-instead", limitedResult.used == nil && limitedResult.closed && FeatureNavigationHooks.shared.premiumShown)
+
+check("dates-stay-out-of-the-request", requestEntities == plainEntities)
+check("translated-messages-keep-dates", messageEntities == draftEntities)
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)
