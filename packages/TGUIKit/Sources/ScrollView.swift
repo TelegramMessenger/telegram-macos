@@ -218,16 +218,6 @@ open class ScrollView: NSScrollView{
 //
 //    }
 //    
-    open override var hasVerticalScroller: Bool {
-        get { super.hasVerticalScroller }
-        set {
-            super.hasVerticalScroller = newValue
-            if newValue {
-                applyThemedVerticalScroller()
-            }
-        }
-    }
-
     open override var scrollerStyle: NSScroller.Style {
         set {
             super.scrollerStyle = .overlay
@@ -278,4 +268,10 @@ open class ScrollView: NSScrollView{
         
     }
     
+}
+
+public extension NSScrollView {
+    func additionalBottomScrollerInset(for minimumClearance: CGFloat) -> CGFloat {
+        return max(0, minimumClearance - contentInsets.bottom)
+    }
 }
