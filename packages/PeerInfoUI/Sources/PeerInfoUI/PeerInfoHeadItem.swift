@@ -412,12 +412,16 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
 class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     override var height: CGFloat {
         if !editing && isAvatarExpanded {
-            var height = expandedAvatarHeight + inset.top + inset.bottom
-            if hasProfileStrip {
-                height += PeerInfoMusicView.height(colorful: nameColor != nil)
-            }
-            return height
+            return expandedAvatarHeight + expandedAvatarInsets
         }
+        return collapsedHeight
+    }
+
+    private var expandedAvatarInsets: CGFloat {
+        return inset.top + inset.bottom + (hasProfileStrip ? PeerInfoMusicView.height(colorful: nameColor != nil) : 0)
+    }
+
+    private var collapsedHeight: CGFloat {
         let insets = self.viewType.innerInset
         var height: CGFloat = 0
         
@@ -716,11 +720,11 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     }
 
     fileprivate var expandedAvatarHeight: CGFloat {
-        let height = floor(blockWidth * 0.75)
+        var height = floor(blockWidth * 0.75)
         if let tableHeight = table?.frame.height, tableHeight > 0 {
-            return min(height, floor(tableHeight * 0.6))
+            height = min(height, floor(tableHeight * 0.6))
         }
-        return height
+        return max(height, collapsedHeight - expandedAvatarInsets)
     }
 
     fileprivate var effectiveNameLayout: TextViewLayout {
