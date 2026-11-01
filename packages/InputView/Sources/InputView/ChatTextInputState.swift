@@ -184,12 +184,15 @@ public extension ChatTextInputAttribute {
             return self.weight == rhs.weight
         case .italic:
             return self.weight == rhs.weight
-        case .pre:
-            return self.weight == rhs.weight
+        case let .pre(_, language):
+            if case let .pre(_, otherLanguage) = rhs {
+                return language == otherLanguage
+            }
+            return false
         case .code:
             return self.weight == rhs.weight
         case .quote:
-            return self.weight == rhs.weight
+            return false
         case let .uid(_, id):
             switch rhs {
             case .uid(_, id):
@@ -315,12 +318,10 @@ public func chatTextAttributes(from attributedText: NSAttributedString) -> [Chat
                 parsedAttributes.append(.bold(range))
             } else if key == TextInputAttributes.italic {
                 parsedAttributes.append(.italic(range))
-            } else if key == TextInputAttributes.code {
-                parsedAttributes.append(.pre(range, value as? String))
-            } else if key == TextInputAttributes.monospace {
+            } else if key == TextInputAttributes.monospace, attributes[TextInputAttributes.code] == nil {
                 parsedAttributes.append(.code(range))
             } else if key == TextInputAttributes.textMention, let value = value as? ChatTextInputTextMentionAttribute {
-                parsedAttributes.append(.uid(range, value.peerId.toInt64()))
+                parsedAttributes.append(.uid(range, value.peerId.id._internalGetInt64Value()))
 
             } else if key == TextInputAttributes.textUrl, let value = value as? TextInputTextUrlAttribute {
                 parsedAttributes.append(.url(range, value.url))
@@ -337,6 +338,11 @@ public func chatTextAttributes(from attributedText: NSAttributedString) -> [Chat
             } else if key == TextInputAttributes.formattedDate, let value = value as? TextInputTextDateAttribute {
                 parsedAttributes.append(.date(range, value.date))
             }
+        }
+    })
+    attributedText.enumerateAttribute(TextInputAttributes.code, in: NSRange(location: 0, length: attributedText.length), options: [], using: { value, range, _ in
+        if let language = value as? String {
+            parsedAttributes.append(.pre(range.location ..< NSMaxRange(range), language))
         }
     })
     attributedText.enumerateAttribute(TextInputAttributes.quote, in: NSRange(location: 0, length: attributedText.length), options: [], using: { value, range, _ in
@@ -515,10 +521,10 @@ public final class ChatTextInputState: Codable, Equatable {
                 result.addAttribute(TextInputAttributes.italic, value: true as NSNumber, range: range)
             case .code:
                 result.addAttribute(TextInputAttributes.monospace, value: true as NSNumber, range: range)
-            case .pre(_, _):
-                break
+            case let .pre(_, language):
+                result.addAttribute(TextInputAttributes.code, value: language ?? "", range: range)
             case let .uid(_, id):
-                result.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: PeerId(id)), range: range)
+                result.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(id))), range: range)
             case let .url(_, url):
                 result.addAttribute(TextInputAttributes.textUrl, value: TextInputTextUrlAttribute(url: url), range: range)
             case let .animated(_, emoji, fileId, file, collectionId):
@@ -551,6 +557,7 @@ public final class ChatTextInputState: Codable, Equatable {
             switch attribute {
             case let .pre(range, language):
                 if addPreAsBlock {
+                    string.removeAttribute(TextInputAttributes.code, range: NSRange(location: range.lowerBound, length: range.count))
                     pres.append((range, language ?? ""))
                 }
             default:
@@ -599,6 +606,7 @@ public final class ChatTextInputState: Codable, Equatable {
         var attributes:[ChatTextInputAttribute] = []
 
         var offsetRanges:[NSRange] = []
+        var enclosedCodeAttributes: Set<Int> = []
         if let regex = markdownRegex {
 
             var skipIndexes:Set<Int> = Set()
@@ -606,12 +614,22 @@ public final class ChatTextInputState: Codable, Equatable {
                 var index: Int = 0
                 let matches = regex.matches(in: subText.string, range: NSMakeRange(0, subText.string.length))
                 for match in matches {
-                    for attr in localAttributes {
+                    var enclosed: Set<Int> = []
+                    for (attributeIndex, attr) in localAttributes.enumerated() {
                         let range = match.range
                         let attrRange = NSMakeRange(attr.range.lowerBound, attr.range.upperBound - attr.range.lowerBound)
                         if attrRange.intersection(range) != nil {
-                            skipIndexes.insert(index)
+                            let body = match.range(at: 3)
+                            let closing = match.range(at: 4)
+                            if case .pre = attr, body.location != NSNotFound, attrRange.location >= body.location, NSMaxRange(attrRange) <= NSMaxRange(closing) {
+                                enclosed.insert(attributeIndex)
+                            } else {
+                                skipIndexes.insert(index)
+                            }
                         }
+                    }
+                    if !skipIndexes.contains(index) {
+                        enclosedCodeAttributes.formUnion(enclosed)
                     }
                     index += 1
                 }
@@ -708,7 +726,10 @@ public final class ChatTextInputState: Codable, Equatable {
             appliedText = newText.joined()
         }
 
-        for attr in localAttributes {
+        for (attributeIndex, attr) in localAttributes.enumerated() {
+            if enclosedCodeAttributes.contains(attributeIndex) {
+                continue
+            }
             var newRange = NSMakeRange(attr.range.lowerBound, (attr.range.upperBound - attr.range.lowerBound))
             for offsetRange in offsetRanges {
                 if offsetRange.location < newRange.location {

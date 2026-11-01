@@ -679,6 +679,7 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
         textStorage.removeAttribute(TextInputAttributes.spoiler, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.customEmoji, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.quote, range: fullRange)
+        textStorage.removeAttribute(TextInputAttributes.code, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.formattedDate, range: fullRange)
         
         textStorage.addAttribute(NSAttributedString.Key.font, value: NSFont.normal(baseFontSize), range: fullRange)
@@ -704,6 +705,9 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
                 } else if key == TextInputAttributes.italic {
                     textStorage.addAttribute(key, value: value, range: range)
                     fontAttributes.insert(.italic)
+                } else if key == TextInputAttributes.code {
+                    textStorage.addAttribute(key, value: value, range: range)
+                    fontAttributes.insert(.monospace)
                 } else if key == TextInputAttributes.monospace {
                     textStorage.addAttribute(key, value: value, range: range)
                     fontAttributes.insert(.monospace)

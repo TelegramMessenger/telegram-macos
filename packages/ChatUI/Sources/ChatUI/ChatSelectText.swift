@@ -486,6 +486,12 @@ public protocol MultipleSelectable {
     var header: String? { get }
 }
 
+func chatTextSelectionDidDrag(from start: NSPoint, to location: NSPoint) -> Bool {
+    let dx = location.x - start.x
+    let dy = location.y - start.y
+    return dx * dx + dy * dy > 4 * 4
+}
+
 public class ChatSelectText : NSObject {
 
     private var beginInnerLocation:NSPoint = NSMakePoint(-1, -1)
@@ -500,7 +506,6 @@ public class ChatSelectText : NSObject {
     private var locationInWindow: NSPoint? = nil
     private var reversible: Bool = false
     private var isDragConfirmed: Bool = false
-    private let dragThreshold: CGFloat = 4
 
     private func confirmDragIfNeeded(_ location: NSPoint) -> Bool {
         if isDragConfirmed {
@@ -509,9 +514,7 @@ public class ChatSelectText : NSObject {
         guard let start = locationInWindow else {
             return false
         }
-        let dx = location.x - start.x
-        let dy = location.y - start.y
-        if dx * dx + dy * dy > dragThreshold * dragThreshold {
+        if chatTextSelectionDidDrag(from: start, to: location) {
             isDragConfirmed = true
         }
         return isDragConfirmed

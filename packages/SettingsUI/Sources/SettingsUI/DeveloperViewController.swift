@@ -14,6 +14,7 @@ import TelegramUtils
 import TelegramTheme
 import ColorPalette
 import FoundationUtils
+import AccountResetSupport
 import AlertsUI
 import InAppSettings
 import FilePanels
@@ -39,6 +40,7 @@ private final class Arguments {
     public let toggleAccessibilityTree: () -> Void
     public let accessibilityAudit: () -> Void
     public let toggleForceRLottieBackend: () -> Void
+    public let resetApp: (DeveloperAppReset) -> Void
     public init(context: any AccountContextProtocol,
          importColors: @escaping () -> Void,
          exportColors: @escaping () -> Void,
@@ -57,7 +59,8 @@ private final class Arguments {
          memoryReport: @escaping () -> Void,
          toggleAccessibilityTree: @escaping () -> Void,
          accessibilityAudit: @escaping () -> Void,
-         toggleForceRLottieBackend: @escaping () -> Void) {
+         toggleForceRLottieBackend: @escaping () -> Void,
+         resetApp: @escaping (DeveloperAppReset) -> Void) {
         self.context = context
         self.importColors = importColors
         self.exportColors = exportColors
@@ -77,6 +80,7 @@ private final class Arguments {
         self.toggleAccessibilityTree = toggleAccessibilityTree
         self.accessibilityAudit = accessibilityAudit
         self.toggleForceRLottieBackend = toggleForceRLottieBackend
+        self.resetApp = resetApp
     }
 }
 
@@ -113,6 +117,8 @@ private let _id_memory_report = InputDataIdentifier("_id_memory_report")
 private let _id_accessibility_tree = InputDataIdentifier("_id_accessibility_tree")
 private let _id_accessibility_audit = InputDataIdentifier("_id_accessibility_audit")
 private let _id_force_rlottie = InputDataIdentifier("_id_force_rlottie")
+private let _id_clear_database = InputDataIdentifier("_id_clear_database")
+private let _id_clear_database_and_cache = InputDataIdentifier("_id_clear_database_and_cache")
 
 
 private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
@@ -227,6 +233,22 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     index += 1
 
     entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_crash, data: InputDataGeneralData(name: "Crash App", color: theme.colors.redUI, type: .none, viewType: .lastItem, action: arguments.crash)))
+    index += 1
+
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
+
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("RESET APP"), data: .init(viewType: .textTopItem)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_clear_database, data: InputDataGeneralData(name: DeveloperAppReset.database.title, color: theme.colors.redUI, type: .none, viewType: .firstItem, action: {
+        arguments.resetApp(.database)
+    })))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_clear_database_and_cache, data: InputDataGeneralData(name: DeveloperAppReset.databaseAndCache.title, color: theme.colors.redUI, type: .none, viewType: .lastItem, action: {
+        arguments.resetApp(.databaseAndCache)
+    })))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
@@ -409,6 +431,29 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
             current.forceRLottieBackend = DeveloperHooks.shared.forceRLottieBackend()
             return current
         }
+    }, resetApp: { action in
+        confirmDeveloperAppReset(for: context.window, action: action) {
+            guard let parameters = context.sharedContext.appEncryptionValue.decrypt(), let key = ValueBoxEncryptionParameters.Key(data: parameters.key), let salt = ValueBoxEncryptionParameters.Salt(data: parameters.salt) else {
+                alert(for: context.window, header: "Reset App", info: "Could not preserve your login. The database has not been cleared.") //TODOLANG
+                return
+            }
+            let store = DeveloperAppResetBackupStore(accountBasePath: context.account.basePath, accountId: context.account.id, encryptionParameters: ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: key, salt: salt))
+            actionsDisposable.add((accountBackupData(postbox: context.account.postbox)
+            |> mapToSignal { backupData in
+                return saveDeveloperAppResetBackup(backupData, store: store, accountManager: context.sharedContext.accountManager)
+            }
+            |> deliverOnMainQueue).start(next: { saved in
+                guard saved else {
+                    alert(for: context.window, header: "Reset App", info: "Could not preserve your login. The database has not been cleared.")
+                    return
+                }
+                do {
+                    try action.performAndRelaunch(accountBasePath: context.account.basePath, backupStore: store, process: appRelaunchProcess())
+                } catch {
+                    alert(for: context.window, header: "Reset App", info: "Could not prepare to restart Telegram. Please try again.")
+                }
+            }))
+        }
     })
 
     let networkSignal = context.account.postbox.preferencesView(keys: [PreferencesKeys.networkSettings]) |> map { view -> NetworkSettings in
@@ -442,6 +487,13 @@ public func DeveloperViewController(context: any AccountContextProtocol) -> Inpu
     }
 
     return controller
+}
+
+func confirmDeveloperAppReset(for window: Window, action: DeveloperAppReset, reset: @escaping () -> Void) {
+    let presentation = theme.withUpdatedColors(theme.colors.withAccentColor(.init(theme.colors.redUI)))
+    verifyAlert(for: window, header: action.title, information: "All secret chats will be lost.", ok: DeveloperAppReset.database.title, successHandler: { _ in
+        reset()
+    }, presentation: presentation)
 }
 
 

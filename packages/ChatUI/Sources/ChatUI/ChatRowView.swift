@@ -1434,11 +1434,6 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         
         if let peer = item.peer {
             avatar.setPeer(item: item, peer: peer, storyStats: item.entry.additionalData.authorStoryStats, message: item.message)
-            if peer.id.id._internalGetInt64Value() != 0 {
-                avatar.contextMenu = photoContextMenu(item, peer: peer, setOpenProgress: { [weak avatar] signal in
-                    avatar?.setOpenProgress(signal)
-                })
-            }
         }
         return avatar
     }
@@ -1466,17 +1461,22 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                         chatInteraction?.openInfoFromMessage(peer.id, true, nil, nil, message: item.message)
                     }, itemImage: MenuAnimation.menu_read.value))
 
-                    menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
-                        let attr: NSMutableAttributedString = NSMutableAttributedString()
+                    if !peer.isChannel || peer.addressName != nil {
+                        menu.addItem(ContextMenuItem(strings().chatContextPeerMention, handler: {
+                            let attr: NSMutableAttributedString = NSMutableAttributedString()
 
-                        if let addressName = peer.addressName {
-                            attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
-                        } else {
-                            attr.append(string: peer.compactDisplayTitle + " ", font: .normal(theme.fontSize))
-                            attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
-                        }
-                        _ = chatInteraction?.appendText(attr)
-                    }, itemImage: MenuAnimation.menu_atsign.value))
+                            if let addressName = peer.addressName {
+                                attr.append(string: "@\(addressName) ", font: .normal(theme.fontSize))
+                            } else {
+                                attr.append(string: peer.compactDisplayTitle, font: .normal(theme.fontSize))
+                                if peer.isUser {
+                                    attr.addAttribute(TextInputAttributes.textMention, value: ChatTextInputTextMentionAttribute(peerId: peer.id), range: attr.range)
+                                }
+                                attr.append(string: " ", font: .normal(theme.fontSize))
+                            }
+                            _ = chatInteraction?.appendText(attr)
+                        }, itemImage: MenuAnimation.menu_atsign.value))
+                    }
 
                     if let chatPeer = chatInteraction?.peer, (chatPeer.isGroup || chatPeer.isSupergroup), !chatPeer.isMonoForum, chatInteraction?.isLogInteraction == false, let mode = chatInteraction?.mode, mode == .history || mode.isThreadMode || mode.isTopicMode {
                         menu.addItem(ContextMenuItem(strings().shortcutsControllerChatSearchMessages, handler: {
@@ -1512,7 +1512,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                             }, itemImage: MenuAnimation.menu_tag_rename.value))
                         }
 
-                        if channel.hasPermission(.banMembers) {
+                        if chatInteraction?.isLogInteraction == true {
+                            menu.items += ChatHistoryUIHooks.shared.participantModerationMenuItems(context, channel, peer, nil)
+                        } else if channel.hasPermission(.banMembers) {
                             menu.addItem(ContextMenuItem(strings().channelMemberRestrict, handler: {
                                 _ = fetchParticipant.start(next: { rendered in
                                     if let rendered = rendered {
@@ -1548,6 +1550,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             
         } else {
             if let view = avatar {
+                view.updateContextMenu(nil)
                 performSubviewRemoval(view, animated: animated, scale: true)
                 self.avatar = nil
             }

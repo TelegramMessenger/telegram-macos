@@ -180,6 +180,7 @@ public enum LocalAnimatedSticker : String {
     case menu_reply
     case menu_report
     case menu_restrict
+    case banned
     case menu_retract_vote
     case menu_stop_poll
     case menu_leave

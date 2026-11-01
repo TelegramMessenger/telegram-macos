@@ -183,6 +183,7 @@ open class LiquidGlassView: View {
     /// FULL frame (parent coords) — so we only animate the inner views
     /// here when they are still our subviews.
     public func setAnimatorFrame(_ frame: NSRect) {
+        updateCornerRadius(size: frame.size)
         let sizeChanged = validLayout != frame.size
 
         self.animator().frame = frame

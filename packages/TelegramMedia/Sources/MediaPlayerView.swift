@@ -79,6 +79,21 @@ public final class MediaPlayerView: View {
     public func setVideoLayerGravity(_ gravity: AVLayerVideoGravity) {
         videoLayer?.videoGravity = gravity
     }
+
+    func setVideoGeometry(rotationAngle: Double, aspect: Double) {
+        guard rotationAngle.isFinite, aspect.isFinite, aspect > 0.0 else {
+            return
+        }
+        if self.currentRotationAngle != rotationAngle || self.currentAspect != aspect {
+            self.currentRotationAngle = rotationAngle
+            self.currentAspect = aspect
+            var transform = CGAffineTransform(rotationAngle: CGFloat(rotationAngle))
+            if abs(sin(rotationAngle)) > 0.1 {
+                transform = transform.scaledBy(x: CGFloat(aspect), y: CGFloat(1.0 / aspect))
+            }
+            self.videoLayer?.setAffineTransform(transform)
+        }
+    }
     
     var takeFrameAndQueue: (Queue, () -> MediaTrackFrameResult)?
     var timer: SwiftSignalKit.Timer?
@@ -182,16 +197,7 @@ public final class MediaPlayerView: View {
                     videoLayer.controlTimebase = timebase
                 }
                 
-                if !self.currentRotationAngle.isEqual(to: rotationAngle) || !self.currentAspect.isEqual(to: aspect) {
-                    self.currentRotationAngle = rotationAngle
-                    self.currentAspect = aspect
-                    var transform = CGAffineTransform(rotationAngle: CGFloat(rotationAngle))
-                    if abs(rotationAngle).remainder(dividingBy: Double.pi) > 0.1 {
-                        transform = transform.scaledBy(x: CGFloat(aspect), y: CGFloat(1.0 / aspect))
-                    }
-
-                    videoLayer.setAffineTransform(transform)
-                }
+                self.setVideoGeometry(rotationAngle: rotationAngle, aspect: aspect)
                 
                 if self.videoInHierarchy {
                     if requestFrames {

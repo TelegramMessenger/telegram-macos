@@ -1,0 +1,21 @@
+PASS system mute skips sound allocation and playback
+PASS zero master volume skips audio activation
+PASS both output channels muted
+PASS zero volume on both channels
+PASS mixed mute and zero volume remains silent
+PASS missing default output does not fall back to another device
+PASS unknown device is not activated
+PASS an unreadable device UID does not block an audible default output
+PASS one audible channel still plays
+PASS fixed-volume output without channel controls remains supported
+PASS sound retains default-output routing without pinning a UID
+PASS manual device changes are read on the next sound
+PASS muting after playback prevents the next allocation
+PASS incorrect-answer system beep respects mute
+PASS audible incorrect answer retains the system beep
+PASS muted ordinary output does not mute a separate audible alert device
+PASS muted alert device blocks beep while ordinary output stays audible
+PASS switching output before play follows the new default
+PASS disconnecting the output before playback suppresses the sound
+PASS muting the new output before playback is rechecked
+20/20 checks passed

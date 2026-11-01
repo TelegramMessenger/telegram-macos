@@ -106,8 +106,8 @@ private final class HeaderItemView : GeneralRowView {
         addSubview(premiumButton)
         animation.layer?.cornerRadius = animation.frame.height * 0.5
         
-        button.layer?.cornerRadius = 10
-        premiumButton.layer?.cornerRadius = 10
+        button.layer?.cornerRadius = 20
+        premiumButton.layer?.cornerRadius = 20
         
         button.set(handler: { [weak self] _ in
             if let arguments = (self?.item as? HeaderItem)?.arguments {

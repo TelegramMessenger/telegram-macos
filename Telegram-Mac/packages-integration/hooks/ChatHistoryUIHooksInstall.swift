@@ -322,6 +322,8 @@ func installChatHistoryUIHooks() {
         return ForumUI.openTopic(threadId, peerId: peerId, context: context as! AccountContext, messageId: messageId, animated: true, addition: true)
     }, makeChannelParticipantController: { context, peerId, participant in
         return ChannelParticipantController(context: context as! AccountContext, peerId: peerId, participant: participant)
+    }, participantModerationMenuItems: { context, channel, member, participant in
+        return channelParticipantModerationMenuItems(context: context, channel: channel, member: member, participant: participant)
     }, makeRestrictedModalController: { context, peerId, memberId, initialParticipant, updated in
         return RestrictedModalController(context as! AccountContext, peerId: peerId, memberId: memberId, initialParticipant: initialParticipant, updated: updated)
     }, makeChannelAdminModalController: { context, peerId, adminId, initialParticipant, updated, upgradedToSupergroup in

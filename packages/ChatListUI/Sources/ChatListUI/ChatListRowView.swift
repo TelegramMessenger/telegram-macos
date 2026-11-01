@@ -2734,7 +2734,7 @@ public class ChatListRowView: TableRowView, RevealTableView {
             }
             
             
-            if !item.isTopic {
+            if !item.isTopic, item.canToggleUnread {
                 revealLeftView.addSubview(unread)
                 revealLeftView.backgroundColor = .clear
             }
@@ -2872,6 +2872,7 @@ public class ChatListRowView: TableRowView, RevealTableView {
     private var animateOnceAfterDelta: Bool = true
     private var revealHighlighted: Bool = false
     public func moveReveal(delta: CGFloat) {
+        let delta = revealLeftView.subviews.isEmpty ? min(delta, 0) : delta
 
         if !revealHighlighted, delta != 0, let item = item as? ChatListRowItem, !item.isSelected, let table = item.table {
             _ = table.highlight(item: item)
@@ -3535,7 +3536,9 @@ public class ChatListRowView: TableRowView, RevealTableView {
                 offset += theme.icons.pinnedImage.systemSize.width + 5
             }
             
-            openMiniApp.setFrameOrigin(NSMakePoint(frame.width - openMiniApp.frame.width - offset, frame.height - openMiniApp.frame.height - (item.margin + 1)))
+            let rowHeight = theme.icons.pinnedImage.backingSize.height
+            let centerY = frame.height - (item.margin + 1) - rowHeight / 2
+            openMiniApp.setFrameOrigin(NSMakePoint(frame.width - openMiniApp.frame.width - offset, floorToScreenPixels(centerY - openMiniApp.frame.height / 2)))
         }
 
         updateInlineTextAnimatableContent()

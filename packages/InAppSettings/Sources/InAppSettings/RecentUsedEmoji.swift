@@ -121,6 +121,22 @@ public class RecentUsedEmoji: Codable, Equatable {
     }
     
     
+    public func removingEmoji(_ emoji: String) -> RecentUsedEmoji {
+        let key = emoji.strippedEmoji
+        let emojies = _emojies.filter { value in
+            if value.strippedEmoji == key {
+                return false
+            }
+            let displayed = RecentUsedEmoji(emojies: [value], animated: [], skinModifiers: skinModifiers).emojies
+            return !displayed.contains(where: { $0.strippedEmoji == key })
+        }
+        return RecentUsedEmoji(emojies: emojies, animated: animated, skinModifiers: skinModifiers)
+    }
+
+    public func removingAnimatedEmoji(_ id: MediaId) -> RecentUsedEmoji {
+        return RecentUsedEmoji(emojies: _emojies, animated: animated.filter { $0 != id }, skinModifiers: skinModifiers)
+    }
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: StringCodingKey.self)
         try container.encode(_emojies, forKey: "e")
@@ -132,7 +148,7 @@ public class RecentUsedEmoji: Codable, Equatable {
 }
 
 public func ==(lhs: RecentUsedEmoji, rhs: RecentUsedEmoji) -> Bool {
-    return lhs.emojies == rhs.emojies && lhs.skinModifiers == rhs.skinModifiers
+    return lhs.emojies == rhs.emojies && lhs.skinModifiers == rhs.skinModifiers && lhs.animated == rhs.animated
 }
 
 
@@ -197,6 +213,24 @@ public func modifySkinEmoji(_ emoji:String, modifier: String?, postbox: Postbox)
            
             return PreferencesEntry(RecentUsedEmoji(emojies: settings.emojies, animated: settings.animated, skinModifiers: skinModifiers))
             
+        })
+    }
+}
+
+public func removeUsedEmoji(_ emoji: String, postbox: Postbox) -> Signal<Void, NoError> {
+    return postbox.transaction { transaction -> Void in
+        transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
+            let value = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
+            return PreferencesEntry(value.removingEmoji(emoji))
+        })
+    }
+}
+
+public func removeAnimatedUsedEmoji(_ id: MediaId, postbox: Postbox) -> Signal<Void, NoError> {
+    return postbox.transaction { transaction -> Void in
+        transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
+            let value = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
+            return PreferencesEntry(value.removingAnimatedEmoji(id))
         })
     }
 }

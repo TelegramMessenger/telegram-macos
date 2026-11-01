@@ -1000,6 +1000,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
         }
         
         let isSpoiler = (messageSpoiler || forceSpoiler || isSensitive) && (parameters?.isRevealed == false)
+        let bypassSharedPreviewCache = parent != nil && parent?.containsSecretMedia != true && isSpoiler
 
         
         let corners = mediaCorners(positionFlags, parameters)
@@ -1150,10 +1151,10 @@ public class ChatInteractiveContentView: ChatMediaContentView {
                 }
             }
             
-            self.image.setSignal(signal: cachedMedia(media: media, arguments: arguments, scale: backingScaleFactor, positionFlags: positionFlags), clearInstantly: clearInstantly)
+            self.image.setSignal(signal: bypassSharedPreviewCache ? .single(nil) : cachedMedia(media: media, arguments: arguments, scale: backingScaleFactor, positionFlags: positionFlags), clearInstantly: clearInstantly)
 
             var alreadyRendered: TransformImageArguments? = nil
-            if self.image.isFullyLoaded, case .none = arguments.resizeMode {
+            if !bypassSharedPreviewCache, self.image.isFullyLoaded, case .none = arguments.resizeMode {
                 alreadyRendered = arguments
             }
 
@@ -1161,7 +1162,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
                 self.image.ignoreFullyLoad = mediaUpdated
 
                 self.image.setSignal(updateImageSignal, animate: removeViewAnimated, cacheImage: { [weak media] result in
-                    if let media = media {
+                    if let media = media, !bypassSharedPreviewCache {
                         cacheMedia(result, media: media, arguments: arguments, scale: System.backingScale, positionFlags: positionFlags)
                     }
                 }, isProtected: isProtected, alreadyRendered: alreadyRendered)
@@ -1282,7 +1283,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
                                 
                                 let autoplayPlayerView = MediaPlayerView(backgroundThread: true)
                                 let autoplayPlayer: ChatVideoAutoplayPlayer
-                                if isAV1Video(file: fileReference.media) {
+                                if shouldUseChunkedVideoPlayer(file: fileReference.media) {
                                     autoplayPlayer = ChatVideoChunkedAutoplayPlayer(postbox: context.account.postbox, fileReference: fileReference, volume: 0.0, view: autoplayPlayerView)
                                 } else {
                                     autoplayPlayer = MediaPlayer(postbox: context.account.postbox, userLocation: fileReference.userLocation, userContentType: fileReference.userContentType, reference: fileReference.resourceReference(fileReference.media.resource), streamable: file.isStreamable, video: true, preferSoftwareDecoding: false, enableSound: false, volume: 0.0, fetchAutomatically: false)
