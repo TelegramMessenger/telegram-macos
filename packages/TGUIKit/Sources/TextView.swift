@@ -3146,7 +3146,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
         AppMenu.show(menu: menu, event: event, for: self)
     }
 
-    public override func rightMouseDown(with event: NSEvent) {
+    open override func rightMouseDown(with event: NSEvent) {
         let previousState = menuDisposable
         let cancelledVersion = previousState?.cancel()
         guard menuDisposable === previousState, previousState?.version == cancelledVersion else { return }
