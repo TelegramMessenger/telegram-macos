@@ -71,6 +71,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     
     private var isPaused: Bool = true
     private var forceHiddenControls: Bool = false
+    private var isCursorHidden: Bool = false
     private var _videoFramePreview: MediaPlayerFramePreview?
     private var mode: PictureInPictureControlMode = .normal
     private var frameStepTimestamp: Double?
@@ -186,13 +187,17 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     
     
     private func updateIdleTimer() {
-        NSCursor.unhide()
+        if isCursorHidden {
+            NSCursor.unhide()
+            isCursorHidden = false
+        }
         hideOnIdleDisposable.set((Signal<NoValue, NoError>.complete() |> delay(1.0, queue: Queue.mainQueue())).start(completed: { [weak self] in
             guard let `self` = self else {return}
             let hide = !self.genericView.isInMenu && !self.genericView.insideControls && !contextMenuOnScreen()
             self.hideControls.set(hide)
-            if !self.pictureInPicture, hide {
+            if !self.pictureInPicture, hide, !self.isCursorHidden {
                 NSCursor.hide()
+                self.isCursorHidden = true
             }
         }))
     }
@@ -211,9 +216,10 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
             
             if self.fullScreenWindow != nil && isMouseUpOrDown, !genericView.insideControls {
                 hide = true
-                if !self.isPaused {
+                if !self.isPaused, !self.isCursorHidden {
                     if !contextMenuOnScreen() {
                         NSCursor.hide()
+                        self.isCursorHidden = true
                     }
                 }
             }
@@ -346,7 +352,10 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         super.viewDidDisappear(animated)
         hideOnIdleDisposable.set(nil)
         _ = screenSleep.enableScreenSleep()
-        NSCursor.unhide()
+        if isCursorHidden {
+            NSCursor.unhide()
+            isCursorHidden = false
+        }
         window?.removeAllHandlers(for: self)
         
     }

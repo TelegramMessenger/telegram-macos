@@ -1755,6 +1755,7 @@ public class GalleryViewer: NSResponder {
                 
             })
         } else {
+            pager.selectedItem?.disappear(for: nil)
             window.orderOut(nil)
             self.removeCaptureExclusion()
             if viewer === self {
