@@ -6,6 +6,8 @@ final class PanelSearchStatusView: View {
     private let detailView = TextView()
     private let shimmer = CAGradientLayer()
     private let shimmerMask = CAShapeLayer()
+    private let frost = PickerFrostView()
+    private let frostMask = CAShapeLayer()
     private var animationView: View?
     private var makeAnimation: (() -> View?)?
     private(set) var status: PanelSearchPresentation = .hidden
@@ -23,6 +25,13 @@ final class PanelSearchStatusView: View {
         super.init(frame: frameRect)
         isEventLess = true
         isHidden = true
+        frost.wantsLayer = true
+        frost.material = .selection
+        frost.blendingMode = .withinWindow
+        frost.state = .active
+        frost.isHidden = true
+        frost.layer?.mask = frostMask
+        addSubview(frost)
         titleView.isSelectable = false
         detailView.isSelectable = false
         titleView.isAccessibilityDecorative = true
@@ -40,7 +49,7 @@ final class PanelSearchStatusView: View {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func update(status: PanelSearchPresentation, kind: PanelSearchPlaceholderKind, title: String, detail: String, loadingLabel: String, backgroundColor: NSColor, textColor: NSColor, detailColor: NSColor, reduceMotion: Bool, makeAnimation: @escaping () -> View?) {
+    func update(status: PanelSearchPresentation, kind: PanelSearchPlaceholderKind, title: String, detail: String, loadingLabel: String, backgroundColor: NSColor, frosted: Bool = false, isDark: Bool = false, textColor: NSColor, detailColor: NSColor, reduceMotion: Bool, makeAnimation: @escaping () -> View?) {
         let textChanged = self.title != title || self.detail != detail || self.textColor != textColor || self.detailColor != detailColor
         if self.reduceMotion != reduceMotion { removeAnimation() }
         self.status = status
@@ -54,6 +63,8 @@ final class PanelSearchStatusView: View {
         self.backgroundColor = backgroundColor
         shimmer.colors = [detailColor.withAlphaComponent(0.08).cgColor, detailColor.withAlphaComponent(0.20).cgColor, detailColor.withAlphaComponent(0.08).cgColor]
         shimmer.isHidden = status != .loading
+        frost.isHidden = status != .loading || !frosted
+        frost.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
         titleView.isHidden = status != .empty
         detailView.isHidden = status != .empty || detail.isEmpty
         isHidden = status == .hidden
@@ -129,6 +140,10 @@ final class PanelSearchStatusView: View {
                     path.addRoundedRect(in: rect, cornerWidth: radius, cornerHeight: radius)
                 }
                 shimmerMask.path = path
+                frost.frame = bounds
+                frostMask.frame = bounds
+                var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
+                frostMask.path = frost.isFlipped ? path : path.copy(using: &flip)
                 CATransaction.commit()
             }
             return

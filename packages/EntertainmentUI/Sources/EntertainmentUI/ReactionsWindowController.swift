@@ -48,7 +48,7 @@ public final class ReactionsWindowController : NSObject {
                 backgroundView.backgroundColor = .clear
             } else if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur) {
                 container.addSubview(visualView)
-                backgroundView.backgroundColor = .clear
+                backgroundView.backgroundColor = .menuFallbackVeil(isDark: theme.colors.isDark)
             } else {
                 backgroundView.backgroundColor = theme.colors.background
             }
@@ -85,7 +85,9 @@ public final class ReactionsWindowController : NSObject {
         
         func appearAnimated(from bar: NSRect) {
             contentView.layer?.opacity = 1
+            tintGlass?.alphaValue = 1
             let target = bounds
+            let swell = bar.insetBy(dx: -2, dy: -1.5)
             let start = CACurrentMediaTime()
             morphTimer?.invalidate()
             let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
@@ -94,16 +96,20 @@ public final class ReactionsWindowController : NSObject {
                     return
                 }
                 let seconds = CACurrentMediaTime() - start
-                if seconds >= 0.45 {
+                if seconds >= 0.3 {
                     self.finishMorph()
                     return
                 }
-                let progress = morphSpring(seconds, omega: 24, damping: 0.88)
-                let rect = NSMakeRect(bar.minX + (target.minX - bar.minX) * progress, bar.minY + (target.minY - bar.minY) * progress, bar.width + (target.width - bar.width) * progress, bar.height + (target.height - bar.height) * progress)
+                let anticipation = CGFloat(sin(min(1, seconds / 0.05) * .pi / 2))
+                let from = NSMakeRect(bar.minX + (swell.minX - bar.minX) * anticipation, bar.minY + (swell.minY - bar.minY) * anticipation, bar.width + (swell.width - bar.width) * anticipation, bar.height + (swell.height - bar.height) * anticipation)
+                let eased = min(1, max(0, (seconds - 0.03) / 0.25))
+                let progress = CGFloat(1 - pow(1 - eased, 3))
+                let rect = NSMakeRect(from.minX + (target.minX - from.minX) * progress, from.minY + (target.minY - from.minY) * progress, from.width + (target.width - from.width) * progress, from.height + (target.height - from.height) * progress)
                 self.applyMorph(rect)
-                let linear = min(1, seconds / 0.45)
-                let fade = linear * linear * (3 - 2 * linear)
-                self.tintGlass?.alphaValue = 1 - fade
+                let linear = min(1, seconds / 0.3)
+                let material = linear * linear * (3 - 2 * linear)
+                self.glassView?.alphaValue = min(1, material / 0.4)
+                self.tintGlass?.alphaValue = 1 - max(0, (material - 0.25) / 0.75)
             }
             RunLoop.main.add(timer, forMode: .common)
             morphTimer = timer
@@ -119,6 +125,7 @@ public final class ReactionsWindowController : NSObject {
             isMorphing = false
             tintGlass?.removeFromSuperview()
             tintGlass = nil
+            glassView?.alphaValue = 1
             applyMorph(bounds)
             if glassView == nil {
                 let shadow = NSShadow()
@@ -145,6 +152,8 @@ public final class ReactionsWindowController : NSObject {
                 tint.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
                 container.addSubview(tint, positioned: .above, relativeTo: glassView)
                 tintGlass = tint
+                tint.alphaValue = 0
+                glassView.alphaValue = 0
             }
             applyMorph(bar)
         }
@@ -190,6 +199,8 @@ public final class ReactionsWindowController : NSObject {
     private let overlay = OverlayControl()
     
     private var initialPlayers:[Int: LottiePlayerView] = [:]
+    private var isRevealed: Bool = false
+    private var pendingAppearance: [TableRowItem]?
 
     
     private var keyDisposable: Disposable?
@@ -279,7 +290,14 @@ public final class ReactionsWindowController : NSObject {
             self?.close(animated: true)
         }
         emojies.animateAppearance = { [weak self] items in
-            self?.animateAppearanceItems(items, initialPlayers: self?.initialPlayers ?? [:])
+            guard let self else {
+                return
+            }
+            if self.isRevealed {
+                self.animateAppearanceItems(items, initialPlayers: self.initialPlayers)
+            } else {
+                self.pendingAppearance = items
+            }
         }
     }
     
@@ -432,15 +450,21 @@ public final class ReactionsWindowController : NSObject {
             guard let view = view, let initialView = initialView, let `self` = self else {
                 return
             }
+            AppMenu.closeAll()
             initialView.revealDidStart()
             CATransaction.begin()
             initialView.removeFromSuperview()
             CATransaction.commit()
 
             self.initialPlayers = initialView.collect()
+            self.isRevealed = true
             CATransaction.begin()
             view.appearAnimated(from: barRect)
             CATransaction.commit()
+            if let pending = self.pendingAppearance {
+                self.pendingAppearance = nil
+                self.animateAppearanceItems(pending, initialPlayers: self.initialPlayers)
+            }
             
             if initialScreenRect.origin.y - 200 < 0, let panel = self.panel {
                 self.skipAppearAnimation = true
@@ -474,12 +498,9 @@ public final class ReactionsWindowController : NSObject {
         
         var panel: Window? = self.panel
         if animated {
-            if let v = panel?.contentView?.subviews.first(where: { $0 is V }) as? V {
-                if !v.usesGlass {
-                    v.layer?.rasterizationScale = System.backingScale
-                    v.layer?.shouldRasterize = true
-                }
-                v.layer?.animateScaleCenter(from: 1, to: 0.9, duration: 0.2, removeOnCompletion: false, timingFunction: .easeIn)
+            if let v = panel?.contentView?.subviews.first(where: { $0 is V }) as? V, !v.usesGlass {
+                v.layer?.rasterizationScale = System.backingScale
+                v.layer?.shouldRasterize = true
             }
             panel?.contentView?.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { _ in
                 panel?.orderOut(nil)
@@ -492,7 +513,3 @@ public final class ReactionsWindowController : NSObject {
     }
 }
 
-private func morphSpring(_ seconds: Double, omega: Double, damping: Double) -> CGFloat {
-    let dampedOmega = omega * (1 - damping * damping).squareRoot()
-    return CGFloat(1 - exp(-damping * omega * seconds) * (cos(dampedOmega * seconds) + damping * omega / dampedOmega * sin(dampedOmega * seconds)))
-}

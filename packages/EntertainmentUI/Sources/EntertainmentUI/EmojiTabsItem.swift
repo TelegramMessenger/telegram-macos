@@ -11,7 +11,9 @@ public final class EmojiTabsItem: TableRowItem {
     public let select:(EmojiSegment)->Void
     private let _stableId: AnyHashable
     public let presentation: TelegramPresentationTheme?
-    public init(_ initialSize: NSSize, stableId: AnyHashable, segments:[EmojiSegment], selected: EmojiSegment?, select:@escaping(EmojiSegment)->Void, presentation: TelegramPresentationTheme?) {
+    public let tint: NSColor?
+    public init(_ initialSize: NSSize, stableId: AnyHashable, segments:[EmojiSegment], selected: EmojiSegment?, select:@escaping(EmojiSegment)->Void, presentation: TelegramPresentationTheme?, tint: NSColor? = nil) {
+        self.tint = tint
         self._stableId = stableId
         self.segments = segments
         self.selected = selected
@@ -125,6 +127,10 @@ private final class EmojiTabsView: HorizontalRowView {
             tabIcons.append(theme.icons.emojiSymbolsTab)
             tabIcons.append(theme.icons.emojiFlagsTab)
             
+            if let tint = item.tint {
+                tabIcons = tabIcons.map { $0._NSImage.precomposed(tint) }
+            }
+
             var tabIconsSelected:[CGImage] = []
             tabIconsSelected.append(theme.icons.emojiRecentTabActive)
             tabIconsSelected.append(theme.icons.emojiSmileTabActive)

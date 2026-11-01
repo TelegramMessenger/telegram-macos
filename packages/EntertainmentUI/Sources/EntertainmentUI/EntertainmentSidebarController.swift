@@ -68,6 +68,7 @@ public final class EntertainmentSidebarController: GenericViewController<Enterta
     private let entertainment: ViewController
     private let isChat: (ViewController) -> Bool
     private let availabilityDisposable = MetaDisposable()
+    private let themeDisposable = MetaDisposable()
     private var canSendMessages: Bool?
 
     public var availabilityUpdated: () -> Void = {}
@@ -113,10 +114,14 @@ public final class EntertainmentSidebarController: GenericViewController<Enterta
 
     deinit {
         availabilityDisposable.dispose()
+        themeDisposable.dispose()
     }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
+        themeDisposable.set(appearanceSignal.start(next: { [weak self] appearance in
+            self?.updateLocalizationAndTheme(theme: appearance.presentation)
+        }))
         readyOnce()
     }
 

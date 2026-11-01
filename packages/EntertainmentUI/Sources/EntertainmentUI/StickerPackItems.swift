@@ -192,6 +192,8 @@ public class RecentPackRowItem: TableRowItem {
         return _stableId
     }
     
+    public var tint: NSColor?
+
     public init(_ initialSize:NSSize, _ stableId:StickerPackCollectionId) {
         self._stableId = stableId
         super.init(initialSize)
@@ -277,6 +279,10 @@ public class RecentPackRowView: HorizontalRowView {
                 }
             default:
                 break
+            }
+            if case .premium = item._stableId {
+            } else if let tint = item.tint, let image = imageView.image {
+                imageView.image = image._NSImage.precomposed(tint)
             }
             imageView.sizeToFit()
         }

@@ -52,6 +52,10 @@ private final class EmojiStatusStatusRowView: TableRowView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    override var backdorColor: NSColor {
+        return .clear
+    }
     
     override func layout() {
         super.layout()

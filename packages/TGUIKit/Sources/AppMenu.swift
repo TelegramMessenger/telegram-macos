@@ -154,4 +154,6 @@ public final class AppMenu {
     public static func closeAll() {
         AppMenuController.closeAll()
     }
+
+    public static var keepsOpenOnNextMouseUp: Bool = false
 }

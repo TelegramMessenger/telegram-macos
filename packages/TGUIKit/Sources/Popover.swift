@@ -53,6 +53,7 @@ open class Popover: NSObject {
     
     var readyDisposable:MetaDisposable = MetaDisposable()
     private let `static`: Bool
+    private let glassShadow = MenuShadowLayer()
     required public init(controller:ViewController, static: Bool, animationMode: AnimationMode) {
         self.controller = controller
         self.animationMode = animationMode
@@ -155,7 +156,7 @@ open class Popover: NSObject {
     }
 
     private func updateShadowPath(force: Bool = false) {
-        guard let layer = background.layer, force || layer.shadowPath != nil else {
+        guard let layer = background.layer, force || layer.shadowPath != nil || glassShadow.superlayer != nil else {
             return
         }
         guard let overlay = overlay else {
@@ -163,7 +164,20 @@ open class Popover: NSObject {
             return
         }
         let radius = Popover.clampedRadius(for: overlay.frame.size)
-        layer.shadowPath = CGPath(roundedRect: overlay.frame, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let outline = CGPath(roundedRect: overlay.frame, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        if background.containsGlass {
+            background.shadow = nil
+            layer.shadowPath = nil
+            if #available(macOS 14.0, *) {
+                background.clipsToBounds = false
+            }
+            if glassShadow.superlayer == nil {
+                layer.insertSublayer(glassShadow, at: 0)
+            }
+            glassShadow.update(shape: outline, in: layer.bounds)
+        } else {
+            layer.shadowPath = outline
+        }
     }
     
     
@@ -285,7 +299,10 @@ open class Popover: NSObject {
                                     }
                                 }
                             }
-                            strongSelf.background.layer?.shouldRasterize = true
+                            strongSelf.background.layer?.shouldRasterize = !strongSelf.background.containsGlass
+                            if strongSelf.background.containsGlass {
+                                strongSelf.updateShadowPath(force: true)
+                            }
                             switch strongSelf.animationMode {
                             case .classic:
                                 strongSelf.background.layer?.animateScaleSpringFrom(anchor: anchor, from: 0.1, to: 1.0, duration: 0.4, bounce: false)
@@ -447,7 +464,7 @@ open class Popover: NSObject {
         
         controller?.viewWillDisappear(true)
         if animates {
-            background.layer?.shouldRasterize = true
+            background.layer?.shouldRasterize = !background.containsGlass
             background.change(opacity: 0, animated: animates, duration: 0.15, completion: { [weak self] complete in
                 guard let `self` = self else {return}
                 if self === self.controller?.popover {
@@ -537,6 +554,14 @@ public func showPopover(for control:Control, with controller:ViewController, edg
     }
 }
 
-
-
-
+private extension NSView {
+    var containsGlass: Bool {
+        if self is NSVisualEffectView {
+            return true
+        }
+        if #available(macOS 26.0, *), self is NSGlassEffectView {
+            return true
+        }
+        return subviews.contains(where: { $0.containsGlass })
+    }
+}

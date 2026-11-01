@@ -381,6 +381,11 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
         private let imageView = ImageView()
         private var loadingViews: [ImageView] = []
         private let frost = NSVisualEffectView()
+        var onEnter: (() -> Void)?
+        public override func mouseEntered(with event: NSEvent) {
+            super.mouseEntered(with: event)
+            onEnter?()
+        }
         public required init(frame frameRect: NSRect, theme: TelegramPresentationTheme) {
             super.init(frame: frameRect)
             self.scaleOnClick = true
@@ -479,6 +484,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
     
     private let showMore: ShowMore
     private let revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)?
+    public var prepareReveal: (() -> Void)?
     
     private let maskLayer = SimpleShapeLayer()
     private let backgroundColorView = View()
@@ -527,10 +533,23 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
         
         showMore.isHidden = revealReactions == nil
         
+        showMore.onEnter = { [weak self] in
+            self?.prepareReveal?()
+        }
+
+        showMore.set(handler: { [weak self] _ in
+            AppMenu.keepsOpenOnNextMouseUp = true
+            self?.prepareReveal?()
+        }, for: .Down)
+
         showMore.set(handler: { [weak self] control in
             if let view = self {
-                view.hasBubble = false
-                view.updateLayout(size: view.frame.size, transition: .immediate)
+                if view.glassContainer != nil, view.hasBubble {
+                    view.collapseTail()
+                } else {
+                    view.hasBubble = false
+                    view.updateLayout(size: view.frame.size, transition: .immediate)
+                }
                 view.showMore.startLoading()
                 revealReactions?(view)
             }
@@ -555,7 +574,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
             usesMaterial = true
             visualEffect.material = .menu
             visualEffect.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
-            backgroundColorView.backgroundColor = .clear
+            backgroundColorView.backgroundColor = glassContainer == nil ? .menuFallbackVeil(isDark: theme.colors.isDark) : .clear
         } else {
             usesMaterial = false
             backgroundColorView.backgroundColor = theme.colors.background
@@ -771,13 +790,56 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
 
     deinit {
         appearTimer?.invalidate()
+        tailTimer?.invalidate()
         if let boundsObserver {
             NotificationCenter.default.removeObserver(boundsObserver)
         }
     }
 
     private var appearTimer: Foundation.Timer?
+    private var tailTimer: Foundation.Timer?
     private var isAppearing: Bool = false
+
+    private func collapseTail() {
+        guard glassShapes.count == 2 else {
+            return
+        }
+        let tail = glassShapes[1]
+        let bar = barRect(size: frame.size)
+        let from = tail.frame
+        var start: CFTimeInterval?
+        isAppearing = true
+        tailTimer?.invalidate()
+        let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+            let now = CACurrentMediaTime()
+            let begin = start ?? now
+            start = begin
+            let progress = min(1, (now - begin) / 0.04)
+            let suck = CGFloat(progress * progress)
+            let size = from.width - (from.width - 8) * suck
+            let centerY = from.midY + (bar.midY - from.midY) * suck
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            tail.frame = NSMakeRect(from.midX - size / 2, centerY - size / 2, size, size)
+            if #available(macOS 26.0, *) {
+                (tail as? NSGlassEffectView)?.cornerRadius = size / 2
+            }
+            CATransaction.commit()
+            if progress >= 1 {
+                timer.invalidate()
+                tail.isHidden = true
+                guard let self else {
+                    return
+                }
+                self.tailTimer = nil
+                self.isAppearing = false
+                self.hasBubble = false
+                self.updateLayout(size: self.frame.size, transition: .immediate)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        tailTimer = timer
+    }
 
     public var canAppearFromCursor: Bool {
         return glassContainer != nil && hasBubble && !TelegramUtilsHooks.shared.isLite(.animations)
@@ -807,8 +869,15 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
 
         var revealed: [(NSView, CGFloat)] = documentView.subviews.map { ($0, documentView.convert($0.frame, to: self).midX) }
         revealed.append((showMore, showMore.frame.midX))
+        let textMask = CAGradientLayer()
+        let hint = aboveTextView
         if let aboveTextView {
-            revealed.append((aboveTextView, aboveTextView.frame.midX))
+            textMask.startPoint = CGPoint(x: 0, y: 0.5)
+            textMask.endPoint = CGPoint(x: 1, y: 0.5)
+            textMask.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+            textMask.frame = .zero
+            aboveTextView.layer?.mask = textMask
+            aboveTextView.layer?.opacity = 0
         }
         for (view, _) in revealed {
             view.layer?.opacity = 0
@@ -836,6 +905,8 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
                 view.layer?.opacity = 1
                 view.layer?.transform = CATransform3DIdentity
             }
+            self.aboveTextView?.layer?.mask = nil
+            self.aboveTextView?.layer?.opacity = 1
             self.backgroundView.layer?.mask = savedMask
             self.backgroundView.layer?.masksToBounds = true
             self.scrollView.layer?.masksToBounds = true
@@ -879,6 +950,17 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
                 if #available(macOS 26.0, *) {
                     (tail as? NSGlassEffectView)?.cornerRadius = tailSize / 2
                 }
+            }
+
+            if let aboveTextView = hint {
+                let text = aboveTextView.frame
+                let feather: CGFloat = 24
+                let span = NSMakeRect(current.minX - text.minX - feather / 2, 0, current.width + feather, text.height)
+                textMask.frame = span
+                let edge = NSNumber(value: Double(min(0.5, feather / max(1, span.width))))
+                textMask.locations = [0, edge, NSNumber(value: 1 - edge.doubleValue), 1]
+                let coverage = min(1, max(0, (text.maxY - current.minY) / max(1, text.height)))
+                aboveTextView.layer?.opacity = Float(coverage)
             }
 
             let offsetY = current.midY - bar.midY

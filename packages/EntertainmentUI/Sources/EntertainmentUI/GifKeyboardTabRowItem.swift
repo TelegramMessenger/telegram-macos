@@ -28,6 +28,8 @@ public class GifKeyboardTabRowItem: TableRowItem {
     public let context: any AccountContextProtocol
     public let theme: PresentationTheme
     public let title: String?
+    public var tint: NSColor?
+    public var frosted: Bool = false
     public init(_ initialSize: NSSize, stableId: AnyHashable, selected: Bool, context: any AccountContextProtocol, source: Source, title: String? = nil, select: @escaping()->Void, theme: PresentationTheme) {
         self.theme = theme
         self.title = title
@@ -80,6 +82,7 @@ public class GifKeyboardTabRowItem: TableRowItem {
 private final class GifKeyboardTabRowView: HorizontalRowView {
     
     private let selectView: View = View()
+    private var selectFrost: PickerFrostView?
     private let control = Control()
     
     private var imageLayer: SimpleLayer?
@@ -175,11 +178,32 @@ private final class GifKeyboardTabRowView: HorizontalRowView {
                 self.imageLayer = current
                 control.layer?.addSublayer(current)
             }
-            current.contents = image
+            current.contents = item.tint.map { image._NSImage.precomposed($0) } ?? image
             current.frame = CGRect(origin: NSMakePoint(4, 4), size: NSMakeSize(28, 28))
         }
         
-        selectView.backgroundColor = item.theme.colors.grayBackground
+        if item.frosted {
+            let frost: PickerFrostView
+            if let current = selectFrost {
+                frost = current
+            } else {
+                frost = PickerFrostView(frame: selectView.bounds)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                frost.autoresizingMask = [.width, .height]
+                selectView.addSubview(frost)
+                selectFrost = frost
+            }
+            frost.appearance = NSAppearance(named: item.theme.colors.isDark ? .darkAqua : .aqua)
+            selectView.layer?.masksToBounds = true
+            selectView.backgroundColor = .clear
+        } else {
+            selectFrost?.removeFromSuperview()
+            selectFrost = nil
+            selectView.backgroundColor = item.theme.colors.grayBackground
+        }
         selectView.change(opacity: item.selected ? 1 : 0, animated: animated)
         
         control.frame = NSMakeRect(0, 0, item.height, item.height)

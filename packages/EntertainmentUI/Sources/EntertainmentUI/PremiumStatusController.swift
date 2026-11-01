@@ -6,6 +6,7 @@ import SwiftSignalKit
 import Postbox
 import TelegramContext
 import TelegramUtils
+import TelegramTheme
 
 private func animateStatusAppearance(_ items: [TableRowItem]) {
     let sections = items.compactMap {
@@ -59,8 +60,29 @@ public final class PremiumStatusController<Context: AccountContextProtocol> : Te
         _frameRect = NSMakeRect(0, 0, 350, 300)
     }
     
+    private var usesMenuGlass: Bool {
+        if #available(macOS 26.0, *) {
+            return System.liquidGlass && System.liquidGlassAvailable && !TelegramUtilsHooks.shared.isLite(.blur)
+        }
+        return false
+    }
+
+    public override var popoverBackgroundColor: NSColor {
+        return usesMenuGlass ? .clear : super.popoverBackgroundColor
+    }
+
     public override func viewDidLoad() {
         super.viewDidLoad()
+        if #available(macOS 26.0, *), usesMenuGlass {
+            let glass = NSGlassEffectView(frame: self.bounds)
+            glass.style = .regular
+            glass.cornerRadius = 18
+            glass.tintColor = nil
+            glass.applyNativeMenuMaterial()
+            glass.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+            glass.autoresizingMask = [.width, .height]
+            self.view.addSubview(glass)
+        }
         emojis._frameRect = self.bounds
         self.view.addSubview(emojis.view)
         self.ready.set(self.emojis.ready.get())
