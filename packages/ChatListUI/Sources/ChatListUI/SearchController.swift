@@ -1909,7 +1909,7 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         super.updateContainerContentInsets(insets, transition: transition)
         if isLoaded() {
             genericView.contentInsets.bottom = insets.bottom
-            genericView.scrollerInsets.bottom = insets.bottom
+            genericView.scrollerInsets.bottom = 0
         }
     }
     

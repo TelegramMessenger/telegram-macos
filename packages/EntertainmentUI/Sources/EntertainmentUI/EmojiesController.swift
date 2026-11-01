@@ -1686,7 +1686,7 @@ public final class AnimatedEmojiesView : Control {
 //        tableView.scrollerInsets = mode == .reactions ? .init() : .init(left: 0, right: 0, top: 46, bottom: 50)
 
 //        searchContainer.isHidden = mode == .reactions
-        tableView.scrollerInsets = .init(left: 0, right: 0, top: 46, bottom: 50)
+        tableView.scrollerInsets = .init(left: 0, right: 0, top: 46, bottom: tableView.additionalBottomScrollerInset(for: 50))
         
         updateSelectionState(animated: packs.animated)
         updateLocalizationAndTheme(theme: presentation ?? theme)
