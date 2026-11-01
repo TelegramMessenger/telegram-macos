@@ -535,6 +535,9 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     }
     
     var navigationButtonColor: NSColor? {
+        if isAvatarExpanded {
+            return NSColor.black.withAlphaComponent(0.3)
+        }
         guard let nameColor = nameColor, threadId == nil, !editing else {
             return nil
         }
@@ -1801,6 +1804,8 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     private var avatarGestureDidCollapse = false
     private var avatarGestureCollapseBaseline: CGFloat?
     private var avatarGestureHorizontal = false
+    private var avatarGestureLastScrolledTime: CFTimeInterval = 0
+    private var avatarGestureOvershoot = false
     private var avatarPullProgress: CGFloat = 0
     private let avatarPullDistance: CGFloat = 12
     private var avatarGestureObservers: [NSObjectProtocol] = []
@@ -1814,9 +1819,11 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         isTogglingAvatar = true
         item.isAvatarExpanded = expanded
         item.noteHeightOfRow(animated: true)
-        delay(0.35) { [weak self] in
+        item.arguments.avatarExpandedDidChange?()
+        delay(0.35) { [weak self, weak item] in
             self?.isTogglingAvatar = false
             self?.updateSpawnerFraction()
+            item?.arguments.avatarExpandedDidChange?()
         }
     }
 
@@ -1945,6 +1952,9 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             if item.isAvatarExpanded, !isTogglingAvatar, !table.liveScrolling, table.documentOffset.y > 30 {
                 setAvatarExpanded(false)
             }
+            if table.verticalScrollElasticity == .allowed, item.isAvatarExpanded || table.documentOffset.y > 0 {
+                updateAvatarScrollElasticity(allowBounce: false)
+            }
             let position = table.scrollPosition().current
             let y = position.rect.minY - table.frame.height
             let clamp = min(max(0, y), item.height)
@@ -2049,7 +2059,19 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         updateAnimatableContent()
     }
 
+    private func updateAvatarScrollElasticity(allowBounce: Bool) {
+        guard let item = self.item as? PeerInfoHeadItem<Context>, let table = item.table else {
+            return
+        }
+        let offset = table.documentOffset.y
+        let elasticity: NSScrollView.Elasticity = allowBounce && item.canExpandAvatar && !item.isAvatarExpanded && offset <= 0 ? .allowed : .none
+        if table.verticalScrollElasticity != elasticity, elasticity == .allowed || offset >= 0 {
+            table.verticalScrollElasticity = elasticity
+        }
+    }
+
     private func avatarGestureStarted() {
+        updateAvatarScrollElasticity(allowBounce: true)
         let offset = (self.item as? PeerInfoHeadItem<Context>)?.table?.documentOffset.y
         avatarGestureStartOffset = offset
         avatarGestureDidExpand = false
@@ -2062,6 +2084,15 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
         let offset = table.documentOffset.y
+        let now = CACurrentMediaTime()
+        if offset > 5 {
+            avatarGestureLastScrolledTime = now
+        }
+        if offset >= 0 {
+            avatarGestureOvershoot = false
+        } else if now - avatarGestureLastScrolledTime < 0.15 {
+            avatarGestureOvershoot = true
+        }
         if avatarGestureDidCollapse, offset > 30 {
             avatarGestureDidCollapse = false
             avatarGestureDidExpand = false
@@ -2082,7 +2113,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             } else if offset - max(startOffset, 0) > 4 {
                 toggleAvatarByGesture(false)
             }
-        } else if !avatarGestureDidExpand, item.canExpandAvatar {
+        } else if !avatarGestureDidExpand, !avatarGestureOvershoot, item.canExpandAvatar {
             let progress = min(max(-offset / avatarPullDistance, 0), 1)
             if progress >= 1 {
                 toggleAvatarByGesture(true)
@@ -2131,7 +2162,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
         avatarGestureTable = table
-        table.verticalScrollElasticity = .allowed
+        updateAvatarScrollElasticity(allowBounce: true)
         let center = NotificationCenter.default
         avatarGestureObservers = [
             center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: table, queue: nil, using: { [weak self] _ in
@@ -2155,13 +2186,22 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             guard let self, let item = self.item as? PeerInfoHeadItem<Context>, let table = item.table else {
                 return .rejected
             }
-            let point = table.convert(event.locationInWindow, from: nil)
-            guard NSPointInRect(point, table.bounds), let contentView = window.contentView, let hit = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil)), hit.isDescendant(of: table) else {
+            if event.phase == .began {
+                self.avatarGestureHorizontal = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+            }
+            guard NSPointInRect(table.convert(event.locationInWindow, from: nil), table.bounds) else {
                 return .rejected
             }
             if event.phase == .began {
-                self.avatarGestureHorizontal = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
                 self.avatarGestureStarted()
+            }
+            guard let contentView = window.contentView, let hit = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil)), hit.isDescendant(of: table) else {
+                return .rejected
+            }
+            if event.phase == .began {
+                if !self.avatarGestureHorizontal, event.scrollingDeltaY < 0, item.isAvatarExpanded, !self.isTogglingAvatar {
+                    self.toggleAvatarByGesture(false)
+                }
             }
             guard !event.hasPreciseScrollingDeltas, abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX), item.canExpandAvatar else {
                 return .rejected
@@ -2174,7 +2214,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
                 self.setAvatarExpanded(true)
             }
             return .rejected
-        }, with: self, for: .scrollWheel, priority: .low)
+        }, with: self, for: .scrollWheel, priority: .supreme)
     }
 
     private func removeAvatarGestureObservers() {

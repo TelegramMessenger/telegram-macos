@@ -50,6 +50,7 @@ class PeerInfoArguments<Context: AccountContextProtocol> {
             avatarExpandedLock.unlock()
         }
     }
+    var avatarExpandedDidChange: (() -> Void)?
     
     var peer: Peer? {
         didSet {
@@ -1046,6 +1047,14 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             self._groupArguments?.peer = peer
             self._channelArguments?.peer = peer
             self._userArguments?.peer = peer
+
+            let avatarExpandedDidChange: () -> Void = { [weak self] in
+                self?.updateNavigationGlassTint()
+            }
+            self._topicArguments?.avatarExpandedDidChange = avatarExpandedDidChange
+            self._groupArguments?.avatarExpandedDidChange = avatarExpandedDidChange
+            self._channelArguments?.avatarExpandedDidChange = avatarExpandedDidChange
+            self._userArguments?.avatarExpandedDidChange = avatarExpandedDidChange
 
             if peer.isForumOrMonoForum && threadId != nil {
                 return .single(self._topicArguments)
