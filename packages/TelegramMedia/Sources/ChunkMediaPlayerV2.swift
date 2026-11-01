@@ -12,11 +12,32 @@ public let internal_isHardwareAv1Supported: Bool = {
     return value
 }()
 
+struct ChunkMediaPlayerVideoGeometry: Equatable {
+    let rotationAngle: Double
+    let dimensions: CGSize
+
+    var aspect: Double {
+        return dimensions.width / dimensions.height
+    }
+
+    var displayDimensions: CGSize {
+        let size = dimensions.applying(CGAffineTransform(rotationAngle: rotationAngle))
+        return CGSize(width: abs(size.width).rounded(), height: abs(size.height).rounded())
+    }
+}
+
 protocol ChunkMediaPlayerSourceImpl: AnyObject {
     var partsState: Signal<ChunkMediaPlayerPartsState, NoError> { get }
+    var videoGeometry: ChunkMediaPlayerVideoGeometry? { get }
     
     func seek(id: Int, position: Double)
     func updatePlaybackState(seekTimestamp: Double, position: Double, isPlaying: Bool)
+}
+
+extension ChunkMediaPlayerSourceImpl {
+    var videoGeometry: ChunkMediaPlayerVideoGeometry? {
+        return nil
+    }
 }
 
 private final class ChunkMediaPlayerExternalSourceImpl: ChunkMediaPlayerSourceImpl {
@@ -189,6 +210,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var loadedParts: [LoadedPart] = []
     private var loadedPartsMediaData: QueueLocalObject<LoadedPartsMediaData>
     private var hasSound: Bool = false
+    private var videoDimensions: CGSize = .zero
     
     private var lastEmittedStatus: MediaPlayerStatus?
     private var lastStatusEmitTimestamp: Double = 0.0
@@ -297,6 +319,10 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                 return
             }
             self.partsState = partsState
+            if let geometry = self.source.videoGeometry {
+                self.videoDimensions = geometry.displayDimensions
+                self.playerNode?.setVideoGeometry(rotationAngle: geometry.rotationAngle, aspect: geometry.aspect)
+            }
             self.resetMediaDataStarvation()
             self.updateInternalState()
         })
@@ -755,7 +781,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         let status = MediaPlayerStatus(
             generationTimestamp: isPlayingLike ? CACurrentMediaTime() : 0.0,
             duration: duration,
-            dimensions: CGSize(),
+            dimensions: self.videoDimensions,
             timestamp: timestampSeconds,
             baseRate: self.baseRate,
             volume: self.volume,
