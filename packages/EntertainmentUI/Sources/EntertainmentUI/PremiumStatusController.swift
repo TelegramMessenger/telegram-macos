@@ -78,8 +78,7 @@ public final class PremiumStatusController<Context: AccountContextProtocol> : Te
             glass.style = .regular
             glass.cornerRadius = 18
             glass.tintColor = nil
-            glass.applyNativeMenuMaterial()
-            glass.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+            glass.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
             glass.autoresizingMask = [.width, .height]
             self.view.addSubview(glass)
         }

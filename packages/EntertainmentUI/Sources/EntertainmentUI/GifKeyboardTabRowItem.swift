@@ -196,7 +196,7 @@ private final class GifKeyboardTabRowView: HorizontalRowView {
                 selectView.addSubview(frost)
                 selectFrost = frost
             }
-            frost.appearance = NSAppearance(named: item.theme.colors.isDark ? .darkAqua : .aqua)
+            frost.appearance = NSAppearance.themed(isDark: item.theme.colors.isDark)
             selectView.layer?.masksToBounds = true
             selectView.backgroundColor = .clear
         } else {

@@ -1657,8 +1657,8 @@ public final class AnimatedEmojiesView : Control {
         self.searchBorder.backgroundColor = mode.isTransparent ? .clear : isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
         visualEffect.material = theme.colors.isDark ? .dark : .light
         visualEffect.isHidden = isGlass || mode.isTransparent
-        headerBlur.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
-        searchFrost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+        headerBlur.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
+        searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         searchFrost.isHidden = !usesPickerStyle || TelegramUtilsHooks.shared.isLite(.blur)
         if let glassSurface {
             glassSurface.customTint = theme.colors.background.withAlphaComponent(EntertainmentView.glassTintAlpha)
@@ -1960,7 +1960,7 @@ public final class AnimatedEmojiesView : Control {
                 selectionView.addSubview(frost)
                 selectionFrost = frost
             }
-            frost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+            frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
             selectionView.background = .clear
         } else if mode == .reactions || isGlass {
             selectionFrost?.removeFromSuperview()

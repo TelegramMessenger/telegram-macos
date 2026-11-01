@@ -64,7 +64,7 @@ final class PanelSearchStatusView: View {
         shimmer.colors = [detailColor.withAlphaComponent(0.08).cgColor, detailColor.withAlphaComponent(0.20).cgColor, detailColor.withAlphaComponent(0.08).cgColor]
         shimmer.isHidden = status != .loading
         frost.isHidden = status != .loading || !frosted
-        frost.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        frost.appearance = NSAppearance.themed(isDark: isDark)
         titleView.isHidden = status != .empty
         detailView.isHidden = status != .empty || detail.isEmpty
         isHidden = status == .hidden

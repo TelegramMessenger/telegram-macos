@@ -193,7 +193,6 @@ public final class EntertainmentView : View {
             glass.style = .regular
             glass.cornerRadius = 18
             glass.tintColor = nil
-            glass.applyNativeMenuMaterial()
             menuGlass = glass
         } else if System.blurEnabled, !TelegramUtilsHooks.shared.isLite(.blur) {
             let blur = NSVisualEffectView(frame: .zero)
@@ -251,7 +250,7 @@ public final class EntertainmentView : View {
         self.edgeView.shadowBackground = theme.colors.background.withAlphaComponent(0.6)
         self.glassView.customTint = theme.colors.background.withAlphaComponent(EntertainmentView.glassTintAlpha)
         self.glassView.updateLocalizationAndTheme(theme: theme)
-        self.menuGlass?.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+        self.menuGlass?.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         self.menuVeil?.backgroundColor = .menuFallbackVeil(isDark: theme.colors.isDark)
         self.menuRim?.borderColor = NSColor.white.withAlphaComponent(theme.colors.isDark ? 0.1 : 0.5).cgColor
         self.menuHairline?.borderColor = NSColor.black.withAlphaComponent(theme.colors.isDark ? 0.85 : 0.2).cgColor

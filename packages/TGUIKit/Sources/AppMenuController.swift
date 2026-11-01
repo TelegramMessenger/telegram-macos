@@ -94,7 +94,6 @@ final class MenuView: Control, TableViewDelegate {
             glass.cornerRadius = MenuView.cornerRadius
             glass.tintColor = nil
             glass.wantsLayer = true
-            glass.applyNativeMenuMaterial()
             self.glassView = glass
         } else {
             self.glassView = nil
@@ -276,7 +275,7 @@ final class MenuView: Control, TableViewDelegate {
         
         self.setFrameSize(max, min(tableView.listHeight, min(maxHeight ?? appearMode.max, screen.visibleFrame.height - 200)))
         effectiveSize = max
-        let appearance = NSAppearance(named: presentation.colors.isDark ? .darkAqua : .aqua)
+        let appearance = NSAppearance.themed(isDark: presentation.colors.isDark)
         rimLayer.borderColor = NSColor.white.withAlphaComponent(presentation.colors.isDark ? 0.1 : 0.5).cgColor
         hairlineLayer.borderColor = NSColor.black.withAlphaComponent(presentation.colors.isDark ? 0.85 : 0.2).cgColor
         if let glassView {
@@ -1148,18 +1147,12 @@ public func contextOnScreen()->Window? {
     return nil
 }
 
-@available(macOS 26.0, *)
-public extension NSGlassEffectView {
-    func applyNativeMenuMaterial() {
-        let subvariant = Selector(("set_subvariant:"))
-        if responds(to: subvariant) {
-            perform(subvariant, with: "menu")
+public extension NSAppearance {
+    static func themed(isDark: Bool) -> NSAppearance? {
+        if #available(macOS 10.14, *) {
+            return NSAppearance(named: isDark ? .darkAqua : .aqua)
         }
-        let adaptive = Selector(("set_adaptiveAppearance:"))
-        if responds(to: adaptive) {
-            typealias SetAdaptive = @convention(c) (NSObject, Selector, Int) -> Void
-            unsafeBitCast(method(for: adaptive), to: SetAdaptive.self)(self, adaptive, 1)
-        }
+        return NSAppearance(named: isDark ? .vibrantDark : .aqua)
     }
 }
 

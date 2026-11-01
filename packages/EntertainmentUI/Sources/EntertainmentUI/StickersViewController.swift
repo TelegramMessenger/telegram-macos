@@ -999,7 +999,7 @@ public class NStickersView : View {
                 selectionView.addSubview(frost)
                 selectionFrost = frost
             }
-            frost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+            frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
             selectionView.background = .clear
         } else {
             selectionFrost?.removeFromSuperview()
@@ -1116,7 +1116,7 @@ public class NStickersView : View {
         self.searchBackdrop.isHidden = !isGlass || usesMenuPanel
 
         self.searchFrost.isHidden = !usesMenuPanel || TelegramUtilsHooks.shared.isLite(.blur)
-        self.searchFrost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+        self.searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         if isGlass {
             let searchBackground = searchFrost.isHidden ? theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1) : .clear
             let searchTheme = pickerSearchTheme(searchBackground, theme: theme, black: isGlass || usesMenuPanel)

@@ -399,7 +399,7 @@ public final class GifKeyboardView : View {
         searchBackdrop.isHidden = !isGlass || usesMenuPanel
         self.searchView.updateLocalizationAndTheme(theme: theme)
         searchFrost.isHidden = !usesMenuPanel || TelegramUtilsHooks.shared.isLite(.blur)
-        searchFrost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+        searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         if isGlass {
             let searchBackground = searchFrost.isHidden ? theme.colors.vibrant.mixedWith(NSColor(0x000000), alpha: 0.1) : .clear
             self.searchView.searchTheme = pickerSearchTheme(searchBackground, theme: theme, black: true)

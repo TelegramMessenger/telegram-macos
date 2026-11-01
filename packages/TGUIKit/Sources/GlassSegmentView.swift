@@ -132,7 +132,7 @@ public final class GlassSegmentView: View {
     private func applyTheme() {
         let colors = currentTheme.colors
         selectionView.backgroundColor = colors.text.withAlphaComponent(colors.isDark ? 0.1 : 0.075)
-        menuBlur?.appearance = NSAppearance(named: colors.isDark ? .darkAqua : .aqua)
+        menuBlur?.appearance = NSAppearance.themed(isDark: colors.isDark)
         menuVeil.backgroundColor = .menuFallbackVeil(isDark: colors.isDark)
         menuRim.borderColor = NSColor.white.withAlphaComponent(colors.isDark ? 0.1 : 0.5).cgColor
         menuHairline.borderColor = NSColor.black.withAlphaComponent(colors.isDark ? 0.85 : 0.2).cgColor

@@ -36,8 +36,7 @@ public final class ReactionsWindowController : NSObject {
                 glass.cornerRadius = 20
                 glass.tintColor = nil
                 glass.wantsLayer = true
-                glass.applyNativeMenuMaterial()
-                glass.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+                glass.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
                 self.glassView = glass
             } else {
                 self.glassView = nil
@@ -65,7 +64,7 @@ public final class ReactionsWindowController : NSObject {
                 self.visualView.blendingMode = .behindWindow
                 self.visualView.autoresizingMask = []
                 self.visualView.material = .menu
-                self.visualView.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+                self.visualView.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
             }
             
             self.autoresizesSubviews = false
@@ -149,7 +148,7 @@ public final class ReactionsWindowController : NSObject {
                 tint.style = .regular
                 tint.cornerRadius = 20
                 tint.tintColor = theme.colors.background.withAlphaComponent(0.3)
-                tint.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+                tint.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
                 container.addSubview(tint, positioned: .above, relativeTo: glassView)
                 tintGlass = tint
                 tint.alphaValue = 0

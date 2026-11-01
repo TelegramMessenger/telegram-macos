@@ -218,7 +218,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
                     frost.material = .selection
                     frost.blendingMode = .withinWindow
                     frost.state = .active
-                    frost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+                    frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
                     frost.layer?.masksToBounds = true
                     view = frost
                 }
@@ -397,7 +397,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
                 frost.material = .selection
                 frost.blendingMode = .withinWindow
                 frost.state = .active
-                frost.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+                frost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
                 frost.layer?.masksToBounds = true
                 addSubview(frost)
             }
@@ -510,7 +510,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
             container.spacing = 8
             let content = GlassContentView(frame: frameRect.size.bounds)
             container.contentView = content
-            let appearance = NSAppearance(named: presentation.colors.isDark ? .darkAqua : .aqua)
+            let appearance = NSAppearance.themed(isDark: presentation.colors.isDark)
             for _ in 0 ..< (hasBubble ? 2 : 1) {
                 let glass = NSGlassEffectView(frame: .zero)
                 glass.style = .regular
@@ -573,7 +573,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
         if #available(macOS 11.0, *), !TelegramUtilsHooks.shared.isLite(.blur) {
             usesMaterial = true
             visualEffect.material = .menu
-            visualEffect.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+            visualEffect.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
             backgroundColorView.backgroundColor = glassContainer == nil ? .menuFallbackVeil(isDark: theme.colors.isDark) : .clear
         } else {
             usesMaterial = false
