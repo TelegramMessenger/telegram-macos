@@ -135,12 +135,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
         let chatInteraction = self.chatInteraction
         let presentation = chatInteraction.presentation
         let text = presentation.effectiveInput.inputText
-        let entities = presentation.effectiveInput.messageTextEntities().filter { entity in
-            if case .FormattedDate = entity.type {
-                return false
-            }
-            return true
-        }
+        let entities = presentation.effectiveInput.messageTextEntities()
         let editMessageId = presentation.interfaceState.editState?.message.id
         guard !text.isEmpty else { return }
         let context = chatInteraction.interactionContext

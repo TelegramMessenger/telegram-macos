@@ -308,12 +308,7 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
 
         let selected = self.interactions.presentation.inputText.attributedSubstring(from: textRange)
         let selectedText = selected.string
-        let selectedEntities = ChatTextInputState(attributedText: selected, selectionRange: 0 ..< 0).messageTextEntities().filter { entity in
-            if case .FormattedDate = entity.type {
-                return false
-            }
-            return true
-        }
+        let selectedEntities = ChatTextInputState(attributedText: selected, selectionRange: 0 ..< 0).messageTextEntities()
 
         let language = Translate.detectLanguage(for: selectedText)
 

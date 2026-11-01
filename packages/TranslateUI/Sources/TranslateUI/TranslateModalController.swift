@@ -1038,6 +1038,14 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
 
     let isInputMode = onUse != nil || onUseRich != nil
 
+    let draft = ChatTextInputState(inputText: text, selectionRange: 0..<0, attributes: chatTextAttributes(from: TextEntitiesMessageAttribute(entities: entities), associatedMedia: [:]))
+    let entities = onUse == nil ? entities : entities.filter { entity in
+        if case .FormattedDate = entity.type {
+            return false
+        }
+        return true
+    }
+
     let configTones = translationStyles(from: context)
     let defaultToneId = configTones.first?.id ?? "neutral"
     var initialState = State(text: text, textEntities: entities, from: from, to: Translate.normalizeLanguageCode(toLang), fromIsRevealed: !canBreak, toIsRevealed: true)
@@ -1502,6 +1510,15 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         actionsDisposable.dispose()
     }
     
+    let appliedText: () -> NSAttributedString? = {
+        return stateValue.with { state in
+            if state.translated == state.text, state.translatedEntities == state.textEntities {
+                return draft.makeAttributeString(addPreAsBlock: true)
+            }
+            return state.translatedAttr(context: context)
+        }
+    }
+
     let modalInteractions: ModalInteractions
     if isInputMode {
         let sendIcon: CGImage? = onSend != nil ? theme.icons.send_message_large : nil
@@ -1519,14 +1536,12 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
                 close?()
                 return
             }
-            let text = stateValue.with { $0.translatedAttr(context: context) }
-            if let text, let onUse {
+            if let text = appliedText(), let onUse {
                 onUse(text)
                 close?()
             }
         }, singleButton: true, extraActionImage: sendIcon, extraAction: onSend != nil ? {
-            let text = stateValue.with { $0.translatedAttr(context: context) }
-            if let text {
+            if let text = appliedText() {
                 onSend?(text)
                 close?()
             }
