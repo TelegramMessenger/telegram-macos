@@ -14,6 +14,7 @@ import GeneralRows
 import AlertsUI
 import SelectPeersUI
 import InlineStickerLayer
+import DateUtils
 
 
 
@@ -202,7 +203,7 @@ private final class CollectionFilterRowView : TableStickView, TableViewDelegate 
 
 private final class Arguments {
     let context: any AccountContextProtocol
-    let open:(ProfileGiftsContext.State.StarGift, (() -> NSView?)?)->Void
+    let open:(ProfileGiftsContext.State.StarGift, (() -> NSView?)?, Bool)->Void
     let togglePin:(ProfileGiftsContext.State.StarGift)->Void
     let toggleWear:(ProfileGiftsContext.State.StarGift)->Void
     let transfer:(ProfileGiftsContext.State.StarGift)->Void
@@ -212,7 +213,10 @@ private final class Arguments {
     let addToCollection:(State.Collection, ProfileGiftsContext.State.StarGift?)->Void
     let collectionContextMenu:(State.Collection)->[ContextMenuItem]
     let resort:(Int, Int)->Void
-    init(context: any AccountContextProtocol, open:@escaping(ProfileGiftsContext.State.StarGift, (() -> NSView?)?)->Void, togglePin:@escaping(ProfileGiftsContext.State.StarGift)->Void, toggleWear:@escaping(ProfileGiftsContext.State.StarGift)->Void, transfer:@escaping(ProfileGiftsContext.State.StarGift)->Void, toggleVisibility:@escaping(ProfileGiftsContext.State.StarGift)->Void, copy:@escaping(ProfileGiftsContext.State.StarGift)->Void, collection:@escaping(State.Collection, ProfileGiftsContext.State.StarGift?)->Void, addToCollection: @escaping(State.Collection, ProfileGiftsContext.State.StarGift?)->Void, collectionContextMenu:@escaping(State.Collection)->[ContextMenuItem], resort:@escaping(Int, Int)->Void) {
+    var giftMenu: ((ProfileGiftsContext.State.StarGift) -> [ContextMenuItem])?
+    var deleteGift: ((ProfileGiftsContext.State.StarGift) -> Void)?
+    var setGiftTheme: ((StarGift.UniqueGift) -> Void)?
+    init(context: any AccountContextProtocol, open:@escaping(ProfileGiftsContext.State.StarGift, (() -> NSView?)?, Bool)->Void, togglePin:@escaping(ProfileGiftsContext.State.StarGift)->Void, toggleWear:@escaping(ProfileGiftsContext.State.StarGift)->Void, transfer:@escaping(ProfileGiftsContext.State.StarGift)->Void, toggleVisibility:@escaping(ProfileGiftsContext.State.StarGift)->Void, copy:@escaping(ProfileGiftsContext.State.StarGift)->Void, collection:@escaping(State.Collection, ProfileGiftsContext.State.StarGift?)->Void, addToCollection: @escaping(State.Collection, ProfileGiftsContext.State.StarGift?)->Void, collectionContextMenu:@escaping(State.Collection)->[ContextMenuItem], resort:@escaping(Int, Int)->Void) {
         self.context = context
         self.open = open
         self.togglePin = togglePin
@@ -297,6 +301,84 @@ private struct State : Equatable {
     var onStage: Bool = false
 }
 
+private func giftMenuItems(_ profile: ProfileGiftsContext.State.StarGift, state: State, arguments: Arguments) -> [ContextMenuItem] {
+    guard let reference = profile.reference, let owner = state.peer, owner.id == arguments.context.peerId || owner._asPeer().groupAccess.isCreator else {
+        return []
+    }
+    let addItem = ContextMenuItem(strings().peerMediaGiftsCollectionContextAddToCollection, itemImage: MenuAnimation.menu_add_to_folder.value)
+    let addMenu = ContextMenu()
+    addMenu.addItem(ContextMenuItem(strings().peerMediaGiftsCollectionContextNewCollection, handler: {
+        arguments.collection(.add, profile)
+    }, itemImage: MenuAnimation.menu_folder_add.value))
+    for collection in state.collections {
+        if case let .collection(value) = collection {
+            if addMenu.items.count == 1 {
+                addMenu.addItem(ContextSeparatorItem())
+            }
+            let item = ContextMenuItem(value.title, handler: {
+                arguments.addToCollection(collection, profile)
+            }, state: state.contains(collectionId: value.id, gift: profile) ? .on : nil)
+            if let file = value.icon {
+                StarsHooks.shared.applyMenuItemEmoji(item, arguments.context, file)
+            }
+            addMenu.addItem(item)
+        }
+    }
+    addItem.submenu = addMenu
+    if profile.gift.generic != nil {
+        let canDelete = starGiftCanDelete(gift: profile.gift, reference: reference, owner: owner, accountPeerId: arguments.context.peerId, converted: false, fromProfile: true, upgraded: false, refunded: profile.isRefunded)
+        let delete: (() -> Void)? = canDelete ? { arguments.deleteGift?(profile) } : nil
+        return genericGiftMenuItems(collections: addItem, savedToProfile: profile.savedToProfile, toggleVisibility: {
+            arguments.toggleVisibility(profile)
+        }, delete: delete)
+    }
+    var items: [ContextMenuItem] = [addItem, ContextSeparatorItem()]
+    if let unique = profile.gift.unique {
+        if state.selectedCollection == State.Collection.all.stableId {
+            items.append(ContextMenuItem(profile.pinnedToTop ? strings().chatListContextUnpin : strings().chatListContextPin, handler: {
+                arguments.togglePin(profile)
+            }, itemImage: profile.pinnedToTop ? MenuAnimation.menu_unpin.value : MenuAnimation.menu_pin.value))
+        }
+        let wearing: Bool
+        if case let .starGift(id, _, _, _, _, _, _, _, _)? = state.peer?.emojiStatus?.content {
+            wearing = id == unique.id
+        } else {
+            wearing = false
+        }
+        items.append(ContextMenuItem(wearing ? strings().giftContextTakeOff : strings().giftContextWear, handler: {
+            arguments.toggleWear(profile)
+        }, itemImage: wearing ? MenuAnimation.menu_wearoff.value : MenuAnimation.menu_wear.value))
+        items.append(ContextMenuItem(strings().modalCopyLink, handler: {
+            arguments.copy(profile)
+        }, itemImage: MenuAnimation.menu_copy_link.value))
+        items.append(ContextMenuItem(strings().storyMyInputShare, handler: {
+            StarsHooks.shared.shareLink(arguments.context, unique.link(arguments.context), arguments.context.window)
+        }, itemImage: MenuAnimation.menu_share.value))
+        if owner.id == arguments.context.peerId, unique.flags.contains(.isThemeAvailable) {
+            items.append(ContextMenuItem(strings().giftContextMenuSetAsTheme, handler: {
+                arguments.setGiftTheme?(unique)
+            }, itemImage: MenuAnimation.menu_change_colors.value))
+        }
+        if unique.craftChancePermille != nil {
+            items.append(ContextMenuItem(strings().starGiftCraftMenuItem, handler: {
+                arguments.open(profile, nil, true)
+            }, itemImage: MenuAnimation.menu_craft.value))
+        }
+        if let moveToGifts = StarsHooks.shared.giftMoveToGiftsAction(arguments.context, arguments.context.window, unique) {
+            items.append(ContextMenuItem(strings().giftTransferMoveToGifts, handler: moveToGifts, itemImage: MenuAnimation.menu_replace.value))
+        }
+    }
+    items.append(ContextMenuItem(profile.savedToProfile ? strings().giftContextHide : strings().giftContextShow, handler: {
+        arguments.toggleVisibility(profile)
+    }, itemImage: profile.savedToProfile ? MenuAnimation.menu_show.value : MenuAnimation.menu_hide.value))
+    if profile.gift.unique != nil {
+        items.append(ContextMenuItem(strings().giftContextTransfer, handler: {
+            arguments.transfer(profile)
+        }, itemImage: MenuAnimation.menu_transfer.value))
+    }
+    return items
+}
+
 private func _id_stars_gifts(_ index: Int) -> InputDataIdentifier {
     return InputDataIdentifier("_id_stars_gifts_\(index)")
 }
@@ -352,96 +434,13 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_stars_gifts(i), equatable: .init(chunk), comparable: nil, item: { initialSize, stableId in
                 return GiftOptionsRowItem(initialSize, stableId: stableId, context: arguments.context, options: chunk, perRowCount: state.perRowCount, fitToSize: list.count == 1, insets: NSEdgeInsets(left: 5, right: 5), callback: { option, morphSource in
                     if let value = option.nativeProfileGift {
-                        arguments.open(value, morphSource)
+                        arguments.open(value, morphSource, false)
                     } else {
                         arguments.addToCollection(collection, nil)
                     }
                 }, contextMenu: { option in
-                    if let profile = option.nativeProfileGift, let _ = profile.reference {
-                        var items: [ContextMenuItem] = []
-                        
-                        let addItem = ContextMenuItem(
-                            strings().peerMediaGiftsCollectionContextAddToCollection,
-                            handler: {},
-                            itemImage: MenuAnimation.menu_add_to_folder.value
-                        )
-
-                        let addMenu = ContextMenu()
-                        addMenu.addItem(
-                            ContextMenuItem(
-                                strings().peerMediaGiftsCollectionContextNewCollection,
-                                handler: {
-                                    arguments.collection(.add, profile)
-                                },
-                                itemImage: MenuAnimation.menu_folder_add.value
-                            )
-                        )
-                        
-                        addMenu.addItem(ContextSeparatorItem())
-                        
-                        for collection in state.collections {
-                            switch collection {
-                            case let .collection(value):
-                                
-                                let contains = state.contains(collectionId: value.id, gift: profile)
-                                
-                                let item = ContextMenuItem(value.title, handler: {
-                                    arguments.addToCollection(collection, profile)
-                                }, state: contains ? .on : nil)
-                                
-                                if let file = value.icon {
-                                    StarsHooks.shared.applyMenuItemEmoji(item, arguments.context, file)
-                                }
-                                addMenu.addItem(item)
-                                
-                            default:
-                                break
-                            }
-                        }
-                        
-                        addItem.submenu = addMenu
-                        
-                        items.append(addItem)
-                        items.append(ContextSeparatorItem())
-                        
-                        if let unique = profile.gift.unique {
-                            if state.selectedCollection == State.Collection.all.stableId {
-                                items.append(ContextMenuItem(!profile.pinnedToTop ? strings().chatListContextPin : strings().chatListContextUnpin, handler: {
-                                    arguments.togglePin(profile)
-                                }, itemImage: !profile.pinnedToTop ? MenuAnimation.menu_pin.value : MenuAnimation.menu_unpin.value))
-                            }
-                            
-                            let weared: Bool
-                            if case let .starGift(id, _, _, _, _, _, _, _, _)? = state.peer?.emojiStatus?.content {
-                                weared = id == unique.id
-                            } else {
-                                weared = false
-                            }
-                            
-                            items.append(ContextMenuItem(weared ? strings().giftContextTakeOff : strings().giftContextWear, handler: {
-                                arguments.toggleWear(profile)
-                            }, itemImage: !weared ? MenuAnimation.menu_wear.value : MenuAnimation.menu_wearoff.value))
-                            
-                            items.append(ContextMenuItem(strings().modalCopyLink, handler: {
-                                arguments.copy(profile)
-                            }, itemImage: MenuAnimation.menu_copy.value))
-                        }
-                                           
-                        items.append(ContextMenuItem(profile.savedToProfile ? strings().giftContextHide : strings().giftContextShow, handler: {
-                            arguments.toggleVisibility(profile)
-                        }, itemImage: profile.savedToProfile ? MenuAnimation.menu_show.value : MenuAnimation.menu_hide.value))
-                        
-                        
-                        if let _ = profile.gift.unique {
-                            items.append(ContextMenuItem(strings().giftContextTransfer, handler: {
-                                arguments.transfer(profile)
-                            }, itemImage: MenuAnimation.menu_transfer.value))
-                        }
-                        
-                        
-                        return items
-                    }
-                    return []
+                    guard let profile = option.nativeProfileGift else { return [] }
+                    return arguments.giftMenu?(profile) ?? []
                 })
             }))
             
@@ -769,7 +768,8 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
         }
     }
 
-    let arguments = Arguments(context: context, open: { option, morphSource in
+    var profileMenu: ((ProfileGiftsContext.State.StarGift) -> [ContextMenuItem])?
+    let arguments = Arguments(context: context, open: { option, morphSource, crafting in
 
         let toPeer = stateValue.with { $0.peer }
         let fromPeer = option.fromPeer
@@ -777,7 +777,8 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
         guard let toPeer else {
             return
         }
-        
+        let menuItems: (() -> [ContextMenuItem])? = toPeer.id == context.peerId || toPeer._asPeer().groupAccess.isCreator ? { profileMenu?(option) ?? [] } : nil
+
         let transaction = StarsContext.State.Transaction(flags: [], id: "", count: .init(amount: .init(value: option.gift.generic?.price ?? 0, nanos: 0), currency: .stars), date: option.date, peer: .peer(toPeer), title: "", description: nil, photo: nil, transactionDate: nil, transactionUrl: nil, paidMessageId: nil, giveawayMessageId: nil, media: [], subscriptionPeriod: nil, starGift: option.gift, floodskipNumber: nil, starrefCommissionPermille: nil, starrefPeerId: nil, starrefAmount: nil, paidMessageCount: nil, premiumGiftMonths: nil, adsProceedsFromDate: nil, adsProceedsToDate: nil)
         
         
@@ -785,9 +786,9 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
         
         switch option.gift {
         case let .unique(gift):
-            showModal(with: StarGift_Nft_Controller(context: context, gift: option.gift, source: .quickLook(toPeer, gift), transaction: transaction, purpose: .starGift(gift: option.gift, convertStars: option.convertStars, text: option.text, entities: option.entities, nameHidden: option.nameHidden, savedToProfile: option.savedToProfile, converted: false, fromProfile: true, upgraded: false, prepaidUpgradeHash: option.prepaidUpgradeHash, transferStars: option.transferStars, canExportDate: option.canExportDate, reference: option.reference, sender: option.fromPeer, saverId: nil, canTransferDate: option.canTransferDate, canResaleDate: option.canResaleDate, dropOriginalDetailsStars: option.dropOriginalDetailsStars, canUpgrade: option.canUpgrade, number: option.number, isRefunded: false, canCraftAt: option.canCraftAt, craftChancePermille: option.gift.unique?.craftChancePermille, upgradeStars: option.upgradeStars), giftsContext: takeContext(), pinnedInfo: option.reference.flatMap { .init(pinnedInfo: option.pinnedToTop, reference: $0) } ), for: context.window, morphSource: morphSource)
+            showModal(with: StarGift_Nft_Controller(context: context, gift: option.gift, source: .quickLook(toPeer, gift), transaction: transaction, purpose: .starGift(gift: option.gift, convertStars: option.convertStars, text: option.text, entities: option.entities, nameHidden: option.nameHidden, savedToProfile: option.savedToProfile, converted: false, fromProfile: true, upgraded: false, prepaidUpgradeHash: option.prepaidUpgradeHash, transferStars: option.transferStars, canExportDate: option.canExportDate, reference: option.reference, sender: option.fromPeer, saverId: nil, canTransferDate: option.canTransferDate, canResaleDate: option.canResaleDate, dropOriginalDetailsStars: option.dropOriginalDetailsStars, canUpgrade: option.canUpgrade, number: option.number, isRefunded: false, canCraftAt: option.canCraftAt, craftChancePermille: option.gift.unique?.craftChancePermille, upgradeStars: option.upgradeStars), giftsContext: takeContext(), pinnedInfo: option.reference.flatMap { .init(pinnedInfo: option.pinnedToTop, reference: $0) }, giftMenuItems: menuItems, openCrafting: crafting), for: context.window, morphSource: morphSource)
         default:
-            showModal(with: Star_TransactionScreen(context: context, fromPeerId: peerId, peer: fromPeer, transaction: transaction, purpose: purpose, reference: option.reference, profileContext: takeContext()), for: context.window, morphSource: morphSource)
+            showModal(with: Star_TransactionScreen(context: context, fromPeerId: peerId, peer: fromPeer, transaction: transaction, purpose: purpose, reference: option.reference, profileContext: takeContext(), giftMenuItems: menuItems), for: context.window, morphSource: morphSource)
         }
         
 
@@ -812,6 +813,16 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
         let canExportDate: Int32? = option.canExportDate
         let transferStars: Int64? = option.transferStars
         guard let reference = option.reference, let unique = option.gift.unique else {
+            return
+        }
+        if unique.hostPeerId != nil, unique.giftAddress != nil {
+            verifyAlert(for: window, header: strings().starGiftActionLockedTitle, information: strings().starGiftActionLockedText, ok: strings().starGiftActionLockedOpen, successHandler: { _ in
+                LinkHooks.shared.openExternalLink(strings().starGiftActionLockedURL, false)
+            })
+            return
+        }
+        if let canTransferDate = option.canTransferDate, canTransferDate > context.timestamp {
+            alert(for: window, header: strings().giftTransferUnavailableTitle, info: strings().giftTransferUnavailableText(stringForFullDate(timestamp: canTransferDate)))
             return
         }
         showGiftTransfer(context: context, window: window, gift: unique, reference: reference, giftsContext: takeContext() ?? giftsContext, canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
@@ -975,6 +986,42 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
         }).start()
     })
     
+    arguments.setGiftTheme = { gift in
+        actionsDisposable.add(setStarGiftAsChatTheme(context: context, window: window, gift: gift, completion: {}))
+    }
+    arguments.deleteGift = { [weak giftsContext] gift in
+        guard let reference = gift.reference, let owner = stateValue.with({ $0.peer }), starGiftCanDelete(gift: gift.gift, reference: reference, owner: owner, accountPeerId: context.peerId, converted: false, fromProfile: true, upgraded: false, refunded: gift.isRefunded) else {
+            return
+        }
+        verifyAlert(for: window, header: strings().giftDeleteTitle, information: strings().giftDeleteText, ok: strings().modalDelete, successHandler: { _ in
+            let signal = context.engine.payments.deleteStarGift(reference: reference) |> deliverOnMainQueue
+            _ = showModalProgress(signal: signal, for: window).startStandalone(completed: {
+                let state = stateValue.with { $0 }
+                func reload(_ giftContext: ProfileGiftsContext, state: ProfileGiftsContext.State?) {
+                    if let state, state.filter != .All || state.sorting != .date {
+                        giftContext.updateFilter(state.filter == .All ? .unlimited : .All)
+                        giftContext.updateFilter(state.filter)
+                    } else {
+                        giftContext.reload()
+                    }
+                }
+                if let giftsContext {
+                    reload(giftsContext, state: state.state)
+                }
+                for (id, collection) in collectionsContexts {
+                    reload(collection, state: state.collectionsState[id])
+                }
+            })
+        })
+    }
+    profileMenu = { [weak arguments] original in
+        guard let arguments, let reference = original.reference else { return [] }
+        let state = stateValue.with { $0 }
+        guard let current = state.gifts.first(where: { $0.reference == reference }) ?? state.state?.gifts.first(where: { $0.reference == reference }) else { return [] }
+        return giftMenuItems(current, state: state, arguments: arguments)
+    }
+    arguments.giftMenu = profileMenu
+
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
