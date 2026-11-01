@@ -9325,13 +9325,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
         switch self.mode {
         case .history, .thread:
-            let hasScheduledMessages = combineLatest(peerView.get(), chatLocationValue)
-            |> take(1)
-            |> mapToSignal { view, chatLocation -> Signal<Bool, NoError> in
+            let hasScheduledMessages = combineLatest(peerView.get() |> take(1), chatLocationValue |> map { $0.threadId } |> distinctUntilChanged)
+            |> mapToSignal { view, threadId -> Signal<Bool, NoError> in
                 if let view = view as? PeerView, let peer = peerViewMainPeer(view) as? TelegramChannel, !peer.hasPermission(.sendSomething) {
                     return .single(false)
                 } else {
-                    return context.account.viewTracker.scheduledMessagesViewForLocation(.peer(peerId: peerId, threadId: chatLocation.threadId))
+                    return context.account.viewTracker.scheduledMessagesViewForLocation(.peer(peerId: peerId, threadId: threadId))
                         |> map { view, _, _ in
                             return !view.entries.isEmpty
                     }
@@ -10072,7 +10071,25 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         case .scheduled:
             items.append(ContextMenuItem(strings().chatContextClearScheduled, handler: {
                 verifyAlert_button(for: context.window, header: strings().chatContextClearScheduledConfirmHeader, information: strings().chatContextClearScheduledConfirmInfo, ok: strings().chatContextClearScheduledConfirmOK, successHandler: { _ in
-                    _ = context.engine.messages.clearHistoryInteractively(peerId: peerId, threadId: nil, type: .scheduledMessages).start()
+                    if let threadId = chatLocation.threadId {
+                        let signal = context.account.postbox.transaction { transaction -> [MessageId] in
+                            var messageIds: [MessageId] = []
+                            for namespace in Namespaces.Message.allScheduled {
+                                transaction.withAllMessages(peerId: peerId, namespace: namespace) { message in
+                                    if message.threadId == threadId {
+                                        messageIds.append(message.id)
+                                    }
+                                    return true
+                                }
+                            }
+                            return messageIds
+                        } |> mapToSignal { messageIds in
+                            return context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer)
+                        }
+                        _ = signal.start()
+                    } else {
+                        _ = context.engine.messages.clearHistoryInteractively(peerId: peerId, threadId: nil, type: .scheduledMessages).start()
+                    }
                 })
             }, itemImage: MenuAnimation.menu_schedule_message.value))
         case .history:
