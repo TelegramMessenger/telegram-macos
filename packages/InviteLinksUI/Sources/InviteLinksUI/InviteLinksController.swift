@@ -678,7 +678,7 @@ public func InviteLinksController(context: any AccountContextProtocol, peerId: P
         })
     }, editLink: { [weak manager] link in
         showModal(with: ClosureInviteLinkController(context: context, peerId: peerId, mode: .edit(link), isChannel: isChannel, save: { [weak manager] updated in
-            let signal = manager?.editPeerExportedInvitation(link: link, title: updated.title, expireDate: updated.date == .max ? nil : updated.date + Int32(Date().timeIntervalSince1970), usageLimit: updated.count == .max ? nil : updated.count, requestNeeded: updated.requestApproval)
+            let signal = manager?.editPeerExportedInvitation(link: link, title: updated.editedTitle, expireDate: updated.editedExpireDate, usageLimit: updated.editedUsageLimit, requestNeeded: updated.editedRequestNeeded)
             if let signal = signal {
                 _ = showModalProgress(signal: signal, for: context.window).start(completed:{
                     _ = showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5).start()
