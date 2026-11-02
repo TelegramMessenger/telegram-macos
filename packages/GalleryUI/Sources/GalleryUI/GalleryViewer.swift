@@ -1677,6 +1677,7 @@ public class GalleryViewer: NSResponder {
     
     
     fileprivate func show(_ animated: Bool = true, _ ignoreStableId:AnyHashable? = nil) -> Void {
+        pager.prepareForShow()
         presentationGeneration += 1
         viewer = self
         NotificationCenter.default.removeObserver(self)
@@ -1747,6 +1748,7 @@ public class GalleryViewer: NSResponder {
             let presentationGeneration = self.presentationGeneration
             backgroundView._change(opacity: 0, animated: true)
             controls.animateOut()
+            pager.prepareForClose()
             self.pager.animateOut(to: { [weak self] stableId in
                 if let firstStableId = self?.firstStableId, let innerIndex = stableId.base as? Int {
                     guard let view = self?.delegate?.contentInteractionView(for: firstStableId, animateIn: false), view.subviews.indices.contains(innerIndex) else {
@@ -1774,6 +1776,7 @@ public class GalleryViewer: NSResponder {
                 
             })
         } else {
+            pager.prepareForClose()
             pager.selectedItem?.disappear(for: nil)
             window.orderOut(nil)
             self.removeCaptureExclusion()

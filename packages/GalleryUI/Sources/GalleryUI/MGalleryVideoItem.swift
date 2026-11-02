@@ -129,7 +129,8 @@ public class MGalleryVideoItem: MGalleryItem {
         if isPausedGlobalPlayer {
             GalleryHooks.shared.resumeGlobalAudio(context)
         }
-        if controller.style != .pictureInPicture {
+        // Entering picture-in-picture closes the viewer while this video must keep playing.
+        if controller.style != .pictureInPicture && !controller.isPictureInPicture {
             controller.pause()
         }
         controller.viewDidDisappear(false)
