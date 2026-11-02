@@ -113,7 +113,7 @@ func searchSettingsItems<Context: AccountContextProtocol>(items: [SettingsSearch
 }
 
 
-private func synonyms(_ string: String?) -> [String] {
+func synonyms(_ string: String?) -> [String] {
     if let string = string, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return string.components(separatedBy: "\n")
     } else {
@@ -436,41 +436,6 @@ private func privacySearchableItems<Context: AccountContextProtocol>(context: Co
     ]
 }
 
-private func dataSearchableItems<Context: AccountContextProtocol>(context: Context) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .data
-    
-    let presentDataSettings: (Context, (SettingsSearchableItemPresentation, ViewController?) -> Void, SettingsDataAndStorageTag?) -> Void = { context, present, itemTag in
-        present(.push, SettingsNavigationHooks.shared.makeDataAndStorageController(context, itemTag))
-    }
-    
-    return [
-        SettingsSearchableItem(id: .data(0), title: strings().accountSettingsDataAndStorage, alternate: synonyms(strings().settingsSearchSynonymsDataTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-           presentDataSettings(context, present, nil)
-        }),
-        SettingsSearchableItem(id: .data(1), title: strings().dataAndStorageStorageUsage, alternate: synonyms(strings().settingsSearchSynonymsDataStorageTitle), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage], present: { context, _, present in
-            present(.push, SettingsNavigationHooks.shared.makeStorageUsageController(context))
-        }),
-        SettingsSearchableItem(id: .data(2), title: strings().storageUsageKeepMedia, alternate: synonyms(strings().settingsSearchSynonymsDataStorageKeepMedia), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage, strings().dataAndStorageStorageUsage], present: { context, _, present in
-            present(.push, SettingsNavigationHooks.shared.makeStorageUsageController(context))
-        }),
-        SettingsSearchableItem(id: .data(3), title: strings().logoutOptionsClearCacheTitle, alternate: synonyms(strings().settingsSearchSynonymsDataStorageClearCache), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage, strings().dataAndStorageStorageUsage], present: { context, _, present in
-            present(.push, SettingsNavigationHooks.shared.makeStorageUsageController(context))
-        }),
-        SettingsSearchableItem(id: .data(4), title: strings().dataAndStorageNetworkUsage, alternate: synonyms(strings().settingsSearchSynonymsDataNetworkUsage), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage], present: { context, _, present in
-            present(.push, SettingsNavigationHooks.shared.makeNetworkUsageController(context))
-        }),
-        SettingsSearchableItem(id: .data(7), title: strings().dataAndStorageAutomaticDownloadReset, alternate: synonyms(strings().settingsSearchSynonymsDataAutoDownloadReset), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage], present: { context, _, present in
-            presentDataSettings(context, present, .automaticDownloadReset)
-        }),
-        SettingsSearchableItem(id: .data(8), title: strings().dataAndStorageAutoplayGIFs, alternate: synonyms(strings().settingsSearchSynonymsDataAutoplayGifs), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage, strings().dataAndStorageAutoplayHeader], present: { context, _, present in
-            presentDataSettings(context, present, .autoplayGifs)
-        }),
-        SettingsSearchableItem(id: .data(9), title: strings().dataAndStorageAutoplayVideos, alternate: synonyms(strings().settingsSearchSynonymsDataAutoplayVideos), icon: icon, breadcrumbs: [strings().accountSettingsDataAndStorage, strings().dataAndStorageAutoplayHeader], present: { context, _, present in
-            presentDataSettings(context, present, .autoplayVideos)
-        })
-    ]
-}
-
 private func proxySearchableItems<Context: AccountContextProtocol>(context: Context, servers: [ProxyServerSettings]) -> [SettingsSearchableItem<Context>] {
     let icon: SettingsSearchableItemIcon = .proxy
     
@@ -655,8 +620,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             let privacyItems = privacySearchableItems(context: context, privacySettings: privacySettings)
             allItems.append(contentsOf: privacyItems)
             
-            let dataItems = dataSearchableItems(context: context)
-            allItems.append(contentsOf: dataItems)
+            allItems.append(contentsOf: searchableItems(SettingsDataAndStorageTag.self, context: context))
             
             let proxyItems = proxySearchableItems(context: context, servers: proxyServers)
             allItems.append(contentsOf: proxyItems)
