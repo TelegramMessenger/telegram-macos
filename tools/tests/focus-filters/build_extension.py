@@ -182,9 +182,22 @@ def validate_intent_metadata(product):
     for parameter in ["accounts", "folders", "chats"]:
         collection = parameters[parameter]["valueType"]["array"]["wrapper"]
         assert collection["capabilities"] == 0, f"{parameter} must use Set semantics without duplicates or ordering"
-        assert collection["memberValueType"]["entity"]["wrapper"]["typeName"] == {
+        entity_type = {
             "accounts": "FocusAccountEntity", "folders": "FocusFolderEntity", "chats": "FocusChatEntity"
         }[parameter]
+        assert collection["memberValueType"]["entity"]["wrapper"]["typeName"] == entity_type
+        query_type = {
+            "accounts": "FocusAccountQuery", "folders": "FocusFolderQuery", "chats": "FocusChatQuery"
+        }[parameter]
+        entity = actions["entities"][entity_type]
+        query = actions["queries"][query_type]
+        assert entity["defaultQueryIdentifier"] == query["fullyQualifiedIdentifier"]
+        assert query["entityType"] == entity_type
+        assert query["defaultQueryForEntity"], f"{entity_type} must register its catalogue query as the default"
+        required_query_capabilities = 70
+        assert query["capabilities"] & required_query_capabilities == required_query_capabilities, (
+            f"{query_type} must support identifier lookup, suggestions and string search"
+        )
 
 
 def validate_localizations(product):

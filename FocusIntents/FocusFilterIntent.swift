@@ -61,14 +61,6 @@ struct TelegramFocusFilter: SetFocusFilterIntent {
     @Parameter(title: "Chats", description: "Choose individual private chats, groups, or channels in addition to folders.")
     var chats: Set<FocusChatEntity>?
 
-    init() {
-        if #available(macOS 14.0, *) {
-            _accounts = IntentParameter(title: "Accounts", description: "Apply the rule only to these accounts. Leave empty to keep all accounts unchanged.", query: FocusAccountSelectionQuery())
-            _folders = IntentParameter(title: "Folders", description: "Include the current chats in these folders.", query: FocusFolderSelectionQuery())
-            _chats = IntentParameter(title: "Chats", description: "Choose individual private chats, groups, or channels in addition to folders.", query: FocusChatSelectionQuery())
-        }
-    }
-
     var configuration: FocusFilterConfiguration {
         FocusFilterConfiguration(
             accountIds: Set((accounts ?? []).compactMap { Int64($0.id) }),

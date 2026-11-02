@@ -40,18 +40,17 @@ Accounts, folders and chats are Set-valued App Intents parameters. The system
 receives unordered collections without duplicate support; entity equality and
 hashing use only the stable identifier, so renaming an item does not make another
 selection. Query results also remove repeated identifiers while retaining distinct
-items with the same name. On macOS 14 and newer, parameter-specific queries use
-`IntentParameterDependency` to exclude the current selection from suggestions and
-search results. Identifier resolution remains independent of the selection, so
-saved values still resolve and a removed item can be selected again. Selection
-state comes from the form being edited, not from the active Focus or shared
-storage. macOS 13 retains the Set-based behavior without dependent queries.
-Existing parameter names and entity identifiers are unchanged.
+items with the same name. Selected items may remain visible in suggestions and
+search; selecting them again does not add a duplicate. Removing and re-adding an
+item remains supported, and each Focus form keeps its own selection. Existing
+parameter names and entity identifiers are unchanged.
 
-Register these entity queries with `IntentParameter(query:)`, which routes search
-text to `entities(matching:)`. The `optionsProvider:` initializer uses the
-`DynamicOptionsProvider.results()` path and returns suggestions without applying
-the search text, even when the provider also conforms to `EntityStringQuery`.
+Parameters use each entity's default `EntityStringQuery` for suggestions, search
+and identifier resolution. Queries must not depend on the parameter they resolve:
+`IntentParameterDependency` on the same collection makes App Intents recursively
+resolve that collection after its first selection, blocking the other pickers.
+Using `optionsProvider:` instead would lose search text. Empty or whitespace-only
+searches return the full catalogue; other searches match the trimmed text.
 
 Account and chat titles use `Name (TelegramID)`, with only the number inside the
 parentheses. This applies to suggestions, search results, selected items, account
@@ -76,14 +75,16 @@ record keys and folder identifiers remain internal. If the account's Telegram ID
 is unavailable, the subtitle shows only the account name. The filter summary sorts
 accounts by stable local identity.
 
-After installing a signed build, check in System Settings that each picker
-excludes already-selected items from suggestions and search, removing and
-re-adding still works, same-name
-items remain independently selectable, and existing filters (including those
+After installing a signed build, select an account, then open both the folder and
+chat pickers and confirm their suggestions still load. Repeat after selecting a
+folder and a chat, and after reopening a saved filter. Check that selecting the
+same item again does not add a duplicate, removing and re-adding still works,
+same-name items remain independently selectable, and existing filters (including those
 with repeated items) reopen with the intended selection. Also check a second
 Focus mode: selecting an item in one mode must not remove it from another mode's
 choices. Search for a known chat by name and Telegram ID, including one late in
-a large catalogue; unrelated chats must disappear from the search results.
+a large catalogue; unrelated chats must disappear from the search results. Clear
+the search and confirm that the full suggestions return.
 After upgrading, also open Telegram and reopen an existing Focus filter: account
 rows and the filter summary should show the positive Telegram user ID while
 retaining the original selection and filtering behavior.

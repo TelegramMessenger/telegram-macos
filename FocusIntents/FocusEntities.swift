@@ -52,9 +52,14 @@ struct FocusAccountQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [FocusAccountEntity] {
-        try await suggestedEntities().filter {
-            $0.title.localizedStandardContains(string)
-                || $0.telegramUserId.map { String($0).localizedStandardContains(string) } == true
+        let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entities = try await suggestedEntities()
+        guard !search.isEmpty else {
+            return entities
+        }
+        return entities.filter {
+            $0.title.localizedStandardContains(search)
+                || $0.telegramUserId.map { String($0).localizedStandardContains(search) } == true
         }
     }
 }
@@ -108,10 +113,15 @@ struct FocusFolderQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [FocusFolderEntity] {
-        try await suggestedEntities().filter {
-            $0.title.localizedStandardContains(string)
-                || $0.telegramAccountId.map { String($0).localizedStandardContains(string) } == true
-                || $0.accountTitle.localizedStandardContains(string)
+        let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entities = try await suggestedEntities()
+        guard !search.isEmpty else {
+            return entities
+        }
+        return entities.filter {
+            $0.title.localizedStandardContains(search)
+                || $0.telegramAccountId.map { String($0).localizedStandardContains(search) } == true
+                || $0.accountTitle.localizedStandardContains(search)
         }
     }
 }
@@ -168,131 +178,16 @@ struct FocusChatQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [FocusChatEntity] {
-        try await suggestedEntities().filter {
-            $0.title.localizedStandardContains(string)
-                || $0.telegramChatId.map { String($0).localizedStandardContains(string) } == true
-                || $0.accountTitle.localizedStandardContains(string)
+        let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entities = try await suggestedEntities()
+        guard !search.isEmpty else {
+            return entities
         }
-    }
-}
-
-@available(macOS 14.0, *)
-struct FocusAccountSelectionQuery: EntityStringQuery {
-    @IntentParameterDependency<TelegramFocusFilter>(\.$accounts)
-    private var focusFilter
-
-    private let catalogQuery: FocusAccountQuery
-
-    init() {
-        self.init(catalogQuery: FocusAccountQuery())
-    }
-
-    init(catalogQuery: FocusAccountQuery) {
-        self.catalogQuery = catalogQuery
-    }
-
-    func entities(for identifiers: [String]) async throws -> [FocusAccountEntity] {
-        try await catalogQuery.entities(for: identifiers)
-    }
-
-    func suggestedEntities() async throws -> [FocusAccountEntity] {
-        try await suggestedEntities(excluding: selectedIdentifiers)
-    }
-
-    func suggestedEntities(excluding identifiers: Set<String>) async throws -> [FocusAccountEntity] {
-        try await catalogQuery.suggestedEntities().filter { !identifiers.contains($0.id) }
-    }
-
-    func entities(matching string: String) async throws -> [FocusAccountEntity] {
-        try await entities(matching: string, excluding: selectedIdentifiers)
-    }
-
-    func entities(matching string: String, excluding identifiers: Set<String>) async throws -> [FocusAccountEntity] {
-        try await catalogQuery.entities(matching: string).filter { !identifiers.contains($0.id) }
-    }
-
-    private var selectedIdentifiers: Set<String> {
-        Set(focusFilter?.accounts.map(\.id) ?? [])
-    }
-}
-
-@available(macOS 14.0, *)
-struct FocusFolderSelectionQuery: EntityStringQuery {
-    @IntentParameterDependency<TelegramFocusFilter>(\.$folders)
-    private var focusFilter
-
-    private let catalogQuery: FocusFolderQuery
-
-    init() {
-        self.init(catalogQuery: FocusFolderQuery())
-    }
-
-    init(catalogQuery: FocusFolderQuery) {
-        self.catalogQuery = catalogQuery
-    }
-
-    func entities(for identifiers: [String]) async throws -> [FocusFolderEntity] {
-        try await catalogQuery.entities(for: identifiers)
-    }
-
-    func suggestedEntities() async throws -> [FocusFolderEntity] {
-        try await suggestedEntities(excluding: selectedIdentifiers)
-    }
-
-    func suggestedEntities(excluding identifiers: Set<String>) async throws -> [FocusFolderEntity] {
-        try await catalogQuery.suggestedEntities().filter { !identifiers.contains($0.id) }
-    }
-
-    func entities(matching string: String) async throws -> [FocusFolderEntity] {
-        try await entities(matching: string, excluding: selectedIdentifiers)
-    }
-
-    func entities(matching string: String, excluding identifiers: Set<String>) async throws -> [FocusFolderEntity] {
-        try await catalogQuery.entities(matching: string).filter { !identifiers.contains($0.id) }
-    }
-
-    private var selectedIdentifiers: Set<String> {
-        Set(focusFilter?.folders.map(\.id) ?? [])
-    }
-}
-
-@available(macOS 14.0, *)
-struct FocusChatSelectionQuery: EntityStringQuery {
-    @IntentParameterDependency<TelegramFocusFilter>(\.$chats)
-    private var focusFilter
-
-    private let catalogQuery: FocusChatQuery
-
-    init() {
-        self.init(catalogQuery: FocusChatQuery())
-    }
-
-    init(catalogQuery: FocusChatQuery) {
-        self.catalogQuery = catalogQuery
-    }
-
-    func entities(for identifiers: [String]) async throws -> [FocusChatEntity] {
-        try await catalogQuery.entities(for: identifiers)
-    }
-
-    func suggestedEntities() async throws -> [FocusChatEntity] {
-        try await suggestedEntities(excluding: selectedIdentifiers)
-    }
-
-    func suggestedEntities(excluding identifiers: Set<String>) async throws -> [FocusChatEntity] {
-        try await catalogQuery.suggestedEntities().filter { !identifiers.contains($0.id) }
-    }
-
-    func entities(matching string: String) async throws -> [FocusChatEntity] {
-        try await entities(matching: string, excluding: selectedIdentifiers)
-    }
-
-    func entities(matching string: String, excluding identifiers: Set<String>) async throws -> [FocusChatEntity] {
-        try await catalogQuery.entities(matching: string).filter { !identifiers.contains($0.id) }
-    }
-
-    private var selectedIdentifiers: Set<String> {
-        Set(focusFilter?.chats.map(\.id) ?? [])
+        return entities.filter {
+            $0.title.localizedStandardContains(search)
+                || $0.telegramChatId.map { String($0).localizedStandardContains(search) } == true
+                || $0.accountTitle.localizedStandardContains(search)
+        }
     }
 }
 
