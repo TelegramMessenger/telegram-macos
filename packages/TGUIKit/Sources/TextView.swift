@@ -3599,7 +3599,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                 self.updateInks(layout, animated: true)
                 return
             }
-            if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }) {
+            if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }), layout.mayItems {
                 if let string = layout.blockQuoteText(startingWith: blockHeader.1) {
                     _ = layout.interactions.copyToClipboard?(string)
                     showModalText(for: window, text: localizedString("Share.Link.Copied"))
@@ -3969,7 +3969,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
     @objc public func copy(_ sender:Any) -> Void {
         if let layout = textLayout {
             if let copy = layout.interactions.copy {
-                if !copy() && layout.selectedRange.range.location != NSNotFound {
+                if !copy() && layout.mayItems && layout.selectedRange.range.location != NSNotFound {
                     if !layout.interactions.copyAttributedString(layout.attributedString.attributedSubstring(from: layout.selectedRange.range)) {
                         let pb = NSPasteboard.general
                         pb.clearContents()
@@ -3977,7 +3977,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                         pb.setString(layout.attributedString.string.nsstring.substring(with: layout.selectedRange.range), forType: .string)
                     }
                 }
-            } else if layout.selectedRange.range.location != NSNotFound {
+            } else if layout.mayItems, layout.selectedRange.range.location != NSNotFound {
                 if !layout.interactions.copyAttributedString(layout.attributedString.attributedSubstring(from: layout.selectedRange.range)) {
                     let pb = NSPasteboard.general
                     pb.clearContents()

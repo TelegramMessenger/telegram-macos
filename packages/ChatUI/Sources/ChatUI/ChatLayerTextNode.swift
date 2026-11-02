@@ -316,7 +316,7 @@ final class ChatLayerTextNode: ChatLayerNode {
     }
 
     func updateCodeHeaders() throws {
-        guard let textLayout else {
+        guard let textLayout, textLayout.mayItems else {
             try setChildren([])
             return
         }
@@ -337,7 +337,7 @@ final class ChatLayerTextNode: ChatLayerNode {
     }
 
     private func copyBlockQuote(at index: Int) {
-        guard let layout = textLayout, layout.blockQuotes.indices.contains(index), let text = layout.blockQuoteText(startingWith: layout.blockQuotes[index].range) else { return }
+        guard let layout = textLayout, layout.mayItems, layout.blockQuotes.indices.contains(index), let text = layout.blockQuoteText(startingWith: layout.blockQuotes[index].range) else { return }
         if let copy = layout.interactions.copyToClipboard { _ = copy(text) }
         else {
             NSPasteboard.general.clearContents()
