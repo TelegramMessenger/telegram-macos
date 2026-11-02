@@ -309,18 +309,18 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
 
       
         
-        window.set(handler: { [weak self] _ in
+        window.setGalleryKeyHandler({ [weak self] _ in
             self?.runAdMessages([message], 10, 15)
 
             return .invoked
         }, with: self, for: .T, priority: .supreme, modifierFlags: [.command])
 
-        window.set(handler: { [weak self] _ in
+        window.setGalleryKeyHandler({ [weak self] _ in
             self?.stepFrameBackward()
             return .invoked
         }, with: self, for: .Comma, priority: .modal)
 
-        window.set(handler: { [weak self] _ in
+        window.setGalleryKeyHandler({ [weak self] _ in
             self?.stepFrameForward()
             return .invoked
         }, with: self, for: .Period, priority: .modal)
