@@ -149,7 +149,13 @@ private func updateFrontMrz(file: String, relative: SecureIdRequestedFormFieldVa
     }
  }
 
+private final class PassportListStyle {
+    var isActive: Bool = false
+    var spacerHeight: CGFloat = 20
+}
+
 private final class PassportArguments {
+    let listStyle = PassportListStyle()
     let context: (any AccountContextProtocol)
     let checkPassword:((String, ()->Void))->Void
     let requestField:(FieldRequest, SecureIdValue?, SecureIdValue?, [SecureIdRequestedFormFieldValue], EditSettingsValues?)->Void
@@ -300,7 +306,23 @@ private enum PassportEntry : TableItemListNodeEntry {
                 arguments.requestField(fieldType, value, relativeValue, relative, nil)
             })
         case let .savedField(_, _, fieldType, relative, relativeValues, title, description):
-            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title, description: description, type: .next, action: {
+            let rowViewType: GeneralViewType
+            let rowIcon: CGImage?
+            switch fieldType {
+            case .personalDetails:
+                rowViewType = .firstItem
+                rowIcon = passportRowIcon(symbol: "person.crop.rectangle", color: NSColor(rgb: 0xf5a238))
+            case .address:
+                rowViewType = .innerItem
+                rowIcon = passportRowIcon(symbol: "house.fill", color: NSColor(rgb: 0x63c866))
+            case .phone:
+                rowViewType = .innerItem
+                rowIcon = passportRowIcon(symbol: "phone.fill", color: NSColor(rgb: 0x428cfa))
+            default:
+                rowViewType = .lastItem
+                rowIcon = passportRowIcon(symbol: "envelope.fill", color: NSColor(rgb: 0x9a6ef0))
+            }
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title, icon: rowIcon, description: description, type: .next, viewType: rowViewType, action: {
                 arguments.requestField(FieldRequest(fieldType.requestFieldType), relativeValues.first(where: {$0.key == fieldType}), nil, relative.map({$0.requestFieldType}), EditSettingsValues(values: relativeValues))
             })
         case .requestPassword(_, _, let hasRecoveryEmail, let isSettings, let error):
@@ -331,7 +353,7 @@ private enum PassportEntry : TableItemListNodeEntry {
         case .loading:
             return SearchEmptyRowItem(initialSize, stableId: stableId, isLoading: true)
         case .sectionId:
-            return GeneralRowItem(initialSize, height: 20, stableId: stableId)
+            return GeneralRowItem(initialSize, height: arguments.listStyle.isActive ? arguments.listStyle.spacerHeight : 20, stableId: stableId, viewType: arguments.listStyle.isActive ? .separator : .legacy)
         }
     }
 }
@@ -1768,7 +1790,7 @@ private func emailEntries( _ state: PassportState, updateState: @escaping ((Pass
     var index: Int32 = 0
     
     
-    entries.append(.sectionId(sectionId, type: .legacy))
+    entries.append(.sectionId(sectionId, type: .customModern(20)))
     sectionId += 1
     
     var placeholder = state.searchValue(.email)?.emailValue?.email ?? ""
@@ -1779,10 +1801,10 @@ private func emailEntries( _ state: PassportState, updateState: @escaping ((Pass
         if placeholder == email {
             placeholder = ""
         }
-        entries.append(InputDataEntry.input(sectionId: sectionId, index: index, value: .string(""), error: nil, identifier: _id_email_code, mode: .plain, data: InputDataRowData(), placeholder: InputDataInputPlaceholder(strings().secureIdEmailActivateCodePlaceholder), inputPlaceholder: strings().secureIdEmailActivateCodeInputPlaceholder, filter: {String($0.unicodeScalars.filter { CharacterSet.decimalDigits.contains($0)})}, limit: Int32(email.length)))
+        entries.append(InputDataEntry.input(sectionId: sectionId, index: index, value: .string(""), error: nil, identifier: _id_email_code, mode: .plain, data: InputDataRowData(viewType: .singleItem), placeholder: InputDataInputPlaceholder(strings().secureIdEmailActivateCodePlaceholder), inputPlaceholder: strings().secureIdEmailActivateCodeInputPlaceholder, filter: {String($0.unicodeScalars.filter { CharacterSet.decimalDigits.contains($0)})}, limit: Int32(email.length)))
         index += 1
         
-        entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdEmailActivateDescription(email)), data: InputDataGeneralTextData()))
+        entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdEmailActivateDescription(email)), data: InputDataGeneralTextData(viewType: .textBottomItem)))
         index += 1
         
         return entries
@@ -1793,16 +1815,16 @@ private func emailEntries( _ state: PassportState, updateState: @escaping ((Pass
             placeholder = ""
         }
         
-        entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .string(email), error: nil, identifier: _id_email_def, data: InputDataGeneralData(name: strings().secureIdEmailUseSame(email), color: theme.colors.accent, icon: nil, type: .next, action: nil)))
-        entries.append(.sectionId(sectionId, type: .legacy))
+        entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .string(email), error: nil, identifier: _id_email_def, data: InputDataGeneralData(name: strings().secureIdEmailUseSame(email), color: theme.colors.accent, icon: nil, type: .next, viewType: .singleItem, action: nil)))
+        entries.append(.sectionId(sectionId, type: .customModern(20)))
         sectionId += 1
     }
     
     
-    entries.append(InputDataEntry.input(sectionId: sectionId, index: index, value: .string(placeholder), error: nil, identifier: _id_email_new, mode: .plain, data: InputDataRowData(), placeholder: InputDataInputPlaceholder(strings().secureIdEmailEmailPlaceholder), inputPlaceholder: strings().secureIdEmailEmailInputPlaceholder, filter: {$0}, limit: 254))
+    entries.append(InputDataEntry.input(sectionId: sectionId, index: index, value: .string(placeholder), error: nil, identifier: _id_email_new, mode: .plain, data: InputDataRowData(viewType: .singleItem), placeholder: InputDataInputPlaceholder(strings().secureIdEmailEmailPlaceholder), inputPlaceholder: strings().secureIdEmailEmailInputPlaceholder, filter: {$0}, limit: 254))
     index += 1
     
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdEmailUseSameDesc), data: InputDataGeneralTextData()))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdEmailUseSameDesc), data: InputDataGeneralTextData(viewType: .textBottomItem)))
     index += 1
     
     
@@ -1816,29 +1838,29 @@ private func phoneNumberEntries( _ state: PassportState, updateState: @escaping 
     var index: Int32 = 0
     
     
-    entries.append(.sectionId(sectionId, type: .legacy))
+    entries.append(.sectionId(sectionId, type: .customModern(20)))
     sectionId += 1
     //
     if let phone = (state.peer as? TelegramUser)?.phone, !phone.isEmpty {
-        entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .string(phone), error: nil, identifier: _id_phone_def, data: InputDataGeneralData(name: strings().secureIdPhoneNumberUseSame(formatPhoneNumber(phone)), color: theme.colors.accent, icon: nil, type: .next, action: nil)))
+        entries.append(InputDataEntry.general(sectionId: sectionId, index: index, value: .string(phone), error: nil, identifier: _id_phone_def, data: InputDataGeneralData(name: strings().secureIdPhoneNumberUseSame(formatPhoneNumber(phone)), color: theme.colors.accent, icon: nil, type: .next, viewType: .singleItem, action: nil)))
         
-        entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberUseSameDesc), data: InputDataGeneralTextData()))
+        entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberUseSameDesc), data: InputDataGeneralTextData(viewType: .textBottomItem)))
         index += 1
         
-        entries.append(.sectionId(sectionId, type: .legacy))
+        entries.append(.sectionId(sectionId, type: .customModern(20)))
         sectionId += 1
     }
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberHeader), data: InputDataGeneralTextData()))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberHeader), data: InputDataGeneralTextData(viewType: .textTopItem)))
     index += 1
     
     entries.append(InputDataEntry.custom(sectionId: sectionId, index: index, value: .string(""), identifier: _id_phone_new, equatable: nil, comparable: nil, item: { initialSize, stableId -> TableRowItem in
-        return PassportNewPhoneNumberRowItem(initialSize, stableId: stableId, action: {
+        return PassportNewPhoneNumberRowItem(initialSize, stableId: stableId, countries: state.context.engine.localization.getCountriesList(accountManager: state.context.sharedContext.accountManager, langCode: appAppearance.language.baseLanguageCode), action: {
             
         })
     }))
     index += 1
     
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberNote), data: InputDataGeneralTextData()))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberNote), data: InputDataGeneralTextData(viewType: .textBottomItem)))
     index += 1
     
     
@@ -1851,17 +1873,17 @@ private func confirmPhoneNumberEntries( _ state: PassportState, phoneNumber: Str
     var index: Int32 = 0
     
     
-    entries.append(.sectionId(sectionId, type: .legacy))
+    entries.append(.sectionId(sectionId, type: .customModern(20)))
     sectionId += 1
 
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberHeader), data: InputDataGeneralTextData()))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberHeader), data: InputDataGeneralTextData(viewType: .textTopItem)))
     index += 1
     
-    entries.append(InputDataEntry.input(sectionId: sectionId, index: index, value: .string(nil), error: nil, identifier: _id_phone_code, mode: .plain, data: InputDataRowData(), placeholder: InputDataInputPlaceholder(strings().secureIdPhoneNumberConfirmCodePlaceholder), inputPlaceholder: strings().secureIdPhoneNumberConfirmCodeInputPlaceholder, filter: {String($0.unicodeScalars.filter { CharacterSet.decimalDigits.contains($0)})}, limit: 6))
+    entries.append(InputDataEntry.input(sectionId: sectionId, index: index, value: .string(nil), error: nil, identifier: _id_phone_code, mode: .plain, data: InputDataRowData(viewType: .singleItem), placeholder: InputDataInputPlaceholder(strings().secureIdPhoneNumberConfirmCodePlaceholder), inputPlaceholder: strings().secureIdPhoneNumberConfirmCodeInputPlaceholder, filter: {String($0.unicodeScalars.filter { CharacterSet.decimalDigits.contains($0)})}, limit: 6))
     
     index += 1
     
-    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberConfirmCodeDesc(formatPhoneNumber(phoneNumber))), data: InputDataGeneralTextData()))
+    entries.append(InputDataEntry.desc(sectionId: sectionId, index: index, text: .plain(strings().secureIdPhoneNumberConfirmCodeDesc(formatPhoneNumber(phoneNumber))), data: InputDataGeneralTextData(viewType: .textBottomItem)))
     index += 1
     
     
@@ -2452,16 +2474,29 @@ public final class PassportControllerView : View {
     let tableView: TableView = TableView()
     let authorize: PassportAcceptRowView = PassportAcceptRowView(frame: NSZeroRect)
     private var item: PassportAcceptRowItem?
+    private var listStyle: Bool = false
+    
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(tableView)
         addSubview(authorize)
+        tableView.getBackgroundColor = { [weak self] in
+            return (self?.listStyle ?? false) ? theme.colors.listBackground : theme.colors.background
+        }
         updateLocalizationAndTheme(theme: theme)
         layout()
     }
 
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
-        backgroundColor = theme.colors.background
+        backgroundColor = listStyle ? theme.colors.listBackground : theme.colors.background
+    }
+    
+    func updateListStyle(_ value: Bool) {
+        if listStyle != value {
+            listStyle = value
+            updateLocalizationAndTheme(theme: theme)
+            tableView.updateLocalizationAndTheme(theme: theme)
+        }
     }
 
     public override func layout() {
@@ -2481,6 +2516,31 @@ public final class PassportControllerView : View {
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+}
+
+private func passportRowIcon(symbol: String, color: NSColor) -> CGImage? {
+    guard let symbolImage = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)),
+          let mask = symbolImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        return nil
+    }
+    return generateImage(NSMakeSize(30, 30), contextGenerator: { size, ctx in
+        ctx.clear(CGRect(origin: .zero, size: size))
+        ctx.setFillColor(color.cgColor)
+        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 7, cornerHeight: 7, transform: nil))
+        ctx.fillPath()
+        let glyph = symbolImage.size
+        let rect = CGRect(x: (size.width - glyph.width) / 2, y: (size.height - glyph.height) / 2, width: glyph.width, height: glyph.height)
+        ctx.translateBy(x: rect.midX, y: rect.midY)
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.translateBy(x: -rect.midX, y: -rect.midY)
+        ctx.clip(to: rect, mask: mask)
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.fill(rect)
+    }, scale: System.backingScale)
+}
+
+private func passportInfoBarImage() -> CGImage {
+    return TelegramThemeHooks.shared.image(.iconSettingsBio).precomposed(theme.colors.text)
 }
 
 public class PassportController: GenericViewController<PassportControllerView> {
@@ -2544,7 +2604,7 @@ public class PassportController: GenericViewController<PassportControllerView> {
     }
     
     public override func requestUpdateRightBar() {
-        rightView?.set(image: theme.icons.passportInfo, for: .Normal)
+        rightView?.set(image: passportInfoBarImage(), for: .Normal)
     }
     public override func requestUpdateBackBar() {
         super.requestUpdateBackBar()
@@ -2561,6 +2621,10 @@ public class PassportController: GenericViewController<PassportControllerView> {
     
     public override func viewDidLoad() {
         super.viewDidLoad()
+
+        if bar.height > 0 {
+            genericView.tableView.contentInsets = NavigationBarView.contentTopInset
+        }
 
         languageDisposable.set(appearanceSignal.start(next: { [weak self] appearance in
             self?.updateLocalizationAndTheme(theme: appearance.presentation)
@@ -3587,7 +3651,7 @@ public class PassportController: GenericViewController<PassportControllerView> {
                         updateState { current in
                             return current.withUpdatedIntermediateEmailState(nil)
                         }
-                    }, identifier: "passport", getBackgroundColor: { theme.colors.background }))
+                    }, identifier: "passport", getBackgroundColor: { theme.colors.listBackground }))
                 }
 
             case .phone:
@@ -3653,7 +3717,7 @@ public class PassportController: GenericViewController<PassportControllerView> {
                                                             }
                                                         }
                                                         return .fail(.none)
-                                                    }, identifier: "passport", getBackgroundColor: { theme.colors.background }))
+                                                    }, identifier: "passport", getBackgroundColor: { theme.colors.listBackground }))
                                                 }, error: { error in
                                                     alert(for: context.window, info: "\(error)")
                                                 }))
@@ -3678,7 +3742,7 @@ public class PassportController: GenericViewController<PassportControllerView> {
                         return phoneNumberEntries(state, updateState: updateState)
                         } |> map { InputDataSignalValue(entries: $0) }, title: title, validateData: validate, afterDisappear: {
 
-                    }, identifier: "passport", getBackgroundColor: { theme.colors.background }))
+                    }, identifier: "passport", getBackgroundColor: { theme.colors.listBackground }))
                 }
             default:
                 fatalError()
@@ -3948,12 +4012,27 @@ public class PassportController: GenericViewController<PassportControllerView> {
         
         let botPeerSignal = form != nil ? context.account.postbox.loadedPeerWithId(form!.peerId) |> map {Optional($0)} |> deliverOnPrepareQueue : Signal<Peer?, NoError>.single(nil)
         
-        let signal: Signal<(TableUpdateTransition, Bool, Bool), NoError> = combineLatest(appearanceSignal |> deliverOnPrepareQueue, formValue.get() |> deliverOnPrepareQueue, passwordVerificationData.get() |> deliverOnPrepareQueue, state.get() |> deliverOnPrepareQueue, botPeerSignal) |> map { appearance, form, passwordData, state, peer in
+        let signal: Signal<(TableUpdateTransition, Bool, Bool, Bool), NoError> = combineLatest(appearanceSignal |> deliverOnPrepareQueue, formValue.get() |> deliverOnPrepareQueue, passwordVerificationData.get() |> deliverOnPrepareQueue, state.get() |> deliverOnPrepareQueue, botPeerSignal) |> map { appearance, form, passwordData, state, peer in
 
             let (entries, enabled) = passportEntries(encryptedForm: form.0, form: form.1, peer: peer, passwordData: passwordData, state: state)
 
             let converted = entries.map {AppearanceWrapperEntry(entry: $0, appearance: appearance)}
-            return (prepareTransition(left: previous.swap(converted), right: converted, initialSize: initialSize.modify{$0}, arguments: arguments), enabled, form.1 != nil)
+            let listStyle = entries.contains(where: { entry in
+                switch entry {
+                case .savedField, .requestPassword, .settingsHeader:
+                    return true
+                default:
+                    return false
+                }
+            })
+            arguments.listStyle.isActive = listStyle
+            arguments.listStyle.spacerHeight = entries.contains(where: { entry in
+                if case .requestPassword = entry {
+                    return true
+                }
+                return false
+            }) ? 6 : 20
+            return (prepareTransition(left: previous.swap(converted), right: converted, initialSize: initialSize.modify{$0}, arguments: arguments), enabled, form.1 != nil, listStyle)
         } |> deliverOnMainQueue |> afterDisposed {
             actionsDisposable.dispose()
         }
@@ -3982,8 +4061,9 @@ public class PassportController: GenericViewController<PassportControllerView> {
             self?.updateRightView(configuration)
         }))
         
-        disposable.set(signal.start(next: { [weak self] transition, enabled, isVisible in
+        disposable.set(signal.start(next: { [weak self] transition, enabled, isVisible, listStyle in
                         guard let `self` = self else {return}
+            self.genericView.updateListStyle(listStyle)
             self.genericView.tableView.merge(with: transition)
             self.genericView.updateEnabled(enabled, isVisible: isVisible, action: arguments.authorize)
             
@@ -4026,7 +4106,7 @@ public class PassportController: GenericViewController<PassportControllerView> {
                 })
             }, for: .Click)
             
-            rightView?.set(image: theme.icons.passportInfo, for: .Normal)
+            rightView?.set(image: passportInfoBarImage(), for: .Normal)
             rightView?.set(text: "", for: .Normal)
         }
     }

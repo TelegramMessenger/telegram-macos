@@ -40,6 +40,10 @@ private final class PassportInsertPasswordField : NSSecureTextField {
 }
 
 class PassportInsertPasswordItem: GeneralRowItem {
+    static let margin: CGFloat = 30
+    static let textInset: CGFloat = 20
+    static let topPadding: CGFloat = 12
+    static let fieldHeight: CGFloat = 40
     private let _stableId: AnyHashable
     fileprivate let descLayout: TextViewLayout
     fileprivate let checkPasswordAction:((String, ()->Void))->Void
@@ -57,7 +61,7 @@ class PassportInsertPasswordItem: GeneralRowItem {
     
     override func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool {
         let success = super.makeSize(width, oldWidth: oldWidth)
-        descLayout.measure(width: width - inset.left - inset.right)
+        descLayout.measure(width: width - PassportInsertPasswordItem.margin * 2 - PassportInsertPasswordItem.textInset * 2)
         
         return success
     }
@@ -75,7 +79,11 @@ class PassportInsertPasswordItem: GeneralRowItem {
     }
     
     override var height: CGFloat {
-        return 32 + 36 + 20 + 30 + 25
+        return PassportInsertPasswordItem.topPadding + PassportInsertPasswordItem.fieldHeight + 12 + descLayout.layoutSize.height + 10 + 18 + 24 + PassportInsertPasswordItem.fieldHeight + 24
+    }
+
+    override var backdorColor: NSColor {
+        return theme.colors.listBackground
     }
 
     override var accessibilityLabel: String? {
@@ -86,10 +94,11 @@ class PassportInsertPasswordItem: GeneralRowItem {
 
 final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate {
     let input:NSSecureTextField
+    private let backdrop: View = View()
     private let inputContainer: View = View()
     private let descTextView: TextView = TextView()
     private let nextButton: TextButton = TextButton()
-    private let forgotPassword: ImageButton = ImageButton()
+    private let forgotPassword: TextButton = TextButton()
     required init(frame frameRect: NSRect) {
         input = PassportInsertPasswordField(frame: NSZeroRect)
         super.init(frame: frameRect)
@@ -99,8 +108,8 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
         descTextView.userInteractionEnabled = false
         descTextView.isSelectable = false
         
+        addSubview(backdrop)
         addSubview(inputContainer)
-        inputContainer.setFrameSize(250, 36)
 
         input.wantsLayer = true
         input.isBordered = false
@@ -112,7 +121,7 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
         input.isSelectable = true
         input.font = .normal(.text)
         inputContainer.backgroundColor = theme.colors.grayBackground
-        inputContainer.layer?.cornerRadius = .cornerRadius
+        inputContainer.layer?.cornerRadius = PassportInsertPasswordItem.fieldHeight / 2
         
         inputContainer.addSubview(input)
         
@@ -122,8 +131,9 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
         
         addSubview(descTextView)
         addSubview(nextButton)
-        inputContainer.addSubview(forgotPassword)
-        forgotPassword.setAccessibilityLabel(strings().loginPasswordForgot)
+        addSubview(forgotPassword)
+        forgotPassword.autohighlight = false
+        forgotPassword.scaleOnClick = true
         
         nextButton.set(handler: { [weak self] _ in
             self?.checkPasscode()
@@ -156,21 +166,33 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
   
     }
     
+    private func clearEditorBackground() {
+        if let editor = input.textView {
+            editor.drawsBackground = false
+            editor.backgroundColor = .clear
+            editor.insertionPointColor = theme.colors.text
+        }
+    }
+    
     func controlTextDidBeginEditing(_ obj: Notification) {
-        input.textView?.insertionPointColor = theme.colors.text
+        clearEditorBackground()
     }
     
     func controlTextDidEndEditing(_ obj: Notification) {
-        
+        clearEditorBackground()
     }
     
     override func layout() {
-        input.setFrameSize(NSMakeSize(inputContainer.frame.width - 20 - forgotPassword.frame.width - 10, input.frame.height))
-        input.centerY(x: 10)
-        descTextView.centerX()
-        inputContainer.centerX(y: 32 + 20)
-        nextButton.centerX(y: inputContainer.frame.maxY + 15)
-        forgotPassword.centerY(x: inputContainer.frame.width - forgotPassword.frame.width - 10, addition: backingScaleFactor == 2 ? -0.5 : 0)
+        super.layout()
+        backdrop.frame = bounds
+        let margin = PassportInsertPasswordItem.margin
+        let fieldHeight = PassportInsertPasswordItem.fieldHeight
+        inputContainer.frame = NSMakeRect(margin, PassportInsertPasswordItem.topPadding, frame.width - margin * 2, fieldHeight)
+        input.setFrameSize(NSMakeSize(inputContainer.frame.width - PassportInsertPasswordItem.textInset * 2, input.frame.height))
+        input.centerY(x: PassportInsertPasswordItem.textInset)
+        descTextView.centerX(y: inputContainer.frame.maxY + 12)
+        forgotPassword.centerX(y: descTextView.frame.maxY + 10)
+        nextButton.frame = NSMakeRect(margin, forgotPassword.frame.maxY + 24, frame.width - margin * 2, fieldHeight)
     }
     
     @objc func checkPasscode() {
@@ -181,6 +203,7 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
             (self?.window as? Window)?.applyResponderIfNeeded()
             self?.input.shake()
             self?.input.textView?.selectAllText()
+            self?.clearEditorBackground()
         }))
     }
     
@@ -188,9 +211,10 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
     
     override func updateColors() {
         super.updateColors()
+        backdrop.backgroundColor = theme.colors.listBackground
         input.textColor = theme.colors.text
         input.backgroundColor = .clear
-        descTextView.backgroundColor = theme.colors.background
+        descTextView.backgroundColor = theme.colors.listBackground
         inputContainer.backgroundColor = theme.colors.grayBackground
         
         let attr = NSMutableAttributedString()
@@ -198,24 +222,26 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
         input.placeholderAttributedString = attr
         input.font = .normal(.title)
         input.sizeToFit()
-        nextButton.set(font: .normal(.title), for: .Normal)
+        nextButton.set(font: .medium(.title), for: .Normal)
         nextButton.set(color: .white, for: .Normal)
         nextButton.set(background: theme.colors.accent, for: .Normal)
         nextButton.set(text: strings().secureIdInsertPasswordNext, for: .Normal)
-        _ = nextButton.sizeToFit(NSMakeSize(40, 0), NSMakeSize(.greatestFiniteMagnitude, 40))
-        nextButton.layer?.cornerRadius = 20
+        nextButton.layer?.cornerRadius = PassportInsertPasswordItem.fieldHeight / 2
         
-        forgotPassword.set(image: theme.icons.passportForgotPassword, for: .Normal)
+        forgotPassword.set(font: .normal(.text), for: .Normal)
+        forgotPassword.set(color: theme.colors.accent, for: .Normal)
+        forgotPassword.set(background: theme.colors.listBackground, for: .Normal)
+        forgotPassword.set(text: strings().loginPasswordForgot, for: .Normal)
+        forgotPassword.setAccessibilityLabel(strings().loginPasswordForgot)
         _ = forgotPassword.sizeToFit()
-        
-        var bp:Int = 0
-        bp += 1
+        needsLayout = true
     }
     
     override func viewDidMoveToWindow() {
         if let window = window as? Window {
             window.applyResponderIfNeeded()
         }
+        clearEditorBackground()
     }
     
     override var firstResponder: NSResponder? {
