@@ -203,9 +203,6 @@ private func languageSearchableItems<Context: AccountContextProtocol>(context: C
     }
     
     var items: [SettingsSearchableItem<Context>] = []
-    items.append(SettingsSearchableItem(id: .language(0), title: strings().accountSettingsLanguage, alternate: synonyms(strings().settingsSearchSynonymsAppLanguage), icon: icon, breadcrumbs: [], present: { context, _, present in
-        present(.push, LanguageController(context))
-    }))
     var index: Int32 = 1
     for localization in localizations {
         items.append(SettingsSearchableItem(id: .language(index), title: localization.localizedTitle, alternate: [localization.title], icon: icon, breadcrumbs: [strings().accountSettingsLanguage], present: { context, _, present in
@@ -314,36 +311,14 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             allItems.append(contentsOf: searchableItems(SettingsRootSearchTag.self, context: context, environment: environment))
             allItems.append(contentsOf: searchableItems(PowerSavingSearchTag.self, context: context, environment: environment))
             
-            let languageItems = languageSearchableItems(context: context, localizations: localizations)
-            allItems.append(contentsOf: languageItems)
+            allItems.append(contentsOf: searchableItems(LanguageSearchTag.self, context: context, environment: environment))
+            allItems.append(contentsOf: languageSearchableItems(context: context, localizations: localizations))
             
             allItems.append(contentsOf: searchableItems(GeneralSettingsEntryTag.self, context: context, environment: environment))
             
 
-            let support = SettingsSearchableItem<Context>(id: .support(0), title: strings().accountSettingsAskQuestion, alternate: synonyms(strings().settingsSearchSynonymsSupport), icon: .support, breadcrumbs: [], present: { context, _, present in
-                verifyAlert_button(for: context.window, information: strings().accountConfirmAskQuestion, option: strings().accountConfirmGoToFaq, successHandler: {  result in
-                    switch result {
-                    case .basic:
-                        _ = showModalProgress(signal: context.engine.peers.supportPeerId(), for: context.window).start(next: {  peerId in
-                            if let peerId = peerId {
-                                present(.push, SettingsHooks.shared.makeChatController(context, .peer(peerId)))
-                            }
-                        })
-                    case .thrid:
-                        let _ = (cachedFaqInstantPage(context: context) |> deliverOnMainQueue).start(next: { resolvedUrl in
-                            SettingsHooks.shared.executeInAppLink(resolvedUrl)
-                        })
-                    }
-                })
-            })
-            allItems.append(support)
-            
-            let faq = SettingsSearchableItem<Context>(id: .faq(0), title: strings().accountSettingsFAQ, alternate: synonyms(strings().settingsSearchSynonymsFAQ), icon: .faq, breadcrumbs: [], present: { context, navigationController, present in
-                let _ = (cachedFaqInstantPage(context: context) |> deliverOnMainQueue).start(next: { resolvedUrl in
-                    SettingsHooks.shared.executeInAppLink(resolvedUrl)
-                })
-            })
-            allItems.append(faq)
+            allItems.append(contentsOf: searchableItems(SupportSearchTag.self, context: context, environment: environment))
+            allItems.append(contentsOf: searchableItems(FaqSearchTag.self, context: context, environment: environment))
             
             return allItems
     }
