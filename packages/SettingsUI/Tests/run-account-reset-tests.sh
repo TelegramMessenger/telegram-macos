@@ -13,4 +13,4 @@ do
     done
 done
 cd "$repo_root"
-exec xcodebuild test -workspace Telegram-Mac.xcworkspace -scheme SettingsUIAccountResetTests -derivedDataPath "$repo_root/.build/Xcode" -destination 'platform=macOS,arch=arm64' "OTHER_LDFLAGS=\$(inherited) ${flags[*]}" "$@"
+exec xcodebuild test -workspace Telegram-Mac.xcworkspace -scheme "${SCHEME:-SettingsUIAccountResetTests}" -derivedDataPath "$repo_root/.build/Xcode" -destination 'platform=macOS,arch=arm64' "OTHER_LDFLAGS=\$(inherited) ${flags[*]}" "$@"
