@@ -195,188 +195,6 @@ private func matchStringTokens(_ tokens: [ValueBoxKey], with other: [ValueBoxKey
 }
 
 
-private func profileSearchableItems<Context: AccountContextProtocol>(context: Context, canAddAccount: Bool) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .profile
-    
-    let presentProfileSettings: (Context, @escaping  (SettingsSearchableItemPresentation, ViewController?) -> Void, EditSettingsEntryTag?) -> Void = { context, present, itemTag in
-        EditAccountInfoController(context: context, focusOnItemTag: itemTag, f: { controller in
-            present(.push, controller)
-        })
-    }
-    
-    var items: [SettingsSearchableItem<Context>] = []
-    items.append(SettingsSearchableItem(id: .profile(0), title: strings().editAccountTitle, alternate: synonyms(strings().settingsSearchSynonymsEditProfileTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-        presentProfileSettings(context, present, nil)
-    }))
-    
-    items.append(SettingsSearchableItem(id: .profile(1), title: strings().accountSettingsBio, alternate: synonyms(strings().settingsSearchSynonymsEditProfileTitle), icon: icon, breadcrumbs: [strings().editAccountTitle], present: { context, _, present in
-        presentProfileSettings(context, present, .bio)
-    }))
-    items.append(SettingsSearchableItem(id: .profile(2), title: strings().editAccountChangeNumber, alternate: synonyms(strings().settingsSearchSynonymsEditProfilePhoneNumber), icon: icon, breadcrumbs: [strings().editAccountTitle], present: { context, _, present in
-        present(.push, SettingsNavigationHooks.shared.makePhoneNumberIntroController(context))
-    }))
-    items.append(SettingsSearchableItem(id: .profile(3), title: strings().editAccountUsername, alternate: synonyms(strings().settingsSearchSynonymsEditProfileUsername), icon: icon, breadcrumbs: [strings().editAccountTitle], present: { context, _, present in
-        present(.push, UsernameController(context))
-    }))
-    if canAddAccount {
-        items.append(SettingsSearchableItem(id: .profile(4), title: strings().editAccountAddAccount, alternate: synonyms(strings().settingsSearchSynonymsEditProfileAddAccount), icon: icon, breadcrumbs: [strings().editAccountTitle], present: { context, _, present in
-            let isTestingEnvironment = NSApp.currentEvent?.modifierFlags.contains(.command) == true
-            context.sharedContext.beginNewAuth(testingEnvironment: isTestingEnvironment)
-        }))
-    }
-    items.append(SettingsSearchableItem(id: .profile(5), title: strings().editAccountLogout, alternate: synonyms(strings().settingsSearchSynonymsEditProfileLogout), icon: icon, breadcrumbs: [strings().editAccountTitle], present: { context, navigationController, present in
-        showModal(with: LogoutViewController(context: context, f: { controller in
-            present(.push, controller)
-        }), for: context.window)
-    }))
-    return items
-}
-
-
-
-private func stickerSearchableItems<Context: AccountContextProtocol>(context: Context, archivedStickerPacks: [ArchivedStickerPackItem]?) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .stickers
-    
-    let presentStickerSettings: (Context, (SettingsSearchableItemPresentation, ViewController?) -> Void, SettingsStickersTag?) -> Void = { context, present, itemTag in
-        present(.push, SettingsNavigationHooks.shared.makeInstalledStickerPacksController(context, itemTag))
-    }
-    
-    var items: [SettingsSearchableItem<Context>] = []
-    
-    items.append(SettingsSearchableItem(id: .stickers(0), title: strings().accountSettingsStickers, alternate: synonyms(strings().settingsSearchSynonymsStickersTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-        presentStickerSettings(context, present, nil)
-    }))
-    items.append(SettingsSearchableItem(id: .stickers(1), title: strings().stickersSuggestStickers, alternate: synonyms(strings().settingsSearchSynonymsStickersSuggestStickers), icon: icon, breadcrumbs: [strings().accountSettingsStickers], present: { context, _, present in
-        presentStickerSettings(context, present, .suggestOptions)
-    }))
-    items.append(SettingsSearchableItem(id: .stickers(3), title: strings().installedStickersTranding, alternate: synonyms(strings().settingsSearchSynonymsStickersFeaturedPacks), icon: icon, breadcrumbs: [strings().accountSettingsStickers], present: { context, _, present in
-        present(.push, SettingsNavigationHooks.shared.makeFeaturedStickerPacksController(context))
-    }))
-    items.append(SettingsSearchableItem(id: .stickers(4), title: strings().installedStickersArchived, alternate: synonyms(strings().settingsSearchSynonymsStickersArchivedPacks), icon: icon, breadcrumbs: [strings().accountSettingsStickers], present: { context, _, present in
-        present(.push, SettingsNavigationHooks.shared.makeArchivedStickerPacksController(context))
-    }))
-    return items
-}
-
-private func notificationSearchableItems<Context: AccountContextProtocol>(context: Context, settings: GlobalNotificationSettingsSet) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .notifications
-    
-    let presentNotificationSettings: (Context, (SettingsSearchableItemPresentation, ViewController?) -> Void, NotificationsAndSoundsEntryTag?) -> Void = { context, present, itemTag in
-        present(.push, NotificationPreferencesController(context, focusOnItemTag: itemTag))
-    }
-    
-    let presentCategory: (NotificationSettingsCategory, NotificationCategoryEntryTag?, (SettingsSearchableItemPresentation, ViewController?) -> Void, Context) -> Void = { category, tag, present, context in
-        present(.push, NotificationCategorySettingsController(context: context, category: category, focusOnItemTag: tag))
-    }
-    
-    let presentReactions: (ReactionNotificationEntryTag?, (SettingsSearchableItemPresentation, ViewController?) -> Void, Context) -> Void = { tag, present, context in
-        present(.push, ReactionNotificationSettingsController(context: context, focusOnItemTag: tag))
-    }
-    
-    let categoryItems: (NotificationSettingsCategory, Int32) -> [SettingsSearchableItem<Context>] = { category, base in
-        let breadcrumbs = [strings().accountSettingsNotifications, category.title]
-        var rows: [(String, NotificationCategoryEntryTag)]
-        if case .stories = category {
-            rows = [(strings().notificationSettingsStoriesNew, .show), (strings().notificationSettingsStoriesImportant, .important), (strings().notificationSettingsCategoryShowSender, .preview)]
-        } else {
-            rows = [(strings().notificationSettingsCategoryShowNotifications, .show), (strings().notificationSettingsMessagesPreview, .preview)]
-        }
-        rows += [(strings().notificationSettingsCategorySound, .sound), (strings().notificationSettingsExceptionsAdd, .addException), (strings().notificationSettingsExceptionsDeleteAll, .deleteExceptions)]
-        var items: [SettingsSearchableItem<Context>] = [SettingsSearchableItem(id: .notifications(base), title: category.title, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsMessageNotifications], present: { context, _, present in
-            presentCategory(category, nil, present, context)
-        })]
-        for (i, row) in rows.enumerated() {
-            items.append(SettingsSearchableItem(id: .notifications(base + 1 + Int32(i)), title: row.0, alternate: [], icon: icon, breadcrumbs: breadcrumbs, present: { context, _, present in
-                presentCategory(category, row.1, present, context)
-            }))
-        }
-        return items
-    }
-    
-    let reactionRows: [(String, ReactionNotificationEntryTag)] = [(strings().notificationSettingsReactionsMessages, .messages), (strings().notificationSettingsCategoryShowSender, .showSender), (strings().notificationSettingsCategorySound, .sound)]
-    var reactionItems: [SettingsSearchableItem<Context>] = [SettingsSearchableItem(id: .notifications(70), title: strings().notificationSettingsReactions, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsMessageNotifications], present: { context, _, present in
-        presentReactions(nil, present, context)
-    })]
-    for (i, row) in reactionRows.enumerated() {
-        reactionItems.append(SettingsSearchableItem(id: .notifications(71 + Int32(i)), title: row.0, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsReactions], present: { context, _, present in
-            presentReactions(row.1, present, context)
-        }))
-    }
-    
-    let categorySearchItems = categoryItems(.privateChats, 30) + categoryItems(.groupChats, 40) + categoryItems(.channels, 50) + categoryItems(.stories, 60) + reactionItems
-    
-    return categorySearchItems + [
-        SettingsSearchableItem(id: .notifications(0), title: strings().accountSettingsNotifications, alternate: synonyms(strings().settingsSearchSynonymsNotificationsTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-            presentNotificationSettings(context, present, nil)
-        }),
-        SettingsSearchableItem(id: .notifications(2), title: strings().notificationSettingsThisDeviceShowMessageText, alternate: synonyms(strings().settingsSearchSynonymsNotificationsMessageNotificationsPreview), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsThisDeviceHeader], present: { context, _, present in
-            presentNotificationSettings(context, present, .messagePreviews)
-        }),
-//        SettingsSearchableItem(id: .notifications(18), title: strings().notificationSettingsIncludeGroups, alternate: synonyms(strings().settingsSearchSynonymsNotificationsBadgeIncludeMutedPublicGroups), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsBadgeHeader], present: { context, _, present in
-//            presentNotificationSettings(context, present, .includePublicGroups)
-//        }),
-        SettingsSearchableItem(id: .notifications(19), title: strings().notificationSettingsIncludeChannels, alternate: synonyms(strings().settingsSearchSynonymsNotificationsBadgeIncludeMutedChannels), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsBadgeHeader], present: { context, _, present in
-            presentNotificationSettings(context, present, .includeChannels)
-        }),
-        SettingsSearchableItem(id: .notifications(20), title: strings().notificationSettingsCountUnreadMessages, alternate: synonyms(strings().settingsSearchSynonymsNotificationsBadgeCountUnreadMessages), icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsBadgeHeader], present: { context, _, present in
-            presentNotificationSettings(context, present, .unreadCountCategory)
-        }),
-        SettingsSearchableItem(id: .notifications(21), title: strings().notificationSettingsContactJoined, alternate: synonyms(strings().settingsSearchSynonymsNotificationsContactJoined), icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
-            presentNotificationSettings(context, present, .joinedNotifications)
-        }),
-        SettingsSearchableItem(id: .notifications(23), title: strings().notificationSettingsAllAccounts, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
-            presentNotificationSettings(context, present, .allAccounts)
-        }),
-        SettingsSearchableItem(id: .notifications(24), title: strings().notificationSettingsThisDeviceDefaultSound, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsThisDeviceHeader], present: { context, _, present in
-            presentNotificationSettings(context, present, .tone)
-        }),
-        SettingsSearchableItem(id: .notifications(22), title: strings().notificationSettingsResetAll, alternate: synonyms(strings().settingsSearchSynonymsNotificationsResetAllNotifications), icon: icon, breadcrumbs: [strings().accountSettingsNotifications], present: { context, _, present in
-            presentNotificationSettings(context, present, .reset)
-        })
-    ]
-}
-
-private func proxySearchableItems<Context: AccountContextProtocol>(context: Context, servers: [ProxyServerSettings]) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .proxy
-    
-    let presentProxySettings: (Context, @escaping(SettingsSearchableItemPresentation, ViewController?) -> Void) -> Void = { context, present in
-        let controller = SettingsNavigationHooks.shared.makeProxyListController(context, { servers in
-            var message: String = ""
-            for server in servers {
-                message += server.link + "\n\n"
-            }
-            message = message.trimmed
-            
-            SettingsHooks.shared.shareLink(context, message)
-        }, { controller in
-            present(.push, controller)
-        })
-        present(.push, controller)
-    }
-    
-    var items: [SettingsSearchableItem<Context>] = []
-    items.append(SettingsSearchableItem(id: .proxy(0), title: strings().accountSettingsProxy, alternate: synonyms(strings().settingsSearchSynonymsProxyTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-        presentProxySettings(context, present)
-    }))
-    items.append(SettingsSearchableItem(id: .proxy(1), title: strings().proxySettingsAddProxy, alternate: synonyms(strings().settingsSearchSynonymsProxyAddProxy), icon: icon, breadcrumbs: [strings().accountSettingsProxy], present: { context, _, present in
-        presentProxySettings(context, present)
-    }))
-    
-    var hasSocksServers = false
-    for server in servers {
-        if case .socks5 = server.connection {
-            hasSocksServers = true
-            break
-        }
-    }
-    if hasSocksServers {
-        items.append(SettingsSearchableItem(id: .proxy(2), title: strings().proxySettingsUseForCalls, alternate: synonyms(strings().settingsSearchSynonymsProxyUseForCalls), icon: icon, breadcrumbs: [strings().accountSettingsProxy], present: { context, _, present in
-            presentProxySettings(context, present)
-        }))
-    }
-    return items
-}
-
 private func languageSearchableItems<Context: AccountContextProtocol>(context: Context, localizations: [LocalizationInfo]) -> [SettingsSearchableItem<Context>] {
     let icon: SettingsSearchableItemIcon = .language
     
@@ -477,24 +295,20 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
         |> map { canAddAccount, localizations, notificationSettings, archivedStickerPacks, proxyServers, privacySettings in
             
             var allItems: [SettingsSearchableItem<Context>] = []
-            let environment = SettingsSearchEnvironment(privacySettings: privacySettings)
+            let environment = SettingsSearchEnvironment(privacySettings: privacySettings, canAddAccount: canAddAccount, hasSocksProxy: proxyServers.contains(where: { if case .socks5 = $0.connection { return true } else { return false } }))
             
-            let profileItems = profileSearchableItems(context: context, canAddAccount: canAddAccount)
-            allItems.append(contentsOf: profileItems)
+            allItems.append(contentsOf: searchableItems(ProfileSearchTag.self, context: context, environment: environment))
             
             
-            let stickerItems = stickerSearchableItems(context: context, archivedStickerPacks: archivedStickerPacks)
-            allItems.append(contentsOf: stickerItems)
+            allItems.append(contentsOf: searchableItems(StickersSearchTag.self, context: context, environment: environment))
             
-            let notificationItems = notificationSearchableItems(context: context, settings: notificationSettings)
-            allItems.append(contentsOf: notificationItems)
+            allItems.append(contentsOf: searchableItems(NotificationSearchTag.self, context: context, environment: environment))
             
             allItems.append(contentsOf: searchableItems(PrivacySearchTag.self, context: context, environment: environment))
             
             allItems.append(contentsOf: searchableItems(SettingsDataAndStorageTag.self, context: context, environment: environment))
             
-            let proxyItems = proxySearchableItems(context: context, servers: proxyServers)
-            allItems.append(contentsOf: proxyItems)
+            allItems.append(contentsOf: searchableItems(ProxySearchTag.self, context: context, environment: environment))
             
             allItems.append(contentsOf: searchableItems(AppearanceSearchTag.self, context: context, environment: environment))
             allItems.append(contentsOf: searchableItems(SettingsRootSearchTag.self, context: context, environment: environment))

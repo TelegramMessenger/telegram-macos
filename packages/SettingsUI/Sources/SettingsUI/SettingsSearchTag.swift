@@ -6,6 +6,8 @@ import TelegramCore
 
 struct SettingsSearchEnvironment {
     let privacySettings: AccountPrivacySettings?
+    let canAddAccount: Bool
+    let hasSocksProxy: Bool
 }
 
 protocol SettingsSearchTag: CaseIterable {
@@ -18,6 +20,8 @@ protocol SettingsSearchTag: CaseIterable {
     var searchTitle: String { get }
     var searchAlternates: [String] { get }
     var searchIcon: SettingsSearchableItemIcon { get }
+    var searchBreadcrumbs: [String] { get }
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool
     var searchIndex: Int32 { get }
 }
 
@@ -37,14 +41,22 @@ extension SettingsSearchTag {
     var searchIcon: SettingsSearchableItemIcon {
         return Self.icon
     }
+    
+    var searchBreadcrumbs: [String] {
+        return Self.includesRoot ? [Self.rootTitle] : []
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        return true
+    }
 }
 
 func searchableItems<Tag: SettingsSearchTag, Context: AccountContextProtocol>(_ type: Tag.Type, context: Context, environment: SettingsSearchEnvironment) -> [SettingsSearchableItem<Context>] {
     var items: [SettingsSearchableItem<Context>] = Tag.includesRoot ? [SettingsSearchableItem<Context>(id: Tag.itemId(0), title: Tag.rootTitle, alternate: Tag.rootAlternates, icon: Tag.icon, breadcrumbs: [], present: { context, navigation, present in
         Tag.open(nil, context: context, navigation: navigation, environment: environment, present: present)
     })] : []
-    for tag in Tag.allCases {
-        items.append(SettingsSearchableItem<Context>(id: Tag.itemId(tag.searchIndex), title: tag.searchTitle, alternate: tag.searchAlternates, icon: tag.searchIcon, breadcrumbs: Tag.includesRoot ? [Tag.rootTitle] : [], present: { context, navigation, present in
+    for tag in Tag.allCases where tag.isAvailable(in: environment) {
+        items.append(SettingsSearchableItem<Context>(id: Tag.itemId(tag.searchIndex), title: tag.searchTitle, alternate: tag.searchAlternates, icon: tag.searchIcon, breadcrumbs: tag.searchBreadcrumbs, present: { context, navigation, present in
             Tag.open(tag, context: context, navigation: navigation, environment: environment, present: present)
         }))
     }
