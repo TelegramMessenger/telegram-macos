@@ -287,7 +287,8 @@ public class ChatPresentationInterfaceState: Equatable {
         public var paywall: Bool
         public var tone: TranslationTone = .neutral
         public var result:[ChatLiveTranslateContext.State.Key : ChatLiveTranslateContext.State.Result]
-        public init(canTranslate: Bool, translate: Bool, from: String? = nil, to: String, paywall: Bool, tone: TranslationTone = .neutral, result: [ChatLiveTranslateContext.State.Key : ChatLiveTranslateContext.State.Result]) {
+        public var translationEligibility: [ChatLiveTranslateContext.State.Key: ChatTranslationSource]
+        public init(canTranslate: Bool, translate: Bool, from: String? = nil, to: String, paywall: Bool, tone: TranslationTone = .neutral, result: [ChatLiveTranslateContext.State.Key : ChatLiveTranslateContext.State.Result], translationEligibility: [ChatLiveTranslateContext.State.Key: ChatTranslationSource] = [:]) {
             self.canTranslate = canTranslate
             self.translate = translate
             self.from = from
@@ -295,6 +296,24 @@ public class ChatPresentationInterfaceState: Equatable {
             self.paywall = paywall
             self.tone = tone
             self.result = result
+            self.translationEligibility = translationEligibility
+        }
+
+        public init(_ state: ChatLiveTranslateContext.State) {
+            self.init(canTranslate: state.canTranslate, translate: state.translate, from: state.from, to: state.to, paywall: state.paywall, tone: state.tone, result: state.result, translationEligibility: state.translationEligibility)
+        }
+
+        public func pinnedTranslationResult(for message: Message, accountPeerId: PeerId) -> ChatLiveTranslateContext.State.Result? {
+            guard canTranslate, translate else {
+                return nil
+            }
+            let key = ChatLiveTranslateContext.State.Key(id: message.id, toLang: to)
+            if message.author?.id == accountPeerId || !message.effectivelyIncoming(accountPeerId) {
+                guard translationEligibility[key] == ChatTranslationSource(message) else {
+                    return nil
+                }
+            }
+            return result[key]
         }
     }
     

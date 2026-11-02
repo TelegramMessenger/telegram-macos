@@ -41,5 +41,16 @@ let package = Package(
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
             path: "Sources/PeerModerationUI"),
+        .testTarget(
+            name: "PeerModerationUITests",
+            dependencies: [
+                "PeerModerationUI",
+                .product(name: "TGUIKit", package: "TGUIKit"),
+                .product(name: "ChatUI", package: "ChatUI"),
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "Postbox", package: "Postbox"),
+                .product(name: "SwiftSignalKit", package: "SSignalKit"),
+            ],
+            path: "Tests/PeerModerationUITests"),
     ]
 )

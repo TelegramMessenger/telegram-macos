@@ -6,6 +6,17 @@ public let markdownTaskListCheckedNumber = "\u{001f}tg-md-task:checked"
 
 /// The leading rich text of a block for preview purposes — keeps the `RichText` (rather than
 /// flattening to a string) so inline custom emoji can be carried out as `.CustomEmoji` entities.
+private func markdownPreviewRichText(from blocks: [InstantPageBlock]) -> RichText {
+    var parts: [RichText] = []
+    for block in blocks {
+        if let text = markdownPreviewRichText(from: block), !text.plainText.isEmpty {
+            if !parts.isEmpty { parts.append(.plain(" ")) }
+            parts.append(text)
+        }
+    }
+    return parts.isEmpty ? .empty : .concat(parts)
+}
+
 private func markdownPreviewRichText(from block: InstantPageBlock) -> RichText? {
     switch block {
     case let .title(text):           return text
@@ -30,7 +41,7 @@ private func markdownPreviewRichText(from block: InstantPageBlock) -> RichText? 
             let checked: Bool?
             switch item {
             case let .text(text, n, c):     itemText = text; number = n; checked = c
-            case let .blocks(blocks, n, c): itemText = instantPageRichTextFromBlocks(blocks); number = n; checked = c
+            case let .blocks(blocks, n, c): itemText = markdownPreviewRichText(from: blocks); number = n; checked = c
             case .unknown:                  continue
             }
             if itemText.plainText.isEmpty { continue }
@@ -59,14 +70,65 @@ private func markdownPreviewRichText(from block: InstantPageBlock) -> RichText? 
         }
         return parts.isEmpty ? nil : .concat(parts)
     case let .blockQuote(blocks, caption, _):
-        let inner = instantPageRichTextFromBlocks(blocks)
+        let inner = markdownPreviewRichText(from: blocks)
         return inner.plainText.isEmpty ? caption : inner
     case let .pullQuote(text, caption):
         return text.plainText.isEmpty ? caption : text
     case let .kicker(text):          return text
-    case let .table(title, _, _, _, _): return title
-    case let .details(title, _, _):  return title
+    case let .cover(block):
+        return markdownPreviewRichText(from: block)
+    case let .table(title, rows, _, _, _):
+        if !title.plainText.isEmpty {
+            return title
+        }
+        var parts: [RichText] = []
+        for row in rows {
+            for cell in row.cells {
+                if let cellText = cell.text, !cellText.plainText.isEmpty {
+                    if !parts.isEmpty { parts.append(.plain(" ")) }
+                    parts.append(cellText)
+                }
+            }
+        }
+        return parts.isEmpty ? nil : (parts.count == 1 ? parts[0] : .concat(parts))
+    case let .details(title, blocks, _):
+        if !title.plainText.isEmpty {
+            return title
+        }
+        let inner = markdownPreviewRichText(from: blocks)
+        return inner.plainText.isEmpty ? nil : inner
     case let .relatedArticles(title, _): return title
+    case let .postEmbed(_, _, _, author, _, blocks, caption):
+        let inner = markdownPreviewRichText(from: blocks)
+        if !inner.plainText.isEmpty {
+            return inner
+        }
+        if !caption.text.plainText.isEmpty {
+            return caption.text
+        }
+        return author.isEmpty ? nil : .plain(author)
+    case let .collage(items, caption), let .slideshow(items, caption):
+        let inner = markdownPreviewRichText(from: items)
+        if !inner.plainText.isEmpty {
+            return inner
+        }
+        return caption.text.plainText.isEmpty ? nil : caption.text
+    case let .buttonRow(_, buttons):
+        var parts: [RichText] = []
+        for button in buttons {
+            if !button.text.plainText.isEmpty {
+                if !parts.isEmpty { parts.append(.plain(" ")) }
+                parts.append(button.text)
+            }
+        }
+        return parts.isEmpty ? nil : (parts.count == 1 ? parts[0] : .concat(parts))
+    case let .image(_, caption, _, _, _),
+         let .video(_, caption, _, _, _),
+         let .audio(_, caption),
+         let .document(_, caption),
+         let .webEmbed(_, _, _, caption, _, _, _),
+         let .map(_, _, _, _, caption):
+        return caption.text.plainText.isEmpty ? nil : caption.text
     default:                         return nil
     }
 }

@@ -243,6 +243,7 @@ public final class RichTextEditorView: NSView {
 
     public func undo() { canvas.effectiveUndoManager?.undo() }
     public func redo() { canvas.effectiveUndoManager?.redo() }
+    public func removeAllUndoActions() { canvas.effectiveUndoManager?.removeAllActions() }
 
     /// True when a non-collapsed text selection exists.
     public var hasSelection: Bool { canvas.selFrom != canvas.selTo }
