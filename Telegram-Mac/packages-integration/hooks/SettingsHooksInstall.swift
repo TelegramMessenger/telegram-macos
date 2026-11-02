@@ -467,16 +467,8 @@ private func makeSettingsNavigationHooks() -> SettingsNavigationHooks {
             focus = .videos
         case .files:
             focus = .files
-        case .voice:
-            focus = .voice
-        case .instantVideo:
-            focus = .instantVideo
-        case .gifs:
-            focus = .gifs
         case .downloadFolder:
             focus = .downloadFolder
-        case .soundOnHover:
-            focus = .soundOnHover
         case .sensitiveContent:
             focus = .sensitiveContent
         case .proxy:

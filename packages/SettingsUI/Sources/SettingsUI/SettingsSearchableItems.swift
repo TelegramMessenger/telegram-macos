@@ -102,31 +102,25 @@ struct SettingsSearchableItem<Context: AccountContextProtocol> {
 
 
 
-func searchSettingsItems<Context: AccountContextProtocol>(items: [SettingsSearchableItem<Context>], query: String) -> [SettingsSearchableItem<Context>] {
+func settingsSearchMatches(title: String, alternate: [String], breadcrumbs: [String], query: String) -> Bool {
     let queryTokens = stringTokens(query.lowercased())
     
-    var result: [SettingsSearchableItem<Context>] = []
-    for item in items {
-        var string = item.title
-        if !item.alternate.isEmpty {
-            for alternate in item.alternate {
-                let trimmed = alternate.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    string += " \(trimmed)"
-                }
-            }
-        }
-        if item.breadcrumbs.count > 1 {
-            string += " \(item.breadcrumbs.suffix(from: 1).joined(separator: " "))"
-        }
-        
-        let tokens = stringTokens(string)
-        if matchStringTokens(tokens, with: queryTokens) {
-            result.append(item)
+    var string = title
+    for alternate in alternate {
+        let trimmed = alternate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            string += " \(trimmed)"
         }
     }
+    if breadcrumbs.count > 1 {
+        string += " \(breadcrumbs.suffix(from: 1).joined(separator: " "))"
+    }
     
-    return result
+    return matchStringTokens(stringTokens(string), with: queryTokens)
+}
+
+func searchSettingsItems<Context: AccountContextProtocol>(items: [SettingsSearchableItem<Context>], query: String) -> [SettingsSearchableItem<Context>] {
+    return items.filter { settingsSearchMatches(title: $0.title, alternate: $0.alternate, breadcrumbs: $0.breadcrumbs, query: query) }
 }
 
 
@@ -215,29 +209,29 @@ private func languageSearchableItems<Context: AccountContextProtocol>(context: C
 
 func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, archivedStickerPacks: Signal<[ArchivedStickerPackItem]?, NoError>, privacySettings: Signal<AccountPrivacySettings?, NoError>) -> Signal<[SettingsSearchableItem<Context>], NoError> {
     
-    let canAddAccount = activeAccountsAndPeers(context: context)
+    let accountsInfo = activeAccountsAndPeers(context: context)
         |> take(1)
-        |> map { accountsAndPeers -> Bool in
-            return accountsAndPeers.1.count + 1 < maximumNumberOfAccounts
+        |> map { accountsAndPeers -> (canAdd: Bool, hasMultiple: Bool) in
+            return (accountsAndPeers.1.count + 1 < maximumNumberOfAccounts, !accountsAndPeers.1.isEmpty)
     }
-    
-    let notificationSettings = context.account.postbox.preferencesView(keys: [PreferencesKeys.globalNotifications])
-        |> take(1)
-        |> map { view -> GlobalNotificationSettingsSet in
-            let viewSettings: GlobalNotificationSettingsSet
-            if let settings = view.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) {
-                viewSettings = settings.effective
-            } else {
-                viewSettings = GlobalNotificationSettingsSet.defaultSettings
-            }
-            return viewSettings
-    }
-    
-    let archivedStickerPacks = archivedStickerPacks
-        |> take(1)
     
     let privacySettings = privacySettings
         |> take(1)
+    
+    let baseSettings = baseAppSettings(accountManager: context.sharedContext.accountManager)
+        |> take(1)
+    
+    let contentConfiguration: Signal<ContentSettingsConfiguration?, NoError> = .single(nil) |> then(contentSettingsConfiguration(network: context.account.network) |> map(Optional.init))
+    
+    let webSessions = context.webSessions.state
+        |> take(1)
+    
+    let hasPassport: Signal<Bool, NoError> = .single(false) |> then(context.engine.auth.twoStepVerificationConfiguration() |> map { configuration -> Bool in
+        if case let .set(_, _, _, hasSecureValues, _) = configuration {
+            return hasSecureValues
+        }
+        return false
+    })
     
     let proxyServers = context.sharedContext.accountManager.sharedData(keys: [SharedDataKeys.proxySettings])
         |> map { sharedData -> ProxySettings in
@@ -288,11 +282,39 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             }
     }
     
-    return combineLatest(canAddAccount, localizations, notificationSettings, archivedStickerPacks, proxyServers, privacySettings)
-        |> map { canAddAccount, localizations, notificationSettings, archivedStickerPacks, proxyServers, privacySettings in
+    let facts = combineLatest(baseSettings, contentConfiguration, webSessions, hasPassport)
+    
+    return combineLatest(accountsInfo, localizations, proxyServers, privacySettings, facts)
+        |> map { accountsInfo, localizations, proxyServers, privacySettings, facts in
+            let (baseSettings, contentConfiguration, webSessions, hasPassport) = facts
             
             var allItems: [SettingsSearchableItem<Context>] = []
-            let environment = SettingsSearchEnvironment(privacySettings: privacySettings, canAddAccount: canAddAccount, hasSocksProxy: proxyServers.contains(where: { if case .socks5 = $0.connection { return true } else { return false } }))
+            
+            var dockIconAvailable = false
+            #if BETA || STABLE
+            dockIconAvailable = true
+            #endif
+            
+            let loginEmailAvailable = ((context.myPeer as? TelegramUser)?.phone?.hasPrefix("7") ?? false) || appAppearance.languageCode == "ru" || context.debug
+            
+            let environment = SettingsSearchEnvironment(
+                privacySettings: privacySettings,
+                canAddAccount: accountsInfo.canAdd,
+                hasSocksProxy: proxyServers.contains(where: { if case .socks5 = $0.connection { return true } else { return false } }),
+                hasMultipleAccounts: accountsInfo.hasMultiple,
+                predictEmojiVisible: !baseSettings.predictEmoji,
+                canAdjustSensitiveContent: contentConfiguration?.canAdjustSensitiveContent ?? false,
+                passkeysAvailable: context.appConfiguration.getBoolValue("settings_display_passkeys", orElse: false),
+                loginEmailAvailable: loginEmailAvailable,
+                hasWebSessions: !webSessions.sessions.isEmpty,
+                secretChatWebPreviewAvailable: FastSettings.isSecretChatWebPreviewAvailable(for: context.account.id.int64) != nil,
+                chatBackgroundAvailable: theme.bubbled,
+                dockIconAvailable: dockIconAvailable,
+                liquidGlassAvailable: System.liquidGlassAvailable,
+                premiumAvailable: !context.premiumIsBlocked,
+                starsAvailable: !context.appConfiguration.getBoolValue("stars_purchase_blocked", orElse: true),
+                passportAvailable: hasPassport
+            )
             
             allItems.append(contentsOf: searchableItems(ProfileSearchTag.self, context: context, environment: environment))
             

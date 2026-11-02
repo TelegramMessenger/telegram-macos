@@ -141,6 +141,13 @@ extension PowerSavingSearchTag: SettingsSearchTag {
         }
     }
     
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        if case .liquidGlass = self {
+            return environment.liquidGlassAvailable
+        }
+        return true
+    }
+    
     var searchIndex: Int32 {
         return rawValue
     }

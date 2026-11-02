@@ -5,9 +5,22 @@ import InAppSettings
 import TelegramCore
 
 struct SettingsSearchEnvironment {
-    let privacySettings: AccountPrivacySettings?
-    let canAddAccount: Bool
-    let hasSocksProxy: Bool
+    var privacySettings: AccountPrivacySettings? = nil
+    var canAddAccount: Bool = true
+    var hasSocksProxy: Bool = true
+    var hasMultipleAccounts: Bool = true
+    var predictEmojiVisible: Bool = true
+    var canAdjustSensitiveContent: Bool = true
+    var passkeysAvailable: Bool = true
+    var loginEmailAvailable: Bool = true
+    var hasWebSessions: Bool = true
+    var secretChatWebPreviewAvailable: Bool = true
+    var chatBackgroundAvailable: Bool = true
+    var dockIconAvailable: Bool = true
+    var liquidGlassAvailable: Bool = true
+    var premiumAvailable: Bool = true
+    var starsAvailable: Bool = true
+    var passportAvailable: Bool = true
 }
 
 protocol SettingsSearchTag: CaseIterable {
@@ -51,14 +64,30 @@ extension SettingsSearchTag {
     }
 }
 
-func searchableItems<Tag: SettingsSearchTag, Context: AccountContextProtocol>(_ type: Tag.Type, context: Context, environment: SettingsSearchEnvironment) -> [SettingsSearchableItem<Context>] {
-    var items: [SettingsSearchableItem<Context>] = Tag.includesRoot ? [SettingsSearchableItem<Context>(id: Tag.itemId(0), title: Tag.rootTitle, alternate: Tag.rootAlternates, icon: Tag.icon, breadcrumbs: [], present: { context, navigation, present in
-        Tag.open(nil, context: context, navigation: navigation, environment: environment, present: present)
-    })] : []
-    for tag in Tag.allCases where tag.isAvailable(in: environment) {
-        items.append(SettingsSearchableItem<Context>(id: Tag.itemId(tag.searchIndex), title: tag.searchTitle, alternate: tag.searchAlternates, icon: tag.searchIcon, breadcrumbs: tag.searchBreadcrumbs, present: { context, navigation, present in
-            Tag.open(tag, context: context, navigation: navigation, environment: environment, present: present)
-        }))
+struct SettingsSearchEntry<Tag: SettingsSearchTag> {
+    let tag: Tag?
+    let id: SettingsSearchableItemId
+    let title: String
+    let alternate: [String]
+    let icon: SettingsSearchableItemIcon
+    let breadcrumbs: [String]
+}
+
+func searchEntries<Tag: SettingsSearchTag>(_ type: Tag.Type, environment: SettingsSearchEnvironment) -> [SettingsSearchEntry<Tag>] {
+    var entries: [SettingsSearchEntry<Tag>] = []
+    if Tag.includesRoot {
+        entries.append(SettingsSearchEntry<Tag>(tag: nil, id: Tag.itemId(0), title: Tag.rootTitle, alternate: Tag.rootAlternates, icon: Tag.icon, breadcrumbs: []))
     }
-    return items
+    for tag in Tag.allCases where tag.isAvailable(in: environment) {
+        entries.append(SettingsSearchEntry<Tag>(tag: tag, id: Tag.itemId(tag.searchIndex), title: tag.searchTitle, alternate: tag.searchAlternates, icon: tag.searchIcon, breadcrumbs: tag.searchBreadcrumbs))
+    }
+    return entries
+}
+
+func searchableItems<Tag: SettingsSearchTag, Context: AccountContextProtocol>(_ type: Tag.Type, context: Context, environment: SettingsSearchEnvironment) -> [SettingsSearchableItem<Context>] {
+    return searchEntries(type, environment: environment).map { entry in
+        SettingsSearchableItem<Context>(id: entry.id, title: entry.title, alternate: entry.alternate, icon: entry.icon, breadcrumbs: entry.breadcrumbs, present: { context, navigation, present in
+            Tag.open(entry.tag, context: context, navigation: navigation, environment: environment, present: present)
+        })
+    }
 }

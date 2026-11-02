@@ -376,6 +376,17 @@ extension AppearanceSearchTag: SettingsSearchTag {
         }
     }
     
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        switch self {
+        case .chatBackground:
+            return environment.chatBackgroundAvailable
+        case .dockIcon:
+            return environment.dockIconAvailable
+        default:
+            return true
+        }
+    }
+    
     var searchIndex: Int32 {
         return rawValue
     }

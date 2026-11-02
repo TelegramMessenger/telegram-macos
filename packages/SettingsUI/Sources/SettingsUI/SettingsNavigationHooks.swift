@@ -33,11 +33,7 @@ public enum SettingsDataAndStorageTag: Int32 {
     case photos = 11
     case videos = 12
     case files = 13
-    case voice = 14
-    case instantVideo = 15
-    case gifs = 16
     case downloadFolder = 17
-    case soundOnHover = 18
     case sensitiveContent = 19
     case proxy = 20
     case exportData = 21
@@ -95,16 +91,8 @@ extension SettingsDataAndStorageTag: SettingsSearchTag {
             return strings().dataAndStorageAutomaticDownloadVideo
         case .files:
             return strings().dataAndStorageAutomaticDownloadFiles
-        case .voice:
-            return strings().dataAndStorageAutomaticDownloadVoice
-        case .instantVideo:
-            return strings().dataAndStorageAutomaticDownloadInstantVideo
-        case .gifs:
-            return strings().dataAndStorageAutomaticDownloadGIFs
         case .downloadFolder:
             return strings().dataAndStorageDownloadFolder
-        case .soundOnHover:
-            return strings().dataAndStorageAutoplaySoundOnHover
         case .sensitiveContent:
             return strings().dataAndStorageSensitiveContent
         case .proxy:
@@ -133,6 +121,13 @@ extension SettingsDataAndStorageTag: SettingsSearchTag {
         default:
             return []
         }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        if case .sensitiveContent = self {
+            return environment.canAdjustSensitiveContent
+        }
+        return true
     }
     
     var searchIndex: Int32 {

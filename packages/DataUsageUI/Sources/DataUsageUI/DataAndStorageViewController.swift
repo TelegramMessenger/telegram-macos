@@ -29,11 +29,7 @@ public enum DataAndStorageEntryTag : ItemListItemTag {
     case photos
     case videos
     case files
-    case voice
-    case instantVideo
-    case gifs
     case downloadFolder
-    case soundOnHover
     case sensitiveContent
     case proxy
     case exportData
@@ -61,16 +57,8 @@ public enum DataAndStorageEntryTag : ItemListItemTag {
             return 5
         case .files:
             return 6
-        case .voice:
-            return 7
-        case .instantVideo:
-            return 8
-        case .gifs:
-            return 9
         case .downloadFolder:
             return 11
-        case .soundOnHover:
-            return 15
         case .sensitiveContent:
             return 17
         case .proxy:

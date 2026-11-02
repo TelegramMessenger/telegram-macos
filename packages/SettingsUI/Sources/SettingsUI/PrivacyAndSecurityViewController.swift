@@ -31,7 +31,6 @@ public enum PrivacyAndSecurityEntryTag: ItemListItemTag {
     case webSessions
     case secretChatWebPreview
     case sensitiveContent
-    case proxy
     public func isEqual(to other: ItemListItemTag) -> Bool {
         if let other = other as? PrivacyAndSecurityEntryTag, self == other {
             return true
@@ -64,8 +63,6 @@ public enum PrivacyAndSecurityEntryTag: ItemListItemTag {
             return PrivacyAndSecurityEntry.secretChatWebPreviewToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
         case .sensitiveContent:
             return PrivacyAndSecurityEntry.sensitiveContentToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
-        case .proxy:
-            return PrivacyAndSecurityEntry.proxySettings(sectionId: 0, "", viewType: .singleItem).stableId
         }
     }
 }

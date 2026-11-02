@@ -33,8 +33,6 @@ enum PrivacySearchTag: Int32 {
     case webSessions = 26
     case secretChatWebPreview = 27
     case sensitiveContent = 28
-    case autoArchive = 29
-    case proxy = 30
 }
 
 extension PrivacySearchTag: SettingsSearchTag {
@@ -120,10 +118,6 @@ extension PrivacySearchTag: SettingsSearchTag {
             present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .secretChatWebPreview, twoStepVerificationConfiguration: nil))
         case .sensitiveContent:
             present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .sensitiveContent, twoStepVerificationConfiguration: nil))
-        case .autoArchive:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .autoArchive, twoStepVerificationConfiguration: nil))
-        case .proxy:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .proxy, twoStepVerificationConfiguration: nil))
         }
     }
     
@@ -179,10 +173,6 @@ extension PrivacySearchTag: SettingsSearchTag {
             return strings().privacyAndSecuritySecretChatWebPreviewText
         case .sensitiveContent:
             return strings().privacyAndSecuritySensitiveText
-        case .autoArchive:
-            return strings().privacyAndSecurityAutoArchiveText
-        case .proxy:
-            return strings().privacySettingsUseProxy
         }
     }
     
@@ -212,6 +202,27 @@ extension PrivacySearchTag: SettingsSearchTag {
             return synonyms(strings().settingsSearchSynonymsPrivacyDataDeleteDrafts)
         default:
             return []
+        }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        switch self {
+        case .passkeys:
+            return environment.passkeysAvailable
+        case .loginEmail:
+            return environment.loginEmailAvailable
+        case .webSessions:
+            return environment.hasWebSessions
+        case .secretChatWebPreview:
+            return environment.secretChatWebPreviewAvailable
+        case .sensitiveContent:
+            #if APP_STORE
+            return false
+            #else
+            return environment.canAdjustSensitiveContent
+            #endif
+        default:
+            return true
         }
     }
     

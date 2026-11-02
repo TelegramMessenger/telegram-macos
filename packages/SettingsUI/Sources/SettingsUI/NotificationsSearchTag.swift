@@ -157,6 +157,13 @@ extension NotificationSearchTag: SettingsSearchTag {
         }
     }
     
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        if case .allAccounts = self {
+            return environment.hasMultipleAccounts
+        }
+        return true
+    }
+    
     var searchIndex: Int32 {
         switch self {
         case .messagePreviews:

@@ -97,6 +97,19 @@ extension SettingsRootSearchTag: SettingsSearchTag {
         }
     }
     
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        switch self {
+        case .chatFolders:
+            return true
+        case .passport:
+            return environment.passportAvailable
+        case .premium, .business, .sendGift:
+            return environment.premiumAvailable
+        case .stars:
+            return environment.premiumAvailable && environment.starsAvailable
+        }
+    }
+    
     var searchIndex: Int32 {
         return rawValue
     }

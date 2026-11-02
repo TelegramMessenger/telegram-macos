@@ -468,11 +468,9 @@ public enum GeneralSettingsEntryTag: Int32 {
     case shortcuts = 12
     case copyFormatting = 13
     case sendLargePhotos = 14
-    case acceptSecretChats = 15
     case forceTouchReply = 16
     case forceTouchEdit = 17
     case forceTouchForward = 18
-    case forceTouchPreviewMedia = 19
     case forceTouchReact = 20
     case enterBehavior = 21
     case cmdEnterBehavior = 22
@@ -510,16 +508,12 @@ public enum GeneralSettingsEntryTag: Int32 {
             return GeneralSettingsEntry.enableRFTCopy(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .sendLargePhotos:
             return GeneralSettingsEntry.sendLargePhotos(sectionId: 0, enabled: false, viewType: .singleItem).stableId
-        case .acceptSecretChats:
-            return GeneralSettingsEntry.acceptSecretChats(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .forceTouchReply:
             return GeneralSettingsEntry.forceTouchReply(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .forceTouchEdit:
             return GeneralSettingsEntry.forceTouchEdit(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .forceTouchForward:
             return GeneralSettingsEntry.forceTouchForward(sectionId: 0, enabled: false, viewType: .singleItem).stableId
-        case .forceTouchPreviewMedia:
-            return GeneralSettingsEntry.forceTouchPreviewMedia(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .forceTouchReact:
             return GeneralSettingsEntry.forceTouchReact(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .enterBehavior:
@@ -590,16 +584,12 @@ extension GeneralSettingsEntryTag: SettingsSearchTag {
             return strings().generalSettingsCopyRTF
         case .sendLargePhotos:
             return strings().generalSettingsSendLargePhotos
-        case .acceptSecretChats:
-            return strings().generalSettingsAcceptSecretChats
         case .forceTouchReply:
             return strings().generalSettingsForceTouchReply
         case .forceTouchEdit:
             return strings().generalSettingsForceTouchEdit
         case .forceTouchForward:
             return strings().generalSettingsForceTouchForward
-        case .forceTouchPreviewMedia:
-            return strings().generalSettingsForceTouchPreviewMedia
         case .forceTouchReact:
             return strings().generalSettingsForceTouchReact
         case .enterBehavior:
@@ -613,6 +603,13 @@ extension GeneralSettingsEntryTag: SettingsSearchTag {
         case .showProfileId:
             return strings().generalSettingsShowProfileIdText
         }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        if case .predictEmoji = self {
+            return environment.predictEmojiVisible
+        }
+        return true
     }
     
     var searchIndex: Int32 {
