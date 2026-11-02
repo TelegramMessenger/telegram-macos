@@ -47,7 +47,7 @@ private func recentEmojiLegacyDisplayed(_ emoji: String, skinModifiers: [EmojiSk
     var displayed = emoji
     if !emoji.unicodeScalars.contains(where: { $0.properties.isEmojiModifier }) {
         let unmodified = emoji.emojiUnmodified
-        if let skin = skinModifiers.first(where: { $0.emoji == unmodified }) {
+        if let skin = skinModifiers.first(where: { $0.emoji == unmodified && unmodified.canHaveSkinToneModifier }) {
             displayed = unmodified.emojiWithSkinModifier(skin.modifier)
         }
     }
@@ -177,9 +177,11 @@ public func saveUsedEmoji(_ list:[String], postbox:Postbox) -> Signal<Void, NoEr
     return postbox.transaction { transaction -> Void in
         transaction.updatePreferencesEntry(key: ApplicationSpecificPreferencesKeys.recentEmoji, { entry in
             let value: RecentUsedEmoji = entry?.get(RecentUsedEmoji.self) ?? RecentUsedEmoji.defaultSettings
+            let used = list.map { $0.recentEmojiCanonical }
+            let lastForms = Dictionary(used.map { ($0.strippedEmoji, $0) }, uniquingKeysWith: { _, last in last })
             var emojies = value.emojies
-            for emoji in list.reversed() {
-                emojies = recentEmojiUsing(emoji.recentEmojiCanonical, in: emojies)
+            for emoji in used.reversed() {
+                emojies = recentEmojiUsing(lastForms[emoji.strippedEmoji] ?? emoji, in: emojies)
             }
             return PreferencesEntry(RecentUsedEmoji(emojies: emojies, animated: value.animated, skinModifiers: value.skinModifiers))
         })

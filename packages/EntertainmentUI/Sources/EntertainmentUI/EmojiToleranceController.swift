@@ -6,12 +6,12 @@ import Localization
 private class EmojiTolerance : View {
     
     
-    init(frame frameRect: NSRect, emoji:String, handle:@escaping(String, String?)->Void) {
+    init(frame frameRect: NSRect, emoji:String, handle:@escaping(String?)->Void) {
         super.init(frame: frameRect)
         addVariants(emoji: emoji, handle: handle)
     }
 
-    private func addVariants(emoji: String, handle: @escaping(String, String?)->Void) {
+    private func addVariants(emoji: String, handle: @escaping(String?)->Void) {
         let variants: [(String, String?)] = [(emoji, nil)] + emoji.emojiSkinToneModifiers.map {
             (emoji.emojiWithSkinModifier($0), $0)
         }
@@ -31,7 +31,7 @@ private class EmojiTolerance : View {
             addSubview(button)
 
             button.set(handler: { _ in
-                handle(emoji, modifier)
+                handle(modifier)
             }, for: .Click)
         }
     }
@@ -116,7 +116,7 @@ private final class EmojiToleranceContextMenuRowView: AppMenuBasicItemView {
         if let view = self.tolerance {
             current = view
         } else {
-            current = EmojiTolerance(frame: CGRect(origin: .zero, size: CGSize.init(width: 30 * 6, height: item.height)), emoji: item.emoji, handle: { [weak item] emoji, color in
+            current = EmojiTolerance(frame: CGRect(origin: .zero, size: CGSize.init(width: 30 * 6, height: item.height)), emoji: item.emoji, handle: { [weak item] color in
                 item?.callback?(color)
                 if let menuItem = item?.menuItem {
                     item?.interaction?.action(menuItem)

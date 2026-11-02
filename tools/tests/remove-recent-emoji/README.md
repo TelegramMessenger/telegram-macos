@@ -7,7 +7,7 @@ python3 -I tools/tests/remove-recent-emoji/run.py \
 
 The runner creates a temporary Swift package and removes it on exit. It executes the complete production `RecentUsedEmoji` model and `Strings.swift` with real Cocoa/CoreText and SwiftSignalKit. It also extracts the ordinary emoji menu, the custom-emoji removal branch, the segment renderer/filtering, Recent-item resolution, the complete browsing segment loop, row selection and both coordinate lookup helpers. All picker modes and their row-mode mapping are extracted from production rather than maintained as a partial test enum.
 
-The tests run against the production Recent model, which stores each entry in a canonical form (PR #117). On 2026-11-02 all 34 cases passed. Checks cover:
+The tests run against the production Recent model from PR #117: entries are kept as used and matched ignoring variation selectors. On 2026-11-02 all 34 cases passed. Checks cover:
 
 - Removing all variation-selector variants without rewriting or reordering surviving entries.
 - Separate skin tones, ZWJ sequences, flags and keycaps; the saved skin tone is painted only on lists written before the canonical format, which are migrated on load.
