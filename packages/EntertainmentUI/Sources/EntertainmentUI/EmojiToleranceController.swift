@@ -1,6 +1,5 @@
 import Cocoa
 import TGUIKit
-import Postbox
 import TelegramTheme
 import Strings
 import Localization
@@ -46,29 +45,6 @@ private class EmojiTolerance : View {
     required init(frame frameRect: NSRect) {
         fatalError("init(frame:) has not been implemented")
     }
-}
-
-public class EmojiToleranceController: NSViewController {
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        // Do view setup here.
-    }
-    
-    private let emoji:String
-    
-    public init(_ emoji:String, postbox: Postbox, handle:@escaping(String, String?)->Void) {
-        self.emoji = emoji
-        super.init(nibName: nil, bundle: nil)
-        
-       
-        self.view = EmojiTolerance(frame: NSMakeRect(0, 4, 30 * 6 + 4, 34), emoji: emoji, handle: handle)
-    }
-    
-    public required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
 }
 
 
