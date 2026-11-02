@@ -41,11 +41,25 @@ public extension String {
     }
 }
 
+private let recentEmojiFormatVersion: Int32 = 1
+
+private func recentEmojiLegacyDisplayed(_ emoji: String, skinModifiers: [EmojiSkinModifier]) -> String {
+    var displayed = emoji
+    if !emoji.unicodeScalars.contains(where: { $0.properties.isEmojiModifier }) {
+        let unmodified = emoji.emojiUnmodified
+        if let skin = skinModifiers.first(where: { $0.emoji == unmodified }) {
+            displayed = unmodified.emojiWithSkinModifier(skin.modifier)
+        }
+    }
+    return displayed.unicodeScalars.contains("\u{fe0f}") ? displayed : displayed + "\u{fe0f}"
+}
+
 private func recentEmojiUsing(_ emoji: String, in emojies: [String]) -> [String] {
     guard emoji.isRecentEmojiCandidate else {
         return emojies
     }
-    return Array(([emoji] + emojies.filter { $0 != emoji }).prefix(35))
+    let key = emoji.strippedEmoji
+    return Array(([emoji] + emojies.filter { $0.strippedEmoji != key }).prefix(35))
 }
 
 private extension String {
@@ -64,7 +78,7 @@ private extension String {
             scalars.removeLast()
         }
         let normalized = String(scalars).normalizedEmoji
-        if scalars.count == 1, !normalized.unicodeScalars.contains("\u{fe0f}") {
+        if scalars.count == 1, unicodeScalars.contains("\u{fe0f}"), !normalized.unicodeScalars.contains("\u{fe0f}") {
             return normalized + "\u{fe0f}"
         }
         return normalized
@@ -118,12 +132,13 @@ public class RecentUsedEmoji: Codable, Equatable {
         self.animated = try container.decode([MediaId].self, forKey: "ae")
         self.skinModifiers = try container.decode([EmojiSkinModifier].self, forKey: "sm_new")
         let emojies = try container.decode([String].self, forKey: "e")
+        let version = try container.decodeIfPresent(Int32.self, forKey: "v") ?? 0
 
         var isset = Set<String>()
         var list:[String] = []
         for emoji in emojies {
-            let emoji = emoji.recentEmojiCanonical
-            if emoji.isRecentEmojiCandidate, isset.insert(emoji).inserted {
+            let emoji = (version < recentEmojiFormatVersion ? recentEmojiLegacyDisplayed(emoji, skinModifiers: skinModifiers) : emoji).recentEmojiCanonical
+            if emoji.isRecentEmojiCandidate, isset.insert(emoji.strippedEmoji).inserted {
                 list.append(emoji)
             }
         }
@@ -134,8 +149,8 @@ public class RecentUsedEmoji: Codable, Equatable {
     
     
     public func removingEmoji(_ emoji: String) -> RecentUsedEmoji {
-        let emoji = emoji.recentEmojiCanonical
-        return RecentUsedEmoji(emojies: emojies.filter { $0.recentEmojiCanonical != emoji }, animated: animated, skinModifiers: skinModifiers)
+        let key = emoji.recentEmojiCanonical.strippedEmoji
+        return RecentUsedEmoji(emojies: emojies.filter { $0.recentEmojiCanonical.strippedEmoji != key }, animated: animated, skinModifiers: skinModifiers)
     }
 
     public func removingAnimatedEmoji(_ id: MediaId) -> RecentUsedEmoji {
@@ -147,6 +162,7 @@ public class RecentUsedEmoji: Codable, Equatable {
         try container.encode(emojies, forKey: "e")
         try container.encode(skinModifiers, forKey: "sm_new")
         try container.encode(animated, forKey: "ae")
+        try container.encode(recentEmojiFormatVersion, forKey: "v")
 
         
     }
@@ -204,7 +220,7 @@ public func modifySkinEmoji(_ emoji:String, modifier: String?, recentEmoji: Stri
             }
            
             var emojies = settings.emojies
-            if let recentEmoji = recentEmoji, emojies.contains(recentEmoji.recentEmojiCanonical) {
+            if let recentEmoji = recentEmoji, emojies.contains(where: { $0.strippedEmoji == recentEmoji.recentEmojiCanonical.strippedEmoji }) {
                 emojies = recentEmojiUsing((modifier.map { emoji.emojiWithSkinModifier($0) } ?? emoji).recentEmojiCanonical, in: emojies)
             }
             return PreferencesEntry(RecentUsedEmoji(emojies: emojies, animated: settings.animated, skinModifiers: skinModifiers))

@@ -172,7 +172,7 @@ public class Sender: NSObject {
         
         var input:ChatTextInputState = input
         
-        let emojis = input.inputText.fixed.recentEmojiCandidates
+        let emojiText = input.inputText.fixed
         if input.attributes.isEmpty {
             input = ChatTextInputState(inputText: input.inputText.trimmed)
         }
@@ -281,6 +281,7 @@ public class Sender: NSObject {
                 return observe(preparedMessages |> mapToSignal { messages in
                     return enqueueMessages(account: context.account, peerId: peerId, messages: messages)
                 } |> mapToSignal { value in
+                    let emojis = emojiText.recentEmojiCandidates
                     var saves: [Signal<Void, NoError>] = []
                     if !emojis.isEmpty {
                         saves.append(saveUsedEmoji(emojis, postbox: context.account.postbox))

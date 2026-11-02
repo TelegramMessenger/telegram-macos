@@ -184,7 +184,7 @@ private func segments(_ emoji: [EmojiSegment : [String]], skinModifiers: [EmojiS
                 return attributed
             }
             let unmodified = emoji.emojiUnmodified
-            let value = skinModifiers.first(where: { $0.emoji == unmodified }).map { unmodified.emojiWithSkinModifier($0.modifier) } ?? emoji
+            let value = skinModifiers.first(where: { $0.emoji == unmodified && unmodified.canHaveSkinToneModifier }).map { unmodified.emojiWithSkinModifier($0.modifier) } ?? emoji
             return .initialize(string: value.normalizedEmoji, font: .normal(26.0))
         }
         let lines = stride(from: 0, to: items.count, by: 8).map {
