@@ -550,9 +550,12 @@ extension GeneralSettingsEntryTag: SettingsSearchTag {
     }
     
     static func open<Context: AccountContextProtocol>(_ tag: GeneralSettingsEntryTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
-        if case .callSettings = tag {
+        switch tag {
+        case .callSettings:
             present(.push, SettingsNavigationHooks.shared.makeCallSettingsController(context))
-        } else {
+        case .liteMode:
+            present(.push, LiteModeController(context: context))
+        default:
             present(.push, GeneralSettingsViewController(context, focusOnItemTag: tag))
         }
     }

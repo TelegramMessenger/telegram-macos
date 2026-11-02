@@ -28,6 +28,11 @@ enum SettingsSearchableItemIcon {
     case support
     case faq
     case general
+    case filters
+    case premium
+    case business
+    case gift
+    case stars
 }
 
 extension SettingsSearchableItemIcon {
@@ -55,6 +60,18 @@ extension SettingsSearchableItemIcon {
             return theme.icons.settingsFaq
         case .general:
             return theme.icons.settingsGeneral
+        case .filters:
+            return theme.icons.settingsFilters
+        case .passport:
+            return theme.icons.settingsPassport
+        case .premium:
+            return theme.icons.settingsPremium
+        case .business:
+            return theme.icons.settingsBusiness
+        case .gift:
+            return theme.icons.settingsGiftPremium
+        case .stars:
+            return theme.icons.settingsStars
         default:
             return nil
         }
@@ -360,35 +377,6 @@ private func proxySearchableItems<Context: AccountContextProtocol>(context: Cont
     return items
 }
 
-private func appearanceSearchableItems<Context: AccountContextProtocol>(context: Context) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .appearance
-    
-    let presentAppearanceSettings: (Context, (SettingsSearchableItemPresentation, ViewController?) -> Void, ThemeSettingsEntryTag?) -> Void = { context, present, itemTag in
-        present(.push, AppAppearanceViewController(context: context, focusOnItemTag: itemTag))
-    }
-    
-    return [
-        SettingsSearchableItem(id: .appearance(0), title: strings().accountSettingsTheme, alternate: synonyms(strings().settingsSearchSynonymsAppearanceTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-            presentAppearanceSettings(context, present, nil)
-        }),
-        SettingsSearchableItem(id: .appearance(1), title: strings().appearanceSettingsTextSizeHeader, alternate: synonyms(strings().settingsSearchSynonymsAppearanceTextSize), icon: icon, breadcrumbs: [strings().accountSettingsTheme], present: { context, _, present in
-            presentAppearanceSettings(context, present, .fontSize)
-        }),
-        SettingsSearchableItem(id: .appearance(2), title: strings().generalSettingsChatBackground, alternate: synonyms(strings().settingsSearchSynonymsAppearanceChatBackground), icon: icon, breadcrumbs: [strings().accountSettingsTheme], present: { context, _, present in
-            showModal(with: ChatWallpaperModalController(context), for: context.window)
-        }),
-        SettingsSearchableItem(id: .appearance(5), title: strings().appearanceSettingsAutoNight, alternate: synonyms(strings().settingsSearchSynonymsAppearanceAutoNightTheme), icon: icon, breadcrumbs: [strings().accountSettingsTheme], present: { context, _, present in
-            present(.push, AutoNightSettingsController(context: context))
-        }),
-        SettingsSearchableItem(id: .appearance(6), title: strings().appearanceSettingsColorThemeHeader, alternate: synonyms(strings().settingsSearchSynonymsAppearanceColorTheme), icon: icon, breadcrumbs: [strings().accountSettingsTheme], present: { context, _, present in
-            presentAppearanceSettings(context, present, .accentColor)
-        }),
-        SettingsSearchableItem(id: .appearance(6), title: strings().appearanceSettingsChatViewHeader, alternate: synonyms(strings().settingsSearchSynonymsAppearanceChatMode), icon: icon, breadcrumbs: [strings().accountSettingsTheme], present: { context, _, present in
-            presentAppearanceSettings(context, present, .chatMode)
-        }),
-    ]
-}
-
 private func languageSearchableItems<Context: AccountContextProtocol>(context: Context, localizations: [LocalizationInfo]) -> [SettingsSearchableItem<Context>] {
     let icon: SettingsSearchableItemIcon = .language
     
@@ -508,8 +496,9 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             let proxyItems = proxySearchableItems(context: context, servers: proxyServers)
             allItems.append(contentsOf: proxyItems)
             
-            let appearanceItems = appearanceSearchableItems(context: context)
-            allItems.append(contentsOf: appearanceItems)
+            allItems.append(contentsOf: searchableItems(AppearanceSearchTag.self, context: context, environment: environment))
+            allItems.append(contentsOf: searchableItems(SettingsRootSearchTag.self, context: context, environment: environment))
+            allItems.append(contentsOf: searchableItems(PowerSavingSearchTag.self, context: context, environment: environment))
             
             let languageItems = languageSearchableItems(context: context, localizations: localizations)
             allItems.append(contentsOf: languageItems)
