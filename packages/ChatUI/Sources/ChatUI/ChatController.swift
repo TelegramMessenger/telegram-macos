@@ -4270,6 +4270,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         let readHistory = combineLatest(self.maxVisibleIncomingMessageIndex.get(), canRead, self.chatLocationValue |> distinctUntilChanged, self.peerView.get())
             |> deliverOnMainQueue
             |> map { messageIndex, canRead, chatLocation, view in
+                guard messageIndex.id.peerId != PeerId(0) else {
+                    return
+                }
                 let peer = (view as? PeerView)?.peers[chatLocation.peerId]
                 guard chatHistoryKeepsReadState(peer: peer, chatLocation: chatLocation) else {
                     let _ = previousMaxIncomingMessageIdByNamespace.swap([:])

@@ -67,6 +67,18 @@ public func isAV1Video(file: TelegramMediaFile) -> Bool {
     return false
 }
 
+public func shouldUseChunkedVideoPlayer(file: TelegramMediaFile) -> Bool {
+    guard !isHLSVideo(file: file) else {
+        return false
+    }
+    for attribute in file.attributes {
+        if case let .Video(_, _, _, _, _, videoCodec) = attribute {
+            return videoCodec == nil || videoCodec == "av1" || videoCodec == "av01"
+        }
+    }
+    return false
+}
+
 
 public protocol UniversalVideoContent {
     var id: AnyHashable { get }
