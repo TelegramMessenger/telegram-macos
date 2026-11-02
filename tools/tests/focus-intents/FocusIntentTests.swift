@@ -267,11 +267,64 @@ private enum FocusIntentTests {
         precondition(matchingChats.map(\.id) == ["1:42", "2:42"])
     }
 
+    @available(macOS 14.0, *)
+    private static func testSelectedEntitiesAreNotOfferedAgain() async throws {
+        let catalog = FocusFilterCatalog(
+            accounts: [.init(id: 1, title: "Same", telegramUserId: 101), .init(id: 2, title: "Same", telegramUserId: 202)],
+            chats: [.init(id: .init(accountId: 1, peerId: 42), title: "Same", telegramChatId: 42), .init(id: .init(accountId: 2, peerId: 42), title: "Same", telegramChatId: 42)],
+            folders: [.init(id: .init(accountId: 1, folderId: 7), title: "Same", peerIds: []), .init(id: .init(accountId: 2, folderId: 7), title: "Same", peerIds: [])]
+        )
+        let accounts = FocusAccountSelectionQuery(catalogQuery: FocusAccountQuery(catalogProvider: { catalog }))
+        let folders = FocusFolderSelectionQuery(catalogQuery: FocusFolderQuery(catalogProvider: { catalog }))
+        let chats = FocusChatSelectionQuery(catalogQuery: FocusChatQuery(catalogProvider: { catalog }))
+        let accountsAfterSelection = try await accounts.suggestedEntities(excluding: ["1"])
+        let accountsAfterSearch = try await accounts.entities(matching: "Same", excluding: ["1"])
+        let accountsResolved = try await accounts.entities(for: ["1"])
+        let accountsAfterRemoval = try await accounts.suggestedEntities(excluding: [])
+        let accountsInOtherFilter = try await accounts.suggestedEntities()
+        let accountsAfterSelectingAll = try await accounts.suggestedEntities(excluding: ["1", "2"])
+        precondition(accountsAfterSelection.map(\.id) == ["2"])
+        precondition(accountsAfterSearch.map(\.id) == ["2"])
+        precondition(accountsResolved.map(\.id) == ["1"])
+        precondition(accountsAfterRemoval.map(\.id) == ["1", "2"])
+        precondition(accountsInOtherFilter.map(\.id) == ["1", "2"])
+        precondition(accountsAfterSelectingAll.isEmpty)
+
+        let foldersAfterSelection = try await folders.suggestedEntities(excluding: ["1:7"])
+        let foldersAfterSearch = try await folders.entities(matching: "Same", excluding: ["1:7"])
+        let foldersResolved = try await folders.entities(for: ["1:7"])
+        let foldersAfterRemoval = try await folders.suggestedEntities(excluding: [])
+        let foldersInOtherFilter = try await folders.suggestedEntities()
+        let foldersAfterSelectingAll = try await folders.suggestedEntities(excluding: ["1:7", "2:7"])
+        precondition(foldersAfterSelection.map(\.id) == ["2:7"])
+        precondition(foldersAfterSearch.map(\.id) == ["2:7"])
+        precondition(foldersResolved.map(\.id) == ["1:7"])
+        precondition(foldersAfterRemoval.map(\.id) == ["1:7", "2:7"])
+        precondition(foldersInOtherFilter.map(\.id) == ["1:7", "2:7"])
+        precondition(foldersAfterSelectingAll.isEmpty)
+
+        let chatsAfterSelection = try await chats.suggestedEntities(excluding: ["1:42"])
+        let chatsAfterSearch = try await chats.entities(matching: "Same", excluding: ["1:42"])
+        let chatsResolved = try await chats.entities(for: ["1:42"])
+        let chatsAfterRemoval = try await chats.suggestedEntities(excluding: [])
+        let chatsInOtherFilter = try await chats.suggestedEntities()
+        let chatsAfterSelectingAll = try await chats.suggestedEntities(excluding: ["1:42", "2:42"])
+        precondition(chatsAfterSelection.map(\.id) == ["2:42"])
+        precondition(chatsAfterSearch.map(\.id) == ["2:42"])
+        precondition(chatsResolved.map(\.id) == ["1:42"])
+        precondition(chatsAfterRemoval.map(\.id) == ["1:42", "2:42"])
+        precondition(chatsInOtherFilter.map(\.id) == ["1:42", "2:42"])
+        precondition(chatsAfterSelectingAll.isEmpty)
+    }
+
     static func main() async throws {
         try await testFolderAccountIdentifiers()
         try await testTelegramChatIdentifiers()
         try await testTelegramAccountIdentifiers()
         try await testLegacyAccountIdentifiers()
+        if #available(macOS 14.0, *) {
+            try await testSelectedEntitiesAreNotOfferedAgain()
+        }
         try await testUniqueSelections()
         let catalog = FocusFilterCatalog(
             accounts: [.init(id: 1, title: "Work"), .init(id: 2, title: "Personal")],

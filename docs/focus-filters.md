@@ -40,8 +40,18 @@ Accounts, folders and chats are Set-valued App Intents parameters. The system
 receives unordered collections without duplicate support; entity equality and
 hashing use only the stable identifier, so renaming an item does not make another
 selection. Query results also remove repeated identifiers while retaining distinct
-items with the same name. Existing parameter names and entity identifiers are
-unchanged; saved identifier arrays resolve through the same queries.
+items with the same name. On macOS 14 and newer, parameter-specific queries use
+`IntentParameterDependency` to exclude the current selection from suggestions and
+search results. Identifier resolution remains independent of the selection, so
+saved values still resolve and a removed item can be selected again. Selection
+state comes from the form being edited, not from the active Focus or shared
+storage. macOS 13 retains the Set-based behavior without dependent queries.
+Existing parameter names and entity identifiers are unchanged.
+
+Register these entity queries with `IntentParameter(query:)`, which routes search
+text to `entities(matching:)`. The `optionsProvider:` initializer uses the
+`DynamicOptionsProvider.results()` path and returns suggestions without applying
+the search text, even when the provider also conforms to `EntityStringQuery`.
 
 Account and chat titles use `Name (TelegramID)`, with only the number inside the
 parentheses. This applies to suggestions, search results, selected items, account
@@ -67,11 +77,13 @@ is unavailable, the subtitle shows only the account name. The filter summary sor
 accounts by stable local identity.
 
 After installing a signed build, check in System Settings that each picker
-prevents adding the same item twice, removing and re-adding still works, same-name
+excludes already-selected items from suggestions and search, removing and
+re-adding still works, same-name
 items remain independently selectable, and existing filters (including those
 with repeated items) reopen with the intended selection. Also check a second
 Focus mode: selecting an item in one mode must not remove it from another mode's
-choices.
+choices. Search for a known chat by name and Telegram ID, including one late in
+a large catalogue; unrelated chats must disappear from the search results.
 After upgrading, also open Telegram and reopen an existing Focus filter: account
 rows and the filter summary should show the positive Telegram user ID while
 retaining the original selection and filtering behavior.
