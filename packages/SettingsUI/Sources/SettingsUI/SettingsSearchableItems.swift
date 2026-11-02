@@ -27,6 +27,7 @@ enum SettingsSearchableItemIcon {
     case passport
     case support
     case faq
+    case general
 }
 
 extension SettingsSearchableItemIcon {
@@ -52,6 +53,8 @@ extension SettingsSearchableItemIcon {
             return theme.icons.settingsAskQuestion
         case .faq:
             return theme.icons.settingsFaq
+        case .general:
+            return theme.icons.settingsGeneral
         default:
             return nil
         }
@@ -663,6 +666,8 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             
             let languageItems = languageSearchableItems(context: context, localizations: localizations)
             allItems.append(contentsOf: languageItems)
+            
+            allItems.append(contentsOf: searchableItems(GeneralSettingsEntryTag.self, context: context))
             
 
             let support = SettingsSearchableItem<Context>(id: .support(0), title: strings().accountSettingsAskQuestion, alternate: synonyms(strings().settingsSearchSynonymsSupport), icon: .support, breadcrumbs: [], present: { context, _, present in
