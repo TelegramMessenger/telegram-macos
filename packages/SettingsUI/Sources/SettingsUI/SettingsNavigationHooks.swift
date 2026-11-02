@@ -60,7 +60,7 @@ extension SettingsDataAndStorageTag: SettingsSearchTag {
         return .data(index)
     }
     
-    static func open<Context: AccountContextProtocol>(_ tag: SettingsDataAndStorageTag?, context: Context, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+    static func open<Context: AccountContextProtocol>(_ tag: SettingsDataAndStorageTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
         switch tag {
         case .storageUsage, .keepMedia, .clearCache:
             present(.push, SettingsNavigationHooks.shared.makeStorageUsageController(context))

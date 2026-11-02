@@ -319,123 +319,6 @@ private func notificationSearchableItems<Context: AccountContextProtocol>(contex
     ]
 }
 
-private func privacySearchableItems<Context: AccountContextProtocol>(context: Context, privacySettings: AccountPrivacySettings?) -> [SettingsSearchableItem<Context>] {
-    let icon: SettingsSearchableItemIcon = .privacy
-    
-    let presentPrivacySettings: (Context, (SettingsSearchableItemPresentation, ViewController?) -> Void, PrivacyAndSecurityEntryTag?) -> Void = { context, present, itemTag in
-        present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: itemTag, twoStepVerificationConfiguration: nil))
-    }
-    
-    let presentSelectivePrivacySettings: (Context, SelectivePrivacySettingsKind, @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) -> Void = { context, kind, present in
-        let privacySignal: Signal<AccountPrivacySettings, NoError>
-        if let privacySettings = privacySettings {
-            privacySignal = .single(privacySettings)
-        } else {
-            privacySignal = context.engine.privacy.requestAccountPrivacySettings()
-        }
-        let callsSignal: Signal<(VoiceCallSettings, VoipConfiguration)?, NoError>
-        if case .voiceCalls = kind {
-            callsSignal = combineLatest(context.sharedContext.accountManager.sharedData(keys: [ApplicationSharedPreferencesKeys.voiceCallSettings]), context.account.postbox.preferencesView(keys: [PreferencesKeys.voipConfiguration]))
-                |> take(1)
-                |> map { sharedData, view -> (VoiceCallSettings, VoipConfiguration)? in
-                    let voiceCallSettings: VoiceCallSettings = sharedData.entries[ApplicationSharedPreferencesKeys.voiceCallSettings]?.get(VoiceCallSettings.self) ?? .defaultSettings
-                    let voipConfiguration = view.values[PreferencesKeys.voipConfiguration]?.get(VoipConfiguration.self) ?? .defaultValue
-                    return (voiceCallSettings, voipConfiguration)
-            }
-        } else {
-            callsSignal = .single(nil)
-        }
-        
-        let _ = (combineLatest(privacySignal, callsSignal)
-            |> deliverOnMainQueue).start(next: { info, callSettings in
-                let current: SelectivePrivacySettings
-                switch kind {
-                case .presence:
-                    current = info.presence
-                case .groupInvitations:
-                    current = info.groupInvitations
-                case .voiceCalls:
-                    current = info.voiceCalls
-                case .profilePhoto:
-                    current = info.profilePhoto
-                case .forwards:
-                    current = info.forwards
-                case .phoneNumber:
-                    current = info.phoneNumber
-                case .voiceMessages:
-                    current = info.voiceMessages
-                case .bio:
-                    current = info.bio
-                case .birthday:
-                    current = info.birthday
-                case .gifts:
-                    current = info.giftsAutoSave
-                case .savedMusic:
-                    current = info.savedMusic
-                }
-                
-                present(.push, SelectivePrivacySettingsController(context, kind: kind, current: current, callSettings: kind == .voiceCalls ? info.voiceCallsP2P : nil, phoneDiscoveryEnabled: nil, updated: { updated, updatedCallSettings, _, _ in }))
-            })
-    }
-    
-
-    
-    let passcodeTitle: String = strings().privacySettingsPasscode
-
-    
-    return [
-        SettingsSearchableItem(id: .privacy(0), title: strings().accountSettingsPrivacyAndSecurity, alternate: synonyms(strings().settingsSearchSynonymsPrivacyTitle), icon: icon, breadcrumbs: [], present: { context, _, present in
-            presentPrivacySettings(context, present, nil)
-        }),
-        SettingsSearchableItem(id: .privacy(1), title: strings().privacySettingsBlockedUsers, alternate: synonyms(strings().settingsSearchSynonymsPrivacyBlockedUsers), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            present(.push, BlockedPeersViewController(context))
-        }),
-        SettingsSearchableItem(id: .privacy(2), title: strings().privacySettingsLastSeen, alternate: synonyms(strings().settingsSearchSynonymsPrivacyLastSeen), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentSelectivePrivacySettings(context, .presence, present)
-        }),
-        SettingsSearchableItem(id: .privacy(3), title: strings().privacySettingsProfilePhoto, alternate: synonyms(strings().settingsSearchSynonymsPrivacyProfilePhoto), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentSelectivePrivacySettings(context, .profilePhoto, present)
-        }),
-        SettingsSearchableItem(id: .privacy(4), title: strings().privacySettingsForwards, alternate: synonyms(strings().settingsSearchSynonymsPrivacyForwards), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentSelectivePrivacySettings(context, .forwards, present)
-        }),
-        SettingsSearchableItem(id: .privacy(5), title: strings().privacySettingsVoiceCalls, alternate: synonyms(strings().settingsSearchSynonymsPrivacyCalls), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentSelectivePrivacySettings(context, .voiceCalls, present)
-        }),
-        SettingsSearchableItem(id: .privacy(6), title: strings().privacySettingsGroups, alternate: synonyms(strings().settingsSearchSynonymsPrivacyGroupsAndChannels), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentSelectivePrivacySettings(context, .groupInvitations, present)
-        }),
-        SettingsSearchableItem(id: .privacy(7), title: passcodeTitle, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            present(.push, SettingsNavigationHooks.shared.makePasscodeSettingsController(context))
-        }),
-        SettingsSearchableItem(id: .privacy(8), title: strings().privacySettingsTwoStepVerification, alternate: synonyms(strings().settingsSearchSynonymsPrivacyTwoStepAuth), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, navigation, present in
-            present(.push, twoStepVerificationUnlockController(context: context, mode: .access(nil), presentController: { controller, root, animated in
-                guard let navigation = navigation else {return}
-                if root {
-                    navigation.removeUntil(PrivacyAndSecurityViewController<Context>.self)
-                }
-                if !animated {
-                    navigation.stackInsert(controller, at: navigation.stackCount)
-                } else {
-                    navigation.push(controller)
-                }
-            }))
-        }),
-        SettingsSearchableItem(id: .privacy(9), title: strings().privacySettingsActiveSessions, alternate: synonyms(strings().settingsSearchSynonymsPrivacyAuthSessions), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            present(.push, SettingsNavigationHooks.shared.makeRecentSessionsController(context))
-        }),
-        SettingsSearchableItem(id: .privacy(10), title: strings().privacySettingsDeleteAccountHeader, alternate: synonyms(strings().settingsSearchSynonymsPrivacyDeleteAccountIfAwayFor), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentPrivacySettings(context, present, .accountTimeout)
-        }),
-        SettingsSearchableItem(id: .privacy(14), title: strings().suggestFrequentContacts, alternate: synonyms(strings().settingsSearchSynonymsPrivacyDataTopPeers), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentPrivacySettings(context, present, .topPeers)
-        }),
-        SettingsSearchableItem(id: .privacy(15), title: strings().privacyAndSecurityClearCloudDrafts, alternate: synonyms(strings().settingsSearchSynonymsPrivacyDataDeleteDrafts), icon: icon, breadcrumbs: [strings().accountSettingsPrivacyAndSecurity], present: { context, _, present in
-            presentPrivacySettings(context, present, .cloudDraft)
-        })
-    ]
-}
-
 private func proxySearchableItems<Context: AccountContextProtocol>(context: Context, servers: [ProxyServerSettings]) -> [SettingsSearchableItem<Context>] {
     let icon: SettingsSearchableItemIcon = .proxy
     
@@ -606,6 +489,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
         |> map { canAddAccount, localizations, notificationSettings, archivedStickerPacks, proxyServers, privacySettings in
             
             var allItems: [SettingsSearchableItem<Context>] = []
+            let environment = SettingsSearchEnvironment(privacySettings: privacySettings)
             
             let profileItems = profileSearchableItems(context: context, canAddAccount: canAddAccount)
             allItems.append(contentsOf: profileItems)
@@ -617,10 +501,9 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             let notificationItems = notificationSearchableItems(context: context, settings: notificationSettings)
             allItems.append(contentsOf: notificationItems)
             
-            let privacyItems = privacySearchableItems(context: context, privacySettings: privacySettings)
-            allItems.append(contentsOf: privacyItems)
+            allItems.append(contentsOf: searchableItems(PrivacySearchTag.self, context: context, environment: environment))
             
-            allItems.append(contentsOf: searchableItems(SettingsDataAndStorageTag.self, context: context))
+            allItems.append(contentsOf: searchableItems(SettingsDataAndStorageTag.self, context: context, environment: environment))
             
             let proxyItems = proxySearchableItems(context: context, servers: proxyServers)
             allItems.append(contentsOf: proxyItems)
@@ -631,7 +514,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             let languageItems = languageSearchableItems(context: context, localizations: localizations)
             allItems.append(contentsOf: languageItems)
             
-            allItems.append(contentsOf: searchableItems(GeneralSettingsEntryTag.self, context: context))
+            allItems.append(contentsOf: searchableItems(GeneralSettingsEntryTag.self, context: context, environment: environment))
             
 
             let support = SettingsSearchableItem<Context>(id: .support(0), title: strings().accountSettingsAskQuestion, alternate: synonyms(strings().settingsSearchSynonymsSupport), icon: .support, breadcrumbs: [], present: { context, _, present in

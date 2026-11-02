@@ -24,6 +24,14 @@ public enum PrivacyAndSecurityEntryTag: ItemListItemTag {
     case topPeers
     case cloudDraft
     case autoArchive
+    case messages
+    case passkeys
+    case loginEmail
+    case globalTimer
+    case webSessions
+    case secretChatWebPreview
+    case sensitiveContent
+    case proxy
     public func isEqual(to other: ItemListItemTag) -> Bool {
         if let other = other as? PrivacyAndSecurityEntryTag, self == other {
             return true
@@ -42,6 +50,22 @@ public enum PrivacyAndSecurityEntryTag: ItemListItemTag {
             return PrivacyAndSecurityEntry.clearCloudDrafts(sectionId: 0, viewType: .singleItem).stableId
         case .autoArchive:
             return PrivacyAndSecurityEntry.autoArchiveToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
+        case .messages:
+            return PrivacyAndSecurityEntry.messagesPrivacy(sectionId: 0, "", false, viewType: .singleItem).stableId
+        case .passkeys:
+            return PrivacyAndSecurityEntry.passkeys(sectionId: 0, passkeys: [], viewType: .singleItem).stableId
+        case .loginEmail:
+            return PrivacyAndSecurityEntry.loginEmail(sectionId: 0, pattern: nil, viewType: .singleItem).stableId
+        case .globalTimer:
+            return PrivacyAndSecurityEntry.globalTimer(sectionId: 0, "", viewType: .singleItem).stableId
+        case .webSessions:
+            return PrivacyAndSecurityEntry.webAuthorizations(sectionId: 0, viewType: .singleItem).stableId
+        case .secretChatWebPreview:
+            return PrivacyAndSecurityEntry.secretChatWebPreviewToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
+        case .sensitiveContent:
+            return PrivacyAndSecurityEntry.sensitiveContentToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
+        case .proxy:
+            return PrivacyAndSecurityEntry.proxySettings(sectionId: 0, "", viewType: .singleItem).stableId
         }
     }
 }
