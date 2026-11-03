@@ -29,6 +29,7 @@ struct ChatListFocusSupport: Equatable {
     let query: ChatListFocusQuery
     let groups: [EngineChatList.GroupItem]
     let additionalItems: [EngineChatList.AdditionalItem]
+    let hasUnfilteredChats: Bool
 }
 
 private struct ChatListFocusBaseline {
@@ -56,7 +57,7 @@ private func chatListFocusScopes(_ request: ChatListFocusRequest, policies: Sign
 }
 
 private func chatListFocusPinnedBaseline(_ request: ChatListFocusRequest) -> Signal<ChatListFocusBaseline, NoError> {
-    let baseline = chatListViewForLocation(chatListLocation: request.chatListLocation, location: .Initial(50, nil), filter: nil, account: request.account)
+    let baseline = chatListViewForLocation(chatListLocation: request.chatListLocation, location: .Initial(50, nil), filter: request.filter, account: request.account)
     return baseline |> mapToSignal { view in
         TelegramEngine(account: request.account).peers.getPinnedItemIds(location: .group(request.groupId)) |> map { pinned in
             let peerIds = pinned.map { item -> PeerId in
@@ -88,6 +89,6 @@ func chatListFocusSupport(_ request: ChatListFocusRequest, policies: Signal<Focu
         let additionalItems = baseline.view.list.additionalItems.filter {
             chatListFocusIncludesAdditionalItem($0, selection: request.selection)
         }
-        return ChatListFocusSupport(query: .init(pinnedPeerIds: baseline.pinnedPeerIds, scope: scope), groups: chatListFocusSanitizedGroups(baseline.view.list.groupItems), additionalItems: additionalItems)
+        return ChatListFocusSupport(query: .init(pinnedPeerIds: baseline.pinnedPeerIds, scope: scope), groups: chatListFocusSanitizedGroups(baseline.view.list.groupItems), additionalItems: additionalItems, hasUnfilteredChats: !baseline.view.list.isLoading && !baseline.view.list.items.isEmpty)
     } |> distinctUntilChanged
 }

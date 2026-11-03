@@ -9,6 +9,11 @@ func chatListFocusSelection(accountId: Int64, policies: Signal<FocusFilterPolicy
     policies |> map { $0.selection(accountId: accountId, effect: .chatList) } |> distinctUntilChanged
 }
 
+struct ChatListFocusViewUpdate {
+    let view: ChatListViewUpdate
+    let hiddenByFocus: Bool
+}
+
 private struct ChatListFocusUpdate {
     let revision: UUID
     let view: ChatListViewUpdate
@@ -34,7 +39,7 @@ private func chatListFocusQueryUpdates(_ request: ChatListFocusRequest, support:
     }
 }
 
-private func chatListFocusResult(_ update: ChatListFocusUpdate, request: ChatListFocusRequest, support: ChatListFocusSupport, previousRevision: Atomic<UUID?>) -> ChatListViewUpdate {
+private func chatListFocusResult(_ update: ChatListFocusUpdate, request: ChatListFocusRequest, support: ChatListFocusSupport, previousRevision: Atomic<UUID?>) -> ChatListFocusViewUpdate {
     let items = update.view.list.items.filter {
         focusAllowsChatListPeer($0.renderedPeer.peerId, selection: request.selection, scope: support.query.scope)
     }
@@ -43,12 +48,19 @@ private func chatListFocusResult(_ update: ChatListFocusUpdate, request: ChatLis
     }
     let list = EngineChatList(items: items, groupItems: request.restoresGroups ? support.groups : update.view.list.groupItems, additionalItems: additionalItems, hasEarlier: update.view.list.hasEarlier, hasLater: update.view.list.hasLater, isLoading: update.view.list.isLoading)
     let repeated = previousRevision.swap(update.revision) == update.revision
-    return update.view.withUpdatedList(list, type: repeated ? .Generic : nil)
+    let hiddenByFocus: Bool
+    if case .filter? = request.filter {
+        hiddenByFocus = support.hasUnfilteredChats && list.items.isEmpty && !list.isLoading && !list.hasEarlier && !list.hasLater
+    } else {
+        hiddenByFocus = false
+    }
+    return ChatListFocusViewUpdate(view: update.view.withUpdatedList(list, type: repeated ? .Generic : nil), hiddenByFocus: hiddenByFocus)
 }
 
-func focusFilteredChatListView(chatListLocation: ChatListControllerLocation, location: ChatListIndexRequest, filter: ChatListFilter?, account: Account, selection: FocusFilterSelection?, policies: Signal<FocusFilterPolicy, NoError>) -> Signal<ChatListViewUpdate, NoError> {
+func focusFilteredChatListView(chatListLocation: ChatListControllerLocation, location: ChatListIndexRequest, filter: ChatListFilter?, account: Account, selection: FocusFilterSelection?, policies: Signal<FocusFilterPolicy, NoError>) -> Signal<ChatListFocusViewUpdate, NoError> {
     guard let selection, case let .chatList(groupId) = chatListLocation else {
         return chatListViewForLocation(chatListLocation: chatListLocation, location: location, filter: filter, account: account)
+        |> map { ChatListFocusViewUpdate(view: $0, hiddenByFocus: false) }
     }
     let request = ChatListFocusRequest(groupId: groupId, location: location, filter: filter, account: account, selection: selection)
     let support = chatListFocusSupport(request, policies: policies)
