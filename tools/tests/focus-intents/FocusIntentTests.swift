@@ -10,6 +10,10 @@ enum TestFailure: Error {
 enum FocusIntentStorage {
     static var repository: (any FocusFilterRepository)?
 
+    static func withRequest<Result>(_ work: () throws -> Result) rethrows -> Result {
+        try work()
+    }
+
     static func store() throws -> any FocusFilterRepository {
         guard let repository else {
             throw TestFailure.unexpectedStorageAccess

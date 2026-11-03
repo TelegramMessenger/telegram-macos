@@ -3,6 +3,14 @@ import FocusFilterInfrastructure
 import Foundation
 
 enum FocusIntentStorage {
+    static let lifecycle = FocusExtensionLifecycle.start()
+
+    static func withRequest<Result>(_ work: () throws -> Result) rethrows -> Result {
+        let request = lifecycle?.beginRequest()
+        defer { request?.invalidate() }
+        return try work()
+    }
+
     private static let repository: Result<any FocusFilterRepository, Error> = Result {
         guard let group = Bundle.main.object(forInfoDictionaryKey: "FocusAppGroup") as? String else {
             throw FocusStorageError.unavailable

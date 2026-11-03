@@ -79,11 +79,15 @@ struct TelegramFocusFilter: SetFocusFilterIntent {
     }
 
     var appContext: FocusFilterAppContext {
-        FocusFilterAppContext(notificationFilterPredicate: FocusNotificationFilter(configuration: configuration).predicate)
+        FocusIntentStorage.withRequest {
+            FocusFilterAppContext(notificationFilterPredicate: FocusNotificationFilter(configuration: configuration).predicate)
+        }
     }
 
     func perform() async throws -> some IntentResult {
-        try FocusIntentStorage.store().updateConfiguration(configuration)
+        try FocusIntentStorage.withRequest {
+            try FocusIntentStorage.store().updateConfiguration(configuration)
+        }
         return .result()
     }
 }

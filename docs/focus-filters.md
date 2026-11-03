@@ -89,12 +89,40 @@ After upgrading, also open Telegram and reopen an existing Focus filter: account
 rows and the filter summary should show the positive Telegram user ID while
 retaining the original selection and filtering behavior.
 
-When replacing a development build, close System Settings and ensure the previous
-`FocusIntents` extension process has exited before reopening the Focus picker.
-macOS can keep the old extension executable running after its app bundle has been
-replaced or moved to Trash, so launching the newly built app alone may still leave
-old picker labels visible. Confirm the running extension belongs to the intended
-app copy before comparing its menus with the current sources.
+## Extension updates
+
+`FocusIntents` observes replacement of its own installed application. Telegram sends
+an installation-check notification before account initialization on every launch,
+covering direct updates, App Store updates and manual replacement. A lightweight
+30-second timer also checks when Telegram has not restarted or a notification was
+missed. Notifications are scoped by App Group and build channel; they only trigger
+a check of the extension's original installation path, never unconditional exit.
+
+The observer compares the running executable's Mach-O UUID and frozen file metadata
+with the installed bundle. This detects development rebuilds with the same version
+number, host-only updates and signed resource changes. Reading executable identity
+is bounded to Mach-O headers and load commands, rather than loading the whole file.
+Unavailable installation metadata or incomplete Mach-O headers postpone retirement. A changed
+installation must remain stable for two seconds, with no active entity query,
+notification-context calculation or configuration write, and two seconds since the
+last such operation. The old process then exits successfully. No other process is
+terminated, and saved Focus selections/configuration are not reset.
+
+macOS starts the installed extension on the next request; Telegram does not launch
+or manage the system's extension-host connections. This is cooperative retirement,
+not an Apple API guaranteeing a transparent retry of an interrupted App Intents
+request. The quiet interval allows replies to leave the extension but cannot prove
+that the framework has delivered every XPC reply. Signed A-to-B update testing with
+System Settings open remains required before release, including same-version
+rebuilds, active queries, rule saving, and separate installed copies/build channels.
+Confirm that the old PID exits and a subsequent picker request uses the new build
+without losing saved selections or requiring manual process termination.
+
+An already-running build without this observer cannot retire cooperatively. The
+first development upgrade to this implementation may still require closing System
+Settings and ending that legacy process once. Later builds containing the observer
+handle replacement automatically. Moving an application away without putting a
+replacement at its original path does not trigger retirement.
 
 ## Dependency boundaries
 
@@ -160,6 +188,7 @@ python3 tools/tests/focus-chat-list/run.py
 python3 tools/tests/focus-catalog/run.py
 python3 tools/tests/focus-notification-membership/run.py
 python3 tools/tests/focus-intents/run.py
+python3 tools/tests/focus-extension-lifecycle/run.py
 python3 tools/tests/focus-filters/build_extension.py
 python3 tools/tests/focus-filters/build_extension.py --configuration Release
 ```

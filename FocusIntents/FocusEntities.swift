@@ -44,22 +44,28 @@ struct FocusAccountQuery: EntityStringQuery {
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusAccountEntity] {
-        FocusEntityCatalog(catalogProvider()).accounts(for: identifiers)
+        FocusIntentStorage.withRequest {
+            FocusEntityCatalog(catalogProvider()).accounts(for: identifiers)
+        }
     }
 
     func suggestedEntities() async throws -> [FocusAccountEntity] {
-        FocusEntityCatalog(catalogProvider()).accounts
+        FocusIntentStorage.withRequest {
+            FocusEntityCatalog(catalogProvider()).accounts
+        }
     }
 
     func entities(matching string: String) async throws -> [FocusAccountEntity] {
-        let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let entities = try await suggestedEntities()
-        guard !search.isEmpty else {
-            return entities
-        }
-        return entities.filter {
-            $0.title.localizedStandardContains(search)
-                || $0.telegramUserId.map { String($0).localizedStandardContains(search) } == true
+        return FocusIntentStorage.withRequest {
+            let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            let entities = FocusEntityCatalog(catalogProvider()).accounts
+            guard !search.isEmpty else {
+                return entities
+            }
+            return entities.filter {
+                $0.title.localizedStandardContains(search)
+                    || $0.telegramUserId.map { String($0).localizedStandardContains(search) } == true
+            }
         }
     }
 }
@@ -105,23 +111,29 @@ struct FocusFolderQuery: EntityStringQuery {
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusFolderEntity] {
-        FocusEntityCatalog(catalogProvider()).folders(for: identifiers)
+        FocusIntentStorage.withRequest {
+            FocusEntityCatalog(catalogProvider()).folders(for: identifiers)
+        }
     }
 
     func suggestedEntities() async throws -> [FocusFolderEntity] {
-        FocusEntityCatalog(catalogProvider()).folders
+        FocusIntentStorage.withRequest {
+            FocusEntityCatalog(catalogProvider()).folders
+        }
     }
 
     func entities(matching string: String) async throws -> [FocusFolderEntity] {
-        let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let entities = try await suggestedEntities()
-        guard !search.isEmpty else {
-            return entities
-        }
-        return entities.filter {
-            $0.title.localizedStandardContains(search)
-                || $0.telegramAccountId.map { String($0).localizedStandardContains(search) } == true
-                || $0.accountTitle.localizedStandardContains(search)
+        return FocusIntentStorage.withRequest {
+            let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            let entities = FocusEntityCatalog(catalogProvider()).folders
+            guard !search.isEmpty else {
+                return entities
+            }
+            return entities.filter {
+                $0.title.localizedStandardContains(search)
+                    || $0.telegramAccountId.map { String($0).localizedStandardContains(search) } == true
+                    || $0.accountTitle.localizedStandardContains(search)
+            }
         }
     }
 }
@@ -170,23 +182,29 @@ struct FocusChatQuery: EntityStringQuery {
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusChatEntity] {
-        FocusEntityCatalog(catalogProvider()).chats(for: identifiers)
+        FocusIntentStorage.withRequest {
+            FocusEntityCatalog(catalogProvider()).chats(for: identifiers)
+        }
     }
 
     func suggestedEntities() async throws -> [FocusChatEntity] {
-        FocusEntityCatalog(catalogProvider()).chats
+        FocusIntentStorage.withRequest {
+            FocusEntityCatalog(catalogProvider()).chats
+        }
     }
 
     func entities(matching string: String) async throws -> [FocusChatEntity] {
-        let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let entities = try await suggestedEntities()
-        guard !search.isEmpty else {
-            return entities
-        }
-        return entities.filter {
-            $0.title.localizedStandardContains(search)
-                || $0.telegramChatId.map { String($0).localizedStandardContains(search) } == true
-                || $0.accountTitle.localizedStandardContains(search)
+        return FocusIntentStorage.withRequest {
+            let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            let entities = FocusEntityCatalog(catalogProvider()).chats
+            guard !search.isEmpty else {
+                return entities
+            }
+            return entities.filter {
+                $0.title.localizedStandardContains(search)
+                    || $0.telegramChatId.map { String($0).localizedStandardContains(search) } == true
+                    || $0.accountTitle.localizedStandardContains(search)
+            }
         }
     }
 }
