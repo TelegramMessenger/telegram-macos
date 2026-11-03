@@ -91,6 +91,14 @@ retaining the original selection and filtering behavior.
 
 ## Extension updates
 
+The extension process is named `Telegram Focus Filters`, including its executable
+and bundle display name. The internal target, `FocusIntents.appex` wrapper and
+bundle identifier retain their names so existing system registration remains valid.
+A relative `Contents/MacOS/FocusIntents` symlink points to the renamed executable.
+It lets observers from older builds detect the new binary at their saved path and
+retire automatically during this rename. The alias is created before code signing;
+new launches use `CFBundleExecutable`, which names `Telegram Focus Filters`.
+
 `FocusIntents` observes replacement of its own installed application. Telegram sends
 an installation-check notification before account initialization on every launch,
 covering direct updates, App Store updates and manual replacement. A lightweight

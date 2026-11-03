@@ -14,6 +14,17 @@ struct LifecycleFixture {
     private static var request: (any FocusFilterObservation)?
 
     static func main() {
+        #if BUILD_A
+        let expectedName = "FocusIntents"
+        #else
+        let expectedName = "Telegram Focus Filters"
+        #endif
+        guard ProcessInfo.processInfo.processName == expectedName,
+              Bundle.main.executableURL?.lastPathComponent == expectedName,
+              Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String == expectedName else {
+            emit("INVALID_PROCESS_NAME \(ProcessInfo.processInfo.processName)")
+            exit(78)
+        }
         guard Bundle.main.bundleURL.pathExtension == "appex",
               Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String == "1",
               let group = Bundle.main.object(forInfoDictionaryKey: "FocusAppGroup") as? String,

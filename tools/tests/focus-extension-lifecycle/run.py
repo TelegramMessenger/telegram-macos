@@ -76,14 +76,15 @@ def compile_modules(directory, sources, shared):
 
 def make_application(path, build, directory, fixture, shared, identity):
     extension = path / 'Contents/Extensions/FocusIntents.appex'
-    executable = extension / 'Contents/MacOS/FocusIntents'
+    executable_name = 'FocusIntents' if build == 'A' else 'Telegram Focus Filters'
+    executable = extension / 'Contents/MacOS' / executable_name
     executable.parent.mkdir(parents=True)
     host = path / 'Contents/MacOS/Telegram'
     host.parent.mkdir()
     host.write_text(f'Lifecycle fixture host {build}\n')
     for bundle, name, bundle_identifier in [
         (path, 'Telegram', identity),
-        (extension, 'FocusIntents', identity + '.FocusIntents'),
+        (extension, executable_name, identity + '.FocusIntents'),
     ]:
         info = {
             'CFBundleExecutable': name,
@@ -105,6 +106,8 @@ def make_application(path, build, directory, fixture, shared, identity):
     if build == 'A':
         command += ['-D', 'BUILD_A']
     subprocess.run(command + [str(fixture), '-o', str(executable)], check=True)
+    if build == 'B':
+        executable.with_name('FocusIntents').symlink_to(executable.name)
     return executable
 
 
@@ -133,7 +136,15 @@ def run():
             first.read_until('READY A', timeout=10)
             installed.rename(directory / 'Previous.app')
             replacement.rename(installed)
-            print('Replaced A with B at the same path and bundle version; no notification sent.', flush=True)
+            extension = installed / 'Contents/Extensions/FocusIntents.appex'
+            with (extension / 'Contents/Info.plist').open('rb') as source:
+                executable_name = plistlib.load(source)['CFBundleExecutable']
+            second_executable = extension / 'Contents/MacOS' / executable_name
+            if not first_executable.is_symlink() or first_executable.readlink() != Path('Telegram Focus Filters'):
+                raise AssertionError('Old executable path must be a relative compatibility alias')
+            if not first_executable.samefile(second_executable):
+                raise AssertionError('Old executable path does not resolve to the renamed executable')
+            print('Replaced A with renamed B and its compatibility alias at the same bundle version; no notification sent.', flush=True)
             first.read_until()
             if first.process.returncode != 0:
                 raise AssertionError(f'Old fixture exited with {first.process.returncode}')
@@ -148,7 +159,7 @@ def run():
         finally:
             first.close()
 
-        second = FixtureProcess(first_executable)
+        second = FixtureProcess(second_executable)
         try:
             second.read_until('READY B', timeout=10)
             second.read_until()

@@ -169,6 +169,16 @@ def validate_extension_info(product, configuration):
     assert info["EXAppExtensionAttributes"]["EXExtensionPointIdentifier"] == "com.apple.appintents-extension"
     assert info["FocusAppGroup"] == "6N38VWS5BX.ru.keepcoder.Telegram"
     assert info["SOURCE"] == ("DEBUG" if configuration == "Debug" else "STABLE")
+    assert info["CFBundleExecutable"] == "Telegram Focus Filters"
+    assert info["CFBundleName"] == "Telegram Focus Filters"
+    assert info["CFBundleDisplayName"] == "Telegram Focus Filters"
+    executable = product / "Contents/MacOS" / info["CFBundleExecutable"]
+    assert executable.is_file()
+    legacy_path = product / "Contents/MacOS/FocusIntents"
+    assert legacy_path.is_symlink()
+    assert legacy_path.readlink() == Path(info["CFBundleExecutable"])
+    assert legacy_path.resolve() == executable.resolve()
+
 
 
 def validate_intent_metadata(product):
@@ -191,6 +201,7 @@ def validate_intent_metadata(product):
         }[parameter]
         entity = actions["entities"][entity_type]
         query = actions["queries"][query_type]
+        assert query["fullyQualifiedIdentifier"] == f"FocusIntents.{query_type}"
         assert entity["defaultQueryIdentifier"] == query["fullyQualifiedIdentifier"]
         assert query["entityType"] == entity_type
         assert query["defaultQueryForEntity"], f"{entity_type} must register its catalogue query as the default"
@@ -206,8 +217,10 @@ def validate_localizations(product):
 
 
 def validate_release_architectures(product):
+    with (product / "Contents/Info.plist").open("rb") as stream:
+        executable_name = plistlib.load(stream)["CFBundleExecutable"]
     architectures = subprocess.check_output([
-        "lipo", "-archs", str(product / "Contents/MacOS/FocusIntents")
+        "lipo", "-archs", str(product / "Contents/MacOS" / executable_name)
     ], text=True).split()
     assert set(architectures) == {"arm64", "x86_64"}
 

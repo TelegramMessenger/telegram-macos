@@ -3954,7 +3954,7 @@
 		F0C050000000000000000020 /* FocusIntents */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F0C050000000000000000023 /* Build configuration list for PBXNativeTarget FocusIntents */;
-			buildPhases = (F0C05000000000000000001A /* Sources */, F0C050000000000000000019 /* Frameworks */, F0C05000000000000000001B /* Resources */, );
+			buildPhases = (F0C05000000000000000001A /* Sources */, F0C050000000000000000019 /* Frameworks */, F0C05000000000000000001B /* Resources */, F0C1EA000000000000000030 /* Preserve Focus executable compatibility */, );
 			buildRules = ();
 			dependencies = ();
 			name = FocusIntents;
@@ -4664,6 +4664,17 @@
 			shellPath = /bin/sh;
 			shellScript = "/usr/bin/env python3 \"$SRCROOT/scripts/prepare-telegram-api.py\" --check\n";
 		};
+		F0C1EA000000000000000030 /* Preserve Focus executable compatibility */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ("$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)", );
+			name = "Preserve Focus executable compatibility";
+			outputPaths = ("$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/FocusIntents", );
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nln -sfn \"$EXECUTABLE_NAME\" \"$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/FocusIntents\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -5259,7 +5270,9 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 13.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ru.keepcoder.Telegram.FocusIntents;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Telegram Focus Filters";
+				PRODUCT_MODULE_NAME = FocusIntents;
+				WRAPPER_NAME = FocusIntents.appex;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -5286,7 +5299,9 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 13.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ru.keepcoder.Telegram.FocusIntents;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Telegram Focus Filters";
+				PRODUCT_MODULE_NAME = FocusIntents;
+				WRAPPER_NAME = FocusIntents.appex;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
