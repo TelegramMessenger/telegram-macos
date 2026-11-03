@@ -121,7 +121,7 @@ final class UpdateTabView : Control {
         layout.measure(width: max(280, frame.width))
         textView.update(layout)
         imageView.image = generateTintedImage(image: theme.icons.appUpdate, color: foreground)
-        imageView.sizeToFit()
+        imageView.setFrameSize(NSMakeSize(24, 24))
         progressView.progressColor = foreground
         setAccessibilityLabel(strings().updateUpdateTelegram)
         updateContent(animated: false)
