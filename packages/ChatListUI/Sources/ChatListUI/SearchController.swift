@@ -338,7 +338,7 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 }
 
 
-private func peerContextMenuItems(peer: Peer, arguments: SearchControllerArguments, isRecent: Bool, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
+private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, arguments: SearchControllerArguments, isRecent: Bool, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
     let remove: ContextMenuItem?
     if isRecent {
         remove = ContextMenuItem(strings().searchRemoveFromRecent, handler: {
@@ -347,7 +347,27 @@ private func peerContextMenuItems(peer: Peer, arguments: SearchControllerArgumen
     } else {
         remove = nil
     }
-    return searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove, adPeer: adPeer)
+    return searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove, adPeer: adPeer) |> map { peerItems in
+        var items: [ContextMenuItem] = []
+        switch arguments.target {
+        case .common, .community:
+            items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+                let context = arguments.context
+                let openPeerId = chatPeerId ?? peer.id
+                if let adPeer {
+                    context.engine.messages.markAdAction(opaqueId: adPeer.opaqueId, media: false, fullscreen: false)
+                }
+                _ = context.engine.peers.addRecentlySearchedPeer(peerId: openPeerId).start()
+                _ = (storedMessageFromSearchPeer(account: context.account, peer: peer) |> deliverOnMainQueue).start(completed: {
+                    ChatListUIHooks.shared.openPeerInNewWindow(context, openPeerId)
+                })
+            }, itemImage: MenuAnimation.menu_open_with.value))
+            items.append(ContextSeparatorItem())
+        case .forum, .savedMessages:
+            break
+        }
+        return items + peerItems
+    }
 }
 
 
@@ -432,7 +452,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: secretChat != nil ? theme.colors.accent : theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: drawBorder, isLookSavedMessage: true, drawLastSeparator: true, canRemoveFromRecent: false, controlAction: {
                 arguments.setPeerAsTag(peer)
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: peer, chatPeerId: secretChat?.peerId ?? renderedPeer.peerId, arguments: arguments, isRecent: false)
             }, unreadBadge: badge, canAddAsTag: canAddAsTag, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, monoforumPeer: chatOrMonoforum)
         case let .topic(item, _, _, _, _):
             return SearchTopicRowItem(initialSize, stableId: entry.stableId, item: item, context: arguments.context)
@@ -463,7 +483,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                     arguments.removeRecentPeerId(peer.id)
                 }
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, arguments: arguments, isRecent: true)
+                return peerContextMenuItems(peer: peer, chatPeerId: secretChat?.peerId ?? renderedPeer.peerId, arguments: arguments, isRecent: true)
             }, unreadBadge: badge, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, isGrossingApp: isGrossingApp, isRecentApp: isRecentApp, monoforumPeer: chatOrMonoforum)
         case let .savedMessages(peer):
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: true, isLookSavedMessage: true, contextMenuItems: {

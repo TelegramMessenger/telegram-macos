@@ -2,8 +2,13 @@ import Foundation
 import XCTest
 import SwiftSignalKit
 
+struct PeerId: Equatable {
+    let rawValue: Int64
+    init(_ rawValue: Int64) { self.rawValue = rawValue }
+}
 struct MessageId: Equatable {
     typealias Namespace = Int32
+    var peerId: PeerId = PeerId(1)
     let namespace: Namespace
     let id: Int
 }
@@ -22,6 +27,10 @@ struct TelegramChannel: Peer {
     var flags: ChannelFlags = []
 }
 struct User: Peer {}
+struct CachedChannelData {
+    var boostsToUnrestrict: Int32?
+    var appliedBoosts: Int32?
+}
 class PostboxView: Equatable {
     static func == (lhs: PostboxView, rhs: PostboxView) -> Bool { lhs === rhs }
 }
@@ -80,8 +89,8 @@ final class Harness {
         let chatLocationContextHolder = 0
 __IMPLEMENTATION__
     }
-    func show(_ id: Int) {
-        maxVisibleIncomingMessageIndex.set(MessageIndex(id: MessageId(namespace: 0, id: id)))
+    func show(_ id: Int, peerId: PeerId = PeerId(1)) {
+        maxVisibleIncomingMessageIndex.set(MessageIndex(id: MessageId(peerId: peerId, namespace: 0, id: id)))
         settle()
     }
     func update(_ peer: Peer?) {
@@ -129,6 +138,13 @@ final class ReadHistoryTests: XCTestCase {
     }
     func testMonoforumStillReadsWhenChannelIsNotJoined() {
         let h = Harness(peer: TelegramChannel(participationStatus: .left, flags: [.isMonoforum]))
+        h.show(50)
+        XCTAssertEqual(h.context.reads, [50])
+    }
+    func testEmptyPeerIndexIsNotRead() {
+        let h = Harness(peer: TelegramChannel(participationStatus: .member))
+        h.show(0, peerId: PeerId(0))
+        XCTAssertEqual(h.context.reads, [])
         h.show(50)
         XCTAssertEqual(h.context.reads, [50])
     }

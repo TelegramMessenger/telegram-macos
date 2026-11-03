@@ -987,7 +987,7 @@ final class AppMenuController : NSObject  {
         if rect.minY < visible.minY {
             rect.origin.y = visible.minY
         } else if rect.maxY > visible.maxY, !owner.isFullScreen {
-            rect.origin.y = visible.maxY
+            rect.origin.y = visible.maxY - rect.height
         }
         
         if rect.minX < visible.minX {

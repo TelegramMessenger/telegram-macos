@@ -158,7 +158,7 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
                 ChatListUIHooks.shared.pushPeerInfo(context.bindings.rootNavigation(), context, peer.id)
             })
         }), toggleMute: {
-            ChatListRowItem.toggleMuted(context: context, peerId: notificationPeerId, isMuted: state.isMuted, threadId: nil)
+            ChatListRowItem.toggleMuted(context: context, peerId: notificationPeerId, isMuted: state.isMuted, threadId: nil, threadData: nil)
         }, mute: { interval in
             _ = context.engine.peers.updatePeerMuteSetting(peerId: notificationPeerId, threadId: nil, muteInterval: interval).start()
         }, muteUntil: {

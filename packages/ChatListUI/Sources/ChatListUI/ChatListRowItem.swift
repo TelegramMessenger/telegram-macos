@@ -1746,7 +1746,7 @@ public class ChatListRowItem: TableRowItem {
     public func toggleMuted() {
         let peerId = renderedPeer?.chatMainPeer?.id ?? peerId
         if let peerId = peerId {
-            ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: self.mode.threadId)
+            ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: self.mode.threadId, threadData: self.mode.threadData)
         }
     }
     public func delete() {
@@ -1756,9 +1756,13 @@ public class ChatListRowItem: TableRowItem {
         }
     }
     
-    public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?) {
+    public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?, threadData: MessageHistoryThreadData?) {
         if isMuted {
-            _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).start()
+            if let threadId, threadData?.notificationSettings.muteState == .default {
+                _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).start()
+            } else {
+                _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).start()
+            }
         } else {
             var options:[ModalOptionSet] = []
             
@@ -1942,7 +1946,7 @@ public class ChatListRowItem: TableRowItem {
         
         let toggleMute:()->Void = {
             if let peerId = effectivePeerId {
-                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId)
+                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId, threadData: mode.threadData)
             }
         }
         let toggleTopic:()->Void = {
