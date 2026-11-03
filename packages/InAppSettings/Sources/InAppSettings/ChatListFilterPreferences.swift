@@ -278,7 +278,7 @@ private func makeChatListFilterItems(engine: TelegramEngine, accountManager: Acc
                                         if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings, case .muted = notificationSettings.muteState {
                                             peerTagAndCount[peerId] = (tag, peerCount, false)
                                         } else {
-                                            peerTagAndCount[peerId] = (tag, peerCount, true)
+                                            peerTagAndCount[peerId] = (tag, peerCount, unreadCounts.hasUnmutedUnreadThreads(for: peerId) ?? true)
                                         }
                                     }
                                     
