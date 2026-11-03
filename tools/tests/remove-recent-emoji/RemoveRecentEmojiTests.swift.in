@@ -3,7 +3,6 @@ import XCTest
 import SwiftSignalKit
 
 final class RemoveRecentEmojiTests: XCTestCase {
-    let pr117 = __PR117__
     let a = MediaId(namespace: 1, id: 42)
     let b = MediaId(namespace: 2, id: 42)
     let c = MediaId(namespace: 1, id: 43)
@@ -54,17 +53,20 @@ final class RemoveRecentEmojiTests: XCTestCase {
         try assertStored(original.removingEmoji("👍"), ["👍🏻", "👍🏿", "👍🏻\u{fe0f}", "😁"])
     }
 
-    func testLegacySkinModifierUsesActualDisplayedIdentity() throws {
+    func testSkinPreferenceRepaintsOnlyLegacyLists() throws {
         let original = settings(["👍", "👍🏻", "😁"], animated: [a], modifiers: [tone])
-        XCTAssertEqual(original.emojies.first?.strippedEmoji, pr117 ? "👍" : "👍🏿")
+        XCTAssertEqual(try reload(original).emojies.map { $0.strippedEmoji }, ["👍", "👍🏻", "😁"])
         let displayed = try XCTUnwrap(original.emojies.first)
         let removed = original.removingEmoji(displayed)
         try assertStored(removed, ["👍🏻", "😁"])
         XCTAssertEqual(removed.skinModifiers, [tone])
         XCTAssertEqual(removed.animated, [a])
-        if pr117 {
-            try assertStored(original.removingEmoji("👍🏿"), ["👍", "👍🏻", "😁"])
-        }
+        try assertStored(original.removingEmoji("👍🏿"), ["👍", "👍🏻", "😁"])
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+        XCTAssertNotNil(legacy.removeValue(forKey: "v"))
+        let migrated = try JSONDecoder().decode(RecentUsedEmoji.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(migrated.emojies.map { $0.strippedEmoji }, ["👍🏿", "👍🏻", "😁"])
+        XCTAssertEqual(try reload(migrated).emojies, migrated.emojies)
     }
 
     func testFullFamilyAndProfessionZWJIdentityPreservesOtherSequences() throws {
@@ -149,7 +151,7 @@ final class RemoveRecentEmojiTests: XCTestCase {
     func testMissingPreferenceUsesDefaultsInsteadOfOverwritingEmpty() throws {
         let unicode = Postbox()
         _ = removeUsedEmoji("😁", postbox: unicode).start()
-        try assertStored(unicode.current, stored(RecentUsedEmoji.defaultSettings).filter { $0 != "😁" })
+        try assertStored(unicode.current, stored(RecentUsedEmoji.defaultSettings).filter { $0.strippedEmoji != "😁" })
         let animated = Postbox()
         _ = removeAnimatedUsedEmoji(a, postbox: animated).start()
         try assertStored(animated.current, stored(RecentUsedEmoji.defaultSettings))
@@ -173,7 +175,7 @@ final class RemoveRecentEmojiTests: XCTestCase {
         disposable.dispose()
     }
 
-    func testFourSendReloadCyclesExposeBaseDuplicatesAndPR117Collapse() throws {
+    func testFourSendReloadCyclesKeepOneEntry() throws {
         for emoji in ["✅", "😁"] {
             let postbox = Postbox(settings([emoji]))
             var counts: [Int] = []
@@ -182,12 +184,7 @@ final class RemoveRecentEmojiTests: XCTestCase {
                 postbox.replace(try reload(postbox.current))
                 counts.append(postbox.current.emojies.filter { $0.strippedEmoji == emoji }.count)
             }
-            print("Send/reload \(emoji): \(counts); PR117=\(pr117)")
-            if pr117 {
-                XCTAssertEqual(counts, [1, 1, 1, 1])
-            } else {
-                XCTAssertGreaterThan(counts.last ?? 0, counts.first ?? 0)
-            }
+            XCTAssertEqual(counts, [1, 1, 1, 1])
             _ = removeUsedEmoji(emoji, postbox: postbox).start()
             postbox.replace(try reload(postbox.current))
             XCTAssertFalse(postbox.current.emojies.contains { $0.strippedEmoji == emoji })
@@ -536,12 +533,9 @@ final class RemoveRecentEmojiTests: XCTestCase {
         let original = settings([raw, "👍🏻", "😁"], modifiers: [tone])
         let rendered = segments([.Recent: original.emojies, .People: [raw]], skinModifiers: [tone])
         let first = try XCTUnwrap(rendered[.Recent]?.first?.first)
-        XCTAssertEqual(first.string.strippedEmoji, pr117 ? "👍" : "👍🏿")
+        XCTAssertEqual(first.string.strippedEmoji, "👍")
         XCTAssertEqual(first.attribute(recentEmojiSourceKey, at: 0, effectiveRange: nil) as? String, raw)
         XCTAssertNil(rendered[.People]?.first?.first?.attribute(recentEmojiSourceKey, at: 0, effectiveRange: nil))
-        if !pr117 {
-            print("Legacy renderer: source=\(raw.unicodeScalars.map(\.value)), displayed=\(first.string); direct displayed removal leaves \(try stored(original.removingEmoji(first.string)).count) entries")
-        }
         let view = EBlockRowView(attributed: [first])
         let postbox = Postbox(original)
         var captured: [String] = []
