@@ -76,7 +76,7 @@ def compile_modules(directory, sources, shared):
 
 def make_application(path, build, directory, fixture, shared, identity):
     extension = path / 'Contents/Extensions/FocusIntents.appex'
-    executable_name = 'FocusIntents' if build == 'A' else 'Telegram Focus Filters'
+    executable_name = 'Telegram Focus Filters'
     executable = extension / 'Contents/MacOS' / executable_name
     executable.parent.mkdir(parents=True)
     host = path / 'Contents/MacOS/Telegram'
@@ -106,8 +106,9 @@ def make_application(path, build, directory, fixture, shared, identity):
     if build == 'A':
         command += ['-D', 'BUILD_A']
     subprocess.run(command + [str(fixture), '-o', str(executable)], check=True)
-    if build == 'B':
-        executable.with_name('FocusIntents').symlink_to(executable.name)
+    legacy_executable = executable.with_name('FocusIntents')
+    if legacy_executable.exists() or legacy_executable.is_symlink():
+        raise AssertionError('Legacy executable path must be absent, including dangling symlinks')
     return executable
 
 
@@ -140,11 +141,7 @@ def run():
             with (extension / 'Contents/Info.plist').open('rb') as source:
                 executable_name = plistlib.load(source)['CFBundleExecutable']
             second_executable = extension / 'Contents/MacOS' / executable_name
-            if not first_executable.is_symlink() or first_executable.readlink() != Path('Telegram Focus Filters'):
-                raise AssertionError('Old executable path must be a relative compatibility alias')
-            if not first_executable.samefile(second_executable):
-                raise AssertionError('Old executable path does not resolve to the renamed executable')
-            print('Replaced A with renamed B and its compatibility alias at the same bundle version; no notification sent.', flush=True)
+            print('Replaced A with B at the same executable path and bundle version; no notification sent.', flush=True)
             first.read_until()
             if first.process.returncode != 0:
                 raise AssertionError(f'Old fixture exited with {first.process.returncode}')

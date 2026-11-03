@@ -175,9 +175,7 @@ def validate_extension_info(product, configuration):
     executable = product / "Contents/MacOS" / info["CFBundleExecutable"]
     assert executable.is_file()
     legacy_path = product / "Contents/MacOS/FocusIntents"
-    assert legacy_path.is_symlink()
-    assert legacy_path.readlink() == Path(info["CFBundleExecutable"])
-    assert legacy_path.resolve() == executable.resolve()
+    assert not legacy_path.exists() and not legacy_path.is_symlink(), "The legacy executable path must not be bundled"
 
 
 

@@ -94,10 +94,9 @@ retaining the original selection and filtering behavior.
 The extension process is named `Telegram Focus Filters`, including its executable
 and bundle display name. The internal target, `FocusIntents.appex` wrapper and
 bundle identifier retain their names so existing system registration remains valid.
-A relative `Contents/MacOS/FocusIntents` symlink points to the renamed executable.
-It lets observers from older builds detect the new binary at their saved path and
-retire automatically during this rename. The alias is created before code signing;
-new launches use `CFBundleExecutable`, which names `Telegram Focus Filters`.
+The only executable path is `Contents/MacOS/Telegram Focus Filters`; there is no
+compatibility executable or symlink at `Contents/MacOS/FocusIntents`. New launches
+use `CFBundleExecutable`, which names `Telegram Focus Filters`.
 
 `FocusIntents` observes replacement of its own installed application. Telegram sends
 an installation-check notification before account initialization on every launch,
@@ -126,10 +125,10 @@ rebuilds, active queries, rule saving, and separate installed copies/build chann
 Confirm that the old PID exits and a subsequent picker request uses the new build
 without losing saved selections or requiring manual process termination.
 
-An already-running build without this observer cannot retire cooperatively. The
-first development upgrade to this implementation may still require closing System
-Settings and ending that legacy process once. Later builds containing the observer
-handle replacement automatically. Moving an application away without putting a
+For the one-time development upgrade from a process named `FocusIntents`, or a
+build without this observer, close System Settings and end that old process
+manually. Its observer cannot follow an executable path that no longer exists.
+Later builds using `Telegram Focus Filters` handle replacement automatically. Moving an application away without putting a
 replacement at its original path does not trigger retirement.
 
 ## Dependency boundaries
