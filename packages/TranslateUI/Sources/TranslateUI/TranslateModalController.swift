@@ -1035,7 +1035,7 @@ func translateBlocks(context: any AccountContextProtocol, from: String?, to: Str
     
     return signal
 }
-public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil) -> InputDataModalController {
+public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], draft: ChatTextInputState? = nil, canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil) -> InputDataModalController {
 
     let actionsDisposable = DisposableSet()
     let disposable = MetaDisposable()
@@ -1049,6 +1049,13 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     let richPage: InstantPage? = richMessagePage ?? richBlocks.flatMap { richTextInstantPage(from: outgoingBlocks(fromSelection: $0), media: [:]) }
 
     let isInputMode = onUse != nil || onUseRich != nil
+
+    let entities = onUse == nil ? entities : entities.filter { entity in
+        if case .FormattedDate = entity.type {
+            return false
+        }
+        return true
+    }
 
     let configTones = translationStyles(from: context)
     var initialState = State(text: text, textEntities: entities, from: from, to: Translate.normalizeLanguageCode(toLang), fromIsRevealed: !canBreak, toIsRevealed: true)
@@ -1537,6 +1544,15 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         actionsDisposable.dispose()
     }
     
+    let appliedText: () -> NSAttributedString? = {
+        return stateValue.with { state in
+            if let draft, state.translated == state.text, state.translatedEntities == state.textEntities {
+                return draft.attributedString()
+            }
+            return state.translatedAttr(context: context)
+        }
+    }
+
     let modalInteractions: ModalInteractions
     if isInputMode {
         let sendIcon: CGImage? = onSend != nil ? theme.icons.send_message_large : nil
@@ -1554,14 +1570,12 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
                 close?()
                 return
             }
-            let text = stateValue.with { $0.translatedAttr(context: context) }
-            if let text, let onUse {
+            if let text = appliedText(), let onUse {
                 onUse(text)
                 close?()
             }
         }, singleButton: true, extraActionImage: sendIcon, extraAction: onSend != nil ? {
-            let text = stateValue.with { $0.translatedAttr(context: context) }
-            if let text {
+            if let text = appliedText() {
                 onSend?(text)
                 close?()
             }

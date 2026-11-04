@@ -124,8 +124,15 @@ public class MGalleryVideoItem: MGalleryItem {
         return min(pagerSize.width / sizeValue.width, pagerSize.height / sizeValue.height)
     }
     
+    func deactivateMediaControls() {
+        if !controller.isPictureInPicture {
+            controller.deactivateMediaControls()
+        }
+    }
+
     public override func disappear(for view: NSView?) {
         super.disappear(for: view)
+        deactivateMediaControls()
         if isPausedGlobalPlayer {
             GalleryHooks.shared.resumeGlobalAudio(context)
         }

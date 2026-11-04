@@ -60,7 +60,7 @@ let package = Package(
                            .product(name: "ColorPalette", package: "ColorPalette", condition: nil),
                            .product(name: "CallVideoLayer", package: "CallVideoLayer", condition: nil)],
             path: "Sources/",
-            resources: [.copy("Resources/Assets.xcassets")]),
+            resources: [.process("Resources/Assets.xcassets")]),
         .testTarget(
             name: "PrivateCallScreenTests",
             dependencies: [

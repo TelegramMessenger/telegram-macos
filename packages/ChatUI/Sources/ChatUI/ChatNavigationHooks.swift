@@ -167,6 +167,7 @@ public struct ChatNavigationHooks {
     public var showVerifyAgeAlert: (any AccountContextProtocol, Window) -> Void = { _, _ in }
     public var chatExportMenuTitle: () -> String = { "" }
     public var showChatExport: (any AccountContextProtocol, Peer) -> Void = { _, _ in }
+    public var canExportChat: (Peer, CachedPeerData?) -> Bool = { _, _ in false }
     public var makeRequestJoinMemberListController: (any AccountContextProtocol, PeerId, PeerInvitationImportersContext, @escaping () -> Void) -> ViewController = { _, _, _, _ in ViewController() }
     public var makeInviteLinksController: (any AccountContextProtocol, PeerId, Bool) -> ViewController = { _, _, _ in ViewController() }
     public var showPaymentsReceipt: (any AccountContextProtocol, MessageId, TelegramMediaInvoice, Window) -> Void = { _, _, _, _ in }
