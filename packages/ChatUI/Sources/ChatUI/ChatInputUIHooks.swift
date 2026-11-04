@@ -69,19 +69,19 @@ public struct ChatInputUIHooks {
     public let makeEditMessageModel: (ChatEditState, any AccountContextProtocol) -> ChatAccessoryModel
     public let makeForwardPanelModel: ([Message], Bool, any AccountContextProtocol) -> ChatAccessoryModel
     public let makeForwardMessagesModal: (any AccountContextProtocol, [Message]) -> ModalViewController
-    public let makeTranslateModal: (any AccountContextProtocol, String?, String, String, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController
-    public var makeTranslateModalWithContext: ((any AccountContextProtocol, String?, String, String, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController)?
+    public let makeTranslateModal: (any AccountContextProtocol, String?, String, ChatTextInputState, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController
+    public var makeTranslateModalWithContext: ((any AccountContextProtocol, String?, String, ChatTextInputState, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController)?
 
-    public func makeTranslateModalObserved(_ context: any AccountContextProtocol, _ from: String?, _ toLang: String, _ text: String, onUse: @escaping (NSAttributedString) -> Void, onSend: @escaping (NSAttributedString) -> Void) -> ModalViewController {
+    public func makeTranslateModalObserved(_ context: any AccountContextProtocol, _ from: String?, _ toLang: String, _ draft: ChatTextInputState, onUse: @escaping (NSAttributedString) -> Void, onSend: @escaping (NSAttributedString) -> Void) -> ModalViewController {
         func guarded(_ callback: @escaping (NSAttributedString) -> Void) -> (NSAttributedString) -> Void {
             return { translated in
                 callback(translated)
             }
         }
         if let makeTranslateModalWithContext {
-            return makeTranslateModalWithContext(context, from, toLang, text, guarded(onUse), guarded(onSend))
+            return makeTranslateModalWithContext(context, from, toLang, draft, guarded(onUse), guarded(onSend))
         } else {
-            return makeTranslateModal(context, from, toLang, text, guarded(onUse), guarded(onSend))
+            return makeTranslateModal(context, from, toLang, draft, guarded(onUse), guarded(onSend))
         }
     }
 
@@ -127,7 +127,7 @@ public struct ChatInputUIHooks {
                 makeEditMessageModel: @escaping (ChatEditState, any AccountContextProtocol) -> ChatAccessoryModel,
                 makeForwardPanelModel: @escaping ([Message], Bool, any AccountContextProtocol) -> ChatAccessoryModel,
                 makeForwardMessagesModal: @escaping (any AccountContextProtocol, [Message]) -> ModalViewController,
-                makeTranslateModal: @escaping (any AccountContextProtocol, String?, String, String, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController,
+                makeTranslateModal: @escaping (any AccountContextProtocol, String?, String, ChatTextInputState, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController,
                 makeRichTranslateModal: @escaping (any AccountContextProtocol, String?, String, String, [MessageTextEntity], [Block], @escaping ([Block]) -> Void) -> ModalViewController,
                 wallet: Any?,
                 getAudioPlayer: @escaping ((any AccountContextProtocol)?) -> APController?,
