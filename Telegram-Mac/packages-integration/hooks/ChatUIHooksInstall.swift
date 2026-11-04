@@ -239,6 +239,9 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.showChatExport = { context, peer in
         showChatExportModal(context: context, peer: peer)
     }
+    hooks.canExportChat = { peer, cachedData in
+        return !chatExportIsRestricted(peer: peer, cachedData: cachedData)
+    }
     hooks.makeRequestJoinMemberListController = { context, peerId, manager, openInviteLinks in
         return RequestJoinMemberListController(context: context, peerId: peerId, manager: manager, openInviteLinks: openInviteLinks)
     }

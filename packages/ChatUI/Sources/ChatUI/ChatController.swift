@@ -10217,9 +10217,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         animation = .menu_delete
                     }
 
-                    items.append(ContextMenuItem(ChatNavigationHooks.shared.chatExportMenuTitle(), handler: {
-                        ChatNavigationHooks.shared.showChatExport(context, mainPeer)
-                    }, itemImage: MenuAnimation.menu_file.value))
+                    if ChatNavigationHooks.shared.canExportChat(peer, peerView.cachedData) {
+                        items.append(ContextMenuItem(ChatNavigationHooks.shared.chatExportMenuTitle(), handler: {
+                            ChatNavigationHooks.shared.showChatExport(context, mainPeer)
+                        }, itemImage: MenuAnimation.menu_file.value))
+                    }
 
                     if !items.isEmpty {
                         items.append(ContextSeparatorItem())
