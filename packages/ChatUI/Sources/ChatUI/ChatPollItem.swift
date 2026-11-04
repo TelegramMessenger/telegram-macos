@@ -400,6 +400,16 @@ public class ChatPollItem: ChatRowItem {
     
     public let isTranslateLoading: Bool
 
+    fileprivate func copyBlocked() -> Bool {
+        guard !self.canCopyText else {
+            return false
+        }
+        if let message = self.message {
+            _ = showCopyRestriction(message, chatInteraction: self.chatInteraction)
+        }
+        return true
+    }
+
     fileprivate var canCopyText: Bool {
         guard let message = message, !message.flags.contains(.CopyProtected) else {
             return false
@@ -538,7 +548,7 @@ public class ChatPollItem: ChatRowItem {
             let nameLayout = TextViewLayout(optionText, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), alwaysStaticItems: true, mayItems: canCopyText)
             nameLayout.interactions.copyAttributedString = LinkHooks.shared.globalLinkExecutor().copyAttributedString
             nameLayout.interactions.copy = { [weak self] in
-                return self?.canCopyText != true
+                return self?.copyBlocked() ?? true
             }
 
             let wrapper = PollOption(option: option, nameText: nameLayout, percent: percent, realPercent: realPercent, voteCount: votedCount, isSelected: isSelected, isIncoming: isIncoming, isBubbled: renderType == .bubble, voted: voted, isLoading: object.additionalData.pollStateData.identifiers.contains(option.opaqueIdentifier) && object.additionalData.pollStateData.isLoading, presentation: self.presentation, isCorrect: isCorrect, isQuiz: poll.isQuiz, isMultipleSelected: object.additionalData.pollStateData.identifiers.contains(option.opaqueIdentifier), isMultipleChoice: poll.isMultiple, optionMedia: option.media, anyOptionHasMedia: anyOptionHasMedia, hideResults: hideResults && (voted || object.additionalData.pollStateData.isLoading), vote: { [weak self] control in
@@ -591,7 +601,7 @@ public class ChatPollItem: ChatRowItem {
             let layout = TextViewLayout(descAttr, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), strokeLinks: renderType == .bubble, alwaysStaticItems: true, disableTooltips: false, mayItems: canCopyText)
             layout.interactions = LinkHooks.shared.globalLinkExecutor()
             layout.interactions.copy = { [weak self] in
-                return self?.canCopyText != true
+                return self?.copyBlocked() ?? true
             }
             layout.interactions.topWindow = { [weak self] in
                 return self?.menuAdditionView ?? .single(nil)
@@ -606,6 +616,7 @@ public class ChatPollItem: ChatRowItem {
             let makeLinkType = layout.interactions.makeLinkType
             layout.interactions.processURL = { [weak self] link in
                 if case .code = makeLinkType((link, "")), self?.canCopyText != true {
+                    _ = self?.copyBlocked()
                     return
                 }
                 processURL(link)
@@ -622,7 +633,7 @@ public class ChatPollItem: ChatRowItem {
         self.titleText = TextViewLayout(titleAttr, selectText: self.presentation.chat.selectText(isIncoming, renderType == .bubble), alwaysStaticItems: true, mayItems: canCopyText)
         self.titleText.interactions.copyAttributedString = LinkHooks.shared.globalLinkExecutor().copyAttributedString
         self.titleText.interactions.copy = { [weak self] in
-            return self?.canCopyText != true
+            return self?.copyBlocked() ?? true
         }
         
         
