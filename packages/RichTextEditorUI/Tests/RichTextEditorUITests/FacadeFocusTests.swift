@@ -17,6 +17,39 @@ final class FacadeFocusTests: AppKitTestCase {
                       "the canvas must be first responder so keyDown reaches the editor")
     }
 
+    private func hostedEditor(_ text: String) -> (RichTextEditorView, NSWindow) {
+        let editor = RichTextEditorView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        editor.document = Document(blocks: [.paragraph(ParagraphBlock(id: BlockID.generate(), runs: [TextRun(text: text)]))])
+        let win = hostInWindow(editor)
+        editor.makeEditorFirstResponder()
+        editor.canvas.moveCaretToEnd()
+        return (editor, win)
+    }
+
+    private func keyEvent(_ characters: String, keyCode: UInt16, window: NSWindow) throws -> NSEvent {
+        try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
+    }
+
+    func test_keyOutsideCompositionIsLeftToTheHost() throws {
+        let (editor, win) = hostedEditor("prefix")
+        defer { win.orderOut(nil) }
+        let escape = try keyEvent("\u{1b}", keyCode: 53, window: win)
+        XCTAssertFalse(editor.handleKeyDuringComposition(escape),
+                       "without marked text Escape belongs to the host, which closes the modal")
+        XCTAssertEqual(editor.canvas.text(inGlobalRange: 0, editor.canvas.documentSizeValue), "prefix")
+    }
+
+    func test_keyDuringCompositionReachesTheInputContext() throws {
+        let (editor, win) = hostedEditor("prefix")
+        defer { win.orderOut(nil) }
+        editor.canvas.setMarkedText("˜", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let delete = try keyEvent("\u{7f}", keyCode: 51, window: win)
+        XCTAssertTrue(editor.handleKeyDuringComposition(delete),
+                      "while composing, the key must be consumed by the editor instead of the host")
+        XCTAssertEqual(editor.canvas.text(inGlobalRange: 0, editor.canvas.documentSizeValue), "prefix")
+        XCTAssertFalse(editor.canvas.hasMarkedText())
+    }
+
     func test_canvasDoesNotInheritATableAccessibilityParent() {
         let editor = RichTextEditorView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
 
