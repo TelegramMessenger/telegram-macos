@@ -2850,6 +2850,22 @@ func instantPageV2FittedMediaSize(_ naturalSize: CGSize, availableWidth: CGFloat
     return CGSize(width: floor(naturalSize.width * scale), height: floor(naturalSize.height * scale))
 }
 
+/// When measuring a width-fitting chat bubble, a narrow media block must not
+/// inherit the padding created by centering it in the original max-width column.
+func instantPageV2MediaOriginX(
+    horizontalInset: CGFloat,
+    availableWidth: CGFloat,
+    mediaWidth: CGFloat,
+    bleedAmount: CGFloat,
+    heightCapped: Bool,
+    shrinkToContent: Bool
+) -> CGFloat {
+    if heightCapped || (shrinkToContent && bleedAmount <= 0.0) {
+        return horizontalInset
+    }
+    return horizontalInset - bleedAmount + floor((availableWidth - mediaWidth) / 2.0)
+}
+
 private func layoutTypedMediaWithCaptionV2(
     produceItem: (CGRect, CGFloat) -> InstantPageV2LaidOutItem,
     naturalSize: CGSize,
@@ -2886,10 +2902,20 @@ private func layoutTypedMediaWithCaptionV2(
         isHeightCapped = true
     }
 
-    // Left-align height-capped media so fitToWidth can shrink a media-only bubble.
-    let mediaX = isHeightCapped
-        ? horizontalInset
-        : horizontalInset - bleedAmount + floor((availableWidth - scaledSize.width) / 2.0)
+    // A chat rich-message bubble measures content width from item.frame.maxX.
+    // Centering narrow media in the original wide column would therefore keep
+    // the bubble unnecessarily wide, even if the image frame is aspect-fitted.
+    // Only compact chat media (which supplies unsupportedStyle) this way, so
+    // ordinary Instant View pages retain their centered-media layout.
+    let shouldCompactChatMedia = context.fitToWidth && context.unsupportedStyle != nil
+    let mediaX = instantPageV2MediaOriginX(
+        horizontalInset: horizontalInset,
+        availableWidth: availableWidth,
+        mediaWidth: scaledSize.width,
+        bleedAmount: bleedAmount,
+        heightCapped: isHeightCapped,
+        shrinkToContent: shouldCompactChatMedia
+    )
     let mediaFrame = CGRect(x: mediaX, y: 0.0, width: scaledSize.width, height: scaledSize.height)
     let effectiveCorner: CGFloat = bleedAmount > 0 ? 0.0 : cornerRadius
     var result: [InstantPageV2LaidOutItem] = [produceItem(mediaFrame, effectiveCorner)]
