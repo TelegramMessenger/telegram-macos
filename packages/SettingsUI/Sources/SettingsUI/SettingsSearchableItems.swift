@@ -273,7 +273,7 @@ private func notificationSearchableItems<Context: AccountContextProtocol>(contex
         return items
     }
     
-    let reactionRows: [(String, ReactionNotificationEntryTag)] = [(strings().notificationSettingsReactionsMessages, .messages), (strings().notificationSettingsCategoryShowSender, .showSender), (strings().notificationSettingsCategorySound, .sound)]
+    let reactionRows: [(String, ReactionNotificationEntryTag)] = [(strings().notificationSettingsReactionsMessages, .messages), (strings().notificationSettingsCategoryShowSender, .showSender), (strings().notificationSettingsCategorySound, .sound), (strings().notificationSettingsReactionsStories, .stories)]
     var reactionItems: [SettingsSearchableItem<Context>] = [SettingsSearchableItem(id: .notifications(70), title: strings().notificationSettingsReactions, alternate: [], icon: icon, breadcrumbs: [strings().accountSettingsNotifications, strings().notificationSettingsMessageNotifications], present: { context, _, present in
         presentReactions(nil, present, context)
     })]

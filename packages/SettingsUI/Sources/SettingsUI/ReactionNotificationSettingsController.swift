@@ -17,12 +17,16 @@ private final class Arguments {
     let context: any AccountContextProtocol
     let toggleMessages:()->Void
     let updateMessages:(PeerReactionNotificationSettings.Sources)->Void
+    let toggleStories:()->Void
+    let updateStories:(PeerReactionNotificationSettings.Sources)->Void
     let toggleShowSender:()->Void
     let openSound:()->Void
-    init(context: any AccountContextProtocol, toggleMessages:@escaping()->Void, updateMessages:@escaping(PeerReactionNotificationSettings.Sources)->Void, toggleShowSender:@escaping()->Void, openSound:@escaping()->Void) {
+    init(context: any AccountContextProtocol, toggleMessages:@escaping()->Void, updateMessages:@escaping(PeerReactionNotificationSettings.Sources)->Void, toggleStories:@escaping()->Void, updateStories:@escaping(PeerReactionNotificationSettings.Sources)->Void, toggleShowSender:@escaping()->Void, openSound:@escaping()->Void) {
         self.context = context
         self.toggleMessages = toggleMessages
         self.updateMessages = updateMessages
+        self.toggleStories = toggleStories
+        self.updateStories = updateStories
         self.toggleShowSender = toggleShowSender
         self.openSound = openSound
     }
@@ -37,11 +41,14 @@ private struct State : Equatable {
 
 private let _id_messages = InputDataIdentifier("_id_messages")
 private let _id_messages_from = InputDataIdentifier("_id_messages_from")
+private let _id_stories = InputDataIdentifier("_id_stories")
+private let _id_stories_from = InputDataIdentifier("_id_stories_from")
 private let _id_show_sender = InputDataIdentifier("_id_show_sender")
 private let _id_sound = InputDataIdentifier("_id_sound")
 
 public enum ReactionNotificationEntryTag: ItemListItemTag {
     case messages
+    case stories
     case showSender
     case sound
     
@@ -49,6 +56,8 @@ public enum ReactionNotificationEntryTag: ItemListItemTag {
         switch self {
         case .messages:
             return .general(_id_messages)
+        case .stories:
+            return .general(_id_stories)
         case .showSender:
             return .general(_id_show_sender)
         case .sound:
@@ -93,22 +102,37 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 
     let settings = state.settings
     let messagesEnabled = settings.messages != .nobody
+    let storiesEnabled = settings.stories != .nobody
 
     entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsNotifyMeAbout), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_messages, data: .init(name: strings().notificationSettingsReactionsMessages, color: theme.colors.text, type: .switchable(messagesEnabled), viewType: messagesEnabled ? .firstItem : .singleItem, action: arguments.toggleMessages)))
-    index += 1
-
+    var rows: [(InputDataIdentifier, (GeneralViewType) -> InputDataGeneralData)] = []
+    rows.append((_id_messages, { viewType in
+        return .init(name: strings().notificationSettingsReactionsMessages, color: theme.colors.text, type: .switchable(messagesEnabled), viewType: viewType, action: arguments.toggleMessages)
+    }))
     if messagesEnabled {
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_messages_from, data: .init(name: strings().notificationSettingsReactionsFrom, color: theme.colors.text, type: .contextSelector(sourceText(settings.messages), sourceItems(settings.messages, update: arguments.updateMessages)), viewType: .lastItem)))
+        rows.append((_id_messages_from, { viewType in
+            return .init(name: strings().notificationSettingsReactionsFrom, color: theme.colors.text, type: .contextSelector(sourceText(settings.messages), sourceItems(settings.messages, update: arguments.updateMessages)), viewType: viewType)
+        }))
+    }
+    rows.append((_id_stories, { viewType in
+        return .init(name: strings().notificationSettingsReactionsStories, color: theme.colors.text, type: .switchable(storiesEnabled), viewType: viewType, action: arguments.toggleStories)
+    }))
+    if storiesEnabled {
+        rows.append((_id_stories_from, { viewType in
+            return .init(name: strings().notificationSettingsReactionsFrom, color: theme.colors.text, type: .contextSelector(sourceText(settings.stories), sourceItems(settings.stories, update: arguments.updateStories)), viewType: viewType)
+        }))
+    }
+    for (i, row) in rows.enumerated() {
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: row.0, data: row.1(bestGeneralViewType(rows, for: i))))
         index += 1
     }
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    if messagesEnabled {
+    if messagesEnabled || storiesEnabled {
         entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().notificationSettingsOptions), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
         index += 1
 
@@ -157,6 +181,18 @@ public func ReactionNotificationSettingsController(context: any AccountContextPr
         updateSettings { current in
             var current = current
             current.messages = value
+            return current
+        }
+    }, toggleStories: {
+        updateSettings { current in
+            var current = current
+            current.stories = current.stories == .nobody ? .contacts : .nobody
+            return current
+        }
+    }, updateStories: { value in
+        updateSettings { current in
+            var current = current
+            current.stories = value
             return current
         }
     }, toggleShowSender: {

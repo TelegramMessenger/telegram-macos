@@ -114,10 +114,10 @@ struct LockNotificationsData : Equatable {
 final class SharedNotificationBindings {
     let navigateToChat:(Account, PeerId) -> Void
     let navigateToThread:(Account, MessageId, MessageId?, MessageHistoryThreadData?) -> Void // threadId, fromId
-    let navigateToStory:(Account, PeerId) -> Void
+    let navigateToStory:(Account, PeerId, Int32?) -> Void
     let updateCurrectController:()->Void
     let applyMaxReadIndexInteractively:(MessageIndex)->Void
-    init(navigateToChat: @escaping(Account, PeerId) -> Void, navigateToThread: @escaping(Account, MessageId, MessageId?, MessageHistoryThreadData?) -> Void, navigateToStory: @escaping(Account, PeerId) -> Void, updateCurrectController: @escaping()->Void, applyMaxReadIndexInteractively:@escaping(MessageIndex)->Void) {
+    init(navigateToChat: @escaping(Account, PeerId) -> Void, navigateToThread: @escaping(Account, MessageId, MessageId?, MessageHistoryThreadData?) -> Void, navigateToStory: @escaping(Account, PeerId, Int32?) -> Void, updateCurrectController: @escaping()->Void, applyMaxReadIndexInteractively:@escaping(MessageIndex)->Void) {
         self.navigateToChat = navigateToChat
         self.navigateToThread = navigateToThread
         self.navigateToStory = navigateToStory
@@ -159,6 +159,7 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
     
     private let disposableDict: DisposableDict<AccountRecordId> = DisposableDict()
     private let storyDisposableDict: DisposableDict<AccountRecordId> = DisposableDict()
+    private let storyReactionDisposableDict: DisposableDict<AccountRecordId> = DisposableDict()
     private let inAppSettingsDisposable = MetaDisposable()
     private let lockTimeoutDisposable = MetaDisposable()
     let accountManager: AccountManager<TelegramAccountManagerTypes>
@@ -260,6 +261,7 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
             for (id, _) in self.activeAccounts.accounts where !activeIds.contains(id) {
                 self.disposableDict.set(nil, forKey: id)
                 self.storyDisposableDict.set(nil, forKey: id)
+                self.storyReactionDisposableDict.set(nil, forKey: id)
             }
             for account in accounts.accounts {
                 self.startNotifyListener(with: account.1, primary: account.0 == accounts.primary?.id)
@@ -822,6 +824,7 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
             }), forKey: account.id)
         
         startStoryNotifyListener(with: account, primary: primary)
+        startStoryReactionListener(with: account, primary: primary)
     }
     
     private func deliver(_ notification: NSUserNotification) {
@@ -988,6 +991,139 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
                 notification.userInfo = [
                     "story.peer.id": story.peer.id.id._internalGetInt64Value(),
                     "story.peer.namespace": story.peer.id.namespace._internalGetInt32Value(),
+                    "accountId": account.id.int64,
+                    "timestamp": Int32(Date().timeIntervalSince1970)
+                ]
+                self.deliver(notification)
+            }
+        }), forKey: account.id)
+    }
+
+    private struct StoryReactionItem {
+        let storyId: Int32
+        let author: Peer
+        let reactionText: String
+    }
+    
+    private func startStoryReactionListener(with account: Account, primary: Bool) {
+        let engine = TelegramEngine(account: account)
+        let screenLocked = self.screenLocked
+        let accountManager = self.accountManager
+        
+        let signal = account.stateManager.storyReactionNotifications |> filter { !$0.isEmpty } |> mapToQueue { values -> Signal<([StoryReactionItem], PeerReactionNotificationSettings, InAppNotificationSettings, Bool, Peer, [PeerId: NSImage], String?), NoError> in
+            var fileIds: [Int64] = []
+            for value in values {
+                if case let .custom(fileId) = value.reaction {
+                    fileIds.append(fileId)
+                }
+            }
+            return combineLatest(appNotificationSettings(accountManager: accountManager) |> take(1), screenLocked.get() |> take(1), account.postbox.loadedPeerWithId(account.peerId) |> take(1), engine.stickers.resolveInlineStickers(fileIds: fileIds) |> take(1)) |> mapToSignal { inAppSettings, lockData, accountPeer, files in
+                guard inAppSettings.enabled && inAppSettings.muteUntil < Int32(Date().timeIntervalSince1970) else {
+                    return .complete()
+                }
+                return account.postbox.transaction { transaction -> ([StoryReactionItem], PeerReactionNotificationSettings) in
+                    let reactionSettings = transaction.getPreferencesEntry(key: PreferencesKeys.globalNotifications)?.get(GlobalNotificationSettings.self)?.effective.reactionSettings ?? PeerReactionNotificationSettings.default
+                    var result: [StoryReactionItem] = []
+                    for value in values {
+                        switch reactionSettings.stories {
+                        case .nobody:
+                            continue
+                        case .contacts:
+                            if !transaction.isPeerContact(peerId: value.reactionAuthorId) {
+                                continue
+                            }
+                        case .everyone:
+                            break
+                        }
+                        guard let author = transaction.getPeer(value.reactionAuthorId) else {
+                            continue
+                        }
+                        let reactionText: String
+                        switch value.reaction {
+                        case let .builtin(emoji):
+                            reactionText = emoji.normalizedEmoji
+                        case let .custom(fileId):
+                            let file = files[fileId]
+                            reactionText = (file?.customEmojiText ?? file?.stickerText ?? "").normalizedEmoji
+                        case .stars:
+                            reactionText = "⭐️"
+                        }
+                        result.append(StoryReactionItem(storyId: value.storyId, author: author, reactionText: reactionText))
+                    }
+                    return (result, reactionSettings)
+                } |> mapToSignal { items, reactionSettings -> Signal<([StoryReactionItem], PeerReactionNotificationSettings, InAppNotificationSettings, Bool, Peer, [PeerId: NSImage], String?), NoError> in
+                    if items.isEmpty {
+                        return .complete()
+                    }
+                    let photos: [Signal<(PeerId, CGImage?), NoError>] = items.map { item in
+                        let peer = item.author
+                        return peerAvatarImage(account: account, photo: .peer(peer, peer.smallProfileImage, peer.namePeerColor, peer.displayLetters, nil, nil), genCap: false) |> take(1) |> map { (peer.id, $0.0) }
+                    }
+                    let deviceTone = getNotificationToneFile(account: account, sound: inAppSettings.tone)
+                    |> timeout(3.0, queue: Queue.concurrentDefaultQueue(), alternate: .single("default"))
+                    let soundPath: Signal<String?, NoError>
+                    let sound = effectiveCategorySound(reactionSettings.sound)
+                    switch sound {
+                    case .none:
+                        soundPath = .single(nil)
+                    case .default:
+                        soundPath = deviceTone
+                    default:
+                        soundPath = getNotificationToneFile(account: account, sound: sound)
+                        |> timeout(3.0, queue: Queue.concurrentDefaultQueue(), alternate: deviceTone)
+                    }
+                    return combineLatest(combineLatest(photos), soundPath) |> take(1) |> map { photos, soundPath in
+                        var images: [PeerId: NSImage] = [:]
+                        for (peerId, image) in photos {
+                            if let image = image {
+                                images[peerId] = NSImage(cgImage: image, size: NSMakeSize(50, 50))
+                            }
+                        }
+                        return (items, reactionSettings, inAppSettings, lockData.isLocked, accountPeer, images, soundPath)
+                    }
+                }
+            }
+        }
+        
+        storyReactionDisposableDict.set((signal |> deliverOnMainQueue).start(next: { [weak self] items, reactionSettings, inAppSettings, screenIsLocked, accountPeer, images, soundPath in
+            guard let self else {
+                return
+            }
+            if !primary, !inAppSettings.notifyAllAccounts {
+                return
+            }
+            if !self.shouldPresent(accountId: account.id, wasScheduled: false) {
+                return
+            }
+            let hideSender = reactionSettings.hideSender == .hide
+            for item in items {
+                var title = hideSender ? appName : item.author.displayTitle
+                if self.activeAccounts.accounts.count > 1 && !screenIsLocked {
+                    title += " → \(accountPeer.addressName ?? accountPeer.displayTitle)"
+                }
+                let notification = NSUserNotification()
+                notification.identifier = "story_reaction_\(item.storyId)_\(item.author.id.toInt64())"
+                notification.title = title
+                if hideSender || !inAppSettings.displayPreviews || screenIsLocked {
+                    notification.informativeText = strings().notificationStoryReactionHidden
+                } else {
+                    notification.informativeText = strings().notificationStoryReaction(item.reactionText.fixed)
+                }
+                notification.contentImage = hideSender || screenIsLocked ? nil : images[item.author.id]
+                notification.hasReplyButton = false
+                notification.hasActionButton = false
+                if #available(macOS 10.14, *), !screenIsLocked {
+                    switch inAppSettings.tone {
+                    case .none:
+                        notification.soundName = nil
+                    default:
+                        notification.soundName = soundPath
+                    }
+                }
+                notification.userInfo = [
+                    "story.peer.id": account.peerId.id._internalGetInt64Value(),
+                    "story.peer.namespace": account.peerId.namespace._internalGetInt32Value(),
+                    "story.id": item.storyId,
                     "accountId": account.id.int64,
                     "timestamp": Int32(Date().timeIntervalSince1970)
                 ]

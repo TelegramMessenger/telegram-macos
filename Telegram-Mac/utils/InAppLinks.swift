@@ -1881,7 +1881,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                 case .messages:
                     tag = .messages
                 case .stories:
-                    tag = nil
+                    tag = .stories
                 case .show_sender:
                     tag = .showSender
                 case .sound:
