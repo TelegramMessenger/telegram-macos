@@ -55,7 +55,49 @@ public struct ClosureInviteLinkState: Equatable {
     fileprivate(set) var requestApproval: Bool
     fileprivate(set) var title: String?
     fileprivate(set) var isPublic: Bool = false
-    
+    fileprivate var initialDate: Int32?
+    fileprivate var initialCount: Int32?
+    fileprivate var initialRequestApproval: Bool?
+    fileprivate var initialTitle: String?
+
+    fileprivate var hasChanges: Bool {
+        return self.editedTitle != nil || self.editedExpireDate != nil || self.editedUsageLimit != nil || self.editedRequestNeeded != nil
+    }
+
+    var editedTitle: String? {
+        if (self.title ?? "") == (self.initialTitle ?? "") {
+            return nil
+        }
+        return self.title ?? ""
+    }
+
+    var editedExpireDate: Int32? {
+        if self.date == self.initialDate {
+            return nil
+        }
+        return self.date == .max ? 0 : self.date + Int32(Date().timeIntervalSince1970)
+    }
+
+    var editedUsageLimit: Int32? {
+        if self.requestApproval {
+            return self.editedRequestNeeded == true ? 0 : nil
+        }
+        if self.count == self.initialCount {
+            return nil
+        }
+        return self.count == .max ? 0 : self.count
+    }
+
+    var editedRequestNeeded: Bool? {
+        if self.requestApproval == self.initialRequestApproval {
+            return nil
+        }
+        if self.isPublic, self.count == self.initialCount {
+            return nil
+        }
+        return self.requestApproval
+    }
+
     var pricing: StarsSubscriptionPricing? {
         if let requestMonthlyFee {
             return .init(period: star_sub_period, amount: .init(value: requestMonthlyFee, nanos: 0))
@@ -171,7 +213,7 @@ private func inviteLinkEntries(state: ClosureInviteLinkState, arguments: InviteL
         let day: Int32 = hour * 24 * 1
         var sizes:[Int32] = [hour, day, day * 7, Int32.max]
         
-        if let temp = state.tempDate {
+        if let temp = state.tempDate, !sizes.contains(temp) {
             var bestIndex: Int = 0
             for (i, size) in sizes.enumerated() {
                 if size < temp {
@@ -237,7 +279,7 @@ private func inviteLinkEntries(state: ClosureInviteLinkState, arguments: InviteL
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_count, equatable: InputDataEquatable(state), comparable: nil, item: { initialSize, stableId in
             var sizes:[Int32] = [1, 10, 50, 100, Int32.max]
             
-            if let temp = state.tempCount {
+            if let temp = state.tempCount, !sizes.contains(temp) {
                 var bestIndex: Int = 0
                 for (i, size) in sizes.enumerated() {
                     if size < temp {
@@ -328,14 +370,21 @@ public func ClosureInviteLinkController(context: any AccountContextProtocol, pee
         initialState.date = .max
         initialState.count = .max
     case let .edit(invitation):
-        if let expireDate = invitation.expireDate {
-            initialState.date = invitation.isExpired ? week : Int32(TimeInterval(expireDate) - Date().timeIntervalSince1970)
-        } else {
+        if invitation.isExpired {
             initialState.date = week
+        } else {
+            if let expireDate = invitation.expireDate {
+                initialState.date = Int32(TimeInterval(expireDate) - Date().timeIntervalSince1970)
+                initialState.tempDate = initialState.date
+            } else {
+                initialState.date = .max
+            }
+            initialState.initialDate = initialState.date
         }
         initialState.requestApproval = invitation.requestApproval
-        initialState.tempDate = initialState.date
+        initialState.initialRequestApproval = invitation.requestApproval
         initialState.title = invitation.title
+        initialState.initialTitle = invitation.title
         if let alreadyCount = invitation.count, let usageLimit = invitation.usageLimit {
             initialState.count = usageLimit - alreadyCount
         } else if let usageLimit = invitation.usageLimit {
@@ -346,7 +395,8 @@ public func ClosureInviteLinkController(context: any AccountContextProtocol, pee
         if initialState.count != .max {
             initialState.tempCount = initialState.count
         }
-        
+        initialState.initialCount = initialState.count
+
         if let pricing = invitation.pricing {
             initialState.requestMonthlyFeeState = .init(inputText: .initialize(string: "\(pricing.amount)"))
         }
@@ -495,7 +545,10 @@ public func ClosureInviteLinkController(context: any AccountContextProtocol, pee
     
     controller.validateData = { data in
         return .success(.custom {
-            save(stateValue.with { $0 })
+            let state = stateValue.with { $0 }
+            if state.hasChanges {
+                save(state)
+            }
             getModalController?()?.close()
         })
     }

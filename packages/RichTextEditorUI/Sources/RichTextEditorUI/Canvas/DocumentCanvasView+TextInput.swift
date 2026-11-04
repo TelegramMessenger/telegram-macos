@@ -41,6 +41,9 @@ extension DocumentCanvasView {
         if case .codeLanguage = region.ref {
             return CodeBlockBox.languageAttributes(appearance: mapper.appearance)
         }
+        if isUpdatingTextInput, let state = markedTextState {
+            return state.attributes
+        }
         let storage = region.layout.attributedString
         if storage.length == 0 {
             // A caption region types in the caption style (12pt secondary), so the first typed character
@@ -177,21 +180,66 @@ extension DocumentCanvasView {
 
 @available(macOS 12, *)
 extension DocumentCanvasView: NSTextInputClient {
-    // --- Text commit (NOT NSResponder.insertText) ---
     func insertText(_ string: Any, replacementRange: NSRange) {
-        let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
-        commitText(text)   // commitText holds the old insertText body (see +Editing editing entry)
+        guard let text = (string as? String) ?? (string as? NSAttributedString)?.string else { return }
+        let range = textInputReplacementRange(replacementRange)
+        guard !text.isEmpty || range.length > 0 else {
+            unmarkText()
+            return
+        }
+        isUpdatingTextInput = true
+        defer { isUpdatingTextInput = false }
+        if replacementRange.location != NSNotFound || hasMarkedText() {
+            anchor = range.location
+            head = NSMaxRange(range)
+        }
+        commitText(text)
+        markedTextState = nil
+        needsDisplay = true
+        notifySelectionChanged()
     }
 
-    // --- Marked text (minimal-but-real: commit immediately; supports dead keys) ---
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
-        let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
-        if !text.isEmpty { commitText(text) }   // immediate-commit strategy; no composition UI
+        guard let text = (string as? String) ?? (string as? NSAttributedString)?.string else { return }
+        let range = textInputReplacementRange(replacementRange)
+        let attributes = markedTextState?.attributes ?? typingAttributesAtGlobal(range.location)
+        isUpdatingTextInput = true
+        defer { isUpdatingTextInput = false }
+        anchor = range.location
+        head = NSMaxRange(range)
+        if !text.isEmpty || range.length > 0 {
+            commitText(text)
+        }
+        let length = min((text as NSString).length, head)
+        if length > 0 {
+            let marked = NSRange(location: head - length, length: length)
+            markedTextState = (marked, attributes)
+            let location = selectedRange.location == NSNotFound ? length : min(max(0, selectedRange.location), length)
+            anchor = marked.location + location
+            head = anchor + min(max(0, selectedRange.length), length - location)
+        } else {
+            markedTextState = nil
+        }
+        needsDisplay = true
+        notifySelectionChanged()
     }
-    func unmarkText() {}
-    func hasMarkedText() -> Bool { false }
-    func markedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+
+    func unmarkText() {
+        guard markedTextState != nil else { return }
+        markedTextState = nil
+        inputContext?.discardMarkedText()
+        needsDisplay = true
+    }
+
+    func hasMarkedText() -> Bool { markedTextState != nil }
+    func markedRange() -> NSRange { markedTextState?.range ?? NSRange(location: NSNotFound, length: 0) }
     func selectedRange() -> NSRange { NSRange(location: selFrom, length: selTo - selFrom) }
+
+    private func textInputReplacementRange(_ range: NSRange) -> NSRange {
+        let range = range.location == NSNotFound ? markedTextState?.range ?? selectedRange() : range
+        let location = clampGlobal(range.location)
+        return NSRange(location: location, length: min(max(0, range.length), documentSize - location))
+    }
 
     func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
         let lo = clampGlobal(range.location), hi = clampGlobal(range.location + range.length)

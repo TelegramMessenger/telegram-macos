@@ -134,7 +134,8 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
     private func runAITranslate() {
         let chatInteraction = self.chatInteraction
         let presentation = chatInteraction.presentation
-        let text = presentation.effectiveInput.inputText
+        let draft = presentation.effectiveInput
+        let text = draft.inputText
         let editMessageId = presentation.interfaceState.editState?.message.id
         guard !text.isEmpty else { return }
         let context = chatInteraction.interactionContext
@@ -152,7 +153,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                 chatInteraction.sendMessage(true, nil, nil)
             }
         }
-        showModal(with: ChatInputUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, onUse: { translated in
+        showModal(with: ChatInputUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, draft, onUse: { translated in
             apply(translated, false)
         }, onSend: { translated in
             apply(translated, true)

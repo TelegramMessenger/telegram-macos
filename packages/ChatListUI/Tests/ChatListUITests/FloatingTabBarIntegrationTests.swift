@@ -55,7 +55,7 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
         view.contentBottomInset = 64
         XCTAssertEqual(view.tableView.contentInsets.top, 30)
         XCTAssertEqual(view.tableView.contentInsets.bottom, 64)
-        XCTAssertEqual(view.tableView.scrollerInsets.bottom, 64)
+        XCTAssertEqual(view.tableView.scrollerInsets.bottom, 0)
         view.contentBottomInset = 64
         XCTAssertEqual(view.tableView.contentInsets.bottom, 64)
         view.contentBottomInset = 0

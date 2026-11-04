@@ -278,6 +278,9 @@ private final class WalletCollectibleHeroRowView: TableRowView {
         super.init(frame: frameRect)
         compositionView.isEventLess = true
         giftView.isEventLess = true
+        compositionView.isAccessibilityDecorative = true
+        giftView.isAccessibilityDecorative = true
+        giftControl.setAccessibilityLabel("Replay Gift Animation") //TODOLANG
         addSubview(compositionView)
         placeholderView.layer?.cornerRadius = 16
         lottieView.layer?.cornerRadius = 16
@@ -442,6 +445,7 @@ private final class WalletCollectibleHeroRowView: TableRowView {
                         self.giftView.isHidden = true
                     }
                     self.giftPlayer = player
+                    player.superview = self.giftControl
                     self.giftControl.layer?.addSublayer(player)
                     player.isPlayable = true
                 }

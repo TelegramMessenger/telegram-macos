@@ -1515,7 +1515,8 @@ public class PreviewSenderController: ModalViewController, Notifable {
     
     public override func returnKeyAction() -> KeyHandlerResult {
         if let currentEvent = NSApp.currentEvent {
-            if FastSettings.checkSendingAbility(for: currentEvent), didSetReady {
+            let hasMarkedText = genericView.textView.inputView.hasMarkedText()
+            if FastSettings.checkSendingAbility(for: currentEvent), didSetReady, !hasMarkedText {
                 send(false)
                 return .invoked
             }

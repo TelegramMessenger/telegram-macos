@@ -8,6 +8,10 @@ extension DocumentCanvasView {
     /// registers a self-re-registering undo, and refreshes layout/display. This is the single entry
     /// point for every editing operation (typing, structural, list).
     func editing(coalescing: UndoCoalescing = .none, _ body: () -> Void) {
+        if !isUpdatingTextInput {
+            unmarkText()
+        }
+        let continuesComposition = isUpdatingTextInput && hasMarkedText()
         let before = currentModelBlocks()
         let beforeAnchor = anchor, beforeHead = head
         // Does this edit CONTINUE the open coalescing run? Same kind, a collapsed caret (not a
@@ -18,7 +22,7 @@ extension DocumentCanvasView {
         let continuesRun = coalescing != .none && beforeAnchor == beforeHead
             && (openUndoRun.map { $0.kind == coalescing && $0.caret == beforeHead } ?? false)
         body()
-        if !continuesRun {
+        if !continuesRun && !continuesComposition {
             registerUndo(snapshot: before, anchor: beforeAnchor, head: beforeHead)
         }
         // Open / extend / close the coalescing run for the NEXT edit: a coalescable edit that left a
@@ -30,7 +34,9 @@ extension DocumentCanvasView {
         // Scroll-follow the caret only when this edit actually MOVED the selection (typing, structural
         // edits). A format-only edit on an untouched selection must not yank the viewport back to an
         // off-screen caret.
-        notifySelectionChanged(caretMoved: anchor != beforeAnchor || head != beforeHead)
+        if !isUpdatingTextInput {
+            notifySelectionChanged(caretMoved: anchor != beforeAnchor || head != beforeHead)
+        }
     }
 
     /// Restores a whole-document snapshot, then re-registers the inverse for redo (Phase 1 trick).

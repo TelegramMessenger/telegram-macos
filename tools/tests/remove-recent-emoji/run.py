@@ -57,7 +57,6 @@ def check_wiring(controller, builtin, animated, row, source_revision):
 def main():
     parser = argparse.ArgumentParser(description="Focused recent-emoji regression tests using real Cocoa, Strings and SwiftSignalKit.", epilog="Postbox transactions, preference storage, MediaId and UI row state are adapters; no live database, full UI dispatch, server or app build is verified.")
     parser.add_argument("--signal-kit", type=Path, required=True)
-    parser.add_argument("--compatibility-ref", default="592446a5f9833ec24c84844b571d9caf6f06dec9")
     parser.add_argument("--source-revision", help="Read production sources at this revision without changing the worktree; picker regression baseline: cacb1121; empty-section baseline: 422a3a0b.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -111,22 +110,6 @@ def main():
         assert section_fixture.count(marker) == 1
         section_fixture = section_fixture.replace(marker, source)
         print(f"{marker.strip('_')}: sha256 {hashlib.sha256(source.encode()).hexdigest()}", flush=True)
-    revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", args.compatibility_ref], text=True).strip()
-    print(f"Compatibility source: {args.compatibility_ref} ({revision})", flush=True)
-    def from_ref(path):
-        return subprocess.check_output(["git", "-C", str(root), "show", f"{revision}:{path}"], text=True)
-    compatible = from_ref(model_path)
-    methods = "\n\n".join(declaration(model, marker) for marker in ["public func removingEmoji(", "public func removingAnimatedEmoji("])
-    anchor = compatible.index("    public func encode(to encoder:", compatible.index("public class RecentUsedEmoji"))
-    compatible = compatible[:anchor] + methods + "\n\n" + compatible[anchor:]
-    compatible += "\n\n" + "\n\n".join(declaration(model, marker) for marker in ["public func removeUsedEmoji(", "public func removeAnimatedUsedEmoji("])
-    assert declaration(compatible, "public func ==(lhs: RecentUsedEmoji,") == declaration(model, "public func ==(lhs: RecentUsedEmoji,")
-    foreign_renderer = declaration(from_ref("packages/EntertainmentUI/Sources/EntertainmentUI/EmojiesController.swift"), "private func segments(")
-    current_value = next(line for line in renderer.splitlines() if "let value =" in line)
-    foreign_value = next(line for line in foreign_renderer.splitlines() if "let value =" in line)
-    compatible_renderer = renderer.replace(current_value, foreign_value)
-    variants = [("current", model, read(strings_path), renderer), ("pr117-composed", compatible, from_ref(strings_path), compatible_renderer)]
-    status = 0
     with tempfile.TemporaryDirectory(prefix="remove-recent-emoji-") as temporary:
         directory = Path(temporary)
         (directory / "Package.swift").write_text('''// swift-tools-version:5.9
@@ -137,25 +120,25 @@ let package = Package(name: "RemoveRecentEmoji", platforms: [.macOS(.v10_13)], d
         tests.mkdir()
         (tests / "Adapters.swift").write_text(adapters)
         (tests / "SectionEntries.swift").write_text(section_fixture)
-        for name, source, strings, segment_source in variants:
-            print(f"RUN {name}; model sha256 {hashlib.sha256(source.encode()).hexdigest()}; Strings sha256 {hashlib.sha256(strings.encode()).hexdigest()}; segments sha256 {hashlib.sha256(segment_source.encode()).hexdigest()}", flush=True)
-            (tests / "Segments.swift").write_text("import Cocoa\n" + segment_source)
-            source = re.sub(r"^import (?:Postbox|TelegramCore|Strings)\n", "", source, flags=re.M)
-            (tests / "RecentUsedEmoji.swift").write_text(source)
-            (tests / "Strings.swift").write_text(strings)
-            (tests / "RemoveRecentEmojiTests.swift").write_text(fixture.replace("__PR117__", str(name != "current").lower()))
-            report = directory / f"{name}.xml"
-            result = subprocess.run(["swift", "test", "--package-path", str(directory), "--disable-sandbox", "--jobs", "4", "--xunit-output", str(report)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            print(result.stdout, end="", flush=True)
-            cases = ET.parse(report).getroot().findall(".//testcase") if report.exists() else []
-            failures = [case.attrib.get("name") for case in cases if case.find("failure") is not None or case.find("error") is not None]
-            if not cases:
-                cases = re.findall(r"^Test Case '(.+)' (passed|failed) ", result.stdout, flags=re.M)
-                failures = [case for case, outcome in cases if outcome == "failed"]
-            print(f"SUMMARY {name}: {len(cases)} tests, {len(failures)} failing: {failures}", flush=True)
-            status |= bool(result.returncode or failures or not cases)
-    print("Scope: full production RecentUsedEmoji (module imports stripped only), full real Strings, real Cocoa/CoreText and SwiftSignalKit; JSON persistence is tested separately from the in-memory transactional adapter. Builtin menu body, segments/filter preparation, recent-item resolution, complete browsing segment loop, row selection and both hit-test helpers are extracted unchanged; all picker modes and item-mode mapping come from production. Font/attributed-string factory, MediaId, preferences, media/reaction/peer/context data, topic-file hook, default-status-pack predicate, localization, InputDataEntry and row/layer/menu models are adapters. Animated menu tests cover its removal branch only. Search execution, tabs, installed-pack/collectible rows, subscriptions, full controller/UI execution and actual mouse dispatch are not tested. PR117 composition injects current removal methods/wrappers into that ref's whole model with its own Strings, and substitutes that ref's segments value expression; not a full merge, exhaustive PR117 review or full UI compatibility test.", flush=True)
-    return int(status)
+        strings = read(strings_path)
+        print(f"RUN; model sha256 {hashlib.sha256(model.encode()).hexdigest()}; Strings sha256 {hashlib.sha256(strings.encode()).hexdigest()}; segments sha256 {hashlib.sha256(renderer.encode()).hexdigest()}", flush=True)
+        (tests / "Segments.swift").write_text("import Cocoa\n" + renderer)
+        source = re.sub(r"^import (?:Postbox|TelegramCore|Strings)\n", "", model, flags=re.M)
+        (tests / "RecentUsedEmoji.swift").write_text(source)
+        (tests / "Strings.swift").write_text(strings)
+        (tests / "RemoveRecentEmojiTests.swift").write_text(fixture)
+        report = directory / "report.xml"
+        result = subprocess.run(["swift", "test", "--package-path", str(directory), "--disable-sandbox", "--jobs", "4", "--xunit-output", str(report)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        print(result.stdout, end="", flush=True)
+        cases = ET.parse(report).getroot().findall(".//testcase") if report.exists() else []
+        failures = [case.attrib.get("name") for case in cases if case.find("failure") is not None or case.find("error") is not None]
+        if not cases:
+            cases = re.findall(r"^Test Case '(.+)' (passed|failed) ", result.stdout, flags=re.M)
+            failures = [case for case, outcome in cases if outcome == "failed"]
+        print(f"SUMMARY: {len(cases)} tests, {len(failures)} failing: {failures}", flush=True)
+        status = int(bool(result.returncode or failures or not cases))
+    print("Scope: full production RecentUsedEmoji (module imports stripped only), full real Strings, real Cocoa/CoreText and SwiftSignalKit; JSON persistence is tested separately from the in-memory transactional adapter. Builtin menu body, segments/filter preparation, recent-item resolution, complete browsing segment loop, row selection and both hit-test helpers are extracted unchanged; all picker modes and item-mode mapping come from production. Font/attributed-string factory, MediaId, preferences, media/reaction/peer/context data, topic-file hook, default-status-pack predicate, localization, InputDataEntry and row/layer/menu models are adapters. Animated menu tests cover its removal branch only. Search execution, tabs, installed-pack/collectible rows, subscriptions, full controller/UI execution and actual mouse dispatch are not tested.", flush=True)
+    return status
 
 
 if __name__ == "__main__":

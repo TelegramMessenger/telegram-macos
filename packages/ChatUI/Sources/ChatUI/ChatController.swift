@@ -56,6 +56,23 @@ private func calculateAdjustedPoint(for point: CGPoint,
     return adjustedPoint
 }
 
+private func chatHistoryContains(_ message: Message, threadId: Int64?, tag: HistoryViewInputTag?) -> Bool {
+    if let threadId, message.threadId != threadId {
+        return false
+    }
+    switch tag {
+    case let .tag(tags):
+        return message.tags.contains(tags)
+    case let .customTag(customTag, regularTag):
+        if let regularTag, !message.tags.contains(regularTag) {
+            return false
+        }
+        return message.customTags.contains(customTag)
+    case nil:
+        return true
+    }
+}
+
 private func chatHistoryKeepsReadState(peer: Peer?, chatLocation: ChatLocation) -> Bool {
     if case .thread = chatLocation {
         return true
@@ -7922,20 +7939,22 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             let previous = self.chatInteraction.presentation.selectionState?.selectedIds
             self.chatInteraction.update(f)
             
-            if let event = NSApp.currentEvent, event.modifierFlags.contains(.shift) {
+            if let event = NSApp.currentEvent, event.modifierFlags.contains(.shift), self.mode.customChatContents == nil {
                 if let selectionState = self.chatInteraction.presentation.selectionState, let lastMessageId = selectionState.lastSelectedId, let previous = previous {
                     if let messageId = selectionState.selectedIds.subtracting(previous).first {
                         let minId = min(lastMessageId.id, messageId.id)
                         let maxId = max(lastMessageId.id, messageId.id)
                         let cloudNamespace = self.mode == .scheduled ? Namespaces.Message.ScheduledCloud : Namespaces.Message.Cloud
                         let localNamespace = self.mode == .scheduled ? Namespaces.Message.ScheduledLocal : Namespaces.Message.Local
+                        let threadId = self.chatLocation.threadId
+                        let tag = self.locationValue?.tag
                         let selectMessages = context.account.postbox.transaction { transaction -> [Message] in
                             var messages:[Message] = []
                             for id in minId ..< maxId {
                                 let cloudId = MessageId(peerId: lastMessageId.peerId, namespace: cloudNamespace, id: id)
                                 let localId = MessageId(peerId: lastMessageId.peerId, namespace: localNamespace, id: id)
                                 let message = transaction.getMessage(cloudId) ?? transaction.getMessage(localId)
-                                if let message = message {
+                                if let message = message, chatHistoryContains(message, threadId: threadId, tag: tag) {
                                     if minId > maxId {
                                         messages.append(message)
                                     } else {
@@ -7947,7 +7966,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         } |> deliverOnMainQueue
                         
                         self.shiftSelectedDisposable.set(selectMessages.start(next: { [weak self] messages in
-                            guard let `self` = self else {
+                            guard let `self` = self, self.chatLocation.threadId == threadId, self.locationValue?.tag == tag else {
                                 return
                             }
                             self.chatInteraction.update({ current in
@@ -9336,13 +9355,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
         switch self.mode {
         case .history, .thread:
-            let hasScheduledMessages = combineLatest(peerView.get(), chatLocationValue)
-            |> take(1)
-            |> mapToSignal { view, chatLocation -> Signal<Bool, NoError> in
+            let hasScheduledMessages = combineLatest(peerView.get() |> take(1), chatLocationValue |> map { $0.threadId } |> distinctUntilChanged)
+            |> mapToSignal { view, threadId -> Signal<Bool, NoError> in
                 if let view = view as? PeerView, let peer = peerViewMainPeer(view) as? TelegramChannel, !peer.hasPermission(.sendSomething) {
                     return .single(false)
                 } else {
-                    return context.account.viewTracker.scheduledMessagesViewForLocation(.peer(peerId: peerId, threadId: chatLocation.threadId))
+                    return context.account.viewTracker.scheduledMessagesViewForLocation(.peer(peerId: peerId, threadId: threadId))
                         |> map { view, _, _ in
                             return !view.entries.isEmpty
                     }
@@ -10083,7 +10101,25 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         case .scheduled:
             items.append(ContextMenuItem(strings().chatContextClearScheduled, handler: {
                 verifyAlert_button(for: context.window, header: strings().chatContextClearScheduledConfirmHeader, information: strings().chatContextClearScheduledConfirmInfo, ok: strings().chatContextClearScheduledConfirmOK, successHandler: { _ in
-                    _ = context.engine.messages.clearHistoryInteractively(peerId: peerId, threadId: nil, type: .scheduledMessages).start()
+                    if let threadId = chatLocation.threadId {
+                        let signal = context.account.postbox.transaction { transaction -> [MessageId] in
+                            var messageIds: [MessageId] = []
+                            for namespace in Namespaces.Message.allScheduled {
+                                transaction.withAllMessages(peerId: peerId, namespace: namespace) { message in
+                                    if message.threadId == threadId {
+                                        messageIds.append(message.id)
+                                    }
+                                    return true
+                                }
+                            }
+                            return messageIds
+                        } |> mapToSignal { messageIds in
+                            return context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer)
+                        }
+                        _ = signal.start()
+                    } else {
+                        _ = context.engine.messages.clearHistoryInteractively(peerId: peerId, threadId: nil, type: .scheduledMessages).start()
+                    }
                 })
             }, itemImage: MenuAnimation.menu_schedule_message.value))
         case .history:
@@ -10181,9 +10217,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         animation = .menu_delete
                     }
 
-                    items.append(ContextMenuItem(ChatNavigationHooks.shared.chatExportMenuTitle(), handler: {
-                        ChatNavigationHooks.shared.showChatExport(context, mainPeer)
-                    }, itemImage: MenuAnimation.menu_file.value))
+                    if ChatNavigationHooks.shared.canExportChat(peer, peerView.cachedData) {
+                        items.append(ContextMenuItem(ChatNavigationHooks.shared.chatExportMenuTitle(), handler: {
+                            ChatNavigationHooks.shared.showChatExport(context, mainPeer)
+                        }, itemImage: MenuAnimation.menu_file.value))
+                    }
 
                     if !items.isEmpty {
                         items.append(ContextSeparatorItem())

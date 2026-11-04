@@ -1,0 +1,530 @@
+import Foundation
+
+enum NoError: Error {}
+
+struct Disposable {}
+
+struct Signal<T, E> {
+    let subscribe: (@escaping (T) -> Void) -> Void
+
+    static func single(_ value: T) -> Signal<T, E> {
+        return Signal(subscribe: { next in
+            next(value)
+        })
+    }
+
+    func start(next: @escaping (T) -> Void = { _ in }) -> Disposable {
+        self.subscribe(next)
+        return Disposable()
+    }
+}
+
+infix operator |> : AdditionPrecedence
+func |> <A, B>(value: A, transform: (A) -> B) -> B {
+    return transform(value)
+}
+
+func map<T, R, E>(_ f: @escaping (T) -> R) -> (Signal<T, E>) -> Signal<R, E> {
+    return { signal in
+        return Signal(subscribe: { next in
+            signal.subscribe { value in
+                next(f(value))
+            }
+        })
+    }
+}
+
+func take<T, E>(_ count: Int) -> (Signal<T, E>) -> Signal<T, E> {
+    return { signal in
+        return Signal(subscribe: { next in
+            var left = count
+            signal.subscribe { value in
+                if left > 0 {
+                    left -= 1
+                    next(value)
+                }
+            }
+        })
+    }
+}
+
+func mapToSignal<T, R, E>(_ f: @escaping (T) -> Signal<R, E>) -> (Signal<T, E>) -> Signal<R, E> {
+    return { signal in
+        return Signal(subscribe: { next in
+            var latest = 0
+            signal.subscribe { value in
+                latest += 1
+                let current = latest
+                f(value).subscribe { result in
+                    if current == latest {
+                        next(result)
+                    }
+                }
+            }
+        })
+    }
+}
+
+func distinctUntilChanged<T: Equatable, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
+    return Signal(subscribe: { next in
+        var last: T?
+        signal.subscribe { value in
+            if last != value {
+                last = value
+                next(value)
+            }
+        }
+    })
+}
+
+func combineLatest<A, B, E>(_ first: Signal<A, E>, _ second: Signal<B, E>) -> Signal<(A, B), E> {
+    return Signal(subscribe: { next in
+        var firstValue: A?
+        var secondValue: B?
+        let update = {
+            if let firstValue = firstValue, let secondValue = secondValue {
+                next((firstValue, secondValue))
+            }
+        }
+        first.subscribe { value in
+            firstValue = value
+            update()
+        }
+        second.subscribe { value in
+            secondValue = value
+            update()
+        }
+    })
+}
+
+func deliverOnMainQueue<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
+    return signal
+}
+
+final class Promise<T> {
+    private var value: T?
+    private var observers: [(T) -> Void] = []
+
+    func set(_ value: T) {
+        self.value = value
+        self.observers.forEach { $0(value) }
+    }
+
+    func get() -> Signal<T, NoError> {
+        return Signal(subscribe: { next in
+            self.observers.append(next)
+            if let value = self.value {
+                next(value)
+            }
+        })
+    }
+}
+
+typealias PeerId = Int64
+
+struct MessageId: Hashable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+}
+
+enum Namespaces {
+    enum Message {
+        static let Cloud: Int32 = 0
+        static let ScheduledCloud: Int32 = 1
+        static let ScheduledLocal: Int32 = 2
+        static let allScheduled: Set<Int32> = [ScheduledCloud, ScheduledLocal]
+    }
+}
+
+struct Message {
+    let id: MessageId
+    let threadId: Int64?
+}
+
+final class Transaction {
+    var messages: [Message] {
+        didSet {
+            self.observers.forEach { $0() }
+        }
+    }
+    var observers: [() -> Void] = []
+
+    init(messages: [Message]) {
+        self.messages = messages
+    }
+
+    func withAllMessages(peerId: PeerId, namespace: Int32? = nil, _ f: (Message) -> Bool) {
+        for message in self.messages where message.id.peerId == peerId && (namespace == nil || message.id.namespace == namespace) {
+            if !f(message) {
+                break
+            }
+        }
+    }
+}
+
+final class Postbox {
+    let transactionValue: Transaction
+
+    init(transaction: Transaction) {
+        self.transactionValue = transaction
+    }
+
+    func transaction<T>(_ body: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal(subscribe: { next in
+            next(body(self.transactionValue))
+        })
+    }
+}
+
+enum ChatLocationInput {
+    case peer(peerId: PeerId, threadId: Int64?)
+}
+
+struct MessageHistoryView {
+    let entries: [Message]
+}
+
+final class ViewTracker {
+    let transaction: Transaction
+    var openedViews = 0
+
+    init(transaction: Transaction) {
+        self.transaction = transaction
+    }
+
+    func scheduledMessagesViewForLocation(_ location: ChatLocationInput) -> Signal<(MessageHistoryView, Int, Int?), NoError> {
+        switch location {
+        case let .peer(peerId, threadId):
+            return Signal(subscribe: { next in
+                self.openedViews += 1
+                let update = {
+                    let entries = self.transaction.messages.filter { message in
+                        return message.id.peerId == peerId && Namespaces.Message.allScheduled.contains(message.id.namespace) && (threadId == nil || message.threadId == threadId)
+                    }
+                    next((MessageHistoryView(entries: entries), 0, nil))
+                }
+                self.transaction.observers.append(update)
+                update()
+            })
+        }
+    }
+}
+
+final class Account {
+    let postbox: Postbox
+    let viewTracker: ViewTracker
+
+    init(postbox: Postbox, viewTracker: ViewTracker) {
+        self.postbox = postbox
+        self.viewTracker = viewTracker
+    }
+}
+
+enum InteractiveMessagesDeletionType {
+    case forLocalPeer
+    case forEveryone
+}
+
+enum InteractiveHistoryClearingType {
+    case scheduledMessages
+}
+
+final class Messages {
+    let transaction: Transaction
+    var clearedThreads: [Int64?] = []
+    var deletions: [InteractiveMessagesDeletionType] = []
+
+    init(transaction: Transaction) {
+        self.transaction = transaction
+    }
+
+    func deleteMessagesInteractively(messageIds: [MessageId], type: InteractiveMessagesDeletionType) -> Signal<Void, NoError> {
+        return Signal(subscribe: { next in
+            self.deletions.append(type)
+            self.transaction.messages.removeAll(where: { messageIds.contains($0.id) })
+            next(())
+        })
+    }
+
+    func clearHistoryInteractively(peerId: PeerId, threadId: Int64?, type: InteractiveHistoryClearingType) -> Signal<Void, NoError> {
+        return Signal(subscribe: { next in
+            self.clearedThreads.append(threadId)
+            self.transaction.messages.removeAll(where: { message in
+                guard message.id.peerId == peerId else {
+                    return false
+                }
+                if message.id.namespace == Namespaces.Message.ScheduledCloud {
+                    return true
+                }
+                return message.id.namespace == Namespaces.Message.ScheduledLocal && (threadId == nil || message.threadId == threadId)
+            })
+            next(())
+        })
+    }
+}
+
+final class Engine {
+    let messages: Messages
+
+    init(messages: Messages) {
+        self.messages = messages
+    }
+}
+
+final class Context {
+    let window = 0
+    let account: Account
+    let engine: Engine
+
+    init(transaction: Transaction) {
+        self.account = Account(postbox: Postbox(transaction: transaction), viewTracker: ViewTracker(transaction: transaction))
+        self.engine = Engine(messages: Messages(transaction: transaction))
+    }
+}
+
+struct ChatLocation {
+    let peerId: PeerId
+    let threadId: Int64?
+}
+
+enum Mode {
+    case scheduled
+    case history
+}
+
+struct Labels {
+    let chatContextClearScheduled = "Cancel All"
+    let chatContextClearScheduledConfirmHeader = "Scheduled Messages"
+    let chatContextClearScheduledConfirmInfo = "Are you sure?"
+    let chatContextClearScheduledConfirmOK = "Clear All"
+}
+
+func strings() -> Labels {
+    return Labels()
+}
+
+enum MenuAnimation {
+    case menu_schedule_message
+    var value: Int {
+        return 0
+    }
+}
+
+final class ContextMenuItem {
+    let title: String
+    let handler: () -> Void
+
+    init(_ title: String, handler: @escaping () -> Void, itemImage: Int? = nil) {
+        self.title = title
+        self.handler = handler
+    }
+}
+
+var shownAlert: (() -> Void)?
+
+func verifyAlert_button(for window: Int, header: String, information: String?, ok: String, successHandler: @escaping (Int) -> Void) {
+    shownAlert = {
+        successHandler(0)
+    }
+}
+
+func buildMenu(mode: Mode, chatLocation: ChatLocation, context: Context) -> [ContextMenuItem] {
+    let peerId = chatLocation.peerId
+    var items: [ContextMenuItem] = []
+    switch mode {
+__SCHEDULED_CASE__
+    default:
+        break
+    }
+    return items
+}
+
+class Peer {
+}
+
+enum TelegramChannelPermission {
+    case sendSomething
+}
+
+final class TelegramChannel: Peer {
+    let canSend: Bool
+
+    init(canSend: Bool) {
+        self.canSend = canSend
+    }
+
+    func hasPermission(_ permission: TelegramChannelPermission) -> Bool {
+        return self.canSend
+    }
+}
+
+final class PeerView {
+    let peer: Peer
+
+    init(peer: Peer) {
+        self.peer = peer
+    }
+}
+
+func peerViewMainPeer(_ view: PeerView) -> Peer? {
+    return view.peer
+}
+
+struct InterfaceState {
+    var hasScheduled = false
+
+    func withUpdatedHasScheduled(_ hasScheduled: Bool) -> InterfaceState {
+        var state = self
+        state.hasScheduled = hasScheduled
+        return state
+    }
+}
+
+final class ChatInteraction {
+    var presentation = InterfaceState()
+
+    func update(_ f: (InterfaceState) -> InterfaceState) {
+        self.presentation = f(self.presentation)
+    }
+}
+
+final class MetaDisposable {
+    func set(_ disposable: Disposable?) {
+    }
+}
+
+final class Chat {
+    let context: Context
+    let peerId: PeerId
+    let location = Promise<ChatLocation>()
+    let peerView = Promise<AnyObject?>()
+    let chatInteraction = ChatInteraction()
+    let hasScheduledMessagesDisposable = MetaDisposable()
+
+    var hasScheduled: Bool {
+        return self.chatInteraction.presentation.hasScheduled
+    }
+
+    init(context: Context, peerId: PeerId) {
+        self.context = context
+        self.peerId = peerId
+    }
+
+    func load() {
+        let context = self.context
+        let peerId = self.peerId
+        let peerView = self.peerView
+        let chatLocationValue = self.location.get()
+
+__COMPOSER_BUTTON__
+    }
+
+    func open(thread: Int64?) {
+        self.location.set(ChatLocation(peerId: self.peerId, threadId: thread))
+    }
+}
+
+let group: PeerId = 1
+let otherGroup: PeerId = 2
+let savedMessages: PeerId = 3
+
+func scheduled(_ id: Int32, thread: Int64?, peerId: PeerId = group) -> Message {
+    return Message(id: MessageId(peerId: peerId, namespace: Namespaces.Message.ScheduledCloud, id: id), threadId: thread)
+}
+
+func sending(_ id: Int32, thread: Int64?, peerId: PeerId = group) -> Message {
+    return Message(id: MessageId(peerId: peerId, namespace: Namespaces.Message.ScheduledLocal, id: id), threadId: thread)
+}
+
+func sent(_ id: Int32, thread: Int64?, peerId: PeerId = group) -> Message {
+    return Message(id: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: id), threadId: thread)
+}
+
+func cancelAll(context: Context, peerId: PeerId, thread: Int64?, confirm: Bool = true) {
+    shownAlert = nil
+    let items = buildMenu(mode: .scheduled, chatLocation: ChatLocation(peerId: peerId, threadId: thread), context: context)
+    items.first?.handler()
+    if confirm {
+        shownAlert?()
+    }
+}
+
+func run(_ messages: [Message], peerId: PeerId = group, thread: Int64?, confirm: Bool = true) -> (left: Set<Int32>, messages: Messages) {
+    let transaction = Transaction(messages: messages)
+    let context = Context(transaction: transaction)
+    cancelAll(context: context, peerId: peerId, thread: thread, confirm: confirm)
+    return (Set(transaction.messages.map { $0.id.id }), context.engine.messages)
+}
+
+func openChat(_ messages: [Message], thread: Int64?, peer: Peer = Peer()) -> Chat {
+    let chat = Chat(context: Context(transaction: Transaction(messages: messages)), peerId: group)
+    chat.load()
+    chat.peerView.set(PeerView(peer: peer))
+    chat.open(thread: thread)
+    return chat
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+let twoTopics = [scheduled(1, thread: 10), scheduled(2, thread: 10), scheduled(3, thread: 20), scheduled(4, thread: 1)]
+
+let topic = run(twoTopics, thread: 10)
+check("topic-keeps-other-topics", topic.left == [3, 4])
+check("topic-deletes-like-the-selection", topic.messages.deletions == [.forLocalPeer] && topic.messages.clearedThreads.isEmpty)
+
+check("topic-clears-unsent-messages", run([scheduled(1, thread: 10), sending(2, thread: 10), sending(3, thread: 20), scheduled(4, thread: 20)], thread: 10).left == [3, 4])
+check("general-topic-keeps-topics", run(twoTopics, thread: 1).left == [1, 2, 3])
+check("my-notes-keeps-other-saved-chats", run([scheduled(1, thread: savedMessages, peerId: savedMessages), scheduled(2, thread: 200, peerId: savedMessages), scheduled(3, thread: nil, peerId: savedMessages)], peerId: savedMessages, thread: savedMessages).left == [2, 3])
+check("topic-keeps-sent-messages", run([scheduled(1, thread: 10), sent(2, thread: 10)], thread: 10).left == [2])
+check("topic-keeps-other-chats", run([scheduled(1, thread: 10), scheduled(2, thread: 10, peerId: otherGroup)], thread: 10).left == [2])
+check("empty-topic-deletes-nothing", run(twoTopics, thread: 30).left == [1, 2, 3, 4])
+
+let wholeChat = run(twoTopics + [sending(5, thread: 10), scheduled(6, thread: nil, peerId: otherGroup)], thread: nil)
+check("whole-chat-clears-every-topic", wholeChat.left == [6])
+check("whole-chat-uses-history-clear", wholeChat.messages.clearedThreads.count == 1 && wholeChat.messages.clearedThreads[0] == nil && wholeChat.messages.deletions.isEmpty)
+
+check("cancelled-alert-keeps-everything", run(twoTopics, thread: 10, confirm: false).left == [1, 2, 3, 4])
+
+let switching = openChat([scheduled(1, thread: 10)], thread: 20)
+var switchingStates = [switching.hasScheduled]
+switching.open(thread: 10)
+switchingStates.append(switching.hasScheduled)
+switching.open(thread: 20)
+switchingStates.append(switching.hasScheduled)
+check("button-follows-the-open-topic", switchingStates == [false, true, false])
+
+let clearing = openChat([scheduled(1, thread: 10), scheduled(2, thread: 20)], thread: 10)
+let shownBeforeClear = clearing.hasScheduled
+cancelAll(context: clearing.context, peerId: group, thread: 10)
+let shownAfterClear = clearing.hasScheduled
+clearing.open(thread: 20)
+check("button-comes-back-in-the-next-topic", shownBeforeClear && !shownAfterClear && clearing.hasScheduled)
+
+let growing = openChat([], thread: 10)
+growing.context.account.postbox.transactionValue.messages.append(scheduled(1, thread: 10))
+check("button-shows-a-new-message", growing.hasScheduled)
+
+let scrolling = openChat([scheduled(1, thread: 10)], thread: 10)
+scrolling.open(thread: 10)
+scrolling.open(thread: 10)
+check("scrolling-keeps-one-view", scrolling.context.account.viewTracker.openedViews == 1 && scrolling.hasScheduled)
+
+let updatingPeer = openChat([scheduled(1, thread: 10)], thread: 10)
+updatingPeer.peerView.set(PeerView(peer: TelegramChannel(canSend: false)))
+check("peer-updates-keep-one-view", updatingPeer.context.account.viewTracker.openedViews == 1 && updatingPeer.hasScheduled)
+
+let restricted = openChat([scheduled(1, thread: 10)], thread: 10, peer: TelegramChannel(canSend: false))
+check("no-send-rights-hides-the-button", !restricted.hasScheduled && restricted.context.account.viewTracker.openedViews == 0)
+
+check("whole-chat-button-sees-every-topic", openChat([scheduled(1, thread: 10)], thread: nil).hasScheduled)
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)
