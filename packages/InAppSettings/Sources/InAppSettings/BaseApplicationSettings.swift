@@ -15,6 +15,7 @@ public enum LiteModeKey : String {
     case animations
     case menu_animations
     case liquidGlass
+    case glassBubbles
 }
 
 public struct LiteMode : Codable, Equatable {
@@ -29,6 +30,7 @@ public struct LiteMode : Codable, Equatable {
         try container.encode(self.lowBatteryPercent, forKey: LiteMode.CodingKeys.lowBatteryPercent)
         try container.encode(self.keys.map { $0.rawValue }, forKey: LiteMode.CodingKeys.keys)
         try container.encode(self.liquidGlassEnabled, forKey: LiteMode.CodingKeys.liquidGlassEnabled)
+        try container.encode(self.glassBubblesEnabled, forKey: LiteMode.CodingKeys.glassBubblesEnabled)
     }
 
     enum CodingKeys: CodingKey {
@@ -36,6 +38,7 @@ public struct LiteMode : Codable, Equatable {
         case lowBatteryPercent
         case keys
         case liquidGlassEnabled
+        case glassBubblesEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -47,13 +50,15 @@ public struct LiteMode : Codable, Equatable {
             .init(rawValue: $0)
         }
         self.liquidGlassEnabled = (try? container.decode(Bool.self, forKey: LiteMode.CodingKeys.liquidGlassEnabled)) ?? true
+        self.glassBubblesEnabled = (try? container.decode(Bool.self, forKey: LiteMode.CodingKeys.glassBubblesEnabled)) ?? true
     }
 
-    init(enabled: Bool, lowBatteryPercent: Int32, keys: [LiteModeKey], liquidGlassEnabled: Bool = true) {
+    init(enabled: Bool, lowBatteryPercent: Int32, keys: [LiteModeKey], liquidGlassEnabled: Bool = true, glassBubblesEnabled: Bool = true) {
         self.enabled = enabled
         self.lowBatteryPercent = lowBatteryPercent
         self.keys = keys
         self.liquidGlassEnabled = liquidGlassEnabled
+        self.glassBubblesEnabled = glassBubblesEnabled
     }
 
     public var enabled: Bool
@@ -63,6 +68,7 @@ public struct LiteMode : Codable, Equatable {
     /// because it has a separate default (`true`) and its UI row is
     /// hidden entirely on systems without `System.liquidGlassAvailable`.
     public var liquidGlassEnabled: Bool
+    public var glassBubblesEnabled: Bool
 
     public static var standart: LiteMode {
         return .init(enabled: false, lowBatteryPercent: 100, keys: LiteMode.allKeys, liquidGlassEnabled: true)
@@ -71,6 +77,9 @@ public struct LiteMode : Codable, Equatable {
     public func isEnabled(key: LiteModeKey) -> Bool {
         if key == .liquidGlass {
             return self.liquidGlassEnabled
+        }
+        if key == .glassBubbles {
+            return self.liquidGlassEnabled && self.glassBubblesEnabled
         }
         return self.keys.contains(key)
     }
