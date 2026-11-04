@@ -381,6 +381,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
     private var selectedRanges: [SelectedText] = []
     private var selectedFormulaIds: Set<ObjectIdentifier> = []
     private var hasLocalSelection: Bool = false
+    public var canCopy: Bool = true
 
     /// Snapshot of the chat theme's text-selection color, captured once per layout pass so
     /// the formula-selection highlight matches the per-line `selectRect` color that
@@ -582,7 +583,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                 return
             }
         }
-        if let layout = self.currentLayout {
+        if self.canCopy, let layout = self.currentLayout {
             if event.clickCount == 2, self.selectWord(at: local, in: layout) {
                 return
             }
@@ -590,7 +591,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                 return
             }
         }
-        if event.clickCount == 1, let layout = self.currentLayout {
+        if self.canCopy, event.clickCount == 1, let layout = self.currentLayout {
             for (index, item) in layout.items.enumerated() {
                 if let reveals = self.itemReveals, index < reveals.count, self.isHiddenReveal(reveals[index]) {
                     continue
