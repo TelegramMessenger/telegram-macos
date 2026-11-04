@@ -1035,7 +1035,7 @@ func translateBlocks(context: any AccountContextProtocol, from: String?, to: Str
     
     return signal
 }
-public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil) -> InputDataModalController {
+public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], draft: ChatTextInputState? = nil, canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil) -> InputDataModalController {
 
     let actionsDisposable = DisposableSet()
     let disposable = MetaDisposable()
@@ -1050,7 +1050,6 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
 
     let isInputMode = onUse != nil || onUseRich != nil
 
-    let draft = ChatTextInputState(inputText: text, selectionRange: 0..<0, attributes: chatTextAttributes(from: TextEntitiesMessageAttribute(entities: entities), associatedMedia: [:]))
     let entities = onUse == nil ? entities : entities.filter { entity in
         if case .FormattedDate = entity.type {
             return false
@@ -1547,8 +1546,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     
     let appliedText: () -> NSAttributedString? = {
         return stateValue.with { state in
-            if state.translated == state.text, state.translatedEntities == state.textEntities {
-                return draft.makeAttributeString(addPreAsBlock: true)
+            if let draft, state.translated == state.text, state.translatedEntities == state.textEntities {
+                return draft.attributedString()
             }
             return state.translatedAttr(context: context)
         }

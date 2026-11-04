@@ -5,6 +5,7 @@ enum EntityType: Equatable {
     case Pre
     case BlockQuote
     case FormattedDate
+    case CustomEmoji
 }
 
 struct MessageTextEntity: Equatable {
@@ -50,35 +51,51 @@ struct TextEntitiesMessageAttribute {
     let entities: [MessageTextEntity]
 }
 
-func chatTextAttributes(from attribute: TextEntitiesMessageAttribute, associatedMedia: [Int: Int]) -> [MessageTextEntity] {
-    return attribute.entities
+struct InputAttribute: Equatable {
+    let type: EntityType
+    var file: String? = nil
+    var pack: String? = nil
+}
+
+func chatTextAttributes(from attribute: TextEntitiesMessageAttribute, associatedMedia: [Int: Int]) -> [InputAttribute] {
+    return attribute.entities.map { InputAttribute(type: $0.type) }
 }
 
 struct ChatTextInputState {
     let inputText: String
     let selectionRange: Range<Int>
-    let attributes: [MessageTextEntity]
+    let attributes: [InputAttribute]
 
-    func marks(pre: Bool) -> String {
+    func has(_ type: EntityType) -> Bool {
+        return self.attributes.contains { $0.type == type }
+    }
+
+    func marks(pre: Bool, structured: Bool) -> String {
         var text = self.inputText
-        if self.attributes.contains(MessageTextEntity(type: .BlockQuote)) {
+        if self.has(.BlockQuote) {
             text += " quote"
         }
-        if self.attributes.contains(MessageTextEntity(type: .FormattedDate)) {
+        if self.has(.FormattedDate) {
             text += " date"
         }
-        if pre, self.attributes.contains(MessageTextEntity(type: .Pre)) {
+        if pre, self.has(.Pre) {
             text += " fences"
+        }
+        if structured, self.has(.Pre) {
+            text += " code"
+        }
+        for attribute in self.attributes where attribute.type == .CustomEmoji {
+            text += " emoji:\(attribute.file ?? "nofile"):\(attribute.pack ?? "nopack")"
         }
         return text
     }
 
     func attributedString() -> NSAttributedString {
-        return NSAttributedString(string: self.marks(pre: false))
+        return NSAttributedString(string: self.marks(pre: false, structured: true))
     }
 
     func makeAttributeString(addPreAsBlock: Bool = false) -> NSAttributedString {
-        return NSAttributedString(string: self.marks(pre: addPreAsBlock))
+        return NSAttributedString(string: self.marks(pre: addPreAsBlock, structured: false))
     }
 }
 
@@ -124,7 +141,7 @@ struct ModalInteractions {
     }
 }
 
-func makeInteractions(text: String, entities: [MessageTextEntity], translated: String?, translatedEntities: [MessageTextEntity]? = nil, limitExceeded: Bool = false, onUse: ((NSAttributedString) -> Void)?, onSend: ((NSAttributedString) -> Void)?, closed: @escaping () -> Void) -> (ModalInteractions, [MessageTextEntity]) {
+func makeInteractions(text: String, entities: [MessageTextEntity], draft: ChatTextInputState?, translated: String?, translatedEntities: [MessageTextEntity]? = nil, limitExceeded: Bool = false, onUse: ((NSAttributedString) -> Void)?, onSend: ((NSAttributedString) -> Void)?, closed: @escaping () -> Void) -> (ModalInteractions, [MessageTextEntity]) {
     let context = Context()
 __SETUP__
     var state = State(text: text, textEntities: entities, translated: translated, translatedEntities: translatedEntities ?? entities)
@@ -147,14 +164,14 @@ __APPLY__
 func apply(_ translated: String?, translatedEntities: [MessageTextEntity]? = nil, limitExceeded: Bool = false) -> (used: String?, closed: Bool) {
     var used: String?
     var closed = false
-    makeInteractions(text: "hello", entities: draftEntities, translated: translated, translatedEntities: translatedEntities, limitExceeded: limitExceeded, onUse: { used = $0.string }, onSend: nil, closed: { closed = true }).0.accept()
+    makeInteractions(text: "hello", entities: draftEntities, draft: currentDraft, translated: translated, translatedEntities: translatedEntities, limitExceeded: limitExceeded, onUse: { used = $0.string }, onSend: nil, closed: { closed = true }).0.accept()
     return (used, closed)
 }
 
 func send(_ translated: String?, translatedEntities: [MessageTextEntity]? = nil) -> (sent: String?, closed: Bool) {
     var sent: String?
     var closed = false
-    makeInteractions(text: "hello", entities: draftEntities, translated: translated, translatedEntities: translatedEntities, onUse: { _ in }, onSend: { sent = $0.string }, closed: { closed = true }).0.extraAction?()
+    makeInteractions(text: "hello", entities: draftEntities, draft: currentDraft, translated: translated, translatedEntities: translatedEntities, onUse: { _ in }, onSend: { sent = $0.string }, closed: { closed = true }).0.extraAction?()
     return (sent, closed)
 }
 
@@ -167,14 +184,19 @@ func check(_ name: String, _ passed: Bool) {
     print("\(passed ? "PASS" : "FAIL") \(name)")
 }
 
-let plainEntities = [MessageTextEntity(type: .Pre), MessageTextEntity(type: .BlockQuote)]
+let plainEntities = [MessageTextEntity(type: .Pre), MessageTextEntity(type: .BlockQuote), MessageTextEntity(type: .CustomEmoji)]
 let draftEntities = plainEntities + [MessageTextEntity(type: .FormattedDate)]
-let keptDraft = "hello quote date fences"
-let requestEntities = makeInteractions(text: "hello", entities: draftEntities, translated: nil, onUse: { _ in }, onSend: nil, closed: {}).1
-let messageEntities = makeInteractions(text: "hello", entities: draftEntities, translated: nil, onUse: nil, onSend: nil, closed: {}).1
+let inputDraft = ChatTextInputState(inputText: "hello", selectionRange: 0..<0, attributes: [InputAttribute(type: .Pre), InputAttribute(type: .BlockQuote), InputAttribute(type: .CustomEmoji, file: "file-7", pack: "pack-3"), InputAttribute(type: .FormattedDate)])
+var currentDraft: ChatTextInputState? = inputDraft
+let keptDraft = "hello quote date code emoji:file-7:pack-3"
+let requestEntities = makeInteractions(text: "hello", entities: draftEntities, draft: inputDraft, translated: nil, onUse: { _ in }, onSend: nil, closed: {}).1
+let messageEntities = makeInteractions(text: "hello", entities: draftEntities, draft: nil, translated: nil, onUse: nil, onSend: nil, closed: {}).1
 
-check("apply-keeps-quote-code-and-date", apply("hello", translatedEntities: plainEntities).used == keptDraft && apply("hello", translatedEntities: plainEntities).closed)
-check("send-keeps-quote-code-and-date", send("hello", translatedEntities: plainEntities).sent == keptDraft && send("hello", translatedEntities: plainEntities).closed)
+check("apply-hands-back-quote-code-and-date", apply("hello", translatedEntities: plainEntities).used?.hasPrefix("hello quote date code") == true && apply("hello", translatedEntities: plainEntities).closed)
+check("send-hands-over-quote-code-and-date", send("hello", translatedEntities: plainEntities).sent?.hasPrefix("hello quote date code") == true && send("hello", translatedEntities: plainEntities).closed)
+check("code-blocks-stay-code-blocks", apply("hello", translatedEntities: plainEntities).used?.contains("fences") == false)
+check("apply-hands-back-the-custom-emoji-file-and-pack", apply("hello", translatedEntities: plainEntities).used == keptDraft)
+check("send-hands-over-the-custom-emoji-file-and-pack", send("hello", translatedEntities: plainEntities).sent == keptDraft)
 check("changed-text-applies-the-result", apply("hi", translatedEntities: plainEntities).used == "rendered: hi")
 check("changed-text-sends-the-result", send("hi", translatedEntities: plainEntities).sent == "rendered: hi")
 check("changed-formatting-applies-the-result", apply("hello", translatedEntities: [MessageTextEntity(type: .Bold)]).used == "rendered: hello")
@@ -185,6 +207,9 @@ let limitedResult = apply("hello", translatedEntities: plainEntities, limitExcee
 check("limit-opens-premium-instead", limitedResult.used == nil && limitedResult.closed && FeatureNavigationHooks.shared.premiumShown)
 
 check("dates-stay-out-of-the-request", requestEntities == plainEntities)
+currentDraft = nil
+check("without-a-draft-the-result-is-used", apply("hello", translatedEntities: plainEntities).used == "rendered: hello")
+currentDraft = inputDraft
 check("translated-messages-keep-dates", messageEntities == draftEntities)
 
 print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
