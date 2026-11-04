@@ -76,7 +76,7 @@ public func SelectCountries(context: any AccountContextProtocol, selected: [Coun
     actionsDisposable.add(getCountries.start(next: { countries in
         updateState { current in
             var current = current
-            current.countries = countries
+            current.countries = countries.filter { !$0.hidden }
             return current
         }
     }))
