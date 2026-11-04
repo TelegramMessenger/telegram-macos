@@ -1035,6 +1035,9 @@ func translateBlocks(context: any AccountContextProtocol, from: String?, to: Str
     
     return signal
 }
+
+private let lastInputTranslateToLangKey = "translate_input_last_to_lang"
+
 public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], draft: ChatTextInputState? = nil, canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil) -> InputDataModalController {
 
     let actionsDisposable = DisposableSet()
@@ -1057,8 +1060,10 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         return true
     }
 
+    let initialToLang = isInputMode ? (UserDefaults.standard.string(forKey: lastInputTranslateToLangKey) ?? toLang) : toLang
+
     let configTones = translationStyles(from: context)
-    var initialState = State(text: text, textEntities: entities, from: from, to: Translate.normalizeLanguageCode(toLang), fromIsRevealed: !canBreak, toIsRevealed: true)
+    var initialState = State(text: text, textEntities: entities, from: from, to: Translate.normalizeLanguageCode(initialToLang), fromIsRevealed: !canBreak, toIsRevealed: true)
     initialState.tones = configTones
     initialState.canCopy = messageId == nil
     initialState.mode = isInputMode ? .style : .translate
@@ -1396,6 +1401,9 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         }
         request()
     }, updateTo: { language in
+        if isInputMode {
+            UserDefaults.standard.set(language, forKey: lastInputTranslateToLangKey)
+        }
         updateState { current in
             var current = current
             current.to = language
