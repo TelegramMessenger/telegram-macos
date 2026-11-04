@@ -28,6 +28,70 @@ struct SearchPeerMenuActions {
     let togglePin: () -> Void
 }
 
+struct SearchPeerFolderState {
+    let groupId: PeerGroupId?
+    let isMuted: Bool
+    let isUnread: Bool
+    let isContact: Bool
+    let hasUnreadMention: Bool
+    let communityCategories: [PeerId: ChatListFilterPeerCategories]
+
+    var pinGroupId: PeerGroupId {
+        return self.groupId ?? .root
+    }
+}
+
+enum SearchPeerFolderUpdate: Equatable {
+    case updated(ChatListFilterData)
+    case includeLimitReached
+    case excludeLimitReached
+    case unchanged
+}
+
+func searchPeerFolderContains(_ filter: ChatListFilter, peer: Peer, state: SearchPeerFolderState) -> Bool {
+    guard let predicate = chatListFilterPredicate(for: filter, communityCategories: state.communityCategories) else {
+        return false
+    }
+    if predicate.pinnedPeerIds.contains(peer.id) {
+        return true
+    }
+    guard state.groupId != nil || predicate.includePeerIds.contains(peer.id) else {
+        return false
+    }
+    return predicate.includes(peer: peer, groupId: state.pinGroupId, isRemovedFromTotalUnreadCount: state.isMuted, isUnread: state.isUnread, isContact: state.isContact, messageTagSummaryResult: state.hasUnreadMention)
+}
+
+func searchPeerFolderUpdate(_ filter: ChatListFilter, peer: Peer, state: SearchPeerFolderState, limit: Int) -> SearchPeerFolderUpdate {
+    guard var data = filter.data else {
+        return .unchanged
+    }
+    if searchPeerFolderContains(filter, peer: peer, state: state) {
+        _ = data.includePeers.removePeer(peer.id)
+        if !data.isShared, searchPeerFolderContains(filter.withUpdatedData(data), peer: peer, state: state) {
+            guard data.excludePeers.contains(peer.id) || data.excludePeers.count < limit else {
+                return .excludeLimitReached
+            }
+            _ = data.addExcludePeer(peerId: peer.id)
+        }
+    } else {
+        data.excludePeers.removeAll(where: { $0 == peer.id })
+        if !searchPeerFolderContains(filter.withUpdatedData(data), peer: peer, state: state) {
+            guard data.includePeers.peers.contains(peer.id) || data.includePeers.peers.count < limit else {
+                return .includeLimitReached
+            }
+            _ = data.addIncludePeer(peerId: peer.id)
+        }
+    }
+    return .updated(data)
+}
+
+private struct SearchPeerContextMenuSnapshot {
+    let peer: Peer
+    let state: SearchPeerMenuState
+    let notificationPeerId: PeerId
+    let folders: SearchPeerFolderState
+}
+
 func searchPeerMenuItems(state: SearchPeerMenuState, profileTitle: String, actions: SearchPeerMenuActions, readItem: ContextMenuItem?, folders: [ContextMenuItem], remove: ContextMenuItem?) -> [ContextMenuItem] {
     var items: [ContextMenuItem] = []
     if state.canOpenProfile {
@@ -120,34 +184,49 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
         }
     }
     let peerId = peer.id
-    let timestamp = context.timestamp
-    let snapshot = context.account.postbox.transaction { transaction -> (Peer, SearchPeerMenuState, PeerId) in
-        let currentPeer = transaction.getPeer(peer.id) ?? peer
-        let chatIndex = transaction.getPeerChatListIndex(peerId)
-        let notificationPeerId = searchPeerNotificationPeerId(currentPeer)
-        let settings = transaction.getPeerNotificationSettings(id: notificationPeerId)
-        let isMuted: Bool
-        if let settings = settings as? TelegramPeerNotificationSettings, case let .muted(until) = settings.muteState {
-            isMuted = until > timestamp
-        } else {
-            isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: transaction.getGlobalNotificationSettings(), peer: currentPeer, peerSettings: settings)
+    let categories: Signal<[PeerId: ChatListFilterPeerCategories], NoError> = peer is TelegramCommunity ? (communityFilterCategories(account: context.account) |> take(1)) : .single([:])
+    let snapshotSignal = combineLatest(context.engine.data.get(TelegramEngine.EngineData.Item.Messages.PeerReadCounters(id: peerId)), categories)
+    |> mapToSignal { readCounters, communityCategories in
+        context.account.postbox.transaction { transaction -> SearchPeerContextMenuSnapshot in
+            let currentPeer = transaction.getPeer(peerId) ?? peer
+            let chatIndex = transaction.getPeerChatListIndex(peerId)
+            let notificationPeerId = searchPeerNotificationPeerId(currentPeer)
+            let settings = transaction.getPeerNotificationSettings(id: notificationPeerId)
+            let isMuted: Bool
+            if let settings = settings as? TelegramPeerNotificationSettings, case let .muted(until) = settings.muteState {
+                isMuted = until > context.timestamp
+            } else {
+                isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: transaction.getGlobalNotificationSettings(), peer: currentPeer, peerSettings: settings)
+            }
+            let mentionCount = transaction.getMessageTagSummary(peerId: peerId, threadId: nil, tagMask: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud, customTag: nil)?.count ?? 0
+            let pendingMentionCount = transaction.getPendingMessageActionsSummary(peerId: peerId, type: .consumeUnseenPersonalMessage, namespace: Namespaces.Message.Cloud) ?? 0
+            let folders = SearchPeerFolderState(
+                groupId: chatIndex?.0 ?? transaction.getPeerChatListInclusion(peerId).groupId,
+                isMuted: isMuted,
+                isUnread: readCounters.isUnread,
+                isContact: transaction.isPeerContact(peerId: notificationPeerId),
+                hasUnreadMention: mentionCount > pendingMentionCount,
+                communityCategories: communityCategories
+            )
+            let isSelf = peerId == context.peerId
+            let state = SearchPeerMenuState(
+                canOpenProfile: !isSelf,
+                canManageChat: !isSelf && chatIndex != nil,
+                canPin: canPin,
+                isMuted: isMuted,
+                isPinned: transaction.getPinnedItemIds(groupId: folders.pinGroupId).contains(.peer(peerId))
+            )
+            return SearchPeerContextMenuSnapshot(peer: currentPeer, state: state, notificationPeerId: notificationPeerId, folders: folders)
         }
-        let isSelf = peerId == context.peerId
-        let state = SearchPeerMenuState(
-            canOpenProfile: !isSelf,
-            canManageChat: !isSelf && chatIndex != nil,
-            canPin: canPin,
-            isMuted: isMuted,
-            isPinned: transaction.getPinnedItemIds(groupId: .root).contains(.peer(peerId))
-        )
-        return (currentPeer, state, notificationPeerId)
     }
     let readItem = searchPeerReadMenuItem(context: context, peerId: peerId, target: target ?? .common(.root))
-    return combineLatest(snapshot, chatListFilterPreferences(engine: context.engine), readItem)
+    return combineLatest(snapshotSignal, chatListFilterPreferences(engine: context.engine), readItem)
     |> take(1)
     |> deliverOnMainQueue
     |> map { snapshot, filters, readItem in
-        let (peer, state, notificationPeerId) = snapshot
+        let peer = snapshot.peer
+        let state = snapshot.state
+        let notificationPeerId = snapshot.notificationPeerId
         let storePeer = context.account.postbox.transaction { transaction -> Void in
             if transaction.getPeer(peer.id) == nil {
                 updatePeersCustom(transaction: transaction, peers: [peer], update: { _, updated in updated })
@@ -167,42 +246,45 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
                 _ = context.engine.peers.updatePeerMuteSetting(peerId: notificationPeerId, threadId: nil, muteInterval: interval).start()
             })
         }, togglePin: {
-            _ = (storePeer |> mapToSignal { _ in
-                context.engine.peers.toggleItemPinned(location: .group(.root), itemId: .peer(peerId))
-            } |> deliverOnMainQueue).start(next: { result in
-                if case .limitExceeded = result {
-                    verifyAlert_button(for: context.window, information: strings().chatListContextPinErrorNew2, ok: strings().alertOK, cancel: "", option: strings().chatListContextPinErrorNewSetupFolders, successHandler: { result in
-                        if case .thrid = result {
-                            context.bindings.rootNavigation().push(ChatListUIHooks.shared.makeChatListFiltersListController(context))
-                        }
-                    })
-                }
+            _ = (storePeer |> mapToSignal { _ in snapshotSignal } |> deliverOnMainQueue).start(next: { current in
+                ChatListRowItem.togglePinned(context: context, peerId: peerId, isPinned: current.state.isPinned, mode: .chat, filter: .allChats, associatedGroupId: EngineChatList.Group(current.folders.pinGroupId))
             })
         })
         var folders: [ContextMenuItem] = []
         if peerId.namespace != Namespaces.Peer.SecretChat {
             for filter in filters.list {
-                guard let data = filter.data else { continue }
+                guard filter.data != nil else { continue }
                 let filterId = ChatListUIHooks.shared.chatListFilterId(filter)
                 folders.append(ContextMenuItem(filter.title, handler: {
-                    _ = (storePeer |> mapToSignal { _ in context.engine.peers.updateChatListFiltersInteractively { list in
-                        var list = list
-                        for (index, folder) in list.enumerated() {
-                            if ChatListUIHooks.shared.chatListFilterId(folder) == filterId, var data = folder.data {
-                                if data.includePeers.peers.contains(peerId) {
-                                    var peers = data.includePeers.peers
-                                    peers.removeAll(where: { $0 == peerId })
-                                    data.includePeers.setPeers(peers)
-                                } else {
-                                    data.excludePeers.removeAll(where: { $0 == peerId })
-                                    data.includePeers.setPeers(data.includePeers.peers + [peerId])
+                    let limit = context.isPremium ? context.premiumLimits.dialog_filters_chats_limit_premium : context.premiumLimits.dialog_filters_chats_limit_default
+                    _ = (storePeer |> mapToSignal { _ in snapshotSignal } |> mapToSignal { current -> Signal<SearchPeerFolderUpdate, NoError> in
+                        let result = Atomic<SearchPeerFolderUpdate>(value: .unchanged)
+                        return context.engine.peers.updateChatListFiltersInteractively { list in
+                            var list = list
+                            if let index = list.firstIndex(where: { ChatListUIHooks.shared.chatListFilterId($0) == filterId }) {
+                                let update = searchPeerFolderUpdate(list[index], peer: current.peer, state: current.folders, limit: limit)
+                                _ = result.swap(update)
+                                if case let .updated(data) = update {
+                                    list[index] = list[index].withUpdatedData(data)
                                 }
-                                list[index] = folder.withUpdatedData(data)
                             }
+                            return list
+                        } |> map { _ in result.with { $0 } }
+                    } |> deliverOnMainQueue).start(next: { result in
+                        switch result {
+                        case .includeLimitReached:
+                            if context.isPremium {
+                                alert(for: context.window, info: strings().chatListFilterIncludeLimitReached)
+                            } else {
+                                FeatureNavigationHooks.shared.showPremiumLimit(context, .chatInFolders)
+                            }
+                        case .excludeLimitReached:
+                            alert(for: context.window, info: strings().chatListFilterExcludeLimitReachedNew(limit))
+                        case .updated, .unchanged:
+                            break
                         }
-                        return list
-                    } }).start()
-                }, state: data.includePeers.peers.contains(peerId) ? .on : nil))
+                    })
+                }, state: searchPeerFolderContains(filter, peer: peer, state: snapshot.folders) ? .on : nil))
             }
         }
         return searchPeerMenuItems(state: state, profileTitle: peer is TelegramUser ? strings().exportedInvitationContextOpenProfile : strings().chatContextPeerOpenInfo, actions: actions, readItem: readItem, folders: folders, remove: remove)

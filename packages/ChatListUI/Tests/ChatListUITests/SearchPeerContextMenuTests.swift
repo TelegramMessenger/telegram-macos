@@ -3,6 +3,7 @@ import TGUIKit
 import Localization
 import Postbox
 import TelegramCore
+import TelegramUtils
 @testable import ChatListUI
 
 final class SearchPeerContextMenuTests: XCTestCase {
@@ -209,6 +210,172 @@ final class SearchPeerContextMenuTests: XCTestCase {
         try XCTUnwrap(menu().first).handler?()
         XCTAssertEqual(clicks, 2)
         XCTAssertEqual(opened, 2)
+    }
+
+    private func folderPeer(_ id: Int64 = 100) -> TelegramUser {
+        return TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(id)), accessHash: nil, firstName: "Folder peer", lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, subscriberCount: nil, verificationIconFileId: nil)
+    }
+
+    private func folderState(groupId: PeerGroupId? = .root, muted: Bool = false, unread: Bool = false, contact: Bool = false, mention: Bool = false) -> SearchPeerFolderState {
+        return SearchPeerFolderState(groupId: groupId, isMuted: muted, isUnread: unread, isContact: contact, hasUnreadMention: mention, communityCategories: [:])
+    }
+
+    private func folder(categories: ChatListFilterPeerCategories = [], included: [PeerId] = [], excluded: [PeerId] = [], pinned: [PeerId] = [], excludeMuted: Bool = false, excludeRead: Bool = false, excludeArchived: Bool = false, shared: Bool = false) -> ChatListFilter {
+        var peers = ChatListFilterIncludePeers()
+        peers.setPeers(included)
+        for id in pinned {
+            _ = peers.addPinnedPeer(id)
+        }
+        let data = ChatListFilterData(isShared: shared, hasSharedLinks: false, categories: categories, excludeMuted: excludeMuted, excludeRead: excludeRead, excludeArchived: excludeArchived, includePeers: peers, excludePeers: excluded, color: nil)
+        return .filter(id: 12, title: ChatFolderTitle(text: "Work", entities: [], enableAnimations: false), emoticon: nil, data: data)
+    }
+
+    func testFolderChatLimitRejectsNewExplicitPeerWithoutMutation() throws {
+        let peer = folderPeer()
+        let existing = [folderPeer(101).id, folderPeer(102).id]
+        let current = folder(included: existing)
+        XCTAssertEqual(searchPeerFolderUpdate(current, peer: peer, state: folderState(), limit: 2), .includeLimitReached)
+        XCTAssertEqual(try XCTUnwrap(current.data).includePeers.peers, existing)
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: folderState(), limit: 3) else {
+            return XCTFail("A free explicit slot must allow adding the peer")
+        }
+        XCTAssertEqual(Set(data.includePeers.peers), Set(existing + [peer.id]))
+    }
+
+    func testFolderLimitUsesUpdatedFilterInsteadOfMenuTimeCount() {
+        let peer = folderPeer()
+        let menuTime = folder(included: [folderPeer(101).id])
+        let clickTime = folder(included: [folderPeer(101).id, folderPeer(102).id])
+        if case .updated = searchPeerFolderUpdate(menuTime, peer: peer, state: folderState(), limit: 2) {
+        } else {
+            XCTFail("The menu-time filter has room")
+        }
+        XCTAssertEqual(searchPeerFolderUpdate(clickTime, peer: peer, state: folderState(), limit: 2), .includeLimitReached)
+    }
+
+    func testFullFolderAllowsRemovingAnExplicitPeer() throws {
+        let peer = folderPeer()
+        let current = folder(included: [peer.id, folderPeer(101).id])
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: folderState(), limit: 2) else {
+            return XCTFail("Removal must not require a free include slot")
+        }
+        XCTAssertEqual(data.includePeers.peers, [folderPeer(101).id])
+        XCTAssertTrue(data.excludePeers.isEmpty)
+    }
+
+    func testRuleMembershipHasCheckmarkAndClickExcludesWithoutExplicitEntry() throws {
+        let peer = folderPeer()
+        let current = folder(categories: [.contacts])
+        let state = folderState(contact: true)
+        XCTAssertTrue(searchPeerFolderContains(current, peer: peer, state: state))
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: state, limit: 2) else {
+            return XCTFail("A rule-included peer must be removable")
+        }
+        XCTAssertTrue(data.includePeers.peers.isEmpty)
+        XCTAssertEqual(data.excludePeers, [peer.id])
+        XCTAssertFalse(searchPeerFolderContains(current.withUpdatedData(data), peer: peer, state: state))
+    }
+
+    func testRestoringRuleExcludedPeerDoesNotConsumeFullIncludeList() throws {
+        let peer = folderPeer()
+        let existing = [folderPeer(101).id, folderPeer(102).id]
+        let current = folder(categories: [.contacts], included: existing, excluded: [peer.id])
+        let state = folderState(contact: true)
+        XCTAssertFalse(searchPeerFolderContains(current, peer: peer, state: state))
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: state, limit: 2) else {
+            return XCTFail("Removing an exclusion should restore rule membership without adding a peer")
+        }
+        XCTAssertEqual(data.includePeers.peers, existing)
+        XCTAssertTrue(data.excludePeers.isEmpty)
+        XCTAssertTrue(searchPeerFolderContains(current.withUpdatedData(data), peer: peer, state: state))
+    }
+
+    func testRuleRemovalRespectsExcludeLimitWithoutDroppingExplicitMembership() throws {
+        let peer = folderPeer()
+        let current = folder(categories: [.contacts], included: [peer.id], excluded: [folderPeer(101).id, folderPeer(102).id])
+        XCTAssertEqual(searchPeerFolderUpdate(current, peer: peer, state: folderState(contact: true), limit: 2), .excludeLimitReached)
+        XCTAssertEqual(try XCTUnwrap(current.data).includePeers.peers, [peer.id])
+    }
+
+    func testExplicitRuleMemberRemovalDoesNotLeaveRuleMembershipActive() {
+        let peer = folderPeer()
+        let current = folder(categories: [.nonContacts], included: [peer.id])
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: folderState(), limit: 2) else {
+            return XCTFail("Expected removal")
+        }
+        XCTAssertFalse(data.includePeers.peers.contains(peer.id))
+        XCTAssertEqual(data.excludePeers, [peer.id])
+        XCTAssertFalse(searchPeerFolderContains(current.withUpdatedData(data), peer: peer, state: folderState()))
+    }
+
+    func testPinnedFolderMemberKeepsCheckmarkAndRemovalClearsPin() {
+        let peer = folderPeer()
+        let current = folder(pinned: [peer.id])
+        XCTAssertTrue(searchPeerFolderContains(current, peer: peer, state: folderState()))
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: folderState(), limit: 1) else {
+            return XCTFail("Expected removal")
+        }
+        XCTAssertTrue(data.includePeers.peers.isEmpty)
+        XCTAssertTrue(data.includePeers.pinnedPeers.isEmpty)
+    }
+
+    func testSharedFolderRemovesExplicitMembershipWithoutAddingExclusions() {
+        let peer = folderPeer()
+        let current = folder(included: [peer.id, folderPeer(101).id], shared: true)
+        guard case let .updated(data) = searchPeerFolderUpdate(current, peer: peer, state: folderState(), limit: 2) else {
+            return XCTFail("Expected shared-folder removal")
+        }
+        XCTAssertEqual(data.includePeers.peers, [folderPeer(101).id])
+        XCTAssertTrue(data.excludePeers.isEmpty)
+    }
+
+    func testFolderRulesRespectContactsMuteUnreadAndArchive() {
+        let peer = folderPeer()
+        let contacts = folder(categories: [.contacts])
+        XCTAssertTrue(searchPeerFolderContains(contacts, peer: peer, state: folderState(contact: true)))
+        XCTAssertFalse(searchPeerFolderContains(contacts, peer: peer, state: folderState()))
+        let muted = folder(categories: [.nonContacts], excludeMuted: true)
+        XCTAssertFalse(searchPeerFolderContains(muted, peer: peer, state: folderState(muted: true)))
+        XCTAssertTrue(searchPeerFolderContains(muted, peer: peer, state: folderState(muted: true, mention: true)))
+        let unread = folder(categories: [.nonContacts], excludeRead: true)
+        XCTAssertFalse(searchPeerFolderContains(unread, peer: peer, state: folderState()))
+        XCTAssertTrue(searchPeerFolderContains(unread, peer: peer, state: folderState(unread: true)))
+        XCTAssertTrue(searchPeerFolderContains(unread, peer: peer, state: folderState(mention: true)))
+        let archive = folder(categories: [.nonContacts], excludeArchived: true)
+        XCTAssertFalse(searchPeerFolderContains(archive, peer: peer, state: folderState(groupId: Namespaces.PeerGroup.archive)))
+        XCTAssertTrue(searchPeerFolderContains(folder(categories: [.nonContacts]), peer: peer, state: folderState(groupId: Namespaces.PeerGroup.archive)))
+    }
+
+    func testExplicitInclusionOverridesRuleFiltersButExclusionWins() {
+        let peer = folderPeer()
+        let included = folder(included: [peer.id], excludeMuted: true, excludeRead: true, excludeArchived: true)
+        let state = folderState(groupId: Namespaces.PeerGroup.archive, muted: true)
+        XCTAssertTrue(searchPeerFolderContains(included, peer: peer, state: state))
+        let excluded = folder(categories: [.nonContacts], included: [peer.id], excluded: [peer.id])
+        XCTAssertFalse(searchPeerFolderContains(excluded, peer: peer, state: folderState()))
+    }
+
+    func testGlobalPeerWithoutChatIsNotIncludedByCategoryAlone() {
+        let peer = folderPeer()
+        let state = folderState(groupId: nil)
+        XCTAssertFalse(searchPeerFolderContains(folder(categories: [.nonContacts]), peer: peer, state: state))
+        XCTAssertTrue(searchPeerFolderContains(folder(included: [peer.id]), peer: peer, state: state))
+        guard case let .updated(data) = searchPeerFolderUpdate(folder(categories: [.nonContacts]), peer: peer, state: state, limit: 2) else {
+            return XCTFail("Global peer needs an explicit inclusion")
+        }
+        XCTAssertEqual(data.includePeers.peers, [peer.id])
+    }
+
+    func testSearchPinGroupPreservesArchiveAndDefaultsOnlyForMissingChat() {
+        XCTAssertEqual(folderState(groupId: Namespaces.PeerGroup.archive).pinGroupId, Namespaces.PeerGroup.archive)
+        XCTAssertEqual(folderState().pinGroupId, .root)
+        XCTAssertEqual(folderState(groupId: nil).pinGroupId, .root)
+    }
+
+    func testAllChatsDoesNotProduceAFolderMutation() {
+        let peer = folderPeer()
+        XCTAssertFalse(searchPeerFolderContains(.allChats, peer: peer, state: folderState()))
+        XCTAssertEqual(searchPeerFolderUpdate(.allChats, peer: peer, state: folderState(), limit: 2), .unchanged)
     }
 
     func testSavedMessagesAccountRetainsReadActionWithoutProfileOrMute() {
