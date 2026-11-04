@@ -425,23 +425,6 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             return _NSLocalizedString(key)
         }
         
-        var paths: [String?] = []
-        paths.append(Bundle.main.path(forResource: "opening", ofType:"m4a"))
-        paths.append(Bundle.main.path(forResource: "voip_busy", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "voip_ringback", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "voip_connecting", ofType:"mp3"))
-        paths.append(Bundle.main.path(forResource: "voip_fail", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "voip_end", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "sent", ofType:"caf"))
-
-        
-        for path in paths {
-            if let path = path {
-                let player = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
-                player?.prepareToPlay()
-            }
-        }
-        
         FFMpegGlobals.initializeGlobals()
         
         
