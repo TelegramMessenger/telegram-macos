@@ -13,6 +13,7 @@ import AlertsUI
 import MessageUtils
 import ChatHistoryModel
 import ChatUI
+import AvatarUI
 
 
 
@@ -36,31 +37,97 @@ enum ChannelEventLogState {
 
 private final class EventLogTitleBarView: TitledBarView {
     let searchView = SearchView(frame: .zero)
+    private let glassContainer = GlassContainerView(frame: .zero, spacing: 10)
+    private let titleGlass = LiquidGlassView(frame: .zero, cornerRadius: 20, hasShadow: false, hasBorder: true)
     private let searchGlass = LiquidGlassView(frame: .zero, cornerRadius: 20, hasShadow: false, hasBorder: true)
+    private let titleContent = View(frame: .zero)
+    private let titleText = TextView()
+    private let statusText = TextView()
+    private let searchContent = View(frame: .zero)
+    private let avatar = AvatarStoryControl(font: .avatar(12), size: NSMakeSize(32, 32))
+    private var searching = false
+    private var searchTransitionId: UInt = 0
 
     override init(controller: ViewController, _ text: NSAttributedString? = nil, _ status: NSAttributedString? = nil, textInset: CGFloat? = nil) {
-        super.init(controller: controller, text, status, textInset: textInset)
-        addSubview(searchGlass)
-        addSubview(searchView)
-        setSearching(false)
+        super.init(controller: controller, text, status, textInset: 0)
+        addSubview(glassContainer)
+        glassContainer.addGhost(titleGlass)
+        glassContainer.addGhost(searchGlass)
+        addSubview(titleContent)
+        containerView.isHidden = true
+        titleContent.addSubview(titleText)
+        titleContent.addSubview(statusText)
+        titleText.isSelectable = false
+        statusText.isSelectable = false
+        titleText.isEventLess = true
+        statusText.isEventLess = true
+        titleContent.addSubview(avatar)
+        titleContent.layer?.masksToBounds = true
+        titleContent.layer?.cornerRadius = 20
+        avatar.userInteractionEnabled = false
+        addSubview(searchContent)
+        searchContent.addSubview(searchView)
+        searchContent.layer?.masksToBounds = true
+        searchContent.layer?.cornerRadius = 20
+        searchContent.isHidden = true
+        searchGlass.isHidden = true
+        searchContent.layer?.opacity = 0
+        ContainedViewLayoutTransition.immediate.updateAlpha(view: searchGlass, alpha: 0)
         searchView.backgroundColor = .clear
     }
 
+    func setPeer(account: Account, peer: Peer) {
+        avatar.setPeer(account: account, peer: peer, disableForum: true)
+    }
+
     func setSearching(_ value: Bool) {
-        containerView.isHidden = value
-        searchGlass.isHidden = !value
-        searchView.isHidden = !value
-        needsLayout = true
+        guard searching != value else { return }
+        layoutSubtreeIfNeeded()
+        searching = value
+        searchTransitionId &+= 1
+        let transitionId = searchTransitionId
+        searchContent.isHidden = false
+        searchGlass.isHidden = false
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let transition: ContainedViewLayoutTransition = .animated(duration: reduceMotion ? 0.1 : ChatInputSendButton.fieldMotionDuration, curve: .easeOut)
+        updateLayout(size: bounds.size, transition: reduceMotion ? .immediate : transition)
+        transition.updateAlpha(view: searchContent, alpha: value ? 1 : 0)
+        transition.updateAlpha(view: searchGlass, alpha: value ? 1 : 0, completion: { [weak self] _ in
+            guard let self, self.searchTransitionId == transitionId else { return }
+            self.searchContent.isHidden = !value
+            self.searchGlass.isHidden = !value
+        })
     }
 
     override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         super.updateLayout(size: size, transition: transition)
-        let left = (controller?.leftBarView?.frame.maxX ?? 52) + 12
-        let right = (controller?.rightBarView?.frame.minX ?? size.width - 52) - 12
-        let rect = NSMakeRect(left, (size.height - 40) / 2, max(0, right - left), 40)
-        transition.updateFrame(view: searchGlass, frame: rect)
-        transition.updateFrame(view: searchView, frame: rect)
-        searchGlass.updateLayout(size: rect.size, transition: transition)
+        transition.updateFrame(view: glassContainer, frame: NSRect(origin: .zero, size: size))
+        glassContainer.updateLayout(size: size, transition: transition)
+        let left = (controller?.leftBarView?.frame.maxX ?? 52) + 10
+        let right = (controller?.rightBarView?.frame.minX ?? size.width - 52) - 10
+        let availableWidth = max(0, right - left)
+        let preferredTitleWidth = max(text?.size().width ?? 0, status?.size().width ?? 0) + 62
+        let compactTitleWidth = min(min(260, max(220, preferredTitleWidth)), max(40, availableWidth - 170))
+        let titleWidth = compactTitleWidth
+        let y = (size.height - 40) / 2
+        let titleRect = NSMakeRect(left, y, titleWidth, 40)
+        let expandedSearchRect = NSMakeRect(left + compactTitleWidth + 10, y, max(0, availableWidth - compactTitleWidth - 10), 40)
+        let searchRect = searching ? expandedSearchRect : NSMakeRect(right - 40, y, 40, 40)
+        glassContainer.setGhostFrame(titleGlass, frame: titleRect, transition: transition)
+        glassContainer.setGhostFrame(searchGlass, frame: searchRect, transition: transition)
+        transition.updateFrame(view: titleContent, frame: titleRect)
+        transition.updateFrame(view: searchContent, frame: searchRect)
+        avatar.frame = NSMakeRect(4, 4, 32, 32)
+        let titleLayout = TextViewLayout(text ?? NSAttributedString(), maximumNumberOfLines: 1)
+        let statusLayout = TextViewLayout(status ?? NSAttributedString(), maximumNumberOfLines: 1)
+        titleLayout.measure(width: max(1, titleWidth - 58))
+        statusLayout.measure(width: max(1, titleWidth - 58))
+        titleText.update(titleLayout)
+        statusText.update(statusLayout)
+        let titleY = floor((40 - titleLayout.layoutSize.height - statusLayout.layoutSize.height - 2) / 2)
+        titleText.setFrameOrigin(NSMakePoint(44, titleY))
+        statusText.setFrameOrigin(NSMakePoint(44, titleY + titleLayout.layoutSize.height + 2))
+        searchView.frame = NSRect(origin: .zero, size: expandedSearchRect.size)
     }
 
     override func layout() {
@@ -72,7 +139,9 @@ private final class EventLogTitleBarView: TitledBarView {
         super.updateLocalizationAndTheme(theme: theme)
         searchView.updateLocalizationAndTheme(theme: theme)
         searchView.backgroundColor = .clear
+        titleGlass.updateLocalizationAndTheme(theme: theme)
         searchGlass.updateLocalizationAndTheme(theme: theme)
+        needsLayout = true
     }
 
     required init(frame frameRect: NSRect) { fatalError("init(frame:) has not been implemented") }
@@ -415,7 +484,14 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
     }
     
     open override func getCenterBarViewOnce() -> TitledBarView {
-        return EventLogTitleBarView(controller: self)
+        let bar = EventLogTitleBarView(controller: self)
+        bar.setPeer(account: context.account, peer: peer._asPeer())
+        return bar
+    }
+
+    open override func requestUpdateCenterBar() {
+        super.requestUpdateCenterBar()
+        centerBarView.needsLayout = true
     }
 
     private var searchView: SearchView? {
@@ -458,6 +534,13 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
     open override func requestUpdateRightBar() {
         super.requestUpdateRightBar()
         if let bar = rightBarView as? ImageBarView {
+            if bar.button.imageView.image != searchButtonImage, bar.window != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let transition = CATransition()
+                transition.type = .fade
+                transition.duration = ChatInputSendButton.fieldMotionDuration
+                transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                bar.button.imageView.layer?.add(transition, forKey: "eventLogSearchIcon")
+            }
             bar.set(image: searchButtonImage)
             bar.button.setAccessibilityLabel(inSearch ? strings().voiceOverCommonCancel : strings().voiceOverCommonSearch)
         }
