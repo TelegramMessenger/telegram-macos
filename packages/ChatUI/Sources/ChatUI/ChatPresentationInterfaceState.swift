@@ -595,6 +595,36 @@ public class ChatPresentationInterfaceState: Equatable {
         }
     }
     
+    var textRestriction: String? {
+        if interfaceState.editState != nil {
+            return nil
+        }
+        return permissionText(from: peer, for: .banSendText, cachedData: cachedData)
+    }
+
+    var canAttachFiles: Bool {
+        return state == .normal && permissionText(from: peer, for: .banSendFiles, cachedData: cachedData) == nil
+    }
+
+    private var groupRestrictionState: ChatState? {
+        if let channel = peer as? TelegramChannel, case .group = channel.info {
+            if channel.hasPermission(.sendSomething, ignoreDefault: canBypassChatRestrictions(cachedData)) {
+                return nil
+            }
+            if channel.hasPermission(.sendSomething, ignoreDefault: true),
+               let required = (cachedData as? CachedChannelData)?.boostsToUnrestrict,
+               required > 0, required > ((cachedData as? CachedChannelData)?.appliedBoosts ?? 0) {
+                return .action(strings().boostGroupChatInputAction, { chatInteraction in
+                    chatInteraction.boostToUnrestrict(.unblockText(required))
+                }, right: nil, left: nil)
+            }
+            return .restricted(textRestriction ?? strings().channelPersmissionDeniedSendMessagesDefaultRestrictedText)
+        } else if let group = peer as? TelegramGroup, !group.hasPermission(.sendSomething) {
+            return .restricted(textRestriction ?? strings().channelPersmissionDeniedSendMessagesDefaultRestrictedText)
+        }
+        return nil
+    }
+
     public var state:ChatState {
         if self.selectionState == nil {
             if let initialAction = initialAction, case .start = initialAction  {
@@ -769,12 +799,12 @@ public class ChatPresentationInterfaceState: Equatable {
                                 chatInteraction.joinChannel()
                             }, right: nil, left: nil, accent: true)
                         } else {
-                            return .normal
+                            return groupRestrictionState ?? .normal
                         }
                     } else if peer.participationStatus == .kicked {
                         return .restricted(strings().chatCommentsKicked)
                     } else if peer.participationStatus == .member {
-                        return .normal
+                        return groupRestrictionState ?? .normal
                     }
                     
                 case .history:
@@ -866,24 +896,8 @@ public class ChatPresentationInterfaceState: Equatable {
                 }, right: nil, left: nil)
             }
             
-            //, !peer.hasPermission(.sendSomething)
-            
-            if let peer = peer as? TelegramChannel {
-                if let text = permissionText(from: peer, for: .banSendText) {
-                    
-                    let isPersonalRestriction = peer.hasBannedPermission(.banSendText)?.1 ?? false
-                    
-                    if let cachedData = cachedData as? CachedChannelData, let boostsToRestrict = cachedData.boostsToUnrestrict, !isPersonalRestriction {
-                        let appliedBoosts = cachedData.appliedBoosts ?? 0
-                        if boostsToRestrict > appliedBoosts {
-                            return .action(strings().boostGroupChatInputAction, { chatInteraction in
-                                chatInteraction.boostToUnrestrict(.unblockText(boostsToRestrict))
-                            }, right: nil, left: nil)
-                        }
-                    } else {
-                        return .restricted(text)
-                    }
-                }
+            if let restrictionState = groupRestrictionState {
+                return restrictionState
             }
             
             if let blocked = isBlocked, blocked {
@@ -981,6 +995,9 @@ public class ChatPresentationInterfaceState: Equatable {
     
     public var abilityToSend:Bool {
         if state == .normal {
+            if !effectiveInput.inputText.isEmpty && textRestriction != nil {
+                return false
+            }
             if let suggestPost = interfaceState.suggestPost, suggestPost.amount == nil {
                 return false
             }
