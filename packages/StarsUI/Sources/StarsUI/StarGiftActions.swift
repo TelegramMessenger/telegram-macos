@@ -60,6 +60,31 @@ func starGiftCanDelete(gift: StarGift, reference: StarGiftReference?, owner: Eng
     return owner.id == accountPeerId
 }
 
+func reloadStarGiftListsAfterDeletion(reference: StarGiftReference, filter: ProfileGiftsContext.Filters, sorting: ProfileGiftsContext.Sorting, containsGift: Bool, reload: () -> Void, updateFilter: (ProfileGiftsContext.Filters) -> Void, remove: ([StarGiftReference]) -> Void) {
+    reload()
+    if filter != .All || sorting != .date {
+        updateFilter(filter == .unlimited ? .unique : .unlimited)
+        updateFilter(filter)
+    }
+    if containsGift {
+        remove([reference])
+    }
+}
+
+func starGiftDetailMenuItems(_ profileItems: [ContextMenuItem], includeDetailPin: Bool, pinItem: ContextMenuItem?) -> [ContextMenuItem] {
+    guard !profileItems.isEmpty, includeDetailPin, let pinItem else {
+        return profileItems
+    }
+    return [pinItem] + profileItems
+}
+
+func starGiftDetailPinMenuItem(owner: StarGift.UniqueGift.Owner?, accountPeerId: PeerId, isCreator: Bool, pinnedInfo: GiftPinnedInfo?, savedToProfile: Bool?, togglePin: @escaping () -> Void) -> ContextMenuItem? {
+    guard case let .peerId(peerId) = owner, peerId == accountPeerId || isCreator, let pinnedInfo, savedToProfile != false else {
+        return nil
+    }
+    return ContextMenuItem(pinnedInfo.pinnedInfo ? strings().messageContextUnpin : strings().messageContextPin, handler: togglePin, itemImage: pinnedInfo.pinnedInfo ? MenuAnimation.menu_unpin.value : MenuAnimation.menu_pin.value)
+}
+
 func genericGiftMenuItems(collections: ContextMenuItem?, savedToProfile: Bool, toggleVisibility: @escaping () -> Void, delete: (() -> Void)?) -> [ContextMenuItem] {
     var items: [ContextMenuItem] = []
     if let collections {

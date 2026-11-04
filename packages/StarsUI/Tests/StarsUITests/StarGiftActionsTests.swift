@@ -95,6 +95,145 @@ final class StarGiftActionsTests: XCTestCase {
         XCTAssertFalse(items[0].isSeparatorItem)
     }
 
+    func testDeletionReloadsMainAndFilteredListsBeforeInvalidatingCache() {
+        let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
+        let filters: [ProfileGiftsContext.Filters] = [.All, .unlimited, [.unlimited, .displayed], [.unlimited, .hidden]]
+        let sortings: [ProfileGiftsContext.Sorting] = [.date, .value]
+        for filter in filters {
+            for sorting in sortings {
+                var operations: [String] = []
+                var updatedFilters: [ProfileGiftsContext.Filters] = []
+                var removed: [StarGiftReference] = []
+                reloadStarGiftListsAfterDeletion(reference: reference, filter: filter, sorting: sorting, containsGift: true, reload: {
+                    operations.append("reload")
+                }, updateFilter: { value in
+                    operations.append("filter")
+                    updatedFilters.append(value)
+                }, remove: { references in
+                    operations.append("remove")
+                    removed.append(contentsOf: references)
+                })
+                let isFiltered = filter != .All || sorting != .date
+                XCTAssertEqual(operations, isFiltered ? ["reload", "filter", "filter", "remove"] : ["reload", "remove"])
+                XCTAssertEqual(updatedFilters, isFiltered ? [filter == .unlimited ? .unique : .unlimited, filter] : [])
+                if isFiltered {
+                    XCTAssertNotEqual(updatedFilters.first, .All)
+                    XCTAssertNotEqual(updatedFilters.first, filter)
+                }
+                XCTAssertEqual(removed, [reference])
+            }
+        }
+    }
+
+    func testValueSortedDeletionCannotRestoreDeletedReferenceFromDateCache() {
+        let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
+        let otherReference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 2))
+        for containsGift in [true, false] {
+            var dateGifts = containsGift ? [reference, otherReference] : [otherReference]
+            var cachedDateGifts = dateGifts
+            var filter = ProfileGiftsContext.Filters.All
+            var filteredOffset: String? = "next-page"
+            var mainInvalidated = false
+            var removed: [StarGiftReference] = []
+            reloadStarGiftListsAfterDeletion(reference: reference, filter: filter, sorting: .value, containsGift: containsGift, reload: {
+                dateGifts = []
+                mainInvalidated = true
+            }, updateFilter: { value in
+                filter = value
+                filteredOffset = nil
+            }, remove: { references in
+                removed.append(contentsOf: references)
+                dateGifts.removeAll(where: references.contains)
+                cachedDateGifts.removeAll(where: references.contains)
+            })
+            XCTAssertTrue(mainInvalidated)
+            XCTAssertTrue(dateGifts.isEmpty)
+            XCTAssertNil(filteredOffset)
+            XCTAssertEqual(filter, .All)
+            XCTAssertEqual(removed, containsGift ? [reference] : [])
+            dateGifts = cachedDateGifts
+            XCTAssertEqual(dateGifts, [otherReference])
+        }
+    }
+
+    func testNamedCollectionDetailsPreserveSharedItemsAndOriginalPinHandler() {
+        let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
+        for pinned in [false, true] {
+            var calls: [String] = []
+            let collection = ContextMenuItem(strings().peerMediaGiftsCollectionContextAddToCollection)
+            let submenu = ContextMenu()
+            submenu.items = [ContextMenuItem("Collection", handler: {
+                calls.append("close")
+                calls.append("collection")
+            })]
+            collection.submenu = submenu
+            let wear = ContextMenuItem(strings().giftContextWear, handler: {
+                calls.append("close")
+                calls.append("wear")
+            })
+            let sharedItems = [collection, ContextSeparatorItem(), wear]
+            let pinItem = starGiftDetailPinMenuItem(owner: .peerId(accountId), accountPeerId: accountId, isCreator: false, pinnedInfo: .init(pinnedInfo: pinned, reference: reference), savedToProfile: true, togglePin: {
+                calls.append("pin")
+            })
+            let items = starGiftDetailMenuItems(sharedItems, includeDetailPin: true, pinItem: pinItem)
+            XCTAssertEqual(items.count, sharedItems.count + 1)
+            XCTAssertEqual(items.first?.title, pinned ? strings().messageContextUnpin : strings().messageContextPin)
+            XCTAssertFalse(items.first?.isSeparatorItem ?? true)
+            for (actual, original) in zip(items.dropFirst(), sharedItems) {
+                XCTAssertTrue(actual === original)
+            }
+            XCTAssertTrue(calls.isEmpty)
+            items.first?.handler?()
+            XCTAssertEqual(calls, ["pin"])
+            (items[1].submenu?.items[0] as? ContextMenuItem)?.handler?()
+            items[3].handler?()
+            XCTAssertEqual(calls, ["pin", "close", "collection", "close", "wear"])
+        }
+    }
+
+    func testAllCollectionDetailDoesNotDuplicateSharedPin() {
+        let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
+        var sharedCalls = 0
+        var detailCalls = 0
+        let sharedPin = ContextMenuItem(strings().chatListContextPin, handler: { sharedCalls += 1 })
+        let detailPin = starGiftDetailPinMenuItem(owner: .peerId(accountId), accountPeerId: accountId, isCreator: false, pinnedInfo: .init(pinnedInfo: false, reference: reference), savedToProfile: true, togglePin: { detailCalls += 1 })
+        let items = starGiftDetailMenuItems([sharedPin], includeDetailPin: false, pinItem: detailPin)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertTrue(items.first === sharedPin)
+        items.first?.handler?()
+        XCTAssertEqual(sharedCalls, 1)
+        XCTAssertEqual(detailCalls, 0)
+    }
+
+    func testIneligibleNamedDetailPinPreservesSharedMenuWithoutSeparators() {
+        let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
+        let sharedItem = ContextMenuItem(strings().giftContextWear)
+        let pinItem = starGiftDetailPinMenuItem(owner: .peerId(accountId), accountPeerId: accountId, isCreator: false, pinnedInfo: .init(pinnedInfo: false, reference: reference), savedToProfile: true, togglePin: {})
+        let items = starGiftDetailMenuItems([sharedItem], includeDetailPin: true, pinItem: nil)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertTrue(items.first === sharedItem)
+        XCTAssertFalse(items[0].isSeparatorItem)
+        XCTAssertTrue(starGiftDetailMenuItems([], includeDetailPin: true, pinItem: pinItem).isEmpty)
+    }
+
+    func testDetailPinPreservesOwnershipVisibilityAndReferenceRequirements() {
+        let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
+        let pinnedInfo = GiftPinnedInfo(pinnedInfo: false, reference: reference)
+        let otherId = user(2).id
+        let channelId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(3))
+        for saved: Bool? in [true, nil] {
+            XCTAssertNotNil(starGiftDetailPinMenuItem(owner: .peerId(accountId), accountPeerId: accountId, isCreator: false, pinnedInfo: pinnedInfo, savedToProfile: saved, togglePin: {}))
+            XCTAssertNotNil(starGiftDetailPinMenuItem(owner: .peerId(channelId), accountPeerId: accountId, isCreator: true, pinnedInfo: pinnedInfo, savedToProfile: saved, togglePin: {}))
+        }
+        XCTAssertNil(starGiftDetailPinMenuItem(owner: .peerId(accountId), accountPeerId: accountId, isCreator: false, pinnedInfo: pinnedInfo, savedToProfile: false, togglePin: {}))
+        XCTAssertNil(starGiftDetailPinMenuItem(owner: .peerId(accountId), accountPeerId: accountId, isCreator: false, pinnedInfo: nil, savedToProfile: true, togglePin: {}))
+        XCTAssertNil(starGiftDetailPinMenuItem(owner: .peerId(otherId), accountPeerId: accountId, isCreator: false, pinnedInfo: pinnedInfo, savedToProfile: true, togglePin: {}))
+        XCTAssertNil(starGiftDetailPinMenuItem(owner: .peerId(channelId), accountPeerId: accountId, isCreator: false, pinnedInfo: pinnedInfo, savedToProfile: true, togglePin: {}))
+        for owner: StarGift.UniqueGift.Owner? in [nil, .name("Owner"), .address("address")] {
+            XCTAssertNil(starGiftDetailPinMenuItem(owner: owner, accountPeerId: accountId, isCreator: true, pinnedInfo: pinnedInfo, savedToProfile: true, togglePin: {}))
+        }
+    }
+
     func testDeletionEligibilityMatchesExistingOwnershipAndGiftPolicy() {
         let reference = StarGiftReference.message(messageId: .init(peerId: accountId, namespace: Namespaces.Message.Cloud, id: 1))
         XCTAssertTrue(starGiftCanDelete(gift: gift(), reference: reference, owner: user(1), accountPeerId: accountId, converted: false, fromProfile: true, upgraded: false, refunded: false))
