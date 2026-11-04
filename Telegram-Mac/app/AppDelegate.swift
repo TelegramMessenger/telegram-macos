@@ -655,18 +655,21 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 telegramUpdateTheme(updateTheme(with: themeSettings), window: window, animated: false)
 
                 
-                let basicTheme = Atomic<ThemePaletteSettings?>(value: themeSettings)
+                let basicTheme = Atomic<ThemePaletteSettings?>(value: themeSettings.withUpdatedPalette(theme.colors))
                 let viewDidChangedAppearance: ValuePromise<Bool> = ValuePromise(true)
                 let backingProperties:ValuePromise<CGFloat> = ValuePromise(System.backingScale, ignoreRepeated: true)
                 
                 
                 let previousBackingScale: Atomic<CGFloat> = Atomic(value: System.backingScale)
-                let signal: Signal<TelegramPresentationTheme?, NoError> = combineLatest(queue: resourcesQueue, themeSettingsView(accountManager: accountManager), backingProperties.get()) |> map { settings, backingScale in
+                let signal: Signal<TelegramPresentationTheme?, NoError> = combineLatest(queue: .mainQueue(), themeSettingsView(accountManager: accountManager), backingProperties.get(), systemThemeColorsSignal()) |> map { settings, backingScale, systemColors in
+                    System.legacyMenu = settings.legacyMenu
+                    let resolved = settings.palette.name == systemPalette.name ? settings.withUpdatedPalette(systemColors) : settings
+                    return (resolved, backingScale)
+                } |> deliverOn(resourcesQueue) |> map { settings, backingScale in
                     let previous = basicTheme.swap(settings)
                     let previousScale = previousBackingScale.swap(backingScale)
-                    System.legacyMenu = settings.legacyMenu
-                    if previous?.palette != settings.palette || previous?.bubbled != settings.bubbled || previous?.wallpaper.wallpaper != settings.wallpaper.wallpaper || previous?.fontSize != settings.fontSize || previousScale != backingScale  {
-                        return updateTheme(with: settings, animated: ((previous?.fontSize == settings.fontSize && previous?.palette != settings.palette) || previous?.bubbled != settings.bubbled || previous?.cloudTheme?.id != settings.cloudTheme?.id || previous?.palette.isDark != settings.palette.isDark))
+                    if previous?.palette != settings.palette || previous?.bubbled != settings.bubbled || previous?.wallpaper != settings.wallpaper || previous?.fontSize != settings.fontSize || previous?.cloudTheme != settings.cloudTheme || previousScale != backingScale  {
+                        return updateTheme(with: settings, resolvedSystemPalette: settings.palette, scaleFactor: backingScale)
                     } else {
                         return nil
                     }
