@@ -274,6 +274,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     private var memoryPressureMonitor: MemoryPressureMonitor?
     private var rustEngineCrash: CrashedRun?
     private var focusFilterCoordinator: FocusFilterCoordinator?
+    private var didShowFocusFilterWarning = false
     private let focusFilterLogger = OSLog(subsystem: "org.telegram.macos", category: "FocusFilters")
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -1236,6 +1237,12 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                             }
                             self.window.deminiaturize(self)
                             NSApp.activate(ignoringOtherApps: true)
+
+                            if !self.didShowFocusFilterWarning && focusPolicySource.policy.isConfigurationUnavailable {
+                                self.didShowFocusFilterWarning = true
+                                let warning = focusFilterConfigurationWarning()
+                                alert(for: self.window, header: warning.title, info: warning.message)
+                            }
                              
                             
                         }

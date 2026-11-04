@@ -153,6 +153,7 @@ final class FocusFilterStoreTests: XCTestCase {
 
         store.reload()
         XCTAssertEqual(store.policy.configuration, configuration)
+        XCTAssertFalse(store.policy.isConfigurationUnavailable)
         XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
         XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 43, effect: .notifications))
 
@@ -173,10 +174,12 @@ final class FocusFilterStoreTests: XCTestCase {
         let catalog = FocusFilterCatalog(accounts: [.init(id: 10, title: "Work")])
         try persistence.saveCatalog(catalog)
         let store = makeStore()
+        XCTAssertFalse(store.policy.isConfigurationUnavailable)
         XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
 
         try Data("not json".utf8).write(to: directory.appendingPathComponent("configuration.json"), options: .atomic)
         let restarted = makeStore()
+        XCTAssertTrue(restarted.policy.isConfigurationUnavailable)
         XCTAssertEqual(restarted.policy.catalog, catalog)
         XCTAssertFalse(restarted.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
         XCTAssertFalse(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
@@ -185,6 +188,7 @@ final class FocusFilterStoreTests: XCTestCase {
         try restarted.updateCatalog(.init())
         XCTAssertFalse(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
         try restarted.updateConfiguration(.init())
+        XCTAssertFalse(restarted.policy.isConfigurationUnavailable)
         XCTAssertTrue(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
     }
 

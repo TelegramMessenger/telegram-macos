@@ -153,13 +153,13 @@ struct Language {
     let strings: [String: String]
 }
 
-struct TelegramLocalization {
+public struct TelegramLocalization {
     let primaryLanguage: Language
     let secondaryLanguage: Language?
     var baseLanguageCode: String { secondaryLanguage?.languageCode ?? primaryLanguage.languageCode }
 }
 
-let appCurrentLanguage = TelegramLocalization(primaryLanguage: Language(languageCode: "en", strings: [:]), secondaryLanguage: nil)
+public let appCurrentLanguage = TelegramLocalization(primaryLanguage: Language(languageCode: "en", strings: [:]), secondaryLanguage: nil)
 
 __FOCUS_TEXT__
 
@@ -265,6 +265,13 @@ private enum Tests {
         precondition(chatListFocusEmptyText(language: language("custom", secondary: "ru", primaryValues: [key: ""], secondaryValues: [key: "Secondary"]), bundle: bundle) == "Secondary")
         precondition(chatListFocusEmptyText(language: language("ru", primaryValues: [key: ""]), bundle: bundle) == russian)
         precondition(chatListFocusEmptyText(language: language("ru"), bundle: .main) == english)
+
+        let warning = focusFilterConfigurationWarning(language: language("ru-RU"), bundle: bundle)
+        precondition(warning.title == "Уведомления чатов приостановлены")
+        precondition(warning.message.contains("Системные настройки"))
+        let englishWarning = focusFilterConfigurationWarning(language: language("en"), bundle: bundle)
+        precondition(englishWarning.title == "Chat notifications paused")
+        precondition(englishWarning.message.contains("System Settings"))
         print("PASS: bundled Russian/English text, app-language variants, custom language base, remote override priority and missing-resource fallback")
     }
 

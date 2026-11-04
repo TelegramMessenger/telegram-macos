@@ -2,7 +2,16 @@ import Foundation
 import Localization
 
 func chatListFocusEmptyText(language: TelegramLocalization = appCurrentLanguage, bundle: Bundle = .main) -> String {
-    let key = "ChatList.Filter.EmptyFocus"
+    focusFilterText("ChatList.Filter.EmptyFocus", fallback: "All chats in this folder are hidden by Focus settings.", language: language, bundle: bundle)
+}
+
+public func focusFilterConfigurationWarning(language: TelegramLocalization = appCurrentLanguage, bundle: Bundle = .main) -> (title: String, message: String) {
+    let title = focusFilterText("FocusFilter.ReadError.Title", fallback: "Chat notifications paused", language: language, bundle: bundle)
+    let message = focusFilterText("FocusFilter.ReadError.Message", fallback: "Telegram couldn’t read your Focus filter settings. Chat notifications are paused for all accounts. To restore them, open System Settings → Focus, select your Focus and save the Telegram filter again.", language: language, bundle: bundle)
+    return (title, message)
+}
+
+private func focusFilterText(_ key: String, fallback: String, language: TelegramLocalization, bundle: Bundle) -> String {
     for translation in [language.primaryLanguage.strings[key], language.secondaryLanguage?.strings[key]] {
         if let translation, !translation.isEmpty {
             return translation
@@ -21,5 +30,5 @@ func chatListFocusEmptyText(language: TelegramLocalization = appCurrentLanguage,
             return value
         }
     }
-    return "All chats in this folder are hidden by Focus settings."
+    return fallback
 }

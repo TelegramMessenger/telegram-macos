@@ -153,7 +153,10 @@ updates. A fresh installation starts with filtering off. Once the repository has
 read or saved a configuration, a missing, unreadable or corrupt file leaves that
 configuration in effect. If an existing configuration cannot be read on startup,
 Telegram suppresses chat notifications for all accounts until it reads or saves
-a valid configuration. Saving an empty configuration turns filtering off normally.
+a valid configuration. When the main window is ready, Telegram warns the user
+once per launch if the configuration is still unreadable and explains how to
+save the filter again in System Settings → Focus. Saving an empty configuration
+turns filtering off normally.
 Catalogue read failures retain the last known folder membership. Read failures
 are reported without overwriting either file.
 
