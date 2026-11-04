@@ -2552,7 +2552,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
     private let replyMessageDisposable = MetaDisposable()
     private let deleteChatDisposable: MetaDisposable = MetaDisposable()
     private let loadSelectionMessagesDisposable: MetaDisposable = MetaDisposable()
-    private var currentRanks: CachedChannelAdminRanks?
+    private let currentRanksValue = Atomic<CachedChannelAdminRanks?>(value: nil)
+    private var currentRanks: CachedChannelAdminRanks? {
+        return currentRanksValue.with { $0 }
+    }
     private let updateMediaDisposable = MetaDisposable()
     private let editCurrentMessagePhotoDisposable = MetaDisposable()
     private var editingSessionId: Int = 0
@@ -4079,6 +4082,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 lhs.walletFiatRate == rhs.walletFiatRate
         })
         
+        let currentRanksValue = self.currentRanksValue
         let historyPeerView: Signal<PostboxView?, NoError> = peerView.get() |> distinctUntilChanged(isEqual: { lhs, rhs in
             let lhsView = lhs as? PeerView
             let rhsView = rhs as? PeerView
@@ -4192,7 +4196,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if case let .cacheEntry(id, data) = additionalEntry {
                         if id == cachedChannelAdminRanksEntryId(peerId: peerId), let data = data?.get(CachedChannelAdminRanks.self)  {
                             ranks = data
-                            self.currentRanks = data
+                            _ = currentRanksValue.swap(data)
                         }
                         break
                     }
