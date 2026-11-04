@@ -242,13 +242,25 @@ private final class EditVideoTintSectionView: View {
     }
 }
 
+final class EditVideoOriginalPreviewControl: Control {
+    var accessibilityPress: (() -> Void)?
+
+    override func accessibilityPerformPress() -> Bool {
+        if let accessibilityPress {
+            accessibilityPress()
+            return true
+        }
+        return super.accessibilityPerformPress()
+    }
+}
+
 final class EditVideoToolsView: View {
     static func color(_ hex: UInt32) -> NSColor {
         return NSColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255.0, green: CGFloat((hex >> 8) & 0xff) / 255.0, blue: CGFloat(hex & 0xff) / 255.0, alpha: 1)
     }
 
     let preview = ImageView()
-    let previewControl = Control()
+    let previewControl = EditVideoOriginalPreviewControl()
     private let panel = View()
     private let scrollView = NSScrollView()
     private let rowsView = View()
@@ -272,7 +284,7 @@ final class EditVideoToolsView: View {
         preview.isAccessibilityDecorative = true
         addSubview(preview)
         addSubview(previewControl)
-        previewControl.setAccessibilityLabel(strings().editVideoToolsControllerOriginal)
+        previewControl.setAccessibilityLabel("Show Original") //TODOLANG
 
         panel.backgroundColor = NSColor.black.withAlphaComponent(0.6)
         panel.layer?.cornerRadius = 12
@@ -457,6 +469,13 @@ public final class EditVideoToolsController: ModalViewController {
         }
     }
 
+    private func setShowsOriginal(_ showsOriginal: Bool) {
+        self.showsOriginal = showsOriginal
+        self.genericView.showHud(showsOriginal ? strings().editVideoToolsControllerOriginal : nil)
+        self.genericView.previewControl.setAccessibilityLabel(showsOriginal ? "Show Edited" : "Show Original") //TODOLANG
+        self.renderPreview()
+    }
+
     private func updateTint() {
         genericView.shadowsSection.update(selected: spec.tint.shadowsColor, intensity: spec.tint.shadowsIntensity)
         genericView.highlightsSection.update(selected: spec.tint.highlightsColor, intensity: spec.tint.highlightsIntensity)
@@ -541,15 +560,17 @@ public final class EditVideoToolsController: ModalViewController {
             self?.done()
         }, for: .Click)
         genericView.previewControl.set(handler: { [weak self] _ in
-            self?.showsOriginal = true
-            self?.genericView.showHud(strings().editVideoToolsControllerOriginal)
-            self?.renderPreview()
+            self?.setShowsOriginal(true)
         }, for: .Down)
         genericView.previewControl.set(handler: { [weak self] _ in
-            self?.showsOriginal = false
-            self?.genericView.showHud(nil)
-            self?.renderPreview()
+            self?.setShowsOriginal(false)
         }, for: .Up)
+        genericView.previewControl.accessibilityPress = { [weak self] in
+            guard let self else {
+                return
+            }
+            self.setShowsOriginal(!self.showsOriginal)
+        }
         genericView.showTint(false)
         updateTint()
         renderPreview()

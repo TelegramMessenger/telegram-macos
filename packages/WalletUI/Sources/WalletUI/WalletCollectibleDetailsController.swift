@@ -280,7 +280,7 @@ private final class WalletCollectibleHeroRowView: TableRowView {
         giftView.isEventLess = true
         compositionView.isAccessibilityDecorative = true
         giftView.isAccessibilityDecorative = true
-        giftControl.isAccessibilityDecorative = true
+        giftControl.setAccessibilityLabel("Replay Gift Animation") //TODOLANG
         addSubview(compositionView)
         placeholderView.layer?.cornerRadius = 16
         lottieView.layer?.cornerRadius = 16
