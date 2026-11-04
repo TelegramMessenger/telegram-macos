@@ -18,6 +18,7 @@ let deps: [(String, String)] = [
     ("AlertsUI", "../AlertsUI"),
     ("TelegramMediaUtils", "../TelegramMediaUtils"),
     ("TelegramMedia", "../TelegramMedia"),
+    ("AudioPlayerCore", "../AudioPlayerCore"),
     ("LocalAnimations", "../LocalAnimations"),
     ("MessageUtils", "../MessageUtils"),
     ("ChatModeTypes", "../ChatModeTypes"),
