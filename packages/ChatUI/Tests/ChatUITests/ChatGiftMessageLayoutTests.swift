@@ -5,7 +5,7 @@ import TelegramCore
 import TGUIKit
 import TelegramTheme
 import LocalAnimations
-import StarsUI
+@testable import StarsUI
 @testable import ChatUI
 
 final class ChatGiftMessageLayoutTests: XCTestCase {
@@ -35,11 +35,19 @@ final class ChatGiftMessageLayoutTests: XCTestCase {
         return .init(from: peerId, to: peerId, text: layout(text), info: info, source: source, ribbon: nil, uniqueAttributes: attributes, giftMessage: message, authorLayout: author, author: nil, isPrepaidUpgrade: false)
     }
 
-    func testCollectibleAndOrdinaryGiftArtworkMatchesDetailSize() {
+    func testCollectibleAndOrdinaryGiftArtworkUsesRequestedSize() {
         for unique in [false, true] {
             let gift = data(source: source(unique: unique))
-            XCTAssertEqual(gift.stickerSize, NSSize(width: 100, height: 100))
-            XCTAssertEqual(gift.height, 120 + gift.text.layoutSize.height + 15 + 38)
+            XCTAssertEqual(gift.stickerSize, NSSize(width: 120, height: 120))
+            XCTAssertEqual(gift.height, 140 + gift.text.layoutSize.height + 15 + 38)
+        }
+    }
+
+    func testAddMessagePreviewUsesTheSameArtworkSize() {
+        XCTAssertEqual(AddGiftMessagePreviewItem.stickerSize, NSSize(width: 120, height: 120))
+        for unique in [false, true] {
+            let gift = data(source: source(unique: unique))
+            XCTAssertEqual(gift.stickerSize, AddGiftMessagePreviewItem.stickerSize)
         }
     }
 
@@ -64,7 +72,7 @@ final class ChatGiftMessageLayoutTests: XCTestCase {
         ])
         let gift = data(source: source(unique: true), text: "Gift from a sender with a very long display name", attributes: attributes)
         XCTAssertGreaterThan(gift.text.numberOfLines, 1)
-        XCTAssertEqual(gift.height, 120 + gift.text.layoutSize.height + 15 + attributes.height + 38)
+        XCTAssertEqual(gift.height, 140 + gift.text.layoutSize.height + 15 + attributes.height + 38)
         XCTAssertEqual(gift.stickerSize.width, gift.stickerSize.height)
     }
 
@@ -73,8 +81,8 @@ final class ChatGiftMessageLayoutTests: XCTestCase {
             let info = layout("This gift was refunded.")
             let gift = data(source: source(unique: unique, refunded: true), info: info)
             XCTAssertNil(gift.uniqueAttributes)
-            XCTAssertEqual(gift.stickerSize, NSSize(width: 100, height: 100))
-            XCTAssertEqual(gift.height, 120 + gift.text.layoutSize.height + 15 + 4 + info.layoutSize.height + 38)
+            XCTAssertEqual(gift.stickerSize, NSSize(width: 120, height: 120))
+            XCTAssertEqual(gift.height, 140 + gift.text.layoutSize.height + 15 + 4 + info.layoutSize.height + 38)
         }
     }
 
@@ -83,6 +91,6 @@ final class ChatGiftMessageLayoutTests: XCTestCase {
         let author = layout("Sender")
         let gift = data(source: source(unique: true), message: message, author: author)
         XCTAssertGreaterThan(message.text.numberOfLines, 1)
-        XCTAssertEqual(gift.height, 120 + gift.text.layoutSize.height + 15 + message.height + author.layoutSize.height + 38)
+        XCTAssertEqual(gift.height, 140 + gift.text.layoutSize.height + 15 + message.height + author.layoutSize.height + 38)
     }
 }

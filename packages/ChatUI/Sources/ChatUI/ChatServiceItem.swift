@@ -131,7 +131,7 @@ public class ChatServiceItem: ChatRowItem {
         var stickerSize: NSSize {
             switch source {
             case .starGift:
-                return NSMakeSize(100, 100)
+                return NSMakeSize(120, 120)
             default:
                 return NSMakeSize(150, 150)
             }
