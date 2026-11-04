@@ -2,8 +2,9 @@
 
 The app is an Xcode workspace (`Telegram-Mac.xcworkspace`) that links a set of native
 libraries built once from `core-xprojects/` and a collection of local Swift packages
-from `packages/` and `submodules/telegram-ios/submodules/`. There are no remote Swift
-package dependencies, so once the submodules are checked out the build is offline.
+from `packages/` and `submodules/telegram-ios/submodules/`. Swift packages resolve
+from local paths. Initial native preparation still needs network access to download
+OpenSSL sources, Rust toolchains and Cargo dependencies.
 
 ## Requirements
 
@@ -18,8 +19,10 @@ package dependencies, so once the submodules are checked out the build is offlin
   ```
 - Homebrew and these packages:
   ```
-  brew install cmake ninja meson nasm yasm openssl@1.1 zlib autoconf libtool automake pkg-config
+  brew install cmake ninja meson nasm yasm zlib autoconf libtool automake pkg-config
   ```
+  OpenSSL is built from source by `core-xprojects/openssl`; the removed Homebrew
+  `openssl@1.1` formula is not a build prerequisite.
 - A Rust toolchain via rustup. The TON wallet engine (`wallet-engine`) and the tlottie
   sticker renderer are Rust libraries; their build scripts pick up `cargo` from `PATH` or
   `~/.cargo/bin` and rustup installs the toolchain pinned in the engine's
@@ -27,19 +30,16 @@ package dependencies, so once the submodules are checked out the build is offlin
   `mtproto-engine`, so all Rust libraries in the app share one standard library.
   ```
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  . "$HOME/.cargo/env"
   ```
-- Git access to `github.com` and `gitlab.com` for the submodules. The `.gitmodules`
-  URLs use SSH. If you only have HTTPS access, add rewrites before cloning:
-  ```
-  git config --global url."https://github.com/".insteadOf "git@github.com:"
-  git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
-  ```
+- Git access to `github.com` and `gitlab.com` for the submodules. The checked-in
+  submodule URLs use HTTPS; global SSH-to-HTTPS Git rewrites are not required.
 
 ## 1. Clone with submodules
 
 ```
-git clone --recurse-submodules https://github.com/macosswift/telegram.git
-cd TelegramSwift
+git clone --recurse-submodules https://github.com/TelegramMessenger/telegram-macos.git
+cd telegram-macos
 ```
 
 For an existing checkout:
@@ -62,9 +62,19 @@ The script is idempotent and does everything from the requirements list that can
 automated: installs Homebrew and the packages, installs Rosetta 2 on Apple Silicon,
 checks that full Xcode is selected, initialises the submodules recursively, and patches
 `ABSL_ATTRIBUTE_LIFETIME_BOUND` in `tg_owt`'s abseil copy, which recent clang rejects.
-It does not install Rust; do that yourself (see above).
+It does not install Rust; do that yourself (see above). A failed submodule checkout
+stops preparation rather than reporting that the environment is ready.
 
-Run it with `--build` to continue straight into step 3.
+On Xcode 27, finish [the compatibility preparation](XCODE27.md) after this step and
+before building libraries. On older Xcode versions, `--build` continues straight
+into step 3.
+
+The preparation scripts can be checked with temporary fixtures, without installing
+tools or building Telegram:
+
+```
+python3 -m unittest discover -s tools/tests/build-setup -p 'test_*.py' -v
+```
 
 ## 3. Build the native libraries (once)
 
@@ -79,7 +89,7 @@ This takes a while, mostly because of WebRTC. The script:
 1. Generates TelegramApi's SwiftPM sources with SwiftTL, then the FlatSerialization
    sources for TelegramCore with the bundled `scripts/flatc`.
 2. Builds, in order, `OpenH264`, `OpenSSLEncryption`, `libopus`, `libvpx`, `Mozjpeg`,
-   `libwebp`, `dav1d`, `ffmpeg`, `webrtc` (tg_owt), `tde2e` and `WalletEngine` through
+   `libwebp`, `dav1d`, `ffmpeg`, `webrtc` (tg_owt), `tde2e`, `WalletEngine` and `MTProtoEngine` through
    their projects in `core-xprojects/<lib>/`. Outputs land in `core-xprojects/<lib>/build`,
    which is git-ignored. `WalletEngine` also regenerates
    `packages/WalletEngine/Sources/WalletEngineFFI/WalletEngineFFI.swift` (checked in) and
@@ -88,6 +98,7 @@ This takes a while, mostly because of WebRTC. The script:
    OpusBinding, FFMpegBinding, OpenSSLEncryptionProvider, libwebp and Mozjpeg packages
    expect.
 4. Runs the `td` macOS cleanup for `TdBinding`.
+5. Builds the tlottie Rust sticker renderer using the MTProto engine's Rust toolchain.
 
 Framework preparation compares source, toolchain and dependency fingerprints and
 checks required libraries, headers and Rust binding outputs before reusing a build.
@@ -303,8 +314,8 @@ cd packages/TGUIKit && swift build
 - **clang error about `lifetimebound` in abseil** while building webrtc: run
   `scripts/setup_build_env.sh` again; it applies the patch.
 - **Xcode reports a missing library or `SharedHeaders` directory**: a library was skipped
-  because a stale `core-xprojects/<lib>/build` directory existed. Delete it and rerun
-  `configure_frameworks.sh`.
+  or its outputs are incomplete. Rerun `configure_frameworks.sh`; its fingerprint and
+  output checks rebuild incomplete frameworks and restore shared headers.
 - **`wallet_engineFFI.xcframework` not found**: Rust was not available when the frameworks
   were built. Install rustup, then rerun `configure_frameworks.sh` or the wallet engine
   build script above.

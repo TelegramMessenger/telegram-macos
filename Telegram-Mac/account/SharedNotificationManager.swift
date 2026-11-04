@@ -8,6 +8,7 @@ import ObjcUtils
 import InAppSettings
 import PasscodeCore
 import WalletContext
+import FocusFilterCore
 
 func getNotificationMessageId(userInfo:[AnyHashable: Any], for prefix: String) -> MessageId? {
     if let msgId = userInfo["\(prefix).message.id"] as? Int32, let msgNamespace = userInfo["\(prefix).message.namespace"] as? Int32, let namespace = userInfo["\(prefix).peer.namespace"] as? Int32, let id = userInfo["\(prefix).peer.id"] as? Int64 {
@@ -170,7 +171,7 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
     
     private var lockers:[PasscodeLockController] = []
     
-    init(activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, appEncryption: AppEncryptionParameters, accountManager: AccountManager<TelegramAccountManagerTypes>, bindings: SharedNotificationBindings) {
+    init(activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, appEncryption: AppEncryptionParameters, accountManager: AccountManager<TelegramAccountManagerTypes>, bindings: SharedNotificationBindings, focusPolicySource: any FocusFilterPolicySource) {
         self.accountManager = accountManager
         self.bindings = bindings
         self.appEncryption = appEncryption
@@ -182,7 +183,7 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
             PasscodeSession.setApplicationAvailable(true)
         }
         
-        UNUserNotifications.initialize(manager: self)
+        UNUserNotifications.initialize(manager: self, focusPolicySource: focusPolicySource)
         
         inAppSettingsDisposable.set((appNotificationSettings(accountManager: accountManager) |> deliverOnMainQueue).start(next: { [weak self] inAppSettings in
             self?.showNotificationsOutOfFocus = inAppSettings.showNotificationsOutOfFocus

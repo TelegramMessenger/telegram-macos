@@ -59,7 +59,6 @@ BREW_PACKAGES=(
   meson        # dav1d
   nasm         # OpenH264 (x86_64 assembly)
   yasm         # ffmpeg / libvpx assembly
-  openssl@1.1  # used by several configure steps
   zlib
   autoconf
   libtool
@@ -107,15 +106,11 @@ fi
 # ---------------------------------------------------------------------------
 # 5. Git submodules
 #    The framework projects build from submodule sources (tg_owt, telegram-ios
-#    third-party: td/dav1d/mozjpeg/ffmpeg, etc.). Requires SSH access to
-#    github.com/gitlab.com, or HTTPS rewrites configured for those hosts.
+#    third-party: td/dav1d/mozjpeg/ffmpeg, etc.).
 # ---------------------------------------------------------------------------
 log "Initialising git submodules (recursive)"
 if ! git -C "$REPO_DIR" submodule update --init --recursive; then
-  warn "Submodule init failed. If you have no SSH keys for github/gitlab, enable HTTPS rewrites:"
-  warn '    git config --global url."https://github.com/".insteadOf "git@github.com:"'
-  warn '    git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"'
-  warn "then re-run this script."
+  die "Submodule initialization failed. Resolve the Git error above and rerun this script."
 fi
 
 # ---------------------------------------------------------------------------
@@ -151,10 +146,9 @@ To build the frameworks, run with full Xcode selected and the CMake policy set:
     CMAKE_POLICY_VERSION_MINIMUM=3.5 \\
     sh "$SCRIPT_DIR/configure_frameworks.sh"
 
-Tip: configure_frameworks.sh only (re)builds a library when its build/ dir is
-absent. If a previous run failed midway it leaves a partial build/ dir and the
-next run will SKIP it. To force a clean rebuild, set scripts/rebuild to "yes"
-(or delete the relevant core-xprojects/*/build dirs).
+Tip: configure_frameworks.sh validates cached inputs and required outputs.
+Rerun it after an interrupted build to repair incomplete outputs. To force a
+clean rebuild, set scripts/rebuild to "yes", run the script, then restore "no".
 EOF
 
 if [ "${1:-}" = "--build" ]; then
