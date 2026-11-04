@@ -54,14 +54,18 @@ private final class Arguments {
     public let toggleLowPower:(Int32)->Void
     public let toggleKey:(LiteModeKey)->Void
     public let toggleLiquidGlass:()->Void
+    public let toggleGlassBubbles:()->Void
     public let alertEnable:()->Void
-    public init(context: any AccountContextProtocol, toggleEnabled:@escaping()->Void, toggleLowPower:@escaping(Int32)->Void, toggleKey:@escaping(LiteModeKey)->Void, toggleLiquidGlass:@escaping()->Void, alertEnable:@escaping()->Void) {
+    public let alertGlassBubbles:()->Void
+    public init(context: any AccountContextProtocol, toggleEnabled:@escaping()->Void, toggleLowPower:@escaping(Int32)->Void, toggleKey:@escaping(LiteModeKey)->Void, toggleLiquidGlass:@escaping()->Void, toggleGlassBubbles:@escaping()->Void, alertEnable:@escaping()->Void, alertGlassBubbles:@escaping()->Void) {
         self.context = context
         self.toggleEnabled = toggleEnabled
         self.toggleLowPower = toggleLowPower
         self.toggleKey = toggleKey
         self.toggleLiquidGlass = toggleLiquidGlass
+        self.toggleGlassBubbles = toggleGlassBubbles
         self.alertEnable = alertEnable
+        self.alertGlassBubbles = alertGlassBubbles
     }
 }
 
@@ -133,6 +137,21 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         index += 1
 
         if let info = liquidGlassKey.info {
+            entries.append(.desc(sectionId: sectionId, index: index, text: .plain(info), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+            index += 1
+        }
+
+        entries.append(.sectionId(sectionId, type: .normal))
+        sectionId += 1
+
+        let glassBubblesKey: LiteModeKey = .glassBubbles
+        let glassBubblesAvailable = !state.liteMode.enabled && state.liteMode.liquidGlassEnabled
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_enabled_key(glassBubblesKey), data: .init(name: glassBubblesKey.title, color: theme.colors.text, type: .switchable(glassBubblesAvailable && state.liteMode.glassBubblesEnabled), viewType: .singleItem, enabled: glassBubblesAvailable, action: {
+            arguments.toggleGlassBubbles()
+        }, disabledAction: state.liteMode.enabled ? arguments.alertEnable : arguments.alertGlassBubbles)))
+        index += 1
+
+        if let info = glassBubblesKey.info {
             entries.append(.desc(sectionId: sectionId, index: index, text: .plain(info), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
             index += 1
         }
@@ -213,8 +232,18 @@ public func LiteModeController(context: any AccountContextProtocol) -> InputData
                 return current
             }
         }).start(completed: afterCompletion)
+    }, toggleGlassBubbles: {
+        _ = updateBaseAppSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
+            return settings.updateLiteMode { current in
+                var current = current
+                current.glassBubblesEnabled = !current.glassBubblesEnabled
+                return current
+            }
+        }).start(completed: afterCompletion)
     }, alertEnable: {
         showModalText(for: context.window, text: strings().liteModeDisableAlert)
+    }, alertGlassBubbles: {
+        showModalText(for: context.window, text: _NSLocalizedString("LiteMode.GlassBubbles.RequiresLiquidGlass"))
     })
     
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
