@@ -56,4 +56,56 @@ final class InstantPageV2MediaSizingTests: XCTestCase {
         )
         XCTAssertEqual(size, CGSize(width: 320, height: 0))
     }
+
+    func testUncappedPortraitDoesNotForceWideChatBubble() {
+        // Before the fix, centering a 120pt image in a 320pt column
+        // moved its right edge to 220pt, inflating fitToWidth's maxX.
+        let mediaWidth: CGFloat = 120
+        let x = instantPageV2MediaOriginX(
+            horizontalInset: 0,
+            availableWidth: 320,
+            mediaWidth: mediaWidth,
+            bleedAmount: 0,
+            heightCapped: false,
+            shrinkToContent: true
+        )
+        XCTAssertEqual(x, 0)
+        XCTAssertEqual(x + mediaWidth, 120)
+    }
+
+    func testHeightCappedPortraitAlsoStartsAtContentOrigin() {
+        let x = instantPageV2MediaOriginX(
+            horizontalInset: 5,
+            availableWidth: 320,
+            mediaWidth: 144,
+            bleedAmount: 0,
+            heightCapped: true,
+            shrinkToContent: true
+        )
+        XCTAssertEqual(x, 5)
+    }
+
+    func testOrdinaryInstantViewStillCentersNarrowMedia() {
+        let x = instantPageV2MediaOriginX(
+            horizontalInset: 0,
+            availableWidth: 320,
+            mediaWidth: 120,
+            bleedAmount: 0,
+            heightCapped: false,
+            shrinkToContent: false
+        )
+        XCTAssertEqual(x, 100)
+    }
+
+    func testFullBleedMediaKeepsBleedOrigin() {
+        let x = instantPageV2MediaOriginX(
+            horizontalInset: 0,
+            availableWidth: 340,
+            mediaWidth: 340,
+            bleedAmount: 10,
+            heightCapped: false,
+            shrinkToContent: true
+        )
+        XCTAssertEqual(x, -10)
+    }
 }
