@@ -37,10 +37,10 @@ final class UnauthorizedApplicationContext {
 class AuthorizedApplicationContext {
     let context: AccountContext
     let rootController: SESelectController
-    init(context: AccountContext, shareContext: NSExtensionContext) {
+    init(context: AccountContext, shareContext: NSExtensionContext, requestFinished: @escaping () -> Void) {
         self.context = context
         
-        self.rootController = SESelectController(ShareObject(context, shareContext))
+        self.rootController = SESelectController(ShareObject(context, shareContext, requestFinished: requestFinished))
         context.account.network.shouldKeepConnection.set(.single(true))
     }
 }

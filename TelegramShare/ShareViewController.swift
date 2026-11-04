@@ -13,6 +13,7 @@ import RLottie
 import PasscodeCore
 
 class ShareViewController: NSViewController {
+    private static var requestLogger: Logger?
 
     override var nibName: NSNib.Name? {
         return "ShareViewController"
@@ -23,10 +24,37 @@ class ShareViewController: NSViewController {
     private var contextValue: AuthorizedApplicationContext?
     private let context = Promise<AuthorizedApplicationContext?>()
     private var passlock: SEPasslockController? = nil
+    private let sessionDisposable = MetaDisposable()
+    private let readyDisposable = MetaDisposable()
+    private var sessionDisposables: DisposableSet?
+    private var requestIsActive = false
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+        beginSharingRequest()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        if !requestIsActive {
+            beginSharingRequest()
+        }
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        finishSharingRequest()
+    }
+
+    private func beginSharingRequest() {
+        guard !requestIsActive else {
+            return
+        }
+        requestIsActive = true
+        let disposables = DisposableSet()
+        sessionDisposables = disposables
+        sessionDisposable.set(disposables)
+
         installTelegramThemeHooks()
         
         System.legacyMenu = false
@@ -36,35 +64,28 @@ class ShareViewController: NSViewController {
         guard let containerUrl = ApiEnvironment.containerURL else {
             return
         }
+        if ShareViewController.requestLogger == nil {
+            let logger = Logger(rootPath: containerUrl.path, basePath: containerUrl.path + "/logs")
+            logger.logToConsole = false
+            logger.logToFile = false
+            ShareViewController.requestLogger = logger
+            Logger.setSharedLogger(logger)
+        }
         try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: ApiEnvironment.group, processRole: .appExtension, keychainScope: ApiEnvironment.prefix == "debug" ? "debug" : nil))
         initializeAccountManagement()
-
-        
-        
         let rootPath = containerUrl.path
-        let accountManager = AccountManager<TelegramAccountManagerTypes>(basePath: containerUrl.path + "/accounts-metadata", isTemporary: false, isReadOnly: true, useCaches: true, removeDatabaseOnError: true, accessChallenge: makeAccountManagerAccessChallenge(basePath: containerUrl.path + "/accounts-metadata", isTemporary: false, isReadOnly: true))
+        let accountManager = AccountManager<TelegramAccountManagerTypes>(basePath: rootPath + "/accounts-metadata", isTemporary: false, isReadOnly: true, useCaches: true, removeDatabaseOnError: true, accessChallenge: makeAccountManagerAccessChallenge(basePath: rootPath + "/accounts-metadata", isTemporary: false, isReadOnly: true))
+        let localization = accountManager.transaction { transaction in
+            return transaction.getSharedData(SharedDataKeys.localizationSettings)?.get(LocalizationSettings.self)
+        }
+        disposables.add((combineLatest(themeSettingsView(accountManager: accountManager) |> take(1), localization)
+        |> deliverOnMainQueue).start(next: { [weak self] settings, localization in
+            guard let self, self.requestIsActive else { return }
+            self.prepareSharingRequest(accountManager: accountManager, rootPath: rootPath, themeSettings: settings, localization: localization)
+        }))
+    }
 
-        let logger = Logger(rootPath: containerUrl.path, basePath: containerUrl.path + "/logs")
-        logger.logToConsole = false
-        logger.logToFile = false
-        Logger.setSharedLogger(logger)
-        
-        let themeSemaphore = DispatchSemaphore(value: 0)
-        var themeSettings: ThemePaletteSettings = ThemePaletteSettings.defaultTheme
-        _ = (themeSettingsView(accountManager: accountManager) |> take(1)).start(next: { settings in
-            themeSettings = settings
-            themeSemaphore.signal()
-        })
-        themeSemaphore.wait()
-        
-        var localization: LocalizationSettings? = nil
-        let localizationSemaphore = DispatchSemaphore(value: 0)
-        _ = (accountManager.transaction { transaction in
-            localization = transaction.getSharedData(SharedDataKeys.localizationSettings)?.get(LocalizationSettings.self)
-            localizationSemaphore.signal()
-        }).start()
-        localizationSemaphore.wait()
-        
+    private func prepareSharingRequest(accountManager: AccountManager<TelegramAccountManagerTypes>, rootPath: String, themeSettings: ThemePaletteSettings, localization: LocalizationSettings?) {
         if let localization = localization {
             applyUILocalization(localization)
         }
@@ -89,7 +110,8 @@ class ShareViewController: NSViewController {
                 } else {
                     return false
                 }
-            }, cancelImpl: {
+            }, cancelImpl: { [weak self] in
+                self?.finishSharingRequest()
                 let cancelError = NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError, userInfo: nil)
                 extensionContext.cancelRequest(withError: cancelError)
             })
@@ -131,25 +153,25 @@ class ShareViewController: NSViewController {
             |> map { _, accounts, _ -> [Account] in
                 return accounts.map({ $0.1 })
         }
-        let _ = (sharedAccountInfos(accountManager: sharedContext.accountManager, accounts: rawAccounts)
+        sessionDisposables?.add((sharedAccountInfos(accountManager: sharedContext.accountManager, accounts: rawAccounts)
             |> deliverOn(Queue())).start(next: { infos in
                 storeAccountsData(rootPath: rootPath, accounts: infos)
-            })
+            }))
         
         
         
-        let readyDisposable = MetaDisposable()
-        _ = (self.context.get() |> mapToSignal { context -> Signal<AuthorizedApplicationContext?, NoError> in
+        sessionDisposables?.add((self.context.get() |> mapToSignal { context -> Signal<AuthorizedApplicationContext?, NoError> in
             return .single(context)
             
-            } |> deliverOnMainQueue).start(next: { context in
+            } |> deliverOnMainQueue).start(next: { [weak self] context in
+                guard let self, self.requestIsActive else { return }
                 assert(Queue.mainQueue().isCurrent())
                 
                 if let context = context {
                     context.rootController.view.frame = self.view.bounds
                     
-                    readyDisposable.set((context.rootController.ready.get() |> take(1)).start(next: { [weak context] _ in
-                        guard let context = context else { return }
+                    self.readyDisposable.set((context.rootController.ready.get() |> take(1)).start(next: { [weak self, weak context] _ in
+                        guard let self, self.requestIsActive, let context else { return }
                         if let contextValue = self.contextValue {
                             performSubviewRemoval(contextValue.rootController.view, animated: false)
                         }
@@ -166,7 +188,7 @@ class ShareViewController: NSViewController {
                         
                     }))
                 }
-            })
+            }))
         
         
         self.context.set(sharedContext.activeAccounts
@@ -179,15 +201,38 @@ class ShareViewController: NSViewController {
                 }
                 return true
             })
-            |> map { account in
+            |> map { [weak self] account in
                 if let account = account {
                     let context = AccountContext(sharedContext: sharedContext, window: Window(contentRect: NSZeroRect, styleMask: [], backing: NSWindow.BackingStoreType.buffered, defer: true), account: account)
-                    return AuthorizedApplicationContext(context: context, shareContext: extensionContext)
+                    return AuthorizedApplicationContext(context: context, shareContext: extensionContext, requestFinished: { [weak self] in
+                        self?.finishSharingRequest()
+                    })
                     
                 } else {
                     return nil
                 }
             })
+    }
+
+    private func finishSharingRequest() {
+        guard requestIsActive else {
+            return
+        }
+        requestIsActive = false
+        sessionDisposable.set(nil)
+        sessionDisposables = nil
+        readyDisposable.set(nil)
+        context.set(.single(nil))
+        contextValue?.context.account.network.shouldKeepConnection.set(.single(false))
+        contextValue?.rootController.view.removeFromSuperview()
+        contextValue = nil
+        passlock?.view.removeFromSuperview()
+        passlock = nil
+    }
+
+    deinit {
+        sessionDisposable.dispose()
+        readyDisposable.dispose()
     }
 
 }
