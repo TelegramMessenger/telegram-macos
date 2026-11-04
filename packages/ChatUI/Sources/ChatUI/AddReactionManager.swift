@@ -65,15 +65,16 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             if case .stars = reaction.value {
                 
                 if !reaction.isSelected {
-                    starBackground = .init(frame: frameRect.size.bounds.insetBy(dx: -2, dy: -2))
+                    starBackground = .init(frame: frameRect.size.bounds.insetBy(dx: -4, dy: -4))
                     self.layer?.addSublayer(starBackground!)
                     
-                    starBackground?.colors =  [NSColor(0xFFAC04).withAlphaComponent(0.15),
-                                               NSColor(0xFFCA35).withAlphaComponent(0.1),
-                                               NSColor(0xffffff).withAlphaComponent(0.0)].map { $0.cgColor }
+                    starBackground?.type = .radial
+                    starBackground?.colors =  [NSColor(0xFFAC04).withAlphaComponent(0.28),
+                                               NSColor(0xFFCA35).withAlphaComponent(0.14),
+                                               NSColor(0xFFCA35).withAlphaComponent(0.0)].map { $0.cgColor }
                     
-                    starBackground?.startPoint = NSMakePoint(0, 0.5)
-                    starBackground?.endPoint = NSMakePoint(1, 0.5)
+                    starBackground?.startPoint = NSMakePoint(0.5, 0.5)
+                    starBackground?.endPoint = NSMakePoint(1, 1)
                 }
                 
                 

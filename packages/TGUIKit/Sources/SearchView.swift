@@ -680,7 +680,9 @@ open class SearchView: OverlayControl, NSTextViewDelegate {
             progressIndicator.removeFromSuperview()
             progressIndicator.isHidden = true
             clear.isHidden = self.state == .None || !clearVisibility
-            rightAccessory.isHidden = self.state == .None
+            if rightAccessory !== clear {
+                rightAccessory.isHidden = self.state == .None
+            }
         }
         if window?.firstResponder == input {
             window?.makeFirstResponder(input)

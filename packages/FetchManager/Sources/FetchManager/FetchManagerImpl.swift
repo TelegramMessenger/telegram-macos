@@ -82,36 +82,49 @@ private final class FetchManagerActiveContext {
     }
 }
 
+struct FetchManagerStatus: Equatable {
+    let resourceStatus: MediaResourceStatus
+    let hasEntry: Bool
+    let isPaused: Bool
+
+    func mediaResourceStatus(reportExternalFetches: Bool) -> MediaResourceStatus {
+        if reportExternalFetches {
+            if case let .Remote(progress) = resourceStatus, hasEntry {
+                return isPaused ? .Paused(progress: progress) : .Fetching(isActive: false, progress: progress)
+            }
+            return resourceStatus
+        }
+        switch resourceStatus {
+        case .Local:
+            return .Local
+        case let .Remote(progress), let .Paused(progress):
+            if hasEntry {
+                return isPaused ? .Paused(progress: progress) : .Fetching(isActive: false, progress: progress)
+            }
+            return .Remote(progress: progress)
+        case let .Fetching(isActive, progress):
+            if hasEntry {
+                return isPaused ? .Paused(progress: progress) : .Fetching(isActive: isActive, progress: progress)
+            }
+            return .Remote(progress: progress)
+        }
+    }
+}
+
 private final class FetchManagerStatusContext {
     var disposable: Disposable?
     var originalStatus: MediaResourceStatus?
-    var subscribers = Bag<(MediaResourceStatus) -> Void>()
-    
+    var subscribers = Bag<(FetchManagerStatus) -> Void>()
+
     var hasEntry = false
     var isPaused = false
-    
+
     var isEmpty: Bool {
         return !self.hasEntry && self.subscribers.isEmpty
     }
-    
-    var combinedStatus: MediaResourceStatus? {
-        if let originalStatus = self.originalStatus {
-            if case let .Remote(progress) = originalStatus, self.hasEntry {
-                if self.isPaused {
-                    return .Paused(progress: progress)
-                } else {
-                    return .Fetching(isActive: false, progress: progress)
-                }
-            } else if self.hasEntry {
-                return originalStatus
-            } else if case .Local = originalStatus {
-                return originalStatus
-            } else {
-                return originalStatus
-            }
-        } else {
-            return nil
-        }
+
+    var combinedStatus: FetchManagerStatus? {
+        return self.originalStatus.map { FetchManagerStatus(resourceStatus: $0, hasEntry: self.hasEntry, isPaused: self.isPaused) }
     }
 }
 
@@ -876,6 +889,10 @@ public final class FetchManagerImpl: FetchManager {
     }
     
     public func fetchStatus(category: FetchManagerCategory, location: FetchManagerLocation, locationKey: FetchManagerLocationKey, resource: MediaResource) -> Signal<MediaResourceStatus, NoError> {
+        return self.fetchStatus(category: category, location: location, locationKey: locationKey, resource: resource, reportExternalFetches: true)
+    }
+
+    public func fetchStatus(category: FetchManagerCategory, location: FetchManagerLocation, locationKey: FetchManagerLocationKey, resource: MediaResource, reportExternalFetches: Bool) -> Signal<MediaResourceStatus, NoError> {
         let queue = self.queue
         return Signal { [weak self] subscriber in
             if let strongSelf = self {
@@ -885,14 +902,14 @@ public final class FetchManagerImpl: FetchManager {
                 strongSelf.withCategoryContext(category, { context in
                     context.withFetchStatusContext(entryId, { statusContext in
                         assignedIndex = statusContext.subscribers.add({ status in
-                            subscriber.putNext(status)
-                            if case .Local = status {
+                            subscriber.putNext(status.mediaResourceStatus(reportExternalFetches: reportExternalFetches))
+                            if case .Local = status.resourceStatus {
                                 subscriber.putCompletion()
                             }
                         })
                         if let status = statusContext.combinedStatus {
-                            subscriber.putNext(status)
-                            if case .Local = status {
+                            subscriber.putNext(status.mediaResourceStatus(reportExternalFetches: reportExternalFetches))
+                            if case .Local = status.resourceStatus {
                                 subscriber.putCompletion()
                             }
                         }

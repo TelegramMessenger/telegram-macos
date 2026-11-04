@@ -805,7 +805,7 @@ private final class AcceptRowView : TableRowView {
         button.update(state: item.state, presentation: item.presentation, lottie: .menu_lighting)
         
         button.setFrameSize(NSMakeSize(frame.width - 40, 40))
-        button.layer?.cornerRadius = 10
+        button.layer?.cornerRadius = 20
 
     }
     

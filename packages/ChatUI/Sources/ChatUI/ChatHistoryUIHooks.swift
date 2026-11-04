@@ -270,6 +270,7 @@ public struct ChatHistoryUIHooks {
         }
     }
 
+    public let participantModerationMenuItems: (any AccountContextProtocol, TelegramChannel, Peer, ChannelParticipant?) -> [ContextMenuItem]
     public let makeRestrictedModalController: (any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatBannedRights) -> Void) -> InputDataModalController
     public let makeChannelAdminModalController: (any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatAdminRights?) -> Void, @escaping (PeerId, @escaping () -> Void) -> Void) -> InputDataModalController
     public let makeFragmentAdsInfoController: (any AccountContextProtocol, Message?, ChatInteraction?) -> InputDataModalController
@@ -361,6 +362,7 @@ public struct ChatHistoryUIHooks {
                 pushEditPeerInfo: @escaping (NavigationViewController, any AccountContextProtocol, PeerId) -> Void,
                 openTopic: @escaping (Int64, PeerId, any AccountContextProtocol, MessageId?) -> Signal<Bool, NoError>,
                 makeChannelParticipantController: @escaping (any AccountContextProtocol, PeerId, RenderedChannelParticipant) -> InputDataModalController,
+                participantModerationMenuItems: @escaping (any AccountContextProtocol, TelegramChannel, Peer, ChannelParticipant?) -> [ContextMenuItem],
                 makeRestrictedModalController: @escaping (any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatBannedRights) -> Void) -> InputDataModalController,
                 makeChannelAdminModalController: @escaping (any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatAdminRights?) -> Void, @escaping (PeerId, @escaping () -> Void) -> Void) -> InputDataModalController,
                 makeFragmentAdsInfoController: @escaping (any AccountContextProtocol, Message?, ChatInteraction?) -> InputDataModalController,
@@ -412,6 +414,7 @@ public struct ChatHistoryUIHooks {
         self.pushEditPeerInfo = pushEditPeerInfo
         self.openTopic = openTopic
         self.makeChannelParticipantController = makeChannelParticipantController
+        self.participantModerationMenuItems = participantModerationMenuItems
         self.makeRestrictedModalController = makeRestrictedModalController
         self.makeChannelAdminModalController = makeChannelAdminModalController
         self.makeFragmentAdsInfoController = makeFragmentAdsInfoController

@@ -317,21 +317,28 @@ private func makeWalletPasscodePrompt(rootPath: String, namespace: String, lifet
     let authenticateBiometrics: ((@escaping (WalletUIPasscodeVerification) -> Void) -> Void)?
     if biometrics {
         authenticateBiometrics = { completion in
-            Queue.concurrentDefaultQueue().async {
-                let laContext = LAContext()
-                laContext.localizedReason = strings().walletBiometricsConfirmAccess
-                laContext.localizedFallbackTitle = ""
-                let result: WalletUIPasscodeVerification
-                do {
-                    let value = try authenticateWalletBiometrics(namespace: namespace, lifetime: lifetime, context: laContext)
-                    session.swap(value)?.invalidate()
-                    result = .authorized
-                } catch {
-                    result = .cancelled
-                }
-                laContext.invalidate()
-                Queue.mainQueue().async {
-                    completion(result)
+            let laContext = LAContext()
+            laContext.localizedReason = strings().walletBiometricsConfirmAccess
+            laContext.localizedFallbackTitle = ""
+            laContext.touchIDAuthenticationAllowableReuseDuration = 0
+            laContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: strings().walletBiometricsConfirmAccess) { success, _ in
+                Queue.concurrentDefaultQueue().async {
+                    let result: WalletUIPasscodeVerification
+                    if success {
+                        do {
+                            let value = try authenticateWalletBiometrics(namespace: namespace, lifetime: lifetime, context: laContext)
+                            session.swap(value)?.invalidate()
+                            result = .authorized
+                        } catch {
+                            result = .cancelled
+                        }
+                    } else {
+                        result = .cancelled
+                    }
+                    laContext.invalidate()
+                    Queue.mainQueue().async {
+                        completion(result)
+                    }
                 }
             }
         }

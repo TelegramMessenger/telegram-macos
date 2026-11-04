@@ -1,0 +1,242 @@
+[
+  {
+    "name" : "inline code: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "inline code: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "inline code: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "inline code: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "inline code: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "inline code: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "inline code: quote boundaries",
+    "pass" : true
+  },
+  {
+    "name" : "pre none: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "pre none: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "pre none: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "pre none: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "pre none: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "pre none: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "pre none: quote boundaries",
+    "pass" : true
+  },
+  {
+    "name" : "pre swift: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "pre swift: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "pre swift: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "pre swift: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "pre swift: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "pre swift: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "pre swift: quote boundaries",
+    "pass" : true
+  },
+  {
+    "name" : "pre a-very-long-language-name: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "pre a-very-long-language-name: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "pre a-very-long-language-name: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "pre a-very-long-language-name: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "pre a-very-long-language-name: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "pre a-very-long-language-name: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "pre a-very-long-language-name: quote boundaries",
+    "pass" : true
+  },
+  {
+    "name" : "adjacent quotes: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "adjacent quotes: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "adjacent quotes: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "adjacent quotes: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "adjacent quotes: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "adjacent quotes: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "adjacent quotes: quote boundaries",
+    "pass" : false
+  },
+  {
+    "name" : "collapsed quote: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "collapsed quote: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "collapsed quote: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "collapsed quote: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "collapsed quote: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "collapsed quote: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "collapsed quote: quote boundaries",
+    "pass" : false
+  },
+  {
+    "name" : "UTF16 mixed selection: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "UTF16 mixed selection: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "UTF16 mixed selection: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "UTF16 mixed selection: copy entities",
+    "pass" : false
+  },
+  {
+    "name" : "UTF16 mixed selection: pasted entities",
+    "pass" : false
+  },
+  {
+    "name" : "UTF16 mixed selection: send preparation",
+    "pass" : false
+  },
+  {
+    "name" : "UTF16 mixed selection: quote boundaries",
+    "pass" : false
+  },
+  {
+    "name" : "plain: exact plain text",
+    "pass" : true
+  },
+  {
+    "name" : "plain: plain pasteboard",
+    "pass" : true
+  },
+  {
+    "name" : "plain: RTF available",
+    "pass" : true
+  },
+  {
+    "name" : "plain: copy entities",
+    "pass" : true
+  },
+  {
+    "name" : "plain: pasted entities",
+    "pass" : true
+  },
+  {
+    "name" : "plain: send preparation",
+    "pass" : true
+  },
+  {
+    "name" : "plain: quote boundaries",
+    "pass" : true
+  },
+  {
+    "name" : "adjacent code languages do not merge",
+    "pass" : false
+  },
+  {
+    "name" : "adjacent input quotes do not merge",
+    "pass" : false
+  },
+  {
+    "name" : "adjacent rendered quotes do not merge",
+    "pass" : false
+  },
+  {
+    "name" : "adjacent rendered code languages do not merge",
+    "pass" : false
+  }
+]

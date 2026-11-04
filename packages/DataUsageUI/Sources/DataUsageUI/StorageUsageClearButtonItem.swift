@@ -19,13 +19,15 @@ import AvatarUI
 
 public final class StorageUsageClearButtonItem : GeneralRowItem {
     fileprivate let text: String
-    public init(_ initialSize: NSSize, stableId: AnyHashable, text: String, enabled: Bool, viewType: GeneralViewType, action:@escaping()->Void) {
+    fileprivate let sizeText: String?
+    public init(_ initialSize: NSSize, stableId: AnyHashable, text: String, sizeText: String? = nil, enabled: Bool, viewType: GeneralViewType, action:@escaping()->Void) {
         self.text = text
+        self.sizeText = sizeText
         super.init(initialSize, height: 40 + viewType.innerInset.top + viewType.innerInset.bottom, stableId: stableId, viewType: viewType, action: action, enabled: enabled)
     }
     
     public override var accessibilityLabel: String? {
-        return text
+        return [text, sizeText].compactMap { $0 }.joined(separator: " ")
     }
 
     public override var accessibilityRole: NSAccessibility.Role? {
@@ -55,17 +57,27 @@ public final class StorageUsageClearButtonItem : GeneralRowItem {
 
 
 private final class StorageUsageClearButtonView: GeneralContainableRowView {
-    private let button = TextButton()
+    private let button = ImageButton()
+    private let titleView = TextView()
+    private let sizeView = TextView()
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         button.scaleOnClick = true
         button.autohighlight = false
         button.disableActions()
-        button.layer?.cornerRadius = 10
+        button.setGlassEffect(tintColor: theme.colors.accent)
+        button.set(background: .clear, for: .Normal)
+        button.set(background: .clear, for: .Highlight)
         addSubview(button)
+        for view in [titleView, sizeView] {
+            view.userInteractionEnabled = false
+            view.isSelectable = false
+            view.isAccessibilityDecorative = true
+            button.addSubview(view)
+        }
         
         button.set(handler: { [weak self] _ in
-            if let item = self?.item as? GeneralRowItem {
+            if let item = self?.item as? GeneralRowItem, item.enabled {
                 item.action()
             }
         }, for: .Click)
@@ -78,6 +90,10 @@ private final class StorageUsageClearButtonView: GeneralContainableRowView {
     public override func layout() {
         super.layout()
         button.center()
+        let spacing: CGFloat = sizeView.isHidden ? 0 : 4
+        let width = titleView.frame.width + (sizeView.isHidden ? 0 : sizeView.frame.width) + spacing
+        titleView.setFrameOrigin(NSMakePoint(floorToScreenPixels((button.frame.width - width) / 2), floorToScreenPixels((button.frame.height - titleView.frame.height) / 2)))
+        sizeView.setFrameOrigin(NSMakePoint(titleView.frame.maxX + spacing, floorToScreenPixels((button.frame.height - sizeView.frame.height) / 2)))
     }
     
     public override func set(item: TableRowItem, animated: Bool = false) {
@@ -87,12 +103,19 @@ private final class StorageUsageClearButtonView: GeneralContainableRowView {
             return
         }
         
-        button.set(font: .medium(.title), for: .Normal)
-        button.set(color: theme.colors.underSelectedColor, for: .Normal)
-        button.set(text: item.text, for: .Normal)
-        button.set(background: theme.colors.accent, for: .Normal)
-        
+        button.glassTintColor = theme.colors.accent
         button.isEnabled = item.enabled
-        button.sizeToFit(.zero, NSMakeSize(item.blockWidth - item.viewType.innerInset.left - item.viewType.innerInset.right, 40), thatFit: true)
+        button.setFrameSize(NSMakeSize(item.blockWidth - item.viewType.innerInset.left - item.viewType.innerInset.right, 40))
+        let foreground = theme.colors.accent.lightness > 0.8 ? NSColor.black : NSColor.white
+        let titleLayout = TextViewLayout(.initialize(string: item.text, color: foreground, font: .medium(.title)), maximumNumberOfLines: 1)
+        let sizeLayout = TextViewLayout(.initialize(string: item.sizeText ?? "", color: foreground.withAlphaComponent(0.6), font: .medium(.title)), maximumNumberOfLines: 1)
+        sizeLayout.measure(width: max(0, button.frame.width - 32))
+        titleLayout.measure(width: max(0, button.frame.width - 32 - (item.sizeText == nil ? 0 : sizeLayout.layoutSize.width + 4)))
+        titleView.update(titleLayout)
+        sizeView.update(sizeLayout)
+        sizeView.isHidden = item.sizeText == nil
+        titleView.alphaValue = item.enabled ? 1 : 0.5
+        sizeView.alphaValue = item.enabled ? 1 : 0.5
+        needsLayout = true
     }
 }

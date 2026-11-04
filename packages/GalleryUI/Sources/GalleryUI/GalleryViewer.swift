@@ -1116,7 +1116,7 @@ public class GalleryViewer: NSResponder {
                         }
                         
                         let limit = context.isPremium ? context.premiumLimits.saved_gifs_limit_premium : context.premiumLimits.saved_gifs_limit_default
-                        if limit >= savedGifs.count, !context.isPremium {
+                        if limit <= savedGifs.count, !context.isPremium {
                             showModalText(for: window, text: strings().chatContextFavoriteGifsLimitInfo("\(context.premiumLimits.saved_gifs_limit_premium)"), title: strings().chatContextFavoriteGifsLimitTitle, callback: { value in
                                 FeatureNavigationHooks.shared.showPremiumLimit(context, .savedGifs)
                                 self?.close()

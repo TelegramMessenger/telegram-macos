@@ -212,15 +212,9 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
         }, complete: { [weak controller] from, to in
             var items:[Int64] = []
 
-            var offset: Int = 0
-                       
             controller?.tableView.enumerateItems { item -> Bool in
                 guard let item = item as? ChatListRowItem else {
-                    offset += 1
                     return true
-                }
-                if item.isAd {
-                    offset += 1
                 }
                 switch item.pinnedType {
                 case .some, .last:
@@ -233,7 +227,6 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
                
                 return item.isFixedItem || item.groupId != .root
             }
-            items.move(at: from - offset, to: to - offset)
             let signal = context.engine.peers.setForumChannelPinnedTopics(id: context.peerId, threadIds: items) |> deliverOnMainQueue
             reorderDisposable.set(signal.start())
 

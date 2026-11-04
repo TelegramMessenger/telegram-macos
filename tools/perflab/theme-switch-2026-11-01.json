@@ -1,0 +1,50 @@
+{
+  "appAndShareExtensionBuild": "passed",
+  "baseline": {
+    "completionMedianMs": 42.49970836099237,
+    "completionP95Ms": 43.90191670972854,
+    "displayCallbacks": 41,
+    "downloadedThemes": 32,
+    "emptyThemeUpdates": 21,
+    "gapsOver33Ms": 21,
+    "mainSubmissionMeanMs": 42.734483315143734,
+    "mainThreadCpuMs": 894.546083,
+    "switches": 20,
+    "wallpaperFixture": "solid colours",
+    "wallpaperImageDecodes": 0,
+    "worstCallbackGapMs": 67.37437506671995
+  },
+  "baselineAlgorithmCommit": "8a8791c1",
+  "configuration": "Debug, macOS arm64, Xcode 27.2",
+  "date": "2026-11-01",
+  "developmentSignatureVerification": "passed",
+  "finalDevelopmentAppRelaunch": "Passed: the final signed development build was quit, relaunched, loaded the account UI and opened Settings successfully.",
+  "measurementNotes": [
+    "The baseline reproduces the previous downloaded-theme preparation algorithm using the current palette primitives.",
+    "Both paths use the same 32 synthetic downloaded themes and 20 presentation changes.",
+    "The timing fixture uses solid wallpapers. Separate regression tests verify reuse of decoded custom-wallpaper images across accent changes.",
+    "Frame metrics measure CADisplayLink callback gaps in the isolated test window."
+  ],
+  "prepared": {
+    "completionMedianMs": 51.17362504824996,
+    "completionP95Ms": 56.997333420440555,
+    "displayCallbacks": 98,
+    "downloadedThemes": 32,
+    "emptyThemeUpdates": 0,
+    "gapsOver33Ms": 0,
+    "mainSubmissionMeanMs": 0.04804375930689275,
+    "mainThreadCpuMs": 23.22808299999979,
+    "switches": 20,
+    "wallpaperFixture": "solid colours",
+    "wallpaperImageDecodes": 0,
+    "worstCallbackGapMs": 26.32712502963841
+  },
+  "regressionTestsPassed": 29,
+  "scope": "Downloaded chat-theme preparation; global UI redraw and crossfade are excluded",
+  "validation": [
+    "Accent/default reset/message-gradient and custom-wallpaper preservation regression tests passed.",
+    "System-colour notification, immutable snapshot, coalescing and application-appearance observation tests passed.",
+    "Background preparation, cancellation, retained current results, light/dark selection and decoded-image cache reuse tests passed.",
+    "Live development app followed macOS yellow-to-blue accent changes without relaunch or theme reapplication; yellow was restored."
+  ]
+}

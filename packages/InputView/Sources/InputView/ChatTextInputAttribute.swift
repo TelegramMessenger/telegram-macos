@@ -679,6 +679,7 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
         textStorage.removeAttribute(TextInputAttributes.spoiler, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.customEmoji, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.quote, range: fullRange)
+        textStorage.removeAttribute(TextInputAttributes.code, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.formattedDate, range: fullRange)
         
         textStorage.addAttribute(NSAttributedString.Key.font, value: NSFont.normal(baseFontSize), range: fullRange)
@@ -704,6 +705,9 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
                 } else if key == TextInputAttributes.italic {
                     textStorage.addAttribute(key, value: value, range: range)
                     fontAttributes.insert(.italic)
+                } else if key == TextInputAttributes.code {
+                    textStorage.addAttribute(key, value: value, range: range)
+                    fontAttributes.insert(.monospace)
                 } else if key == TextInputAttributes.monospace {
                     textStorage.addAttribute(key, value: value, range: range)
                     fontAttributes.insert(.monospace)
@@ -888,7 +892,7 @@ public func breakChatInputText(_ text: NSAttributedString) -> [NSAttributedStrin
     }
 }
 
-private let markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)|@(\\d+)\\s*\\((.+?)\\)"
+private let markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let markdownRegex = try? NSRegularExpression(pattern: markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
 
 public func convertMarkdownToAttributes(_ text: NSAttributedString) -> NSAttributedString {

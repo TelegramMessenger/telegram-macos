@@ -1,0 +1,302 @@
+import AppKit
+import XCTest
+import TGUIKit
+import ColorPalette
+
+struct Presence: Equatable {
+    let value: Int
+    func isEqual(to other: Presence) -> Bool { self == other }
+}
+typealias TelegramUserPresence = Presence
+
+__STATUS_RESULT__
+
+struct PeerId: Equatable {
+    let value: Int64
+    init(_ value: Int64) { self.value = value }
+}
+struct Peer {
+    let id: PeerId
+    var displayTitle = "Chat"
+    var status = "online"
+    var active = true
+}
+struct PeerView {
+    let peerId: PeerId
+    var peer: Peer?
+}
+func peerViewMainPeer(_ view: PeerView) -> Peer? { view.peer }
+struct ThreadData { let threadId: Int64 }
+enum ChatLocation {
+    case peer(PeerId)
+    case thread(ThreadData)
+    var threadId: Int64? { if case let .thread(data) = self { return data.threadId }; return nil }
+}
+enum ThreadMode { case comments, replies, topic, savedMessages, saved }
+enum ChatMode: Equatable {
+    case history, pinned, scheduled, preview, thread(ThreadMode)
+    var customChatLink: CustomLink? { nil }
+    var customChatContents: CustomContents? { nil }
+    var isSavedMessagesThread: Bool { self == .thread(.savedMessages) }
+}
+struct CustomLink { let name: String; let link: String }
+struct CustomContents { struct Kind { let text: String }; let kind: Kind }
+struct ThreadInfo { struct Info { let title: String }; let info: Info }
+struct PinnedMessage { let totalCount: Int }
+struct ChatPresentationInterfaceState {
+    var chatMode: ChatMode = .history
+    var isMonoforum = false
+    var monoforumTopics: [Int] = []
+    var chatLocation: ChatLocation = .peer(PeerId(1))
+    var pinnedMessageId: PinnedMessage?
+    var threadInfo: ThreadInfo?
+    var isTopicMode = false
+}
+struct Context { let peerId = PeerId(1); let timeDifference: Int32 = 0 }
+final class ChatInteraction {
+    let interactionContext = Context()
+    var mode: ChatMode = .history
+    var presentation = ChatPresentationInterfaceState()
+    var chatLocation: ChatLocation { presentation.chatLocation }
+}
+struct Counters { var online: Int32?; var replies: Int32? }
+enum ConnectionStatus: Equatable {
+    case online(proxyAddress: String?)
+    case connecting(String?, Bool)
+    case updating
+    case waitingForNetwork
+}
+struct PeerStatusStringTheme {
+    let titleFont: NSFont
+    let statusColor: NSColor
+    let highlightColor: NSColor
+}
+func stringStatus(for peerView: PeerView, context: Context, theme: PeerStatusStringTheme, onlineMemberCount: Int32?, ignoreActivity: Bool) -> PeerStatusStringResult {
+    let peer = peerView.peer!
+    return PeerStatusStringResult(.initialize(string: peer.displayTitle, color: presentation.colors.text, font: theme.titleFont), .initialize(string: peer.status, color: peer.active ? theme.highlightColor : theme.statusColor, font: .normal(.small)))
+}
+struct Strings {
+    let peerSavedMessages = "Saved Messages"
+    let peerMyNotes = "My Notes"
+    let chatTitleReminder = "Reminders"
+    let chatTitleScheduledMessages = "Scheduled Messages"
+    let chatTitleDiscussion = "Discussion"
+    let chatConnectingStatusConnecting = "Connecting"
+    let chatConnectingStatusConnectingToProxy = "Connecting to proxy"
+    let chatConnectingStatusUpdating = "Updating"
+    let chatConnectingStatusWaitingNetwork = "Waiting for network"
+    func chatTitleChatsOther(_ count: Int) -> String { "\(count) chats" }
+    func chatTitleTopicOther(_ count: Int) -> String { "\(count) messages" }
+    func chatTitlePinnedMessagesOther(_ count: Int) -> String { "\(count) pinned messages" }
+    func chatTitleCommentsOther(_ count: Int) -> String { "\(count) comments" }
+    func chatTitleRepliesOther(_ count: Int) -> String { "\(count) replies" }
+    func sharedMediaSavedCountOther(_ count: Int) -> String { "\(count) saved messages" }
+    func peerInfoTopicStatusIn(_ title: String) -> String { "in \(title)" }
+}
+func strings() -> Strings { Strings() }
+final class PresenceManager {
+    func reset(presence: Presence, timeDifference: Int32) {}
+}
+final class Activities { var view: NSView? }
+
+final class HeaderFixture: View {
+    let chatInteraction = ChatInteraction()
+    let centerBubble = View(frame: NSMakeRect(0, 0, 300, 40))
+    let titleView = TextView()
+    let statusView = TextView()
+    var peerView: PeerView? = PeerView(peerId: PeerId(1), peer: Peer(id: PeerId(1)))
+    let theme: PresentationTheme
+    var counters = Counters()
+    var presenceManager: PresenceManager?
+    var showActivities = false
+    let activities = Activities()
+    var statusControl: View?
+    var leftStatusControl: View?
+    var titleImageView: ImageView?
+    var layoutPasses = 0
+
+    __CONNECTION_PROPERTY__
+
+    init(colors: ColorPalette, width: CGFloat = 300) {
+        let current = presentation
+        self.theme = PresentationTheme(colors: colors, search: current.search, inputTheme: current.inputTheme)
+        super.init(frame: NSMakeRect(0, 0, width, 40))
+        centerBubble.setFrameSize(frame.size)
+        addSubview(centerBubble)
+        centerBubble.addSubview(titleView)
+        centerBubble.addSubview(statusView)
+        refresh()
+        settleLayout()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    required init(frame frameRect: NSRect) { fatalError() }
+
+    __COMPUTE_STATUS__
+
+    __UPDATE_STATUS__
+
+    __TOPIC_MODE__
+
+    func sideInsetForCenterContent() -> CGFloat { 58 }
+    func refresh() { updateStatusText(presentation: chatInteraction.presentation) }
+    func settleLayout() {
+        layoutSubtreeIfNeeded()
+    }
+    override func layout() {
+        super.layout()
+        layoutPasses += 1
+        let transition = ContainedViewLayoutTransition.immediate
+        let centerContentBounds = centerBubble.bounds
+        let baseTextOriginX: CGFloat = 44
+        let titleOriginX: CGFloat = 44
+        let textRightPadding: CGFloat = 14
+        let statusControlWidth: CGFloat = 0
+        __TEXT_LAYOUT__
+    }
+}
+
+final class NetworkStatusTests: XCTestCase {
+    static var images: [NSImage] = []
+    override class func setUp() {
+        super.setUp()
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.prohibited)
+        images = __IMAGE_PATHS__.map { name, path in
+            let image = NSImage(contentsOfFile: path)!
+            image.setName(name)
+            return image
+        }
+    }
+
+    private func color(_ view: TextView) -> NSColor? {
+        guard let string = view.textLayout?.attributedString, string.length > 0 else { return nil }
+        return string.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+    }
+    private func checkPosition(_ header: HeaderFixture, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(header.statusView.frame.minX, header.titleView.frame.minX, accuracy: 0.01, file: file, line: line)
+        XCTAssertEqual(header.statusView.frame.minY, header.titleView.frame.maxY + 1, accuracy: 0.01, file: file, line: line)
+        XCTAssertGreaterThan(header.statusView.frame.minX, 32, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(header.titleView.frame.minY, 0, file: file, line: line)
+        XCTAssertLessThanOrEqual(header.statusView.frame.maxY, header.centerBubble.bounds.maxY, file: file, line: line)
+    }
+
+    func testWaitingAfterEmptySavedStatusUsesGrayInEveryTheme() {
+        for palette in [darkPalette, nightAccentPalette, whitePalette] {
+            let header = HeaderFixture(colors: palette)
+            XCTAssertTrue(header.statusView.isHidden)
+            XCTAssertNil(header.statusView.textLayout)
+            header.connectionStatus = .waitingForNetwork
+            XCTAssertEqual(header.statusView.textLayout?.attributedString.string, "waiting for network")
+            XCTAssertEqual(color(header.statusView), palette.grayText)
+            XCTAssertFalse(header.statusView.isHidden)
+            XCTAssertEqual(header.titleView.textLayout?.attributedString.string, "Saved Messages")
+        }
+    }
+
+    func testFirstConnectionChangeSchedulesCorrectTwoLineLayout() {
+        let header = HeaderFixture(colors: darkPalette)
+        let originalTitleY = header.titleView.frame.minY
+        let initialPasses = header.layoutPasses
+        XCTAssertFalse(header.needsLayout)
+        header.connectionStatus = .waitingForNetwork
+        XCTAssertTrue(header.needsLayout)
+        header.settleLayout()
+        XCTAssertEqual(header.layoutPasses, initialPasses + 1)
+        checkPosition(header)
+        XCTAssertLessThan(header.titleView.frame.minY, originalTitleY)
+    }
+
+    func testRecoveryRecentersTitleAndRepeatedLossHasCorrectPosition() {
+        let header = HeaderFixture(colors: darkPalette)
+        let initialTitle = header.titleView.frame
+        for _ in 0..<3 {
+            header.connectionStatus = .waitingForNetwork
+            XCTAssertTrue(header.needsLayout)
+            header.settleLayout()
+            checkPosition(header)
+            header.connectionStatus = .online(proxyAddress: nil)
+            XCTAssertTrue(header.needsLayout)
+            header.settleLayout()
+            XCTAssertTrue(header.statusView.isHidden)
+            XCTAssertNil(header.statusView.textLayout)
+            XCTAssertEqual(header.titleView.frame, initialTitle)
+        }
+    }
+
+    func testAllConnectionStatusesUseGrayInsteadOfPresenceAccent() {
+        let header = HeaderFixture(colors: darkPalette)
+        header.peerView = PeerView(peerId: PeerId(2), peer: Peer(id: PeerId(2)))
+        header.refresh()
+        XCTAssertEqual(color(header.statusView), darkPalette.accent)
+        for (state, expected) in [(ConnectionStatus.waitingForNetwork, "waiting for network"), (.connecting(nil, false), "connecting"), (.connecting("proxy", false), "connecting to proxy"), (.updating, "updating")] {
+            header.connectionStatus = state
+            XCTAssertEqual(header.statusView.textLayout?.attributedString.string, expected)
+            XCTAssertEqual(color(header.statusView), darkPalette.grayText)
+            header.settleLayout()
+            checkPosition(header)
+        }
+        header.connectionStatus = .online(proxyAddress: nil)
+        XCTAssertEqual(header.statusView.textLayout?.attributedString.string, "online")
+        XCTAssertEqual(color(header.statusView), darkPalette.accent)
+    }
+
+    func testPinnedAndScheduledEmptyStatusesGetStyledConnectionText() {
+        for mode in [ChatMode.pinned, .scheduled] {
+            let header = HeaderFixture(colors: nightAccentPalette)
+            header.chatInteraction.mode = mode
+            header.chatInteraction.presentation.chatMode = mode
+            header.refresh()
+            header.settleLayout()
+            XCTAssertNil(header.statusView.textLayout)
+            header.connectionStatus = .waitingForNetwork
+            XCTAssertEqual(color(header.statusView), nightAccentPalette.grayText)
+            header.settleLayout()
+            checkPosition(header)
+        }
+    }
+
+    func testActivityVisibilityIsPreservedDuringConnectionChanges() {
+        let header = HeaderFixture(colors: darkPalette)
+        header.showActivities = true
+        header.activities.view = View(frame: NSMakeRect(0, 0, 80, 13))
+        header.connectionStatus = .waitingForNetwork
+        XCTAssertTrue(header.statusView.isHidden)
+        header.settleLayout()
+        XCTAssertEqual(header.activities.view?.frame.minX, header.titleView.frame.minX)
+        header.showActivities = false
+        header.refresh()
+        header.settleLayout()
+        XCTAssertFalse(header.statusView.isHidden)
+        checkPosition(header)
+    }
+
+    func testNarrowHeaderConstrainsStatusOnFirstLayout() {
+        for width: CGFloat in [180, 220, 320, 500] {
+            let header = HeaderFixture(colors: darkPalette, width: width)
+            header.connectionStatus = .waitingForNetwork
+            header.settleLayout()
+            checkPosition(header)
+            XCTAssertEqual(header.statusView.textLayout?.constrainedWidth, width - 58)
+            XCTAssertLessThanOrEqual(header.statusView.frame.maxX, width - 14)
+        }
+    }
+
+    func testClearingPeerInvalidatesLayoutAndClearsText() {
+        let header = HeaderFixture(colors: darkPalette)
+        header.connectionStatus = .waitingForNetwork
+        header.settleLayout()
+        header.peerView = nil
+        header.refresh()
+        XCTAssertTrue(header.needsLayout)
+        XCTAssertNil(header.titleView.textLayout)
+        XCTAssertNil(header.statusView.textLayout)
+    }
+
+    func testRepeatedConnectionStateDoesNotScheduleRedundantLayout() {
+        let header = HeaderFixture(colors: darkPalette)
+        header.connectionStatus = .waitingForNetwork
+        header.settleLayout()
+        header.connectionStatus = .waitingForNetwork
+        XCTAssertFalse(header.needsLayout)
+    }
+}

@@ -1,0 +1,1 @@
+Search integration: 217 checks passed; actual ChatSearchHeader + ChatSearchView; source-extracted popup geometry; controlled search backend.

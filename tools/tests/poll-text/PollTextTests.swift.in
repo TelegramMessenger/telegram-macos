@@ -1,0 +1,721 @@
+import Foundation
+import CoreGraphics
+
+func check(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if !condition() {
+        print("FAIL: \(message)")
+        exit(1)
+    }
+}
+
+final class NSEvent {
+    struct ModifierFlags: OptionSet {
+        let rawValue: Int
+        static let control = ModifierFlags(rawValue: 1)
+    }
+    let locationInWindow: NSPoint
+    let modifierFlags: ModifierFlags
+    init(_ x: CGFloat, _ y: CGFloat = 0, modifierFlags: ModifierFlags = []) {
+        locationInWindow = NSPoint(x: x, y: y)
+        self.modifierFlags = modifierFlags
+    }
+}
+
+class Control {
+    enum Event { case Click }
+    var handler: ((Control) -> Void)?
+    func set(handler: @escaping (Control) -> Void, for event: Event) {
+        self.handler = handler
+    }
+    func mouseDown(with event: NSEvent) {}
+    func mouseDragged(with event: NSEvent) {}
+    func mouseUp(with event: NSEvent) {
+        if !event.modifierFlags.contains(.control) { handler?(self) }
+    }
+    func accessibilityPerformPress() -> Bool {
+        handler?(self)
+        return true
+    }
+}
+
+struct TextSelectedRange {
+    var range: NSRange = NSMakeRange(NSNotFound, 0)
+}
+
+struct Signal<Value, Failure> {
+    let emittedValue: Value?
+    var value: Value { emittedValue! }
+    static func single(_ value: Value) -> Self { Self(emittedValue: value) }
+    static func complete() -> Self { Self(emittedValue: nil) }
+}
+enum NoError: Error {}
+
+enum LinkType: CaseIterable { case plain, code, email, phone, bank, ton }
+final class Window {}
+final class TextViewInteractions {
+    var processURL: (Any) -> Void = { _ in }
+    var copy: (() -> Bool)?
+    var menuItems: ((LinkType?) -> Signal<[ContextMenuItem], NoError>)?
+    var topWindow: (() -> Signal<Window?, NoError>)?
+    var makeLinkType: ((Any, String)) -> LinkType = { $0.0 as? LinkType ?? .plain }
+    var copyAttributedString: (NSAttributedString) -> Bool = { _ in false }
+}
+
+final class TextViewLayout {
+    var attributedString: NSAttributedString
+    var selectedRange = TextSelectedRange()
+    var additionalSelections: [TextSelectedRange] = []
+    var mayItems = true { didSet { menuPolicyWrites += 1 } }
+    var menuPolicyWrites = 0
+    var clearSelectionCalls = 0
+    var interactions = TextViewInteractions()
+    init(_ text: NSAttributedString = NSAttributedString(string: "text")) {
+        self.attributedString = text
+    }
+    func clearSelect() {
+        clearSelectionCalls += 1
+        selectedRange.range = NSMakeRange(NSNotFound, 0)
+    }
+}
+
+final class TextView {
+    var bounds: NSRect = .zero
+    func convert(_ point: NSPoint, from: Int) -> NSPoint { point }
+    var textLayout: TextViewLayout?
+    var selectionPolicyWrites = 0
+    var invalidations = 0
+    var isSelectable = true {
+        didSet {
+            selectionPolicyWrites += 1
+            if oldValue != isSelectable { needsDisplay = true }
+        }
+    }
+    var needsDisplay = false { didSet { if needsDisplay { invalidations += 1 } } }
+    init(_ layout: TextViewLayout = TextViewLayout()) { self.textLayout = layout }
+    __TEXT_COPY__
+}
+
+final class NSPasteboard {
+    static let general = NSPasteboard()
+    enum Kind { case string }
+    func clearContents() {}
+    func declareTypes(_ types: [Kind], owner: Any?) {}
+    func setString(_ text: String, forType type: Kind) { copiedPlain.append(text) }
+}
+extension String { var nsstring: NSString { self as NSString } }
+var copiedPlain: [String] = []
+var copiedAttributed: [NSAttributedString] = []
+var executedLinks = 0
+var attributedCopySucceeds = true
+func copyToClipboard(_ value: String) { copiedPlain.append(value) }
+struct LinkHooks {
+    static let shared = LinkHooks()
+    func globalLinkExecutor() -> TextViewInteractions {
+        let interactions = TextViewInteractions()
+        interactions.processURL = { _ in executedLinks += 1 }
+        interactions.copyAttributedString = {
+            copiedAttributed.append($0)
+            return attributedCopySucceeds
+        }
+        return interactions
+    }
+}
+struct LocalizedStrings {
+    let textCopy = "Copy"
+    let chatContextCopyText = "Copy Text"
+    let chatCopySelectedText = "Copy Selected Text"
+}
+func strings() -> LocalizedStrings { LocalizedStrings() }
+struct MenuAnimation {
+    static let menu_copy = MenuAnimation()
+    var value: Int { 0 }
+}
+struct ContextMenuItem {
+    let text: String
+    let handler: () -> Void
+    init(_ text: String, handler: @escaping () -> Void, itemImage: Int) {
+        self.text = text
+        self.handler = handler
+    }
+}
+class MenuItem {
+    var menuAdditionView: Signal<Window?, NoError> { .single(nil) }
+    func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> { .single([]) }
+}
+struct TextInputAttributes {
+    static let textUrl = NSAttributedString.Key("textUrl")
+}
+final class TextInputTextUrlAttribute: NSObject {
+    let url: String
+    init(_ url: String) { self.url = url }
+}
+final class ChatHistoryInAppLinkValue: NSObject {
+    let link: String
+    init(_ link: String) { self.link = link }
+}
+extension NSAttributedString.Key {
+    static let link = Self("link")
+}
+struct ChatHistoryEntry {}
+enum ChatMenuItemSource: Equatable {
+    case general
+    case pollOption(opaqueIdentifier: Data)
+}
+struct ChatMenuRequest {
+    let message: Message
+    let entry: ChatHistoryEntry?
+    let layout: TextViewLayout?
+    let linkType: LinkType?
+    let interaction: ChatInteraction
+    let source: ChatMenuItemSource
+}
+var menuRequests: [ChatMenuRequest] = []
+func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLayout: (TextViewLayout?, LinkType?)?, chatInteraction: ChatInteraction, source: ChatMenuItemSource = .general) -> Signal<[ContextMenuItem], NoError> {
+    menuRequests.append(ChatMenuRequest(message: message, entry: entry, layout: textLayout?.0, linkType: textLayout?.1, interaction: chatInteraction, source: source))
+    var thirdBlock = [ContextMenuItem("Message Actions", handler: {}, itemImage: 0)]
+    let linkType = textLayout?.1
+    if let textLayout = textLayout?.0 {
+        if textLayout.selectedRange.range.location == NSNotFound {
+            __FULL_COPY_ITEM__
+        } else if linkType != nil {
+            let text = "Copy Link"
+            __LINK_COPY_ITEM__
+        } else {
+            __SELECTED_COPY_ITEM__
+        }
+    }
+    return .single(thirdBlock)
+}
+
+final class SelectionManager {
+    var ranges: [Int: TextViewLayout] = [:]
+    var isEmpty: Bool { ranges.isEmpty }
+    func find(_ id: Int) -> NSRange? { ranges[id]?.selectedRange.range }
+    func removeAll() {
+        for layout in ranges.values { layout.clearSelect() }
+        ranges.removeAll()
+    }
+    func add(_ id: Int, layout: TextViewLayout = TextViewLayout()) {
+        layout.selectedRange.range = NSMakeRange(0, 4)
+        ranges[id] = layout
+    }
+}
+let selectManager = SelectionManager()
+
+__THRESHOLD__
+
+final class Option {
+    var votes = 0
+    func vote(_ control: Control) { votes += 1 }
+}
+final class OptionControl: Control {
+    __GESTURE__
+    let option: Option? = Option()
+    override init() {
+        super.init()
+        __CLICK__
+    }
+}
+
+struct Flags: OptionSet {
+    let rawValue: Int
+    static let CopyProtected = Flags(rawValue: 1)
+    static let copyProtectionEnabled = Flags(rawValue: 2)
+    static let myCopyProtectionEnabled = Flags(rawValue: 4)
+}
+struct GroupAccess { var isCreator = false }
+class Peer {
+    let id: Int
+    init(_ id: Int = 1) { self.id = id }
+}
+final class TelegramGroup: Peer {
+    var flags: Flags = []
+    var groupAccess = GroupAccess()
+}
+final class TelegramChannel: Peer {
+    var flags: Flags = []
+    var groupAccess = GroupAccess()
+    var adminRights: Int?
+}
+final class TelegramUser: Peer {}
+class CachedPeerData {}
+final class CachedUserData: CachedPeerData { var flags: Flags = [] }
+extension Peer {
+    __PEER_POLICY__
+}
+struct MessageId { let peerId: Int }
+struct Message {
+    var id = MessageId(peerId: 1)
+    var flags: Flags = []
+    var peers: [Int: Peer] = [:]
+}
+struct Presentation { var cachedData: CachedPeerData? }
+final class ChatInteraction {
+    var peer: Peer?
+    var presentation = Presentation()
+}
+final class PollContext { var isFrozen = false }
+struct PollOption {
+    static let spaceBetweenOptions: CGFloat = 5
+    let option: PollOptionValue
+    let contentSize = NSSize(width: 100, height: 20)
+}
+struct PollOptionValue { let opaqueIdentifier: Data }
+final class ChatPollItem: MenuItem {
+    var message: Message?
+    var chatInteraction = ChatInteraction()
+    var stableId = 1
+    let context = PollContext()
+    var view: Any?
+    let entry: ChatHistoryEntry? = ChatHistoryEntry()
+    let menuWindow = Window()
+    override var menuAdditionView: Signal<Window?, NoError> { .single(menuWindow) }
+    var options = [PollOption(option: PollOptionValue(opaqueIdentifier: Data([0]))), PollOption(option: PollOptionValue(opaqueIdentifier: Data([1])))]
+    var contentSize = NSSize(width: 100, height: 200)
+    func optionsOffset() -> CGFloat { 100 }
+    __COPY_POLICY__
+    var layout = TextViewLayout()
+    var descriptionText: TextViewLayout?
+    func configureDescription() {
+        __DESCRIPTION_COPY__
+        let row = ChatPollItemView()
+        row.contentNode.titleView.textView.textLayout = TextViewLayout(NSAttributedString(string: "Question"))
+        row.contentNode.titleView.textView.bounds = NSRect(x: 0, y: 0, width: 100, height: 20)
+        row.contentNode.descriptionView?.textLayout = descriptionText
+        row.contentNode.descriptionView?.bounds = NSRect(x: 0, y: 20, width: 100, height: 20)
+        view = row
+    }
+    __POLL_MENU__
+}
+final class InteractiveTextView {
+    let textView = TextView()
+}
+final class PollOptionView {
+    let nameView = InteractiveTextView()
+}
+final class ContentNode {
+    let titleView = InteractiveTextView()
+    var options = [PollOptionView(), PollOptionView()]
+    var descriptionView: TextView? = TextView()
+}
+final class ChatPollItemView {
+    let contentNode = ContentNode()
+    let contentView = 0
+    __MENU_TARGET__
+}
+final class PollView {
+    var item: Any?
+    let contentNode = ContentNode()
+    __INVALIDATE__
+    func refresh() { updateTextSelection() }
+    func bind() { __BIND_SELECTION__ }
+}
+final class Atomic<Value> {
+    var value: Value
+    init(value: Value) { self.value = value }
+    func swap(_ value: Value) -> Value {
+        let old = self.value
+        self.value = value
+        return old
+    }
+    func with<Result>(_ f: (Value) -> Result) -> Result { f(value) }
+}
+struct PeerView {
+    var peer: Peer?
+    var cachedData: CachedPeerData?
+}
+func peerViewMainPeer(_ view: PeerView) -> Peer? { view.peer }
+func resultPermission(_ message: Message, _ peerView: PeerView, _ copyPermission: Atomic<Bool>) -> Bool {
+    __RESULT_POLICY__
+    return canCopy
+}
+func question(_ attr: NSAttributedString, canCopy: Bool, canCopyText: @escaping () -> Bool) -> (TextViewInteractions, () -> [ContextMenuItem]) {
+    __QUESTION_COPY__
+    return (interactions, copyItems)
+}
+final class Sticky: MenuItem {
+    let leftLayout: TextViewLayout
+    let canCopyText: () -> Bool
+    init(_ attr: NSAttributedString, canCopyText: @escaping () -> Bool) {
+        self.leftLayout = TextViewLayout(attr)
+        self.canCopyText = canCopyText
+        super.init()
+        __OPTION_INTERACTIONS__
+    }
+    __OPTION_MENU__
+}
+
+enum EntityType: CaseIterable {
+    case Url, TextUrl, TextMention, Email, PhoneNumber, BankCard, TonAddress, BotCommand, Mention, Hashtag, Code, CustomEmoji
+}
+struct Entity { let type: EntityType }
+struct EntityPeer { var isMonoForum = false }
+struct EntityMessage {
+    let id = MessageId(peerId: 1)
+    var peers: [Int: EntityPeer]
+}
+func concatMessageAttributes(_ entities: [Entity]) -> [Entity] { entities }
+func filteredEntities(ignoreLinks: Bool, message: EntityMessage? = nil) -> [EntityType] {
+    var entities = EntityType.allCases.map { Entity(type: $0) }
+    __ENTITY_FILTER__
+    return entities.map { $0.type }
+}
+
+let test = CommandLine.arguments[1]
+switch test {
+case "click-selection":
+    for _ in 0..<3 {
+        let view = OptionControl()
+        selectManager.add(99)
+        view.mouseDown(with: NSEvent(0))
+        check(selectManager.isEmpty, "prior selection cleared on option mouse-down")
+        view.mouseUp(with: NSEvent(0))
+        check(view.option?.votes == 1, "blank/percentage/non-gallery media option click votes with old selection")
+    }
+case "context-selection":
+    let view = OptionControl()
+    selectManager.add(1)
+    view.mouseDown(with: NSEvent(0, modifierFlags: .control))
+    view.mouseUp(with: NSEvent(0, modifierFlags: .control))
+    check(!selectManager.isEmpty, "control-click preserves text selected for context menu")
+    check(view.option?.votes == 0, "control-click does not vote")
+case "radial-threshold":
+    for (x, y, drag) in [(0.0, 0.0, false), (3.5, 0, false), (4, 0, false), (3, 2, false), (3, 3, true), (4.01, 0, true), (-3, -3, true)] {
+        check(chatTextSelectionDidDrag(from: NSPoint(x: 0, y: 0), to: NSPoint(x: x, y: y)) == drag, "radial threshold \(x),\(y)")
+        let view = OptionControl()
+        view.mouseDown(with: NSEvent(0))
+        view.mouseUp(with: NSEvent(x, y))
+        check(view.option?.votes == (drag ? 0 : 1), "release displacement matches selector threshold")
+    }
+case "drag-return":
+    let view = OptionControl()
+    view.mouseDown(with: NSEvent(0))
+    view.mouseDragged(with: NSEvent(8))
+    view.mouseUp(with: NSEvent(0))
+    check(view.option?.votes == 0, "returning drag does not vote")
+    view.mouseDown(with: NSEvent(0))
+    view.mouseUp(with: NSEvent(0))
+    check(view.option?.votes == 1, "subsequent click votes")
+case "intercepted-drag":
+    let view = OptionControl()
+    view.mouseDown(with: NSEvent(0))
+    selectManager.add(1)
+    view.mouseUp(with: NSEvent(0))
+    check(view.option?.votes == 0, "window-intercepted selection survives return to origin without voting")
+    check(!selectManager.isEmpty, "drag selection stays available")
+case "accessibility":
+    let view = OptionControl()
+    view.mouseDown(with: NSEvent(0))
+    view.mouseDragged(with: NSEvent(8))
+    view.mouseUp(with: NSEvent(8))
+    selectManager.add(1)
+    check(view.accessibilityPerformPress(), "AX press succeeds after drag")
+    check(view.option?.votes == 1, "AX ignores previous mouse gesture and selection")
+    view.mouseDown(with: NSEvent(0))
+    view.mouseDragged(with: NSEvent(8))
+    check(view.accessibilityPerformPress(), "AX recovers cancelled mouse gesture")
+    check(view.option?.votes == 2, "cancelled gesture cannot retain drag suppression")
+case "copy-policy":
+    let item = ChatPollItem()
+    check(!item.canCopyText, "missing message denied")
+    item.message = Message()
+    check(!item.canCopyText, "missing peer denied")
+    let channel = TelegramChannel()
+    channel.flags = .copyProtectionEnabled
+    item.message?.peers[1] = channel
+    check(!item.canCopyText, "protected channel member denied")
+    channel.adminRights = 1
+    check(item.canCopyText, "channel admin follows peer exemption")
+    channel.adminRights = nil
+    channel.groupAccess.isCreator = true
+    check(item.canCopyText, "channel creator follows peer exemption")
+    item.message?.flags = .CopyProtected
+    check(!item.canCopyText, "explicit message protection still denies creator")
+    item.message?.flags = []
+    let group = TelegramGroup()
+    group.flags = .copyProtectionEnabled
+    item.message?.peers[1] = group
+    check(!item.canCopyText, "protected group member denied")
+    group.groupAccess.isCreator = true
+    check(item.canCopyText, "group creator follows peer exemption")
+    let user = TelegramUser()
+    item.message?.peers[1] = user
+    let cached = CachedUserData()
+    item.chatInteraction.presentation.cachedData = cached
+    for flag in [Flags.copyProtectionEnabled, .myCopyProtectionEnabled] {
+        cached.flags = flag
+        check(!item.canCopyText, "both private-chat protection flags respected")
+    }
+    cached.flags = []
+    check(item.canCopyText, "unprotected private chat allowed")
+    channel.groupAccess.isCreator = false
+    item.chatInteraction.peer = channel
+    check(!item.canCopyText, "live same-id peer overrides stale message peer")
+    item.chatInteraction.peer = TelegramChannel(2)
+    check(item.canCopyText, "unrelated chat peer cannot override message peer")
+case "live-protection":
+    let item = ChatPollItem()
+    let channel = TelegramChannel()
+    item.message = Message(peers: [1: channel])
+    let view = PollView()
+    view.item = item
+    let views = [view.contentNode.titleView.textView, view.contentNode.descriptionView!] + view.contentNode.options.map { $0.nameView.textView }
+    for text in views {
+        text.textLayout!.selectedRange.range = NSMakeRange(0, 4)
+        text.textLayout!.additionalSelections = [TextSelectedRange(range: NSMakeRange(0, 2))]
+    }
+    selectManager.add(1, layout: views[0].textLayout!)
+    channel.flags = .copyProtectionEnabled
+    view.refresh()
+    check(selectManager.isEmpty, "global poll range invalidated")
+    for text in views {
+        check(!text.isSelectable && text.textLayout?.mayItems == false, "all poll text permissions revoked")
+        check(text.textLayout?.selectedRange.range.location == NSNotFound, "all poll highlights cleared")
+        check(text.textLayout?.additionalSelections.isEmpty == true, "additional highlights cleared")
+        check(text.needsDisplay, "all poll text redraws requested")
+    }
+    selectManager.add(99)
+    view.refresh()
+    check(!selectManager.isEmpty, "unrelated selection not invalidated by protected poll refresh")
+    channel.adminRights = 1
+    view.refresh()
+    check(views.allSatisfy { $0.isSelectable && $0.textLayout!.mayItems }, "permissions restored for admin")
+case "unchanged-presentation":
+    let item = ChatPollItem()
+    let channel = TelegramChannel()
+    channel.flags = .copyProtectionEnabled
+    item.message = Message(peers: [1: channel])
+    let view = PollView()
+    view.item = item
+    let views = [view.contentNode.titleView.textView, view.contentNode.descriptionView!] + view.contentNode.options.map { $0.nameView.textView }
+    view.refresh()
+    let invalidations = views.map { $0.invalidations }
+    let clears = views.map { $0.textLayout!.clearSelectionCalls }
+    let selectionWrites = views.map { $0.selectionPolicyWrites }
+    let menuWrites = views.map { $0.textLayout!.menuPolicyWrites }
+    for _ in 0..<50 { view.refresh() }
+    check(views.map { $0.invalidations } == invalidations, "unchanged protected composer updates do not redraw any poll text")
+    check(views.map { $0.textLayout!.clearSelectionCalls } == clears, "unchanged protected composer updates do not clear selection again")
+    check(views.map { $0.selectionPolicyWrites } == selectionWrites, "unchanged protected view permissions are not rewritten")
+    check(views.map { $0.textLayout!.menuPolicyWrites } == menuWrites, "unchanged protected layout permissions are not rewritten")
+    channel.flags = []
+    view.refresh()
+    for text in views { text.textLayout!.selectedRange.range = NSMakeRange(0, 4) }
+    let restoredInvalidations = views.map { $0.invalidations }
+    for _ in 0..<50 { view.refresh() }
+    check(views.map { $0.invalidations } == restoredInvalidations, "unchanged allowed composer updates do not redraw")
+    check(views.allSatisfy { $0.textLayout!.selectedRange.range == NSMakeRange(0, 4) }, "allowed selections survive unrelated presentation updates")
+case "late-protected-selection":
+    let item = ChatPollItem()
+    item.message = Message(flags: .CopyProtected, peers: [1: TelegramUser()])
+    let view = PollView()
+    view.item = item
+    view.refresh()
+    let views = [view.contentNode.titleView.textView, view.contentNode.descriptionView!] + view.contentNode.options.map { $0.nameView.textView }
+    let previousInvalidations = views.map { $0.invalidations }
+    views[0].textLayout!.selectedRange.range = NSMakeRange(0, 0)
+    views[1].textLayout!.additionalSelections = [TextSelectedRange(range: NSMakeRange(0, 2))]
+    selectManager.add(item.stableId, layout: views[2].textLayout!)
+    view.refresh()
+    check(selectManager.isEmpty, "late global selection is removed without requiring a policy transition")
+    check(views.allSatisfy { $0.textLayout!.selectedRange.range.location == NSNotFound && $0.textLayout!.additionalSelections.isEmpty }, "late primary and additional selections cleared under unchanged protection")
+    check(views[0].invalidations == previousInvalidations[0] + 1 && views[1].invalidations == previousInvalidations[1] + 1, "only late local highlights request explicit redraw")
+    check(views[3].invalidations == previousInvalidations[3], "untouched protected option is not invalidated")
+    let invalidations = views.map { $0.invalidations }
+    view.refresh()
+    check(views.map { $0.invalidations } == invalidations, "cleared late selection does not cause recurring redraw")
+case "row-reuse":
+    let item = ChatPollItem()
+    item.message = Message(flags: .CopyProtected, peers: [1: TelegramUser()])
+    let view = PollView()
+    view.item = item
+    view.refresh()
+    let replacement = ChatPollItem()
+    replacement.stableId = 2
+    replacement.message = item.message
+    view.item = replacement
+    view.contentNode.titleView.textView.textLayout = TextViewLayout()
+    view.contentNode.descriptionView = TextView()
+    view.contentNode.options = [PollOptionView(), PollOptionView(), PollOptionView()]
+    let views = [view.contentNode.titleView.textView, view.contentNode.descriptionView!] + view.contentNode.options.map { $0.nameView.textView }
+    for text in views {
+        text.textLayout!.mayItems = false
+        text.textLayout!.selectedRange.range = NSMakeRange(0, 4)
+    }
+    selectManager.add(99)
+    view.bind()
+    check(views.allSatisfy { !$0.isSelectable && !$0.textLayout!.mayItems }, "same-policy row reuse updates new title, description and option layouts")
+    check(views.allSatisfy { $0.textLayout!.selectedRange.range.location == NSNotFound }, "same-policy row reuse clears new selections")
+    check(selectManager.find(99) != nil, "reused protected row preserves unrelated global selection")
+    replacement.message?.flags = []
+    view.refresh()
+    check(views.allSatisfy { $0.isSelectable && $0.textLayout!.mayItems }, "row reuse restores permissions when protection is lifted")
+    view.contentNode.descriptionView = nil
+    view.contentNode.options = []
+    view.refresh()
+    check(view.contentNode.titleView.textView.isSelectable, "reuse without description/options remains valid")
+case "result-permission":
+    let channel = TelegramChannel()
+    channel.flags = .copyProtectionEnabled
+    var message = Message(peers: [1: channel])
+    let permission = Atomic(value: true)
+    check(!resultPermission(message, PeerView(), permission), "result member denied")
+    check(!permission.value, "live permission updated")
+    channel.adminRights = 1
+    check(resultPermission(message, PeerView(), permission), "result admin allowed")
+    message.flags = .CopyProtected
+    check(!resultPermission(message, PeerView(), permission), "result explicit message protection retained")
+    message.flags = []
+    let user = TelegramUser()
+    let cached = CachedUserData()
+    cached.flags = .myCopyProtectionEnabled
+    check(!resultPermission(message, PeerView(peer: user, cachedData: cached), permission), "latest private peer/cache wins")
+case "question-clipboard", "option-clipboard":
+    let marker = NSAttributedString.Key("customEmojiPayload")
+    let attr = NSAttributedString(string: "question emoji", attributes: [marker: 42])
+    var allowed = true
+    let interactions: TextViewInteractions
+    let items: () -> [ContextMenuItem]
+    if test == "question-clipboard" {
+        (interactions, items) = question(attr, canCopy: true, canCopyText: { allowed })
+    } else {
+        let item = Sticky(attr, canCopyText: { allowed })
+        interactions = item.leftLayout.interactions
+        items = { item.menuItems(in: NSPoint(x: 0, y: 0)).value }
+    }
+    interactions.processURL(LinkType.plain)
+    check(executedLinks == 1, "default link executor preserved")
+    let menu = items()
+    check(menu.count == 1, "copy menu offered")
+    menu[0].handler()
+    check(copiedAttributed.last?.attribute(marker, at: 0, effectiveRange: nil) as? Int == 42, "full header keeps attributed emoji payload")
+    let text = TextView(TextViewLayout(attr))
+    text.textLayout!.interactions = interactions
+    text.textLayout!.selectedRange.range = NSMakeRange(0, 8)
+    text.copy(text)
+    check(copiedAttributed.last?.length == 8, "keyboard copy uses selected substring")
+    check(copiedAttributed.last?.attribute(marker, at: 0, effectiveRange: nil) as? Int == 42, "selection keeps attributed emoji payload")
+    allowed = false
+    let count = copiedAttributed.count
+    menu[0].handler()
+    text.copy(text)
+    check(copiedAttributed.count == count && copiedPlain.isEmpty, "stale menu and selection blocked after live protection")
+    check(items().isEmpty, "protected menu empty")
+    allowed = true
+    attributedCopySucceeds = false
+    menu[0].handler()
+    check(copiedPlain.last == attr.string, "plain-text fallback retained")
+case "description-actions":
+    let item = ChatPollItem()
+    item.message = Message(peers: [1: TelegramUser()])
+    item.configureDescription()
+    item.layout.interactions.processURL(LinkType.code)
+    check(executedLinks == 1, "unprotected code copy permitted")
+    item.message?.flags = .CopyProtected
+    item.layout.interactions.processURL(LinkType.code)
+    check(executedLinks == 1, "live protection blocks inline code copy")
+    item.layout.interactions.processURL(LinkType.plain)
+    check(executedLinks == 2, "ordinary links remain executable in protected chat")
+    check(item.layout.interactions.copy?() == true, "description keyboard copy blocked")
+case "description-menu":
+    let item = ChatPollItem()
+    item.message = Message(peers: [1: TelegramUser()])
+    let marker = NSAttributedString.Key("customEmojiPayload")
+    item.layout = TextViewLayout(NSAttributedString(string: "description emoji", attributes: [marker: 42]))
+    item.configureDescription()
+    check(item.layout.interactions.menuItems != nil, "description supplies full message menu instead of default Copy-only menu")
+    check(item.layout.interactions.topWindow?().value === item.menuWindow, "description uses ordinary message reaction/addition window")
+    let fullMenu = item.layout.interactions.menuItems!(nil).value
+    check(menuRequests.last?.layout === item.descriptionText, "description layout reaches shared menu builder")
+    check(menuRequests.last?.interaction === item.chatInteraction && menuRequests.last?.entry != nil, "description passes row chat and entry context")
+    check(fullMenu.first?.text == "Message Actions", "shared message actions are returned without filtering")
+    fullMenu.last!.handler()
+    check(copiedAttributed.last?.string == "description emoji", "whole-description copy uses shared handler")
+    item.layout.selectedRange.range = NSMakeRange(0, 11)
+    let selectedMenu = item.layout.interactions.menuItems!(nil).value
+    check(selectedMenu.last?.text == "Copy Selected Text", "selected description uses ordinary selected-copy action")
+    selectedMenu.last!.handler()
+    check(copiedAttributed.last?.string == "description", "shared menu copies selected description only")
+    check(copiedAttributed.last?.attribute(marker, at: 0, effectiveRange: nil) as? Int == 42, "shared selected-copy preserves attributed payload")
+    let textView = TextView(item.layout)
+    textView.copy(textView)
+    check(copiedAttributed.last?.string == "description", "keyboard selected-copy still uses original description interaction")
+    item.layout.attributedString = NSAttributedString(string: "open", attributes: [TextInputAttributes.textUrl: TextInputTextUrlAttribute("https://example.org/target")])
+    item.layout.selectedRange.range = NSMakeRange(0, 4)
+    for type in LinkType.allCases {
+        let linkMenu = item.layout.interactions.menuItems!(type).value
+        check(menuRequests.last?.linkType == type, "link type is forwarded to shared menu: \(type)")
+        check(linkMenu.first?.text == "Message Actions", "link menu retains message actions")
+        linkMenu.last!.handler()
+        check(copiedPlain.last == "https://example.org/target", "shared link-copy uses hidden link target")
+    }
+case "description-menu-lifetime":
+    var item: ChatPollItem? = ChatPollItem()
+    let weakItem = { [weak item] in item }
+    item!.message = Message(peers: [1: TelegramUser()])
+    item!.configureDescription()
+    let interactions = item!.layout.interactions
+    check(interactions.menuItems != nil && interactions.topWindow != nil, "description installs shared menu callbacks")
+    item!.message = nil
+    check(interactions.menuItems!(nil).emittedValue == nil, "missing message completes menu without emission")
+    item = nil
+    check(weakItem() == nil, "description interactions do not retain row item")
+    check(interactions.menuItems!(nil).emittedValue == nil, "released item completes menu without emission")
+    check(interactions.topWindow!().value == nil, "released item has no menu addition window")
+case "description-protected-menu":
+    let item = ChatPollItem()
+    item.message = Message(peers: [1: TelegramUser()])
+    item.configureDescription()
+    check(item.layout.interactions.menuItems != nil, "description has shared menu integration")
+    let view = PollView()
+    view.item = item
+    view.contentNode.descriptionView = TextView(item.layout)
+    item.message?.flags = .CopyProtected
+    view.refresh()
+    check(item.layout.mayItems == false && view.contentNode.descriptionView?.isSelectable == false, "protected description bypasses local text menu and selection")
+    let menu = item.menuItems(in: NSPoint(x: 1, y: 25)).value
+    check(menu.first?.text == "Message Actions" && menuRequests.last?.layout === item.layout, "protected description delegates row actions and copy filtering to ordinary message menu")
+    item.layout.interactions.processURL(LinkType.plain)
+    check(executedLinks == 1, "protected description still opens allowed links")
+    item.layout.interactions.processURL(LinkType.code)
+    check(executedLinks == 1, "protected description cannot copy inline code")
+    check(item.layout.interactions.copy?() == true, "protected description cannot use keyboard copy")
+    item.message?.flags = []
+    view.refresh()
+    check(item.layout.mayItems && view.contentNode.descriptionView!.isSelectable, "lifting protection restores description menu and selection")
+case "poll-row-menu":
+    let item = ChatPollItem()
+    item.message = Message(peers: [1: TelegramUser()])
+    item.configureDescription()
+    _ = item.menuItems(in: NSPoint(x: 1, y: 25))
+    check(menuRequests.last?.layout === item.descriptionText, "clicked description reaches ordinary row menu")
+    _ = item.menuItems(in: NSPoint(x: 1, y: 5))
+    check(menuRequests.last?.layout?.attributedString.string == "Question", "question click uses question layout")
+    _ = item.menuItems(in: NSPoint(x: 1, y: 60))
+    check(menuRequests.last?.layout == nil, "type label cannot borrow description")
+    check(menuRequests.last?.source == .general, "description uses general message menu source")
+    for (index, y) in [105.0, 130.0].enumerated() {
+        _ = item.menuItems(in: NSPoint(x: 10, y: y))
+        check(menuRequests.last?.source == .pollOption(opaqueIdentifier: item.options[index].option.opaqueIdentifier), "option-specific menu source retained")
+        check(menuRequests.last?.layout == nil, "option menu does not borrow description selection")
+    }
+    item.descriptionText = nil
+    (item.view as? ChatPollItemView)?.contentNode.descriptionView = nil
+    _ = item.menuItems(in: NSPoint(x: 1, y: 25))
+    check(menuRequests.last?.layout == nil, "poll without description has no text context")
+    let count = menuRequests.count
+    item.context.isFrozen = true
+    _ = item.menuItems(in: NSPoint(x: 0, y: 0))
+    check(menuRequests.count == count, "frozen poll keeps existing row menu guard")
+case "incoming-entities":
+    let inert = filteredEntities(ignoreLinks: true)
+    for type in [EntityType.Url, .TextUrl, .TextMention, .Email, .PhoneNumber, .BankCard, .TonAddress, .BotCommand, .Mention] {
+        check(!inert.contains(type), "incoming restricted link filtered: \(type)")
+    }
+    check(inert.contains(.Hashtag), "existing ordinary-message hashtag policy preserved")
+    check(inert.contains(.Code) && inert.contains(.CustomEmoji), "nonlink formatting preserved")
+    check(filteredEntities(ignoreLinks: false).count == EntityType.allCases.count, "trusted and outgoing entities retained")
+    check(!filteredEntities(ignoreLinks: false, message: EntityMessage(peers: [1: EntityPeer(isMonoForum: true)])).contains(.BotCommand), "monoforum command policy preserved")
+default:
+    fatalError("unknown test \(test)")
+}

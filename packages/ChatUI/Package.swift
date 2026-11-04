@@ -33,6 +33,7 @@ let deps: [(String, String)] = [
     ("CurrencyFormat", "../CurrencyFormat"),
     ("AlertsUI", "../AlertsUI"),
     ("AudioPlayerCore", "../AudioPlayerCore"),
+    ("FetchManager", "../FetchManager"),
     ("AvatarUI", "../AvatarUI"),
     ("BoostUI", "../BoostUI"),
     ("FilePanels", "../FilePanels"),
@@ -100,6 +101,6 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Speech"),
             ]),
-        .testTarget(name: "ChatUITests", dependencies: ["ChatUI", .product(name: "SceneEffects", package: "SceneEffects", condition: nil), .product(name: "TGUIKit", package: "TGUIKit", condition: nil), .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil), .product(name: "GeneralRows", package: "GeneralRows", condition: nil), .product(name: "InAppSettings", package: "InAppSettings", condition: nil), .product(name: "ColorPalette", package: "ColorPalette", condition: nil), .product(name: "ThemeSettings", package: "ThemeSettings", condition: nil), .product(name: "rnoise", package: "rnoise", condition: nil), .product(name: "Localization", package: "Localization", condition: nil), .product(name: "TelegramCore", package: "TelegramCore", condition: nil)], path: "Tests/ChatUITests"),
+        .testTarget(name: "ChatUITests", dependencies: ["ChatUI", .product(name: "AudioPlayerCore", package: "AudioPlayerCore", condition: nil), .product(name: "FetchManager", package: "FetchManager", condition: nil), .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil), .product(name: "SceneEffects", package: "SceneEffects", condition: nil), .product(name: "TGUIKit", package: "TGUIKit", condition: nil), .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil), .product(name: "GeneralRows", package: "GeneralRows", condition: nil), .product(name: "InAppSettings", package: "InAppSettings", condition: nil), .product(name: "ColorPalette", package: "ColorPalette", condition: nil), .product(name: "ThemeSettings", package: "ThemeSettings", condition: nil), .product(name: "rnoise", package: "rnoise", condition: nil), .product(name: "Localization", package: "Localization", condition: nil), .product(name: "TelegramCore", package: "TelegramCore", condition: nil)], path: "Tests/ChatUITests"),
     ]
 )

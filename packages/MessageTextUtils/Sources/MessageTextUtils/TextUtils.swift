@@ -283,7 +283,7 @@ public func chatListText(account:Account, for message:Message?, messagesCount: I
         
         mutableAttributedText.setSelected(color: theme.colors.underSelectedColor, range: mutableAttributedText.range)
         
-        return mutableAttributedText
+        return mutableAttributedText.trimNewLinesToSpace
     }
         
     if let renderedPeer = renderedPeer {

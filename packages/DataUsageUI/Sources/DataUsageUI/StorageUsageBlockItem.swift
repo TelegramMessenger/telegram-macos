@@ -1,23 +1,53 @@
 import Foundation
 import Cocoa
 import TGUIKit
-import Postbox
-import TelegramCore
-import SwiftSignalKit
-import CoreGraphics
-import TelegramContext
 import GeneralRows
 
-class StorageUsageBlockItem<Context: AccountContextProtocol>: GeneralRowItem {
+protocol StorageUsageBlockControlling: ViewController {
+    var mediaView: View { get }
+    var mainTable: TableView? { get }
+    var currentMainTableView: ((TableView?, Bool, Bool) -> Void)? { get set }
+    var unableToHide: Bool { get }
+}
+
+final class StorageUsageTableView: TableView {
+    var prepareForResize: (() -> (() -> Void))?
+    private(set) var isResizing = false
+
+    override func setFrameSize(_ newSize: NSSize) {
+        guard newSize != frame.size, newSize.width > 0, newSize.height > 0, !isResizing else {
+            super.setFrameSize(newSize)
+            return
+        }
+        let visible = visibleItems()
+        isResizing = true
+        defer { isResizing = false }
+        let restore = prepareForResize?()
+        let resizedBothDimensions = newSize.width != frame.width && newSize.height != frame.height
+        super.setFrameSize(newSize)
+        if resizedBothDimensions {
+            enumerateItems { item in
+                if item.reloadOnTableHeightChanged {
+                    self.noteHeightOfRow(item.index, false)
+                }
+                return true
+            }
+        }
+        saveScrollState(visible)
+        restore?()
+    }
+}
+
+class StorageUsageBlockItem: GeneralRowItem {
 
     static var topInset: CGFloat {
         return 64
     }
 
     fileprivate let listener: TableScrollListener
-    fileprivate let controller: StorageUsageBlockController<Context>
+    fileprivate let controller: any StorageUsageBlockControlling
     fileprivate let isMediaVisible: Bool
-    init(_ initialSize: NSSize, stableId: AnyHashable, controller: StorageUsageBlockController<Context>, isVisible: Bool, viewType: GeneralViewType) {
+    init(_ initialSize: NSSize, stableId: AnyHashable, controller: any StorageUsageBlockControlling, isVisible: Bool, viewType: GeneralViewType) {
         self.controller = controller
         self.isMediaVisible = isVisible
         self.listener = TableScrollListener(dispatchWhenVisibleRangeUpdated: false, { _ in })
@@ -25,25 +55,15 @@ class StorageUsageBlockItem<Context: AccountContextProtocol>: GeneralRowItem {
     }
 
     deinit {
-        if self.controller.isLoaded(), let table = self.table {
-            // Mirror PeerMediaBlockRowItem: only tear the controller down when
-            // the row is currently pinned at the top of its scroll surface
-            // (frame.minY == 0 in documentView coords). Otherwise the user
-            // scrolled away from the block before deinit and a `scroll(to:)`
-            // would yank the table back unexpectedly.
-            if controller.frame.minY == 0 {
-                table.scroll(to: .up(true))
-                if self.controller.genericView.superview != nil {
-                    controller.viewWillDisappear(true)
-                    self.controller.genericView.removeFromSuperview()
-                    controller.viewDidDisappear(true)
-                }
-            }
-        }
+        self.table?.removeScroll(listener: self.listener)
     }
 
     override var instantlyResize: Bool {
-        return false
+        return true
+    }
+
+    override var reloadOnTableHeightChanged: Bool {
+        return true
     }
 
     override var accessibilityIsSpacer: Bool {
@@ -54,7 +74,7 @@ class StorageUsageBlockItem<Context: AccountContextProtocol>: GeneralRowItem {
         if !isMediaVisible {
             return 1
         } else {
-            return (table?.frame.height ?? initialSize.height)
+            return max(1, (table?.frame.height ?? initialSize.height) - Self.topInset)
         }
     }
     
@@ -64,12 +84,12 @@ class StorageUsageBlockItem<Context: AccountContextProtocol>: GeneralRowItem {
     }
     
     override func viewClass() -> AnyClass {
-        return StorageUsageBlockItemView<Context>.self
+        return StorageUsageBlockItemView.self
     }
 }
 
 
-private final class StorageUsageBlockItemView<Context: AccountContextProtocol> : TableRowView {
+private final class StorageUsageBlockItemView : TableRowView {
 
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -85,7 +105,7 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
     }
 
     private func updateOrigin() {
-        guard let item = item as? StorageUsageBlockItem<Context>, let table = item.table else {
+        guard let item = item as? StorageUsageBlockItem, let table = item.table, table.item(stableId: item.stableId) === item else {
             return
         }
         item.controller.view.frame = NSMakeRect(0, max(0, table.rectOf(item: item).minY), self.frame.width, item.height)
@@ -108,7 +128,7 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
 
-        guard let item = item as? StorageUsageBlockItem<Context> else {
+        guard superview != nil, let item = item as? StorageUsageBlockItem, item.table?.item(stableId: item.stableId) === item else {
             return
         }
 
@@ -119,7 +139,7 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard let item = item as? StorageUsageBlockItem<Context> else {
+        guard let item = item as? StorageUsageBlockItem else {
             super.scrollWheel(with: event)
             return
         }
@@ -129,13 +149,39 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
     private var scrollInner = false
 
     override func set(item: TableRowItem, animated: Bool = false) {
+        guard let item = item as? StorageUsageBlockItem, item.table?.item(stableId: item.stableId) === item else {
+            return
+        }
+        let previousItem = self.item
+        if previousItem !== item, let previousItem = previousItem as? StorageUsageBlockItem {
+            previousItem.table?.removeScroll(listener: previousItem.listener)
+        }
         super.set(item: item, animated: animated)
 
-        guard let item = item as? StorageUsageBlockItem<Context> else {
+        if previousItem === item {
+            updateOrigin()
             return
         }
 
-        item.table?.updatedItems = { [weak self] _ in
+        let stableId = item.stableId
+        let listener = item.listener
+        item.table?.updatedItems = { [weak self, weak table = item.table, weak controller = item.controller] items in
+            guard items.contains(where: { $0.stableId == stableId && $0 is StorageUsageBlockItem }) else {
+                table?.removeScroll(listener: listener)
+                table?._scrollWillStartLiveScrolling = nil
+                (table as? StorageUsageTableView)?.prepareForResize = nil
+                table?.updatedItems = nil
+                controller?.currentMainTableView = nil
+                if let controller, controller.isLoaded() {
+                    controller.mainTable?.applyExternalScroll = nil
+                    if controller.mediaView.superview != nil {
+                        controller.viewWillDisappear(false)
+                        controller.mediaView.removeFromSuperview()
+                        controller.viewDidDisappear(false)
+                    }
+                }
+                return
+            }
             self?.updateOrigin()
         }
 
@@ -147,22 +193,53 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
 
         if item.isMediaVisible {
 
-            var previousY: CGFloat = item.table?.documentOffset.y ?? 0
+            var previousY = (item.table?.liveDocumentOffset.y ?? 0) + StorageUsageBlockItem.topInset
+
+            (item.table as? StorageUsageTableView)?.prepareForResize = { [weak self, weak item] in
+                guard let self, let item, let table = item.table, table.item(stableId: item.stableId) === item else {
+                    return {}
+                }
+                let topInset = StorageUsageBlockItem.topInset
+                let wasPinned = table.liveDocumentOffset.y + topInset >= table.rectOf(item: item).minY
+                let mediaTable = item.controller.mainTable
+                let mediaOffset = mediaTable?.liveDocumentOffset ?? .zero
+                return { [weak self, weak item, weak table, weak mediaTable] in
+                    guard let self, let item, let table, table.item(stableId: item.stableId) === item else {
+                        return
+                    }
+                    if wasPinned {
+                        let offset = table.rectOf(item: item).minY - topInset
+                        table.clipView.scroll(to: NSMakePoint(0, offset), animated: false)
+                        table.reflectScrolledClipView(table.clipView)
+                    }
+                    mediaTable?.clipView.scroll(to: mediaOffset)
+                    if let mediaTable {
+                        mediaTable.reflectScrolledClipView(mediaTable.clipView)
+                    }
+                    scrollingInMediaTable = (mediaTable?.liveDocumentOffset.y ?? 0) > 0
+                    self.scrollInner = wasPinned || scrollingInMediaTable
+                    previousY = table.liveDocumentOffset.y + topInset
+                    self.updateOrigin()
+                }
+            }
 
             item.listener.handler = { [weak self, weak item] _ in
                 guard let `self` = self, let table = item?.table, let item = item else {
                     return
                 }
 
-                guard let item = table.item(stableId: item.stableId) as? StorageUsageBlockItem<Context> else {
+                guard let item = table.item(stableId: item.stableId) as? StorageUsageBlockItem else {
                     return
                 }
 
-                let topInset = StorageUsageBlockItem<Context>.topInset
+                if (table as? StorageUsageTableView)?.isResizing == true {
+                    return
+                }
+
+                let topInset = StorageUsageBlockItem.topInset
                 let itemY = table.rectOf(item: item).minY
-                NSLog("\(itemY)")
                 scrollInner = table.documentOffset.y + topInset >= itemY
-                let mediaTable = item.controller.genericView.mainTable
+                let mediaTable = item.controller.mainTable
                 if let mediaTable = mediaTable {
 
                     let offset = table.documentOffset.y + topInset - itemY
@@ -210,7 +287,7 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
             item.table?._scrollWillStartLiveScrolling = {
                 scrollingInMediaTable = false
             }
-            item.controller.genericView.mainTable?.reloadData()
+            item.controller.mainTable?.reloadData()
         } else {
             needsLayout = true
         }
@@ -220,46 +297,52 @@ private final class StorageUsageBlockItemView<Context: AccountContextProtocol> :
             item.table?.documentView?.addSubview(item.controller.view)
         }
         if let table = item.table {
-            item.controller.genericView.change(pos: NSMakePoint(0, max(0, table.rectOf(item: item).minY)), animated: animated)
+            item.controller.mediaView.change(pos: NSMakePoint(0, max(0, table.rectOf(item: item).minY)), animated: animated)
         }
 
         if item.isMediaVisible {
-            item.controller.genericView.isHidden = false
+            item.controller.mediaView.isHidden = false
         }
 
-        item.controller.genericView.change(opacity: item.isMediaVisible ? 1 : 0, animated: animated, completion: { [weak item] _ in
+        item.controller.mediaView.change(opacity: item.isMediaVisible ? 1 : 0, animated: animated, completion: { [weak item] _ in
             guard let item = item else {
                 return
             }
-            item.controller.genericView.isHidden = !item.isMediaVisible
+            item.controller.mediaView.isHidden = !item.isMediaVisible
         })
 
         if item.isMediaVisible {
             item.controller.currentMainTableView = { [weak item, weak self] mainTable, animated, updated in
+                guard let item, let table = item.table, table.item(stableId: item.stableId) === item else {
+                    return
+                }
 
                 mainTable?.verticalScrollElasticity = .none
 
-                let topInset = StorageUsageBlockItem<Context>.topInset
-                if let item = item, animated {
-                    let frame = item.table?.rectOf(item: item) ?? .zero
-                    if item.table?.documentOffset.y == frame.minY {
+                let topInset = StorageUsageBlockItem.topInset
+                if animated {
+                    let frame = table.rectOf(item: item)
+                    if table.liveDocumentOffset.y + topInset >= frame.minY {
                         if !updated {
                             mainTable?.scroll(to: .up(true))
                         }
                     } else if updated {
                         DispatchQueue.main.async {
-                            item.table?.scroll(to: .top(id: item.stableId, innerId: nil, animated: animated, focus: .init(focus: false), inset: topInset))
+                            guard let table = item.table, table.item(stableId: item.stableId) === item else {
+                                return
+                            }
+                            table.scroll(to: .top(id: item.stableId, innerId: nil, animated: animated, focus: .init(focus: false), inset: topInset))
                         }
                     }
                 }
 
                 mainTable?.applyExternalScroll = { [weak self, weak item] event in
-                    guard let `self` = self, let item = item else {
+                    guard let `self` = self, let item = item, item.table?.item(stableId: item.stableId) === item else {
                         return false
                     }
                     if scrollInner {
                         if event.scrollingDeltaY > 0 {
-                            if let tableView = item.controller.genericView.mainTable, tableView.documentOffset.y <= 0 {
+                            if let tableView = item.controller.mainTable, tableView.documentOffset.y <= 0 {
                                 if !item.controller.unableToHide {
                                     scrollInner = false
                                     item.table?.clipView.scroll(to: NSMakePoint(0, self.frame.minY - topInset))

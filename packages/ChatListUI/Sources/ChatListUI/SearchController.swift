@@ -338,8 +338,26 @@ fileprivate enum ChatListSearchEntry: Comparable, Identifiable {
 }
 
 
-private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
+private func peerContextMenuItems(peer: Peer, chatPeerId: PeerId? = nil, adPeer: AdPeer? = nil, pinnedItems:[PinnedItemId], arguments: SearchControllerArguments, isRecent: Bool) -> Signal<[ContextMenuItem], NoError> {
     var items:[ContextMenuItem] = []
+
+    switch arguments.target {
+    case .common, .community:
+        items.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+            let context = arguments.context
+            let openPeerId = chatPeerId ?? peer.id
+            if let adPeer {
+                context.engine.messages.markAdAction(opaqueId: adPeer.opaqueId, media: false, fullscreen: false)
+            }
+            _ = context.engine.peers.addRecentlySearchedPeer(peerId: openPeerId).start()
+            _ = (storedMessageFromSearchPeer(account: context.account, peer: peer) |> deliverOnMainQueue).start(completed: {
+                ChatListUIHooks.shared.openPeerInNewWindow(context, openPeerId)
+            })
+        }, itemImage: MenuAnimation.menu_open_with.value))
+        items.append(ContextSeparatorItem())
+    case .forum, .savedMessages:
+        break
+    }
     
     let togglePin:(Peer) -> Void = { peer in
         let updatePeer = arguments.context.account.postbox.transaction { transaction -> Void in
@@ -384,61 +402,62 @@ private func peerContextMenuItems(peer: Peer, pinnedItems:[PinnedItemId], argume
     
     let peerId = peer.id
     
-    return .single(items) |> mapToSignal { items in
-        return chatListFilterPreferences(engine: arguments.context.engine) |> deliverOnMainQueue |> take(1) |> map { filters -> [ContextMenuItem] in
-            var items = items
-            var submenu: [ContextMenuItem] = []
-            if peerId.namespace != Namespaces.Peer.SecretChat {
-                for item in filters.list {
-                    loop: switch item {
-                    case .allChats:
-                        break loop
-                    case let .filter(_, _, _, data):
-                        submenu.append(ContextMenuItem(item.title, handler: {
-                            _ = arguments.context.engine.peers.updateChatListFiltersInteractively({ list in
-                                var list = list
-                                for (i, folder) in list.enumerated() {
-                                    if ChatListUIHooks.shared.chatListFilterId(folder) == ChatListUIHooks.shared.chatListFilterId(item), var folderData = folder.data {
-                                        if data.includePeers.peers.contains(peerId) {
-                                            var peers = folderData.includePeers.peers
-                                            peers.removeAll(where: { $0 == peerId })
-                                            folderData.includePeers.setPeers(peers)
-                                        } else {
-                                            folderData.excludePeers.removeAll(where: { $0 == peerId })
-                                            folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
-                                        }
-                                        list[i] = list[i].withUpdatedData(folderData)
-                                    }
-                                }
-                                return list
-                            }).start()
-                        }, state: data.includePeers.peers.contains(peerId) ? NSControl.StateValue.on : nil))
-                    }
-                    
-                }
-            }
-            
-            if !submenu.isEmpty {
-                items.append(ContextSeparatorItem())
-                let item = ContextMenuItem(strings().chatListFilterAddToFolder, itemImage: MenuAnimation.menu_add_to_folder.value)
-                let menu = ContextMenu()
-                for item in submenu {
-                    menu.addItem(item)
-                }
-                item.submenu = menu
-                items.append(item)
-            }
-            
-            if isRecent {
-                items.append(ContextSeparatorItem())
-                
-                items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
-                    arguments.removeRecentPeerId(peer.id)
-                }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
-            }
-            
-            return items
+    return combineLatest(searchPeerReadMenuItem(context: arguments.context, peerId: peerId, target: arguments.target), chatListFilterPreferences(engine: arguments.context.engine)) |> take(1) |> deliverOnMainQueue |> map { readItem, filters -> [ContextMenuItem] in
+        var items = items
+        if let readItem {
+            items.append(readItem)
         }
+        var submenu: [ContextMenuItem] = []
+        if peerId.namespace != Namespaces.Peer.SecretChat {
+            for item in filters.list {
+                loop: switch item {
+                case .allChats:
+                    break loop
+                case let .filter(_, _, _, data):
+                    submenu.append(ContextMenuItem(item.title, handler: {
+                        _ = arguments.context.engine.peers.updateChatListFiltersInteractively({ list in
+                            var list = list
+                            for (i, folder) in list.enumerated() {
+                                if ChatListUIHooks.shared.chatListFilterId(folder) == ChatListUIHooks.shared.chatListFilterId(item), var folderData = folder.data {
+                                    if data.includePeers.peers.contains(peerId) {
+                                        var peers = folderData.includePeers.peers
+                                        peers.removeAll(where: { $0 == peerId })
+                                        folderData.includePeers.setPeers(peers)
+                                    } else {
+                                        folderData.excludePeers.removeAll(where: { $0 == peerId })
+                                        folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
+                                    }
+                                    list[i] = list[i].withUpdatedData(folderData)
+                                }
+                            }
+                            return list
+                        }).start()
+                    }, state: data.includePeers.peers.contains(peerId) ? NSControl.StateValue.on : nil))
+                }
+
+            }
+        }
+
+        if !submenu.isEmpty {
+            items.append(ContextSeparatorItem())
+            let item = ContextMenuItem(strings().chatListFilterAddToFolder, itemImage: MenuAnimation.menu_add_to_folder.value)
+            let menu = ContextMenu()
+            for item in submenu {
+                menu.addItem(item)
+            }
+            item.submenu = menu
+            items.append(item)
+        }
+
+        if isRecent {
+            items.append(ContextSeparatorItem())
+
+            items.append(ContextMenuItem(strings().searchRemoveFromRecent, handler: {
+                arguments.removeRecentPeerId(peer.id)
+            }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+        }
+
+        return items
     }
 }
 
@@ -498,7 +517,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                 }
             }
             return RecentPeerRowItem(initialSize, peer: foundPeer.peer._asPeer(), account: arguments.context.account, context: arguments.context, stableId: entry.stableId, statusStyle:ControlStyle(font:.normal(.text), foregroundColor: theme.colors.grayText, highlightColor:.white), status: status, borderType: [.Right], contextMenuItems: {
-                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: foundPeer.peer._asPeer(), adPeer: adPeer, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
             }, unreadBadge: badge, adPeer: adPeer, removeAd: arguments.removeAd)
         case let .localPeer(renderedPeer, _, secretChat, badge, drawBorder, canAddAsTag, storyStats):
             
@@ -524,7 +543,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: secretChat != nil ? theme.colors.accent : theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: drawBorder, isLookSavedMessage: true, drawLastSeparator: true, canRemoveFromRecent: false, controlAction: {
                 arguments.setPeerAsTag(peer)
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
+                return peerContextMenuItems(peer: peer, chatPeerId: secretChat?.peerId ?? renderedPeer.peerId, pinnedItems: pinnedItems, arguments: arguments, isRecent: false)
             }, unreadBadge: badge, canAddAsTag: canAddAsTag, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, monoforumPeer: chatOrMonoforum)
         case let .topic(item, _, _, _, _):
             return SearchTopicRowItem(initialSize, stableId: entry.stableId, item: item, context: arguments.context)
@@ -555,7 +574,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                     arguments.removeRecentPeerId(peer.id)
                 }
             }, contextMenuItems: {
-                return peerContextMenuItems(peer: peer, pinnedItems: pinnedItems, arguments: arguments, isRecent: true)
+                return peerContextMenuItems(peer: peer, chatPeerId: secretChat?.peerId ?? renderedPeer.peerId, pinnedItems: pinnedItems, arguments: arguments, isRecent: true)
             }, unreadBadge: badge, storyStats: storyStats, openStory: arguments.openStory, customAction: customAction, isGrossingApp: isGrossingApp, isRecentApp: isRecentApp, monoforumPeer: chatOrMonoforum)
         case let .savedMessages(peer):
             return RecentPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: entry.stableId, titleStyle: ControlStyle(font: .medium(.text), foregroundColor: theme.colors.text, highlightColor:.white), borderType: [.Right], drawCustomSeparator: true, isLookSavedMessage: true, contextMenuItems: {
@@ -1908,7 +1927,7 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         super.updateContainerContentInsets(insets, transition: transition)
         if isLoaded() {
             genericView.contentInsets.bottom = insets.bottom
-            genericView.scrollerInsets.bottom = insets.bottom
+            genericView.scrollerInsets.bottom = 0
         }
     }
     

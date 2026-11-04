@@ -7,9 +7,11 @@ call, so a submenu of N topics caused N × (N + 1) / 2 native insertions on the
 main thread.
 
 The fix appends one native item per `addItem` call while still updating the
-observed `_items` list, and builds forum topic submenus only when they are
-presented through `ContextMenu.itemsProvider`. Topics are still loaded when the
-menu opens, so the submenu arrow appears exactly as before.
+observed `_items` list. Forum topic submenus are filled through
+`ContextMenu.asyncItemsProvider`: a forum's topics are read and its topic items
+built the first time its submenu is opened, not when the context menu opens.
+Forum chats show the submenu arrow from the start; it is removed if the forum has
+no topics the user can post to.
 
 Run from the repository root on macOS:
 
@@ -53,9 +55,9 @@ Environment: Mac16,5 (Apple M4 Max, 36 GiB), macOS 27.0 (26A428), Xcode 27.0
 (27A266a), Swift 6.4.
 
 The benchmark measures only native menu bookkeeping for plain items. In the
-application each topic item also prepares an avatar and premium state, and the
-Forward menu loads at most 100 topics for at most 15 chats. With the fix, none of
-those topic items are created when the context menu opens; they are created for
-one chat when its submenu is presented. The 100 × 1,000 scenario is a stress case
-beyond what the application loads. Absolute numbers depend on the machine; there
-is no timing threshold.
+application each topic item also prepares an avatar and premium state. None of
+those topic items are created when the context menu opens; a forum's topics are
+read and its items created when that forum's submenu is first presented. The
+100 × 1,000 scenario is a stress case: the application builds topic items for one
+forum at a time. Absolute numbers depend on the machine; there is no timing
+threshold.

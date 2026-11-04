@@ -325,7 +325,9 @@ public final class MessageReadMenuRowItem : AppMenuRowItem {
 
             
             self.item.submenu = menu
-            if let view = self.view, view.mouseInside() || self.isSelected {
+            if let view = self.view as? AppMenuRowView, view.mouseInside() {
+                view.presentSubmenuAfterDelay()
+            } else if self.isSelected {
                 self.interaction?.presentSubmenu(self.item)
             }
             
@@ -926,20 +928,21 @@ public final class ReactionPeerMenu : ContextMenuItem {
                 }
             }))
         } else if TelegramUtilsHooks.shared.peerIsForum(peer) || (peer.isAdmin && peer.isMonoForum), case let .forward(callback, _) = destination {
-            let signal = ChatHistoryUIHooks.shared.forumChatListItems(peer.id, context.account) |> take(1) |> deliverOnMainQueue
-            disposable.set(signal.start(next: { [weak self] list in
-                let topics = forwardMenuTopicItems(list, canSend: { item in
-                    peer.canSendMessage(true, media: message?.media.first, threadData: item.threadData)
+            let menu = ContextMenu()
+            self.submenu = menu
+            menu.asyncItemsProvider = { [weak self] completion in
+                let signal = ChatHistoryUIHooks.shared.forumChatListItems(peer.id, context.account) |> take(1) |> deliverOnMainQueue
+                return signal.start(next: { list in
+                    let topics = forwardMenuTopicItems(list, canSend: { item in
+                        peer.canSendMessage(true, media: message?.media.first, threadData: item.threadData)
+                    })
+                    if topics.isEmpty, let self {
+                        self.submenu = nil
+                        self.redraw?()
+                    }
+                    completion(topics.compactMap { forwardTopicMenuItem($0, in: peer, context: context, callback: callback) })
                 })
-                guard let self, !topics.isEmpty else {
-                    return
-                }
-                let menu = ContextMenu()
-                menu.itemsProvider = {
-                    topics.compactMap { forwardTopicMenuItem($0, in: peer, context: context, callback: callback) }
-                }
-                self.submenu = menu
-            }))
+            }
         }
         ContextMenuItem.makeItemAvatar(self, account: context.account, peer: peer, source: .peer(peer, peer.smallProfileImage, peer.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer), message, nil), selfAsSaved: selfSaved)
         if !peer.isCommunity {

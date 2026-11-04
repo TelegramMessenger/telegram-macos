@@ -136,13 +136,19 @@ private func chatListPresetEntries(filtersWithCounts: [(ChatListFilter, Int)], s
                 image = nil
             }
 
-            entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_preset(filter), equatable: .init(filter), comparable: nil, item: { initialSize, stableId in
+            struct E : Equatable {
+                let filter: ChatListFilter
+                let viewType: GeneralViewType
+                let count: Int
+            }
+
+            entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_preset(filter), equatable: InputDataEquatable(E(filter: filter, viewType: viewType, count: count)), comparable: nil, item: { initialSize, stableId in
 
                 let attr = NSMutableAttributedString()
                 attr.append(string: title.text, color: theme.colors.text, font: .normal(.text))
                 arguments.environment.applyInlineStickers(to: attr, entities: title.entities, isPremium: arguments.context.isPremium, animated: title.enableAnimations)
 
-                return GeneralInteractedRowItem(initialSize, name: title.text, nameAttributed: attr, icon: FolderIcon(filter).icon(for: .preview, image: arguments.environment.folderImage), type: image != nil ? .nextImage(image!) : .nextContext(count > 0 ? "\(count)" : ""), viewType: viewType, action: {
+                return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title.text, nameAttributed: attr, icon: FolderIcon(filter).icon(for: .preview, image: arguments.environment.folderImage), type: image != nil ? .nextImage(image!) : .nextContext(count > 0 ? "\(count)" : ""), viewType: viewType, action: {
                     arguments.openPreset(filter, false)
                 }, menuItems: {
                     return filterContextMenuItems(filter, unreadCount: nil, context: arguments.context, environment: arguments.environment)
@@ -332,7 +338,7 @@ public func ChatListFiltersListController(context: any AccountContextProtocol, e
          controller.tableView.enumerateItems(with: { item in
             if let stableId = item.stableId.base as? InputDataEntryId {
                 switch stableId {
-                case let .general(identifier):
+                case let .general(identifier), let .custom(identifier):
 
                     if identifier.identifier.hasPrefix("_id_filter") {
                         if range.location == NSNotFound {
@@ -352,7 +358,7 @@ public func ChatListFiltersListController(context: any AccountContextProtocol, e
         if range.location != NSNotFound {
 
 
-            controller.tableView.resortController = TableResortController(resortRange: range, start: { row in
+            let resortController = TableResortController(resortRange: range, start: { row in
 
             }, resort: { row in
 
@@ -369,6 +375,8 @@ public func ChatListFiltersListController(context: any AccountContextProtocol, e
                 }).start()
 
             })
+            resortController.completeDelay = 0
+            controller.tableView.resortController = resortController
         } else {
             controller.tableView.resortController = nil
         }

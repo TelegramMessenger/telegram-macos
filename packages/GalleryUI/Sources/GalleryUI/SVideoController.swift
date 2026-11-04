@@ -28,12 +28,12 @@ import TelegramMediaResources
 import InputDataUI
 
 
-private func makePlayer(account: Account, reference: FileMediaReference, fetchAutomatically: Bool = false) -> (UniversalVideoContentView & NSView) {
+private func makePlayer(account: Account, reference: FileMediaReference, fetchAutomatically: Bool = false, isProtected: Bool = false) -> (UniversalVideoContentView & NSView) {
     let player: (UniversalVideoContentView & NSView)
     if isHLSVideo(file: reference.media) {
         player = HLSVideoJSNativeContentView(accountId: account.id, postbox: account.postbox, userLocation: reference.userLocation, fileReference: reference, streamVideo: true, loopVideo: false, enableSound: true, baseRate: FastSettings.playingVideoRate, fetchAutomatically: false, volume: FastSettings.volumeRate, initialQuality: FastSettings.videoQuality)
-    } else if isAV1Video(file: reference.media) {
-        player = ChunkedNativeMediaPlayer(postbox: account.postbox, reference: reference, fetchAutomatically: fetchAutomatically)
+    } else if shouldUseChunkedVideoPlayer(file: reference.media) {
+        player = ChunkedNativeMediaPlayer(postbox: account.postbox, reference: reference, fetchAutomatically: fetchAutomatically, preventsCapture: isProtected)
     } else {
         player = NativeMediaPlayer(postbox: account.postbox, reference: reference, fetchAutomatically: fetchAutomatically)
     }
@@ -765,7 +765,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     }
     
     public override func initializer() -> SVideoView {
-        mediaPlayer = makePlayer(account: account, reference: reference)
+        mediaPlayer = makePlayer(account: account, reference: reference, isProtected: isProtected)
         return SVideoView(frame: _frameRect, mediaPlayer: self.mediaPlayer)
     }
     

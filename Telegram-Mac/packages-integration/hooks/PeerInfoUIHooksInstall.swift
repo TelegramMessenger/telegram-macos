@@ -199,6 +199,16 @@ func installPeerInfoUIHooks() {
             return
         }
         showModal(with: PlayerListController(audioPlayer: playerView, context: context, currentContext: context, source: .profile(peer, musicFile, savedMusic, profileSavedMusic)), for: context.window)
+    }, activeProfileMusic: { context, peerId in
+        let context = context as! AccountContext
+        guard context.bindings.rootNavigation().header?.contextObject is InlineAudioPlayerView.ContextObject, let controller = context.sharedContext.getAudioPlayer() as? APProfileSavedController, controller.peer.id == peerId, controller.account.id == context.account.id, let state = controller.currentState else {
+            return nil
+        }
+        var playing: TelegramMediaFile?
+        if let entry = controller.currentSong?.entry, case let .savedMusic(reference, _) = entry {
+            playing = reference.media
+        }
+        return (state, controller.profileMusicContext, playing)
     }, executeNftLink: { link, slug, context in
         execute(inapp: .nft(link: link, slug: slug, context: context as! AccountContext))
     }, navigateToChat: { navigation, context, chatLocation, mode, focusTarget, chatLocationContextHolder in

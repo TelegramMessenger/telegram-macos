@@ -369,7 +369,7 @@ private final class BalanceView: GeneralContainableRowView {
         addSubview(action)
         action.autohighlight = false
         action.scaleOnClick = true
-        action.layer?.cornerRadius = 10
+        action.layer?.cornerRadius = 20
         
         balance.userInteractionEnabled = false
         info.userInteractionEnabled = false
@@ -464,7 +464,7 @@ private final class BalanceView: GeneralContainableRowView {
             }
             current.autohighlight = false
             current.scaleOnClick = true
-            current.layer?.cornerRadius = 10
+            current.layer?.cornerRadius = 20
             
             current.setSingle(handler: { [weak item] _ in
                 item?.stats()
@@ -1205,7 +1205,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 index += 1
                 
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_transaction_mode, equatable: .init(state.transactionMode), comparable: nil, item: { initialSize, stableId in
-                    return SegmentTypesRowItem(initialSize, stableId: stableId, items: transactionSegments(state.transactionMode), viewType: .firstItem, callback: { uniqueId in
+                    return StarTransactionTabsRowItem(initialSize, stableId: stableId, items: transactionSegments(state.transactionMode), viewType: .firstItem, callback: { uniqueId in
                         switch uniqueId {
                         case 0:
                             arguments.toggleFilterMode(.all)

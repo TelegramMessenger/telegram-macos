@@ -156,7 +156,8 @@ public final class InputDataGeneralTextData : Equatable {
     public let linkColor: NSColor
     public let context: (any AccountContextProtocol)?
     public let linkExecutor: TextViewInteractions
-    public init(color: NSColor = theme.colors.listGrayText, detectBold: Bool = true, viewType: GeneralViewType = .legacy, rightItem: InputDataGeneralTextRightData = InputDataGeneralTextRightData(isLoading: false, text: nil), fontSize: CGFloat? = nil, contextMenu:(()->[ContextMenuItem])? = nil, clickable: Bool = false, clickableCornerRadius: CGFloat = .cornerRadius, inset: NSEdgeInsets = .init(left: 20, right: 20, top:4, bottom:2), centerViewAlignment: Bool = false, alignment: NSTextAlignment = .left, linkColor: NSColor = theme.colors.link, context: (any AccountContextProtocol)? = nil, linkExecutor: TextViewInteractions = GeneralRowsHooks.shared.linkExecutor()) {
+    public let isTextSelectable: Bool
+    public init(color: NSColor = theme.colors.listGrayText, detectBold: Bool = true, isTextSelectable: Bool = false, viewType: GeneralViewType = .legacy, rightItem: InputDataGeneralTextRightData = InputDataGeneralTextRightData(isLoading: false, text: nil), fontSize: CGFloat? = nil, contextMenu:(()->[ContextMenuItem])? = nil, clickable: Bool = false, clickableCornerRadius: CGFloat = .cornerRadius, inset: NSEdgeInsets = .init(left: 20, right: 20, top:4, bottom:2), centerViewAlignment: Bool = false, alignment: NSTextAlignment = .left, linkColor: NSColor = theme.colors.link, context: (any AccountContextProtocol)? = nil, linkExecutor: TextViewInteractions = GeneralRowsHooks.shared.linkExecutor()) {
         self.color = color
         self.detectBold = detectBold
         self.viewType = viewType
@@ -171,9 +172,10 @@ public final class InputDataGeneralTextData : Equatable {
         self.linkColor = linkColor
         self.context = context
         self.linkExecutor = linkExecutor
+        self.isTextSelectable = isTextSelectable
     }
     public static func ==(lhs: InputDataGeneralTextData, rhs: InputDataGeneralTextData) -> Bool {
-        return lhs.color == rhs.color && lhs.detectBold == rhs.detectBold && lhs.viewType == rhs.viewType && lhs.rightItem == rhs.rightItem && lhs.fontSize == rhs.fontSize && lhs.clickable == rhs.clickable && lhs.clickableCornerRadius == rhs.clickableCornerRadius && lhs.inset == rhs.inset && lhs.centerViewAlignment == rhs.centerViewAlignment && lhs.alignment == rhs.alignment && lhs.linkColor == rhs.linkColor
+        return lhs.color == rhs.color && lhs.detectBold == rhs.detectBold && lhs.viewType == rhs.viewType && lhs.rightItem == rhs.rightItem && lhs.fontSize == rhs.fontSize && lhs.clickable == rhs.clickable && lhs.clickableCornerRadius == rhs.clickableCornerRadius && lhs.inset == rhs.inset && lhs.centerViewAlignment == rhs.centerViewAlignment && lhs.alignment == rhs.alignment && lhs.linkColor == rhs.linkColor && lhs.isTextSelectable == rhs.isTextSelectable
     }
 }
 
@@ -335,7 +337,7 @@ public enum InputDataEntry : Identifiable, Comparable {
             }
             return GeneralRowItem(initialSize, height: type.height, stableId: stableId, viewType: viewType)
         case let .desc(_, _, text, data):
-            return GeneralTextRowItem(initialSize, stableId: stableId, text: text, detectBold: data.detectBold, textColor: data.color, linkColor: data.linkColor, alignment: data.alignment, inset: data.inset, centerViewAlignment: data.centerViewAlignment, viewType: data.viewType, rightItem: data.rightItem, fontSize: data.fontSize, contextMenu: data.contextMenu, clickable: data.clickable, clickableCornerRadius: data.clickableCornerRadius, context: data.context, linkExecutor: data.linkExecutor)
+            return GeneralTextRowItem(initialSize, stableId: stableId, text: text, detectBold: data.detectBold, textColor: data.color, linkColor: data.linkColor, alignment: data.alignment, inset: data.inset, centerViewAlignment: data.centerViewAlignment, isTextSelectable: data.isTextSelectable, viewType: data.viewType, rightItem: data.rightItem, fontSize: data.fontSize, contextMenu: data.contextMenu, clickable: data.clickable, clickableCornerRadius: data.clickableCornerRadius, context: data.context, linkExecutor: data.linkExecutor)
         case let .custom(_, _, _, _, _, _, item):
             return item(initialSize, stableId)
         case let .selector(_, _, value, error, _, placeholder, viewType, values):

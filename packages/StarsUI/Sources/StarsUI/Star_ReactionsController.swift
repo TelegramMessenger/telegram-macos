@@ -258,7 +258,7 @@ private final class AcceptView : Control {
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(textView)
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = 20
         scaleOnClick = true
         
         textView.userInteractionEnabled = false

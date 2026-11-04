@@ -1,0 +1,6 @@
+PASS: real spoiler photo bypasses shared sharp cache
+PASS: revealed photo uses ordinary cache
+PASS: send preview without parent keeps ordinary cache
+PASS: secret-media recycling retains original cache behavior
+PASS: concealed message video bypasses shared preview cache
+PASS: concealed sensitive photo bypasses shared preview cache

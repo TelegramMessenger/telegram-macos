@@ -17,6 +17,7 @@ let deps: [(String, String)] = [
     ("DateUtils", "../DateUtils"),
     ("ColorPalette", "../ColorPalette"),
     ("TelegramIconsTheme", "../TelegramIconsTheme"),
+    ("ApiCredentials", "../ApiCredentials"),
 ]
 
 let package = Package(

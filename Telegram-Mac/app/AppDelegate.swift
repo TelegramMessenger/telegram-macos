@@ -425,23 +425,6 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             return _NSLocalizedString(key)
         }
         
-        var paths: [String?] = []
-        paths.append(Bundle.main.path(forResource: "opening", ofType:"m4a"))
-        paths.append(Bundle.main.path(forResource: "voip_busy", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "voip_ringback", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "voip_connecting", ofType:"mp3"))
-        paths.append(Bundle.main.path(forResource: "voip_fail", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "voip_end", ofType:"caf"))
-        paths.append(Bundle.main.path(forResource: "sent", ofType:"caf"))
-
-        
-        for path in paths {
-            if let path = path {
-                let player = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
-                player?.prepareToPlay()
-            }
-        }
-        
         FFMpegGlobals.initializeGlobals()
         
         
@@ -672,18 +655,21 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 telegramUpdateTheme(updateTheme(with: themeSettings), window: window, animated: false)
 
                 
-                let basicTheme = Atomic<ThemePaletteSettings?>(value: themeSettings)
+                let basicTheme = Atomic<ThemePaletteSettings?>(value: themeSettings.withUpdatedPalette(theme.colors))
                 let viewDidChangedAppearance: ValuePromise<Bool> = ValuePromise(true)
                 let backingProperties:ValuePromise<CGFloat> = ValuePromise(System.backingScale, ignoreRepeated: true)
                 
                 
                 let previousBackingScale: Atomic<CGFloat> = Atomic(value: System.backingScale)
-                let signal: Signal<TelegramPresentationTheme?, NoError> = combineLatest(queue: resourcesQueue, themeSettingsView(accountManager: accountManager), backingProperties.get()) |> map { settings, backingScale in
+                let signal: Signal<TelegramPresentationTheme?, NoError> = combineLatest(queue: .mainQueue(), themeSettingsView(accountManager: accountManager), backingProperties.get(), systemThemeColorsSignal()) |> map { settings, backingScale, systemColors in
+                    System.legacyMenu = settings.legacyMenu
+                    let resolved = settings.palette.name == systemPalette.name ? settings.withUpdatedPalette(systemColors) : settings
+                    return (resolved, backingScale)
+                } |> deliverOn(resourcesQueue) |> map { settings, backingScale in
                     let previous = basicTheme.swap(settings)
                     let previousScale = previousBackingScale.swap(backingScale)
-                    System.legacyMenu = settings.legacyMenu
-                    if previous?.palette != settings.palette || previous?.bubbled != settings.bubbled || previous?.wallpaper.wallpaper != settings.wallpaper.wallpaper || previous?.fontSize != settings.fontSize || previousScale != backingScale  {
-                        return updateTheme(with: settings, animated: ((previous?.fontSize == settings.fontSize && previous?.palette != settings.palette) || previous?.bubbled != settings.bubbled || previous?.cloudTheme?.id != settings.cloudTheme?.id || previous?.palette.isDark != settings.palette.isDark))
+                    if previous?.palette != settings.palette || previous?.bubbled != settings.bubbled || previous?.wallpaper != settings.wallpaper || previous?.fontSize != settings.fontSize || previous?.cloudTheme != settings.cloudTheme || previousScale != backingScale  {
+                        return updateTheme(with: settings, resolvedSystemPalette: settings.palette, scaleFactor: backingScale)
                     } else {
                         return nil
                     }
@@ -829,11 +815,31 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 useBetaFeatures = false
                 #endif
                 
-                let networkArguments = NetworkInitializationArguments(apiId: ApiEnvironment.apiId, apiHash: ApiEnvironment.apiHash, languagesCategory: ApiEnvironment.language, appVersion: ApiEnvironment.version, voipMaxLayer: OngoingCallContext.maxLayer, voipVersions: voipVersions, appData: appData, externalRequestVerificationStream: .single([:]), externalRecaptchaRequestVerification: { _, _ in return .complete() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: deviceModelPretty(), useBetaFeatures: useBetaFeatures, isICloudEnabled: false, networkEngineFactory: RustNetworkEngineFactory())
+                let systemDeviceModel = deviceModelPretty()
+                ApiEnvironment.systemDeviceModel = systemDeviceModel
+                let networkArguments = NetworkInitializationArguments(apiId: ApiEnvironment.apiId, apiHash: ApiEnvironment.apiHash, languagesCategory: ApiEnvironment.language, appVersion: ApiEnvironment.version, voipMaxLayer: OngoingCallContext.maxLayer, voipVersions: voipVersions, appData: appData, externalRequestVerificationStream: .single([:]), externalRecaptchaRequestVerification: { _, _ in return .complete() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: ApiEnvironment.customDeviceModel ?? systemDeviceModel, useBetaFeatures: useBetaFeatures, isICloudEnabled: false, networkEngineFactory: RustNetworkEngineFactory())
                 
                 let sharedContext = SharedAccountContext(accountManager: accountManager, networkArguments: networkArguments, rootPath: rootPath, encryptionParameters: encryptionParameters, appEncryption: appEncryption, displayUpgradeProgress: displayUpgrade)
                 
                 self.hangKeybind(sharedContext)
+                
+                let deviceModel: Signal<String, NoError> = Signal { subscriber in
+                    subscriber.putNext(ApiEnvironment.customDeviceModel ?? systemDeviceModel)
+                    let observer = NotificationCenter.default.addObserver(forName: ApiEnvironment.deviceModelDidChange, object: nil, queue: nil, using: { _ in
+                        subscriber.putNext(ApiEnvironment.customDeviceModel ?? systemDeviceModel)
+                    })
+                    return ActionDisposable {
+                        NotificationCenter.default.removeObserver(observer)
+                    }
+                }
+                _ = combineLatest(sharedContext.activeAccounts, deviceModel).start(next: { accounts, deviceModel in
+                    for (_, account, _) in accounts.accounts {
+                        updateDeviceModel(account.network, deviceModel)
+                    }
+                    if let auth = accounts.currentAuth {
+                        updateDeviceModel(auth.network, deviceModel)
+                    }
+                })
                 
                 
               
@@ -1792,5 +1798,20 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             }
         }
         self.authContextValue?.applyExternalLoginCode(code)
+    }
+}
+
+private func updateDeviceModel(_ network: Network, _ deviceModel: String) {
+    guard class_getInstanceVariable(MTApiEnvironment.self, "_deviceModelName") != nil else {
+        return
+    }
+    network.context.updateApiEnvironment { current in
+        guard let current = current, current.deviceModel != deviceModel else {
+            return nil
+        }
+        let copy = current.withUpdatedLangPackCode(current.langPackCode)
+        copy.setValue(deviceModel, forKey: "deviceModelName")
+        let updated = copy.withUpdatedLangPackCode(copy.langPackCode)
+        return updated.deviceModel == deviceModel ? updated : nil
     }
 }

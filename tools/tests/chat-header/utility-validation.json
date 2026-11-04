@@ -1,0 +1,83 @@
+{
+  "featureSource": "5794d4e8fbaf15c1b1f2d73ec9aa33443dd0c465",
+  "nativeIntegration": "d159d0b2e6025a42f50e94a25534aa8a1f968216",
+  "productionHeaderSha256": "1470779b632f48d7f1eed68057e1ac89f6113ca5ddeb38b71276779c5da923ee",
+  "completeNativeBuild": "succeeded; arm64 Debug; actual dependencies",
+  "checks": {
+    "XCTest": 6,
+    "extractedHeaderPlacementAndMenus": 139,
+    "nativeSearchControls": 288,
+    "typingReflow": 7,
+    "productionReopenControl": 41,
+    "searchFlowControlledBackend": 157
+  },
+  "authenticatedSmoke": {
+    "channel": "Telegram Tips",
+    "query": "stories",
+    "counter": "1 of 32",
+    "emptyNavigation": "disabled",
+    "results": "full chat width",
+    "cancel": "restores pin"
+  },
+  "limitation": "Live server-backed validation covers Reopen Topic as the forum creator. Other utility actions retain fixture-only placement coverage.",
+  "authenticatedTopic": {
+    "forum": "Topic Header Test",
+    "topic": "Release Notes",
+    "otherMembersInvited": 0,
+    "setup": "A local diagnostic helper used the real authenticated engine to create a private forum/topic, close it and navigate to its actual ChatController. It did not replace presentation state or invoke the reopen handler. The helper is excluded from the feature patch.",
+    "trigger": "One accessibility click on the actual Reopen Topic button in the full client",
+    "beforePress": {
+      "at": 1792961418.7517672,
+      "closed": true,
+      "title": "Release Notes"
+    },
+    "afterPress": {
+      "at": 1792961502.752864,
+      "closed": false,
+      "title": "Release Notes"
+    },
+    "uiResult": "Reopen Topic disappeared, title count changed 1 to 2, and You reopened the topic appeared in real history.",
+    "wideComparison": {
+      "rawPixels": [
+        3024,
+        1772
+      ],
+      "headerCrop": [
+        612,
+        8,
+        3012,
+        228
+      ],
+      "messageCount": 3,
+      "closed": true,
+      "emojiSidebar": "closed in both captures"
+    },
+    "narrowWindow": {
+      "rawPixels": [
+        1514,
+        1772
+      ],
+      "headerCrop": [
+        612,
+        8,
+        1502,
+        228
+      ],
+      "result": "Button returned to its separate row and remained readable."
+    },
+    "beforeHeaderSource": "5c36bbd3d321dfdd2b445a259c3da260fd1eeb49",
+    "afterHeaderSource": "5794d4e8fbaf15c1b1f2d73ec9aa33443dd0c465",
+    "beforeHeaderSha256": "157fa9c0719b7f4551c02a6f9044683321405083035d3d15b13bc6d718de2c8e",
+    "afterHeaderSha256": "1470779b632f48d7f1eed68057e1ac89f6113ca5ddeb38b71276779c5da923ee",
+    "completeNativeBuilds": {
+      "before": "succeeded",
+      "after": "succeeded"
+    },
+    "images": [
+      "review-before-topic.png",
+      "review-after-topic.png",
+      "review-after-topic-narrow.png",
+      "review-topic-reopened.png"
+    ]
+  }
+}

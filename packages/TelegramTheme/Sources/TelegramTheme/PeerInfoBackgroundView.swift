@@ -8,6 +8,8 @@ public final class PeerInfoBackgroundView: View {
     public var offset: CGFloat = 0
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        self.backgroundGradientLayer.anchorPoint = .zero
+        self.avatarBackgroundGradientLayer.anchorPoint = .zero
         self.layer?.addSublayer(backgroundGradientLayer)
         self.layer?.addSublayer(avatarBackgroundGradientLayer)
 

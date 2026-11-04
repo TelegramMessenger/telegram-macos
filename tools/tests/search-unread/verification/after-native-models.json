@@ -1,0 +1,26 @@
+[
+  {
+    "name" : "result menu offers Mark As Unread",
+    "pass" : true
+  },
+  {
+    "name" : "top-peer menu offers Mark As Unread",
+    "pass" : true
+  },
+  {
+    "name" : "Saved Messages unread flag is true",
+    "pass" : true
+  },
+  {
+    "name" : "result menu offers Mark As Read",
+    "pass" : true
+  },
+  {
+    "name" : "top-peer menu offers Mark As Read",
+    "pass" : true
+  },
+  {
+    "name" : "Saved Messages unread flag is false",
+    "pass" : true
+  }
+]

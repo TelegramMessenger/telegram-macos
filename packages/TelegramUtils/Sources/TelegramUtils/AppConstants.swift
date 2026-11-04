@@ -3,6 +3,7 @@ import TelegramCore
 import Postbox
 import ColorPalette
 import TelegramTheme
+import FoundationUtils
 
 public let clown: String = "🤡"
 
@@ -15,14 +16,13 @@ public let clown_space: String = "\(clown)\(TINY_SPACE)"
 public let XTR_USD_RATE = 0.013
 
 public func restartApp() {
-    let task = Process()
-    task.executableURL = URL(fileURLWithPath: Bundle.main.bundlePath)
+    let task = appRelaunchProcess()
     do {
         try task.run()
+        NSApp.terminate(nil)
     } catch {
         NSLog("Failed to restart: \(error)")
     }
-    NSApp.terminate(nil)
 }
 
 extension ResolvePeerResult : @retroactive Equatable {

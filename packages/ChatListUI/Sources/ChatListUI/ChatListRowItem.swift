@@ -1342,7 +1342,7 @@ public class ChatListRowItem: TableRowItem {
         }
         
         if let openMiniApp {
-            w += openMiniApp.layoutSize.width + 20
+            w += openMiniApp.layoutSize.width + 28
         }
         
         w += (leftInset - 20)
@@ -1522,7 +1522,11 @@ public class ChatListRowItem: TableRowItem {
     }
     
     public var markAsUnread: Bool {
-        return !isSecret && !isUnreadMarked && badgeNode == nil && !showsMentionSlot && !self.mode.savedMessages
+        return !isSecret && !isUnreadMarked && badgeNode == nil && !showsMentionSlot && !self.mode.savedMessages && peer?.isForumOrMonoForum != true
+    }
+
+    public var canToggleUnread: Bool {
+        return peer?.isForumOrMonoForum != true || badgeNode != nil || showsMentionSlot || isUnreadMarked
     }
     
     public func collapseOrExpandArchive() {
@@ -1742,7 +1746,7 @@ public class ChatListRowItem: TableRowItem {
     public func toggleMuted() {
         let peerId = renderedPeer?.chatMainPeer?.id ?? peerId
         if let peerId = peerId {
-            ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: self.mode.threadId)
+            ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: self.mode.threadId, threadData: self.mode.threadData)
         }
     }
     public func delete() {
@@ -1752,9 +1756,13 @@ public class ChatListRowItem: TableRowItem {
         }
     }
     
-    public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?) {
+    public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?, threadData: MessageHistoryThreadData?) {
         if isMuted {
-            _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).start()
+            if let threadId, threadData?.notificationSettings.muteState == .default {
+                _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).start()
+            } else {
+                _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).start()
+            }
         } else {
             var options:[ModalOptionSet] = []
             
@@ -1803,8 +1811,8 @@ public class ChatListRowItem: TableRowItem {
                     alert(for: context.window, info: strings().unknownError)
                 }
             })
-        case .savedMessages:
-            let signal = context.engine.peers.toggleForumChannelTopicPinned(id: context.peerId, threadId: peerId.toInt64()) |> deliverOnMainQueue
+        case let .savedMessages(threadId):
+            let signal = context.engine.peers.toggleForumChannelTopicPinned(id: context.peerId, threadId: threadId) |> deliverOnMainQueue
             _ = signal.start(error: { error in
                 switch error {
                 case let .limitReached(count):
@@ -1938,7 +1946,7 @@ public class ChatListRowItem: TableRowItem {
         
         let toggleMute:()->Void = {
             if let peerId = effectivePeerId {
-                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId)
+                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId, threadData: mode.threadData)
             }
         }
         let toggleTopic:()->Void = {

@@ -718,32 +718,9 @@ final class AccountContext {
         
         #if !SHARE
        
-        let chatThemes: Signal<[(ChatTheme, TelegramPresentationTheme)], NoError> = combineLatest(appearanceSignal, engine.themes.getChatThemes(accountManager: sharedContext.accountManager)) |> mapToSignal { appearance, themes in
-            var signals:[Signal<(ChatTheme, TelegramPresentationTheme), NoError>] = []
-            
-            for theme in themes {
-                let effective = theme.effectiveSettings(isDark: appearance.presentation.dark)
-                if let settings = effective, let emoji = theme.emoticon {
-                    let newTheme = appearance.presentation.withUpdatedColors(settings.palette)
-                    if let wallpaper = settings.wallpaper?.uiWallpaper(nil) {
-                        signals.append(moveWallpaperToCache(postbox: account.postbox, wallpaper: wallpaper) |> map { wallpaper in
-                            return (.emoticon(emoji), newTheme.withUpdatedWallpaper(.init(wallpaper: wallpaper, associated: nil)))
-                        })
-                    } else {
-                        signals.append(.single((.emoticon(emoji), newTheme)))
-                    }
-                }
-            }
-            
-            let first = Signal<[(ChatTheme, TelegramPresentationTheme)], NoError>.single([])
-            return first |> then(combineLatest(signals)) |> map { values in
-                var dict: [(ChatTheme, TelegramPresentationTheme)] = []
-                for value in values {
-                    dict.append((value.0, value.1))
-                }
-                return dict
-            }
-        }
+        let chatThemes = preparedChatThemes(presentation: themeSignal, themes: engine.themes.getChatThemes(accountManager: sharedContext.accountManager), cacheWallpaper: { wallpaper in
+            moveWallpaperToCache(postbox: account.postbox, wallpaper: wallpaper)
+        })
         let themes = (chatThemes |> then(.complete() |> suspendAwareDelay(20.0 * 60.0, queue: .concurrentDefaultQueue()))) |> restart
         
         actionsDisposable.add(themes.start(next: { [weak self] values in

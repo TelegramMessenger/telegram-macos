@@ -50,10 +50,16 @@ public final class GlassSegmentView: View {
         }
         self.selectedIndex = index
         self.selectionPosition = index.flatMap { CGFloat($0) }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let animated = animated && !reduceMotion
+        if reduceMotion {
+            selectionView.layer?.removeAllAnimations()
+        }
         updateLayout(size: frame.size, transition: animated ? .animated(duration: 0.4, curve: .spring) : .immediate)
     }
 
     public func setSelection(position: CGFloat, animated: Bool) {
+        let animated = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if !animated {
             selectionView.layer?.removeAllAnimations()
         }
@@ -78,7 +84,7 @@ public final class GlassSegmentView: View {
         }
     }
 
-    private var itemFrames: [NSRect] {
+    public var itemFrames: [NSRect] {
         var x: CGFloat = 0
         return labels.map { label in
             let frame = NSMakeRect(x, 0, label.frame.width + GlassSegmentView.itemInset * 2, GlassSegmentView.height)

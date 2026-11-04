@@ -283,6 +283,29 @@ final class AccessibilityBaseTests: XCTestCase {
         XCTAssertEqual(invoked, ["Copy"])
         XCTAssertEqual(submenus, ["More"])
     }
+    func testContextMenuSubmenuRowIsSelectedWhenPressed() {
+        var invoked: [String] = []
+        var submenus: [String] = []
+        let interaction = AppMenuBasicItem.Interaction(action: { invoked.append($0.title) }, presentSubmenu: { submenus.append($0.title) }, cancelSubmenu: { _ in }, hover: { _ in }, close: {})
+        let copy = ContextMenuItem("Copy", handler: {})
+        let more = ContextMenuItem("More")
+        more.submenu = ContextMenu()
+        let menu = ContextMenu()
+        [copy, more].forEach(menu.addItem)
+        let view = MenuView(frame: NSMakeRect(0, 0, 300, 400))
+        view.merge(menu: menu, presentation: .current(PresentationTheme.current.colors), interaction: interaction)
+        guard let copyRow = view.item(for: copy.id), let moreRow = view.item(for: more.id) else {
+            return XCTFail("menu rows")
+        }
+
+        XCTAssertTrue(moreRow.accessibilityPerformPress())
+        XCTAssertTrue(moreRow.isSelected)
+        XCTAssertTrue(copyRow.accessibilityPerformPress())
+        XCTAssertTrue(moreRow.isSelected)
+        XCTAssertFalse(copyRow.isSelected)
+        XCTAssertEqual(invoked, ["Copy"])
+        XCTAssertEqual(submenus, ["More"])
+    }
     func testSegmentTabsAreRadioButtons() {
         let segment = ScrollableSegmentView(frame: NSMakeRect(0, 0, 400, 40))
         host(segment)

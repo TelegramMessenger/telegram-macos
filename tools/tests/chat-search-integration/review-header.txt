@@ -1,0 +1,9 @@
+Test Suite 'All tests' started at 2026-10-28 3:28:08.705 PM.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'All tests' passed at 2026-10-28 3:28:08.716 PM.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.003 (0.011) seconds
+PASS: 95 exact-source header placement, history inset, translation menu and callback checks
+PASS: 288 native TGUIKit search focus, query, control-bound and hit-test checks
+PASS: 7 exact-source typing activity reflow and layout-loop checks
+PASS: 41 production reopen-topic control, localization and callback checks

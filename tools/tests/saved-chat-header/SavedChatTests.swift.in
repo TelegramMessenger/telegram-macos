@@ -1,0 +1,435 @@
+import Foundation
+import XCTest
+import SwiftSignalKit
+
+private typealias PeerId = Int64
+private let english: [String: String] = __STRINGS__
+
+private struct Strings {
+    func chatTitleTopicOther(_ count: Int) -> String {
+        count == 0 ? english["Chat.Title.Topic_ZeroValueHolder"]! : String(format: english["Chat.Title.Topic_other"]!, count)
+    }
+    func sharedMediaSavedCountOther(_ count: Int) -> String {
+        String(format: english["SharedMedia.SavedCount_other"]!, count)
+    }
+    func peerInfoTopicStatusIn(_ title: String) -> String { "in \(title)" }
+    var peerMyNotes: String { english["Peer.MyNotes"]! }
+    var alertOK: String { english["Alert.OK"]! }
+}
+private func strings() -> Strings { Strings() }
+
+private enum Mode {
+    case history, savedMessages, topic, preview
+    var isSavedMessagesThread: Bool { self == .savedMessages }
+}
+private struct ThreadData {
+    let peerId: PeerId
+    let threadId: Int64
+}
+private enum ChatLocation {
+    case peer(PeerId)
+    case thread(ThreadData)
+    var peerId: PeerId {
+        switch self {
+        case let .peer(id): return id
+        case let .thread(data): return data.peerId
+        }
+    }
+    var threadId: Int64? {
+        if case let .thread(data) = self { return data.threadId }
+        return nil
+    }
+}
+private struct Peer {
+    var displayTitle = "Saved sender"
+    var isForum = false
+    var isMonoForum = false
+    var displayAsTabs = false
+    var isBot = false
+    func displayForumAsTabs(splitState: Int) -> Bool { displayAsTabs }
+}
+private struct ThreadInfo {
+    struct Info { var title = "" }
+    var info = Info()
+}
+private struct Presentation {
+    var mainPeer: Peer? = Peer()
+    var threadInfo: ThreadInfo? = ThreadInfo()
+}
+private struct Counters { var replies: Int32? }
+private struct TitleStatus: Equatable {
+    var title = ""
+    var status = "online"
+    func withUpdatedTitle(_ value: String) -> Self {
+        var copy = self; copy.title = value; return copy
+    }
+    func withUpdatedStatus(_ value: String) -> Self {
+        var copy = self; copy.status = value; return copy
+    }
+}
+private final class Interaction {
+    let interactionContext: Context
+    var mode: Mode
+    var chatLocation: ChatLocation
+    init(context: Context, peerId: PeerId = 1, threadId: Int64 = 2, mode: Mode = .savedMessages) {
+        interactionContext = context
+        self.mode = mode
+        chatLocation = .thread(.init(peerId: peerId, threadId: threadId))
+    }
+}
+private struct TelegramUtilsHooks {
+    static let shared = Self()
+    func peerIsForum(_ peer: Peer) -> Bool { peer.isForum }
+}
+private typealias AccountRecordId = Int64
+__REGISTRY__
+private class ViewController: Equatable {
+    var navigationController: Navigation? { nil }
+    static func == (lhs: ViewController, rhs: ViewController) -> Bool { lhs === rhs }
+    var internalId: ObjectIdentifier { ObjectIdentifier(self) }
+}
+private protocol ChatControllerKind: ViewController {
+    var chatInteraction: Interaction { get }
+}
+private final class Modal {
+    var closed = false
+    func close() { closed = true }
+}
+private final class Navigation {
+    enum Transition { case none, pop }
+    var empty = ViewController()
+    let window: Window? = Window()
+    var stack: [ViewController]
+    var stackCount: Int { stack.count }
+    var isLocked = false
+    var modal: Modal? = Modal()
+    var controller: ViewController
+    var removed: [ViewController] = []
+    init() { stack = [empty]; controller = empty }
+    func push(_ controller: ViewController) { stack.append(controller); self.controller = controller }
+    func show(_ controller: ViewController, _ transition: Transition) { self.controller = controller }
+    func removeFromStack(_ controller: ViewController) { removed.append(controller) }
+__REMOVE__
+__ENUMERATE__
+__CLOSE__
+}
+private final class Window {
+    var closed = false
+    func performClose(_ sender: Any?) { closed = true }
+    let confirmation = ValuePromise<ConfirmResult?>(ignoreRepeated: false)
+}
+private enum ConfirmResult { case basic, thrid }
+private func verifyAlertSignal(for window: Window, information: String, ok: String, option: String?, optionIsSelected: Bool, completeWhenDismissed: Bool) -> Signal<ConfirmResult?, NoError> {
+    window.confirmation.get() |> take(1)
+}
+private final class Peers {
+    var removed: [(PeerId, Int64)] = []
+    func removeForumChannelThread(id: PeerId, threadId: Int64) -> Signal<Never, NoError> {
+        Signal { subscriber in
+            self.removed.append((id, threadId))
+            subscriber.putCompletion()
+            return EmptyDisposable
+        }
+    }
+}
+private final class Engine { let peers = Peers() }
+private final class Bindings {
+    let navigation = Navigation()
+    func rootNavigation() -> Navigation { navigation }
+}
+private struct Account { let id: AccountRecordId }
+private final class Context {
+    let account: Account
+    init(accountId: AccountRecordId = 1) { account = Account(id: accountId) }
+    let peerId: PeerId = 1
+    let layout = 0
+    let window = Window()
+    let bindings = Bindings()
+    let engine = Engine()
+    let globalPeerHandler = Promise<ChatLocation?>(initializeOnFirstAccess: .single(.peer(1)))
+    var scheduledPeerRemovals: [PeerId] = []
+}
+private func scheduleChatRemoval(context: Context, peer: Peer, peerId: PeerId, deleteGloballyIfPossible: Bool, blockBot: Bool) {
+    context.scheduledPeerRemovals.append(peerId)
+}
+private final class MessageHistoryTagSummaryView {
+    let count: Int32?
+    init(_ count: Int32?) { self.count = count }
+}
+private struct CombinedView { var views: [String: Any] }
+private func counter(_ count: Int32?, mode: Mode, hasView: Bool = true) -> Int32? {
+    let countViewKey = "count"
+    let views = CombinedView(views: hasView ? [countViewKey: MessageHistoryTagSummaryView(count)] : [:])
+    var result: Int32?
+    _ = (Signal<CombinedView, NoError>.single(views)
+__COUNTER__
+    ).start(next: { result = $0 })
+    return result
+}
+private func deleteChat(context: Context, peerId: PeerId = 1, threadId: Int64? = 2) -> Signal<Bool, NoError> {
+    let peer = Peer()
+    let text = "Delete"
+    let okTitle: String? = nil
+    let thridTitle: String? = nil
+    let forceRemoveGlobally = false
+__DELETE__
+}
+private final class Chat: ViewController, ChatControllerKind {
+    let context: Context
+    let chatInteraction: Interaction
+    var mode: Mode { chatInteraction.mode }
+    override var navigationController: Navigation? { context.bindings.navigation }
+    init(context: Context, peerId: PeerId = 1, threadId: Int64 = 2, mode: Mode = .savedMessages) {
+        self.context = context
+        self.chatInteraction = Interaction(context: context, peerId: peerId, threadId: threadId, mode: mode)
+        super.init()
+        if mode.isSavedMessagesThread { SavedChatControllerRegistry.shared.add(self) }
+    }
+    func header(count: Int32?, presentation: Presentation = Presentation()) -> TitleStatus {
+        let peer = presentation.mainPeer!
+        let counters = Counters(replies: count)
+        let data = ThreadData(peerId: chatInteraction.chatLocation.peerId, threadId: chatInteraction.chatLocation.threadId!)
+        var result = TitleStatus()
+__HEADER__
+        return result
+    }
+    func metadataChanged(from oldValue: Presentation, to value: Presentation) {
+__METADATA__
+    }
+}
+
+final class SavedChatTests: XCTestCase {
+    func testLoadingNonemptyLastMessageAndRefillKeepSenderTitle() {
+        let context = Context()
+        let chat = Chat(context: context)
+        context.bindings.navigation.push(chat)
+        XCTAssertEqual(chat.header(count: nil), TitleStatus(title: "Saved sender", status: ""))
+        XCTAssertEqual(chat.header(count: counter(5, mode: .savedMessages)), TitleStatus(title: "Saved sender", status: "5 messages"))
+        chat.metadataChanged(from: Presentation(), to: Presentation(threadInfo: nil))
+        XCTAssertTrue(context.bindings.navigation.controller === chat)
+        XCTAssertEqual(chat.header(count: counter(0, mode: .savedMessages), presentation: Presentation(threadInfo: nil)), TitleStatus(title: "Saved sender", status: "0 messages"))
+        XCTAssertEqual(chat.header(count: 1).status, "1 messages")
+        XCTAssertEqual(chat.header(count: 5).status, "5 messages")
+    }
+
+    func testConfirmedDeleteClosesSameAccountAcrossWindowsOnly() {
+        let main = Context()
+        let second = Context()
+        let otherAccount = Context(accountId: 2)
+        let local = Chat(context: main)
+        let remote = Chat(context: second)
+        let unrelated = Chat(context: second, threadId: 99)
+        let other = Chat(context: otherAccount)
+        main.bindings.navigation.push(local)
+        second.bindings.navigation.push(remote)
+        second.bindings.navigation.push(unrelated)
+        otherAccount.bindings.navigation.push(other)
+        let disposable = deleteChat(context: main).start()
+        defer { disposable.dispose() }
+        main.window.confirmation.set(.basic)
+        XCTAssertFalse(main.bindings.navigation.stack.contains(local))
+        XCTAssertFalse(second.bindings.navigation.stack.contains(remote))
+        XCTAssertTrue(second.bindings.navigation.controller === unrelated)
+        XCTAssertTrue(otherAccount.bindings.navigation.controller === other)
+    }
+
+    func testStandaloneSavedChatWindowClosesWithoutRemovingRootIndex() {
+        let main = Context()
+        let external = Context()
+        let chat = Chat(context: external)
+        let navigation = external.bindings.navigation
+        navigation.empty = chat
+        navigation.stack = [chat]
+        navigation.controller = chat
+        let disposable = deleteChat(context: main).start()
+        defer { disposable.dispose() }
+        main.window.confirmation.set(.basic)
+        XCTAssertTrue(navigation.window?.closed == true)
+        XCTAssertEqual(navigation.stack.count, 1)
+    }
+
+    func testIndividualDeletionKeepsOtherWindowsOpen() {
+        let a = Chat(context: Context())
+        let b = Chat(context: Context())
+        a.context.bindings.navigation.push(a)
+        b.context.bindings.navigation.push(b)
+        for chat in [a, b] {
+            chat.metadataChanged(from: Presentation(), to: Presentation(threadInfo: nil))
+            XCTAssertTrue(chat.context.bindings.navigation.controller === chat)
+            XCTAssertEqual(chat.header(count: 0).status, "0 messages")
+        }
+    }
+
+    func testUnknownSummaryRemainsUnknownAndMonoforumFallbackIsUnchanged() {
+        XCTAssertNil(counter(nil, mode: .savedMessages))
+        XCTAssertNil(counter(nil, mode: .savedMessages, hasView: false))
+        XCTAssertEqual(counter(0, mode: .savedMessages), 0)
+        XCTAssertEqual(counter(5, mode: .savedMessages), 5)
+        XCTAssertEqual(counter(nil, mode: .topic), 0)
+        XCTAssertEqual(counter(5, mode: .topic), 5)
+    }
+
+    func testMyNotesTitleAcrossLoadingNonemptyAndEmpty() {
+        let chat = Chat(context: Context(), threadId: 1)
+        for count: Int32? in [nil, 5, 0] {
+            XCTAssertEqual(chat.header(count: count).title, "My Notes")
+        }
+        XCTAssertEqual(chat.header(count: nil).status, "")
+        XCTAssertEqual(chat.header(count: 5).status, "5 messages")
+        XCTAssertEqual(chat.header(count: 0).status, "0 messages")
+    }
+
+    func testConfirmedDeleteFromHeaderReturnsToProfileWithoutClosingSavedMessages() {
+        let context = Context()
+        let savedMessages = ViewController()
+        let profile = ViewController()
+        let chat = Chat(context: context)
+        let navigation = context.bindings.navigation
+        navigation.push(savedMessages)
+        navigation.push(profile)
+        navigation.push(chat)
+        context.globalPeerHandler.set(.single(chat.chatInteraction.chatLocation))
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        context.window.confirmation.set(.basic)
+        XCTAssertEqual(context.engine.peers.removed.count, 1)
+        XCTAssertFalse(navigation.stack.contains(chat))
+        XCTAssertTrue(navigation.controller === profile)
+        XCTAssertEqual(navigation.stack.count, 3)
+    }
+
+    func testSidebarDeleteRemovesHiddenMatchingChatAndPreservesAnotherChat() {
+        let context = Context()
+        let deleted = Chat(context: context)
+        let other = Chat(context: context, threadId: 3)
+        let navigation = context.bindings.navigation
+        navigation.push(deleted)
+        navigation.push(other)
+        context.globalPeerHandler.set(.single(other.chatInteraction.chatLocation))
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        context.window.confirmation.set(.basic)
+        XCTAssertFalse(navigation.stack.contains(deleted))
+        XCTAssertTrue(navigation.controller === other)
+        XCTAssertEqual(navigation.stack.count, 2)
+    }
+
+    func testDeleteUsesCurrentStackWhenNavigationChangesDuringConfirmation() {
+        let context = Context()
+        let deleted = Chat(context: context)
+        let other = Chat(context: context, threadId: 3)
+        let navigation = context.bindings.navigation
+        navigation.push(deleted)
+        context.globalPeerHandler.set(.single(deleted.chatInteraction.chatLocation))
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        navigation.push(other)
+        context.globalPeerHandler.set(.single(other.chatInteraction.chatLocation))
+        context.window.confirmation.set(.basic)
+        XCTAssertFalse(navigation.stack.contains(deleted))
+        XCTAssertTrue(navigation.controller === other)
+    }
+
+    func testProfileListDeleteDoesNotCloseProfileWhenNoSavedChatIsOpen() {
+        let context = Context()
+        let profile = ViewController()
+        let navigation = context.bindings.navigation
+        navigation.push(profile)
+        context.globalPeerHandler.set(.single(.thread(.init(peerId: 1, threadId: 2))))
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        context.window.confirmation.set(.basic)
+        XCTAssertEqual(context.engine.peers.removed.count, 1)
+        XCTAssertTrue(navigation.controller === profile)
+    }
+
+    func testExplicitDeleteAfterLastMessageStillClosesMatchingController() {
+        let context = Context()
+        let chat = Chat(context: context)
+        context.bindings.navigation.push(chat)
+        chat.metadataChanged(from: Presentation(), to: Presentation(threadInfo: nil))
+        XCTAssertTrue(context.bindings.navigation.controller === chat)
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        context.window.confirmation.set(.basic)
+        XCTAssertFalse(context.bindings.navigation.stack.contains(chat))
+    }
+
+    func testCancellationDoesNotDeleteOrNavigate() {
+        let context = Context()
+        let chat = Chat(context: context)
+        context.bindings.navigation.push(chat)
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        XCTAssertTrue(context.engine.peers.removed.isEmpty)
+        XCTAssertTrue(context.bindings.navigation.controller === chat)
+        context.window.confirmation.set(nil)
+        XCTAssertTrue(context.engine.peers.removed.isEmpty)
+        XCTAssertTrue(context.bindings.navigation.controller === chat)
+    }
+
+    func testDisposedConfirmationDoesNotDeleteOrNavigate() {
+        let context = Context()
+        let chat = Chat(context: context)
+        context.bindings.navigation.push(chat)
+        let disposable = deleteChat(context: context).start()
+        disposable.dispose()
+        context.window.confirmation.set(.basic)
+        XCTAssertTrue(context.engine.peers.removed.isEmpty)
+        XCTAssertTrue(context.bindings.navigation.controller === chat)
+    }
+
+    func testCleanupMatchesBothPeerAndThreadAndSavedMessagesMode() {
+        let context = Context()
+        let navigation = context.bindings.navigation
+        let otherPeer = Chat(context: context, peerId: 9)
+        let otherThread = Chat(context: context, threadId: 3)
+        let forum = Chat(context: context, mode: .topic)
+        let normalChat = Chat(context: context, mode: .history)
+        normalChat.chatInteraction.chatLocation = .peer(context.peerId)
+        let deleted = Chat(context: context)
+        let duplicate = Chat(context: context)
+        [otherPeer, otherThread, normalChat, forum, deleted, duplicate].forEach(navigation.push)
+        let disposable = deleteChat(context: context).start()
+        defer { disposable.dispose() }
+        context.window.confirmation.set(.basic)
+        XCTAssertTrue(navigation.stack.contains(otherPeer))
+        XCTAssertTrue(navigation.stack.contains(otherThread))
+        XCTAssertTrue(navigation.stack.contains(forum))
+        XCTAssertTrue(navigation.stack.contains(normalChat))
+        XCTAssertFalse(navigation.stack.contains(deleted))
+        XCTAssertFalse(navigation.stack.contains(duplicate))
+        XCTAssertTrue(navigation.controller === forum)
+    }
+
+    func testOtherThreadModesRetainAllMetadataClosureRules() {
+        for mask in 0..<128 {
+            let peer = Peer(isForum: mask & 1 != 0, isMonoForum: mask & 2 != 0, displayAsTabs: mask & 4 != 0)
+            let oldPeer = Peer(isForum: mask & 8 != 0)
+            let oldInfo: ThreadInfo? = mask & 16 != 0 ? ThreadInfo() : nil
+            let info: ThreadInfo? = mask & 32 != 0 ? ThreadInfo() : nil
+            let mode: Mode = mask & 64 != 0 ? .savedMessages : .topic
+            let context = Context()
+            let chat = Chat(context: context, mode: mode)
+            context.bindings.navigation.push(chat)
+            chat.metadataChanged(from: Presentation(mainPeer: oldPeer, threadInfo: oldInfo), to: Presentation(mainPeer: peer, threadInfo: info))
+            let expected = !peer.isMonoForum && ((peer.isForum && !oldPeer.isForum) || (!mode.isSavedMessagesThread && oldInfo != nil && info == nil && !peer.displayAsTabs))
+            XCTAssertEqual(!context.bindings.navigation.stack.contains(chat), expected, "mask \(mask)")
+        }
+    }
+
+    func testForumAndWholePeerExplicitDeletionKeepExistingNavigation() {
+        for threadId: Int64? in [2, nil] {
+            let context = Context()
+            let chat = Chat(context: context, peerId: 9, mode: .topic)
+            context.bindings.navigation.push(chat)
+            context.globalPeerHandler.set(.single(chat.chatInteraction.chatLocation))
+            let disposable = deleteChat(context: context, peerId: 9, threadId: threadId).start()
+            context.window.confirmation.set(.basic)
+            disposable.dispose()
+            XCTAssertTrue(context.bindings.navigation.controller === context.bindings.navigation.empty)
+            XCTAssertEqual(context.engine.peers.removed.count, threadId == nil ? 0 : 1)
+            XCTAssertEqual(context.scheduledPeerRemovals.count, threadId == nil ? 1 : 0)
+        }
+    }
+}

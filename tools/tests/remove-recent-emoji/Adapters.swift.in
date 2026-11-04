@@ -1,0 +1,254 @@
+import Cocoa
+import SwiftSignalKit
+
+__CODING_KEY__
+
+__SOURCE_KEY__
+
+enum EmojiSegment: Int, Comparable {
+    case Recent = 0, People = 1, RecentAnimated = 100
+    var localizedString: String { self == .Recent ? "Frequently Used Emoji" : "People" }
+    static func <(lhs: EmojiSegment, rhs: EmojiSegment) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+__PICKER_MODE__
+
+__ROW_SELECTION__
+
+__REACTION_VALUE__
+struct SegmentState { let recent: RecentUsedEmoji }
+struct SegmentArguments { let mode: PickerMode }
+func recentSegmentList(_ seg: [EmojiSegment: [[NSAttributedString]]], state: SegmentState, arguments: SegmentArguments) -> [EmojiSegment] {
+    __SEGMENT_LIST__
+    return seglist
+}
+extension NSFont {
+    static func normal(_ size: CGFloat) -> NSFont { .systemFont(ofSize: size) }
+}
+extension NSAttributedString {
+    static func initialize(string: String, font: NSFont) -> NSAttributedString {
+        NSAttributedString(string: string, attributes: [.font: font])
+    }
+}
+
+public struct MediaId: Hashable, Codable {
+    public let namespace: Int32
+    public let id: Int64
+}
+
+public final class PreferencesEntry {
+    private let value: Any
+    public init<T: Codable>(_ value: T) { self.value = value }
+    public func get<T: Codable>(_ type: T.Type) -> T? { value as? T }
+}
+
+public enum ApplicationSpecificPreferencesKeys {
+    public static let recentEmoji = "recentEmoji"
+}
+
+public struct PreferencesView {
+    public let values: [String: PreferencesEntry]
+}
+
+public final class Transaction {
+    let postbox: Postbox
+    init(_ postbox: Postbox) { self.postbox = postbox }
+    public func updatePreferencesEntry(key: String, _ update: (PreferencesEntry?) -> PreferencesEntry?) {
+        postbox.values[key] = update(postbox.values[key])
+    }
+}
+
+public final class Postbox {
+    var values: [String: PreferencesEntry] = [:]
+    var transactions = 0
+    init(_ value: RecentUsedEmoji? = nil) { replace(value) }
+    func replace(_ value: RecentUsedEmoji?) {
+        values[ApplicationSpecificPreferencesKeys.recentEmoji] = value.map(PreferencesEntry.init)
+    }
+    var current: RecentUsedEmoji {
+        values[ApplicationSpecificPreferencesKeys.recentEmoji]?.get(RecentUsedEmoji.self) ?? .defaultSettings
+    }
+    public func transaction<T>(_ action: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal { subscriber in
+            self.transactions += 1
+            subscriber.putNext(action(Transaction(self)))
+            subscriber.putCompletion()
+            return EmptyDisposable
+        }
+    }
+    public func preferencesView(keys: [String]) -> Signal<PreferencesView, NoError> {
+        return .single(PreferencesView(values: values.filter { keys.contains($0.key) }))
+    }
+}
+
+final class Account {
+    let postbox = Postbox()
+}
+
+enum MenuItemMode { case normal, destruct }
+class ContextMenuItem {
+    let title: String
+    let handler: () -> Void
+    let itemMode: MenuItemMode
+    init(_ title: String, handler: @escaping () -> Void = {}, itemMode: MenuItemMode = .normal, itemImage: String? = nil) {
+        self.title = title
+        self.handler = handler
+        self.itemMode = itemMode
+    }
+}
+final class ContextSeparatorItem: ContextMenuItem {
+    init() { super.init("separator") }
+}
+final class EmojiToleranceContextMenuItem: ContextMenuItem {
+    let emoji: String
+    let callback: (String?) -> Void
+    init(emoji: String, callback: @escaping (String?) -> Void) {
+        self.emoji = emoji
+        self.callback = callback
+        super.init("skin-tone")
+    }
+}
+struct TestStrings {
+    let searchRemoveFromRecent = "Remove from Recent"
+    let reactionsRecentlyUsed = "Recently Used"
+    let reactionsPopular = "Popular Reactions"
+    let customStatusExpiresPromo = "Set an emoji status"
+    func customStatusExpires(_ value: String) -> String { "Expires in \(value)" }
+}
+func strings() -> TestStrings { TestStrings() }
+enum MenuAnimation {
+    case menu_delete
+    var value: String { "delete" }
+}
+
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+final class EBlockItem {
+    var lineAttr: [[NSAttributedString]]
+    var segment: EmojiSegment?
+    var removeRecent: ((String) -> Void)?
+    init(_ values: [NSAttributedString]) { lineAttr = [values] }
+    init(_ size: NSSize, stableId: AnyHashable, attrLines: [[NSAttributedString]], segment: EmojiSegment, account: Account, selectHandler: (String, NSRect) -> Void, dragHandler: Int?, selectedOrders: [String: Int], selectionColor: NSColor?, removeRecent: ((String) -> Void)?) {
+        lineAttr = attrLines
+        self.segment = segment
+        self.removeRecent = removeRecent
+    }
+}
+final class EBlockRowView: NSView {
+    struct Key: Hashable { let index: Int }
+    struct Cell { let frame: NSRect; let emoji: NSAttributedString }
+    let content = FlippedView(frame: NSRect(x: 12, y: 8, width: 100, height: 34))
+    var lines: [Key: Cell] = [:]
+    var item: AnyObject?
+    override var isFlipped: Bool { true }
+    convenience init(_ values: [String]) {
+        self.init(attributed: values.map { NSAttributedString(string: $0) })
+    }
+    init(attributed values: [NSAttributedString]) {
+        item = EBlockItem(values)
+        super.init(frame: NSRect(x: 0, y: 0, width: 140, height: 50))
+        addSubview(content)
+        for (index, value) in values.enumerated() {
+            lines[Key(index: index)] = Cell(frame: NSRect(x: index * 40, y: 0, width: 34, height: 34), emoji: value)
+        }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    __BUILTIN_HIT__
+}
+
+final class BuiltinMenu {
+    let account = Account()
+    var view: NSView?
+    var removeRecent: ((String) -> Void)?
+    var selectHandler: (String, NSRect) -> Void = { _, _ in }
+    init(view: EBlockRowView, removeRecent: ((String) -> Void)? = nil) {
+        self.view = view
+        self.removeRecent = removeRecent
+    }
+    __BUILTIN_MENU__
+}
+
+struct TelegramMediaFile: Equatable {
+    let fileId: MediaId
+    var isPremiumEmoji = false
+    var emojiReference: Int? = nil
+    var resource: LocalBundleResource? = nil
+    init(fileId: MediaId, isPremiumEmoji: Bool = false, emojiReference: Int? = nil) {
+        self.fileId = fileId
+        self.isPremiumEmoji = isPremiumEmoji
+        self.emojiReference = emojiReference
+    }
+    init(fileId: MediaId, partialReference: Int?, resource: LocalBundleResource, previewRepresentations: [Int], videoThumbnails: [Int], immediateThumbnailData: Data?, mimeType: String, size: Int?, attributes: [Int], alternativeRepresentations: [Int]) {
+        self.fileId = fileId
+        self.resource = resource
+    }
+    func _parse() -> TelegramMediaFile { self }
+}
+struct StickerPackItem: Equatable {
+    struct Index: Equatable {
+        let index: Int32
+        let id: Int64
+    }
+    var index = Index(index: 0, id: 0)
+    let file: TelegramMediaFile
+    var indexKeys: [String] = []
+    func getStringRepresentationsOfIndexKeys() -> [String] { indexKeys }
+}
+final class EmojiesSectionRowItem {
+    __ROW_MODE__
+    enum Source: Equatable { case builtin(String), custom(Int64) }
+    struct SelectedItem: Equatable { let source: Source; let index: Int? }
+    struct Item { let rect: NSRect; let item: StickerPackItem? }
+    var removeRecent: ((MediaId) -> Void)?
+    var items: [Item]
+    var mode: Mode = .panel
+    var selectedItems: [SelectedItem] = []
+    var revealed = false
+    var color: NSColor?
+    var showAllItems: (() -> Void)?
+    convenience init(_ size: NSSize, stableId: AnyHashable, context: SectionContext, revealed: Bool, installed: Bool, info: Int?, items: [StickerPackItem], mode: Mode, selectedItems: [SelectedItem], color: NSColor?, callback: Int?, largeCallback: Int?, drag: Int?, showAllItems: (() -> Void)? = nil, ignorePremium: Bool, removeRecent: ((MediaId) -> Void)? = nil) {
+        self.init([])
+        self.items = items.enumerated().map { index, item in
+            Item(rect: NSRect(x: index * 40, y: 0, width: 34, height: 34), item: item)
+        }
+        self.mode = mode
+        self.selectedItems = selectedItems
+        self.revealed = revealed
+        self.color = color
+        self.showAllItems = showAllItems
+        self.removeRecent = removeRecent
+    }
+    init(_ ids: [MediaId]) {
+        items = ids.enumerated().map { index, id in
+            Item(rect: NSRect(x: index * 40, y: 0, width: 34, height: 34), item: StickerPackItem(file: TelegramMediaFile(fileId: id)))
+        }
+    }
+}
+final class EmojiesSectionRowView: NSView {
+    let contentView = FlippedView(frame: NSRect(x: 12, y: 8, width: 100, height: 34))
+    var item: AnyObject?
+    var itemUnderMouse: StickerPackItem?
+    override var isFlipped: Bool { true }
+    init(_ ids: [MediaId]) {
+        item = EmojiesSectionRowItem(ids)
+        super.init(frame: NSRect(x: 0, y: 0, width: 140, height: 50))
+        addSubview(contentView)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    __ANIMATED_HIT__
+}
+
+final class AnimatedRemovalMenu {
+    var view: NSView?
+    var removeRecent: ((MediaId) -> Void)?
+    var callback: (StickerPackItem) -> Void = { _ in }
+    init(view: EmojiesSectionRowView, removeRecent: ((MediaId) -> Void)? = nil) {
+        self.view = view
+        self.removeRecent = removeRecent
+    }
+    func menuItems(in location: NSPoint) -> [ContextMenuItem] {
+        var items: [ContextMenuItem] = []
+        __ANIMATED_REMOVAL_MENU__
+        return items
+    }
+}

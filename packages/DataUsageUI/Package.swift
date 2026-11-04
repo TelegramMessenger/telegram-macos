@@ -40,6 +40,8 @@ let package = Package(
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
+        .package(name: "rnoise", path: "../../submodules/telegram-ios/third-party/rnnoise"),
+        .package(name: "ThemeSettings", path: "../ThemeSettings"),
     ] + deps.map { .package(name: $0.0, path: $0.1) },
     targets: [
         .target(
@@ -49,6 +51,20 @@ let package = Package(
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
-            path: "Sources/DataUsageUI"),
+            path: "Sources/DataUsageUI",
+            resources: [.process("Resources/StorageUsageAssets.xcassets")]),
+        .testTarget(
+            name: "DataUsageUITests",
+            dependencies: [
+                "DataUsageUI",
+                .product(name: "TGUIKit", package: "TGUIKit"),
+                .product(name: "GeneralRows", package: "GeneralRows"),
+                .product(name: "TelegramTheme", package: "TelegramTheme"),
+                .product(name: "ColorPalette", package: "ColorPalette"),
+                .product(name: "InAppSettings", package: "InAppSettings"),
+                .product(name: "ThemeSettings", package: "ThemeSettings"),
+                .product(name: "rnoise", package: "rnoise"),
+            ],
+            path: "Tests/DataUsageUITests"),
     ]
 )

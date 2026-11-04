@@ -47,7 +47,6 @@ fileprivate struct PreviewSendingState : Hashable {
     let isSpoiler: Bool
     let sort: Sort
     let payAmount: Int64?
-    let sendMessageStars: StarsAmount?
     
     func hash(into hasher: inout Hasher) {
         hasher.combine(state)
@@ -55,9 +54,6 @@ fileprivate struct PreviewSendingState : Hashable {
         hasher.combine(isSpoiler)
         if let payAmount {
             hasher.combine(payAmount)
-        }
-        if let sendMessageStars {
-            hasher.combine(sendMessageStars.value)
         }
     }
     
@@ -70,19 +66,19 @@ fileprivate struct PreviewSendingState : Hashable {
     }
     
     func withUpdatedState(_ state: State) -> PreviewSendingState {
-        return .init(state: state, isCollage: self.isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount, sendMessageStars: self.sendMessageStars)
+        return .init(state: state, isCollage: self.isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount)
     }
     func withUpdatedIsCollage(_ isCollage: Bool) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount, sendMessageStars: self.sendMessageStars)
+        return .init(state: self.state, isCollage: isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount)
     }
     func withUpdatedIsSpoiler(_ isSpoiler: Bool) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: self.sort, payAmount: self.payAmount, sendMessageStars: self.sendMessageStars)
+        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: self.sort, payAmount: self.payAmount)
     }
     func withUpdatedSort(_ sort: Sort) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: self.payAmount, sendMessageStars: self.sendMessageStars)
+        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: self.payAmount)
     }
     func withUpdatedPayAmount(_ payAmount: Int64?) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: payAmount, sendMessageStars: self.sendMessageStars)
+        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: payAmount)
     }
 }
 
@@ -145,7 +141,7 @@ fileprivate class PreviewSenderView : Control {
     fileprivate var totalCount: Int = 0
     fileprivate var slowMode: SlowMode? = nil
     
-    private var _state: PreviewSendingState = PreviewSendingState(state: .file, isCollage: FastSettings.isNeedCollage, isSpoiler: false, sort: .down, payAmount: nil, sendMessageStars: nil)
+    private var _state: PreviewSendingState = PreviewSendingState(state: .file, isCollage: FastSettings.isNeedCollage, isSpoiler: false, sort: .down, payAmount: nil)
     
     var state: PreviewSendingState {
         set {
@@ -513,7 +509,7 @@ fileprivate class PreviewSenderView : Control {
         let layout = TextViewLayout(.initialize(string: title, color: theme.colors.text, font: .medium(.text)))
         self.titleView.update(layout)
         
-        if let sendPaidMessages = state.sendMessageStars, let controller {
+        if let controller, let sendPaidMessages = controller.chatInteraction.presentation.sendPaidMessageStars {
             let messagesCount = count
             let current: StarsSendActionView
             if let view = self.starsSendActionView {
@@ -1975,7 +1971,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
             return
         }
 
-        let initialState = PreviewState(urls: [], medias: [], currentState: .init(state: .media, isCollage: true, isSpoiler: false, sort: .down, payAmount: nil, sendMessageStars: chatInteraction.presentation.sendPaidMessageStars), editedData: [:])
+        let initialState = PreviewState(urls: [], medias: [], currentState: .init(state: .media, isCollage: true, isSpoiler: false, sort: .down, payAmount: nil), editedData: [:])
         
         let statePromise:ValuePromise<PreviewState> = ValuePromise(ignoreRepeated: true)
         let stateValue = Atomic(value: initialState)
@@ -2247,10 +2243,10 @@ public class PreviewSenderController: ModalViewController, Notifable {
         default:
             break
         }
-        var state: PreviewSendingState = .init(state: mediaState, isCollage: canCollage, isSpoiler: false, sort: .down, payAmount: nil, sendMessageStars: chatInteraction.presentation.sendPaidMessageStars)
+        var state: PreviewSendingState = .init(state: mediaState, isCollage: canCollage, isSpoiler: false, sort: .down, payAmount: nil)
         if let _ = chatInteraction.presentation.slowMode {
             if state.state != .archive && self.urls.count > 1, !state.isCollage {
-                state = .init(state: .archive, isCollage: false, isSpoiler: false, sort: .down, payAmount: nil, sendMessageStars: chatInteraction.presentation.sendPaidMessageStars)
+                state = .init(state: .archive, isCollage: false, isSpoiler: false, sort: .down, payAmount: nil)
             }
         }
         
@@ -2442,7 +2438,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                         
                         verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayMediaOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, successHandler: { [weak self] result in
                             guard let self, !self.pendingActions.isClosed, !self.sent else { return }
-                            
+                            guard chatPaidMessagePriceIsCurrent(self.chatInteraction, payStars) else { return }
                             if starsState.balance.value > starsPrice {
                                 invoke(result == .thrid)
                             } else {
@@ -3085,6 +3081,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 if value.slowMode != oldValue.slowMode {
                     let urls = self.urls
                     self.urls = urls
+                }
+                if value.sendPaidMessageStars != oldValue.sendPaidMessageStars, self.genericView.totalCount > 0 {
+                    self.genericView.applyOptions(self.genericView.options, count: self.genericView.totalCount, canCollage: self.genericView.canCollage, canSpoiler: self.genericView.canSpoiler)
                 }
             }
             if value.effectiveInput != oldValue.effectiveInput {
