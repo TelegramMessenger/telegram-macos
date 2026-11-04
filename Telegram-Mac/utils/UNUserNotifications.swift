@@ -75,7 +75,7 @@ class UNUserNotifications : NSObject {
                 return
             }
             let peerId = PeerId(namespace: PeerId.Namespace._internalFromInt32Value(namespace), id: PeerId.Id._internalFromInt64Value(id))
-            self.bindings.navigateToStory(account, peerId)
+            self.bindings.navigateToStory(account, peerId, userInfo["story.id"] as? Int32)
             return
         }
         if let messageId = getNotificationMessageId(userInfo: userInfo, for: "reply"), let accountId = userInfo["accountId"] as? Int64 {

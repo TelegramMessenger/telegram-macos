@@ -2173,6 +2173,7 @@ public final class L10n {
   public static var channelEventFilterAdminsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.AdminsHeader") }
   /// EVENTS
   public static var channelEventFilterEventsHeader: String  { return L10n.tr("Localizable", "Channel.EventFilter.EventsHeader") }
+  /// Filters
   public static var channelEventFilterFilters: String  { return L10n.tr("Localizable", "Channel.EventFilter.Filters") }
   /// Empty
   public static var channelEventLogEmpty: String  { return L10n.tr("Localizable", "Channel.EventLog.Empty") }
@@ -3494,10 +3495,12 @@ public final class L10n {
   public static var chatContextRestrict: String  { return L10n.tr("Localizable", "Chat.Context.Restrict") }
   /// Return Messages Fee
   public static var chatContextReturnMessageFee: String  { return L10n.tr("Localizable", "Chat.Context.ReturnMessageFee") }
+  /// Save All Photos...
+  public static var chatContextSaveAllPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveAllPhotos") }
   /// Save As...
   public static var chatContextSaveMedia: String  { return L10n.tr("Localizable", "Chat.Context.SaveMedia") }
+  /// Save Selected Photos...
   public static var chatContextSaveSelectedPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveSelectedPhotos") }
-  public static var chatContextSaveAllPhotos: String  { return L10n.tr("Localizable", "Chat.Context.SaveAllPhotos") }
   /// Shared Media
   public static var chatContextSharedMedia: String  { return L10n.tr("Localizable", "Chat.Context.SharedMedia") }
   /// Summarize
@@ -11734,6 +11737,12 @@ public final class L10n {
   public static var notificationStoryHidden: String  { return L10n.tr("Localizable", "Notification.Story.Hidden") }
   /// posted a story
   public static var notificationStoryPosted: String  { return L10n.tr("Localizable", "Notification.Story.Posted") }
+  /// %@ to your story
+  public static func notificationStoryReaction(_ p1: String) -> String {
+    return L10n.tr("Localizable", "Notification.Story.Reaction", p1)
+  }
+  /// New reaction to your story
+  public static var notificationStoryReactionHidden: String  { return L10n.tr("Localizable", "Notification.Story.ReactionHidden") }
   /// Reply
   public static var notificationTitleReply: String  { return L10n.tr("Localizable", "Notification.Title.Reply") }
   /// All Accounts
@@ -11872,6 +11881,8 @@ public final class L10n {
   public static var notificationSettingsReactionsFrom: String  { return L10n.tr("Localizable", "NotificationSettings.Reactions.From") }
   /// Reactions to my Messages
   public static var notificationSettingsReactionsMessages: String  { return L10n.tr("Localizable", "NotificationSettings.Reactions.Messages") }
+  /// Reactions to my Stories
+  public static var notificationSettingsReactionsStories: String  { return L10n.tr("Localizable", "NotificationSettings.Reactions.Stories") }
   /// Turn this on if you want to receive notifications from all your accounts.
   public static var notificationSettingsShowNotificationsFromOff: String  { return L10n.tr("Localizable", "NotificationSettings.ShowNotificationsFrom.Off") }
   /// Turn this off if you want to receive notifications only from the account you are currently using.

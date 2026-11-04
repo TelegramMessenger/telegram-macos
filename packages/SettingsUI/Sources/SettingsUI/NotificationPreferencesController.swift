@@ -246,7 +246,7 @@ private func notificationEntries(state: State, settings:InAppNotificationSetting
         index += 1
     }
     
-    let reactionsRow = CategoryRow(title: strings().notificationSettingsReactions, value: globalSettings.reactionSettings.messages == .nobody ? strings().notificationSettingsOff : strings().notificationSettingsOn, description: nil, viewType: .lastItem)
+    let reactionsRow = CategoryRow(title: strings().notificationSettingsReactions, value: globalSettings.reactionSettings.messages == .nobody && globalSettings.reactionSettings.stories == .nobody ? strings().notificationSettingsOff : strings().notificationSettingsOn, description: nil, viewType: .lastItem)
     entries.append(categoryEntry(sectionId: sectionId, index: index, identifier: _id_reactions, row: reactionsRow, icon: reactionsNotificationIcon, action: arguments.openReactions))
     index += 1
     
