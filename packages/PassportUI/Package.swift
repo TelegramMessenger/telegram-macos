@@ -31,6 +31,7 @@ let package = Package(
         .package(name: "TGPassportMRZ", path: "../TGPassportMRZ"),
         .package(name: "OCR", path: "../OCR"),
         .package(name: "FilePanels", path: "../FilePanels"),
+        .package(name: "PhoneInputUI", path: "../PhoneInputUI"),
     ],
     targets: [
         .target(
@@ -58,6 +59,7 @@ let package = Package(
                 .product(name: "TGPassportMRZ", package: "TGPassportMRZ", condition: nil),
                 .product(name: "OCR", package: "OCR", condition: nil),
                 .product(name: "FilePanels", package: "FilePanels", condition: nil),
+                .product(name: "PhoneInputUI", package: "PhoneInputUI", condition: nil),
             ],
             path: "Sources/PassportUI"),
     ]

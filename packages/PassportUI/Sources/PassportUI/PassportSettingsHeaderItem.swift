@@ -32,6 +32,10 @@ class PassportSettingsHeaderItem: GeneralRowItem {
         return PassportSettingsHeaderItemView.self
     }
 
+    override var backdorColor: NSColor {
+        return theme.colors.listBackground
+    }
+
     override var accessibilityIsSpacer: Bool {
         return true
     }

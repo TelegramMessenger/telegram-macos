@@ -96,12 +96,13 @@ private final class ValuesSelectorModalView : View {
     override func layout() {
         super.layout()
         
-        let offset: CGFloat = searchView.isHidden ? 0 : 50
+        let headerInset: CGFloat = 56
+        let offset: CGFloat = headerInset + (searchView.isHidden ? 0 : 50)
         
         tableView.frame = NSMakeRect(0, offset, frame.width, frame.height - offset)
         searchView.setFrameSize(NSMakeSize(frame.width - 20, 30))
-        searchView.centerX(y: floorToScreenPixels(backingScaleFactor, (50 - searchView.frame.height) / 2))
-        separator.frame = NSMakeRect(0, 49, frame.width, .borderSize)
+        searchView.centerX(y: headerInset + floorToScreenPixels(backingScaleFactor, (50 - searchView.frame.height) / 2))
+        separator.frame = NSMakeRect(0, headerInset + 49, frame.width, .borderSize)
     }
 }
 

@@ -106,6 +106,12 @@ open class TextButtonBarView: BarView {
     open override func fit(to maxWidth: CGFloat, transition: ContainedViewLayoutTransition = .immediate) -> CGFloat {
         let pad = TextButtonBarView.horizontalPad
         let pillHeight = TextButtonBarView.pillHeight
+        if (currentTexts[.Normal] ?? "").isEmpty, button.imageView.image != nil {
+            let width = min(maxWidth, pillHeight)
+            _ = button.sizeToFit(NSZeroSize, NSMakeSize(width, pillHeight), thatFit: true, transition: transition)
+            _isFitted = true
+            return button.frame.width
+        }
         let addition = NSMakeSize(pad, 0)
         _isFitted = button.sizeToFit(addition, NSMakeSize(maxWidth, pillHeight), thatFit: false, transition: transition)
         return button.frame.width
