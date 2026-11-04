@@ -43,37 +43,46 @@ public final class InputDataTableBasedItem : GeneralRowItem {
         }
         public let left: TextViewLayout?
         public let right: Right
+        fileprivate let badgeLayout: TextViewLayout?
 
         public init(left: TextViewLayout?, right: Right) {
             self.left = left
             self.right = right
+            self.badgeLayout = right.badge.map { TextViewLayout(.initialize(string: $0.text, font: .normal(.small))) }
         }
-        
+
         public var height: CGFloat {
-            return (left?.layoutSize.height ?? 16) + 8 + right.name.layoutSize.height
+            return (left?.layoutSize.height ?? 16) + 8 + right.name.layoutSize.height + additionalBadgeHeight
         }
-        
+
+        fileprivate var isBadgeOnNextLine: Bool {
+            guard let badgeLayout else {
+                return false
+            }
+            return badgeLayout.numberOfLines > 1 || right.name.layoutSize.width + badgeLayout.layoutSize.width + 16 > right.name.constrainedWidth
+        }
+
+        fileprivate var additionalBadgeHeight: CGFloat {
+            if isBadgeOnNextLine, let badgeLayout {
+                return badgeLayout.layoutSize.height + 10
+            }
+            return 0
+        }
+
         public static let leftViewReserved: CGFloat = 25
         public static let rightViewReserved: CGFloat = 26
 
         public func measure(_ width: CGFloat, basic: CGFloat) {
             var additional: CGFloat = 0
-            if let badge = right.badge {
-                let layout = TextViewLayout(.initialize(string: badge.text, font: .normal(.small)))
-                layout.measure(width: .greatestFiniteMagnitude)
-                additional += layout.layoutSize.width + 16
-            }
             if right.leftView != nil {
                 additional += Row.leftViewReserved
             }
             if right.rightView != nil {
                 additional += Row.rightViewReserved
             }
-            if left == nil {
-                right.name.measure(width: basic - additional - 20)
-            } else {
-                right.name.measure(width: width - 20 - additional)
-            }
+            let contentWidth = (left == nil ? basic : width) - 20
+            right.name.measure(width: max(1, contentWidth - additional))
+            badgeLayout?.measure(width: max(1, contentWidth - 10))
         }
         public func prepare(width: CGFloat) {
             left?.measure(width: width / 1.5 - 40)
@@ -137,7 +146,7 @@ public final class InputDataTableBasedItem : GeneralRowItem {
 
 final class InputDataTableBasedItemView: TableRowView {
     
-    private class RowView: View {
+    class RowView: View {
         
         private class BadgeView : Control {
             private let textView = TextView()
@@ -154,7 +163,7 @@ final class InputDataTableBasedItemView: TableRowView {
                 fatalError("init(coder:) has not been implemented")
             }
             
-            func set(badge: InputDataTableBasedItem.Row.Right.Badge) -> NSSize {
+            func set(badge: InputDataTableBasedItem.Row.Right.Badge, width: CGFloat) -> NSSize {
                 let badgeColor: NSColor
                 if let color = badge.color {
                     badgeColor = color
@@ -164,7 +173,7 @@ final class InputDataTableBasedItemView: TableRowView {
                     badgeColor = theme.colors.accent
                 }
                 let layout = TextViewLayout(.initialize(string: badge.text, color: badgeColor, font: .normal(.small)))
-                layout.measure(width: .greatestFiniteMagnitude)
+                layout.measure(width: width)
                 textView.update(layout)
 
                 self.appTooltip = badge.tooltipText
@@ -217,7 +226,7 @@ final class InputDataTableBasedItemView: TableRowView {
         private var row: InputDataTableBasedItem.Row?
         private var startRight: CGFloat = 0
 
-        func update(_ row: InputDataTableBasedItem.Row, startRight: CGFloat, hasSeparator: Bool, context: any AccountContextProtocol) {
+        func update(_ row: InputDataTableBasedItem.Row, startRight: CGFloat, hasSeparator: Bool, context: (any AccountContextProtocol)?) {
             self.row = row
             self.startRight = row.left == nil ? 10 : startRight
             leftView.update(row.left)
@@ -248,7 +257,7 @@ final class InputDataTableBasedItemView: TableRowView {
                 }
             }
             
-            if let badge = row.right.badge {
+            if let badge = row.right.badge, let badgeLayout = row.badgeLayout {
                 let current: BadgeView
                 if let view = self.rightBadge {
                     current = view
@@ -257,7 +266,7 @@ final class InputDataTableBasedItemView: TableRowView {
                     self.rightBadge = current
                     addSubview(current)
                 }
-                let size = current.set(badge: badge)
+                let size = current.set(badge: badge, width: badgeLayout.constrainedWidth)
                 current.setFrameSize(size)
             } else if let rightBadge {
                 performSubviewRemoval(rightBadge, animated: false)
@@ -273,27 +282,33 @@ final class InputDataTableBasedItemView: TableRowView {
                 return
             }
             
-            leftView.centerY(x: 10)
+            let addition = -row.additionalBadgeHeight / 2
+            leftView.centerY(x: 10, addition: addition)
             if let rightLeft = rightLeft {
-                rightLeft.centerY(x: startRight)
-                rightView.centerY(x: rightLeft.frame.maxX + 5)
+                rightLeft.centerY(x: startRight, addition: addition)
+                rightView.centerY(x: rightLeft.frame.maxX + 5, addition: addition)
             } else {
-                rightView.centerY(x: startRight)
+                rightView.centerY(x: startRight, addition: addition)
             }
-            
+
             var rightOffset = rightView.frame.maxX + 6
             if let rightRight = rightRight {
                 if row.right.rightToCorner {
-                    rightRight.centerY(x: frame.width - rightRight.frame.width - 8)
+                    rightRight.centerY(x: frame.width - rightRight.frame.width - 8, addition: addition)
                 } else {
                     rightOffset -= 2
-                    rightRight.centerY(x: rightOffset)
+                    rightRight.centerY(x: rightOffset, addition: addition)
                     rightOffset += rightRight.frame.width + 2
                 }
             }
-            
+
             if let rightBadge {
-                rightBadge.centerY(x: rightOffset)
+                if row.isBadgeOnNextLine {
+                    let contentMaxY = max(rightView.frame.maxY, rightLeft?.frame.maxY ?? 0, rightRight?.frame.maxY ?? 0)
+                    rightBadge.setFrameOrigin(NSMakePoint(startRight, contentMaxY + 6))
+                } else {
+                    rightBadge.centerY(x: rightOffset)
+                }
             }
             
            

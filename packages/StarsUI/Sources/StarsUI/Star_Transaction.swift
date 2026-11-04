@@ -81,14 +81,14 @@ private final class HeaderItem : GeneralRowItem {
     fileprivate let arguments: Arguments
     fileprivate let isGift: Bool
     fileprivate let uniqueGift: StarGift.UniqueGift?
-    fileprivate let canDeleteGift: Bool
+    fileprivate let canManageGift: Bool
     
     fileprivate private(set) var authorLayout: TextViewLayout?
     fileprivate private(set) var authorPeer: Peer?
     
-    public init(_ initialSize: NSSize, stableId: AnyHashable, context: (any AccountContextProtocol), transaction: StarsContext.State.Transaction, currency: CurrencyAmount.Currency, peer: EnginePeer?, purpose: Star_TransactionPurpose, arguments: Arguments, author: Peer?, canDeleteGift: Bool) {
+    public init(_ initialSize: NSSize, stableId: AnyHashable, context: (any AccountContextProtocol), transaction: StarsContext.State.Transaction, currency: CurrencyAmount.Currency, peer: EnginePeer?, purpose: Star_TransactionPurpose, arguments: Arguments, author: Peer?, canManageGift: Bool) {
         self.context = context
-        self.canDeleteGift = canDeleteGift
+        self.canManageGift = canManageGift
         self.transaction = transaction
         self.currency = currency
         self.peer = peer
@@ -629,7 +629,7 @@ private final class HeaderView : GeneralContainableRowView {
                 self.uniqueBackground = nil
                 self.uniqueBackgroundContent = nil
             }
-            if item.canDeleteGift {
+            if item.canManageGift {
                 let current: ImageButton
                 if let view = self.actions {
                     current = view
@@ -646,9 +646,7 @@ private final class HeaderView : GeneralContainableRowView {
                 current.sizeToFit(.zero, NSMakeSize(36, 36), thatFit: true)
                 current.contextMenu = {
                     let menu = ContextMenu()
-                    menu.addItem(ContextMenuItem(strings().giftViewContextDelete, handler: {
-                        item.arguments.deleteGift()
-                    }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+                    menu.items = item.arguments.giftMenu?() ?? []
                     return menu
                 }
             } else if let view = self.actions {
@@ -1050,6 +1048,7 @@ private final class Arguments {
     public let changeFee:()->Void
     public let giftUpgrade:(String)->Void
     public let deleteGift:()->Void
+    var giftMenu: (() -> [ContextMenuItem])?
     public init(context: (any AccountContextProtocol), openPeer:@escaping(PeerId)->Void, copyTransaction:@escaping(String)->Void, openLink:@escaping(String)->Void, previewMedia:@escaping()->Void, openApps: @escaping()->Void, close: @escaping()->Void, openStars:@escaping()->Void, convertStars:@escaping()->Void, displayOnMyPage:@escaping()->Void, seeInProfile: @escaping() ->Void, sendGift:@escaping(PeerId)->Void, openAffiliate:@escaping()->Void, upgrade:@escaping()->Void, transferUnqiue:@escaping(StarGift.UniqueGift)->Void, copyNftLink:@escaping(StarGift.UniqueGift)->Void, shareNft:@escaping(StarGift.UniqueGift)->Void, startWearing:@escaping(StarGift.UniqueGift)->Void, changeFee:@escaping()->Void, giftUpgrade:@escaping(String)->Void, deleteGift:@escaping()->Void) {
         self.context = context
         self.openPeer = openPeer
@@ -1086,6 +1085,8 @@ private struct State : Equatable {
     public var starsState: StarsContext.State?
     public var author: EnginePeer?
     public var canDeleteGift: Bool = false
+    public var canManageGift: Bool = false
+    public var canConvertGift: Bool = false
 }
 
 private let _id_header = InputDataIdentifier("_id_header")
@@ -1102,7 +1103,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
    // sectionId += 1
     
     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_header, equatable: .init(state), comparable: nil, item: { initialSize, stableId in
-        return HeaderItem(initialSize, stableId: stableId, context: arguments.context, transaction: state.transaction, currency: state.currency, peer: state.peer, purpose: state.purpose, arguments: arguments, author: state.author?._asPeer(), canDeleteGift: state.canDeleteGift)
+        return HeaderItem(initialSize, stableId: stableId, context: arguments.context, transaction: state.transaction, currency: state.currency, peer: state.peer, purpose: state.purpose, arguments: arguments, author: state.author?._asPeer(), canManageGift: state.canManageGift)
     }))
     
     entries.append(.sectionId(sectionId, type: .customModern(10)))
@@ -1129,7 +1130,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             switch state.transaction.peer {
             case let .peer(peer):
                 if peer.id == arguments.context.peerId || peer._asPeer().groupAccess.canManageGifts {
-                    if !converted {
+                    if !converted, state.canConvertGift {
                         convertStarsAmount = convertStars
                     }
                     if !upgraded, canUpgrade {
@@ -1605,7 +1606,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 if peer.id == arguments.context.peerId || peer._asPeer().groupAccess.canManageGifts {
                     if state.purpose.canUpgrade, !state.purpose.isUpgraded {
                         arguments.upgrade()
-                    } else if convertStarsAmount != nil {
+                    } else if state.canManageGift {
                         arguments.displayOnMyPage()
                     } else {
                         arguments.close()
@@ -1759,25 +1760,13 @@ public enum Star_TransactionPurpose : Equatable {
 }
 
 private func starTransactionCanDeleteGift(context: any AccountContextProtocol, transaction: StarsContext.State.Transaction, purpose: Star_TransactionPurpose, reference: StarGiftReference?) -> Bool {
-    guard let reference, case let .starGift(gift, _, _, _, _, _, converted, fromProfile, upgraded, _, _, _, _, _, _, _, _, _, _, _, isRefunded, _, _, _) = purpose, case let .generic(generic) = gift, generic.availability == nil else {
+    guard case let .starGift(gift, _, _, _, _, _, converted, fromProfile, upgraded, _, _, _, _, _, _, _, _, _, _, _, isRefunded, _, _, _) = purpose, case let .peer(owner) = transaction.peer else {
         return false
     }
-    if upgraded || isRefunded || (converted && !fromProfile) {
-        return false
-    }
-    guard case let .peer(owner) = transaction.peer else {
-        return false
-    }
-    if case let .peer(peerId, _) = reference, peerId.namespace == Namespaces.Peer.CloudChannel {
-        if owner.id == peerId, case let .channel(channel) = owner {
-            return channel.flags.contains(.isCreator)
-        }
-        return false
-    }
-    return owner.id == context.peerId
+    return starGiftCanDelete(gift: gift, reference: reference, owner: owner, accountPeerId: context.peerId, converted: converted, fromProfile: fromProfile, upgraded: upgraded, refunded: isRefunded)
 }
 
-public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPeerId: PeerId, peer: EnginePeer?, transaction: StarsContext.State.Transaction, purpose: Star_TransactionPurpose = .payment, reference: StarGiftReference? = nil, profileContext: ProfileGiftsContext? = nil, currency: CurrencyAmount.Currency = .stars) -> InputDataModalController {
+public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPeerId: PeerId, peer: EnginePeer?, transaction: StarsContext.State.Transaction, purpose: Star_TransactionPurpose = .payment, reference: StarGiftReference? = nil, profileContext: ProfileGiftsContext? = nil, currency: CurrencyAmount.Currency = .stars, giftMenuItems: (() -> [ContextMenuItem])? = nil) -> InputDataModalController {
 
     let actionsDisposable = DisposableSet()
     var close:(()->Void)? = nil
@@ -1788,13 +1777,34 @@ public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPe
     
     var initialState = State(transaction: transaction, currency: currency, purpose: purpose, peer: peer)
     initialState.canDeleteGift = starTransactionCanDeleteGift(context: context, transaction: transaction, purpose: purpose, reference: reference)
-    
+    let conversionPeriod = context.appConfiguration.getGeneralValue("stargifts_convert_period_max", orElse: 90 * 24 * 60 * 60)
+    if let reference, case let .starGift(gift, amount, _, _, _, _, converted, fromProfile, upgraded, _, _, _, _, _, _, _, _, _, _, _, refunded, _, _, _) = purpose, gift.generic != nil, !upgraded, !refunded, !converted || fromProfile, case let .peer(owner) = transaction.peer {
+        let canManage: Bool
+        if case let .peer(peerId, _) = reference, peerId.namespace == Namespaces.Peer.CloudChannel {
+            canManage = owner.id == peerId && owner._asPeer().groupAccess.canManageGifts
+        } else {
+            canManage = owner.id == context.peerId
+        }
+        initialState.canManageGift = canManage
+        initialState.canConvertGift = canManage && starGiftCanConvert(date: transaction.date, period: conversionPeriod, timestamp: context.timestamp, amount: amount, converted: converted, upgraded: upgraded, refunded: refunded)
+    }
+
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
         statePromise.set(stateValue.modify (f))
     }
-    
+    if initialState.canConvertGift {
+        let remaining = starGiftConversionDeadline(date: transaction.date, period: conversionPeriod) - Int64(context.timestamp)
+        actionsDisposable.add((Signal<Void, NoError>.single(()) |> delay(Double(max(0, remaining)), queue: .mainQueue())).start(next: {
+            updateState { current in
+                var current = current
+                current.canConvertGift = false
+                return current
+            }
+        }))
+    }
+
     if let paidMessageId = transaction.paidMessageId {
         actionsDisposable.add(context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: paidMessageId.peerId)).start(next: { peer in
             updateState { current in
@@ -1915,17 +1925,25 @@ public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPe
             case let .starGift(_, convertStars, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _):
 
                 if let convertStars {
-                    let period_max = context.appConfiguration.getGeneralValue("stargifts_convert_period_max", orElse: 300) + (transaction.date - Int32(context.timeDifference))
+                    let deadline = starGiftConversionDeadline(date: transaction.date, period: conversionPeriod)
                     
                     let dateFormatter = makeNewDateFormatter()
                     dateFormatter.dateStyle = .medium
                     dateFormatter.timeStyle = .none
 
-                    let until = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(period_max)))
+                    let until = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(deadline)))
 
-                    if period_max > context.timestamp {
+                    if stateValue.with({ $0.canConvertGift }), Int64(context.timestamp) < deadline {
                         verifyAlert(for: window, header: strings().starTransactionConvertAlertHeader, information: strings().starTransactionConvertAlertInfoUntil(peer._asPeer().displayTitle, strings().starListItemCountOther(Int(convertStars)), until), ok: strings().starTransactionConvertAlertOK, successHandler: { _ in
                             
+                            guard Int64(context.timestamp) < deadline else {
+                                updateState { current in
+                                    var current = current
+                                    current.canConvertGift = false
+                                    return current
+                                }
+                                return
+                            }
                             if let profileContext {
                                 profileContext.convertStarGift(reference: reference)
                             } else {
@@ -1936,7 +1954,11 @@ public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPe
                             PlayConfetti(for: window, stars: true)
                         })
                     } else {
-                        showModalText(for: window, text: strings().starTransactionConvertAlertTooLate)
+                        updateState { current in
+                            var current = current
+                            current.canConvertGift = false
+                            return current
+                        }
                     }
                 }
                
@@ -2051,6 +2073,30 @@ public func Star_TransactionScreen(context: (any AccountContextProtocol), fromPe
         })
     })
     
+    arguments.giftMenu = { [weak arguments] in
+        let state = stateValue.with { $0 }
+        guard let arguments, state.canManageGift else { return [] }
+        if let giftMenuItems {
+            let items = giftMenuItems()
+            func prepare(_ items: [NSMenuItem]) {
+                for case let item as ContextMenuItem in items {
+                    if let submenu = item.submenu {
+                        prepare(submenu.items)
+                    } else if !item.isSeparatorItem, let action = item.handler {
+                        item.handler = {
+                            close?()
+                            action()
+                        }
+                    }
+                }
+            }
+            prepare(items)
+            return items
+        }
+        guard case let .starGift(_, _, _, _, _, savedToProfile, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = state.purpose else { return [] }
+        return genericGiftMenuItems(collections: nil, savedToProfile: savedToProfile, toggleVisibility: arguments.displayOnMyPage, delete: state.canDeleteGift ? arguments.deleteGift : nil)
+    }
+
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
