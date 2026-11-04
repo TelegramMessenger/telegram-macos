@@ -997,19 +997,22 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
             let signal = context.engine.payments.deleteStarGift(reference: reference) |> deliverOnMainQueue
             _ = showModalProgress(signal: signal, for: window).startStandalone(completed: {
                 let state = stateValue.with { $0 }
-                func reload(_ giftContext: ProfileGiftsContext, state: ProfileGiftsContext.State?) {
-                    if let state, state.filter != .All || state.sorting != .date {
-                        giftContext.updateFilter(state.filter == .All ? .unlimited : .All)
-                        giftContext.updateFilter(state.filter)
-                    } else {
+                func reload(_ giftContext: ProfileGiftsContext, state: ProfileGiftsContext.State?, containsGift: Bool) {
+                    reloadStarGiftListsAfterDeletion(reference: reference, filter: state?.filter ?? .All, sorting: state?.sorting ?? .date, containsGift: containsGift, reload: {
                         giftContext.reload()
-                    }
+                    }, updateFilter: {
+                        giftContext.updateFilter($0)
+                    }, remove: {
+                        giftContext.removeStarGifts(references: $0)
+                    })
                 }
                 if let giftsContext {
-                    reload(giftsContext, state: state.state)
+                    reload(giftsContext, state: state.state, containsGift: true)
                 }
                 for (id, collection) in collectionsContexts {
-                    reload(collection, state: state.collectionsState[id])
+                    let collectionState = state.collectionsState[id]
+                    let containsGift = gift.collectionIds?.contains(id) == true || collectionState?.gifts.contains(where: { $0.reference == reference }) == true || collectionState?.filteredGifts.contains(where: { $0.reference == reference }) == true
+                    reload(collection, state: collectionState, containsGift: containsGift)
                 }
             })
         })

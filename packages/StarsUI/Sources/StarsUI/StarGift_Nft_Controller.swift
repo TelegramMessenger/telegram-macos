@@ -1322,16 +1322,16 @@ private final class HeaderView : GeneralRowView {
 
             current.contextMenu = {
                 let menu = ContextMenu()
+                let owner = item.state.owner?._asPeer()
+                let visibility = item.state.profileVisibility
+                let pinItem = starGiftDetailPinMenuItem(owner: uniqueGift.owner, accountPeerId: item.arguments.context.peerId, isCreator: owner?.groupAccess.isCreator == true, pinnedInfo: item.state.pinnedInfo, savedToProfile: visibility?.saved, togglePin: item.arguments.togglePin)
                 if case .quickLook = item.state.source, let profileGiftMenu = item.arguments.profileGiftMenu {
-                    menu.items = profileGiftMenu()
+                    menu.items = starGiftDetailMenuItems(profileGiftMenu(), includeDetailPin: item.arguments.includeDetailPin, pinItem: pinItem)
                     return menu
                 }
 
-                let owner = item.state.owner?._asPeer()
-                let visibility = item.state.profileVisibility
-
-                if case let .peerId(peerId) = uniqueGift.owner, peerId == item.arguments.context.peerId || owner?.groupAccess.isCreator == true, let pinnedInfo = item.state.pinnedInfo, visibility?.saved != false {
-                    menu.addItem(ContextMenuItem(pinnedInfo.pinnedInfo ? strings().messageContextUnpin : strings().messageContextPin, handler: item.arguments.togglePin, itemImage: pinnedInfo.pinnedInfo ? MenuAnimation.menu_unpin.value : MenuAnimation.menu_pin.value))
+                if let pinItem {
+                    menu.addItem(pinItem)
                 }
 
                 menu.addItem(ContextMenuItem(strings().contextCopy, handler: {
@@ -1755,6 +1755,7 @@ private final class Arguments {
     public let okAction:()->Void
     public var toggleProfileVisibility:()->Void = {}
     var profileGiftMenu: (() -> [ContextMenuItem])?
+    var includeDetailPin = false
 
     public init(context: (any AccountContextProtocol), window: @escaping () -> Window, dismiss:@escaping()->Void, toggleName:@escaping()->Void, transfer:@escaping()->Void, copyNftLink:@escaping(StarGift.UniqueGift)->Void, shareNft:@escaping(StarGift.UniqueGift)->Void, sellNft:@escaping(StarGift.UniqueGift, Bool)->Void, toggleWear:@escaping(StarGift.UniqueGift)->Void, togglePin:@escaping()->Void, openPeer:@escaping(EnginePeer, Bool)->Void, openValue:@escaping(StarGift.UniqueGift)->Void, setAsTheme:@escaping(StarGift.UniqueGift)->Void, deleteOriginalInfo:@escaping(StarGift.UniqueGift, NSAttributedString)->Void, makeOffer:@escaping(StarGift.UniqueGift, EnginePeer)->Void, showModels:@escaping(StarGift, StarGift_Builder_Section)->Void, startCrafting:@escaping()->Void, toggleCraftGift:@escaping(ProfileGiftsContext.State.StarGift)->Void, showCraftModels:@escaping(StarGift.UniqueGift, StarGift_Builder_Section)->Void, showCraftMarketplace:@escaping(Int)->Void, showCraftAbout:@escaping()->Void, showBackdropChanceHint:@escaping(String, Int)->Void, showPatternChanceHint:@escaping(String, Int)->Void, openCraftAbout:@escaping(StarGift.UniqueGift)->Void, performCraft:@escaping(@escaping()->Void, @escaping(ProfileGiftsContext.State.StarGift)->Void, @escaping([ProfileGiftsContext.State.StarGift])->Void, @escaping()->Void)->Void, showCraftVariants:@escaping()->Void, craftAnother:@escaping()->Void, showCraftSuccess:@escaping(StarGift.UniqueGift)->Void, okAction:@escaping()->Void) {
         self.context = context
@@ -3490,6 +3491,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     })
 
     if let giftMenuItems {
+        arguments.includeDetailPin = giftsContext.collectionId != nil
         arguments.profileGiftMenu = {
             let items = giftMenuItems()
             func prepare(_ items: [NSMenuItem]) {
