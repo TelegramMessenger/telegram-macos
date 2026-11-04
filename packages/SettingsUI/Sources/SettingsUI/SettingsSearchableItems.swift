@@ -282,11 +282,20 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             }
     }
     
-    let facts = combineLatest(baseSettings, contentConfiguration, webSessions, hasPassport)
+    let hasLoginEmail: Signal<Bool, NoError> = .single(false) |> then(context.engine.auth.twoStepAuthData()
+        |> map { data -> Bool in
+            return data.loginEmailPattern != nil
+        }
+        |> `catch` { _ -> Signal<Bool, NoError> in
+            return .single(false)
+        })
+    
+    let facts = combineLatest(baseSettings, contentConfiguration, webSessions, combineLatest(hasPassport, hasLoginEmail))
     
     return combineLatest(accountsInfo, localizations, proxyServers, privacySettings, facts)
         |> map { accountsInfo, localizations, proxyServers, privacySettings, facts in
-            let (baseSettings, contentConfiguration, webSessions, hasPassport) = facts
+            let (baseSettings, contentConfiguration, webSessions, passportAndEmail) = facts
+            let (hasPassport, hasLoginEmail) = passportAndEmail
             
             var allItems: [SettingsSearchableItem<Context>] = []
             
@@ -295,7 +304,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             dockIconAvailable = true
             #endif
             
-            let loginEmailAvailable = ((context.myPeer as? TelegramUser)?.phone?.hasPrefix("7") ?? false) || appAppearance.languageCode == "ru" || context.debug
+            let loginEmailAvailable = hasLoginEmail || ((context.myPeer as? TelegramUser)?.phone?.hasPrefix("7") ?? false) || appAppearance.languageCode == "ru" || context.debug
             
             let environment = SettingsSearchEnvironment(
                 privacySettings: privacySettings,
@@ -304,7 +313,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
                 hasMultipleAccounts: accountsInfo.hasMultiple,
                 predictEmojiVisible: !baseSettings.predictEmoji,
                 canAdjustSensitiveContent: contentConfiguration?.canAdjustSensitiveContent ?? false,
-                passkeysAvailable: context.appConfiguration.getBoolValue("settings_display_passkeys", orElse: false),
+                passkeysAvailable: privacyPasskeysAvailable(context: context),
                 loginEmailAvailable: loginEmailAvailable,
                 hasWebSessions: !webSessions.sessions.isEmpty,
                 secretChatWebPreviewAvailable: FastSettings.isSecretChatWebPreviewAvailable(for: context.account.id.int64) != nil,

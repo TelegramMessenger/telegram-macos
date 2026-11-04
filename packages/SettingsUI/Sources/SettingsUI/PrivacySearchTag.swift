@@ -77,27 +77,27 @@ extension PrivacySearchTag: SettingsSearchTag {
                 }
             }))
         case .lastSeen:
-            presentSelectivePrivacySettings(context, .presence, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .presence, present: present)
         case .profilePhoto:
-            presentSelectivePrivacySettings(context, .profilePhoto, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .profilePhoto, present: present)
         case .forwards:
-            presentSelectivePrivacySettings(context, .forwards, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .forwards, present: present)
         case .voiceCalls:
-            presentSelectivePrivacySettings(context, .voiceCalls, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .voiceCalls, present: present)
         case .groups:
-            presentSelectivePrivacySettings(context, .groupInvitations, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .groupInvitations, present: present)
         case .phoneNumber:
-            presentSelectivePrivacySettings(context, .phoneNumber, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .phoneNumber, present: present)
         case .voiceMessages:
-            presentSelectivePrivacySettings(context, .voiceMessages, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .voiceMessages, present: present)
         case .bio:
-            presentSelectivePrivacySettings(context, .bio, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .bio, present: present)
         case .birthday:
-            presentSelectivePrivacySettings(context, .birthday, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .birthday, present: present)
         case .gifts:
-            presentSelectivePrivacySettings(context, .gifts, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .gifts, present: present)
         case .savedMusic:
-            presentSelectivePrivacySettings(context, .savedMusic, environment: environment, present: present)
+            presentSelectivePrivacy(context, kind: .savedMusic, present: present)
         case .deleteAccount:
             present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .accountTimeout, twoStepVerificationConfiguration: nil))
         case .topPeers:
@@ -231,54 +231,10 @@ extension PrivacySearchTag: SettingsSearchTag {
     }
 }
 
-private func presentSelectivePrivacySettings<Context: AccountContextProtocol>(_ context: Context, _ kind: SelectivePrivacySettingsKind, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
-    let privacySignal: Signal<AccountPrivacySettings, NoError>
-    if let privacySettings = environment.privacySettings {
-        privacySignal = .single(privacySettings)
-    } else {
-        privacySignal = context.engine.privacy.requestAccountPrivacySettings()
-    }
-    let callsSignal: Signal<(VoiceCallSettings, VoipConfiguration)?, NoError>
-    if case .voiceCalls = kind {
-        callsSignal = combineLatest(context.sharedContext.accountManager.sharedData(keys: [ApplicationSharedPreferencesKeys.voiceCallSettings]), context.account.postbox.preferencesView(keys: [PreferencesKeys.voipConfiguration]))
-            |> take(1)
-            |> map { sharedData, view -> (VoiceCallSettings, VoipConfiguration)? in
-                let voiceCallSettings: VoiceCallSettings = sharedData.entries[ApplicationSharedPreferencesKeys.voiceCallSettings]?.get(VoiceCallSettings.self) ?? .defaultSettings
-                let voipConfiguration = view.values[PreferencesKeys.voipConfiguration]?.get(VoipConfiguration.self) ?? .defaultValue
-                return (voiceCallSettings, voipConfiguration)
-        }
-    } else {
-        callsSignal = .single(nil)
-    }
-    
-    let _ = (combineLatest(privacySignal, callsSignal)
-        |> deliverOnMainQueue).start(next: { info, callSettings in
-            let current: SelectivePrivacySettings
-            switch kind {
-            case .presence:
-                current = info.presence
-            case .groupInvitations:
-                current = info.groupInvitations
-            case .voiceCalls:
-                current = info.voiceCalls
-            case .profilePhoto:
-                current = info.profilePhoto
-            case .forwards:
-                current = info.forwards
-            case .phoneNumber:
-                current = info.phoneNumber
-            case .voiceMessages:
-                current = info.voiceMessages
-            case .bio:
-                current = info.bio
-            case .birthday:
-                current = info.birthday
-            case .gifts:
-                current = info.giftsAutoSave
-            case .savedMusic:
-                current = info.savedMusic
-            }
-            
-            present(.push, SelectivePrivacySettingsController(context, kind: kind, current: current, callSettings: kind == .voiceCalls ? info.voiceCallsP2P : nil, phoneDiscoveryEnabled: nil, updated: { updated, updatedCallSettings, _, _ in }))
+private func presentSelectivePrivacy<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+    _ = (context.engine.privacy.requestAccountPrivacySettings()
+        |> take(1)
+        |> deliverOnMainQueue).start(next: { settings in
+            present(.push, selectivePrivacyController(context, kind: kind, settings: settings, updated: { _, _, _, _ in }))
         })
 }

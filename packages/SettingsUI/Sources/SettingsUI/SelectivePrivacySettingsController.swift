@@ -660,6 +660,33 @@ fileprivate func prepareTransition(left:[SelectivePrivacySettingsEntry], right: 
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
 }
 
+func selectivePrivacyController<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, settings: AccountPrivacySettings, updated: @escaping (SelectivePrivacySettings, SelectivePrivacySettings?, Bool?, GlobalPrivacySettings?) -> Void) -> SelectivePrivacySettingsController<Context> {
+    switch kind {
+    case .presence:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.presence, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .groupInvitations:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.groupInvitations, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .voiceCalls:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.voiceCalls, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .profilePhoto:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.profilePhoto, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .forwards:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.forwards, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .phoneNumber:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.phoneNumber, phoneDiscoveryEnabled: settings.phoneDiscoveryEnabled, updated: updated)
+    case .voiceMessages:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.voiceMessages, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .bio:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.bio, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .birthday:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.birthday, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .gifts:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.giftsAutoSave, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .savedMusic:
+        return SelectivePrivacySettingsController(context, kind: kind, current: settings.savedMusic, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    }
+}
+
 open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: TableViewController<Context> {
     private let kind: SelectivePrivacySettingsKind
     private let current: SelectivePrivacySettings
