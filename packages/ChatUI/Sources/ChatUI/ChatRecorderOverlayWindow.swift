@@ -309,11 +309,12 @@ public class ChatRecorderOverlayView : Control {
         stateView.isAccessibilityDecorative = true
 
         for glyph in [transcribeLines, transcribeStop] {
-            glyph.isAccessibilityDecorative = true
             glyph.isEventLess = true
             glyph.layer?.opacity = 0
             addSubview(glyph)
         }
+        transcribeLines.isAccessibilityDecorative = true
+        transcribeStop.isAccessibilityDecorative = true
         transcribeLines.image = ChatRecorderOverlayView.linesGlyph
         transcribeStop.image = ChatRecorderOverlayView.stopGlyph
         layoutTranscribeGlyphs()
