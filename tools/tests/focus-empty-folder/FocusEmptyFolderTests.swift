@@ -267,10 +267,12 @@ private enum Tests {
         precondition(chatListFocusEmptyText(language: language("ru"), bundle: .main) == english)
 
         let warning = focusFilterConfigurationWarning(language: language("ru-RU"), bundle: bundle)
-        precondition(warning.title == "Уведомления чатов приостановлены")
+        precondition(warning.title == "Фильтр фокусирования недоступен")
+        precondition(warning.message.contains("обычным настройкам Telegram и macOS"))
         precondition(warning.message.contains("Системные настройки"))
         let englishWarning = focusFilterConfigurationWarning(language: language("en"), bundle: bundle)
-        precondition(englishWarning.title == "Chat notifications paused")
+        precondition(englishWarning.title == "Focus filter unavailable")
+        precondition(englishWarning.message.contains("usual Telegram and macOS settings"))
         precondition(englishWarning.message.contains("System Settings"))
         print("PASS: bundled Russian/English text, app-language variants, custom language base, remote override priority and missing-resource fallback")
     }

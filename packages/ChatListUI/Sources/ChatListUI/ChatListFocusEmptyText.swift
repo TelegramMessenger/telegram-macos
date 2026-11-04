@@ -6,8 +6,8 @@ func chatListFocusEmptyText(language: TelegramLocalization = appCurrentLanguage,
 }
 
 public func focusFilterConfigurationWarning(language: TelegramLocalization = appCurrentLanguage, bundle: Bundle = .main) -> (title: String, message: String) {
-    let title = focusFilterText("FocusFilter.ReadError.Title", fallback: "Chat notifications paused", language: language, bundle: bundle)
-    let message = focusFilterText("FocusFilter.ReadError.Message", fallback: "Telegram couldn’t read your Focus filter settings. Chat notifications are paused for all accounts. To restore them, open System Settings → Focus, select your Focus and save the Telegram filter again.", language: language, bundle: bundle)
+    let title = focusFilterText("FocusFilter.Unavailable.Title", fallback: "Focus filter unavailable", language: language, bundle: bundle)
+    let message = focusFilterText("FocusFilter.Unavailable.Message", fallback: "Telegram couldn’t load the Focus filter. Chat notifications for all accounts will follow your usual Telegram and macOS settings until the filter loads. To reapply it, open System Settings → Focus, select your Focus and save the Telegram filter again.", language: language, bundle: bundle)
     return (title, message)
 }
 

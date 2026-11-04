@@ -274,7 +274,9 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     private var memoryPressureMonitor: MemoryPressureMonitor?
     private var rustEngineCrash: CrashedRun?
     private var focusFilterCoordinator: FocusFilterCoordinator?
+    private let focusFilterWarningDisposable = MetaDisposable()
     private var didShowFocusFilterWarning = false
+    private var focusFilterWarningIsVisible = false
     private let focusFilterLogger = OSLog(subsystem: "org.telegram.macos", category: "FocusFilters")
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -851,17 +853,27 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                         focusPolicySource = repository
                     } catch {
                         os_log("Unable to resolve Focus filter storage: %{private}@", log: self.focusFilterLogger, type: .error, error.localizedDescription)
-                        focusPolicySource = InactiveFocusFilterPolicySource()
+                        focusPolicySource = InactiveFocusFilterPolicySource(isNotificationFilteringUnavailable: true)
                     }
                 } else {
                     focusPolicySource = InactiveFocusFilterPolicySource()
                 }
-                ChatListFocusHooks.install(.init(policies: {
-                    Signal { subscriber in
-                        let observation = focusPolicySource.observe { policy in
-                            subscriber.putNext(policy)
-                        }
-                        return ActionDisposable { observation.invalidate() }
+                let focusPolicies = Signal<FocusFilterPolicy, NoError> { subscriber in
+                    let observation = focusPolicySource.observe { policy in
+                        subscriber.putNext(policy)
+                    }
+                    return ActionDisposable { observation.invalidate() }
+                }
+                ChatListFocusHooks.install(.init(policies: { focusPolicies }))
+                self.focusFilterWarningDisposable.set((focusPolicies
+                    |> map { $0.isNotificationFilteringUnavailable }
+                    |> distinctUntilChanged
+                    |> deliverOnMainQueue).start(next: { [weak self, weak focusPolicySource] unavailable in
+                    guard let self, let focusPolicySource else { return }
+                    if unavailable {
+                        self.showFocusFilterWarningIfNeeded(for: focusPolicySource)
+                    } else {
+                        self.didShowFocusFilterWarning = false
                     }
                 }))
                 
@@ -1238,11 +1250,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                             self.window.deminiaturize(self)
                             NSApp.activate(ignoringOtherApps: true)
 
-                            if !self.didShowFocusFilterWarning && focusPolicySource.policy.isConfigurationUnavailable {
-                                self.didShowFocusFilterWarning = true
-                                let warning = focusFilterConfigurationWarning()
-                                alert(for: self.window, header: warning.title, info: warning.message)
-                            }
+                            self.showFocusFilterWarningIfNeeded(for: focusPolicySource)
                              
                             
                         }
@@ -1553,6 +1561,17 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         return rect;
     }
     
+    private func showFocusFilterWarningIfNeeded(for source: any FocusFilterPolicySource) {
+        guard contextValue != nil, source.policy.isNotificationFilteringUnavailable, !didShowFocusFilterWarning else { return }
+        didShowFocusFilterWarning = true
+        guard !focusFilterWarningIsVisible else { return }
+        focusFilterWarningIsVisible = true
+        let warning = focusFilterConfigurationWarning()
+        alert(for: window, header: warning.title, info: warning.message, onDeinit: { [weak self] in
+            self?.focusFilterWarningIsVisible = false
+        })
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
         if #available(macOS 13.0, *) {
             focusFilterCoordinator?.refresh()

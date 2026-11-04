@@ -15,11 +15,11 @@ public struct FocusFilterSelection: Equatable, Sendable {
 public struct FocusFilterPolicy: Equatable, Sendable {
     public let configuration: FocusFilterConfiguration
     public let catalog: FocusFilterCatalog
-    public let isConfigurationUnavailable: Bool
+    public let isNotificationFilteringUnavailable: Bool
     private let selections: [Int64: FocusFilterSelection]
 
-    public init(configuration: FocusFilterConfiguration = .init(), catalog: FocusFilterCatalog = .init()) {
-        self.isConfigurationUnavailable = false
+    public init(configuration: FocusFilterConfiguration = .init(), catalog: FocusFilterCatalog = .init(), isNotificationFilteringUnavailable: Bool = false) {
+        self.isNotificationFilteringUnavailable = isNotificationFilteringUnavailable
         self.configuration = configuration
         self.catalog = catalog
         var selected: [Int64: Set<Int64>] = [:]
@@ -35,16 +35,9 @@ public struct FocusFilterPolicy: Equatable, Sendable {
         self.selections = selected.mapValues { FocusFilterSelection(mode: configuration.mode, peerIds: $0) }
     }
 
-    public init(suppressingNotificationsWith catalog: FocusFilterCatalog) {
-        self.isConfigurationUnavailable = true
-        self.configuration = .init()
-        self.catalog = catalog
-        self.selections = [:]
-    }
-
     public func selection(accountId: Int64, effect: FocusFilterEffect) -> FocusFilterSelection? {
-        if isConfigurationUnavailable && effect == .notifications {
-            return FocusFilterSelection(mode: .allowSelected, peerIds: [])
+        if isNotificationFilteringUnavailable && effect == .notifications {
+            return nil
         }
         guard configuration.effect.contains(effect) else {
             return nil

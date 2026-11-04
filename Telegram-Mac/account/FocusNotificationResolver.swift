@@ -4,11 +4,12 @@ import FocusFilterInfrastructure
 
 enum ResolvedFocusNotification {
     case unidentified
+    case filterUnavailable
     case chat(FocusChatIdentifier, FocusFilterPolicy)
 
     var allowsNotification: Bool {
         switch self {
-        case .unidentified:
+        case .unidentified, .filterUnavailable:
             return true
         case let .chat(identifier, policy):
             return policy.includes(accountId: identifier.accountId, peerId: identifier.peerId, effect: .notifications)
@@ -19,6 +20,8 @@ enum ResolvedFocusNotification {
         switch self {
         case .unidentified:
             return nil
+        case .filterUnavailable:
+            return FocusNotificationFilter.unfilteredCriteria
         case let .chat(identifier, policy):
             return FocusNotificationFilter(configuration: policy.configuration).criteria(for: identifier, catalog: policy.catalog)
         }
@@ -45,11 +48,15 @@ final class FocusNotificationResolver {
             }
             return
         }
+        let currentPolicy = policySource.policy
+        if isEnabled && currentPolicy.isNotificationFilteringUnavailable {
+            completion(.filterUnavailable)
+            return
+        }
         guard isEnabled, let identifier = identifier else {
             completion(.unidentified)
             return
         }
-        let currentPolicy = policySource.policy
         let configuration = currentPolicy.configuration
         guard configuration.effect.contains(.notifications),
               configuration.accountIds.contains(identifier.accountId),
@@ -58,7 +65,8 @@ final class FocusNotificationResolver {
             return
         }
         livePolicyLookup(identifier, configuration) { policy in
-            guard self.policySource.policy.configuration == configuration else {
+            let latestPolicy = self.policySource.policy
+            guard !latestPolicy.isNotificationFilteringUnavailable, latestPolicy.configuration == configuration else {
                 self.resolve(identifier: identifier, completion: completion)
                 return
             }

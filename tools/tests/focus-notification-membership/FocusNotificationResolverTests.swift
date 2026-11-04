@@ -95,5 +95,28 @@ enum FocusNotificationResolverTests {
         unavailableAccountResolver.resolve(identifier: .init(accountId: 71, peerId: 999)) { precondition(!$0.allowsNotification) }
         precondition(unavailableAccountLookups == 1)
         print("PASS explicit-chat-only notification policy avoids live folder lookup")
+
+        decisions.removeAll()
+        pending.removeAll()
+        source.policy = FocusFilterPolicy(configuration: originalConfiguration)
+        resolver.resolve(identifier: identifier) { decisions.append($0) }
+        precondition(pending.count == 1)
+        source.policy = FocusFilterPolicy(configuration: originalConfiguration, isNotificationFilteringUnavailable: true)
+        pending[0].complete(FocusFilterPolicy(configuration: originalConfiguration))
+        resolver.resolve(identifier: identifier) { decisions.append($0) }
+        resolver.resolve(identifier: nil) { decisions.append($0) }
+        precondition(pending.count == 1 && decisions.count == 3)
+
+        for mode in [FocusFilterMode.allowSelected, .excludeSelected] {
+            let rule = FocusFilterConfiguration(accountIds: [identifier.accountId], chatIds: mode == .excludeSelected ? [identifier] : [], mode: mode)
+            let filter = FocusNotificationFilter(configuration: rule)
+            let predicate = filter.predicate
+            precondition(!predicate.evaluate(with: filter.criteria(for: identifier, catalog: .init())))
+            for decision in decisions {
+                guard let criteria = decision.filterCriteria else { preconditionFailure("Missing fallback notification criteria") }
+                precondition(decision.allowsNotification && predicate.evaluate(with: criteria))
+            }
+        }
+        print("PASS unreadable settings bypass pending folder lookups and previously active system predicates")
     }
 }

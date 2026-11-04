@@ -14,10 +14,11 @@ public protocol FocusFilterRepository: FocusFilterPolicySource {
 }
 
 public final class InactiveFocusFilterPolicySource: FocusFilterPolicySource {
-    public init() {
-    }
+    public let policy: FocusFilterPolicy
 
-    public var policy: FocusFilterPolicy { .init() }
+    public init(isNotificationFilteringUnavailable: Bool = false) {
+        self.policy = FocusFilterPolicy(isNotificationFilteringUnavailable: isNotificationFilteringUnavailable)
+    }
 
     public func observe(_ observer: @escaping (FocusFilterPolicy) -> Void) -> any FocusFilterObservation {
         observer(policy)

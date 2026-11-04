@@ -149,16 +149,16 @@ resolve paths or access a mutable shared store.
 The repository coordinates injected persistence and change-delivery adapters.
 Observer callbacks, read-failure reporting and cross-process posting execute
 outside the state lock. Pending deliveries preserve order during reentrant
-updates. A fresh installation starts with filtering off. Once the repository has
-read or saved a configuration, a missing, unreadable or corrupt file leaves that
-configuration in effect. If an existing configuration cannot be read on startup,
-Telegram suppresses chat notifications for all accounts until it reads or saves
-a valid configuration. When the main window is ready, Telegram warns the user
-once per launch if the configuration is still unreadable and explains how to
-save the filter again in System Settings → Focus. Saving an empty configuration
-turns filtering off normally.
-Catalogue read failures retain the last known folder membership. Read failures
-are reported without overwriting either file.
+updates. A fresh installation starts with filtering off. If the saved settings
+cannot be read or decoded, Telegram delivers chat notifications for all accounts
+using ordinary Telegram and macOS settings. The same fallback applies if a
+notification rule needs folder membership and its catalogue cannot be loaded.
+The chat list can still use the last configuration and catalogue held in memory.
+
+Telegram shows a warning once per failure when the main window is ready. It
+explains how to save the filter again in System Settings → Focus. Once the
+required data is available, filtering resumes automatically. Explicitly disabling
+the filter or starting without saved settings does not trigger a warning.
 
 Catalogue publication and delivery-time membership are separate operations. The
 notification resolver consumes a policy source and live-lookup dependency, returns
@@ -182,7 +182,9 @@ account from the catalogue. The catalogue uses local Postbox views and coalesced
 transactions, without requesting remote chat history. Its additional view memory
 and transaction cost should be measured with large accounts before release.
 
-Notification criteria contain the account, full peer identifier and folder tokens.
+While the filter is unavailable, new notifications carry a neutral criterion that
+also passes the last predicate installed by the extension. Otherwise, notification
+criteria contain the account, full peer identifier and folder tokens.
 The system predicate matches stable tokens, so a folder's membership can change
 without invalidating an old system predicate. Notification delivery must obtain
 current per-chat folder membership before the local gate, sound and criteria are

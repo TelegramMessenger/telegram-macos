@@ -2,16 +2,25 @@ import Foundation
 import FocusFilterCore
 
 public final class FocusFilterStore: FocusFilterRepository {
-    private enum ConfigurationState {
-        case missing
-        case unreadable
-        case saved(FocusFilterConfiguration)
+    private struct StoredValue<Value> {
+        private(set) var lastValid: Value?
+        private(set) var readFailed = false
 
-        func policy(catalog: FocusFilterCatalog) -> FocusFilterPolicy {
-            switch self {
-            case .missing: return FocusFilterPolicy(catalog: catalog)
-            case .unreadable: return FocusFilterPolicy(suppressingNotificationsWith: catalog)
-            case let .saved(configuration): return FocusFilterPolicy(configuration: configuration, catalog: catalog)
+        mutating func accept(_ value: Value) {
+            lastValid = value
+            readFailed = false
+        }
+
+        mutating func reload(using load: () throws -> Value, required: Bool = false, failures: inout [Error]) {
+            do {
+                accept(try load())
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile && lastValid == nil && !readFailed {
+                if required {
+                    failures.append(error)
+                }
+            } catch {
+                readFailed = true
+                failures.append(error)
             }
         }
     }
@@ -26,7 +35,13 @@ public final class FocusFilterStore: FocusFilterRepository {
     private let onReadFailure: (Error) -> Void
     private let lock = NSLock()
     private var changeObservation: (any FocusFilterObservation)?
-    private var configurationState = ConfigurationState.missing
+    private var storedConfiguration = StoredValue<FocusFilterConfiguration>()
+    private var storedCatalog = StoredValue<FocusFilterCatalog>()
+    private var needsFolderMembership: Bool {
+        guard let configuration = storedConfiguration.lastValid else { return false }
+        return configuration.effect.contains(.notifications)
+            && configuration.folderIds.contains { configuration.accountIds.contains($0.accountId) }
+    }
     private var currentPolicy = FocusFilterPolicy()
     private var observers: [UUID: (FocusFilterPolicy) -> Void] = [:]
     private var pendingDeliveries: [Delivery] = []
@@ -67,9 +82,9 @@ public final class FocusFilterStore: FocusFilterRepository {
     public func reload() {
         lock.lock()
         var failures: [Error] = []
-        reloadConfiguration(failures: &failures)
-        let catalog = loadCatalog(failures: &failures)
-        publish(configurationState.policy(catalog: catalog))
+        storedConfiguration.reload(using: persistence.loadConfiguration, failures: &failures)
+        storedCatalog.reload(using: persistence.loadCatalog, required: needsFolderMembership, failures: &failures)
+        publishPolicy()
         lock.unlock()
         completeUpdate(failures: failures, notify: false)
     }
@@ -79,9 +94,9 @@ public final class FocusFilterStore: FocusFilterRepository {
         var failures: [Error] = []
         do {
             try persistence.saveConfiguration(configuration)
-            configurationState = .saved(configuration)
-            let catalog = loadCatalog(failures: &failures)
-            publish(configurationState.policy(catalog: catalog))
+            storedConfiguration.accept(configuration)
+            storedCatalog.reload(using: persistence.loadCatalog, required: needsFolderMembership, failures: &failures)
+            publishPolicy()
             lock.unlock()
         } catch {
             lock.unlock()
@@ -92,12 +107,13 @@ public final class FocusFilterStore: FocusFilterRepository {
 
     public func updateCatalog(_ catalog: FocusFilterCatalog) throws {
         lock.lock()
-        guard currentPolicy.catalog != catalog else { lock.unlock(); return }
+        guard storedCatalog.lastValid != catalog || storedCatalog.readFailed else { lock.unlock(); return }
         var failures: [Error] = []
         do {
             try persistence.saveCatalog(catalog)
-            reloadConfiguration(failures: &failures)
-            publish(configurationState.policy(catalog: catalog))
+            storedCatalog.accept(catalog)
+            storedConfiguration.reload(using: persistence.loadConfiguration, failures: &failures)
+            publishPolicy()
             lock.unlock()
         } catch {
             lock.unlock()
@@ -106,36 +122,20 @@ public final class FocusFilterStore: FocusFilterRepository {
         completeUpdate(failures: failures, notify: true)
     }
 
-    private func reloadConfiguration(failures: inout [Error]) {
-        do {
-            configurationState = .saved(try persistence.loadConfiguration())
-        } catch {
-            if case .missing = configurationState {
-                if (error as? CocoaError)?.code == .fileReadNoSuchFile { return }
-                configurationState = .unreadable
-            }
-            failures.append(error)
-        }
-    }
-
-    private func loadCatalog(failures: inout [Error]) -> FocusFilterCatalog {
-        do {
-            return try persistence.loadCatalog()
-        } catch {
-            if (error as? CocoaError)?.code != .fileReadNoSuchFile || currentPolicy.catalog != FocusFilterCatalog() {
-                failures.append(error)
-            }
-            return currentPolicy.catalog
-        }
-    }
-
     private func completeUpdate(failures: [Error], notify: Bool) {
         failures.forEach(onReadFailure)
         deliverPendingPolicies()
         if notify { changes.postChange() }
     }
 
-    private func publish(_ policy: FocusFilterPolicy) {
+    private func publishPolicy() {
+        let configuration = storedConfiguration.lastValid ?? FocusFilterConfiguration()
+        let folderMembershipUnavailable = needsFolderMembership && (storedCatalog.lastValid == nil || storedCatalog.readFailed)
+        let policy = FocusFilterPolicy(
+            configuration: configuration,
+            catalog: storedCatalog.lastValid ?? FocusFilterCatalog(),
+            isNotificationFilteringUnavailable: storedConfiguration.readFailed || folderMembershipUnavailable
+        )
         guard currentPolicy != policy else { return }
         currentPolicy = policy
         pendingDeliveries.append(Delivery(policy: policy, observerIds: Array(observers.keys)))

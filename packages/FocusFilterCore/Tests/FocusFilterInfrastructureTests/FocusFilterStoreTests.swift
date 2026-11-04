@@ -18,11 +18,11 @@ final class FocusFilterStoreTests: XCTestCase {
         }
     }
 
-    private func makeStore() -> FocusFilterStore {
+    private func makeStore(onReadFailure: @escaping (Error) -> Void = { _ in }) -> FocusFilterStore {
         FocusFilterStore(
             persistence: FocusFilterFilePersistence(directory: directory),
             changes: DistributedFocusFilterChanges(name: notificationName),
-            onReadFailure: { _ in }
+            onReadFailure: onReadFailure
         )
     }
 
@@ -142,70 +142,90 @@ final class FocusFilterStoreTests: XCTestCase {
         }
     }
 
-    func testUnreadableConfigurationKeepsActiveRuleAcrossReloadAndCatalogUpdates() throws {
+    func testUnreadableConfigurationPausesNotificationFilteringUntilReloaded() throws {
         let store = makeStore()
         let chat = FocusChatIdentifier(accountId: 10, peerId: 42)
         let configuration = FocusFilterConfiguration(accountIds: [10], chatIds: [chat], mode: .excludeSelected, effect: .both)
-        let catalog = FocusFilterCatalog(accounts: [.init(id: 10, title: "Work")])
         try store.updateConfiguration(configuration)
         let url = directory.appendingPathComponent("configuration.json")
         try Data("not json".utf8).write(to: url, options: .atomic)
 
         store.reload()
-        XCTAssertEqual(store.policy.configuration, configuration)
-        XCTAssertFalse(store.policy.isConfigurationUnavailable)
-        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
-        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 43, effect: .notifications))
+        XCTAssertTrue(store.policy.isNotificationFilteringUnavailable)
+        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .chatList))
 
+        let catalog = FocusFilterCatalog(accounts: [.init(id: 10, title: "Work")])
         try store.updateCatalog(catalog)
-        XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
-        try FileManager.default.removeItem(at: url)
-        store.reload()
-        XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
-
-        try FocusFilterFilePersistence(directory: directory).saveConfiguration(.init())
-        store.reload()
         XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
         XCTAssertEqual(store.policy.catalog, catalog)
+        try FileManager.default.removeItem(at: url)
+        store.reload()
+        XCTAssertTrue(store.policy.isNotificationFilteringUnavailable)
+
+        try FocusFilterFilePersistence(directory: directory).saveConfiguration(configuration)
+        store.reload()
+        XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
     }
 
-    func testCorruptConfigurationOnStartupSuppressesChatNotificationsUntilRepaired() throws {
+    func testCorruptConfigurationOnStartupAllowsNotificationsUntilRepaired() throws {
         let persistence = FocusFilterFilePersistence(directory: directory)
         let catalog = FocusFilterCatalog(accounts: [.init(id: 10, title: "Work")])
         try persistence.saveCatalog(catalog)
-        let store = makeStore()
-        XCTAssertFalse(store.policy.isConfigurationUnavailable)
-        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        let cleanPolicy = makeStore { error in XCTFail("Unexpected read failure: \(error)") }.policy
+        XCTAssertEqual(cleanPolicy, FocusFilterPolicy(catalog: catalog))
 
         try Data("not json".utf8).write(to: directory.appendingPathComponent("configuration.json"), options: .atomic)
-        let restarted = makeStore()
-        XCTAssertTrue(restarted.policy.isConfigurationUnavailable)
-        XCTAssertEqual(restarted.policy.catalog, catalog)
-        XCTAssertFalse(restarted.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
-        XCTAssertFalse(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
-        XCTAssertNil(restarted.policy.selection(accountId: 10, effect: .chatList))
+        let store = makeStore()
+        XCTAssertTrue(store.policy.isNotificationFilteringUnavailable)
+        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        XCTAssertTrue(store.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
+        XCTAssertEqual(store.policy.catalog, catalog)
 
-        try restarted.updateCatalog(.init())
-        XCTAssertFalse(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
-        try restarted.updateConfiguration(.init())
-        XCTAssertFalse(restarted.policy.isConfigurationUnavailable)
-        XCTAssertTrue(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
+        try store.updateConfiguration(.init(accountIds: [10]))
+        XCTAssertFalse(store.policy.isNotificationFilteringUnavailable)
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
     }
 
-    func testUnreadableCatalogKeepsExcludedFolderMembership() throws {
+    func testUnreadableCatalogBypassesFolderNotificationRuleAndRetainsChatListMembership() throws {
         let store = makeStore()
         let folder = FocusFolderIdentifier(accountId: 10, folderId: 1)
         let catalog = FocusFilterCatalog(folders: [.init(id: folder, title: "Work", peerIds: [42])])
-        var configuration = FocusFilterConfiguration(accountIds: [10], folderIds: [folder], mode: .excludeSelected)
+        let configuration = FocusFilterConfiguration(accountIds: [10], folderIds: [folder], mode: .excludeSelected, effect: .both)
         try store.updateCatalog(catalog)
         try store.updateConfiguration(configuration)
         try Data("not json".utf8).write(to: directory.appendingPathComponent("catalog.json"), options: .atomic)
 
         store.reload()
+        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .chatList))
+
+        try store.updateConfiguration(.init(accountIds: [10], chatIds: [.init(accountId: 10, peerId: 42)], mode: .excludeSelected))
+        XCTAssertFalse(store.policy.isNotificationFilteringUnavailable)
         XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
-        configuration.effect = .both
+
         try store.updateConfiguration(configuration)
+        XCTAssertTrue(store.policy.isNotificationFilteringUnavailable)
+        try store.updateCatalog(catalog)
         XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+    }
+
+    func testFolderRuleWithoutInitialCatalogAllowsNotificationsUntilCatalogArrives() throws {
+        let folder = FocusFolderIdentifier(accountId: 10, folderId: 1)
+        let persistence = FocusFilterFilePersistence(directory: directory)
+        try persistence.saveConfiguration(.init(accountIds: [10], folderIds: [folder], mode: .allowSelected))
+        var readFailures: [Error] = []
+        let store = makeStore { readFailures.append($0) }
+
+        XCTAssertFalse(readFailures.isEmpty)
+        XCTAssertTrue(store.policy.isNotificationFilteringUnavailable)
+        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+
+        try store.updateCatalog(.init())
+        XCTAssertFalse(store.policy.isNotificationFilteringUnavailable)
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
     }
 }
 

@@ -2,6 +2,8 @@ import Foundation
 import FocusFilterCore
 
 public struct FocusNotificationFilter {
+    public static let unfilteredCriteria = "telegram-focus:unfiltered"
+
     private let configuration: FocusFilterConfiguration
 
     public init(configuration: FocusFilterConfiguration) {
