@@ -1002,9 +1002,11 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         let clusterWidth = RightActionsCluster.desiredWidth(buttonSize: Self.bubbleHeight, count: count)
         let left = leftSideInset + (hasBackButton ? Self.bubbleHeight + Self.interBubbleSpacing : 0)
         let right = width - Self.sideInset - clusterWidth - (count > 0 ? Self.interBubbleSpacing : 0)
-        let titleWidth = (titleView.textLayout?.attributedString.size().width ?? 0)
-            + (statusControl?.frame.width ?? 0) + (leftStatusControl?.frame.width ?? 0)
-            + (titleImageView?.image?.backingSize.width ?? 0)
+        let titleTextWidth: CGFloat = titleView.textLayout?.attributedString.size().width ?? 0
+        let statusControlWidth: CGFloat = statusControl?.frame.width ?? 0
+        let leftStatusControlWidth: CGFloat = leftStatusControl?.frame.width ?? 0
+        let titleImageWidth: CGFloat = titleImageView?.image?.backingSize.width ?? 0
+        let titleWidth = titleTextWidth + statusControlWidth + leftStatusControlWidth + titleImageWidth
         let statusWidth = statusView.textLayout?.attributedString.size().width ?? 0
         let preferredWidth = max(titleWidth, statusWidth) + max(32, avatarControl.frame.width) + 30
         let available = NSMakeRect(left, Self.topInset, max(0, right - left), Self.bubbleHeight)
