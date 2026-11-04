@@ -30,7 +30,7 @@ final class FocusFilterDependencyTests: XCTestCase {
         var failures: [Error] = []
         let store = FocusFilterStore(persistence: persistence, changes: TestFocusChanges(), onReadFailure: { failures.append($0) })
 
-        XCTAssertEqual(store.policy.configuration, .init())
+        XCTAssertFalse(store.policy.includes(accountId: 17, peerId: 42, effect: .notifications))
         XCTAssertEqual(store.policy.catalog, persistence.catalog)
         XCTAssertEqual(failures.count, 1)
     }

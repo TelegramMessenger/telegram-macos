@@ -18,11 +18,11 @@ public final class FocusFilterFilePersistence: FocusFilterPersistence {
     }
 
     public func loadConfiguration() throws -> FocusFilterConfiguration {
-        try read("configuration.json", defaultValue: .init())
+        try read("configuration.json")
     }
 
     public func loadCatalog() throws -> FocusFilterCatalog {
-        try read("catalog.json", defaultValue: .init())
+        try read("catalog.json")
     }
 
     public func saveConfiguration(_ configuration: FocusFilterConfiguration) throws {
@@ -33,13 +33,9 @@ public final class FocusFilterFilePersistence: FocusFilterPersistence {
         try write(catalog, name: "catalog.json")
     }
 
-    private func read<Value: Decodable>(_ name: String, defaultValue: Value) throws -> Value {
+    private func read<Value: Decodable>(_ name: String) throws -> Value {
         let url = directory.appendingPathComponent(name)
-        do {
-            return try JSONDecoder().decode(Value.self, from: Data(contentsOf: url))
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return defaultValue
-        }
+        return try JSONDecoder().decode(Value.self, from: Data(contentsOf: url))
     }
 
     private func write<Value: Encodable>(_ value: Value, name: String) throws {

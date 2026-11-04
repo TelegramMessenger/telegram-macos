@@ -2,6 +2,20 @@ import Foundation
 import FocusFilterCore
 
 public final class FocusFilterStore: FocusFilterRepository {
+    private enum ConfigurationState {
+        case missing
+        case unreadable
+        case saved(FocusFilterConfiguration)
+
+        func policy(catalog: FocusFilterCatalog) -> FocusFilterPolicy {
+            switch self {
+            case .missing: return FocusFilterPolicy(catalog: catalog)
+            case .unreadable: return FocusFilterPolicy(suppressingNotificationsWith: catalog)
+            case let .saved(configuration): return FocusFilterPolicy(configuration: configuration, catalog: catalog)
+            }
+        }
+    }
+
     private struct Delivery {
         let policy: FocusFilterPolicy
         let observerIds: [UUID]
@@ -12,6 +26,7 @@ public final class FocusFilterStore: FocusFilterRepository {
     private let onReadFailure: (Error) -> Void
     private let lock = NSLock()
     private var changeObservation: (any FocusFilterObservation)?
+    private var configurationState = ConfigurationState.missing
     private var currentPolicy = FocusFilterPolicy()
     private var observers: [UUID: (FocusFilterPolicy) -> Void] = [:]
     private var pendingDeliveries: [Delivery] = []
@@ -52,7 +67,9 @@ public final class FocusFilterStore: FocusFilterRepository {
     public func reload() {
         lock.lock()
         var failures: [Error] = []
-        publish(loadPolicy(failures: &failures))
+        reloadConfiguration(failures: &failures)
+        let catalog = loadCatalog(failures: &failures)
+        publish(configurationState.policy(catalog: catalog))
         lock.unlock()
         completeUpdate(failures: failures, notify: false)
     }
@@ -62,8 +79,9 @@ public final class FocusFilterStore: FocusFilterRepository {
         var failures: [Error] = []
         do {
             try persistence.saveConfiguration(configuration)
-            let catalog = recover(defaultValue: FocusFilterCatalog(), failures: &failures, load: persistence.loadCatalog)
-            publish(FocusFilterPolicy(configuration: configuration, catalog: catalog))
+            configurationState = .saved(configuration)
+            let catalog = loadCatalog(failures: &failures)
+            publish(configurationState.policy(catalog: catalog))
             lock.unlock()
         } catch {
             lock.unlock()
@@ -78,8 +96,8 @@ public final class FocusFilterStore: FocusFilterRepository {
         var failures: [Error] = []
         do {
             try persistence.saveCatalog(catalog)
-            let configuration = recover(defaultValue: FocusFilterConfiguration(), failures: &failures, load: persistence.loadConfiguration)
-            publish(FocusFilterPolicy(configuration: configuration, catalog: catalog))
+            reloadConfiguration(failures: &failures)
+            publish(configurationState.policy(catalog: catalog))
             lock.unlock()
         } catch {
             lock.unlock()
@@ -88,18 +106,26 @@ public final class FocusFilterStore: FocusFilterRepository {
         completeUpdate(failures: failures, notify: true)
     }
 
-    private func loadPolicy(failures: inout [Error]) -> FocusFilterPolicy {
-        let configuration = recover(defaultValue: FocusFilterConfiguration(), failures: &failures, load: persistence.loadConfiguration)
-        let catalog = recover(defaultValue: FocusFilterCatalog(), failures: &failures, load: persistence.loadCatalog)
-        return FocusFilterPolicy(configuration: configuration, catalog: catalog)
+    private func reloadConfiguration(failures: inout [Error]) {
+        do {
+            configurationState = .saved(try persistence.loadConfiguration())
+        } catch {
+            if case .missing = configurationState {
+                if (error as? CocoaError)?.code == .fileReadNoSuchFile { return }
+                configurationState = .unreadable
+            }
+            failures.append(error)
+        }
     }
 
-    private func recover<Value>(defaultValue: Value, failures: inout [Error], load: () throws -> Value) -> Value {
+    private func loadCatalog(failures: inout [Error]) -> FocusFilterCatalog {
         do {
-            return try load()
+            return try persistence.loadCatalog()
         } catch {
-            failures.append(error)
-            return defaultValue
+            if (error as? CocoaError)?.code != .fileReadNoSuchFile || currentPolicy.catalog != FocusFilterCatalog() {
+                failures.append(error)
+            }
+            return currentPolicy.catalog
         }
     }
 

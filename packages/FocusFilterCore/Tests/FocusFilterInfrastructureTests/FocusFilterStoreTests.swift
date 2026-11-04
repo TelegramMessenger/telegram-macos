@@ -142,20 +142,67 @@ final class FocusFilterStoreTests: XCTestCase {
         }
     }
 
-    func testCorruptConfigurationResetsFilteringWithoutDestroyingCatalog() throws {
+    func testUnreadableConfigurationKeepsActiveRuleAcrossReloadAndCatalogUpdates() throws {
         let store = makeStore()
+        let chat = FocusChatIdentifier(accountId: 10, peerId: 42)
+        let configuration = FocusFilterConfiguration(accountIds: [10], chatIds: [chat], mode: .excludeSelected, effect: .both)
         let catalog = FocusFilterCatalog(accounts: [.init(id: 10, title: "Work")])
-        try store.updateCatalog(catalog)
-        try store.updateConfiguration(.init(accountIds: [10], effect: .both))
-        try Data("not json".utf8).write(to: directory.appendingPathComponent("configuration.json"), options: .atomic)
-        store.reload()
+        try store.updateConfiguration(configuration)
+        let url = directory.appendingPathComponent("configuration.json")
+        try Data("not json".utf8).write(to: url, options: .atomic)
 
-        XCTAssertEqual(store.policy.configuration, .init())
-        XCTAssertEqual(store.policy.catalog, catalog)
+        store.reload()
+        XCTAssertEqual(store.policy.configuration, configuration)
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 43, effect: .notifications))
+
+        try store.updateCatalog(catalog)
+        XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
+        try FileManager.default.removeItem(at: url)
+        store.reload()
+        XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
+
+        try FocusFilterFilePersistence(directory: directory).saveConfiguration(.init())
+        store.reload()
         XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        XCTAssertEqual(store.policy.catalog, catalog)
     }
 
+    func testCorruptConfigurationOnStartupSuppressesChatNotificationsUntilRepaired() throws {
+        let persistence = FocusFilterFilePersistence(directory: directory)
+        let catalog = FocusFilterCatalog(accounts: [.init(id: 10, title: "Work")])
+        try persistence.saveCatalog(catalog)
+        let store = makeStore()
+        XCTAssertTrue(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
 
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("configuration.json"), options: .atomic)
+        let restarted = makeStore()
+        XCTAssertEqual(restarted.policy.catalog, catalog)
+        XCTAssertFalse(restarted.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        XCTAssertFalse(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
+        XCTAssertNil(restarted.policy.selection(accountId: 10, effect: .chatList))
+
+        try restarted.updateCatalog(.init())
+        XCTAssertFalse(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
+        try restarted.updateConfiguration(.init())
+        XCTAssertTrue(restarted.policy.includes(accountId: 99, peerId: 42, effect: .notifications))
+    }
+
+    func testUnreadableCatalogKeepsExcludedFolderMembership() throws {
+        let store = makeStore()
+        let folder = FocusFolderIdentifier(accountId: 10, folderId: 1)
+        let catalog = FocusFilterCatalog(folders: [.init(id: folder, title: "Work", peerIds: [42])])
+        var configuration = FocusFilterConfiguration(accountIds: [10], folderIds: [folder], mode: .excludeSelected)
+        try store.updateCatalog(catalog)
+        try store.updateConfiguration(configuration)
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("catalog.json"), options: .atomic)
+
+        store.reload()
+        XCTAssertFalse(store.policy.includes(accountId: 10, peerId: 42, effect: .notifications))
+        configuration.effect = .both
+        try store.updateConfiguration(configuration)
+        XCTAssertEqual(store.policy, FocusFilterPolicy(configuration: configuration, catalog: catalog))
+    }
 }
 
 private final class PolicyRecorder {

@@ -15,9 +15,11 @@ public struct FocusFilterSelection: Equatable, Sendable {
 public struct FocusFilterPolicy: Equatable, Sendable {
     public let configuration: FocusFilterConfiguration
     public let catalog: FocusFilterCatalog
+    private let suppressesAllNotifications: Bool
     private let selections: [Int64: FocusFilterSelection]
 
     public init(configuration: FocusFilterConfiguration = .init(), catalog: FocusFilterCatalog = .init()) {
+        self.suppressesAllNotifications = false
         self.configuration = configuration
         self.catalog = catalog
         var selected: [Int64: Set<Int64>] = [:]
@@ -33,7 +35,17 @@ public struct FocusFilterPolicy: Equatable, Sendable {
         self.selections = selected.mapValues { FocusFilterSelection(mode: configuration.mode, peerIds: $0) }
     }
 
+    public init(suppressingNotificationsWith catalog: FocusFilterCatalog) {
+        self.suppressesAllNotifications = true
+        self.configuration = .init()
+        self.catalog = catalog
+        self.selections = [:]
+    }
+
     public func selection(accountId: Int64, effect: FocusFilterEffect) -> FocusFilterSelection? {
+        if suppressesAllNotifications && effect == .notifications {
+            return FocusFilterSelection(mode: .allowSelected, peerIds: [])
+        }
         guard configuration.effect.contains(effect) else {
             return nil
         }

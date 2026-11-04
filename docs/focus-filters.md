@@ -149,8 +149,13 @@ resolve paths or access a mutable shared store.
 The repository coordinates injected persistence and change-delivery adapters.
 Observer callbacks, read-failure reporting and cross-process posting execute
 outside the state lock. Pending deliveries preserve order during reentrant
-updates. Missing files use defaults; unreadable or corrupt files are reported and
-recover independently, preserving the valid component of the state.
+updates. A fresh installation starts with filtering off. Once the repository has
+read or saved a configuration, a missing, unreadable or corrupt file leaves that
+configuration in effect. If an existing configuration cannot be read on startup,
+Telegram suppresses chat notifications for all accounts until it reads or saves
+a valid configuration. Saving an empty configuration turns filtering off normally.
+Catalogue read failures retain the last known folder membership. Read failures
+are reported without overwriting either file.
 
 Catalogue publication and delivery-time membership are separate operations. The
 notification resolver consumes a policy source and live-lookup dependency, returns
