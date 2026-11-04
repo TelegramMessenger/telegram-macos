@@ -48,6 +48,111 @@ private extension LiteModeKey {
     }
 }
 
+public enum LiteModeEntryTag {
+    case enabled
+    case lowPower
+    case key(LiteModeKey)
+    
+    fileprivate var stableId: InputDataEntryId {
+        switch self {
+        case .enabled:
+            return .general(_id_enabled)
+        case .lowPower:
+            return .custom(_id_low_power)
+        case let .key(key):
+            return .general(_id_enabled_key(key))
+        }
+    }
+}
+
+enum PowerSavingSearchTag: Int32, CaseIterable {
+    case enabled = 1
+    case lowPower = 2
+    case video = 3
+    case gif = 4
+    case stickers = 5
+    case emoji = 6
+    case emojiEffects = 7
+    case animations = 8
+    case blur = 9
+    case menuAnimations = 10
+    case liquidGlass = 11
+    
+    fileprivate var entryTag: LiteModeEntryTag {
+        switch self {
+        case .enabled:
+            return .enabled
+        case .lowPower:
+            return .lowPower
+        case .video:
+            return .key(.video)
+        case .gif:
+            return .key(.gif)
+        case .stickers:
+            return .key(.stickers)
+        case .emoji:
+            return .key(.emoji)
+        case .emojiEffects:
+            return .key(.emoji_effects)
+        case .animations:
+            return .key(.animations)
+        case .blur:
+            return .key(.blur)
+        case .menuAnimations:
+            return .key(.menu_animations)
+        case .liquidGlass:
+            return .key(.liquidGlass)
+        }
+    }
+}
+
+extension PowerSavingSearchTag: SettingsSearchTag {
+    static var icon: SettingsSearchableItemIcon {
+        return .general
+    }
+    
+    static var rootTitle: String {
+        return strings().generalSettingsLiteMode
+    }
+    
+    static var includesRoot: Bool {
+        return false
+    }
+    
+    static func itemId(_ index: Int32) -> SettingsSearchableItemId {
+        return .general(100 + index)
+    }
+    
+    static func open<Context: AccountContextProtocol>(_ tag: PowerSavingSearchTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+        present(.push, LiteModeController(context: context, focusOnItemTag: tag?.entryTag))
+    }
+    
+    var searchTitle: String {
+        switch self {
+        case .enabled:
+            return strings().liteModeEnableText
+        case .lowPower:
+            return strings().liteModeLowPower
+        default:
+            if case let .key(key) = entryTag {
+                return key.title
+            }
+            return ""
+        }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        if case .liquidGlass = self {
+            return environment.liquidGlassAvailable
+        }
+        return true
+    }
+    
+    var searchIndex: Int32 {
+        return rawValue
+    }
+}
+
 private final class Arguments {
     public let context: any AccountContextProtocol
     public let toggleEnabled:()->Void
@@ -159,7 +264,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 
      */
 
-public func LiteModeController(context: any AccountContextProtocol) -> InputDataController {
+public func LiteModeController(context: any AccountContextProtocol, focusOnItemTag: LiteModeEntryTag? = nil) -> InputDataController {
 
     let actionsDisposable = DisposableSet()
 
@@ -230,6 +335,14 @@ public func LiteModeController(context: any AccountContextProtocol) -> InputData
     }))
     
     let controller = InputDataController(dataSignal: signal, title: strings().liteModeTitle, hasDone: false)
+    
+    let pendingFocus = Atomic<Bool>(value: focusOnItemTag != nil)
+    controller.afterTransaction = { controller in
+        guard let focusOnItemTag = focusOnItemTag, controller.genericView.tableView.item(stableId: focusOnItemTag.stableId) != nil, pendingFocus.swap(false) else {
+            return
+        }
+        controller.genericView.tableView.scroll(to: .center(id: focusOnItemTag.stableId, innerId: nil, animated: true, focus: .init(focus: true), inset: 0), inset: NSEdgeInsets())
+    }
     
     controller.onDeinit = {
         actionsDisposable.dispose()
