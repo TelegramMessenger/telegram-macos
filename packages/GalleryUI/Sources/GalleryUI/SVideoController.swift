@@ -74,6 +74,8 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     private let mediaControls = MediaPlaybackControlCenter()
     private var mediaControlsActive = false
     private var forceHiddenControls: Bool = false
+    private var isCursorHidden: Bool = false
+    private var cursorFocusObservers: [NSObjectProtocol] = []
     private var _videoFramePreview: MediaPlayerFramePreview?
     private var mode: PictureInPictureControlMode = .normal
     private var frameStepTimestamp: Double?
@@ -222,15 +224,63 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     
     
     private func updateIdleTimer() {
-        NSCursor.unhide()
+        showCursorIfHidden()
         hideOnIdleDisposable.set((Signal<NoValue, NoError>.complete() |> delay(1.0, queue: Queue.mainQueue())).start(completed: { [weak self] in
             guard let `self` = self else {return}
             let hide = !self.genericView.isInMenu && !self.genericView.insideControls && !contextMenuOnScreen()
             self.hideControls.set(hide)
-            if !self.pictureInPicture, hide {
-                NSCursor.hide()
+            if hide {
+                self.hideCursorIfAllowed()
             }
         }))
+    }
+
+    /// Hides the cursor only while this controller's window is the key window of
+    /// the active application and the mouse is inside it. Mouse events reach the
+    /// window's handlers only under those conditions, so hiding the cursor in any
+    /// other state would leave nothing able to show it again.
+    private func hideCursorIfAllowed() {
+        guard !isCursorHidden, !pictureInPicture, NSApp.isActive else {
+            return
+        }
+        guard let window = self.window, window.isKeyWindow, let contentView = window.contentView else {
+            return
+        }
+        let point = contentView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard contentView.bounds.contains(point) else {
+            return
+        }
+        NSCursor.hide()
+        isCursorHidden = true
+    }
+
+    private func showCursorIfHidden() {
+        if isCursorHidden {
+            NSCursor.unhide()
+            isCursorHidden = false
+        }
+    }
+
+    /// The cursor must come back as soon as this window stops receiving mouse
+    /// events, otherwise it stays hidden while the user works elsewhere.
+    private func observeCursorFocus(on window: Window) {
+        stopObservingCursorFocus()
+        let center = NotificationCenter.default
+        let restore: (Notification) -> Void = { [weak self] _ in
+            self?.hideOnIdleDisposable.set(nil)
+            self?.showCursorIfHidden()
+        }
+        cursorFocusObservers = [
+            center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main, using: restore),
+            center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: restore),
+        ]
+    }
+
+    private func stopObservingCursorFocus() {
+        for observer in cursorFocusObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        cursorFocusObservers = []
     }
     
     private func updateControlVisibility(_ isMouseUpOrDown: Bool = false) {
@@ -247,10 +297,8 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
             
             if self.fullScreenWindow != nil && isMouseUpOrDown, !genericView.insideControls {
                 hide = true
-                if !self.isPaused {
-                    if !contextMenuOnScreen() {
-                        NSCursor.hide()
-                    }
+                if !self.isPaused, !contextMenuOnScreen() {
+                    self.hideCursorIfAllowed()
                 }
             }
             if contextMenuOnScreen() {
@@ -266,6 +314,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     
     private func setHandlersOn(window: Window) {
         
+        observeCursorFocus(on: window)
         updateIdleTimer()
         
         _ = self.account
@@ -387,7 +436,8 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         super.viewDidDisappear(animated)
         hideOnIdleDisposable.set(nil)
         _ = screenSleep.enableScreenSleep()
-        NSCursor.unhide()
+        stopObservingCursorFocus()
+        showCursorIfHidden()
         window?.removeAllHandlers(for: self)
         
     }
@@ -779,6 +829,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
                 window.removeAllHandlers(for: self)
                 if let window = self.window {
                     setHandlersOn(window: window)
+                    window.makeKey()
                 }
                 
                 self.fullScreenWindow = nil
@@ -802,7 +853,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
                 fullScreenWindow?.contentView?.addSubview(self.view)
                 fullScreenWindow?.orderFront(nil)
                 genericView.set(isInFullScreen: true)
-                fullScreenWindow?.becomeKey()
+                fullScreenWindow?.makeKey()
                 fullScreenWindow?.setFrame(screen.frame, display: true, animate: true)
             }
         }
@@ -829,6 +880,8 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         }
         updateControls?.invalidate()
         _ = screenSleep.enableScreenSleep()
+        stopObservingCursorFocus()
+        showCursorIfHidden()
     }
     
 }

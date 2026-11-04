@@ -336,6 +336,10 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
         }
     }
     private var startItem: MGalleryItem?
+    /// Set once the viewer starts closing. Deferred appear callbacks (open animation,
+    /// image loading, item transitions) must not start playback after that point,
+    /// or a video keeps playing with no viewer left to stop it.
+    public private(set) var isClosing: Bool = false
     public let view:GalleryPageView = GalleryPageView()
     private let textView: FoldingTextView = FoldingTextView(frame: .zero)
     private var publicPhotoView: PublicPhotoView?
@@ -659,6 +663,29 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
     public var items: [MGalleryItem] {
         return controller.arrangedObjects.map {$0 as! MGalleryItem}
     }
+
+    /// The same viewer instance is shown again after picture-in-picture ends, so the
+    /// closing state must be cleared before its items appear.
+    public func prepareForShow() {
+        isClosing = false
+    }
+
+    /// Marks the pager as closing and stops every item other than the selected one,
+    /// which the caller's close path handles itself.
+    public func prepareForClose() {
+        isClosing = true
+        let selected = selectedItem
+        for item in items where item !== selected {
+            item.disappear(for: nil)
+        }
+    }
+
+    private func appearSelectedItem(for view: NSView?) {
+        guard !isClosing else {
+            return
+        }
+        selectedItem?.appear(for: view)
+    }
     
     private var afterTransaction:(()->Void)? = nil
     
@@ -760,7 +787,8 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
                     if wasInited {
                         items[controller.selectedIndex].request(immediately: false)
                         if previousSelected != self.selectedItem {
-                            self.selectedItem?.appear(for: controller.selectedViewController?.view)
+                            previousSelected?.disappear(for: nil)
+                            self.appearSelectedItem(for: controller.selectedViewController?.view)
                         }
                     }
                 }
@@ -966,7 +994,7 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
             if  let controllerView = pageController.selectedViewController?.view as? GMagnifyView, previousView != controllerView || force {
                 controllerView.hideOrShowControls(hasPrev: hasPrev, hasNext: hasNext, animated: !force)
                 if hasInited {
-                    self.selectedItem?.appear(for: controllerView.contentView)
+                    self.appearSelectedItem(for: controllerView.contentView)
                 }
                 controllerView.frame = view.focus(contentFrame.size, inset:contentInset)
                 magnifyDisposable.set(controllerView.magnifyUpdaterValue.start(next: { [weak self] value in
@@ -1351,13 +1379,13 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
                                 selectedView?.isHidden = false
 //                                strongSelf?.textScrollView.change(opacity: 1.0)
                                 strongSelf?.hasInited = true
-                                strongSelf?.selectedItem?.appear(for: selectedView?.contentView)
+                                strongSelf?.appearSelectedItem(for: selectedView?.contentView)
                                 strongSelf?.lockedTransition = false
                             }, stableId: item.stableId, addAccesoryOnCopiedView: addAccesoryOnCopiedView)
                         } else {
                             selectedView?.isHidden = false
                             self?.hasInited = true
-                            self?.selectedItem?.appear(for: selectedView?.contentView)
+                            self?.appearSelectedItem(for: selectedView?.contentView)
                             self?.lockedTransition = false
                         }
                         if let selectedView = selectedView {
@@ -1377,7 +1405,7 @@ public class GalleryPageController : NSObject, NSPageControllerDelegate {
                         selectedView.swapView(selectedView.contentView)
                         self?.lockedTransition = false
                         self?.hasInited = true
-                        self?.selectedItem?.appear(for: selectedView.contentView)
+                        self?.appearSelectedItem(for: selectedView.contentView)
                         if let completion = completion {
                             completion()
                             self?.window.applyResponderIfNeeded()
