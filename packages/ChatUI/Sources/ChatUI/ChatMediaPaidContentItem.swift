@@ -209,6 +209,7 @@ public final class ChatMediaPaidContentItem : ChatRowItem {
                 return self?.menuAdditionView ?? .single(nil)
             }
             if let layout = self.captionLayouts.first {
+                restrictCopying(interactions, message: layout.message, layout: layout.layout, chatInteraction: self.chatInteraction)
                 interactions.menuItems = { [weak self, weak layout] type in
                     if let interactions = self?.chatInteraction, let entry = self?.entry, let layout {
                         return chatMenuItems(for: layout.message, entry: entry, textLayout: (layout.layout.merged, type), chatInteraction: interactions)
