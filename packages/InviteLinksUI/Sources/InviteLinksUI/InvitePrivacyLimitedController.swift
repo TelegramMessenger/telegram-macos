@@ -162,7 +162,7 @@ private final class UpgradeToPremiumRowView : GeneralContainableRowView {
         action.set(color: theme.colors.underSelectedColor, for:.Normal)
         action.set(font: .medium(.text), for: .Normal)
         action.sizeToFit(.zero, NSMakeSize(frame.width - 40, 40), thatFit: true)
-        action.layer?.cornerRadius = 10
+        action.layer?.cornerRadius = action.frame.height / 2
         
         
         
