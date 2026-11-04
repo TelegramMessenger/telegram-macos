@@ -524,6 +524,9 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
 
     // No title, no bottom button, no close header — the floating glass toolbar owns close / send / undo.
     let modalController = RichEditorModalController(controller, modalInteractions: nil, size: NSMakeSize(560, 500))
+    modalController.compositionKeyHandler = { [weak coordinator] event in
+        coordinator?.editor.handleKeyDuringComposition(event) ?? false
+    }
 
     // Re-frame the pinned floating toolbar to the editor's (dynamic) width on every resize, and
     // re-center the premium toast under it — autoresizing inside the table view isn't reliable.
@@ -2522,6 +2525,13 @@ private final class RichEditorModalController: InputDataModalController {
     /// Fired AFTER a resize (once the table width is final) so the pinned floating toolbar can re-frame
     /// itself to the new width — autoresizing inside the table view doesn't do this reliably.
     var onResize: (() -> Void)?
+    var compositionKeyHandler: ((NSEvent) -> Bool)?
+    override func escapeKeyAction() -> KeyHandlerResult {
+        if let event = NSApp.currentEvent, event.type == .keyDown, compositionKeyHandler?(event) == true {
+            return .invoked
+        }
+        return super.escapeKeyAction()
+    }
     private func applyWidth(_ available: CGFloat) {
         let margin: CGFloat = 32
         let proportional = floor(available * 0.72)
