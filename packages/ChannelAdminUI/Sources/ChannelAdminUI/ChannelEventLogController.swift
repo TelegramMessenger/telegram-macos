@@ -13,6 +13,7 @@ import AlertsUI
 import MessageUtils
 import ChatHistoryModel
 import ChatUI
+import AvatarUI
 
 
 
@@ -34,63 +35,117 @@ enum ChannelEventLogState {
     case history
 }
 
-private class SearchContainerView : View {
-    let searchView: SearchView = SearchView(frame: NSZeroRect)
-    let searchGlass: LiquidGlassView
-    let cancelButton = ImageButton()
-    var hideSearch:(()->Void)?
+private final class EventLogTitleBarView: TitledBarView {
+    let searchView = SearchView(frame: .zero)
+    private let glassContainer = GlassContainerView(frame: .zero, spacing: 10)
+    private let titleGlass = LiquidGlassView(frame: .zero, cornerRadius: 20, hasShadow: false, hasBorder: true)
+    private let searchGlass = LiquidGlassView(frame: .zero, cornerRadius: 20, hasShadow: false, hasBorder: true)
+    private let titleContent = View(frame: .zero)
+    private let titleText = TextView()
+    private let statusText = TextView()
+    private let searchContent = View(frame: .zero)
+    private let avatar = AvatarStoryControl(font: .avatar(12), size: NSMakeSize(32, 32))
+    private var searching = false
+    private var searchTransitionId: UInt = 0
 
-    static let edgeInset: CGFloat = 12
-    static let height: CGFloat = 40
-
-    required init(frame frameRect: NSRect) {
-        self.searchGlass = LiquidGlassView(frame: .zero, cornerRadius: SearchContainerView.height / 2, hasShadow: false, hasBorder: true)
-        super.init(frame: frameRect)
-        addSubview(searchGlass)
-        addSubview(searchView)
-
-        cancelButton.autohighlight = false
-        cancelButton.scaleOnClick = true
-        cancelButton.setAccessibilityLabel(strings().voiceOverCommonCancel)
-        cancelButton.set(handler: { [weak self] _ in
-            self?.hideSearch?()
-        }, for: .Click)
-        addSubview(cancelButton)
-
+    override init(controller: ViewController, _ text: NSAttributedString? = nil, _ status: NSAttributedString? = nil, textInset: CGFloat? = nil) {
+        super.init(controller: controller, text, status, textInset: 0)
+        addSubview(glassContainer)
+        glassContainer.addGhost(titleGlass)
+        glassContainer.addGhost(searchGlass)
+        addSubview(titleContent)
+        containerView.isHidden = true
+        titleContent.addSubview(titleText)
+        titleContent.addSubview(statusText)
+        titleText.isSelectable = false
+        statusText.isSelectable = false
+        titleText.isEventLess = true
+        statusText.isEventLess = true
+        titleContent.addSubview(avatar)
+        titleContent.layer?.masksToBounds = true
+        titleContent.layer?.cornerRadius = 20
+        avatar.userInteractionEnabled = false
+        addSubview(searchContent)
+        searchContent.addSubview(searchView)
+        searchContent.layer?.masksToBounds = true
+        searchContent.layer?.cornerRadius = 20
+        searchContent.isHidden = true
+        searchGlass.isHidden = true
+        searchContent.layer?.opacity = 0
+        ContainedViewLayoutTransition.immediate.updateAlpha(view: searchGlass, alpha: 0)
         searchView.backgroundColor = .clear
-        searchView.layer?.cornerRadius = SearchContainerView.height / 2
-
-        layer?.masksToBounds = false
-
-        updateLocalizationAndTheme(theme: theme)
     }
 
-    override func updateLocalizationAndTheme(theme: PresentationTheme) {
-        super.updateLocalizationAndTheme(theme: theme)
-        backgroundColor = .clear
-        let theme = theme as! TelegramPresentationTheme
-        searchView.backgroundColor = .clear
-        cancelButton.set(image: TelegramThemeHooks.shared.image(.iconPipClose).precomposed(theme.colors.text), for: .Normal)
-        cancelButton.sizeToFit(.zero, NSMakeSize(SearchContainerView.height, SearchContainerView.height), thatFit: true)
-        cancelButton.layer?.cornerRadius = SearchContainerView.height / 2
-        cancelButton.setGlassEffect(size: NSMakeSize(SearchContainerView.height, SearchContainerView.height))
+    func setPeer(account: Account, peer: Peer) {
+        avatar.setPeer(account: account, peer: peer, disableForum: true)
+    }
+
+    func setSearching(_ value: Bool) {
+        guard searching != value else { return }
+        layoutSubtreeIfNeeded()
+        searching = value
+        searchTransitionId &+= 1
+        let transitionId = searchTransitionId
+        searchContent.isHidden = false
+        searchGlass.isHidden = false
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let transition: ContainedViewLayoutTransition = .animated(duration: reduceMotion ? 0.1 : ChatInputSendButton.fieldMotionDuration, curve: .easeOut)
+        updateLayout(size: bounds.size, transition: reduceMotion ? .immediate : transition)
+        transition.updateAlpha(view: searchContent, alpha: value ? 1 : 0)
+        transition.updateAlpha(view: searchGlass, alpha: value ? 1 : 0, completion: { [weak self] _ in
+            guard let self, self.searchTransitionId == transitionId else { return }
+            self.searchContent.isHidden = !value
+            self.searchGlass.isHidden = !value
+        })
+    }
+
+    override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        super.updateLayout(size: size, transition: transition)
+        transition.updateFrame(view: glassContainer, frame: NSRect(origin: .zero, size: size))
+        glassContainer.updateLayout(size: size, transition: transition)
+        let left = (controller?.leftBarView?.frame.maxX ?? 52) + 10
+        let right = (controller?.rightBarView?.frame.minX ?? size.width - 52) - 10
+        let availableWidth = max(0, right - left)
+        let preferredTitleWidth = max(text?.size().width ?? 0, status?.size().width ?? 0) + 62
+        let compactTitleWidth = min(min(260, max(220, preferredTitleWidth)), max(40, availableWidth - 170))
+        let titleWidth = compactTitleWidth
+        let y = (size.height - 40) / 2
+        let titleRect = NSMakeRect(left, y, titleWidth, 40)
+        let expandedSearchRect = NSMakeRect(left + compactTitleWidth + 10, y, max(0, availableWidth - compactTitleWidth - 10), 40)
+        let searchRect = searching ? expandedSearchRect : NSMakeRect(right - 40, y, 40, 40)
+        glassContainer.setGhostFrame(titleGlass, frame: titleRect, transition: transition)
+        glassContainer.setGhostFrame(searchGlass, frame: searchRect, transition: transition)
+        transition.updateFrame(view: titleContent, frame: titleRect)
+        transition.updateFrame(view: searchContent, frame: searchRect)
+        avatar.frame = NSMakeRect(4, 4, 32, 32)
+        let titleLayout = TextViewLayout(text ?? NSAttributedString(), maximumNumberOfLines: 1)
+        let statusLayout = TextViewLayout(status ?? NSAttributedString(), maximumNumberOfLines: 1)
+        titleLayout.measure(width: max(1, titleWidth - 58))
+        statusLayout.measure(width: max(1, titleWidth - 58))
+        titleText.update(titleLayout)
+        statusText.update(statusLayout)
+        let titleY = floor((40 - titleLayout.layoutSize.height - statusLayout.layoutSize.height - 2) / 2)
+        titleText.setFrameOrigin(NSMakePoint(44, titleY))
+        statusText.setFrameOrigin(NSMakePoint(44, titleY + titleLayout.layoutSize.height + 2))
+        searchView.frame = NSRect(origin: .zero, size: expandedSearchRect.size)
     }
 
     override func layout() {
         super.layout()
-        let edge = SearchContainerView.edgeInset
-        let cancelX = frame.width - edge - cancelButton.frame.width
-        cancelButton.setFrameOrigin(NSMakePoint(cancelX, (frame.height - cancelButton.frame.height) / 2))
-
-        let glassWidth = max(0, cancelX - edge - edge)
-        let glassFrame = NSMakeRect(edge, 0, glassWidth, frame.height)
-        searchGlass.frame = glassFrame
-        searchView.frame = glassFrame
+        updateLayout(size: bounds.size, transition: .immediate)
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        searchView.updateLocalizationAndTheme(theme: theme)
+        searchView.backgroundColor = .clear
+        titleGlass.updateLocalizationAndTheme(theme: theme)
+        searchGlass.updateLocalizationAndTheme(theme: theme)
+        needsLayout = true
     }
+
+    required init(frame frameRect: NSRect) { fatalError("init(frame:) has not been implemented") }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
 private final class EmptyView : View {
@@ -135,11 +190,8 @@ public class ChannelEventLogView : View {
     fileprivate let settings: TextButton = TextButton()
     fileprivate let info: ImageButton = ImageButton()
     private var emptyView:EmptyView = EmptyView(frame: .zero)
-    private(set) var inSearch:Bool = false
-    fileprivate var searchContainer:SearchContainerView?
     private var progress:ProgressIndicator = ProgressIndicator(frame:NSMakeRect(0, 0, 30, 30))
     
-    fileprivate var searchInteractions: SearchInteractions?
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -201,47 +253,6 @@ public class ChannelEventLogView : View {
         needsLayout = true
     }
     
-    fileprivate func toggleSearch() {
-        if searchContainer != nil {
-            self.hideSearch()
-        } else {
-            self.showSearch()
-        }
-       
-    }
-    
-    fileprivate func showSearch() {
-        inSearch = true
-
-        let current: SearchContainerView
-        if let view = self.searchContainer {
-            current = view
-        } else {
-            current = SearchContainerView(frame: NSMakeRect(0, ChannelEventLogView.searchTopInset, frame.width, SearchContainerView.height))
-            current.layer?.animatePosition(from: NSMakePoint(0, -current.frame.height), to: NSMakePoint(0, ChannelEventLogView.searchTopInset))
-            self.searchContainer = current
-            addSubview(current)
-        }
-        current.searchView.searchInteractions = searchInteractions
-        current.searchView.setString("")
-        current.searchView.change(state: .Focus, false)
-        current.hideSearch = { [weak self] in
-            self?.hideSearch()
-        }
-    }
-
-    fileprivate func hideSearch() {
-        inSearch = false
-        if let searchContainer {
-            searchContainer.searchView.setString("")
-            performSubviewPosRemoval(searchContainer, pos: NSMakePoint(0, -searchContainer.frame.height), animated: true)
-        }
-        self.searchContainer = nil
-
-    }
-
-    static let searchTopInset: CGFloat = 12 + NavigationBarStyle.defaultHeight
-
     public override func layout() {
         super.layout()
         tableView.frame = NSMakeRect(0, 0, frame.width, frame.height)
@@ -252,9 +263,6 @@ public class ChannelEventLogView : View {
         progress.center()
         info.setFrameOrigin(NSMakePoint(frame.width - info.frame.width - 12, buttonY))
 
-        if let searchContainer {
-            searchContainer.frame = NSMakeRect(0, ChannelEventLogView.searchTopInset, frame.width, SearchContainerView.height)
-        }
     }
     
     public required init?(coder: NSCoder) {
@@ -386,6 +394,7 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
     private let peerId:PeerId
     private let peer: EnginePeer
     private let chatInteraction:ChatInteraction
+    private var inSearch = false
     private let disposable = MetaDisposable()
     private let searchState:ValuePromise<SearchState> = ValuePromise(SearchState(state: .None, request: nil), ignoreRepeated: true)
     private let filterDisposable = MetaDisposable()
@@ -474,23 +483,77 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
         updateFilterDisposable.dispose()
     }
     
-    open override func requestUpdateRightBar() {
-        super.requestUpdateRightBar()
-        (self.rightBarView as? ImageBarView)?.set(image: theme.icons.chatSearch)
-    }
-    
-    open override func getRightBarViewOnce() -> BarView {
-        let bar = ImageBarView(controller: self, theme.icons.chatSearch)
-        bar.button.set(handler: { [weak self] _ in
-            self?.genericView.toggleSearch()
-        }, for: .Click)
-        
-        
-        bar.button.scaleOnClick = true
-        
+    open override func getCenterBarViewOnce() -> TitledBarView {
+        let bar = EventLogTitleBarView(controller: self)
+        bar.setPeer(account: context.account, peer: peer._asPeer())
         return bar
     }
-    
+
+    open override func requestUpdateCenterBar() {
+        super.requestUpdateCenterBar()
+        centerBarView.needsLayout = true
+    }
+
+    private var searchView: SearchView? {
+        return (centerBarView as? EventLogTitleBarView)?.searchView
+    }
+
+    private var searchButtonImage: CGImage {
+        return inSearch ? TelegramThemeHooks.shared.image(.iconPipClose).precomposed(theme.colors.text) : theme.icons.chatSearch
+    }
+
+    private func toggleSearch() {
+        if inSearch { hideSearch() } else { showSearch() }
+    }
+
+    private func showSearch() {
+        guard !inSearch, let bar = centerBarView as? EventLogTitleBarView else { return }
+        inSearch = true
+        bar.setSearching(true)
+        bar.layoutSubtreeIfNeeded()
+        bar.searchView.setString("")
+        bar.searchView.change(state: .Focus, false)
+        bar.searchView.updateClearVisibility(false)
+        requestUpdateRightBar()
+    }
+
+    private func hideSearch() {
+        guard inSearch, let bar = centerBarView as? EventLogTitleBarView else { return }
+        inSearch = false
+        bar.searchView.setString("")
+        bar.searchView.change(state: .None, false)
+        bar.setSearching(false)
+        window?.makeFirstResponder(genericView.tableView)
+        requestUpdateRightBar()
+    }
+
+    open override func firstResponder() -> NSResponder? {
+        return inSearch ? searchView?.input : super.firstResponder()
+    }
+
+    open override func requestUpdateRightBar() {
+        super.requestUpdateRightBar()
+        if let bar = rightBarView as? ImageBarView {
+            if bar.button.imageView.image != searchButtonImage, bar.window != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let transition = CATransition()
+                transition.type = .fade
+                transition.duration = ChatInputSendButton.fieldMotionDuration
+                transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                bar.button.imageView.layer?.add(transition, forKey: "eventLogSearchIcon")
+            }
+            bar.set(image: searchButtonImage)
+            bar.button.setAccessibilityLabel(inSearch ? strings().voiceOverCommonCancel : strings().voiceOverCommonSearch)
+        }
+    }
+
+    open override func getRightBarViewOnce() -> BarView {
+        let bar = ImageBarView(controller: self, searchButtonImage)
+        bar.button.set(handler: { [weak self] _ in self?.toggleSearch() }, for: .Click)
+        bar.button.setAccessibilityLabel(strings().voiceOverCommonSearch)
+        bar.button.scaleOnClick = true
+        return bar
+    }
+
     open override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if let controller = ChannelAdminUIHooks.shared.getAudioPlayer(context), let header = self.navigationController?.header, header.needShown {
@@ -500,8 +563,8 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
     }
     
     open override func escapeKeyAction() -> KeyHandlerResult {
-        if genericView.inSearch {
-            genericView.hideSearch()
+        if inSearch {
+            hideSearch()
             return .invoked
         }
         return super.escapeKeyAction()
@@ -511,11 +574,7 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
         super.viewDidAppear(animated)
         window?.set(handler: { [weak self] _ -> KeyHandlerResult in
             if let strongSelf = self {
-                if !strongSelf.genericView.inSearch {
-                    strongSelf.genericView.showSearch()
-                } else {
-                    strongSelf.genericView.hideSearch()
-                }
+                strongSelf.toggleSearch()
             }
             return .invoked
             }, with: self, for: .F, modifierFlags: [.command])
@@ -599,12 +658,14 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
             self?.showFilter()
         }, for: .Click)
         
-        genericView.searchInteractions = SearchInteractions({ state, _ in
+        searchView?.searchInteractions = SearchInteractions({ [weak self] state, _ in
             _ = searchQuery.swap(state.request)
             _ = scrollDownOnNext.swap(true)
             searchState.set(state)
             _ = scrollDownOnNext.swap(true)
-        }, { state in
+            if state.state == .None { self?.hideSearch() }
+        }, { [weak self] state in
+            self?.searchView?.updateClearVisibility(!state.request.isEmpty)
             _ = searchQuery.swap(state.request)
             _ = scrollDownOnNext.swap(true)
             searchState.set(state)
