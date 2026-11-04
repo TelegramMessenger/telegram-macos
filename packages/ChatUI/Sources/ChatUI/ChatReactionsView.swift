@@ -79,7 +79,7 @@ public final class ChatReactionsLayout {
         public let hasWallpaper: Bool
         public let tagBackground: NSImage?
         
-        public static func Current(theme: TelegramPresentationTheme, renderType: ChatItemRenderType, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, mode: ChatReactionsLayout.Mode, isStars: Bool) -> Theme {
+        public static func Current(theme: TelegramPresentationTheme, renderType: ChatItemRenderType, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, frosted: Bool = false, stateOverlayTextColor: NSColor, mode: ChatReactionsLayout.Mode, isStars: Bool) -> Theme {
             let bgColor: NSColor
             let textColor: NSColor
             let textSelectedColor: NSColor
@@ -107,7 +107,14 @@ public final class ChatReactionsLayout {
                             textSelectedColor = isStars ? NSColor(0xffffff) : selectedColor.underTextColor
                         }
                     } else {
-                        if isIncoming {
+                        if isIncoming, frosted {
+                            let tint = isStars ? GOLD : theme.colors.accent
+                            bgColor = ChatBubbleWallpaperMaterial.frostedFill(tint)
+                            textColor = ChatBubbleWallpaperMaterial.legible(tint, on: ChatBubbleWallpaperMaterial.incomingGlassReference)
+                            borderColor = .clear
+                            selectedColor = tint
+                            textSelectedColor = selectedColor.underTextColor
+                        } else if isIncoming {
                             bgColor = isStars ? gold_alpha : theme.colors.accent.withAlphaComponent(0.15)
                             textColor = isStars ? GOLD : theme.colors.accent
                             borderColor = .clear
@@ -503,7 +510,7 @@ public final class ChatReactionsLayout {
     public let mode: Mode
     
     
-    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, sendStars: @escaping () -> Void, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}) {
+    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, frosted: Bool = false, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, sendStars: @escaping () -> Void, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}) {
         
         var mode: Mode = .full
         if message.id.peerId == context.peerId {
@@ -516,7 +523,7 @@ public final class ChatReactionsLayout {
         self.engine = engine
         self.mode = mode
         self.openInfo = openInfo
-        let presentation: Theme = .Current(theme: theme, renderType: renderType, isIncoming: isIncoming, isOutOfBounds: isOutOfBounds, hasWallpaper: hasWallpaper, stateOverlayTextColor: stateOverlayTextColor, mode: mode, isStars: false)
+        let presentation: Theme = .Current(theme: theme, renderType: renderType, isIncoming: isIncoming, isOutOfBounds: isOutOfBounds, hasWallpaper: hasWallpaper, frosted: frosted, stateOverlayTextColor: stateOverlayTextColor, mode: mode, isStars: false)
         self.presentation = presentation
         
         var index: Int = 0
@@ -594,7 +601,7 @@ public final class ChatReactionsLayout {
                     }
                 }
                 
-                let presentation: Theme = .Current(theme: theme, renderType: renderType, isIncoming: isIncoming, isOutOfBounds: isOutOfBounds, hasWallpaper: hasWallpaper, stateOverlayTextColor: stateOverlayTextColor, mode: mode, isStars: reaction.value == .stars)
+                let presentation: Theme = .Current(theme: theme, renderType: renderType, isIncoming: isIncoming, isOutOfBounds: isOutOfBounds, hasWallpaper: hasWallpaper, frosted: frosted, stateOverlayTextColor: stateOverlayTextColor, mode: mode, isStars: reaction.value == .stars)
                 
                 return .init(value: reaction, recentPeers: recentPeers, canViewList: reactions.canViewList, message: message, savedMessageTags: savedMessageTags, currentTag: currentTag, context: context, mode: mode, index: getIndex(), source: source, presentation: presentation, action: { value, isFilterTag in
                     if message.id.peerId == context.peerId, !isFilterTag, mode == .tag {

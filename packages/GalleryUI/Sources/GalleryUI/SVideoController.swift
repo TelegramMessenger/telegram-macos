@@ -7,6 +7,7 @@ import Postbox
 import RangeSet
 import IOKit.pwr_mgt
 import TelegramMedia
+import AudioPlayerCore
 import Localization
 import TelegramTheme
 import TelegramContext
@@ -70,6 +71,8 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     public var togglePictureInPictureImpl:((Bool, PictureInPictureControl)->Void)?
     
     private var isPaused: Bool = true
+    private let mediaControls = MediaPlaybackControlCenter()
+    private var mediaControlsActive = false
     private var forceHiddenControls: Bool = false
     private var _videoFramePreview: MediaPlayerFramePreview?
     private var mode: PictureInPictureControlMode = .normal
@@ -128,13 +131,43 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         self.context = context
         super.init()
         bar = .init(height: 0)
+        mediaControls.play = { [weak self] in
+            guard let self, self.mediaControlsActive else { return false }
+            self.play()
+            return true
+        }
+        mediaControls.pause = { [weak self] in
+            guard let self, self.mediaControlsActive else { return false }
+            self.pause()
+            return true
+        }
+        mediaControls.togglePlayPause = { [weak self] in
+            guard let self, self.mediaControlsActive else { return false }
+            self.playOrPause()
+            return true
+        }
     }
-    
+
+    private func activateMediaControls() {
+        guard mediaControlsActive else { return }
+        mediaControls.activate()
+        mediaControls.updateControlsAvaiability(nextEnabled: false, prevEnabled: false, seekEnabled: false)
+        if let status = genericView.status {
+            mediaControls.setupNowPlaying(videoTitle: strings().chatListVideo, status: status)
+        }
+    }
+
+    func deactivateMediaControls() {
+        mediaControlsActive = false
+        mediaControls.clearNowPlaying()
+    }
+
     public var status: Signal<MediaPlayerStatus, NoError> {
         return mediaPlayer.status
     }
     
     public func play(_ startTime: TimeInterval? = nil) {
+        activateMediaControls()
         if let startTime = startTime, startTime > 0 {
             mediaPlayer.seek(startTime, play: true)
         } else {
@@ -151,6 +184,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     }
     
     public func playOrPause() {
+        activateMediaControls()
         self.isPaused = !self.isPaused
         self.frameStepTimestamp = nil
         if !self.isPaused {
@@ -177,7 +211,9 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     }
     
     public func didExit() {
-        
+        if pictureInPicture {
+            deactivateMediaControls()
+        }
     }
     
     public func isPlaying() -> Bool {
@@ -309,18 +345,18 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
 
       
         
-        window.set(handler: { [weak self] _ in
+        window.setGalleryKeyHandler({ [weak self] _ in
             self?.runAdMessages([message], 10, 15)
 
             return .invoked
         }, with: self, for: .T, priority: .supreme, modifierFlags: [.command])
 
-        window.set(handler: { [weak self] _ in
+        window.setGalleryKeyHandler({ [weak self] _ in
             self?.stepFrameBackward()
             return .invoked
         }, with: self, for: .Comma, priority: .modal)
 
-        window.set(handler: { [weak self] _ in
+        window.setGalleryKeyHandler({ [weak self] _ in
             self?.stepFrameForward()
             return .invoked
         }, with: self, for: .Period, priority: .modal)
@@ -334,7 +370,9 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-      
+        mediaControlsActive = !isControlsLimited
+        activateMediaControls()
+
         if let window = window {
             setHandlersOn(window: window)
         }
@@ -342,6 +380,9 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     }
     
     public override func viewDidDisappear(_ animated: Bool) {
+        if !pictureInPicture {
+            deactivateMediaControls()
+        }
         super.viewWillDisappear(animated)
         super.viewDidDisappear(animated)
         hideOnIdleDisposable.set(nil)
@@ -524,6 +565,9 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
             _ = statusValue.swap(status)
            
             self?.genericView.status = status
+            if self?.mediaControlsActive == true {
+                self?.mediaControls.setupNowPlaying(videoTitle: strings().chatListVideo, status: status)
+            }
         }))
         _ = reference.media.resource.size ?? 0
         

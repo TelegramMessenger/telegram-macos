@@ -82,6 +82,8 @@ final class DocumentCanvasView: NSView {
     // Selection as global UTF-16 positions; `anchor` fixed, `head` moving.
     var anchor = 0
     var head = 0
+    var markedTextState: (range: NSRange, attributes: [NSAttributedString.Key: Any])?
+    var isUpdatingTextInput = false
 
     // MARK: - Inline custom emoji (host NSViews pooled by instanceID, positioned + culled)
     /// Live host emoji views keyed by `EmojiRef.instanceID` so a view + its animation survive edits/undo.
@@ -341,12 +343,16 @@ final class DocumentCanvasView: NSView {
     /// `insertNewline:`/`deleteBackward:`/… selectors). Without this override, `NSResponder`'s default
     /// `keyDown` ignores the event — no typed character or arrow key ever reaches the editor.
     override func keyDown(with event: NSEvent) {
+        if hasMarkedText() {
+            if inputContext?.handleEvent(event) != true { super.keyDown(with: event) }
+            return
+        }
         // Return semantics. Shift+Enter always starts a fresh plain body paragraph (breaking out of a
         // list / heading / quote — the new empty paragraph shows the "Type something…" placeholder), or
         // leaves the table from a cell. In a LIST item, Enter continues the list with a new item (and
         // outdents / leaves the list when the item is empty); elsewhere Enter is a soft line break that
         // stays in the paragraph/cell. Handled here so it's deterministic regardless of input-context
-        // routing; the immediate-commit IME has no marked text to finalize on Return.
+        // routing.
         if event.keyCode == 36 || event.keyCode == 76 {   // Return / keypad Enter
             // Return in a code block's LANGUAGE line moves the caret to the start of the code text. It
             // inserts nothing and splits nothing: a `.Pre` language has no second line. (The quote author
@@ -418,6 +424,7 @@ final class DocumentCanvasView: NSView {
     /// Builds the boxes from the canvas's internal currency (`.core` core blocks + macOS-only `.media`).
     /// `setBlocks([Block])` and undo restore both route through here.
     func setModelBlocks(_ blocks: [CanvasModelBlock], width: CGFloat) {
+        unmarkText()
         if width > 0 { lastLayoutWidth = width }
         breakUndoCoalescing()   // a full document swap — programmatic set OR an undo/redo restore — ends any open typing/deleting run
         // `width` here is the raw canvas width; the per-box TextKit layout is re-done at the content width
@@ -631,6 +638,12 @@ final class DocumentCanvasView: NSView {
         }
         // 2) each box draws itself (decoration/grid + text)
         root.draw(in: ctx, imageProvider: imageProvider)
+        if let range = markedTextState?.range {
+            editorAppearance.defaultForeground.setFill()
+            for rect in selectionRects(globalFrom: range.location, globalTo: NSMaxRange(range)) {
+                ctx.fill(CGRect(x: rect.minX, y: rect.maxY - 1, width: rect.width, height: 1))
+            }
+        }
         // 2.05) accent wash over a click-selected image (drawn ON TOP of the opaque bitmap)
         drawImageSelectionHighlight(in: ctx)
         // 2.5) list markers in the gutter (computed by Core ListNumbering; not in the text storage)
@@ -716,6 +729,9 @@ final class DocumentCanvasView: NSView {
     /// that changed content/format WITHOUT moving the selection (e.g. a toolbar formatting action on a
     /// remote selection), so the viewport doesn't jump back to an off-screen caret.
     func notifySelectionChanged(caretMoved: Bool = true) {
+        if !isUpdatingTextInput {
+            unmarkText()
+        }
         inputContext?.invalidateCharacterCoordinates()
         restartCaretBlink()
         syncSpoilers()                                   // a caret/selection landing in a hidden run reveals it
@@ -745,6 +761,7 @@ final class DocumentCanvasView: NSView {
         return super.becomeFirstResponder()
     }
     override func resignFirstResponder() -> Bool {
+        unmarkText()
         stopCaretBlink(); clearTableSelection(); draggingEndpoint = nil; draggingTableKnob = nil
         breakUndoCoalescing()   // losing focus ends any open typing/deleting run (matches native)
         return super.resignFirstResponder()

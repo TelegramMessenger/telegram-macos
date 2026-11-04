@@ -674,7 +674,7 @@ public class QuickSwitcherModalController: ModalViewController, TableViewDelegat
                 }
                 self.genericView.activeTableView.selectAt(index)
                 return .invoked
-            }, with: modal!, for: key, priority: .modal)
+            }, with: modal!, for: key, priority: .modal, modifierFlags: [.command])
         }
         
     }

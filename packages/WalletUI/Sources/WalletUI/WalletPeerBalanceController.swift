@@ -572,6 +572,9 @@ private final class WalletPeerBalanceController: ModalViewController {
             self?.openReceive()
         }
         let account = context.account
+        genericView.cardView.stickerDragAllowed = {
+            return false
+        }
         genericView.cardView.stickerTracking = { [weak cardView = genericView.cardView] id, _ in
             cardView?.playSticker(id, account: account, grow: 1.22)
             return true

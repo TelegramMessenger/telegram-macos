@@ -5,6 +5,7 @@ import PackageDescription
 let deps: [(String, String)] = [
     ("SecureIdUtils", "../SecureIdUtils"),
     ("TGUIKit", "../TGUIKit"),
+    ("KeyboardKey", "../KeyboardKey"),
     ("InstantPageUI", "../InstantPageUI"),
     ("ColorPalette", "../ColorPalette"),
     ("InAppSettings", "../InAppSettings"),
@@ -17,6 +18,7 @@ let deps: [(String, String)] = [
     ("AlertsUI", "../AlertsUI"),
     ("TelegramMediaUtils", "../TelegramMediaUtils"),
     ("TelegramMedia", "../TelegramMedia"),
+    ("AudioPlayerCore", "../AudioPlayerCore"),
     ("LocalAnimations", "../LocalAnimations"),
     ("MessageUtils", "../MessageUtils"),
     ("ChatModeTypes", "../ChatModeTypes"),
@@ -50,6 +52,7 @@ let package = Package(
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
+        .package(name: "InputView", path: "../InputView"),
     ] + deps.map { .package(name: $0.0, path: $0.1) },
     targets: [
         .target(
@@ -60,5 +63,14 @@ let package = Package(
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
             path: "Sources/GalleryUI"),
+        .testTarget(
+            name: "GalleryUITests",
+            dependencies: [
+                "GalleryUI",
+                .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
+                .product(name: "KeyboardKey", package: "KeyboardKey", condition: nil),
+                .product(name: "InputView", package: "InputView", condition: nil),
+            ],
+            path: "Tests/GalleryUITests"),
     ]
 )

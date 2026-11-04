@@ -218,8 +218,12 @@ public func MessagesPrivacyController<Context: AccountContextProtocol>(context: 
     
     controller.afterDisappear = {
         let state = stateValue.with { $0 }
-        updated(state.noPaidMessages, state.globalSettings)
-        _ = context.engine.privacy.updateGlobalPrivacySettings(settings: stateValue.with { $0.globalSettings }).start()
+        if state != initialState {
+            updated(state.noPaidMessages, state.globalSettings)
+        }
+        if state.globalSettings != initialState.globalSettings {
+            _ = context.engine.privacy.updateGlobalPrivacySettings(settings: state.globalSettings).start()
+        }
     }
 
     return controller

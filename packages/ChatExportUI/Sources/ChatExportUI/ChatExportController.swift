@@ -251,7 +251,8 @@ public final class ChatExportSession {
             switch update {
             case let .completed(url):
                 self.finish(url)
-            case .failed:
+            case let .failed(reason):
+                showModalText(for: context.window, text: reason)
                 self.finish(nil)
             default:
                 break
