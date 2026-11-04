@@ -388,12 +388,14 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
 
 
     var enableForPremium: Bool = false
+    var enableForCloseFriends: Bool
     
     var saving: Bool
 
     var callP2PMode: SelectivePrivacySettingType?
     var callP2PEnableFor: [PeerId: SelectivePrivacyPeer]
     var callP2PDisableFor: [PeerId: SelectivePrivacyPeer]
+    var callP2PEnableForCloseFriends: Bool
     var phoneDiscoveryEnabled: Bool?
     var fallbackPhoto: TelegramMediaImage?
     var updatePhotoState: PeerInfoUpdatingPhotoState?
@@ -406,14 +408,16 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
     
     var showGiftButton: Bool
     
-    init(setting: SelectivePrivacySettingType, enableFor: [PeerId: SelectivePrivacyPeer], disableFor: [PeerId: SelectivePrivacyPeer], saving: Bool, callP2PMode: SelectivePrivacySettingType?, callP2PEnableFor: [PeerId: SelectivePrivacyPeer], callP2PDisableFor: [PeerId: SelectivePrivacyPeer], phoneDiscoveryEnabled: Bool?, fallbackPhoto: TelegramMediaImage?, updatePhotoState: PeerInfoUpdatingPhotoState?, hideReadTime: Bool?, enableForPremium: Bool, hasBirthday: Bool, enableForBots: Bool, gifts: TelegramDisallowedGifts, showGiftButton: Bool) {
+    init(setting: SelectivePrivacySettingType, enableFor: [PeerId: SelectivePrivacyPeer], disableFor: [PeerId: SelectivePrivacyPeer], enableForCloseFriends: Bool, saving: Bool, callP2PMode: SelectivePrivacySettingType?, callP2PEnableFor: [PeerId: SelectivePrivacyPeer], callP2PDisableFor: [PeerId: SelectivePrivacyPeer], callP2PEnableForCloseFriends: Bool, phoneDiscoveryEnabled: Bool?, fallbackPhoto: TelegramMediaImage?, updatePhotoState: PeerInfoUpdatingPhotoState?, hideReadTime: Bool?, enableForPremium: Bool, hasBirthday: Bool, enableForBots: Bool, gifts: TelegramDisallowedGifts, showGiftButton: Bool) {
         self.setting = setting
         self.enableFor = enableFor
         self.disableFor = disableFor
+        self.enableForCloseFriends = enableForCloseFriends
         self.saving = saving
         self.callP2PMode = callP2PMode
         self.callP2PEnableFor = callP2PEnableFor
         self.callP2PDisableFor = callP2PDisableFor
+        self.callP2PEnableForCloseFriends = callP2PEnableForCloseFriends
         self.phoneDiscoveryEnabled = phoneDiscoveryEnabled
         self.fallbackPhoto = fallbackPhoto
         self.updatePhotoState = updatePhotoState
@@ -423,6 +427,30 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
         self.enableForBots = enableForBots
         self.gifts = gifts
         self.showGiftButton = showGiftButton
+    }
+
+    var settings: SelectivePrivacySettings {
+        switch self.setting {
+        case .everybody:
+            return .enableEveryone(disableFor: self.disableFor)
+        case .contacts:
+            return .enableContacts(enableFor: self.enableFor, disableFor: self.disableFor, enableForPremium: self.enableForPremium, enableForBots: self.enableForBots)
+        case .nobody:
+            return .disableEveryone(enableFor: self.enableFor, enableForCloseFriends: self.enableForCloseFriends, enableForPremium: self.enableForPremium, enableForBots: self.enableForBots)
+        }
+    }
+
+    var callSettings: SelectivePrivacySettings? {
+        switch self.callP2PMode {
+        case .everybody:
+            return .enableEveryone(disableFor: self.callP2PDisableFor)
+        case .contacts:
+            return .enableContacts(enableFor: self.callP2PEnableFor, disableFor: self.callP2PDisableFor, enableForPremium: false, enableForBots: false)
+        case .nobody:
+            return .disableEveryone(enableFor: self.callP2PEnableFor, enableForCloseFriends: self.callP2PEnableForCloseFriends, enableForPremium: false, enableForBots: false)
+        case nil:
+            return nil
+        }
     }
 }
 
@@ -698,12 +726,14 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
 
         var initialEnableFor: [PeerId: SelectivePrivacyPeer] = [:]
         var initialDisableFor: [PeerId: SelectivePrivacyPeer] = [:]
+        var enableForCloseFriends = false
         var enableForPremium = false
         var enableForBots = false
 
         switch current {
-        case let .disableEveryone(enableFor, _, _enableForPremium, _enableForBots):
+        case let .disableEveryone(enableFor, _enableForCloseFriends, _enableForPremium, _enableForBots):
             initialEnableFor = enableFor
+            enableForCloseFriends = _enableForCloseFriends
             enableForPremium = _enableForPremium
             enableForBots = _enableForBots
         case let .enableContacts(enableFor, disableFor, _enableForPremium, _enableForBots):
@@ -717,11 +747,13 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
 
         var initialCallP2PEnableFor: [PeerId: SelectivePrivacyPeer] = [:]
         var initialCallP2PDisableFor: [PeerId: SelectivePrivacyPeer] = [:]
+        var callP2PEnableForCloseFriends = false
         if let callCurrent = callSettings {
             switch callCurrent {
-            case let .disableEveryone(enableFor, _, _, _):
+            case let .disableEveryone(enableFor, enableForCloseFriends, _, _):
                 initialCallP2PEnableFor = enableFor
                 initialCallP2PDisableFor = [:]
+                callP2PEnableForCloseFriends = enableForCloseFriends
             case let .enableContacts(enableFor, disableFor, _, _):
                 initialCallP2PEnableFor = enableFor
                 initialCallP2PDisableFor = disableFor
@@ -733,7 +765,7 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
         }
 
 
-        let initialState = SelectivePrivacySettingsControllerState(setting: SelectivePrivacySettingType(current), enableFor: initialEnableFor, disableFor: initialDisableFor, saving: false, callP2PMode: callSettings != nil ? SelectivePrivacySettingType(callSettings!) : nil, callP2PEnableFor: initialCallP2PEnableFor, callP2PDisableFor: initialCallP2PDisableFor, phoneDiscoveryEnabled: phoneDiscoveryEnabled, fallbackPhoto: nil, updatePhotoState: nil, hideReadTime: kind == .presence ? self.globalSettings?.hideReadTime : nil, enableForPremium: enableForPremium, hasBirthday: true, enableForBots: enableForBots, gifts: self.globalSettings?.disallowedGifts ?? [], showGiftButton: self.globalSettings?.displayGiftButton ?? false)
+        let initialState = SelectivePrivacySettingsControllerState(setting: SelectivePrivacySettingType(current), enableFor: initialEnableFor, disableFor: initialDisableFor, enableForCloseFriends: enableForCloseFriends, saving: false, callP2PMode: callSettings != nil ? SelectivePrivacySettingType(callSettings!) : nil, callP2PEnableFor: initialCallP2PEnableFor, callP2PDisableFor: initialCallP2PDisableFor, callP2PEnableForCloseFriends: callP2PEnableForCloseFriends, phoneDiscoveryEnabled: phoneDiscoveryEnabled, fallbackPhoto: nil, updatePhotoState: nil, hideReadTime: kind == .presence ? self.globalSettings?.hideReadTime : nil, enableForPremium: enableForPremium, hasBirthday: true, enableForBots: enableForBots, gifts: self.globalSettings?.disallowedGifts ?? [], showGiftButton: self.globalSettings?.displayGiftButton ?? false)
 
         let statePromise = ValuePromise(initialState, ignoreRepeated: true)
         let stateValue = Atomic(value: initialState)
@@ -1176,38 +1208,34 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
 
 
         savePressed = {
-            var wasSaving = false
-            var settings: SelectivePrivacySettings?
-            var callSettings: SelectivePrivacySettings?
-            var phoneDiscoveryEnabled: Bool? = nil
-            updateState { current in
-                var current = current
-                phoneDiscoveryEnabled = current.phoneDiscoveryEnabled
-                wasSaving = current.saving
-                switch current.setting {
-                case .everybody:
-                    settings = SelectivePrivacySettings.enableEveryone(disableFor: current.disableFor)
-                case .contacts:
-                    settings = SelectivePrivacySettings.enableContacts(enableFor: current.enableFor, disableFor: current.disableFor, enableForPremium: current.enableForPremium, enableForBots: current.enableForBots)
-                case .nobody:
-                    settings = SelectivePrivacySettings.disableEveryone(enableFor: current.enableFor, enableForCloseFriends: false, enableForPremium: current.enableForPremium, enableForBots: current.enableForBots)
-                }
-
-                if let mode = current.callP2PMode {
-                    switch mode {
-                    case .everybody:
-                        callSettings = SelectivePrivacySettings.enableEveryone(disableFor: current.callP2PDisableFor)
-                    case .contacts:
-                        callSettings = SelectivePrivacySettings.enableContacts(enableFor: current.callP2PEnableFor, disableFor: current.callP2PDisableFor, enableForPremium: current.enableForPremium, enableForBots: current.enableForBots)
-                    case .nobody:
-                        callSettings = SelectivePrivacySettings.disableEveryone(enableFor: current.callP2PEnableFor, enableForCloseFriends: false, enableForPremium: current.enableForPremium, enableForBots: current.enableForBots)
-                    }
-                }
-                current.saving = true
-                return current
+            let state = stateValue.with { $0 }
+            if state.saving {
+                return
             }
 
-            if let settings = settings, !wasSaving {
+            let settings = state.settings
+            let callSettings = state.callSettings
+            let phoneDiscoveryEnabled = state.phoneDiscoveryEnabled
+
+            var updatedGlobalSettings = globalSettings
+            if let hideReadTime = state.hideReadTime {
+                updatedGlobalSettings?.hideReadTime = hideReadTime
+            }
+            updatedGlobalSettings?.disallowedGifts = state.gifts
+            updatedGlobalSettings?.displayGiftButton = state.showGiftButton
+
+            let settingsChanged = settings != initialState.settings
+            let callSettingsChanged = callSettings != initialState.callSettings
+            let phoneDiscoveryChanged = phoneDiscoveryEnabled != initialState.phoneDiscoveryEnabled
+            let globalSettingsChanged = updatedGlobalSettings != globalSettings
+
+            if settingsChanged || phoneDiscoveryChanged || globalSettingsChanged {
+                updateState { current in
+                    var current = current
+                    current.saving = true
+                    return current
+                }
+
                 let type: UpdateSelectiveAccountPrivacySettingsType
                 switch kind {
                 case .presence:
@@ -1235,21 +1263,18 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
                 }
                 
                 var updatePhoneDiscoverySignal: Signal<Void, NoError> = Signal.complete()
-                if let phoneDiscoveryEnabled = phoneDiscoveryEnabled {
+                if let phoneDiscoveryEnabled = phoneDiscoveryEnabled, phoneDiscoveryChanged {
                     updatePhoneDiscoverySignal = context.engine.privacy.updatePhoneNumberDiscovery(value: phoneDiscoveryEnabled)
                 }
                 
-                let basic = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: type, settings: settings)
-                let global: Signal<Never, NoError>
-                var gSettings: GlobalPrivacySettings? = globalSettings
-                if var globalSettings = globalSettings {
-                    globalSettings.hideReadTime = stateValue.with { $0.hideReadTime ?? false }
-                    globalSettings.disallowedGifts = stateValue.with { $0.gifts }
-                    globalSettings.displayGiftButton = stateValue.with { $0.showGiftButton }
-                    global = context.engine.privacy.updateGlobalPrivacySettings(settings: globalSettings)
-                    gSettings = globalSettings
-                } else {
-                    global = .complete()
+                var basic: Signal<Void, NoError> = Signal.complete()
+                if settingsChanged {
+                    basic = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: type, settings: settings)
+                }
+                
+                var global: Signal<Never, NoError> = Signal.complete()
+                if let updatedGlobalSettings = updatedGlobalSettings, globalSettingsChanged {
+                    global = context.engine.privacy.updateGlobalPrivacySettings(settings: updatedGlobalSettings)
                 }
 
                 updateSettingsDisposable.set(combineLatest(queue: .mainQueue(), updatePhoneDiscoverySignal, basic, global).start(completed: {
@@ -1260,10 +1285,10 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
                     }
                     dismissImpl?()
                 }))
-                
-                updated(settings, callSettings, phoneDiscoveryEnabled, gSettings)
+            }
 
-
+            if settingsChanged || callSettingsChanged || phoneDiscoveryChanged || globalSettingsChanged {
+                updated(settings, callSettingsChanged ? callSettings : nil, phoneDiscoveryEnabled, globalSettingsChanged ? updatedGlobalSettings : nil)
             }
         }
 
