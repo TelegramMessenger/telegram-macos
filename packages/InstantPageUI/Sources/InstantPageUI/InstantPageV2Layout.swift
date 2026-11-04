@@ -2838,6 +2838,18 @@ private func layoutCaptionAndCreditV2(
     return (items, totalHeight)
 }
 
+/// Fit a single media block without enlarging it, preserving its aspect ratio when
+/// the chat's preview height is capped.
+func instantPageV2FittedMediaSize(_ naturalSize: CGSize, availableWidth: CGFloat, maxHeight: CGFloat? = nil) -> CGSize {
+    guard naturalSize.width > 0.0, naturalSize.height > 0.0 else {
+        return CGSize(width: availableWidth, height: naturalSize.height)
+    }
+    let widthScale = availableWidth / naturalSize.width
+    let heightScale = maxHeight.map { $0 / naturalSize.height } ?? 1.0
+    let scale = min(1.0, widthScale, heightScale)
+    return CGSize(width: floor(naturalSize.width * scale), height: floor(naturalSize.height * scale))
+}
+
 private func layoutTypedMediaWithCaptionV2(
     produceItem: (CGRect, CGFloat) -> InstantPageV2LaidOutItem,
     naturalSize: CGSize,
@@ -2851,27 +2863,33 @@ private func layoutTypedMediaWithCaptionV2(
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
     let columnWidth = boundingWidth - horizontalInset * 2.0
-    func fit(_ width: CGFloat) -> CGSize {
-        guard naturalSize.width > 0.0, naturalSize.height > 0.0 else {
-            return CGSize(width: width, height: naturalSize.height)
-        }
-        let scale = min(width / naturalSize.width, 1.0)
-        return CGSize(width: floor(naturalSize.width * scale), height: floor(naturalSize.height * scale))
-    }
-
     var bleedAmount = bleed ? context.mediaBleed : 0.0
     var availableWidth = columnWidth + bleedAmount * 2.0
-    var scaledSize = fit(availableWidth)
+    var scaledSize = instantPageV2FittedMediaSize(naturalSize, availableWidth: availableWidth)
     if bleedAmount > 0.0, scaledSize.width < availableWidth - 0.5 {
         bleedAmount = 0.0
         availableWidth = columnWidth
-        scaledSize = fit(availableWidth)
-    }
-    if capHeight {
-        scaledSize.height = min(scaledSize.height, min(1000.0, availableWidth))
+        scaledSize = instantPageV2FittedMediaSize(naturalSize, availableWidth: availableWidth)
     }
 
-    let mediaX = horizontalInset - bleedAmount + floor((availableWidth - scaledSize.width) / 2.0)
+    // A height-capped portrait should occupy a narrow, aspect-fitted frame rather
+    // than a full-width square frame with letterboxing. Don't bleed these blocks
+    // past the chat bubble's content edge.
+    var isHeightCapped = false
+    if capHeight, scaledSize.height > min(1000.0, availableWidth) {
+        bleedAmount = 0.0
+        availableWidth = columnWidth
+        let heightLimit = min(1000.0, availableWidth)
+        scaledSize = instantPageV2FittedMediaSize(
+            naturalSize, availableWidth: availableWidth, maxHeight: heightLimit
+        )
+        isHeightCapped = true
+    }
+
+    // Left-align height-capped media so fitToWidth can shrink a media-only bubble.
+    let mediaX = isHeightCapped
+        ? horizontalInset
+        : horizontalInset - bleedAmount + floor((availableWidth - scaledSize.width) / 2.0)
     let mediaFrame = CGRect(x: mediaX, y: 0.0, width: scaledSize.width, height: scaledSize.height)
     let effectiveCorner: CGFloat = bleedAmount > 0 ? 0.0 : cornerRadius
     var result: [InstantPageV2LaidOutItem] = [produceItem(mediaFrame, effectiveCorner)]
