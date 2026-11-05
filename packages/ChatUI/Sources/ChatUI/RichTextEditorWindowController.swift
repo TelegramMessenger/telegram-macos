@@ -195,8 +195,33 @@ private func composerEditorController(chatInteraction: ChatInteraction, initialD
 // Opens the editor seeded with an explicit document (e.g. text/formula pasted from a rendered rich message).
 @available(macOS 12, *)
 public func showRichTextEditor(chatInteraction: ChatInteraction, seeding document: Document) {
-    let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: document, initialDraft: nil)
+    let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: consumeComposerText(chatInteraction: chatInteraction, around: document), initialDraft: nil)
     showModal(with: controller, for: chatInteraction.interactionContext.window)
+}
+
+@available(macOS 12, *)
+private func consumeComposerText(chatInteraction: ChatInteraction, around pasted: Document) -> Document {
+    guard chatInteraction.richTextDraft == nil else {
+        return pasted
+    }
+    let inputState = chatInteraction.presentation.effectiveInput
+    let length = inputState.inputText.length
+    guard length > 0 else {
+        return pasted
+    }
+    let lower = min(max(0, inputState.selectionRange.lowerBound), length)
+    let upper = min(max(lower, inputState.selectionRange.upperBound), length)
+    func blocks(_ range: NSRange) -> [Block] {
+        guard range.length > 0 else {
+            return []
+        }
+        let part = inputState.subInputState(from: range)
+        return richTextDocument(text: part.inputText, entities: part.messageTextEntities()).blocks
+    }
+    var result = pasted
+    result.blocks = blocks(NSMakeRange(0, lower)) + pasted.blocks + blocks(NSMakeRange(upper, length - upper))
+    chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
+    return result
 }
 
 // Opens the editor with the FULL content of a rich-text message (refetched by id) — used when pasting a
