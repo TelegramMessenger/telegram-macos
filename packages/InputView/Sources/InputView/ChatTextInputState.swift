@@ -580,6 +580,12 @@ public final class ChatTextInputState: Codable, Equatable {
                         string.insert(.initialize(string: language + "\n"), at: pre.lowerBound + offset)
                         offset += language.length + 1
                     }
+                } else {
+                    let lines = string.string.nsstring.substring(with: NSMakeRange(pre.lowerBound + offset, pre.count)).components(separatedBy: CharacterSet(charactersIn: "\n\u{2028}"))
+                    if lines.count > 1, !lines[0].isEmpty, lines[0] == lines[0].trimmingCharacters(in: .whitespacesAndNewlines) {
+                        string.insert(.initialize(string: "\n"), at: pre.lowerBound + offset)
+                        offset += 1
+                    }
                 }
                 string.insert(.initialize(string: symbols), at: pre.upperBound + offset)
                 offset += symbols.count

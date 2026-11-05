@@ -1,0 +1,396 @@
+import Foundation
+import AppKit
+
+extension String {
+    var nsstring: NSString { return self as NSString }
+    var length: Int { return self.nsstring.length }
+}
+
+extension NSRange {
+    var min: Int { return self.location }
+    var max: Int { return self.location + self.length }
+}
+
+extension NSAttributedString {
+    static func initialize(string: String?, color: NSColor? = nil, font: NSFont? = nil) -> NSAttributedString {
+        guard let string, !string.isEmpty else {
+            return NSAttributedString(string: "")
+        }
+        return NSAttributedString(string: string)
+    }
+
+    __TRIMMED__
+}
+
+func arc4random64() -> Int64 {
+    return Int64.random(in: 0 ... Int64.max)
+}
+
+struct StringCodingKey: CodingKey, ExpressibleByStringLiteral {
+    var stringValue: String
+    var intValue: Int? { return nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+    init(stringLiteral value: String) { self.stringValue = value }
+}
+
+protocol Media {}
+
+struct TelegramMediaFile: Codable, Equatable, Media {
+    var isPremiumEmoji: Bool { return false }
+}
+
+struct ItemCollectionId: Codable, Hashable {}
+
+struct MediaId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Media {
+        static let CloudFile: Int32 = 0
+    }
+    enum Peer {
+        static let CloudUser: Int32 = 0
+    }
+}
+
+struct PeerId: Hashable {
+    struct Id: Hashable {
+        let value: Int64
+        static func _internalFromInt64Value(_ value: Int64) -> Id { return Id(value: value) }
+        func _internalGetInt64Value() -> Int64 { return self.value }
+    }
+    let namespace: Int32
+    let id: Id
+}
+
+struct StickerPackReference: Equatable {}
+
+enum MessageTextEntityType: Equatable {
+    enum DateTimeFormat: Equatable {
+        enum TimeFormat: Equatable { case short }
+        enum DateFormat: Equatable { case short }
+        case relative
+        case full(timeFormat: TimeFormat?, dateFormat: DateFormat?, dayOfWeek: Bool)
+    }
+    case Unknown
+    case Mention
+    case Hashtag
+    case BotCommand
+    case Url
+    case Email
+    case Bold
+    case Italic
+    case Code
+    case Pre(language: String?)
+    case TextUrl(url: String)
+    case TextMention(peerId: PeerId)
+    case PhoneNumber
+    case Strikethrough
+    case BlockQuote(isCollapsed: Bool)
+    case Underline
+    case BankCard
+    case Spoiler
+    case CustomEmoji(stickerPack: StickerPackReference?, fileId: Int64)
+    case FormattedDate(format: DateTimeFormat, date: Int32)
+}
+
+struct MessageTextEntity: Equatable {
+    let range: Range<Int>
+    let type: MessageTextEntityType
+}
+
+struct TextEntitiesMessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+struct TextInputAttributes {
+    static let bold = NSAttributedString.Key(rawValue: "Attribute__Bold")
+    static let italic = NSAttributedString.Key(rawValue: "Attribute__Italic")
+    static let monospace = NSAttributedString.Key(rawValue: "Attribute__Monospace")
+    static let strikethrough = NSAttributedString.Key(rawValue: "Attribute__Strikethrough")
+    static let underline = NSAttributedString.Key(rawValue: "Attribute__Underline")
+    static let textMention = NSAttributedString.Key(rawValue: "Attribute__TextMention")
+    static let textUrl = NSAttributedString.Key(rawValue: "Attribute__TextUrl")
+    static let spoiler = NSAttributedString.Key(rawValue: "Attribute__Spoiler")
+    static let customEmoji = NSAttributedString.Key(rawValue: "Attribute__CustomEmoji")
+    static let code = NSAttributedString.Key(rawValue: "Attribute__Code")
+    static let quote = NSAttributedString.Key(rawValue: "Attribute__Blockquote")
+    static let formattedDate = NSAttributedString.Key(rawValue: "Attribute__FormattedDate")
+    static let embedded = NSAttributedString.Key(rawValue: "Attribute__EmbeddedItem")
+}
+
+final class ChatTextInputTextMentionAttribute: NSObject {
+    let peerId: PeerId
+    init(peerId: PeerId) { self.peerId = peerId }
+}
+
+final class TextInputTextUrlAttribute: NSObject {
+    let url: String
+    init(url: String) { self.url = url }
+}
+
+final class TextInputTextDateAttribute: NSObject {
+    let date: Int32
+    init(date: Int32) { self.date = date }
+}
+
+final class TextInputTextQuoteAttribute: NSObject {
+    let collapsed: Bool
+    init(collapsed: Bool) { self.collapsed = collapsed }
+}
+
+final class TextInputTextCustomEmojiAttribute: NSObject {
+    let collectionId: ItemCollectionId?
+    let fileId: Int64
+    let file: TelegramMediaFile?
+    let emoji: String
+    init(collectionId: ItemCollectionId? = nil, fileId: Int64, file: TelegramMediaFile?, emoji: String) {
+        self.collectionId = collectionId
+        self.fileId = fileId
+        self.file = file
+        self.emoji = emoji
+    }
+}
+
+protocol EmbeddedCustomEmojiAttributeValue {
+    var customEmojiAttribute: TextInputTextCustomEmojiAttribute? { get }
+}
+
+struct Updated_ChatTextInputState {
+    let inputText: NSAttributedString
+    let selectionRange: Range<Int>
+    init(inputText: NSAttributedString, selectionRange: Range<Int>) {
+        self.inputText = inputText
+        self.selectionRange = selectionRange
+    }
+}
+
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Hashtags = ParsingType(rawValue: 1 << 0)
+    static let Links = ParsingType(rawValue: 1 << 1)
+}
+
+struct DetectedTextLink {
+    let text: String
+    let range: NSRange
+}
+
+func detectedTextLinks(in text: String, type: ParsingType) -> [DetectedTextLink] {
+    return []
+}
+
+enum ExtractedDateFormat {
+    case relative
+    case full(Bool, Bool)
+}
+
+struct ExtractedDate {
+    let range: Range<Int>
+    let date: Date
+    let format: ExtractedDateFormat
+}
+
+func extractDates(from text: String) -> [ExtractedDate] {
+    return []
+}
+
+struct Message {
+    let text: String
+    let attributes: [Any]
+}
+
+__STATE__
+
+final class EditSeed {
+    let inputState: ChatTextInputState
+
+    init(message: Message, state: ChatTextInputState? = nil) {
+        __SEED__
+    }
+}
+
+__HAND_BACKS__
+
+struct Block: Equatable, CustomStringConvertible {
+    let text: String
+    let language: String?
+
+    var description: String {
+        return "\(self.text.debugDescription) language \(self.language.debugDescription)"
+    }
+}
+
+struct Code {
+    let text: String
+    let language: String?
+    let lineBreak: Bool
+}
+
+struct Case {
+    let name: String
+    let text: String
+    let blocks: [Code]
+}
+
+struct Result {
+    let box: String
+    let saved: ChatTextInputState
+}
+
+func normalized(_ text: String) -> String {
+    return text.replacingOccurrences(of: "\u{2028}", with: "\n")
+}
+
+func entities(_ item: Case) -> [MessageTextEntity] {
+    var from = 0
+    return item.blocks.map { code in
+        let found = (item.text as NSString).range(of: code.text, options: [], range: NSMakeRange(from, (item.text as NSString).length - from))
+        precondition(found.location != NSNotFound, "\(code.text) is not in \(item.text)")
+        from = NSMaxRange(found)
+        return MessageTextEntity(range: found.location ..< NSMaxRange(found), type: .Pre(language: code.language))
+    }
+}
+
+func codeBlocks(of state: ChatTextInputState) -> [Block] {
+    return state.attributes.compactMap { attribute -> Block? in
+        if case let .pre(range, language) = attribute {
+            return Block(text: (state.inputText as NSString).substring(with: NSRange(location: range.lowerBound, length: range.count)), language: language)
+        }
+        return nil
+    }
+}
+
+func save(_ state: ChatTextInputState, box: String) -> Result {
+    return Result(box: box, saved: state.subInputState(from: NSMakeRange(0, (state.inputText as NSString).length)))
+}
+
+func seed(_ text: String, _ entities: [MessageTextEntity]) -> ChatTextInputState {
+    return EditSeed(message: Message(text: text, attributes: [TextEntitiesMessageAttribute(entities: entities)])).inputState
+}
+
+func editMessage(_ item: Case) -> Result {
+    let seeded = seed(item.text, entities(item))
+    let box = NSMutableAttributedString(attributedString: seeded.attributedString())
+    let word = (box.string as NSString).range(of: "check old")
+    precondition(word.location != NSNotFound, "the edit box lost the text outside the block")
+    box.replaceCharacters(in: word, with: "check new")
+    return save(ChatTextInputState(attributedText: box, selectionRange: box.length ..< box.length), box: seeded.inputText)
+}
+
+func editAgain(_ saved: ChatTextInputState) -> Result {
+    let entities = saved.attributes.compactMap { attribute -> MessageTextEntity? in
+        if case let .pre(range, language) = attribute {
+            return MessageTextEntity(range: range, type: .Pre(language: language))
+        }
+        return nil
+    }
+    let seeded = seed(saved.inputText, entities)
+    return save(seeded, box: seeded.inputText)
+}
+
+func handBack(_ path: @escaping (String, [MessageTextEntity]) -> ChatTextInputState) -> (Case) -> Result {
+    return { item in
+        let restored = path(item.text, entities(item))
+        return save(restored, box: restored.inputText)
+    }
+}
+
+func expectedTexts(_ item: Case, edited: Bool) -> Set<String> {
+    let text = normalized(edited ? item.text.replacingOccurrences(of: "check old", with: "check new") : item.text)
+    var results: [String] = [text]
+    for code in item.blocks where code.lineBreak {
+        results += results.map { $0.replacingOccurrences(of: normalized(code.text), with: "\n" + normalized(code.text)) }
+    }
+    return Set(results.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAIL \(name)\(detail().isEmpty ? "" : ": \(detail())")")
+    }
+}
+
+func plain(_ language: String?) -> Bool {
+    return language == nil || language == ""
+}
+
+let twoLines = "check old\na = 1\nb = 2"
+let middle = "check old\nfirst()\nsecond()\nafter the block"
+let atStart = "a = 1\nb = 2\ncheck old"
+let oneWord = "check old\nprint(x)\nreturn"
+let markdownInside = "check old\nf(**kwargs)\nname = `x` or __y__ + 1"
+let lineSeparator = "check old\na = 1\u{2028}b = 2"
+let indented = "check old\n    a = 1\nb = 2"
+let single = "check old\nx = 1"
+let startsWithBreak = "check old\n\na = 1\nb = 2"
+let languageText = "check old\nprint(1)\nprint(2)"
+let languageStartsWithBreak = "check old\n\nprint(1)\nprint(2)"
+let twoBlocks = "check old\none = 1\ntwo = 2\nmiddle\nthree = 3\nfour = 4"
+let mixed = "check old\nimport os\nos.exit(0)\nmiddle\nx = 1\ny = 2"
+
+let cases: [Case] = [
+    Case(name: "two lines without a language", text: twoLines, blocks: [Code(text: "a = 1\nb = 2", language: nil, lineBreak: true)]),
+    Case(name: "an empty language", text: twoLines, blocks: [Code(text: "a = 1\nb = 2", language: "", lineBreak: true)]),
+    Case(name: "text after the block", text: middle, blocks: [Code(text: "first()\nsecond()", language: nil, lineBreak: true)]),
+    Case(name: "a block at the start", text: atStart, blocks: [Code(text: "a = 1\nb = 2", language: nil, lineBreak: true)]),
+    Case(name: "a one-word first line", text: oneWord, blocks: [Code(text: "print(x)\nreturn", language: nil, lineBreak: true)]),
+    Case(name: "markdown inside the block", text: markdownInside, blocks: [Code(text: "f(**kwargs)\nname = `x` or __y__ + 1", language: nil, lineBreak: true)]),
+    Case(name: "lines split by a line separator", text: lineSeparator, blocks: [Code(text: "a = 1\u{2028}b = 2", language: nil, lineBreak: true)]),
+    Case(name: "two blocks without a language", text: twoBlocks, blocks: [Code(text: "one = 1\ntwo = 2", language: nil, lineBreak: true), Code(text: "three = 3\nfour = 4", language: nil, lineBreak: true)]),
+    Case(name: "a language block next to a plain one", text: mixed, blocks: [Code(text: "import os\nos.exit(0)", language: "python", lineBreak: true), Code(text: "x = 1\ny = 2", language: nil, lineBreak: true)]),
+    Case(name: "an indented first line", text: indented, blocks: [Code(text: "    a = 1\nb = 2", language: nil, lineBreak: false)]),
+    Case(name: "a one-line block", text: single, blocks: [Code(text: "x = 1", language: nil, lineBreak: false)]),
+    Case(name: "a block that starts with a line break", text: startsWithBreak, blocks: [Code(text: "\na = 1\nb = 2", language: nil, lineBreak: false)]),
+    Case(name: "a language block", text: languageText, blocks: [Code(text: "print(1)\nprint(2)", language: "python", lineBreak: true)]),
+    Case(name: "a language block that starts with a line break", text: languageStartsWithBreak, blocks: [Code(text: "\nprint(1)\nprint(2)", language: "python", lineBreak: false)]),
+]
+
+let show = __SHOW__
+var paths: [(String, Bool, (Case) -> Result)] = [("edit", true, editMessage)]
+for (index, path) in articleEditorHandBacks.enumerated() {
+    paths.append(("article editor \(index + 1)", false, handBack(path)))
+}
+
+for (path, edited, run) in paths {
+    for item in cases {
+        let name = "\(path), \(item.name)"
+        let result = run(item)
+        let blocks = codeBlocks(of: result.saved)
+        if show {
+            print("== \(name)")
+            print("   box:    \(result.box.debugDescription)")
+            print("   saved:  \(result.saved.inputText.debugDescription)")
+            print("   blocks: \(blocks)")
+        }
+        check("\(name): every block is still a block", blocks.count == item.blocks.count, "\(blocks)")
+        for (index, code) in item.blocks.enumerated() where index < blocks.count {
+            let block = blocks[index]
+            let text = normalized(code.text)
+            let allowed = code.lineBreak ? [text, "\n" + text] : [text]
+            check("\(name): block \(index + 1) keeps every line", allowed.contains(block.text), block.description)
+            if let language = code.language, !language.isEmpty {
+                check("\(name): block \(index + 1) keeps its language", block.language == language, block.description)
+            } else {
+                check("\(name): block \(index + 1) gets no language", plain(block.language), block.description)
+            }
+        }
+        check("\(name): the text is the same, apart from a line break at the start of a block", expectedTexts(item, edited: edited).contains(result.saved.inputText), result.saved.inputText.debugDescription)
+        if edited {
+            let again = editAgain(result.saved)
+            check("\(name): saving it again changes nothing", again.saved.inputText == result.saved.inputText && codeBlocks(of: again.saved) == blocks, "\(again.saved.inputText.debugDescription) \(codeBlocks(of: again.saved))")
+        }
+    }
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
