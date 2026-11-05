@@ -929,7 +929,7 @@ public class NStickersView : View {
                 current = view
             } else {
                 current = AnimatedEmojiesCategories(frame: categoryRect, presentation: presentation)
-                current.iconColor = pickerChromeColor(isGlass || usesMenuPanel)
+                current.iconColor = pickerChromeColor(isGlass || usesMenuPanel, theme: presentation ?? theme)
                 self.categories = current
                 searchInside.addSubview(current)
                 
@@ -1122,7 +1122,7 @@ public class NStickersView : View {
             let searchTheme = pickerSearchTheme(searchBackground, theme: theme, black: isGlass || usesMenuPanel)
             self.searchView.searchTheme = searchTheme
             self.categories?.searchTheme = searchTheme
-            self.categories?.iconColor = pickerChromeColor(isGlass || usesMenuPanel)
+            self.categories?.iconColor = pickerChromeColor(isGlass || usesMenuPanel, theme: presentation ?? theme)
         } else {
             self.searchView.searchTheme = theme.search
             self.categories?.searchTheme = theme.search
@@ -1132,7 +1132,7 @@ public class NStickersView : View {
     }
 
     func applyChromeTint() {
-        let tint = pickerChromeColor(isGlass || usesMenuPanel)
+        let tint = pickerChromeColor(isGlass || usesMenuPanel, theme: presentation ?? theme)
         packsView.enumerateItems(with: { item in
             if let item = item as? RecentPackRowItem, item.tint != tint {
                 item.tint = tint

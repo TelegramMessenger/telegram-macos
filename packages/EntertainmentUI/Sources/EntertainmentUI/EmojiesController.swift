@@ -425,7 +425,7 @@ private struct EmojiTabsEquatable: Equatable {
     let blackChrome: Bool
 }
 
-func pickerChromeColor(_ enabled: Bool) -> NSColor? {
+func pickerChromeColor(_ enabled: Bool, theme: PresentationTheme) -> NSColor? {
     return enabled && !theme.colors.isDark ? theme.colors.text : nil
 }
 
@@ -466,9 +466,9 @@ private func packEntries(_ state: State, arguments: Arguments, presentation: Tel
     }
     if hasRecent {
         let recentImage = TelegramThemeHooks.shared.image(.iconEmojiTabRecent)
-        let color = state.color ?? pickerChromeColor(state.blackChrome) ?? theme.colors.grayIcon
+        let color = state.color ?? pickerChromeColor(state.blackChrome, theme: presentation ?? theme) ?? theme.colors.grayIcon
         let icon = recentImage.precomposed(color.withAlphaComponent(0.8))
-        let activeIcon = recentImage.precomposed((state.color ?? pickerChromeColor(state.blackChrome) ?? theme.colors.grayIcon.darker()))
+        let activeIcon = recentImage.precomposed((state.color ?? pickerChromeColor(state.blackChrome, theme: presentation ?? theme) ?? theme.colors.grayIcon.darker()))
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_recent_pack, equatable: .init(color), comparable: nil, item: { initialSize, stableId in
             return ETabRowItem(initialSize, stableId: stableId, icon: icon, iconSelected: activeIcon)
         }))
@@ -478,7 +478,7 @@ private func packEntries(_ state: State, arguments: Arguments, presentation: Tel
 
     if arguments.mode == .emoji || arguments.mode == .stories {
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_segments_pack, equatable: InputDataEquatable(EmojiTabsEquatable(state: state.emojiState, blackChrome: state.blackChrome)), comparable: nil, item: { initialSize, stableId in
-            return EmojiTabsItem(initialSize, stableId: stableId, segments: EmojiSegment.all, selected: state.emojiState.selected, select: arguments.selectEmojiSegment, presentation: presentation, tint: pickerChromeColor(state.blackChrome))
+            return EmojiTabsItem(initialSize, stableId: stableId, segments: EmojiSegment.all, selected: state.emojiState.selected, select: arguments.selectEmojiSegment, presentation: presentation, tint: pickerChromeColor(state.blackChrome, theme: presentation ?? theme))
         }))
         index += 1
     }
@@ -1676,7 +1676,7 @@ public final class AnimatedEmojiesView : Control {
             let searchTheme = pickerSearchTheme(!searchFrost.isHidden ? .clear : background, theme: theme, black: usesPickerStyle || isGlass)
             self.searchView.searchTheme = searchTheme
             self.categories?.searchTheme = searchTheme
-            self.categories?.iconColor = pickerChromeColor(usesPickerStyle || isGlass)
+            self.categories?.iconColor = pickerChromeColor(usesPickerStyle || isGlass, theme: theme)
         } else {
             self.searchView.searchTheme = theme.search
             self.categories?.searchTheme = theme.search
@@ -1887,7 +1887,7 @@ public final class AnimatedEmojiesView : Control {
                 current = view
             } else {
                 current = AnimatedEmojiesCategories(frame: categoryRect, presentation: presentation)
-                current.iconColor = pickerChromeColor(usesPickerStyle || isGlass)
+                current.iconColor = pickerChromeColor(usesPickerStyle || isGlass, theme: presentation ?? theme)
                 self.categories = current
                 searchInside.addSubview(current)
                 

@@ -410,7 +410,7 @@ public final class GifKeyboardView : View {
     }
 
     private func applyChromeTint() {
-        let tint = pickerChromeColor(isGlass)
+        let tint = pickerChromeColor(isGlass, theme: presentation ?? theme)
         let frosted = isGlass && !TelegramUtilsHooks.shared.isLite(.blur)
         packsView.enumerateItems(with: { item in
             if let item = item as? GifKeyboardTabRowItem, item.tint != tint || item.frosted != frosted {

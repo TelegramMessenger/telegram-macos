@@ -538,7 +538,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
         }
 
         showMore.set(handler: { [weak self] _ in
-            AppMenu.keepsOpenOnNextMouseUp = true
+            AppMenu.keepsOpenOnNextMouseUp = contextOnScreen()?.isVisible == true
             self?.prepareReveal?()
         }, for: .Down)
 
