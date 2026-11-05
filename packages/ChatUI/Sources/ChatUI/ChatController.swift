@@ -8099,6 +8099,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         break
                     case let .HistoryView(view, _, _, _):
                         let isInLocation: (Message) -> Bool = { message in
+                            if chatLocation.threadId == nil, let channel = message.peers[message.id.peerId] as? TelegramChannel, !channel.isForumOrMonoForum {
+                                return true
+                            }
                             return chatLocation.threadId == message.threadId || chatLocation.threadId == nil && message.threadId == 1 || message.threadId == context.peerId.toInt64()
                         }
                         let lastIndexInLocation = view.entries.lastIndex(where: { isInLocation($0.message) })
