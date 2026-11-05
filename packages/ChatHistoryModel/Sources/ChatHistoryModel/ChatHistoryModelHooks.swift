@@ -33,7 +33,7 @@ public struct ChatInputContextQueryTypes: OptionSet {
 public struct ChatHistoryModelHooks {
     public let applyMessageEntities: ([MessageAttribute], String, Message?, any AccountContextProtocol, CGFloat, @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void, NSColor, NSColor, NSColor, NSColor, Bool, Bool) -> NSAttributedString
     public let showAboutCocoonModal: (any AccountContextProtocol) -> Void
-    public let getChatInterfaceTempState: ((any AccountContextProtocol)?, PeerId?) -> ChatInterfaceTempState?
+    public let getChatInterfaceTempState: ((any AccountContextProtocol)?, PeerId?, Int64?) -> ChatInterfaceTempState?
     public let isLite: (LiteModeKey) -> Bool
     public let textInputStateContextQueryRange: (ChatTextInputState, Bool) -> (Range<String.Index>, ChatInputContextQueryTypes, Range<String.Index>?)?
     public let makeEmojiPicker: (any AccountContextProtocol, @escaping (StickerPackItem, StarGift.UniqueGift?, StickerPackCollectionInfo?, Int32?, NSRect?) -> Void, @escaping (String, CGRect?) -> Void) -> ViewController
@@ -43,7 +43,7 @@ public struct ChatHistoryModelHooks {
 
     public init(applyMessageEntities: @escaping ([MessageAttribute], String, Message?, any AccountContextProtocol, CGFloat, @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void, NSColor, NSColor, NSColor, NSColor, Bool, Bool) -> NSAttributedString,
                 showAboutCocoonModal: @escaping (any AccountContextProtocol) -> Void,
-                getChatInterfaceTempState: @escaping ((any AccountContextProtocol)?, PeerId?) -> ChatInterfaceTempState?,
+                getChatInterfaceTempState: @escaping ((any AccountContextProtocol)?, PeerId?, Int64?) -> ChatInterfaceTempState?,
                 isLite: @escaping (LiteModeKey) -> Bool,
                 textInputStateContextQueryRange: @escaping (ChatTextInputState, Bool) -> (Range<String.Index>, ChatInputContextQueryTypes, Range<String.Index>?)?,
                 makeEmojiPicker: @escaping (any AccountContextProtocol, @escaping (StickerPackItem, StarGift.UniqueGift?, StickerPackCollectionInfo?, Int32?, NSRect?) -> Void, @escaping (String, CGRect?) -> Void) -> ViewController,
@@ -83,7 +83,7 @@ public struct ChatHistoryModelHooks {
     public static let placeholder = ChatHistoryModelHooks(applyMessageEntities: { _, text, _, _, _, _, _, _, _, _, _, _ in
         NSAttributedString(string: text)
     }, showAboutCocoonModal: { _ in
-    }, getChatInterfaceTempState: { _, _ in
+    }, getChatInterfaceTempState: { _, _, _ in
         nil
     }, isLite: { _ in
         false
