@@ -1,0 +1,219 @@
+import Foundation
+
+enum ChatListFilter: Equatable, CustomStringConvertible {
+    case allChats
+    case filter(id: Int32, title: String)
+
+    var description: String {
+        switch self {
+        case .allChats:
+            return "All Chats"
+        case let .filter(_, title):
+            return title
+        }
+    }
+}
+
+extension Array {
+    __MOVE__
+}
+
+extension NSRange {
+    __RANGE_MAX__
+    __INDEX_IN__
+}
+
+final class Disposable {
+}
+
+struct Signal {
+    let run: () -> Void
+    func start() -> Disposable {
+        run()
+        return Disposable()
+    }
+}
+
+final class Peers {
+    var filters: [ChatListFilter] = []
+    func updateChatListFiltersInteractively(_ f: @escaping ([ChatListFilter]) -> [ChatListFilter]) -> Signal {
+        return Signal(run: { self.filters = f(self.filters) })
+    }
+}
+
+final class Engine {
+    let peers = Peers()
+}
+
+final class Context {
+    let isPremium: Bool
+    let engine = Engine()
+    init(isPremium: Bool) {
+        self.isPremium = isPremium
+    }
+}
+
+final class Item: Equatable {
+    let index: Int
+    init(index: Int) {
+        self.index = index
+    }
+    static func == (lhs: Item, rhs: Item) -> Bool {
+        return lhs === rhs
+    }
+}
+
+struct ResortData {
+    let item: Item
+}
+
+final class SegmentView {
+    var items: [Item] = []
+    var resortRange: NSRange? = nil
+    var resortHandler: ((Int, Int) -> Void)?
+    var skipNextAnimation = false
+    private var initialResortData: ResortData?
+    private var bestIndex: Int? = nil
+
+    func startDragging(_ item: Item) -> Bool {
+        initialResortData = nil
+        bestIndex = nil
+        if let range = self.resortRange {
+            if __CAN_DRAG__ {
+                initialResortData = ResortData(item: item)
+            }
+        }
+        return initialResortData != nil
+    }
+
+    func drag(over position: Int) {
+        if initialResortData != nil, let resortRange = resortRange {
+            var bestIndex = position
+            __CLAMP__
+            self.bestIndex = bestIndex
+        }
+    }
+
+    func drop() {
+        if let data = initialResortData, bestIndex != nil {
+            let completion: () -> Void = {__APPLY__}
+            completion()
+        }
+    }
+}
+
+func install(context: Context, items: [Item], segmentView: SegmentView) {
+    __INSTALL__
+}
+
+var passed = 0
+var failures: [String: (count: Int, example: String)] = [:]
+var failureOrder: [String] = []
+
+func check(_ name: String, _ condition: Bool, _ example: @autoclosure () -> String) {
+    if condition {
+        passed += 1
+    } else {
+        if failures[name] == nil {
+            failureOrder.append(name)
+            failures[name] = (0, example())
+        }
+        failures[name]!.count += 1
+    }
+}
+
+func names(_ list: [ChatListFilter]) -> String {
+    return "[" + list.map { $0.description }.joined(separator: ", ") + "]"
+}
+
+func folders(_ count: Int) -> [ChatListFilter] {
+    return (0 ..< count).map { .filter(id: Int32($0 + 2), title: String(UnicodeScalar(UInt8(65 + $0)))) }
+}
+
+struct Drop {
+    let stored: [ChatListFilter]
+    let shown: [ChatListFilter]
+}
+
+func drag(_ tabs: [ChatListFilter], isPremium: Bool, from: Int, over position: Int) -> Drop? {
+    let context = Context(isPremium: isPremium)
+    context.engine.peers.filters = tabs
+    let segmentView = SegmentView()
+    let items = tabs.indices.map { Item(index: $0) }
+    segmentView.items = items
+    install(context: context, items: items, segmentView: segmentView)
+    guard segmentView.startDragging(items[from]) else {
+        return nil
+    }
+    segmentView.drag(over: position)
+    segmentView.drop()
+    return Drop(stored: context.engine.peers.filters, shown: segmentView.items.map { tabs[$0.index] })
+}
+
+func moved(_ tabs: [ChatListFilter], from: Int, to: Int) -> [ChatListFilter] {
+    var result = tabs
+    let tab = result.remove(at: from)
+    result.insert(tab, at: to)
+    return result
+}
+
+check("tab i in the bar is folder i of the list", __TABS_IN_LIST_ORDER__, "the tab items are not numbered by their place in item.tabs")
+check("the bar shows the stored folder list as it is", __TABS_ARE_STORED_LIST__, "the bar's tabs no longer come straight from updatedChatListFilters()")
+
+for isPremium in [false, true] {
+    let who = isPremium ? "Premium" : "no Premium"
+    for count in 1 ... 5 {
+        let layouts: [[ChatListFilter]] = (0 ... count).map { place in
+            var tabs = folders(count)
+            tabs.insert(.allChats, at: place)
+            return tabs
+        }
+        for tabs in layouts {
+            let allChatsFirst = tabs.first == .allChats
+            for from in tabs.indices {
+                let started = drag(tabs, isPremium: isPremium, from: from, over: from) != nil
+                if isPremium || allChatsFirst {
+                    let canDrag = isPremium || tabs[from] != .allChats
+                    check("\(who): \(canDrag ? "every folder tab can be dragged" : "All Chats can't be dragged")", started == canDrag, "\(names(tabs)), tab \(tabs[from])")
+                }
+                guard started else {
+                    continue
+                }
+                for position in tabs.indices {
+                    guard let result = drag(tabs, isPremium: isPremium, from: from, over: position) else {
+                        continue
+                    }
+                    let target = min(max(position, isPremium ? 0 : 1), tabs.count - 1)
+                    let example = "\(names(tabs)): \(tabs[from]) dropped at place \(target), the bar shows \(names(result.shown)), stored \(names(result.stored))"
+                    check("\(who): the bar shows the dragged tab where it was dropped", result.shown == moved(tabs, from: from, to: target), example)
+                    check("\(who): the stored order is the order the bar shows", result.stored == result.shown, example)
+                    check("\(who): the dragged tab is stored where it was dropped", result.stored.firstIndex(of: tabs[from]) == target, example)
+                    check("\(who): the other tabs keep their order", result.stored.filter { $0 != tabs[from] } == tabs.filter { $0 != tabs[from] }, example)
+                    check("\(who): no tab is lost or added", result.stored.count == tabs.count && tabs.allSatisfy { result.stored.contains($0) }, example)
+                    if !isPremium && allChatsFirst {
+                        check("no Premium: All Chats stays first", result.stored.first == .allChats, example)
+                    }
+                }
+            }
+        }
+    }
+}
+
+for count in 1 ... 5 {
+    let tabs: [ChatListFilter] = [.allChats] + folders(count)
+    for from in 1 ..< tabs.count {
+        for position in 1 ..< tabs.count {
+            let without = drag(tabs, isPremium: false, from: from, over: position)
+            let with = drag(tabs, isPremium: true, from: from, over: position)
+            check("Premium and no Premium store the same drag the same way", without != nil && without?.stored == with?.stored, "\(names(tabs)): \(tabs[from]) dropped at place \(position), no Premium stored \(names(without?.stored ?? [])), Premium stored \(names(with?.stored ?? []))")
+        }
+    }
+}
+
+for name in failureOrder {
+    let failure = failures[name]!
+    print("FAILED: \(name) (\(failure.count) cases), e.g. \(failure.example)")
+}
+let failed = failures.values.reduce(0) { $0 + $1.count }
+print("\(passed) passed, \(failed) failed")
+exit(failed == 0 ? 0 : 1)
