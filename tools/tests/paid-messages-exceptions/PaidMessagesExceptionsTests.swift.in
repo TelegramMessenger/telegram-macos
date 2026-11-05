@@ -1,0 +1,468 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let id: Int64
+}
+
+final class SelectivePrivacyPeer: Equatable {
+    let peerId: PeerId
+    let participantCount: Int32?
+
+    init(_ id: Int64, participantCount: Int32? = nil) {
+        self.peerId = PeerId(id: id)
+        self.participantCount = participantCount
+    }
+
+    static func ==(lhs: SelectivePrivacyPeer, rhs: SelectivePrivacyPeer) -> Bool {
+        return lhs.peerId == rhs.peerId && lhs.participantCount == rhs.participantCount
+    }
+}
+
+enum SelectivePrivacySettings: Equatable {
+    case enableEveryone(disableFor: [PeerId: SelectivePrivacyPeer])
+    case enableContacts(enableFor: [PeerId: SelectivePrivacyPeer], disableFor: [PeerId: SelectivePrivacyPeer], enableForPremium: Bool, enableForBots: Bool)
+    case disableEveryone(enableFor: [PeerId: SelectivePrivacyPeer], enableForCloseFriends: Bool, enableForPremium: Bool, enableForBots: Bool)
+}
+
+struct TelegramDisallowedGifts: OptionSet {
+    var rawValue: Int32
+}
+
+struct GlobalPrivacySettings: Equatable {
+    enum NonContactChatsPrivacy: Equatable {
+        case everybody
+        case requirePremium
+        case paidMessages(Int64)
+    }
+
+    var automaticallyArchiveAndMuteNonContacts: Bool
+    var keepArchivedUnmuted: Bool
+    var keepArchivedFolders: Bool
+    var hideReadTime: Bool
+    var nonContactChatsPrivacy: NonContactChatsPrivacy
+    var disallowedGifts: TelegramDisallowedGifts
+    var displayGiftButton: Bool
+}
+
+enum UpdateSelectiveAccountPrivacySettingsType: Equatable {
+    case presence
+    case groupInvitations
+    case voiceCalls
+    case voiceCallsP2P
+    case profilePhoto
+    case forwards
+    case phoneNumber
+    case voiceMessages
+    case bio
+    case birthday
+    case giftsAutoSave
+    case noPaidMessages
+    case savedMusic
+}
+
+@dynamicMemberLookup
+struct Strings {
+    subscript(dynamicMember name: String) -> String {
+        return name
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+class ViewController {
+}
+
+final class SelectivePrivacySettingsPeersController: ViewController {
+    let title: String
+    let initialPeers: [PeerId: SelectivePrivacyPeer]
+    let premiumUsers: Bool?
+    let enableForBots: Bool?
+    let feeExceptions: Bool
+    let updated: ([PeerId: SelectivePrivacyPeer]) -> Void
+
+    init(_ context: Context, title: String, initialPeers: [PeerId: SelectivePrivacyPeer], premiumUsers: Bool?, enableForBots: Bool?, feeExceptions: Bool = false, updated: @escaping ([PeerId: SelectivePrivacyPeer]) -> Void) {
+        self.title = title
+        self.initialPeers = initialPeers
+        self.premiumUsers = premiumUsers
+        self.enableForBots = enableForBots
+        self.feeExceptions = feeExceptions
+        self.updated = updated
+    }
+}
+
+final class Navigation {
+    var pushed: [ViewController] = []
+
+    func push(_ controller: ViewController) {
+        self.pushed.append(controller)
+    }
+}
+
+final class Bindings {
+    let navigation = Navigation()
+
+    func rootNavigation() -> Navigation {
+        return self.navigation
+    }
+}
+
+enum NoError {
+}
+
+final class Disposable {
+}
+
+final class Signal<T, E> {
+    private let run: () -> Void
+
+    init(_ run: @escaping () -> Void) {
+        self.run = run
+    }
+
+    func start() -> Disposable {
+        self.run()
+        return Disposable()
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func modify(_ f: (T) -> T) -> T {
+        self.value = f(self.value)
+        return self.value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+final class ValuePromise<T> {
+    init(_ value: T, ignoreRepeated: Bool = false) {
+    }
+
+    func set(_ value: T) {
+    }
+}
+
+enum Write: Equatable {
+    case selective(UpdateSelectiveAccountPrivacySettingsType, SelectivePrivacySettings)
+    case global(GlobalPrivacySettings)
+}
+
+final class Server {
+    var writes: [Write] = []
+
+    func request<T>(_ write: Write) -> Signal<T, NoError> {
+        return Signal {
+            self.writes.append(write)
+        }
+    }
+}
+
+final class Privacy {
+    let server: Server
+
+    init(_ server: Server) {
+        self.server = server
+    }
+
+    func updateSelectiveAccountPrivacySettings(type: UpdateSelectiveAccountPrivacySettingsType, settings: SelectivePrivacySettings) -> Signal<Void, NoError> {
+        return self.server.request(.selective(type, settings))
+    }
+
+    func updateGlobalPrivacySettings(settings: GlobalPrivacySettings) -> Signal<Never, NoError> {
+        return self.server.request(.global(settings))
+    }
+}
+
+final class Engine {
+    let privacy: Privacy
+
+    init(_ server: Server) {
+        self.privacy = Privacy(server)
+    }
+}
+
+final class Context {
+    let engine: Engine
+    let bindings = Bindings()
+    let isPremium = true
+
+    init(_ server: Server) {
+        self.engine = Engine(server)
+    }
+}
+
+__STATE__
+
+final class InputDataController {
+    var afterDisappear: () -> Void = {}
+
+    func didRemovedFromStack() {
+        self.afterDisappear()
+    }
+}
+
+final class MessagesPage {
+    let server = Server()
+    let controller = InputDataController()
+    var context: Context!
+    var reports: [(SelectivePrivacySettings, GlobalPrivacySettings)] = []
+    var choose: ((GlobalPrivacySettings.NonContactChatsPrivacy) -> Void)!
+    var openExceptions: (() -> Void)!
+
+    init(noPaidMessages: SelectivePrivacySettings, globalSettings: GlobalPrivacySettings) {
+        let context = Context(self.server)
+        self.context = context
+        let controller = self.controller
+        let updated: (SelectivePrivacySettings, GlobalPrivacySettings) -> Void = { [unowned self] noPaidMessages, globalSettings in
+            self.reports.append((noPaidMessages, globalSettings))
+        }
+
+        __LOAD__
+
+        __TOGGLE__
+
+        __EXCEPTIONS__
+
+        __DISAPPEAR__
+
+        self.choose = toggle
+        self.openExceptions = paidMessagesExceptions
+    }
+
+    var writes: [Write] {
+        return self.server.writes
+    }
+
+    func openList() -> SelectivePrivacySettingsPeersController? {
+        let pushed = self.context.bindings.navigation.pushed.count
+        self.openExceptions()
+        let stack = self.context.bindings.navigation.pushed
+        guard stack.count == pushed + 1 else {
+            return nil
+        }
+        return stack.last as? SelectivePrivacySettingsPeersController
+    }
+
+    func edit(_ peers: [PeerId: SelectivePrivacyPeer]) {
+        self.openList()?.updated(peers)
+    }
+
+    func leave() {
+        self.controller.didRemovedFromStack()
+    }
+}
+
+var failures = 0
+var passed = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func peers(_ ids: Int64...) -> [PeerId: SelectivePrivacyPeer] {
+    var result: [PeerId: SelectivePrivacyPeer] = [:]
+    for id in ids {
+        result[PeerId(id: id)] = SelectivePrivacyPeer(id)
+    }
+    return result
+}
+
+func global(_ choice: GlobalPrivacySettings.NonContactChatsPrivacy = .paidMessages(25), hideReadTime: Bool = false) -> GlobalPrivacySettings {
+    return GlobalPrivacySettings(automaticallyArchiveAndMuteNonContacts: true, keepArchivedUnmuted: false, keepArchivedFolders: true, hideReadTime: hideReadTime, nonContactChatsPrivacy: choice, disallowedGifts: [], displayGiftButton: false)
+}
+
+func nobody(_ enableFor: [PeerId: SelectivePrivacyPeer] = [:], closeFriends: Bool = false, premium: Bool = false, bots: Bool = false) -> SelectivePrivacySettings {
+    return .disableEveryone(enableFor: enableFor, enableForCloseFriends: closeFriends, enableForPremium: premium, enableForBots: bots)
+}
+
+func contacts(_ enableFor: [PeerId: SelectivePrivacyPeer] = [:], disableFor: [PeerId: SelectivePrivacyPeer] = [:], premium: Bool = false, bots: Bool = false) -> SelectivePrivacySettings {
+    return .enableContacts(enableFor: enableFor, disableFor: disableFor, enableForPremium: premium, enableForBots: bots)
+}
+
+func everybody(_ disableFor: [PeerId: SelectivePrivacyPeer] = [:]) -> SelectivePrivacySettings {
+    return .enableEveryone(disableFor: disableFor)
+}
+
+func describe(_ rule: SelectivePrivacySettings) -> String {
+    switch rule {
+    case let .enableEveryone(disableFor):
+        return "Everybody with \(disableFor.count) never"
+    case let .enableContacts(enableFor, disableFor, premium, bots):
+        return "My Contacts with \(enableFor.count) always, \(disableFor.count) never" + (premium ? ", premium" : "") + (bots ? ", bots" : "")
+    case let .disableEveryone(enableFor, closeFriends, premium, bots):
+        return "Nobody with \(enableFor.count) always" + (closeFriends ? ", close friends" : "") + (premium ? ", premium" : "") + (bots ? ", bots" : "")
+    }
+}
+
+func describe(_ choice: GlobalPrivacySettings.NonContactChatsPrivacy) -> String {
+    switch choice {
+    case .everybody:
+        return "Everybody"
+    case .requirePremium:
+        return "My Contacts and Premium"
+    case let .paidMessages(stars):
+        return "Charge \(stars) Stars"
+    }
+}
+
+func shownExceptions(_ rule: SelectivePrivacySettings) -> [PeerId: SelectivePrivacyPeer] {
+    if case let .enableContacts(enableFor, _, _, _) = rule {
+        return enableFor
+    }
+    return [:]
+}
+
+let loadedRules: [SelectivePrivacySettings] = [
+    contacts(),
+    contacts(peers(5)),
+    contacts(peers(5, 6)),
+    contacts(peers(5), disableFor: peers(7), premium: true, bots: true),
+    everybody(),
+    everybody(peers(7)),
+    nobody(),
+    nobody(peers(5), closeFriends: true, premium: true)
+]
+let choices: [GlobalPrivacySettings.NonContactChatsPrivacy] = [.paidMessages(25), .everybody, .requirePremium]
+
+for rule in loadedRules {
+    for choice in choices {
+        let name = "exceptions \(describe(rule)), \(describe(choice))"
+        let loaded = global(choice, hideReadTime: true)
+
+        let idle = MessagesPage(noPaidMessages: rule, globalSettings: loaded)
+        idle.leave()
+        check("\(name): leaving without a change sends nothing", idle.writes.isEmpty && idle.reports.isEmpty)
+
+        let looked = MessagesPage(noPaidMessages: rule, globalSettings: loaded)
+        let list = looked.openList()
+        looked.leave()
+        check("\(name): the Remove Fee list opens with the loaded exceptions", list?.initialPeers == shownExceptions(rule) && list?.feeExceptions == true && list?.premiumUsers == nil && list?.enableForBots == nil)
+        check("\(name): opening the list without a change sends nothing", looked.writes.isEmpty && looked.reports.isEmpty)
+
+        let added = shownExceptions(rule).merging(peers(9), uniquingKeysWith: { lhs, _ in lhs })
+        let page = MessagesPage(noPaidMessages: rule, globalSettings: loaded)
+        page.edit(added)
+        page.leave()
+        check("\(name): an added exception is sent once, as iOS sends it", page.writes == [.selective(.noPaidMessages, contacts(added))])
+        check("\(name): an added exception is reported to the Privacy section", page.reports.count == 1 && page.reports[0].0 == contacts(added) && page.reports[0].1 == loaded)
+    }
+}
+
+for rule in [contacts(peers(5, 6)), contacts(peers(5, 6), disableFor: peers(7), premium: true, bots: true)] {
+    let one = MessagesPage(noPaidMessages: rule, globalSettings: global())
+    one.edit(peers(6))
+    one.leave()
+    check("exceptions \(describe(rule)): a removed exception is sent", one.writes == [.selective(.noPaidMessages, contacts(peers(6)))])
+
+    let all = MessagesPage(noPaidMessages: rule, globalSettings: global())
+    all.edit([:])
+    all.leave()
+    check("exceptions \(describe(rule)): removing every exception sends an empty list", all.writes == [.selective(.noPaidMessages, contacts())])
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(peers(5)), globalSettings: global())
+    let list = page.openList()
+    list?.updated(peers(5, 9))
+    list?.updated(peers(5))
+    page.leave()
+    check("an exception added and removed again sends nothing", list != nil && page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(peers(5), disableFor: peers(7), premium: true, bots: true), globalSettings: global())
+    let list = page.openList()
+    list?.updated(peers(5, 9))
+    list?.updated(peers(5))
+    page.leave()
+    check("an undone edit of a rule with parts the page doesn't show writes the rule in the page's form, as iOS does", page.writes == [.selective(.noPaidMessages, contacts(peers(5)))])
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: nobody(peers(5)), globalSettings: global())
+    let list = page.openList()
+    list?.updated(peers(9))
+    page.leave()
+    check("exceptions kept under Nobody aren't shown, and an edit replaces them, as on iOS", list?.initialPeers == [:] && page.writes == [.selective(.noPaidMessages, contacts(peers(9)))])
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(), globalSettings: global())
+    page.edit(peers(9))
+    let again = page.openList()
+    again?.updated([:])
+    page.leave()
+    check("the list opens again with the edited exceptions", again?.initialPeers == peers(9))
+    check("an exception added and removed in two visits to the list sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(), globalSettings: global())
+    let list = page.openList()
+    list?.updated(peers(9))
+    list?.updated(peers(9, 10))
+    page.edit(peers(9, 10, 11))
+    page.leave()
+    check("several edits of the list go out as one request with the last list", page.writes == [.selective(.noPaidMessages, contacts(peers(9, 10, 11)))])
+}
+
+do {
+    let group = [PeerId(id: 20): SelectivePrivacyPeer(20, participantCount: 3)]
+    let page = MessagesPage(noPaidMessages: contacts(), globalSettings: global())
+    page.edit(group)
+    page.leave()
+    check("a group added to the exceptions is sent", page.writes == [.selective(.noPaidMessages, contacts(group))])
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(), globalSettings: global(.paidMessages(25)))
+    page.choose(.paidMessages(40))
+    page.edit(peers(9))
+    page.leave()
+    let expected = global(.paidMessages(40))
+    check("a new price and new exceptions send both", page.writes.count == 2 && page.writes.contains(.global(expected)) && page.writes.contains(.selective(.noPaidMessages, contacts(peers(9)))))
+    check("a new price and new exceptions are reported together", page.reports.count == 1 && page.reports[0].0 == contacts(peers(9)) && page.reports[0].1 == expected)
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(peers(5)), globalSettings: global(.everybody))
+    page.choose(.paidMessages(10))
+    page.leave()
+    check("turning the fee on alone does not send the exceptions", page.writes == [.global(global(.paidMessages(10)))])
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(peers(5)), globalSettings: global(.paidMessages(25)))
+    page.choose(.everybody)
+    page.leave()
+    check("turning the fee off alone does not send the exceptions", page.writes == [.global(global(.everybody))])
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: contacts(), globalSettings: global(.everybody))
+    page.choose(.paidMessages(10))
+    page.edit(peers(9))
+    page.choose(.everybody)
+    page.leave()
+    check("exceptions edited before the choice is put back go out alone", page.writes == [.selective(.noPaidMessages, contacts(peers(9)))])
+}
+
+check("the Privacy section opens the page with the loaded exceptions and keeps the reported ones", __CALLER_KEEPS_EXCEPTIONS__)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
