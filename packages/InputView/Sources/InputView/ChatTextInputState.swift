@@ -623,19 +623,13 @@ public final class ChatTextInputState: Codable, Equatable {
             var offset: Int = 0
             for (pre, language) in pres.sorted(by: { $0.0.lowerBound < $1.0.lowerBound }) {
                 let symbols = "```"
+                let code = string.string.nsstring.substring(with: NSMakeRange(pre.lowerBound + offset, pre.count))
+                let multiline = code.rangeOfCharacter(from: CharacterSet(charactersIn: "\n\u{2028}")) != nil
+                let opening = symbols + language + (language.isEmpty && !multiline ? "" : "\n")
 
-                string.insert(.initialize(string: symbols), at: pre.lowerBound + offset)
-                offset += symbols.count
+                string.insert(.initialize(string: opening), at: pre.lowerBound + offset)
+                offset += opening.length
 
-                if !language.isEmpty {
-                    if string.string.nsstring.substring(with: NSMakeRange(pre.lowerBound + offset, 1)) == "\n" {
-                        string.insert(.initialize(string: language), at: pre.lowerBound + offset)
-                        offset += language.length
-                    } else {
-                        string.insert(.initialize(string: language + "\n"), at: pre.lowerBound + offset)
-                        offset += language.length + 1
-                    }
-                }
                 string.insert(.initialize(string: symbols), at: pre.upperBound + offset)
                 offset += symbols.count
             }
@@ -730,6 +724,11 @@ public final class ChatTextInputState: Codable, Equatable {
                                 text = String(text.nsstring.substring(with: NSMakeRange(newLineRange.location, text.length - newLineRange.location)))
                                 rawOffset -= newLineRange.location
                             }
+                        }
+                        if text.length > 1, text.nsstring.substring(to: 1) == "\n" {
+                            text = text.nsstring.substring(from: 1)
+                            offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, 1))
+                            rawOffset -= 1
                         }
 
                         rawOffset -= match.range(at: 2).length + match.range(at: 4).length
