@@ -2857,10 +2857,11 @@ func instantPageV2MediaOriginX(
     availableWidth: CGFloat,
     mediaWidth: CGFloat,
     bleedAmount: CGFloat,
-    heightCapped: Bool,
     shrinkToContent: Bool
 ) -> CGFloat {
-    if heightCapped || (shrinkToContent && bleedAmount <= 0.0) {
+    // Preserve centered media on ordinary Instant View pages, even when capped.
+    // Only width-fitting chat bubbles should start compact media at the inset.
+    if shrinkToContent && bleedAmount <= 0.0 {
         return horizontalInset
     }
     return horizontalInset - bleedAmount + floor((availableWidth - mediaWidth) / 2.0)
@@ -2891,7 +2892,6 @@ private func layoutTypedMediaWithCaptionV2(
     // A height-capped portrait should occupy a narrow, aspect-fitted frame rather
     // than a full-width square frame with letterboxing. Don't bleed these blocks
     // past the chat bubble's content edge.
-    var isHeightCapped = false
     if capHeight, scaledSize.height > min(1000.0, availableWidth) {
         bleedAmount = 0.0
         availableWidth = columnWidth
@@ -2899,7 +2899,6 @@ private func layoutTypedMediaWithCaptionV2(
         scaledSize = instantPageV2FittedMediaSize(
             naturalSize, availableWidth: availableWidth, maxHeight: heightLimit
         )
-        isHeightCapped = true
     }
 
     // A chat rich-message bubble measures content width from item.frame.maxX.
@@ -2913,7 +2912,6 @@ private func layoutTypedMediaWithCaptionV2(
         availableWidth: availableWidth,
         mediaWidth: scaledSize.width,
         bleedAmount: bleedAmount,
-        heightCapped: isHeightCapped,
         shrinkToContent: shouldCompactChatMedia
     )
     let mediaFrame = CGRect(x: mediaX, y: 0.0, width: scaledSize.width, height: scaledSize.height)
