@@ -1054,7 +1054,7 @@ private struct GroupPeerEntryStableId: PeerInfoEntryStableId {
 
 
 enum GroupInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
-    case info(section:Int, view: PeerView, editingState: Bool, updatingPhotoState:PeerInfoUpdatingPhotoState?, viewType: GeneralViewType)
+    case info(section:Int, view: PeerView, editingState: Bool, updatingPhotoState:PeerInfoUpdatingPhotoState?, mutedByDefault: Bool, viewType: GeneralViewType)
     case setTitle(section:Int, text: String, viewType: GeneralViewType)
     case scam(section:Int, title: String, text: String, viewType: GeneralViewType)
     case about(section:Int, text: String, viewType: GeneralViewType)
@@ -1097,7 +1097,7 @@ enum GroupInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     
     func withUpdatedViewType(_ viewType: GeneralViewType) -> GroupInfoEntry {
         switch self {
-        case let .info(section, view, editingState, updatingPhotoState, _): return .info(section: section, view: view, editingState: editingState, updatingPhotoState: updatingPhotoState, viewType: viewType)
+        case let .info(section, view, editingState, updatingPhotoState, mutedByDefault, _): return .info(section: section, view: view, editingState: editingState, updatingPhotoState: updatingPhotoState, mutedByDefault: mutedByDefault, viewType: viewType)
         case let .setTitle(section, text, _): return .setTitle(section: section, text: text, viewType: viewType)
         case let .scam(section, title, text, _): return .scam(section: section, title: title, text: text, viewType: viewType)
         case let .about(section, text, _): return .about(section: section, text: text, viewType: viewType)
@@ -1146,11 +1146,14 @@ enum GroupInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
         }
         
         switch self {
-        case let .info(lhsSection, lhsPeerView, lhsEditingState, lhsUpdatingPhotoState, lhsViewType):
+        case let .info(lhsSection, lhsPeerView, lhsEditingState, lhsUpdatingPhotoState, lhsMutedByDefault, lhsViewType):
             switch entry {
-            case let .info(rhsSection, rhsPeerView, rhsEditingState, rhsUpdatingPhotoState, rhsViewType):
+            case let .info(rhsSection, rhsPeerView, rhsEditingState, rhsUpdatingPhotoState, rhsMutedByDefault, rhsViewType):
                 
                 if lhsUpdatingPhotoState != rhsUpdatingPhotoState {
+                    return false
+                }
+                if lhsMutedByDefault != rhsMutedByDefault {
                     return false
                 }
                 if lhsSection != rhsSection {
@@ -1583,7 +1586,7 @@ enum GroupInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     
     var sectionId: Int {
         switch self {
-        case let .info(sectionId, _, _, _, _):
+        case let .info(sectionId, _, _, _, _, _):
             return sectionId
         case let .scam(sectionId, _, _, _):
             return sectionId
@@ -1668,7 +1671,7 @@ enum GroupInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
 
     var sortIndex: Int {
         switch self {
-        case let .info(sectionId, _, _, _, _):
+        case let .info(sectionId, _, _, _, _, _):
             return (sectionId * 100000) + stableIndex
         case let .scam(sectionId, _, _, _):
             return (sectionId * 100000) + stableIndex
@@ -1762,8 +1765,8 @@ enum GroupInfoEntry<Context: AccountContextProtocol>: PeerInfoEntry {
     func item<C: AccountContextProtocol>(initialSize:NSSize, arguments:PeerInfoArguments<C>) -> TableRowItem {
         let arguments = arguments as! GroupInfoArguments<Context>
         switch self {
-        case let .info(_, peerView, editable, updatingPhotoState, viewType):
-            return PeerInfoHeadItem(initialSize, stableId: stableId.hashValue, context: arguments.context, arguments: arguments, peerView: peerView, threadData: nil, threadId: nil, viewType: viewType, editing: editable, updatingPhotoState: updatingPhotoState, updatePhoto: arguments.updateGroupPhoto, giftsContext: arguments.getStarGiftsContext?())
+        case let .info(_, peerView, editable, updatingPhotoState, mutedByDefault, viewType):
+            return PeerInfoHeadItem(initialSize, stableId: stableId.hashValue, context: arguments.context, arguments: arguments, peerView: peerView, threadData: nil, threadId: nil, viewType: viewType, editing: editable, updatingPhotoState: updatingPhotoState, updatePhoto: arguments.updateGroupPhoto, giftsContext: arguments.getStarGiftsContext?(), mutedByDefault: mutedByDefault)
         case let .scam(_, title, text, viewType):
             return TextAndLabelItem(initialSize, stableId:stableId.hashValue, label: title, copyMenuText: strings().textCopy, labelColor: theme.colors.redUI, text: text, context: arguments.context, viewType: viewType, detectLinks:false)
         case let .about(_, text, viewType):
@@ -2010,7 +2013,7 @@ enum GroupInfoSection : Int {
 }
 
 
-func groupInfoEntries<Context: AccountContextProtocol>(view: PeerView, arguments: PeerInfoArguments<Context>, inputActivities: [PeerId: PeerInputActivity], channelMembers: [RenderedChannelParticipant] = [], mediaTabsData: PeerMediaTabsData, inviteLinksCount: Int32, joinRequestsCount: Int32, availableReactions: AvailableReactions?, revenueState: StarsRevenueStatsContextState?) -> [PeerInfoEntry] {
+func groupInfoEntries<Context: AccountContextProtocol>(view: PeerView, arguments: PeerInfoArguments<Context>, inputActivities: [PeerId: PeerInputActivity], channelMembers: [RenderedChannelParticipant] = [], mediaTabsData: PeerMediaTabsData, inviteLinksCount: Int32, joinRequestsCount: Int32, availableReactions: AvailableReactions?, revenueState: StarsRevenueStatsContextState?, mutedByDefault: Bool) -> [PeerInfoEntry] {
     var entries: [GroupInfoEntry<Context>] = []
     if let group = peerViewMainPeer(view), let arguments = arguments as? GroupInfoArguments<Context>, let state = arguments.state as? GroupInfoState {
         
@@ -2041,7 +2044,7 @@ func groupInfoEntries<Context: AccountContextProtocol>(view: PeerView, arguments
             entries.append(contentsOf: block)
         }
         
-        entries.append(.info(section: GroupInfoSection.header.rawValue, view: view, editingState: state.editingState != nil, updatingPhotoState: state.updatingPhotoState, viewType: .singleItem))
+        entries.append(.info(section: GroupInfoSection.header.rawValue, view: view, editingState: state.editingState != nil, updatingPhotoState: state.updatingPhotoState, mutedByDefault: mutedByDefault, viewType: .singleItem))
         
         
         if let editingState = state.editingState {

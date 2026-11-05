@@ -1,0 +1,367 @@
+import Foundation
+
+let now: Int32 = 1_800_000_000
+
+enum PeerMuteState: Equatable {
+    case `default`
+    case unmuted
+    case muted(until: Int32)
+}
+
+final class TelegramPeerNotificationSettings {
+    let muteState: PeerMuteState
+
+    init(muteState: PeerMuteState) {
+        self.muteState = muteState
+    }
+
+    static var defaultSettings: TelegramPeerNotificationSettings {
+        return TelegramPeerNotificationSettings(muteState: .unmuted)
+    }
+
+    func isRemovedFromTotalUnreadCount(`default`: Bool) -> Bool {
+        switch self.muteState {
+        case .unmuted:
+            return false
+        case .muted:
+            return true
+        case .default:
+            return `default`
+        }
+    }
+
+    var isMuted: Bool {
+        switch self.muteState {
+        case let .muted(until):
+            return until > now
+        case .unmuted, .default:
+            return false
+        }
+    }
+
+    func withUpdatedMuteState(_ muteState: PeerMuteState) -> TelegramPeerNotificationSettings {
+        return TelegramPeerNotificationSettings(muteState: muteState)
+    }
+}
+
+enum Kind: String {
+    case user
+    case bot
+    case secretChat = "secret chat"
+    case basicGroup = "basic group"
+    case supergroup
+    case gigagroup
+    case channel
+    case replies = "Replies"
+}
+
+final class Peer {
+    let kind: Kind
+
+    init(_ kind: Kind) {
+        self.kind = kind
+    }
+}
+
+struct PeerView {
+    let peer: Peer
+    let notificationSettings: TelegramPeerNotificationSettings?
+}
+
+func peerViewMainPeer(_ view: PeerView) -> Peer? {
+    if view.peer.kind == .secretChat {
+        return Peer(.user)
+    }
+    return view.peer
+}
+
+final class PostboxGlobalNotificationSettings {
+    let defaultIncludePeer: (Peer) -> Bool
+
+    init(defaultIncludePeer: @escaping (Peer) -> Bool) {
+        self.defaultIncludePeer = defaultIncludePeer
+    }
+}
+
+struct GlobalNotificationSettings {
+    var privateChats: Bool
+    var groupChats: Bool
+    var channels: Bool
+
+    static var defaultSettings: GlobalNotificationSettings {
+        return GlobalNotificationSettings(privateChats: true, groupChats: true, channels: true)
+    }
+
+    func defaultIncludePeer(peer: Peer) -> Bool {
+        switch peer.kind {
+        case .user, .bot, .secretChat, .replies:
+            return self.privateChats
+        case .basicGroup, .supergroup, .gigagroup:
+            return self.groupChats
+        case .channel:
+            return self.channels
+        }
+    }
+
+    var postboxAccessor: PostboxGlobalNotificationSettings {
+        return PostboxGlobalNotificationSettings(defaultIncludePeer: { peer in
+            return self.defaultIncludePeer(peer: peer)
+        })
+    }
+}
+
+func resolvedIsRemovedFromTotalUnreadCount(globalSettings: PostboxGlobalNotificationSettings, peer: Peer, peerSettings: TelegramPeerNotificationSettings?) -> Bool {
+    let defaultValue = !globalSettings.defaultIncludePeer(peer)
+    if let peerSettings = peerSettings {
+        return peerSettings.isRemovedFromTotalUnreadCount(default: defaultValue)
+    } else {
+        return defaultValue
+    }
+}
+
+func togglePeerMuted(peer: Peer, currentSettings: TelegramPeerNotificationSettings?, global: GlobalNotificationSettings) -> TelegramPeerNotificationSettings {
+    let previousSettings = currentSettings ?? TelegramPeerNotificationSettings.defaultSettings
+    switch previousSettings.muteState {
+    case .default:
+        if resolvedIsRemovedFromTotalUnreadCount(globalSettings: global.postboxAccessor, peer: peer, peerSettings: previousSettings) {
+            return previousSettings.withUpdatedMuteState(.unmuted)
+        } else {
+            return previousSettings.withUpdatedMuteState(.muted(until: Int32.max))
+        }
+    case .unmuted:
+        return previousSettings.withUpdatedMuteState(.muted(until: Int32.max))
+    case .muted:
+        return previousSettings.withUpdatedMuteState(.unmuted)
+    }
+}
+
+struct Strings {
+    let peerInfoActionMute = "Mute"
+    let peerInfoActionUnmute = "Unmute"
+    let toastMuted = "Muted"
+    let toastUnmuted = "Unmuted"
+    let chatInputMute = "Mute"
+    let chatInputUnmute = "Unmute"
+    let chatContextEnableNotifications = "Mute"
+    let chatContextDisableNotifications = "Unmute"
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+struct Item {
+    let peerView: PeerView
+    let mutedByDefault: Bool
+}
+
+func profileMutedByDefault(view: PeerView, globalNotificationSettings: GlobalNotificationSettings) -> Bool {
+    __PROFILE_MUTED_BY_DEFAULT__
+}
+
+func userButton(_ item: Item) -> Bool? {
+    __USER_BUTTON__
+}
+
+func groupButton(_ item: Item) -> Bool? {
+    __GROUP_BUTTON__
+}
+
+func channelButton(_ item: Item) -> Bool? {
+    __CHANNEL_BUTTON__
+}
+
+func userCurrentlyMuted(_ value: Bool) -> Bool {
+    return __USER_ARGUMENT__
+}
+
+func groupCurrentlyMuted(_ value: Bool) -> Bool {
+    return __GROUP_ARGUMENT__
+}
+
+func channelCurrentlyMuted(_ value: Bool) -> Bool {
+    return __CHANNEL_ARGUMENT__
+}
+
+func profileToast(_ currentlyMuted: Bool) -> String {
+    return __TOAST__
+}
+
+func chatMutedByDefault(peer: Peer, globalNotificationSettings: GlobalNotificationSettings) -> Bool {
+    return __CHAT_MUTED_BY_DEFAULT__
+}
+
+struct ChatState {
+    let notificationSettings: TelegramPeerNotificationSettings?
+    let mutedByDefault: Bool
+}
+
+struct ChatInteraction {
+    let presentation: ChatState
+}
+
+func headerMenuItem(_ notificationSettings: TelegramPeerNotificationSettings, _ chatInteraction: ChatInteraction) -> (label: String, argument: Bool) {
+    __HEADER_PRELUDE__
+    return (__HEADER_LABEL__, __HEADER_ARGUMENT__)
+}
+
+func chatToggleNotifications(_ isMuted: Bool?, peer: Peer, currentSettings: TelegramPeerNotificationSettings?, global: GlobalNotificationSettings) -> TelegramPeerNotificationSettings {
+    if isMuted == nil || isMuted == true {
+        return togglePeerMuted(peer: peer, currentSettings: currentSettings, global: global)
+    } else {
+        return (currentSettings ?? TelegramPeerNotificationSettings.defaultSettings).withUpdatedMuteState(.muted(until: Int32.max))
+    }
+}
+
+__BAR_FUNCTIONS__
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func label(_ unmute: Bool) -> String {
+    return unmute ? "Unmute" : "Mute"
+}
+
+let settingsCases: [(String, TelegramPeerNotificationSettings?)] = [
+    ("no settings", nil),
+    ("default settings", TelegramPeerNotificationSettings(muteState: .default)),
+    ("unmuted", TelegramPeerNotificationSettings(muteState: .unmuted)),
+    ("muted forever", TelegramPeerNotificationSettings(muteState: .muted(until: Int32.max))),
+    ("muted for an hour", TelegramPeerNotificationSettings(muteState: .muted(until: now + 3600))),
+    ("muted until a time that has passed", TelegramPeerNotificationSettings(muteState: .muted(until: now - 60)))
+]
+
+func global(for kind: Kind, enabled: Bool) -> GlobalNotificationSettings {
+    var settings = GlobalNotificationSettings.defaultSettings
+    switch kind {
+    case .user, .bot, .secretChat, .replies:
+        settings.privateChats = enabled
+    case .basicGroup, .supergroup, .gigagroup:
+        settings.groupChats = enabled
+    case .channel:
+        settings.channels = enabled
+    }
+    return settings
+}
+
+let profileKinds: [Kind] = [.user, .bot, .secretChat, .basicGroup, .supergroup, .gigagroup, .channel]
+
+func profileButton(_ kind: Kind, _ item: Item) -> Bool? {
+    switch kind {
+    case .user, .bot, .secretChat, .replies:
+        return userButton(item)
+    case .basicGroup, .supergroup, .gigagroup:
+        return groupButton(item)
+    case .channel:
+        return channelButton(item)
+    }
+}
+
+func profileArgument(_ kind: Kind, _ value: Bool) -> Bool {
+    switch kind {
+    case .user, .bot, .secretChat, .replies:
+        return userCurrentlyMuted(value)
+    case .basicGroup, .supergroup, .gigagroup:
+        return groupCurrentlyMuted(value)
+    case .channel:
+        return channelCurrentlyMuted(value)
+    }
+}
+
+for kind in profileKinds {
+    for enabled in [true, false] {
+        for (settingsName, settings) in settingsCases {
+            let name = "profile, \(kind.rawValue), category \(enabled ? "on" : "off"), \(settingsName)"
+            let globalSettings = global(for: kind, enabled: enabled)
+            let view = PeerView(peer: Peer(kind), notificationSettings: settings)
+            let item = Item(peerView: view, mutedByDefault: profileMutedByDefault(view: view, globalNotificationSettings: globalSettings))
+            guard let value = profileButton(kind, item) else {
+                check("\(name): the button is missing", settings == nil && kind != .user && kind != .bot && kind != .secretChat)
+                continue
+            }
+            if settings != nil {
+                let chatList = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: view.peer, peerSettings: settings)
+                check("\(name): the button reads \(label(value)), the chat list offers \(label(chatList))", value == chatList)
+            }
+            let currentlyMuted = profileArgument(kind, value)
+            check("\(name): \(label(value)) shows the toast \(profileToast(currentlyMuted))", profileToast(currentlyMuted) == (value ? "Unmuted" : "Muted"))
+            let after = togglePeerMuted(peer: peerViewMainPeer(view)!, currentSettings: settings, global: globalSettings)
+            let afterMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: view.peer, peerSettings: after)
+            check("\(name): \(label(value)) leaves the chat \(afterMuted ? "muted" : "unmuted")", afterMuted == !value)
+            let afterItem = Item(peerView: PeerView(peer: view.peer, notificationSettings: after), mutedByDefault: item.mutedByDefault)
+            check("\(name): after the click the button reads \(label(!value))", profileButton(kind, afterItem) == !value)
+        }
+    }
+}
+
+let barSites: [(String, Kind)] = __BAR_SITES__
+
+check("the chat input bar has its four Mute buttons", barSites.count == 4)
+
+for (index, (siteName, kind)) in barSites.enumerated() {
+    for enabled in [true, false] {
+        for (settingsName, settings) in settingsCases {
+            let name = "bar, \(siteName), category \(enabled ? "on" : "off"), \(settingsName)"
+            let globalSettings = global(for: kind, enabled: enabled)
+            let peer = Peer(kind)
+            let state = ChatState(notificationSettings: settings, mutedByDefault: chatMutedByDefault(peer: peer, globalNotificationSettings: globalSettings))
+            guard let value = barButton(index, state) else {
+                check("\(name): the bar is missing", settings == nil)
+                continue
+            }
+            if settings != nil {
+                let chatList = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: peer, peerSettings: settings)
+                check("\(name): the bar reads \(label(value)), the chat list offers \(label(chatList))", value == chatList)
+            }
+            let after = togglePeerMuted(peer: peer, currentSettings: settings, global: globalSettings)
+            let afterMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: peer, peerSettings: after)
+            check("\(name): \(label(value)) leaves the chat \(afterMuted ? "muted" : "unmuted")", afterMuted == !value)
+            let afterState = ChatState(notificationSettings: after, mutedByDefault: state.mutedByDefault)
+            check("\(name): after the click the bar reads \(label(!value))", barButton(index, afterState) == !value)
+        }
+    }
+}
+
+let headerKinds: [Kind] = [.user, .bot, .secretChat, .basicGroup, .supergroup, .gigagroup, .channel, .replies]
+
+for kind in headerKinds {
+    for enabled in [true, false] {
+        for (settingsName, settings) in settingsCases {
+            guard let settings = settings else {
+                continue
+            }
+            let name = "chat header menu, \(kind.rawValue), category \(enabled ? "on" : "off"), \(settingsName)"
+            let globalSettings = global(for: kind, enabled: enabled)
+            let peer = Peer(kind)
+            let chatInteraction = ChatInteraction(presentation: ChatState(notificationSettings: settings, mutedByDefault: chatMutedByDefault(peer: peer, globalNotificationSettings: globalSettings)))
+            let item = headerMenuItem(settings, chatInteraction)
+            let chatList = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: peer, peerSettings: settings)
+            check("\(name): the menu reads \(item.label), the chat list offers \(label(chatList))", item.label == label(chatList))
+            let togglePeer = kind == .secretChat ? Peer(.user) : peer
+            let after = chatToggleNotifications(item.argument, peer: togglePeer, currentSettings: settings, global: globalSettings)
+            let afterMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: peer, peerSettings: after)
+            check("\(name): \(item.label) leaves the chat \(afterMuted ? "muted" : "unmuted")", afterMuted == (item.label == "Mute"))
+            let afterInteraction = ChatInteraction(presentation: ChatState(notificationSettings: after, mutedByDefault: chatInteraction.presentation.mutedByDefault))
+            check("\(name): after the click the menu reads \(item.label == "Mute" ? "Unmute" : "Mute")", headerMenuItem(after, afterInteraction).label != item.label)
+        }
+    }
+}
+
+let sourceChecks: [(String, Bool)] = [
+__SOURCE_CHECKS__
+]
+for (name, condition) in sourceChecks {
+    check(name, condition)
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

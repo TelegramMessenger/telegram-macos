@@ -8528,8 +8528,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
         }
 
+        let globalNotificationSettings: Signal<GlobalNotificationSettings, NoError> = context.account.postbox.preferencesView(keys: [PreferencesKeys.globalNotifications]) |> map { view in
+            return view.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings
+        }
+
         var botStartCheckedOnPeer = false
-        peerDisposable.set(combineLatest(queue: .mainQueue(), topPinnedMessage, peerView.get(), titlePeerView, availableGroupCall, attach, threadInfo, stateValue.get(), tagsAndFiles, getPeerView(peerId: context.peerId, postbox: context.account.postbox), savedChatsAsTopics, shortcuts, connectedBot, updaterPromise.get(), ApplicationSpecificNotice.playedMessageEffects(accountManager: context.sharedContext.accountManager), adMessages, context.starsContext.state, monoforumTopics.get()).start(next: { [weak self] pinnedMsg, postboxView, titlePeerView, groupCallData, attachItems, threadInfo, uiState, savedMessageTags, accountPeer, displaySavedChatsAsTopics, shortcuts, connectedBot, _, playedMessageEffects, adMessages, starsState, monoforumTopics in
+        peerDisposable.set(combineLatest(queue: .mainQueue(), topPinnedMessage, peerView.get(), titlePeerView, availableGroupCall, attach, threadInfo, stateValue.get(), tagsAndFiles, getPeerView(peerId: context.peerId, postbox: context.account.postbox), savedChatsAsTopics, shortcuts, connectedBot, updaterPromise.get(), ApplicationSpecificNotice.playedMessageEffects(accountManager: context.sharedContext.accountManager), adMessages, context.starsContext.state, monoforumTopics.get(), globalNotificationSettings).start(next: { [weak self] pinnedMsg, postboxView, titlePeerView, groupCallData, attachItems, threadInfo, uiState, savedMessageTags, accountPeer, displaySavedChatsAsTopics, shortcuts, connectedBot, _, playedMessageEffects, adMessages, starsState, monoforumTopics, globalNotificationSettings in
             
             
             let firstTime = isFirst.swap(false)
@@ -8729,7 +8733,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                         
                         if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings {
-                            present = present.updatedNotificationSettings(notificationSettings)
+                            present = present.updatedNotificationSettings(notificationSettings, mutedByDefault: !globalNotificationSettings.postboxAccessor.defaultIncludePeer(peer))
                         }
                         present = present.withUpdatedPeerStatusSettings(contactStatus)
                         present = present.withUpdatedInviteRequestsPending(inviteRequestsPending)
@@ -10148,9 +10152,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
                 if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings, !self.isAdChat {
                     if chatInteraction.peerId != context.peerId {
-                        items.append(ContextMenuItem(!notificationSettings.isMuted ? strings().chatContextEnableNotifications : strings().chatContextDisableNotifications, handler: { [weak self] in
-                            self?.chatInteraction.toggleNotifications(notificationSettings.isMuted)
-                        }, itemImage: notificationSettings.isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
+                        let isMuted = notificationSettings.isRemovedFromTotalUnreadCount(default: chatInteraction.presentation.mutedByDefault)
+                        items.append(ContextMenuItem(!isMuted ? strings().chatContextEnableNotifications : strings().chatContextDisableNotifications, handler: { [weak self] in
+                            self?.chatInteraction.toggleNotifications(isMuted)
+                        }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
                     }
                 }
 

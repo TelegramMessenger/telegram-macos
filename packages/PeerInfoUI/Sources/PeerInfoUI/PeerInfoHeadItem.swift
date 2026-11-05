@@ -89,7 +89,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
             }
         }
         if peer.id != item.context.peerId {
-            let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) ?? false
+            let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: item.mutedByDefault) ?? false
             items.append(ActionItem(text: value ? strings().peerInfoActionUnmute : strings().peerInfoActionMute, color: item.accentColor, image: value ? theme.icons.profile_unmute : theme.icons.profile_mute, animation: .menu_mute, action: {
                 arguments.toggleNotifications(value)
             }))
@@ -206,7 +206,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
                 arguments.addMember(access.canCreateInviteLink)
             }))
         }
-        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) {
+        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: item.mutedByDefault) {
             items.append(ActionItem(text: value ? strings().peerInfoActionUnmute : strings().peerInfoActionMute, color: item.accentColor, image: value ? theme.icons.profile_unmute : theme.icons.profile_mute, animation: value ? .menu_unmuted : .menu_mute, action: {
                 arguments.toggleNotifications(value)
             }))
@@ -297,7 +297,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
             }))
         }
         
-        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) {
+        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: item.mutedByDefault) {
             items.append(ActionItem(text: value ? strings().peerInfoActionUnmute : strings().peerInfoActionMute, color: item.accentColor, image: value ? theme.icons.profile_unmute : theme.icons.profile_mute, animation: value ? .menu_unmuted : .menu_mute, action: {
                 arguments.toggleNotifications(value)
             }))
@@ -650,6 +650,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     let isScam: Bool
     let isFake: Bool
     let isMuted: Bool
+    let mutedByDefault: Bool
     let peerView:PeerView
     let hasLiveStream: Bool
     
@@ -734,7 +735,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     fileprivate var effectiveStatusLayout: TextViewLayout {
         return isAvatarExpanded ? overlayTextLayout(statusLayout, color: NSColor.white.withAlphaComponent(0.8), alwaysStaticItems: true) : statusLayout
     }
-    init(_ initialSize:NSSize, stableId:AnyHashable, context: Context, arguments: PeerInfoArguments<Context>, peerView:PeerView, threadData: MessageHistoryThreadData?, threadId: Int64?, stories: PeerExpiringStoryListContext.State? = nil, viewType: GeneralViewType, editing: Bool, updatingPhotoState:PeerInfoUpdatingPhotoState? = nil, updatePhoto:@escaping(NSImage?, Control?)->Void = { _, _ in }, giftsContext: ProfileGiftsContext? = nil, threadPeer: EnginePeer? = nil, savedMusic: ProfileSavedMusicContext.State? = nil, profileSavedMusic: ProfileSavedMusicContext? = nil) {
+    init(_ initialSize:NSSize, stableId:AnyHashable, context: Context, arguments: PeerInfoArguments<Context>, peerView:PeerView, threadData: MessageHistoryThreadData?, threadId: Int64?, stories: PeerExpiringStoryListContext.State? = nil, viewType: GeneralViewType, editing: Bool, updatingPhotoState:PeerInfoUpdatingPhotoState? = nil, updatePhoto:@escaping(NSImage?, Control?)->Void = { _, _ in }, giftsContext: ProfileGiftsContext? = nil, threadPeer: EnginePeer? = nil, savedMusic: ProfileSavedMusicContext.State? = nil, profileSavedMusic: ProfileSavedMusicContext? = nil, mutedByDefault: Bool = false) {
         let peer = peerViewMainPeer(peerView)
         self.peer = peer
         self.threadPeer = threadPeer
@@ -752,7 +753,8 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         self.isPremium = peer?.isPremium ?? false
         self.isScam = peer?.isScam ?? false
         self.isFake = peer?.isFake ?? false
-        self.isMuted = peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) ?? false
+        self.mutedByDefault = mutedByDefault
+        self.isMuted = peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: mutedByDefault) ?? false
         self.updatingPhotoState = updatingPhotoState
         self.updatePhoto = updatePhoto
         
