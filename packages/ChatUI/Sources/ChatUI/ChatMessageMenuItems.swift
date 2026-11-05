@@ -1310,7 +1310,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 }
                 
                 let more = ContextMenuItem(strings().chatContextForwardMore, handler: {
-                    forwardingAction.openPicker(messages: [message])
+                    forwardingAction.openPicker(messages: msgs)
                 }, itemImage: MenuAnimation.menu_more.value)
                 items.append(more)
             }
