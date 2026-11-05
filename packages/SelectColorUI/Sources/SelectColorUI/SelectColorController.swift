@@ -455,12 +455,12 @@ private final class ProfilePreviewRowView : GeneralContainableRowView {
             }
             let color: NSColor
             if let nameColor = item.nameColor {
-                let main = item.getColor(nameColor).main
-                color = main.blended(withFraction: 0.1, of: .black) ?? NSColor.black.withAlphaComponent(0.15)
+                color = item.getColor(nameColor).main.withAlphaComponent(0.3)
             } else {
                 color = theme.colors.text.withAlphaComponent(0.3)
             }
             
+            current.darkensCover = item.nameColor != nil
             SettingsHooks.shared.setPeerInfoSpawnEmoji(current, emoji, color, item.context, animated)
         } else if let view = self.emojiSpawn {
             performSubviewRemoval(view, animated: animated)

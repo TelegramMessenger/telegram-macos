@@ -465,12 +465,13 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
             }
         }
         
-        if let nameColor = nameColor, threadId == nil, !editing {
-            let main = context.peerNameColors.getProfile(nameColor).main
-            return main.blended(withFraction: 0.1, of: .black) ?? NSColor.black.withAlphaComponent(0.15)
-        }
+        let color: NSColor
         
-        let color = theme.colors.text
+        if let nameColor = nameColor, threadId == nil, !editing {
+            color = context.peerNameColors.getProfile(nameColor).main
+        } else {
+            color = theme.colors.text
+        }
         if color.lightness >= 0.2 {
             return color.withAlphaComponent(0.5)
         } else {
@@ -492,6 +493,13 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         } else {
             return [NSColor(0xffffff, 0), NSColor(0xffffff, 0)]
         }
+    }
+    
+    var patternDarkensCover: Bool {
+        if let emojiStatus = peer?.emojiStatus, case .starGift = emojiStatus.content {
+            return false
+        }
+        return nameColor != nil && threadId == nil && !editing
     }
     
     var hasBackgroundGradient: Bool {
@@ -2187,6 +2195,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
                 addSubview(current, positioned: .above, relativeTo: backgroundView)
             }
             
+            current.darkensCover = item.patternDarkensCover
             current.set(fileId: emoji, color: item.profileEmojiColor, context: item.context, animated: animated)
         } else if let view = self.emojiSpawn {
             performSubviewRemoval(view, animated: animated)
