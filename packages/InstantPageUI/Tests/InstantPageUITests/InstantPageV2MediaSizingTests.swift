@@ -66,7 +66,6 @@ final class InstantPageV2MediaSizingTests: XCTestCase {
             availableWidth: 320,
             mediaWidth: mediaWidth,
             bleedAmount: 0,
-            heightCapped: false,
             shrinkToContent: true
         )
         XCTAssertEqual(x, 0)
@@ -74,15 +73,39 @@ final class InstantPageV2MediaSizingTests: XCTestCase {
     }
 
     func testHeightCappedPortraitAlsoStartsAtContentOrigin() {
+        let size = instantPageV2FittedMediaSize(
+            CGSize(width: 1080, height: 2400),
+            availableWidth: 320,
+            maxHeight: 320
+        )
         let x = instantPageV2MediaOriginX(
             horizontalInset: 5,
             availableWidth: 320,
-            mediaWidth: 144,
+            mediaWidth: size.width,
             bleedAmount: 0,
-            heightCapped: true,
             shrinkToContent: true
         )
+        XCTAssertEqual(size, CGSize(width: 144, height: 320))
         XCTAssertEqual(x, 5)
+    }
+
+    func testHeightCappedNonChatPortraitRemainsCentered() {
+        // A height cap changes the displayed dimensions, but not the
+        // alignment policy for a regular Instant View page.
+        let size = instantPageV2FittedMediaSize(
+            CGSize(width: 1080, height: 2400),
+            availableWidth: 320,
+            maxHeight: 320
+        )
+        let x = instantPageV2MediaOriginX(
+            horizontalInset: 5,
+            availableWidth: 320,
+            mediaWidth: size.width,
+            bleedAmount: 0,
+            shrinkToContent: false
+        )
+        XCTAssertEqual(size, CGSize(width: 144, height: 320))
+        XCTAssertEqual(x, 93)
     }
 
     func testOrdinaryInstantViewStillCentersNarrowMedia() {
@@ -91,7 +114,6 @@ final class InstantPageV2MediaSizingTests: XCTestCase {
             availableWidth: 320,
             mediaWidth: 120,
             bleedAmount: 0,
-            heightCapped: false,
             shrinkToContent: false
         )
         XCTAssertEqual(x, 100)
@@ -103,7 +125,6 @@ final class InstantPageV2MediaSizingTests: XCTestCase {
             availableWidth: 340,
             mediaWidth: 340,
             bleedAmount: 10,
-            heightCapped: false,
             shrinkToContent: true
         )
         XCTAssertEqual(x, -10)
