@@ -1178,7 +1178,7 @@ public class GalleryViewer: NSResponder {
                 }
                 
                 
-                if canDeleteMessage(message, account: context.account, chatLocation: chatLocation, mode: chatMode), !paidMedia {
+                if canDeleteMessage(message, account: context.account, chatLocation: chatLocation, mode: chatMode), !paidMedia, message.richText == nil {
                     if !items.isEmpty {
                         items.append(ContextSeparatorItem())
                     }

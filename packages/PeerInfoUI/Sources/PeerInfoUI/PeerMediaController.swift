@@ -1266,11 +1266,11 @@
                 if let selectionState = value.selectionState {
                     let ids = Array(selectionState.selectedIds)
                     loadSelectionMessagesDisposable.set((context.account.postbox.messagesAtIds(ids) |> deliverOnMainQueue).start( next:{ [weak self] messages in
-                        var canDelete:Bool = !ids.isEmpty
+                        var canDelete:Bool = !ids.isEmpty && !ids.contains(where: isExpandedSharedMediaMessageId)
                         var canForward:Bool = !ids.isEmpty
                         if let interactions = self?.interactions {
                             for message in messages {
-                                if !canDeleteMessage(message, account: context.account, chatLocation: interactions.chatLocation, mode: .history) {
+                                if !canDeleteMessage(message, account: context.account, chatLocation: interactions.chatLocation, mode: .history) || message.richText != nil {
                                     canDelete = false
                                 }
                                 if !canForwardMessage(message, chatInteraction: interactions) {
@@ -1700,12 +1700,12 @@
                 
                 self?.messagesActionDisposable.set(combineLatest(queue: .mainQueue(), context.account.postbox.messagesAtIds(messageIds), adminsPromise.get()).start( next:{ [weak strongSelf] messages, admins in
                     if let strongSelf = strongSelf {
-                        var canDelete:Bool = true
+                        var canDelete:Bool = !messageIds.contains(where: isExpandedSharedMediaMessageId)
                         var canDeleteForEveryone = true
                         var otherCounter:Int32 = 0
                         var _mustDeleteForEveryoneMessage: Bool = true
                         for message in messages {
-                            if !canDeleteMessage(message, account: context.account, chatLocation: strongSelf.interactions.chatLocation, mode: .history) {
+                            if !canDeleteMessage(message, account: context.account, chatLocation: strongSelf.interactions.chatLocation, mode: .history) || message.richText != nil {
                                 canDelete = false
                             }
                             if !mustDeleteForEveryoneMessage(message) {
