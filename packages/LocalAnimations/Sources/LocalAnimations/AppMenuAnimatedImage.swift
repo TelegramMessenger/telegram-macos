@@ -67,16 +67,16 @@ public final class AppMenuAnimatedImage : LottiePlayerView, AppMenuItemImageDraw
 
             let animation = LottieAnimation(compressed: data, key: LottieAnimationEntryKey(key: .bundle(self.sticker.rawValue), size: frame.size), type: .lottie, cachePurpose: .none, playPolicy: .framesCount(1), maximumFps: 60, colors: colors, metalSupport: false)
 
-            self.animation = animation
+            self.set(animation)
 
         }
         
         disposable.set(state.start(next: { [weak self] state in
-            self?.imageView.isHidden = state == .playing
-            if state == .finished {
-                let animation = self?.animation
-                self?.set(nil, animated: false)
-                self?.animation = animation
+            switch state {
+            case .playing, .finished, .stoped:
+                self?.imageView.isHidden = true
+            case .initializing, .failed:
+                break
             }
         }))
     }
@@ -108,9 +108,11 @@ public final class AppMenuAnimatedImage : LottiePlayerView, AppMenuItemImageDraw
         switch controlState {
         case .Hover:
             if !TelegramUtilsHooks.shared.isLite(.menu_animations) {
-                if self.currentState != .playing {
+                if self.animation?.playPolicy == .framesCount(1) {
                     self.set(self.animation?.withUpdatedPolicy(.once), reset: false)
-                } 
+                } else if self.currentState != .playing {
+                    self.playAgain()
+                }
             }
             
         default:

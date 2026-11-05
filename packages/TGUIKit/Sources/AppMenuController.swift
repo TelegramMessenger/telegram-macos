@@ -80,39 +80,79 @@ final class MenuView: Control, TableViewDelegate {
     private var contextItems: [Entry] = []
     private let backgroundView: View
     private let visualView: NSVisualEffectView
+    private let glassView: NSView?
+    static let cornerRadius: CGFloat = 12
+    private let shadowLayer = MenuShadowLayer()
+    private let rimLayer = CALayer()
+    private let hairlineLayer = CALayer()
     required init(frame frameRect: NSRect) {
         self.backgroundView = View(frame: frameRect.size.bounds)
         self.visualView = NSVisualEffectView(frame: frameRect.size.bounds)
+        if #available(macOS 26.0, *), System.liquidGlass, System.liquidGlassAvailable {
+            let glass = NSGlassEffectView(frame: .zero)
+            glass.style = .regular
+            glass.cornerRadius = MenuView.cornerRadius
+            glass.tintColor = nil
+            glass.wantsLayer = true
+            self.glassView = glass
+        } else {
+            self.glassView = nil
+        }
         super.init(frame: frameRect)
-        if #available(macOS 11.0, *) {
+        if let glassView {
+            addSubview(glassView)
+        } else if System.blurEnabled {
             addSubview(visualView)
         }
         
         tableView.verticalScroller = nil
         
-        addSubview(backgroundView)
-        addSubview(tableView)
+        if #available(macOS 26.0, *), let glass = glassView as? NSGlassEffectView {
+            let contentHost = View(frame: frameRect.size.bounds)
+            contentHost.addSubview(backgroundView)
+            contentHost.addSubview(tableView)
+            glass.contentView = contentHost
+        } else {
+            addSubview(backgroundView)
+            addSubview(tableView)
+        }
         self.visualView.wantsLayer = true
         self.visualView.state = .active
         self.visualView.blendingMode = .behindWindow
+        self.visualView.material = .menu
         self.tableView.delegate = self
         self.visualView.autoresizingMask = []
         self.autoresizesSubviews = false
         
-        let shadow = NSShadow()
-        shadow.shadowBlurRadius = 8
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
-        shadow.shadowOffset = NSMakeSize(0, 0)
-        self.shadow = shadow
+        self.layer?.masksToBounds = false
+        if #available(macOS 14.0, *) {
+            self.clipsToBounds = false
+        }
+        self.layer?.insertSublayer(shadowLayer, at: 0)
+        rimLayer.borderWidth = 1
+        hairlineLayer.borderWidth = 0.5
+        for layer in [rimLayer, hairlineLayer] {
+            layer.cornerRadius = MenuView.cornerRadius
+            if #available(macOS 10.15, *) {
+                layer.cornerCurve = .continuous
+            }
+            self.layer?.addSublayer(layer)
+        }
         
         self.layer?.isOpaque = false
-        self.layer?.shouldRasterize = true
-        self.layer?.rasterizationScale = System.backingScale
+        self.layer?.shouldRasterize = glassView == nil && !System.blurEnabled
+        if glassView == nil {
+            self.layer?.rasterizationScale = System.backingScale
+        }
         
-        self.layer?.cornerRadius = 18
-        self.visualView.layer?.cornerRadius = 18
-        self.backgroundView.layer?.cornerRadius = 18
-        self.tableView.layer?.cornerRadius = 18
+        let layers = [self.layer, self.visualView.layer, self.backgroundView.layer, self.tableView.layer]
+        for layer in layers {
+            layer?.cornerRadius = MenuView.cornerRadius
+            if #available(macOS 10.15, *) {
+                layer?.cornerCurve = .continuous
+            }
+        }
+        self.visualView.layer?.masksToBounds = true
         self.backgroundColor = NSColor.black.withAlphaComponent(0.001)
     }
     
@@ -127,8 +167,19 @@ final class MenuView: Control, TableViewDelegate {
     override func layout() {
         super.layout()
         visualView.frame = bounds
+        glassView?.frame = bounds
         backgroundView.frame = bounds
         tableView.frame = bounds
+        let outline = CGPath(roundedRect: bounds, cornerWidth: MenuView.cornerRadius, cornerHeight: MenuView.cornerRadius, transform: nil)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shadowLayer.update(shape: outline, in: bounds)
+        rimLayer.frame = bounds
+        hairlineLayer.frame = bounds.insetBy(dx: -0.5, dy: -0.5)
+        hairlineLayer.cornerRadius = MenuView.cornerRadius + 0.5
+        rimLayer.zPosition = 1
+        hairlineLayer.zPosition = 1
+        CATransaction.commit()
     }
     
     override func setFrameSize(_ newSize: NSSize) {
@@ -145,7 +196,7 @@ final class MenuView: Control, TableViewDelegate {
 
         let restingRadius = selfLayer.cornerRadius
         let pillRadius = max(restingRadius, floor(min(frame.width, frame.height) / 2))
-        let morphsCorner = pillRadius > restingRadius
+        let morphsCorner = pillRadius > restingRadius && glassView == nil
 
         var innerLayers: [CALayer] = []
         if #available(macOS 11.0, *) {
@@ -159,6 +210,8 @@ final class MenuView: Control, TableViewDelegate {
         if let layer = tableView.layer {
             innerLayers.append(layer)
         }
+        innerLayers.append(rimLayer)
+        innerLayers.append(hairlineLayer)
         if morphsCorner {
             for layer in innerLayers where !layer.masksToBounds {
                 layer.masksToBounds = true
@@ -221,19 +274,19 @@ final class MenuView: Control, TableViewDelegate {
         })
         
         self.setFrameSize(max, min(tableView.listHeight, min(maxHeight ?? appearMode.max, screen.visibleFrame.height - 200)))
-        if presentation.colors.isDark {
-            visualView.material = .dark
-        } else {
-            visualView.material = .light
-        }
         effectiveSize = max
-        
-        if #available(macOS 11.0, *) {
-            backgroundView.backgroundColor = presentation.backgroundColor
+        let appearance = NSAppearance.themed(isDark: presentation.colors.isDark)
+        rimLayer.borderColor = NSColor.white.withAlphaComponent(presentation.colors.isDark ? 0.1 : 0.5).cgColor
+        hairlineLayer.borderColor = NSColor.black.withAlphaComponent(presentation.colors.isDark ? 0.85 : 0.2).cgColor
+        if let glassView {
+            glassView.appearance = appearance
+            backgroundView.backgroundColor = .clear
+        } else if System.blurEnabled {
+            visualView.appearance = appearance
+            backgroundView.backgroundColor = .menuFallbackVeil(isDark: presentation.colors.isDark)
         } else {
-            backgroundView.backgroundColor = presentation.backgroundColor.withAlphaComponent(1.0)
+            backgroundView.backgroundColor = presentation.colors.background
         }
-        
     }
     
     func insertItems(_ items:[ContextMenuItem], presentation: AppMenu.Presentation, interaction: AppMenuBasicItem.Interaction) {
@@ -641,10 +694,11 @@ final class AppMenuController : NSObject  {
         let duration: Double = 0.2
         if !isClosed {
             for (_, panel) in self.windows {
-                var panel: Window? = panel
-                panel?.view.layer?.animateAlpha(from: 1, to: 0, duration: duration, removeOnCompletion: false, completion: { _ in
-                    panel?.orderOut(nil)
-                    panel = nil
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = duration
+                    panel.animator().alphaValue = 0
+                }, completionHandler: {
+                    panel.orderOut(nil)
                 })
             }
             
@@ -657,10 +711,11 @@ final class AppMenuController : NSObject  {
             self.parent?.copyhandler = self.previousCopyHandler
 
             if let window = self.menu.topWindow, let view = window.contentView {
-                view.layer?.animateAlpha(from: 1, to: 0, duration: duration, removeOnCompletion: false, completion: { [weak view, weak window] completed in
-                    if completed {
-                        view?.removeFromSuperview()
-                    }
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = duration
+                    window.animator().alphaValue = 0
+                }, completionHandler: { [weak view, weak window] in
+                    view?.removeFromSuperview()
                     window?.orderOut(nil)
                 })
             }
@@ -673,7 +728,7 @@ final class AppMenuController : NSObject  {
 
     
     private func getView(for menu: ContextMenu, screen: NSScreen, parentView: Window?, submenuId: Int64?) -> Window {
-        let panel = Window(contentRect: .zero, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+        let panel = MenuPanelWindow(contentRect: .zero, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
         panel._canBecomeMain = false
         panel._canBecomeKey = false
         panel.level = .screenSaver
@@ -804,10 +859,11 @@ final class AppMenuController : NSObject  {
         
         submenu.view.dismissed = true
         
-        submenu.view.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { [weak submenu] _ in
-            if let submenu = submenu {
-                submenu.orderOut(nil)
-            }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.2
+            submenu.animator().alphaValue = 0
+        }, completionHandler: { [weak submenu] in
+            submenu?.orderOut(nil)
         })
         
         if let childView = submenu.view.childView {
@@ -955,18 +1011,29 @@ final class AppMenuController : NSObject  {
         if let window = menu.topWindow {
             
             let width = window.frame.width
-            let rect = NSMakeRect(rect.maxX - width + 40, rect.maxY - 25, width, window.frame.height)
+            let view = window.contentView!.subviews.first!
+            let cursorAppearance = (view as? AppMenuCursorAppearance).flatMap { $0.canAppearFromCursor ? $0 : nil }
+            let extra: CGFloat = cursorAppearance != nil ? AppMenuCursorAppearanceExtraHeight : 0
+            let viewSize = view.frame.size
+            let rect = NSMakeRect(rect.maxX - width + 40, rect.maxY - 25 - extra, width, window.frame.height + extra)
             window.setFrame(rect, display: true)
             window.makeKeyAndOrderFront(nil)
             
-            let view = window.contentView!.subviews.first!
+            view.frame = NSMakeRect(rect.focus(viewSize).minX, extra, viewSize.width, viewSize.height)
             
-            view.frame = NSMakeRect(rect.focus(view.frame.size).minX, 0, view.frame.width, view.frame.height)
-            
-            window.contentView?.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.2)
-            window.contentView?.layer?.animateScaleSpringFrom(anchor: NSMakePoint(anchor.x, rect.height / 2), from: 0.2, to: 1, duration: 0.28, bounce: true)
+            if let cursorAppearance {
+                let cursor = view.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+                cursorAppearance.appearFromCursor(cursor)
+            } else {
+                window.contentView?.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.2)
+                window.contentView?.layer?.animateScaleSpringFrom(anchor: NSMakePoint(anchor.x, rect.height / 2), from: 0.2, to: 1, duration: 0.28, bounce: true)
+            }
             
             window.set(mouseHandler: { [weak self] event in
+                if AppMenu.keepsOpenOnNextMouseUp {
+                    AppMenu.keepsOpenOnNextMouseUp = false
+                    return .rejected
+                }
                 if self?.menu.closeOutside == true {
                     self?.closeAll()
                 }
@@ -1078,4 +1145,33 @@ public func contextOnScreen()->Window? {
         }
     }
     return nil
+}
+
+public extension NSAppearance {
+    static func themed(isDark: Bool) -> NSAppearance? {
+        if #available(macOS 10.14, *) {
+            return NSAppearance(named: isDark ? .darkAqua : .aqua)
+        }
+        return NSAppearance(named: isDark ? .vibrantDark : .aqua)
+    }
+}
+
+public let AppMenuCursorAppearanceExtraHeight: CGFloat = 40
+
+public protocol AppMenuCursorAppearance: AnyObject {
+    var canAppearFromCursor: Bool { get }
+    func appearFromCursor(_ point: NSPoint)
+}
+
+public extension NSColor {
+    static func menuFallbackVeil(isDark: Bool) -> NSColor {
+        return isDark ? .clear : NSColor.white.withAlphaComponent(0.45)
+    }
+}
+
+public final class MenuPanelWindow: Window {
+    @objc(_hasActiveAppearanceIgnoringKeyFocus)
+    func hasActiveAppearanceIgnoringKeyFocus() -> Bool {
+        return true
+    }
 }
