@@ -784,7 +784,7 @@ do {
     let page = MessagesPage(noPaidMessages: noExceptions, globalSettings: global())
     page.change { $0.noPaidMessages = exceptions }
     page.controller.didRemovedFromStack()
-    check("Messages exceptions do not rewrite global settings", page.server.writes.isEmpty)
+    check("Messages exceptions are sent without rewriting global settings", page.server.writes == [.selective(.noPaidMessages, exceptions)])
     check("Messages exceptions are reported", page.reports.count == 1 && page.reports[0].0 == exceptions)
 }
 
