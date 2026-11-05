@@ -1285,13 +1285,17 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
             _ = result.start(next: { values in
                      
                 
-                let add:(PeerId)->Void = { peerId in
-                    if payload.isEmpty || values.dest.isChannel {
-                        addBotAsMember(context: context, peer: values.source, to: values.dest, completion: { peerId in
-                            callback(peerId, true, nil, action)
-                        }, error: { error in
-                            alert(for: getWindow(context), info: error)
-                        })
+                let add:(PeerId, Bool)->Void = { peerId, added in
+                    if payload.isEmpty || values.source.isChannel {
+                        if added {
+                            callback(peerId, true, nil, nil)
+                        } else {
+                            addBotAsMember(context: context, peer: values.dest, to: values.source, completion: { peerId in
+                                callback(peerId, true, nil, nil)
+                            }, error: { error in
+                                alert(for: getWindow(context), info: error)
+                            })
+                        }
                     } else {
                         let signal = showModalProgress(signal: context.engine.messages.requestStartBotInGroup(botPeerId: botPeerId._asPeer().id, groupPeerId: peerId, payload: payload), for: context.window)
                             
@@ -1312,12 +1316,12 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                 
                 let addAdmin:()->Void = {
                     showModal(with: ChannelBotAdminController(context: context, peer: values.source, admin: values.dest, rights: rights, callback: { peerId in
-                        add(peerId)
+                        add(peerId, true)
                     }), for: getWindow(context))
                 }
                 let addSimple:()->Void = {
-                    verifyAlert_button(for: getWindow(context), information: strings().confirmAddBotToGroup(values.dest.displayTitle), successHandler: { _ in
-                        add(values.dest.id)
+                    verifyAlert_button(for: getWindow(context), information: strings().confirmAddBotToGroup(values.source.displayTitle), successHandler: { _ in
+                        add(values.source.id, false)
                     })
                 }
                 if let peer = values.source as? TelegramChannel {
