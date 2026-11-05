@@ -2405,12 +2405,14 @@ public class PreviewSenderController: ModalViewController, Notifable {
                     }
                     if state.isCollage && medias.count > 1 {
                         let collages = medias.chunks(10)
-                        for collage in collages {
+                        let captionCollage = (medias.firstIndex(where: { $0.isInteractiveMedia }) ?? medias.count - 1) / 10
+                        for (i, collage) in collages.enumerated() {
                             guard self.validateSendSource() else {
                                 self.closeModal()
                                 return
                             }
-                            self.chatInteraction.sendMedias(makeMedia(collage, true), input, state.isCollage && state.payAmount == nil, additionalMessage, silent, atDate, asSpoiler ?? state.isSpoiler, effect, state.sortValue == .up)
+                            let caption = i == captionCollage || state.payAmount != nil ? input : ChatTextInputState()
+                            self.chatInteraction.sendMedias(makeMedia(collage, true), caption, state.isCollage && state.payAmount == nil, additionalMessage, silent, atDate, asSpoiler ?? state.isSpoiler, effect, state.sortValue == .up)
                             additionalMessage = nil
                         }
                     } else {
