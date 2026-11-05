@@ -22,7 +22,34 @@ public func addBotAsMember(context: any AccountContextProtocol, peer: Peer, to: 
             completion(to.id)
         })
     } else {
-        completion(to.id)
+        _ = showModalProgress(signal: context.peerChannelMemberCategoriesContextsManager.addMembers(peerId: to.id, memberIds: [peer.id]), for: context.window).start(error: { value in
+            error(addBotErrorText(value))
+        }, completed: {
+            completion(to.id)
+        })
+    }
+}
+
+private func addBotErrorText(_ error: AddChannelMemberError) -> String {
+    switch error {
+    case .notMutualContact:
+        return strings().channelInfoAddUserLeftError
+    case .limitExceeded:
+        return strings().channelErrorAddTooMuch
+    case .botDoesntSupportGroups:
+        return strings().channelBotDoesntSupportGroups
+    case .tooMuchBots:
+        return strings().channelTooMuchBots
+    case .tooMuchJoined:
+        return strings().inviteChannelsTooMuch
+    case .generic:
+        return strings().unknownError
+    case .bot:
+        return strings().channelAddBotErrorHaveRights
+    case .restricted:
+        return strings().channelErrorAddBlocked
+    case .kicked:
+        return strings().channelAddUserKickedError
     }
 }
 
@@ -529,7 +556,8 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                         |> mapError { ($0, nil, nil) }
                         |> map { peer.id }
                     } else {
-                        signal = .single(peer.id)
+                        signal = context.peerChannelMemberCategoriesContextsManager.addMembers(peerId: peer.id, memberIds: [admin.id])
+                        |> map { _ in peer.id }
                         |> mapError { (nil, $0, nil) }
                     }
                 }
@@ -542,28 +570,7 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                     if let _ = error.0 {
                         alert(for: context.window, info: strings().unknownError)
                     } else if let error = error.1 {
-                        let text: String
-                        switch error {
-                        case .notMutualContact:
-                            text = strings().channelInfoAddUserLeftError
-                        case .limitExceeded:
-                            text = strings().channelErrorAddTooMuch
-                        case .botDoesntSupportGroups:
-                            text = strings().channelBotDoesntSupportGroups
-                        case .tooMuchBots:
-                            text = strings().channelTooMuchBots
-                        case .tooMuchJoined:
-                            text = strings().inviteChannelsTooMuch
-                        case .generic:
-                            text = strings().unknownError
-                        case .bot:
-                            text = strings().channelAddBotErrorHaveRights
-                        case .restricted:
-                            text = strings().channelErrorAddBlocked
-                        case .kicked:
-                            text = strings().channelAddUserKickedError
-                        }
-                        alert(for: context.window, info: text)
+                        alert(for: context.window, info: addBotErrorText(error))
                     } else if let error = error.2 {
                         switch error {
                         case .generic:
