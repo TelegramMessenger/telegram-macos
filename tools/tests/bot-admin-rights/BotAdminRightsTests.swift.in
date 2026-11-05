@@ -1,0 +1,109 @@
+import Foundation
+
+struct TelegramChatAdminRightsFlags: OptionSet, Hashable {
+    let rawValue: Int32
+    static let canChangeInfo = TelegramChatAdminRightsFlags(rawValue: 1 << 0)
+    static let canPostMessages = TelegramChatAdminRightsFlags(rawValue: 1 << 1)
+    static let canEditMessages = TelegramChatAdminRightsFlags(rawValue: 1 << 2)
+    static let canDeleteMessages = TelegramChatAdminRightsFlags(rawValue: 1 << 3)
+    static let canBanUsers = TelegramChatAdminRightsFlags(rawValue: 1 << 4)
+    static let canInviteUsers = TelegramChatAdminRightsFlags(rawValue: 1 << 5)
+    static let canPinMessages = TelegramChatAdminRightsFlags(rawValue: 1 << 6)
+    static let canAddAdmins = TelegramChatAdminRightsFlags(rawValue: 1 << 7)
+    static let canBeAnonymous = TelegramChatAdminRightsFlags(rawValue: 1 << 8)
+    static let canManageCalls = TelegramChatAdminRightsFlags(rawValue: 1 << 9)
+    static let canManageTopics = TelegramChatAdminRightsFlags(rawValue: 1 << 10)
+    static let canPostStories = TelegramChatAdminRightsFlags(rawValue: 1 << 11)
+    static let canEditStories = TelegramChatAdminRightsFlags(rawValue: 1 << 12)
+    static let canDeleteStories = TelegramChatAdminRightsFlags(rawValue: 1 << 13)
+    static let canManageDirect = TelegramChatAdminRightsFlags(rawValue: 1 << 14)
+    static let canManageWelcomeMessages = TelegramChatAdminRightsFlags(rawValue: 1 << 15)
+}
+
+enum RightsItem {
+    enum Sub: Hashable {
+        case messages
+        case stories
+    }
+    case direct(TelegramChatAdminRightsFlags)
+    case sub(Sub, [TelegramChatAdminRightsFlags])
+}
+
+struct State {
+    var rights: TelegramChatAdminRightsFlags
+}
+
+final class Arguments {
+    let toggleRight: (RightsItem, Bool) -> Void
+    init(toggleRight: @escaping (RightsItem, Bool) -> Void) {
+        self.toggleRight = toggleRight
+    }
+}
+
+let defaults: TelegramChatAdminRightsFlags = [__DEFAULTS__]
+var stateValue = State(rights: defaults)
+
+func updateState(_ f: (State) -> State) {
+    stateValue = f(stateValue)
+}
+
+let arguments = Arguments(toggleRight: __TOGGLE__)
+
+func clickRow(_ right: TelegramChatAdminRightsFlags) {
+    let state = stateValue
+    let rights: RightsItem = .direct(right)
+    let action: () -> Void = {
+        __ACTION__
+    }
+    action()
+}
+
+func clickSwitch(_ right: TelegramChatAdminRightsFlags) {
+    let state = stateValue
+    let rights: RightsItem = .direct(right)
+    let switchAction: () -> Void = {
+        __SWITCH_ACTION__
+    }
+    switchAction()
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+let rows: [(String, TelegramChatAdminRightsFlags)] = [__ROWS__]
+let paths: [(String, (TelegramChatAdminRightsFlags) -> Void)] = [("row", clickRow), ("switch", clickSwitch)]
+
+check("the screen lists rights rows", !rows.isEmpty)
+
+for (path, click) in paths {
+    for (name, right) in rows {
+        stateValue = State(rights: defaults)
+        let initially = defaults.contains(right)
+        click(right)
+        check("\(path) \(name): one click turns it \(initially ? "off" : "on")", stateValue.rights.contains(right) == !initially)
+        check("\(path) \(name): other rights stay as they were", stateValue.rights.subtracting(right) == defaults.subtracting(right))
+        click(right)
+        check("\(path) \(name): a second click puts it back", stateValue.rights == defaults)
+    }
+}
+
+stateValue = State(rights: defaults)
+for (_, right) in rows where defaults.contains(right) {
+    clickRow(right)
+}
+check("every right that starts on can be turned off", stateValue.rights.intersection(defaults).isEmpty)
+
+check("a click on the row changes the rights at once, as in the admin editor", __ROW_CLICK_AT_ONCE__)
+check("Add sends the rights from the current state", __ADD_SENDS_STATE__)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
