@@ -19,11 +19,28 @@ def inside(text, start, end):
     return text[begin:text.index(end, begin)]
 
 
+def closure(text, label):
+    start = text.find(label + ': {')
+    if start < 0:
+        return None
+    begin = start + len(label) + 3
+    depth = 1
+    for index in range(begin, len(text)):
+        if text[index] == '{':
+            depth += 1
+        elif text[index] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[begin:index]
+    return None
+
+
 orders = inside(source, 'let rightsOrder: [RightsItem]', 'for (i, rights) in rightsOrder.enumerated()')
 names = sorted(set(re.findall(r'\.direct\(\.(\w+)\)', orders)))
 loop = source[source.index('for (i, rights) in rightsOrder.enumerated()'):]
 direct_row = inside(loop, 'case let .direct(right):', 'case let .sub(type, subRights):')
-action = inside(direct_row, 'action: {', '})))')
+action = closure(direct_row, 'action') or ''
+switch_action = closure(direct_row, 'switchAction')
 toggle = inside(source, '}, toggleRight: ', ', toggleIsOptionExpanded:')
 defaults = inside(source, '?.chatAdminRights ?? [', ']')
 add = inside(source, 'controller.validateData', 'close = {')
@@ -33,7 +50,9 @@ fixture = (Path(__file__).with_name('BotAdminRightsTests.swift.in').read_text()
            .replace('__DEFAULTS__', defaults)
            .replace('__TOGGLE__', toggle)
            .replace('__ACTION__', action)
+           .replace('__SWITCH_ACTION__', action if switch_action is None else switch_action)
            .replace('__ROWS__', ', '.join(f'("{name}", .{name})' for name in names))
+           .replace('__ROW_CLICK_AT_ONCE__', 'false' if switch_action is None else 'true')
            .replace('__ADD_SENDS_STATE__', 'true' if add_sends_state else 'false'))
 
 with tempfile.TemporaryDirectory(prefix='bot-admin-rights-') as directory:

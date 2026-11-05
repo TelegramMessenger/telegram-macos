@@ -49,7 +49,7 @@ func updateState(_ f: (State) -> State) {
 
 let arguments = Arguments(toggleRight: __TOGGLE__)
 
-func click(_ right: TelegramChatAdminRightsFlags) {
+func clickRow(_ right: TelegramChatAdminRightsFlags) {
     let state = stateValue
     let rights: RightsItem = .direct(right)
     let action: () -> Void = {
@@ -58,41 +58,52 @@ func click(_ right: TelegramChatAdminRightsFlags) {
     action()
 }
 
+func clickSwitch(_ right: TelegramChatAdminRightsFlags) {
+    let state = stateValue
+    let rights: RightsItem = .direct(right)
+    let switchAction: () -> Void = {
+        __SWITCH_ACTION__
+    }
+    switchAction()
+}
+
+var passed = 0
 var failures = 0
 
-func check(_ condition: Bool, _ name: String) {
+func check(_ name: String, _ condition: Bool) {
     if condition {
-        print("ok   \(name)")
+        passed += 1
     } else {
         failures += 1
-        print("FAIL \(name)")
+        print("FAILED: \(name)")
     }
 }
 
 let rows: [(String, TelegramChatAdminRightsFlags)] = [__ROWS__]
+let paths: [(String, (TelegramChatAdminRightsFlags) -> Void)] = [("row", clickRow), ("switch", clickSwitch)]
 
-check(!rows.isEmpty, "the screen lists rights rows")
+check("the screen lists rights rows", !rows.isEmpty)
 
-for (name, right) in rows {
-    stateValue = State(rights: defaults)
-    let initially = defaults.contains(right)
-    click(right)
-    check(stateValue.rights.contains(right) == !initially, "\(name): one click turns it \(initially ? "off" : "on")")
-    check(stateValue.rights.subtracting(right) == defaults.subtracting(right), "\(name): other rights stay as they were")
-    click(right)
-    check(stateValue.rights == defaults, "\(name): a second click puts it back")
+for (path, click) in paths {
+    for (name, right) in rows {
+        stateValue = State(rights: defaults)
+        let initially = defaults.contains(right)
+        click(right)
+        check("\(path) \(name): one click turns it \(initially ? "off" : "on")", stateValue.rights.contains(right) == !initially)
+        check("\(path) \(name): other rights stay as they were", stateValue.rights.subtracting(right) == defaults.subtracting(right))
+        click(right)
+        check("\(path) \(name): a second click puts it back", stateValue.rights == defaults)
+    }
 }
 
 stateValue = State(rights: defaults)
 for (_, right) in rows where defaults.contains(right) {
-    click(right)
+    clickRow(right)
 }
-check(stateValue.rights.intersection(defaults).isEmpty, "every right that starts on can be turned off")
+check("every right that starts on can be turned off", stateValue.rights.intersection(defaults).isEmpty)
 
-check(__ADD_SENDS_STATE__, "Add sends the rights from the current state")
+check("a click on the row changes the rights at once, as in the admin editor", __ROW_CLICK_AT_ONCE__)
+check("Add sends the rights from the current state", __ADD_SENDS_STATE__)
 
-if failures > 0 {
-    print("\(failures) failed")
-    exit(1)
-}
-print("all passed")
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
