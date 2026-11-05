@@ -1,0 +1,757 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let id: Int64
+
+    init(_ id: Int64) {
+        self.id = id
+    }
+}
+
+struct PeerAndThreadId: Hashable {
+    var peerId: PeerId
+    var threadId: Int64?
+
+    init(peerId: PeerId, threadId: Int64?) {
+        self.peerId = peerId
+        self.threadId = threadId
+    }
+}
+
+struct MessageId: Hashable {
+    let peerId: PeerId
+    let id: Int32
+}
+
+final class Message {
+    let id: MessageId
+    let threadId: Int64?
+    let text: String
+
+    init(_ peerId: PeerId, _ id: Int32, thread: Int64?, text: String) {
+        self.id = MessageId(peerId: peerId, id: id)
+        self.threadId = thread
+        self.text = text
+    }
+}
+
+struct ChatTextInputState: Codable, Equatable {
+    var inputText: String
+}
+
+struct ChatEditState: Equatable {
+    let message: Message
+    let inputState: ChatTextInputState
+
+    static func ==(lhs: ChatEditState, rhs: ChatEditState) -> Bool {
+        return lhs.message.id == rhs.message.id && lhs.inputState == rhs.inputState
+    }
+}
+
+struct SynchronizeableChatInputState: Equatable {
+    let text: String
+}
+
+struct ChatInterfaceHistoryScrollState: Codable, Equatable {
+    let messageIndex: Int32
+}
+
+struct MediaDraftState {
+}
+
+struct OpaqueChatInterfaceState {
+    let opaqueData: Data?
+    let historyScrollMessageIndex: Int32?
+    let mediaDraftState: MediaDraftState?
+    let synchronizeableInputState: SynchronizeableChatInputState?
+}
+
+enum EngineEncoder {
+    static func encode<T: Encodable>(_ value: T) throws -> Data {
+        return try JSONEncoder().encode(value)
+    }
+}
+
+enum EngineDecoder {
+    static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        return try JSONDecoder().decode(type, from: data)
+    }
+}
+
+protocol AccountContextProtocol: AnyObject {
+}
+
+__TEMP_STATE__
+
+struct ChatInterfaceState: Codable, Equatable {
+    var timestamp: Int32 = 0
+    var inputState = ChatTextInputState(inputText: "")
+    var historyScrollState: ChatInterfaceHistoryScrollState? = nil
+    var editState: ChatEditState? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp
+        case inputState
+        case historyScrollState
+    }
+
+    init() {
+    }
+
+    var historyScrollMessageIndex: Int32? {
+        return self.historyScrollState?.messageIndex
+    }
+
+    var synchronizeableInputState: SynchronizeableChatInputState? {
+        return self.inputState.inputText.isEmpty ? nil : SynchronizeableChatInputState(text: self.inputState.inputText)
+    }
+
+    func withUpdatedTimestamp(_ timestamp: Int32) -> ChatInterfaceState {
+        var result = self
+        result.timestamp = timestamp
+        return result
+    }
+
+    func withUpdatedHistoryScrollState(_ historyScrollState: ChatInterfaceHistoryScrollState?) -> ChatInterfaceState {
+        var result = self
+        result.historyScrollState = historyScrollState
+        return result
+    }
+
+    func withUpdatedSynchronizeableInputState(_ state: SynchronizeableChatInputState?) -> ChatInterfaceState {
+        var result = self
+        if let state = state {
+            result.inputState = ChatTextInputState(inputText: state.text)
+        }
+        return result
+    }
+
+    func updatedEditState(_ f: (ChatEditState?) -> ChatEditState?) -> ChatInterfaceState {
+        var result = self
+        result.editState = f(self.editState)
+        return result
+    }
+
+    func withUpdatedInputState(_ inputState: ChatTextInputState) -> ChatInterfaceState {
+        var result = self
+        if let editState = self.editState {
+            result.editState = ChatEditState(message: editState.message, inputState: inputState)
+        } else {
+            result.inputState = inputState
+        }
+        return result
+    }
+
+__PARSE__
+}
+
+enum NoError {
+}
+
+protocol Disposable: AnyObject {
+    func dispose()
+}
+
+final class EmptyDisposable: Disposable {
+    func dispose() {
+    }
+}
+
+final class ActionDisposable: Disposable {
+    private var action: (() -> Void)?
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    func dispose() {
+        let action = self.action
+        self.action = nil
+        action?()
+    }
+}
+
+final class MetaDisposable: Disposable {
+    private var current: Disposable?
+
+    func set(_ disposable: Disposable?) {
+        let previous = self.current
+        self.current = disposable
+        previous?.dispose()
+    }
+
+    func dispose() {
+        self.set(nil)
+    }
+}
+
+struct Signal<T, E> {
+    let generator: (@escaping () -> Void) -> Disposable
+
+    init(_ generator: @escaping (@escaping () -> Void) -> Disposable) {
+        self.generator = generator
+    }
+
+    func start(completed: @escaping () -> Void = {}) -> Disposable {
+        return self.generator(completed)
+    }
+}
+
+func deferred<T, E>(_ f: @escaping () -> Signal<T, E>) -> Signal<T, E> {
+    return Signal { completed in
+        return f().start(completed: completed)
+    }
+}
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: AssignmentPrecedence
+}
+
+infix operator |> : PipeRight
+
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+final class Queue {
+    static func mainQueue() -> Queue {
+        return Queue()
+    }
+}
+
+struct Timer {
+    let id: Int
+    let at: Double
+    let fire: () -> Void
+}
+
+var timers: [Timer] = []
+var clock: Double = 0
+var nextTimerId = 0
+
+func delay<T, E>(_ timeout: Double, queue: Queue) -> (Signal<T, E>) -> Signal<T, E> {
+    return { signal in
+        return Signal { completed in
+            nextTimerId += 1
+            let id = nextTimerId
+            let inner = MetaDisposable()
+            timers.append(Timer(id: id, at: clock + timeout, fire: {
+                inner.set(signal.start(completed: completed))
+            }))
+            return ActionDisposable {
+                timers.removeAll(where: { $0.id == id })
+                inner.dispose()
+            }
+        }
+    }
+}
+
+func advance(_ seconds: Double) {
+    clock += seconds
+    while let index = timers.firstIndex(where: { $0.at <= clock }) {
+        let timer = timers.remove(at: index)
+        timer.fire()
+    }
+}
+
+final class Postbox {
+    var states: [PeerAndThreadId: OpaqueChatInterfaceState] = [:]
+}
+
+final class EnginePeers {
+    let postbox: Postbox
+
+    init(_ postbox: Postbox) {
+        self.postbox = postbox
+    }
+
+    func setOpaqueChatInterfaceState(peerId: PeerId, threadId: Int64?, state: OpaqueChatInterfaceState) -> Signal<Never, NoError> {
+        let postbox = self.postbox
+        return Signal { completed in
+            postbox.states[PeerAndThreadId(peerId: peerId, threadId: threadId)] = state
+            completed()
+            return EmptyDisposable()
+        }
+    }
+}
+
+final class Engine {
+    let peers: EnginePeers
+
+    init(_ postbox: Postbox) {
+        self.peers = EnginePeers(postbox)
+    }
+}
+
+final class AccountContext: AccountContextProtocol {
+    let postbox = Postbox()
+    lazy var engine = Engine(self.postbox)
+
+    __TEMP_STORE__
+
+__TEMP_ACCESS__
+}
+
+struct ChatHistoryModelHooks {
+    let getChatInterfaceTempState: __GET_TYPE__
+
+    static var shared: ChatHistoryModelHooks!
+}
+
+struct ChatInterfaceHooks {
+    let setChatInterfaceTempState: __SET_TYPE__
+
+    static var shared: ChatInterfaceHooks!
+}
+
+ChatHistoryModelHooks.shared = ChatHistoryModelHooks(getChatInterfaceTempState: __GET_INSTALL__)
+ChatInterfaceHooks.shared = ChatInterfaceHooks(setChatInterfaceTempState: __SET_INSTALL__)
+
+struct ChatLocation: Equatable {
+    let peerId: PeerId?
+    let threadId: Int64?
+
+    static func peer(_ peerId: PeerId) -> ChatLocation {
+        return ChatLocation(peerId: peerId, threadId: nil)
+    }
+
+    static func thread(_ peerId: PeerId, _ threadId: Int64) -> ChatLocation {
+        return ChatLocation(peerId: peerId, threadId: threadId)
+    }
+}
+
+struct ChatMode {
+    var customChatContents: AnyObject? = nil
+    var customChatLink: AnyObject? = nil
+}
+
+struct ChatPresentationInterfaceState {
+    var interfaceState: ChatInterfaceState
+}
+
+final class ChatInteraction {
+    var chatLocation: ChatLocation
+    let peerId: PeerId
+    let context: AccountContext
+    var mode = ChatMode()
+    var presentation: ChatPresentationInterfaceState
+    let modifyDisposable = MetaDisposable()
+    var storePendingRichTextDraft: (() -> Void)? = nil
+    var storePendingRichTextEditorDraft: (() -> Void)? = nil
+
+    init(context: AccountContext, chatLocation: ChatLocation, interfaceState: ChatInterfaceState) {
+        self.context = context
+        self.chatLocation = chatLocation
+        self.peerId = chatLocation.peerId!
+        self.presentation = ChatPresentationInterfaceState(interfaceState: interfaceState)
+    }
+
+__SAVE_STATE__
+}
+
+final class ChatController {
+    let chatLocation: ChatLocation
+
+    init(_ chatLocation: ChatLocation) {
+        self.chatLocation = chatLocation
+    }
+
+    func initialInterfaceState(_ opaqueState: OpaqueChatInterfaceState?, context: AccountContext) -> ChatInterfaceState? {
+        __CONTROLLER_PARSE__
+        return interfaceState
+    }
+}
+
+func historyViewInterfaceState(_ _chatLocation: ChatLocation, _ opaqueState: OpaqueChatInterfaceState?, context: AccountContext) -> ChatInterfaceState? {
+    __HISTORY_PARSE__
+    return interfaceState
+}
+
+enum Sent: Equatable {
+    case post(peer: Int64, thread: Int64?, text: String)
+    case edit(message: Int32, thread: Int64?, text: String)
+}
+
+final class App {
+    let context = AccountContext()
+    var sent: [Sent] = []
+
+    func stored(_ location: ChatLocation) -> OpaqueChatInterfaceState? {
+        return self.context.postbox.states[PeerAndThreadId(peerId: location.peerId!, threadId: location.threadId)]
+    }
+
+    func open(_ location: ChatLocation) -> Chat {
+        let parsed = ChatController(location).initialInterfaceState(self.stored(location), context: self.context)
+        return Chat(self, ChatInteraction(context: self.context, chatLocation: location, interfaceState: parsed ?? ChatInterfaceState()))
+    }
+
+    func visit(_ location: ChatLocation) {
+        self.open(location).leave()
+    }
+
+    func switchTo(_ current: Chat, _ location: ChatLocation) -> Chat {
+        let next = self.open(location)
+        current.leave()
+        return next
+    }
+
+    func cached(_ location: ChatLocation) -> ChatEditState? {
+        let empty = OpaqueChatInterfaceState(opaqueData: nil, historyScrollMessageIndex: nil, mediaDraftState: nil, synchronizeableInputState: nil)
+        return ChatController(location).initialInterfaceState(empty, context: self.context)?.editState
+    }
+}
+
+final class Chat {
+    let app: App
+    let interaction: ChatInteraction
+
+    init(_ app: App, _ interaction: ChatInteraction) {
+        self.app = app
+        self.interaction = interaction
+    }
+
+    var state: ChatInterfaceState {
+        return self.interaction.presentation.interfaceState
+    }
+
+    var editing: ChatEditState? {
+        return self.state.editState
+    }
+
+    var composer: String {
+        return self.state.editState?.inputState.inputText ?? self.state.inputState.inputText
+    }
+
+    private func update(_ f: (ChatInterfaceState) -> ChatInterfaceState) {
+        let old = self.state
+        self.interaction.presentation.interfaceState = f(old)
+        if self.state.inputState != old.inputState {
+            self.interaction.saveState(false)
+        }
+    }
+
+    func edit(_ message: Message) {
+        self.update { $0.updatedEditState { _ in ChatEditState(message: message, inputState: ChatTextInputState(inputText: message.text)) } }
+    }
+
+    func type(_ text: String) {
+        self.update { $0.withUpdatedInputState(ChatTextInputState(inputText: text)) }
+    }
+
+    func cancelEdit() {
+        self.update { $0.updatedEditState { _ in nil } }
+    }
+
+    @discardableResult
+    func send() -> Sent {
+        let state = self.state
+        let sent: Sent
+        if let edit = state.editState {
+            sent = .edit(message: edit.message.id.id, thread: edit.message.threadId, text: edit.inputState.inputText)
+            self.interaction.presentation.interfaceState = state.updatedEditState { _ in nil }
+        } else {
+            sent = .post(peer: self.interaction.peerId.id, thread: self.interaction.chatLocation.threadId, text: state.inputState.inputText)
+            self.interaction.presentation.interfaceState = state.withUpdatedInputState(ChatTextInputState(inputText: ""))
+            self.interaction.saveState(scrollState: nil)
+        }
+        self.app.sent.append(sent)
+        return sent
+    }
+
+    func leave() {
+        self.interaction.saveState(scrollState: nil)
+    }
+
+    func windowResignedKey() {
+        self.interaction.saveState(scrollState: nil)
+    }
+
+    func quit() {
+        self.interaction.saveState(sync: true)
+    }
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAIL: \(name)")
+    }
+}
+
+func describe(_ edit: ChatEditState?) -> String {
+    guard let edit = edit else {
+        return "no edit"
+    }
+    return "edit of \(edit.message.id.id) '\(edit.inputState.inputText)'"
+}
+
+let forum = PeerId(100)
+let topicA = ChatLocation.thread(forum, 11)
+let topicB = ChatLocation.thread(forum, 22)
+let topicC = ChatLocation.thread(forum, 33)
+let general = ChatLocation.thread(forum, 1)
+let forumMessages = ChatLocation.peer(forum)
+let messageM = Message(forum, 501, thread: 11, text: "M in topic A")
+let messageN = Message(forum, 502, thread: 22, text: "N in topic B")
+
+do {
+    let app = App()
+    let first = app.open(topicB)
+    first.type("draft in B")
+    first.leave()
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    a.leave()
+    let b = app.open(topicB)
+    check("topic B opened after an unfinished edit in topic A has no edit (\(describe(b.editing)))", b.editing == nil)
+    check("topic B's composer shows its own draft, not the text of the edit from topic A ('\(b.composer)')", b.composer == "draft in B")
+    b.type("hello topic B")
+    let sent = b.send()
+    check("Send in topic B posts to topic B and edits nothing in topic A (\(sent))", sent == .post(peer: forum.id, thread: 22, text: "hello topic B"))
+    let again = app.open(topicA)
+    check("topic A opened again keeps its unfinished edit with the changed text (\(describe(again.editing)))", again.editing?.message.id == messageM.id && again.composer == "changed M")
+}
+
+do {
+    let app = App()
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.leave()
+    let b = app.open(topicB)
+    check("a topic opened for the first time has no edit", b.editing == nil)
+}
+
+do {
+    let app = App()
+    app.visit(topicB)
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    a.leave()
+    let b = app.open(topicB)
+    b.cancelEdit()
+    b.leave()
+    let again = app.open(topicA)
+    check("Cancel pressed in topic B does not drop the unfinished edit of topic A (\(describe(again.editing)))", again.editing?.message.id == messageM.id && again.composer == "changed M")
+}
+
+do {
+    let app = App()
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    a.leave()
+    let b = app.open(topicB)
+    b.edit(messageN)
+    b.type("changed N")
+    b.leave()
+    let againA = app.open(topicA)
+    let againB = app.open(topicB)
+    check("two topics keep two unfinished edits: A has M (\(describe(againA.editing)))", againA.editing?.message.id == messageM.id && againA.composer == "changed M")
+    check("two topics keep two unfinished edits: B has N (\(describe(againB.editing)))", againB.editing?.message.id == messageN.id && againB.composer == "changed N")
+}
+
+do {
+    let app = App()
+    app.visit(forumMessages)
+    let g = app.open(general)
+    g.edit(Message(forum, 503, thread: 1, text: "in General"))
+    g.leave()
+    let whole = app.open(forumMessages)
+    check("the forum shown as messages does not take General's edit (\(describe(whole.editing)))", whole.editing == nil)
+    check("General keeps its own edit", app.open(general).editing?.message.id.id == 503)
+}
+
+do {
+    let app = App()
+    app.visit(topicA)
+    let whole = app.open(forumMessages)
+    whole.edit(messageM)
+    whole.leave()
+    let a = app.open(topicA)
+    check("an edit started in the forum shown as messages does not follow into the topic (\(describe(a.editing)))", a.editing == nil)
+    check("the forum shown as messages keeps its own edit", app.open(forumMessages).editing?.message.id == messageM.id)
+}
+
+do {
+    let app = App()
+    app.visit(topicB)
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    a.windowResignedKey()
+    let b = app.open(topicB)
+    check("topic B opened in a second window while topic A is being edited has no edit (\(describe(b.editing)))", b.editing == nil)
+    a.send()
+    check("the edit sent from topic A is the one typed there", app.sent == [.edit(message: 501, thread: 11, text: "changed M")])
+}
+
+do {
+    let app = App()
+    app.visit(topicB)
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    a.quit()
+    check("quitting while topic A is being edited keeps the edit for topic A", app.cached(topicA)?.message.id == messageM.id)
+    check("quitting while topic A is being edited leaves nothing for topic B", app.open(topicB).editing == nil)
+}
+
+do {
+    let app = App()
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    a.leave()
+    let again = app.open(topicA)
+    again.send()
+    again.leave()
+    check("an edit sent from topic A leaves no edit for topic A", app.open(topicA).editing == nil)
+    check("an edit sent from topic A leaves no edit for topic B", app.open(topicB).editing == nil)
+}
+
+do {
+    let app = App()
+    let a = app.open(topicA)
+    a.type("draft in A")
+    a.interaction.presentation.interfaceState = a.state.updatedEditState { _ in ChatEditState(message: messageM, inputState: ChatTextInputState(inputText: "changed M")) }
+    a.interaction.saveState(false)
+    a.interaction.chatLocation = topicB
+    advance(11)
+    check("a delayed save lands in the topic it was made in", app.cached(topicA)?.message.id == messageM.id)
+    check("a delayed save leaves nothing in the topic shown when it fires", app.cached(topicB) == nil)
+}
+
+do {
+    let app = App()
+    app.visit(topicB)
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    let b = app.switchTo(a, topicB)
+    check("topic B opened straight from topic A in a two-pane window has no edit (\(describe(b.editing)))", b.editing == nil)
+    b.type("hello topic B")
+    let sent = b.send()
+    check("a message sent in topic B opened straight from topic A goes to topic B (\(sent))", sent == .post(peer: forum.id, thread: 22, text: "hello topic B"))
+    let again = app.switchTo(b, topicA)
+    check("topic A keeps its unfinished edit after a message was sent in topic B (\(describe(again.editing)))", again.editing?.message.id == messageM.id && again.composer == "changed M")
+}
+
+do {
+    let app = App()
+    app.visit(topicB)
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.type("changed M")
+    let c = app.switchTo(a, topicC)
+    let b = app.switchTo(c, topicB)
+    check("topic B opened after passing through topic C has no edit of topic A (\(describe(b.editing)))", b.editing == nil)
+    b.type("hello topic B")
+    let sent = b.send()
+    check("Send in topic B after passing through topic C posts to topic B (\(sent))", sent == .post(peer: forum.id, thread: 22, text: "hello topic B"))
+    let again = app.switchTo(b, topicA)
+    check("topic A keeps its unfinished edit after passing through topics C and B (\(describe(again.editing)))", again.editing?.message.id == messageM.id && again.composer == "changed M")
+}
+
+let account = PeerId(1)
+let savedAll = ChatLocation.peer(account)
+let savedOne = ChatLocation.thread(account, 7001)
+let savedTwo = ChatLocation.thread(account, 7002)
+let savedMessage = Message(account, 900, thread: 7001, text: "saved from 7001")
+
+do {
+    let app = App()
+    app.visit(savedTwo)
+    app.visit(savedAll)
+    let one = app.open(savedOne)
+    one.edit(savedMessage)
+    one.type("changed saved")
+    one.leave()
+    check("another Saved Messages sub-chat has no edit", app.open(savedTwo).editing == nil)
+    check("Saved Messages shown as messages have no edit of a sub-chat", app.open(savedAll).editing == nil)
+    let again = app.open(savedOne)
+    check("the Saved Messages sub-chat keeps its own edit", again.editing?.message.id == savedMessage.id && again.composer == "changed saved")
+}
+
+let discussion = PeerId(300)
+let comments = ChatLocation.thread(discussion, 77)
+let discussionMessage = Message(discussion, 40, thread: nil, text: "in the group")
+
+do {
+    let app = App()
+    app.visit(comments)
+    let group = app.open(.peer(discussion))
+    group.edit(discussionMessage)
+    group.leave()
+    check("the comments of a post have no edit of the discussion group", app.open(comments).editing == nil)
+    check("the discussion group keeps its own edit", app.open(.peer(discussion)).editing?.message.id == discussionMessage.id)
+}
+
+let user = PeerId(200)
+let other = PeerId(201)
+let userMessage = Message(user, 10, thread: nil, text: "hi")
+
+do {
+    let app = App()
+    app.visit(.peer(other))
+    let chat = app.open(.peer(user))
+    chat.edit(userMessage)
+    chat.type("hi there")
+    chat.leave()
+    let again = app.open(.peer(user))
+    check("a chat opened again keeps its unfinished edit", again.editing?.message.id == userMessage.id && again.composer == "hi there")
+    check("another chat has no edit", app.open(.peer(other)).editing == nil)
+    again.cancelEdit()
+    again.leave()
+    check("an edit cancelled in a chat is gone when the chat opens again", app.open(.peer(user)).editing == nil)
+}
+
+do {
+    let app = App()
+    let chat = app.open(.peer(user))
+    chat.edit(userMessage)
+    chat.leave()
+    let again = app.open(.peer(user))
+    let sent = again.send()
+    again.leave()
+    check("the edit sent from a chat edits that message", sent == .edit(message: 10, thread: nil, text: "hi"))
+    check("an edit sent from a chat is gone when the chat opens again", app.open(.peer(user)).editing == nil)
+}
+
+do {
+    let app = App()
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.leave()
+    let empty = OpaqueChatInterfaceState(opaqueData: nil, historyScrollMessageIndex: nil, mediaDraftState: nil, synchronizeableInputState: SynchronizeableChatInputState(text: "synced draft"))
+    let broken = OpaqueChatInterfaceState(opaqueData: Data("not a state".utf8), historyScrollMessageIndex: nil, mediaDraftState: nil, synchronizeableInputState: nil)
+    let fromEmptyB = ChatController(topicB).initialInterfaceState(empty, context: app.context)
+    let fromBrokenB = ChatController(topicB).initialInterfaceState(broken, context: app.context)
+    check("a topic whose stored state has only a synced draft has no edit of another topic", fromEmptyB?.editState == nil && fromEmptyB?.inputState.inputText == "synced draft")
+    check("a topic whose stored state can't be read has no edit of another topic", fromBrokenB != nil && fromBrokenB?.editState == nil)
+    check("a topic whose stored state has only a synced draft keeps its own edit", ChatController(topicA).initialInterfaceState(empty, context: app.context)?.editState?.message.id == messageM.id)
+    check("a topic whose stored state can't be read keeps its own edit", ChatController(topicA).initialInterfaceState(broken, context: app.context)?.editState?.message.id == messageM.id)
+}
+
+do {
+    let app = App()
+    let b = app.open(topicB)
+    b.interaction.saveState(scrollState: ChatInterfaceHistoryScrollState(messageIndex: 42))
+    let a = app.open(topicA)
+    a.edit(messageM)
+    a.leave()
+    let restored = historyViewInterfaceState(topicB, app.stored(topicB), context: app.context)
+    check("the history of topic B restores its own scroll position", restored?.historyScrollState == ChatInterfaceHistoryScrollState(messageIndex: 42))
+    check("the history of topic B reads no edit of topic A", restored != nil && restored?.editState == nil)
+    check("the history of topic A reads its own edit", historyViewInterfaceState(topicA, app.stored(topicA), context: app.context)?.editState?.message.id == messageM.id)
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

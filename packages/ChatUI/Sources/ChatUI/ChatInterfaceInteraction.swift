@@ -1232,7 +1232,7 @@ public final class ChatInteraction : InterfaceObserver  {
         let semaphore = DispatchSemaphore(value: 0)
         
         let disposable = s.start(completed: {
-            ChatInterfaceHooks.shared.setChatInterfaceTempState(context, ChatInterfaceTempState(editState: interfaceState.editState), peerId)
+            ChatInterfaceHooks.shared.setChatInterfaceTempState(context, ChatInterfaceTempState(editState: interfaceState.editState), peerId, threadId)
             if sync {
                 semaphore.signal()
             }
