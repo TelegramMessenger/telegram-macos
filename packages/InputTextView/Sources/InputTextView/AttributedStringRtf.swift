@@ -11,18 +11,6 @@ public extension NSAttributedString {
         
         let modified: NSMutableAttributedString = string.trimNewLines.mutableCopy() as! NSMutableAttributedString
         
-        
-        var index: Int = 1
-        while true {
-            let range = modified.string.nsstring.range(of: "\t0")
-            if range.location != NSNotFound {
-                modified.replaceCharacters(in: range, with: "\t\(index)")
-                index += 1
-            } else {
-                break
-            }
-        }
-        
         var attachments:[NSTextAttachment] = []
         
         modified.enumerateAttributes(in: modified.range, options: [], using: { attr, range, _ in
