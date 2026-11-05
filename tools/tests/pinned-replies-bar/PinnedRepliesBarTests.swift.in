@@ -1,0 +1,357 @@
+import Foundation
+
+struct PeerId: Hashable {
+    struct Namespace: Hashable {
+        let rawValue: Int32
+    }
+    let namespace: Namespace
+    let id: Int64
+    func toInt64() -> Int64 {
+        return Int64(namespace.rawValue) << 40 | id
+    }
+}
+
+enum Namespaces {
+    enum Peer {
+        static let CloudUser = PeerId.Namespace(rawValue: 0)
+        static let CloudGroup = PeerId.Namespace(rawValue: 1)
+        static let CloudChannel = PeerId.Namespace(rawValue: 2)
+    }
+}
+
+struct MessageId: Hashable, Comparable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+    static func < (lhs: MessageId, rhs: MessageId) -> Bool {
+        if lhs.namespace == rhs.namespace {
+            if lhs.id == rhs.id {
+                return lhs.peerId.toInt64() < rhs.peerId.toInt64()
+            } else {
+                return lhs.id < rhs.id
+            }
+        } else {
+            return lhs.namespace < rhs.namespace
+        }
+    }
+}
+
+protocol Peer: AnyObject {
+    var id: PeerId { get }
+}
+
+final class TelegramChannel: Peer {
+    struct Flags: OptionSet {
+        let rawValue: Int32
+        static let isForum = Flags(rawValue: 1 << 0)
+        static let isMonoforum = Flags(rawValue: 1 << 1)
+    }
+    enum Info {
+        case broadcast
+        case group
+    }
+    let id: PeerId
+    let flags: Flags
+    let info: Info
+    init(id: PeerId, flags: Flags, info: Info) {
+        self.id = id
+        self.flags = flags
+        self.info = info
+    }
+}
+
+final class TelegramGroup: Peer {
+    let id: PeerId
+    init(id: PeerId) {
+        self.id = id
+    }
+}
+
+final class TelegramUser: Peer {
+    let id: PeerId
+    let hasForum: Bool
+    init(id: PeerId, hasForum: Bool) {
+        self.id = id
+        self.hasForum = hasForum
+    }
+}
+
+extension Peer {
+    var isForum: Bool {
+        if let channel = self as? TelegramChannel {
+            return channel.flags.contains(.isForum)
+        } else if let user = self as? TelegramUser {
+            return user.hasForum
+        }
+        return false
+    }
+    var isMonoForum: Bool {
+        if let channel = self as? TelegramChannel {
+            return channel.flags.contains(.isMonoforum)
+        }
+        return false
+    }
+    var isForumOrMonoForum: Bool {
+        return isForum || isMonoForum
+    }
+    var isChannel: Bool {
+        return (self as? TelegramChannel)?.info == .broadcast
+    }
+    var isSupergroup: Bool {
+        return (self as? TelegramChannel)?.info == .group
+    }
+}
+
+final class Message {
+    let id: MessageId
+    let threadId: Int64?
+    let peers: [PeerId: Peer]
+    let stableVersion: UInt32 = 0
+    init(id: MessageId, threadId: Int64?, peers: [PeerId: Peer]) {
+        self.id = id
+        self.threadId = threadId
+        self.peers = peers
+    }
+}
+
+enum ChatLocation {
+    case peer(PeerId)
+    case thread(PeerId, Int64)
+    var peerId: PeerId {
+        switch self {
+        case let .peer(peerId):
+            return peerId
+        case let .thread(peerId, _):
+            return peerId
+        }
+    }
+    var threadId: Int64? {
+        switch self {
+        case .peer:
+            return nil
+        case let .thread(_, threadId):
+            return threadId
+        }
+    }
+}
+
+struct AccountContext {
+    let peerId: PeerId
+}
+
+struct HistoryEntry {
+    let message: Message
+}
+
+struct HistoryView {
+    let entries: [HistoryEntry]
+}
+
+struct ChatTopVisibleMessageRange {
+    var lowerBound: MessageId
+    var upperBound: MessageId
+    var isLast: Bool
+}
+
+struct ChatDismissedPins {
+    let ids: [MessageId]
+    let tempMaxId: MessageId?
+}
+
+struct ChatPinnedMessage {
+    let messageId: MessageId
+    let message: Message?
+    let others: [MessageId]
+    let isLatest: Bool
+    let index: Int
+    let totalCount: Int
+    init(messageId: MessageId, message: Message?, others: [MessageId] = [], isLatest: Bool, index: Int = 0, totalCount: Int = 1) {
+        self.messageId = messageId
+        self.message = message
+        self.others = others
+        self.isLatest = isLatest
+        self.index = index
+        self.totalCount = totalCount
+    }
+}
+
+let me = PeerId(namespace: Namespaces.Peer.CloudUser, id: 9_000_001)
+let context = AccountContext(peerId: me)
+let noDismissed = ChatDismissedPins(ids: [], tempMaxId: nil)
+
+func oldRule(_ chatLocation: ChatLocation, _ message: Message) -> Bool {
+    return chatLocation.threadId == message.threadId || chatLocation.threadId == nil && message.threadId == 1 || message.threadId == context.peerId.toInt64()
+}
+
+func allRule(_ chatLocation: ChatLocation, _ message: Message) -> Bool {
+    return true
+}
+
+func visible(_ top: MessageId?) -> ChatTopVisibleMessageRange? {
+    return top.map { ChatTopVisibleMessageRange(lowerBound: $0, upperBound: $0, isLast: false) }
+}
+
+func pick(_ chatLocation: ChatLocation, _ entries: [Message], top: MessageId? = nil, dismissed: ChatDismissedPins = noDismissed) -> ChatPinnedMessage? {
+    let view = HistoryView(entries: entries.map { HistoryEntry(message: $0) })
+    let topVisibleMessageRange = visible(top)
+    var message: ChatPinnedMessage?
+    __SELECTION__
+    return message
+}
+
+func pickWith(_ rule: @escaping (ChatLocation, Message) -> Bool, _ chatLocation: ChatLocation, _ entries: [Message], top: MessageId? = nil, dismissed: ChatDismissedPins = noDismissed) -> ChatPinnedMessage? {
+    let view = HistoryView(entries: entries.map { HistoryEntry(message: $0) })
+    let topVisibleMessageRange = visible(top)
+    let oldRule = rule
+    var message: ChatPinnedMessage?
+    __OLD_SELECTION__
+    return message
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func same(_ lhs: ChatPinnedMessage?, _ rhs: ChatPinnedMessage?) -> Bool {
+    return lhs?.messageId == rhs?.messageId && lhs?.index == rhs?.index && lhs?.totalCount == rhs?.totalCount && lhs?.isLatest == rhs?.isLatest && lhs?.others == rhs?.others
+}
+
+func shown(_ result: ChatPinnedMessage?) -> Int32? {
+    return result?.messageId.id
+}
+
+func channelPeer(_ id: Int64, _ flags: TelegramChannel.Flags, _ info: TelegramChannel.Info) -> TelegramChannel {
+    return TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: id), flags: flags, info: info)
+}
+
+func message(_ peer: Peer, _ id: Int32, thread: Int64?) -> Message {
+    return Message(id: MessageId(peerId: peer.id, namespace: 0, id: id), threadId: thread, peers: [peer.id: peer])
+}
+
+func messageId(_ peer: Peer, _ id: Int32) -> MessageId {
+    return MessageId(peerId: peer.id, namespace: 0, id: id)
+}
+
+func subsets(_ messages: [Message]) -> [[Message]] {
+    var result: [[Message]] = []
+    for mask in 1 ..< (1 << messages.count) {
+        result.append(messages.enumerated().filter { mask & (1 << $0.offset) != 0 }.map { $0.element })
+    }
+    return result
+}
+
+func tops(_ peer: Peer, _ messages: [Message]) -> [MessageId?] {
+    var result: [MessageId?] = [nil]
+    for message in messages {
+        result.append(messageId(peer, message.id.id - 1))
+        result.append(message.id)
+        result.append(messageId(peer, message.id.id + 1))
+    }
+    return result
+}
+
+func sweep(_ peer: Peer, _ location: ChatLocation, _ messages: [Message], _ rule: @escaping (ChatLocation, Message) -> Bool) -> [String] {
+    var differences: [String] = []
+    for entries in subsets(messages) {
+        for top in tops(peer, messages) {
+            let dismissals = [noDismissed, ChatDismissedPins(ids: [entries[entries.count - 1].id], tempMaxId: nil), ChatDismissedPins(ids: [], tempMaxId: entries[entries.count - 1].id)]
+            for dismissed in dismissals {
+                let actual = pick(location, entries, top: top, dismissed: dismissed)
+                let expected = pickWith(rule, location, entries, top: top, dismissed: dismissed)
+                if !same(actual, expected) {
+                    differences.append("pins \(entries.map { $0.id.id }) top \(top.map { "\($0.id)" } ?? "none") closed \(dismissed.ids.map { $0.id }) cycled \(dismissed.tempMaxId.map { "\($0.id)" } ?? "none"): \(shown(actual).map { "\($0)" } ?? "none") instead of \(shown(expected).map { "\($0)" } ?? "none")")
+                }
+            }
+        }
+    }
+    return differences
+}
+
+func checkSweep(_ name: String, _ differences: [String]) {
+    check(name, differences.isEmpty)
+    for difference in differences.prefix(3) {
+        print("  \(difference)")
+    }
+}
+
+let supergroup = channelPeer(100, [], .group)
+let channel = channelPeer(101, [], .broadcast)
+let forum = channelPeer(102, [.isForum], .group)
+let monoforum = channelPeer(103, [.isMonoforum], .group)
+let basicGroup = TelegramGroup(id: PeerId(namespace: Namespaces.Peer.CloudGroup, id: 104))
+let friend = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: 105), hasForum: false)
+let savedMessages = TelegramUser(id: me, hasForum: false)
+let forumBot = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: 106), hasForum: true)
+let customer = PeerId(namespace: Namespaces.Peer.CloudUser, id: 107)
+
+for (name, peer) in [("supergroup", supergroup), ("channel", channel)] {
+    let location = ChatLocation.peer(peer.id)
+    let plain = message(peer, 5, thread: 1)
+    let reply = message(peer, 12, thread: 5)
+    let threadReply = message(peer, 14, thread: 3)
+
+    check("\(name): a pinned reply that is the only pin shows in the bar", shown(pick(location, [reply])) == 12)
+    check("\(name): a pinned reply deeper in a reply thread shows in the bar", shown(pick(location, [threadReply])) == 14)
+    check("\(name): with no scroll position yet, the bar shows the newest pin, a reply after a plain message", shown(pick(location, [plain, reply])) == 12)
+    check("\(name): scrolled below both pins, the bar shows the newer pinned reply", shown(pick(location, [plain, reply], top: messageId(peer, 13))) == 12)
+    check("\(name): scrolled between the pins, the bar shows the older plain message", shown(pick(location, [plain, reply], top: messageId(peer, 8))) == 5)
+    check("\(name): clicking past the oldest pin comes back to the pinned reply", shown(pick(location, [plain, reply], top: messageId(peer, 13), dismissed: ChatDismissedPins(ids: [], tempMaxId: messageId(peer, 5)))) == 12)
+    check("\(name): clicking the pinned reply moves to the older pin", shown(pick(location, [plain, reply], top: messageId(peer, 13), dismissed: ChatDismissedPins(ids: [], tempMaxId: messageId(peer, 12)))) == 5)
+    check("\(name): a plain pinned message still shows", shown(pick(location, [plain])) == 5)
+    check("\(name): with the plain pin closed, the bar shows the pinned reply", shown(pick(location, [plain, reply], top: messageId(peer, 13), dismissed: ChatDismissedPins(ids: [messageId(peer, 5)], tempMaxId: nil))) == 12)
+    check("\(name): a closed pinned reply is skipped for the plain pin", shown(pick(location, [plain, reply], top: messageId(peer, 13), dismissed: ChatDismissedPins(ids: [messageId(peer, 12)], tempMaxId: nil))) == 5)
+
+    let counted = pick(location, [plain, reply])
+    check("\(name): the shown reply is the latest of two pins", counted?.isLatest == true && counted?.index == 0 && counted?.totalCount == 2)
+    check("\(name): the bar's list has both pins, as before", counted?.others == [messageId(peer, 5), messageId(peer, 12)])
+
+    checkSweep("\(name): the whole chat picks among all of its pins", sweep(peer, location, [plain, reply, threadReply], allRule))
+    checkSweep("\(name): the new rule applies only with the whole chat open", sweep(peer, .thread(peer.id, 5), [plain, reply, threadReply], oldRule))
+}
+
+let general = message(forum, 5, thread: 1)
+let topicPin = message(forum, 9, thread: 2)
+let topicReply = message(forum, 11, thread: 2)
+let otherTopic = message(forum, 13, thread: 3)
+check("forum, whole chat: the bar shows General's pin, not a topic's, as before", shown(pick(.peer(forum.id), [general, topicPin])) == 5)
+check("forum, whole chat: a topic's pin alone doesn't show, as before", pick(.peer(forum.id), [topicPin]) == nil)
+check("forum topic: a pinned reply in the topic shows", shown(pick(.thread(forum.id, 2), [topicReply])) == 11)
+check("forum topic: the topic's own pin shows, not General's", shown(pick(.thread(forum.id, 2), [general, topicPin])) == 9)
+check("forum General: General's pin shows, not a topic's", shown(pick(.thread(forum.id, 1), [general, topicPin])) == 5)
+checkSweep("forum: the whole chat keeps the old rule", sweep(forum, .peer(forum.id), [general, topicPin, topicReply, otherTopic], oldRule))
+checkSweep("forum: a topic keeps the old rule", sweep(forum, .thread(forum.id, 2), [general, topicPin, topicReply, otherTopic], oldRule))
+checkSweep("forum: General keeps the old rule", sweep(forum, .thread(forum.id, 1), [general, topicPin, otherTopic], oldRule))
+
+let ownThread = message(monoforum, 5, thread: me.toInt64())
+let customerThread = message(monoforum, 9, thread: customer.toInt64())
+check("channel direct messages: the own thread's pin shows, as before", shown(pick(.peer(monoforum.id), [ownThread])) == 5)
+check("channel direct messages: another user's thread doesn't show in the whole chat, as before", pick(.peer(monoforum.id), [customerThread]) == nil)
+checkSweep("channel direct messages: the whole chat keeps the old rule", sweep(monoforum, .peer(monoforum.id), [ownThread, customerThread], oldRule))
+checkSweep("channel direct messages: a user's thread keeps the old rule", sweep(monoforum, .thread(monoforum.id, customer.toInt64()), [ownThread, customerThread], oldRule))
+
+let note = message(savedMessages, 5, thread: me.toInt64())
+let savedFromFriend = message(savedMessages, 9, thread: friend.id.toInt64())
+check("Saved Messages: a pinned note shows, as before", shown(pick(.peer(me), [note])) == 5)
+checkSweep("Saved Messages: the whole list keeps the old rule", sweep(savedMessages, .peer(me), [note, savedFromFriend], oldRule))
+checkSweep("Saved Messages: a saved chat keeps the old rule", sweep(savedMessages, .thread(me, friend.id.toInt64()), [note, savedFromFriend], oldRule))
+
+let groupFirst = message(basicGroup, 5, thread: nil)
+let groupSecond = message(basicGroup, 9, thread: nil)
+check("basic group: the newest pin shows, as before", shown(pick(.peer(basicGroup.id), [groupFirst, groupSecond])) == 9)
+checkSweep("basic group: keeps the old rule", sweep(basicGroup, .peer(basicGroup.id), [groupFirst, groupSecond, message(basicGroup, 12, thread: nil)], oldRule))
+
+check("private chat: the newest pin shows, as before", shown(pick(.peer(friend.id), [message(friend, 5, thread: nil), message(friend, 9, thread: nil)])) == 9)
+checkSweep("private chat: keeps the old rule", sweep(friend, .peer(friend.id), [message(friend, 5, thread: nil), message(friend, 9, thread: nil)], oldRule))
+
+checkSweep("bot with topics: keeps the old rule", sweep(forumBot, .peer(forumBot.id), [message(forumBot, 5, thread: nil), message(forumBot, 9, thread: 4), message(forumBot, 12, thread: 7)], oldRule))
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
