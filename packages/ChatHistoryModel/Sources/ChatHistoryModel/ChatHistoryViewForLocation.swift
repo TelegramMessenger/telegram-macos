@@ -255,7 +255,7 @@ public func chatHistoryViewForLocation(_ location: ChatHistoryLocation, context:
                     }
                 } else if effectiveIsAddedToChatList, tag == nil, let opaqueState = (initialData?.storedInterfaceState).flatMap(_internal_decodeStoredChatInterfaceState) {
                     
-                    let interfaceState = ChatInterfaceState.parse(opaqueState, peerId: _chatLocation.peerId, context: context)
+                    let interfaceState = ChatInterfaceState.parse(opaqueState, peerId: _chatLocation.peerId, threadId: _chatLocation.threadId, context: context)
                     
                     if let historyScrollState = interfaceState?.historyScrollState {
                         scrollPosition = .positionRestoration(index: historyScrollState.messageIndex, relativeOffset: CGFloat(historyScrollState.relativeOffset))
