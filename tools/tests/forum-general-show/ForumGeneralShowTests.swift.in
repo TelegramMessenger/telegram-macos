@@ -1,0 +1,832 @@
+import Foundation
+
+final class NSView {}
+final class NSColor {}
+struct NSSize {}
+struct NSRect: Equatable {}
+
+protocol Disposable {
+    func dispose()
+}
+
+final class EmptyDisposable: Disposable {
+    func dispose() {}
+}
+
+enum NoError {}
+
+final class Subscriber<T, E> {
+    private var finished = false
+    private let next: ((T) -> Void)?
+    private let error: ((E) -> Void)?
+    private let completed: (() -> Void)?
+
+    init(next: ((T) -> Void)?, error: ((E) -> Void)?, completed: (() -> Void)?) {
+        self.next = next
+        self.error = error
+        self.completed = completed
+    }
+
+    func putNext(_ value: T) {
+        if !finished {
+            next?(value)
+        }
+    }
+
+    func putError(_ value: E) {
+        if !finished {
+            finished = true
+            error?(value)
+        }
+    }
+
+    func putCompletion() {
+        if !finished {
+            finished = true
+            completed?()
+        }
+    }
+}
+
+final class Signal<T, E> {
+    private let generator: (Subscriber<T, E>) -> Void
+
+    init(_ generator: @escaping (Subscriber<T, E>) -> Void) {
+        self.generator = generator
+    }
+
+    static func complete() -> Signal<T, E> {
+        return Signal { $0.putCompletion() }
+    }
+
+    static func single(_ value: T) -> Signal<T, E> {
+        return Signal {
+            $0.putNext(value)
+            $0.putCompletion()
+        }
+    }
+
+    @discardableResult
+    func start(next: ((T) -> Void)? = nil, error: ((E) -> Void)? = nil, completed: (() -> Void)? = nil) -> Disposable {
+        generator(Subscriber(next: next, error: error, completed: completed))
+        return EmptyDisposable()
+    }
+}
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: DefaultPrecedence
+}
+
+infix operator |> : PipeRight
+
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+func then<T, E>(_ nextSignal: Signal<T, E>) -> (Signal<T, E>) -> Signal<T, E> {
+    return { signal in
+        return Signal { subscriber in
+            signal.start(next: { subscriber.putNext($0) }, error: { subscriber.putError($0) }, completed: {
+                nextSignal.start(next: { subscriber.putNext($0) }, error: { subscriber.putError($0) }, completed: {
+                    subscriber.putCompletion()
+                })
+            })
+        }
+    }
+}
+
+func take<T, E>(_ count: Int) -> (Signal<T, E>) -> Signal<T, E> {
+    return { signal in
+        return Signal { subscriber in
+            var taken = 0
+            signal.start(next: { value in
+                if taken < count {
+                    taken += 1
+                    subscriber.putNext(value)
+                    if taken == count {
+                        subscriber.putCompletion()
+                    }
+                }
+            }, error: { subscriber.putError($0) }, completed: { subscriber.putCompletion() })
+        }
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(value)
+    }
+
+    func modify(_ f: (T) -> T) -> T {
+        value = f(value)
+        return value
+    }
+}
+
+struct PeerId: Equatable {
+    let id: Int64
+}
+
+struct MediaId: Equatable {
+    let namespace: Int32
+    let id: Int64
+}
+
+final class ForumTopicIconResource {
+    let iconColor: Int32
+
+    init(iconColor: Int32) {
+        self.iconColor = iconColor
+    }
+}
+
+final class LocalBundleResource {}
+
+final class TelegramMediaFile: Equatable {
+    let fileId: MediaId
+    let mimeType: String
+    let resource: AnyObject
+
+    init(fileId: MediaId, mimeType: String, resource: AnyObject) {
+        self.fileId = fileId
+        self.mimeType = mimeType
+        self.resource = resource
+    }
+
+    static func ==(lhs: TelegramMediaFile, rhs: TelegramMediaFile) -> Bool {
+        return lhs.fileId == rhs.fileId && lhs.mimeType == rhs.mimeType
+    }
+}
+
+struct MessageHistoryThreadData: Equatable {
+    struct Info: Equatable {
+        var title: String
+        var icon: Int64?
+        var iconColor: Int32
+    }
+
+    var info: Info
+    var isHidden: Bool
+}
+
+enum EditForumChannelTopicError {
+    case generic
+}
+
+enum TelegramChannelPermission {
+    case changeInfo
+    case pinMessages
+    case manageTopics
+}
+
+final class TelegramChannel {
+    let rights: [TelegramChannelPermission]
+
+    init(rights: [TelegramChannelPermission]) {
+        self.rights = rights
+    }
+
+    func hasPermission(_ permission: TelegramChannelPermission) -> Bool {
+        return rights.contains(permission)
+    }
+}
+
+enum EnginePeer {
+    case channel(TelegramChannel)
+    case legacyGroup
+}
+
+enum CreateForumChannelTopicError {
+    case generic
+}
+
+protocol AccountContextProtocol: AnyObject {}
+
+final class FakeWindow {}
+
+final class FakeNavigation {
+    var backs = 0
+
+    func back() {
+        backs += 1
+    }
+}
+
+final class FakeBindings {
+    let navigation = FakeNavigation()
+
+    func rootNavigation() -> FakeNavigation {
+        return navigation
+    }
+}
+
+final class FakePeers {
+    var stored: MessageHistoryThreadData
+    var requests: [String] = []
+    var failEdit = false
+
+    init(stored: MessageHistoryThreadData) {
+        self.stored = stored
+    }
+
+    func editForumChannelTopic(id: PeerId, threadId: Int64, title: String, iconFileId: Int64?) -> Signal<Never, EditForumChannelTopicError> {
+        return Signal { subscriber in
+            self.requests.append("edit \(title) icon \(iconFileId.map { String($0) } ?? "nil")")
+            if self.failEdit || (title == self.stored.info.title && (threadId == 1 || iconFileId == self.stored.info.icon)) {
+                subscriber.putError(.generic)
+            } else {
+                self.stored.info.title = title
+                self.stored.info.icon = iconFileId
+                subscriber.putCompletion()
+            }
+        }
+    }
+
+    func setForumChannelTopicHidden(id: PeerId, threadId: Int64, isHidden: Bool) -> Signal<Never, EditForumChannelTopicError> {
+        return Signal { subscriber in
+            guard threadId == 1 else {
+                self.requests.append("hidden on topic \(threadId)")
+                subscriber.putError(.generic)
+                return
+            }
+            self.requests.append("hidden \(isHidden)")
+            self.stored.isHidden = isHidden
+            subscriber.putCompletion()
+        }
+    }
+
+    func createForumChannelTopic(id: PeerId, title: String, iconColor: Int32, iconFileId: Int64?) -> Signal<Int64, CreateForumChannelTopicError> {
+        return Signal { subscriber in
+            self.requests.append("create \(title)")
+            subscriber.putNext(42)
+            subscriber.putCompletion()
+        }
+    }
+}
+
+final class FakeEngine {
+    let peers: FakePeers
+
+    init(peers: FakePeers) {
+        self.peers = peers
+    }
+}
+
+final class FakeContext: AccountContextProtocol {
+    let engine: FakeEngine
+    let bindings = FakeBindings()
+    let window = FakeWindow()
+
+    init(peers: FakePeers) {
+        self.engine = FakeEngine(peers: peers)
+    }
+}
+
+var alerts: [String] = []
+
+func alert(for window: FakeWindow, info: String) {
+    alerts.append(info)
+}
+
+func showModalProgress<T, E>(signal: Signal<T, E>, for window: FakeWindow) -> Signal<T, E> {
+    return signal
+}
+
+enum ForumUI {
+    static func makeIconFile(title: String, iconColor: Int32 = 0, isGeneral: Bool = false) -> TelegramMediaFile {
+        if isGeneral {
+            return TelegramMediaFile(fileId: MediaId(namespace: 0, id: 523134), mimeType: "bundle/jpeg", resource: LocalBundleResource())
+        }
+        let letter = Int64(title.unicodeScalars.first?.value ?? 65)
+        return TelegramMediaFile(fileId: MediaId(namespace: 1, id: 7_000_000 + letter * 100 + Int64(iconColor % 100)), mimeType: "bundle/topic", resource: ForumTopicIconResource(iconColor: iconColor))
+    }
+
+    static func randomTopicColor() -> Int32 {
+        return 0x6FB9F0
+    }
+
+    static func openTopic(_ threadId: Int64, peerId: PeerId, context: FakeContext) -> Signal<Bool, NoError> {
+        return .single(true)
+    }
+}
+
+final class Strings {
+    var forumTopicNewTopicName: String { return "Topic Name" }
+    var forumTopicEditTopicName: String { return "Edit Topic Name" }
+    var forumTopicNewTopicIcon: String { return "Topic Icon" }
+    var forumTopicEditTopicIcon: String { return "Edit Topic Icon" }
+    var forumTopicEditGeneralShow: String { return "Show in Topics" }
+    var forumTopicEditGeneralInfo: String { return "If the 'General' topic is hidden, group members can pull down in the topic list to view it." }
+    var forumTopicTitleCreate: String { return "New Topic" }
+    var forumTopicTitleEdit: String { return "Edit Topic" }
+    var forumTopicDoneNew: String { return "Create" }
+    var forumTopicDoneEdit: String { return "Done" }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+struct Colors {
+    let listGrayText = NSColor()
+    let text = NSColor()
+}
+
+struct Theme {
+    let colors = Colors()
+}
+
+let theme = Theme()
+
+struct InputDataIdentifier: Hashable {
+    let identifier: String
+
+    init(_ identifier: String) {
+        self.identifier = identifier
+    }
+}
+
+enum InputDataEntryId: Hashable {
+    case custom(InputDataIdentifier)
+}
+
+enum InputDataValue {
+    case none
+    case string(String?)
+
+    var stringValue: String? {
+        if case let .string(value) = self {
+            return value
+        }
+        return nil
+    }
+}
+
+struct InputDataValueError {}
+
+struct InputDataEquatable {
+    init<T: Equatable>(_ value: T) {}
+}
+
+struct InputDataComparableIndex {}
+
+enum GeneralViewType {
+    case legacy
+    case singleItem
+    case textTopItem
+    case textBottomItem
+}
+
+enum GeneralInteractedType {
+    case none
+    case switchable(Bool)
+}
+
+enum InputDataSectionType {
+    case normal
+}
+
+enum InputDataTextType {
+    case plain(String)
+}
+
+final class InputDataGeneralTextData {
+    init(color: NSColor, viewType: GeneralViewType = .legacy) {}
+}
+
+final class InputDataGeneralData {
+    let name: String
+    let type: GeneralInteractedType
+    let enabled: Bool
+    let action: (() -> Void)?
+    let switchAction: (() -> Void)?
+    let autoswitch: Bool
+
+    init(name: String, color: NSColor, type: GeneralInteractedType = .none, viewType: GeneralViewType = .legacy, enabled: Bool = true, action: (() -> Void)? = nil, switchAction: (() -> Void)? = nil, autoswitch: Bool = true) {
+        self.name = name
+        self.type = type
+        self.enabled = enabled
+        self.action = action
+        self.switchAction = switchAction
+        self.autoswitch = autoswitch
+    }
+}
+
+class TableRowItem {}
+
+final class ForumNameRowItem: TableRowItem {
+    struct Icon: Equatable {
+        let file: TelegramMediaFile?
+        let fileId: Int64
+        let fromRect: NSRect?
+    }
+
+    init(_ initialSize: NSSize, stableId: InputDataEntryId, context: any AccountContextProtocol, icon: Icon?, name: String, updatedText: @escaping (String) -> Void, viewType: GeneralViewType) {}
+}
+
+final class ForumTopicEmojiSelectRowItem: TableRowItem {
+    init(_ initialSize: NSSize, stableId: InputDataEntryId, context: any AccountContextProtocol, getView: @escaping () -> NSView, viewType: GeneralViewType) {}
+}
+
+enum InputDataEntry {
+    case sectionId(Int32, type: InputDataSectionType)
+    case desc(sectionId: Int32, index: Int32, text: InputDataTextType, data: InputDataGeneralTextData)
+    case custom(sectionId: Int32, index: Int32, value: InputDataValue, identifier: InputDataIdentifier, equatable: InputDataEquatable?, comparable: InputDataComparableIndex?, item: (NSSize, InputDataEntryId) -> TableRowItem)
+    case general(sectionId: Int32, index: Int32, value: InputDataValue, error: InputDataValueError?, identifier: InputDataIdentifier, data: InputDataGeneralData)
+}
+
+enum InputDataValidationFailAction {
+    case shake
+}
+
+enum InputDataFailResult {
+    case none
+    case alert(String)
+    case fields([InputDataIdentifier: InputDataValidationFailAction])
+    case doSomething(next: (@escaping (InputDataValidation) -> Void) -> Void)
+}
+
+enum InputDataValidation {
+    case none
+    case fail(InputDataFailResult)
+}
+
+enum InputDoneValue {
+    case enabled(String)
+    case disabled(String)
+}
+
+struct InputDataSignalValue {
+    let entries: [InputDataEntry]
+
+    init(entries: [InputDataEntry] = []) {
+        self.entries = entries
+    }
+}
+
+final class InputDataController {
+    let updateDoneValue: ([InputDataIdentifier: InputDataValue]) -> ((InputDoneValue) -> Void) -> Void
+    var validateData: ([InputDataIdentifier: InputDataValue]) -> InputDataValidation = { _ in .fail(.none) }
+    var shakes = 0
+
+    init(dataSignal: Signal<InputDataSignalValue, NoError>, title: String, updateDoneValue: @escaping ([InputDataIdentifier: InputDataValue]) -> ((InputDoneValue) -> Void) -> Void, hasDone: Bool, identifier: String) {
+        self.updateDoneValue = updateDoneValue
+    }
+
+    func process(_ validation: InputDataValidation) {
+        switch validation {
+        case let .fail(.doSomething(next)):
+            next { [weak self] in self?.process($0) }
+        case let .fail(.fields(fields)):
+            shakes += fields.count
+        case let .fail(.alert(text)):
+            alerts.append(text)
+        default:
+            break
+        }
+    }
+}
+
+__IDS__
+
+__ARGUMENTS_CLASS__
+
+__STATE_STRUCT__
+
+__ENTRIES__
+
+__PURPOSE__
+
+__CAN_HIDE__
+
+struct GeneralRow {
+    let identifier: InputDataIdentifier
+    let value: InputDataValue
+    let data: InputDataGeneralData
+}
+
+final class Screen {
+    let peers: FakePeers
+    let navigation: FakeNavigation
+    let render: () -> [InputDataEntry]
+    let name: () -> String
+    let rename: (String) -> Void
+    let setIcon: (Int64) -> Void
+    let controller: InputDataController
+
+    init(peers: FakePeers, navigation: FakeNavigation, render: @escaping () -> [InputDataEntry], name: @escaping () -> String, rename: @escaping (String) -> Void, setIcon: @escaping (Int64) -> Void, controller: InputDataController) {
+        self.peers = peers
+        self.navigation = navigation
+        self.render = render
+        self.name = name
+        self.rename = rename
+        self.setIcon = setIcon
+        self.controller = controller
+    }
+
+    var generalRow: GeneralRow? {
+        for entry in render() {
+            if case let .general(_, _, value, _, identifier, data) = entry, identifier == _id_hide_general {
+                return GeneralRow(identifier: identifier, value: value, data: data)
+            }
+        }
+        return nil
+    }
+
+    var switchShown: Bool? {
+        if let row = generalRow, case let .switchable(value) = row.data.type {
+            return value
+        }
+        return nil
+    }
+
+    var doneEnabled: Bool {
+        var enabled = false
+        controller.updateDoneValue([_id_name: .string(name())])({ value in
+            if case .enabled = value {
+                enabled = true
+            }
+        })
+        return enabled
+    }
+
+    func select(_ identifier: InputDataIdentifier, _ value: InputDataValue) {
+        controller.process(controller.validateData([identifier: value]))
+    }
+
+    var switchEnabled: Bool {
+        return generalRow?.data.enabled ?? false
+    }
+
+    func rowItemAction() {
+        guard let row = generalRow else {
+            return
+        }
+        if let action = row.data.action {
+            action()
+        } else {
+            select(row.identifier, row.value)
+        }
+    }
+
+    func clickRow() {
+        guard let row = generalRow, row.data.enabled else {
+            return
+        }
+        rowItemAction()
+    }
+
+    func clickSwitch() {
+        guard let row = generalRow, row.data.enabled else {
+            return
+        }
+        if let switchAction = row.data.switchAction {
+            switchAction()
+        } else {
+            rowItemAction()
+        }
+    }
+
+    func done() {
+        if doneEnabled {
+            controller.process(controller.validateData([_id_name: .string(name())]))
+        }
+    }
+
+    func pressReturn() {
+        controller.process(controller.validateData([_id_name: .string(name())]))
+    }
+}
+
+let creator = EnginePeer.channel(TelegramChannel(rights: [.changeInfo, .pinMessages, .manageTopics]))
+
+func makeScreen(purpose: ForumTopicInfoPurpose, peers: FakePeers, peer: EnginePeer? = creator) -> Screen {
+    let context = FakeContext(peers: peers)
+    let peerId = PeerId(id: 1)
+
+    __INITIAL_STATE__
+
+    let stateValue = Atomic(value: initialState)
+    let updateState: ((State) -> State) -> Void = { f in
+        _ = stateValue.modify(f)
+    }
+
+    final class Emojis {
+        let genericView = NSView()
+    }
+    let emojis = Emojis()
+
+    __ARGUMENTS_INIT__
+
+    let signal = Signal<InputDataSignalValue, NoError>.complete()
+
+    __EDIT_CHECKS__
+
+    __CONTROLLER__
+
+    __VALIDATE__
+
+    return Screen(peers: peers, navigation: context.bindings.navigation, render: {
+        return __RENDER__
+    }, name: {
+        return stateValue.with { $0.name }
+    }, rename: { name in
+        arguments.updateName(name)
+    }, setIcon: { fileId in
+        updateState { current in
+            var current = current
+            current.icon = .init(file: nil, fileId: fileId, fromRect: nil)
+            return current
+        }
+    }, controller: controller)
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func general(hidden: Bool, title: String = "General") -> MessageHistoryThreadData {
+    return MessageHistoryThreadData(info: .init(title: title, icon: nil, iconColor: 0), isHidden: hidden)
+}
+
+func openGeneral(_ peers: FakePeers, peer: EnginePeer? = creator) -> Screen {
+    alerts = []
+    return makeScreen(purpose: .edit(peers.stored, 1), peers: peers, peer: peer)
+}
+
+let paths: [(String, (Screen) -> Void)] = [("row", { $0.clickRow() }), ("switch", { $0.clickSwitch() })]
+
+for startHidden in [false, true] {
+    let start = startHidden ? "hidden" : "shown"
+    let screen = openGeneral(FakePeers(stored: general(hidden: startHidden)))
+    check("General \(start): the page has the switch", screen.generalRow != nil)
+    check("General \(start): the switch starts \(startHidden ? "off" : "on")", screen.switchShown == !startHidden)
+    check("General \(start): the owner can use the switch", screen.switchEnabled)
+    check("General \(start): Done starts disabled", !screen.doneEnabled)
+    screen.done()
+    check("General \(start): Done with nothing changed sends nothing", screen.peers.requests.isEmpty && screen.navigation.backs == 0)
+    screen.pressReturn()
+    check("General \(start): Return with nothing changed sends nothing", screen.peers.requests.isEmpty && screen.navigation.backs == 0)
+    check("General \(start): Return with nothing changed shows no error", alerts.isEmpty)
+
+    for (path, click) in paths {
+        let peers = FakePeers(stored: general(hidden: startHidden))
+        let screen = openGeneral(peers)
+        click(screen)
+        check("General \(start), \(path): one click flips the switch on the page", screen.switchShown == startHidden)
+        check("General \(start), \(path): the click itself sends nothing", peers.requests.isEmpty)
+        check("General \(start), \(path): the click doesn't close the page", screen.navigation.backs == 0)
+        check("General \(start), \(path): Done is enabled after the click", screen.doneEnabled)
+        screen.done()
+        check("General \(start), \(path): Done sends only the new hidden state", peers.requests == ["hidden \(!startHidden)"])
+        check("General \(start), \(path): Done closes the page once", screen.navigation.backs == 1)
+        check("General \(start), \(path): no error", alerts.isEmpty)
+        let reopened = openGeneral(peers)
+        check("General \(start), \(path): the page opened again shows the saved switch", reopened.switchShown == startHidden)
+
+        let byReturn = FakePeers(stored: general(hidden: startHidden))
+        let returned = openGeneral(byReturn)
+        click(returned)
+        returned.pressReturn()
+        check("General \(start), \(path): Return after the click sends only the new hidden state", byReturn.requests == ["hidden \(!startHidden)"])
+        check("General \(start), \(path): Return after the click closes the page once", returned.navigation.backs == 1)
+
+        let twice = openGeneral(FakePeers(stored: general(hidden: startHidden)))
+        click(twice)
+        click(twice)
+        check("General \(start), \(path): a second click puts the switch back", twice.switchShown == !startHidden)
+        check("General \(start), \(path): after two clicks Done is disabled again", !twice.doneEnabled)
+        twice.done()
+        check("General \(start), \(path): after two clicks nothing is sent", twice.peers.requests.isEmpty && twice.navigation.backs == 0)
+    }
+}
+
+do {
+    let peers = FakePeers(stored: general(hidden: false))
+    let screen = openGeneral(peers)
+    screen.rename("Lobby")
+    check("General renamed: Done is enabled", screen.doneEnabled)
+    screen.done()
+    check("General renamed: Done sends only the title, without an icon", peers.requests == ["edit Lobby icon nil"])
+    check("General renamed: Done closes the page once", screen.navigation.backs == 1)
+}
+
+for (path, click) in paths {
+    let peers = FakePeers(stored: general(hidden: false))
+    let screen = openGeneral(peers)
+    screen.rename("Lobby")
+    click(screen)
+    check("General renamed, \(path): the click sends nothing", peers.requests.isEmpty)
+    check("General renamed, \(path): the click doesn't close the page", screen.navigation.backs == 0)
+    screen.done()
+    check("General renamed, \(path): Done sends the title, then the hidden state", peers.requests == ["edit Lobby icon nil", "hidden true"])
+    check("General renamed, \(path): Done closes the page once", screen.navigation.backs == 1)
+    check("General renamed, \(path): both are stored", peers.stored.info.title == "Lobby" && peers.stored.isHidden)
+}
+
+do {
+    let peers = FakePeers(stored: general(hidden: false))
+    peers.failEdit = true
+    let screen = openGeneral(peers)
+    screen.rename("Lobby")
+    screen.clickRow()
+    screen.done()
+    check("General, title refused: the error is shown", alerts.count == 1)
+    check("General, title refused: the hidden state isn't sent after it", peers.requests == ["edit Lobby icon nil"])
+    check("General, title refused: the page stays open", screen.navigation.backs == 0)
+    check("General, title refused: the page still shows the switch off", screen.switchShown == false)
+}
+
+do {
+    let peers = FakePeers(stored: general(hidden: false))
+    let screen = openGeneral(peers)
+    screen.rename("")
+    screen.clickRow()
+    check("General with an empty name: Done is disabled", !screen.doneEnabled)
+    screen.done()
+    check("General with an empty name: nothing is sent", peers.requests.isEmpty && screen.navigation.backs == 0)
+    screen.pressReturn()
+    check("General with an empty name: Return shakes the name and sends nothing", screen.controller.shakes == 1 && peers.requests.isEmpty && screen.navigation.backs == 0)
+}
+
+for (who, peer) in [("an admin without Manage Topics", EnginePeer.channel(TelegramChannel(rights: [.changeInfo, .pinMessages]))), ("an unknown chat", nil)] as [(String, EnginePeer?)] {
+    for (path, click) in paths {
+        let peers = FakePeers(stored: general(hidden: false))
+        let screen = openGeneral(peers, peer: peer)
+        check("General for \(who), \(path): the switch shows the topic as shown", screen.switchShown == true)
+        check("General for \(who), \(path): the switch is disabled", !screen.switchEnabled)
+        click(screen)
+        check("General for \(who), \(path): a click doesn't change it", screen.switchShown == true)
+        check("General for \(who), \(path): Done stays disabled", !screen.doneEnabled)
+        screen.pressReturn()
+        check("General for \(who), \(path): nothing is sent", peers.requests.isEmpty && screen.navigation.backs == 0)
+    }
+}
+
+let customIcon: Int64 = 5_368_324_170_671_202_286
+
+do {
+    let topic = MessageHistoryThreadData(info: .init(title: "Alpha", icon: customIcon, iconColor: 0x6FB9F0), isHidden: false)
+    let peers = FakePeers(stored: topic)
+    let screen = makeScreen(purpose: .edit(topic, 7), peers: peers)
+    check("topic with an emoji icon: no General switch", screen.generalRow == nil)
+    check("topic with an emoji icon: Done starts disabled", !screen.doneEnabled)
+    screen.setIcon(99)
+    check("topic with an emoji icon: a new icon enables Done", screen.doneEnabled)
+    screen.done()
+    check("topic with an emoji icon: Done sends the title and the new icon only", peers.requests == ["edit Alpha icon 99"])
+    check("topic with an emoji icon: Done closes the page", screen.navigation.backs == 1)
+}
+
+do {
+    let topic = MessageHistoryThreadData(info: .init(title: "Alpha", icon: customIcon, iconColor: 0x6FB9F0), isHidden: false)
+    let peers = FakePeers(stored: topic)
+    let screen = makeScreen(purpose: .edit(topic, 7), peers: peers)
+    screen.rename("Beta")
+    check("topic with an emoji icon renamed: Done is enabled", screen.doneEnabled)
+    screen.done()
+    check("topic with an emoji icon renamed: Done sends the title with the icon", peers.requests == ["edit Beta icon \(customIcon)"])
+}
+
+do {
+    let topic = MessageHistoryThreadData(info: .init(title: "Alpha", icon: nil, iconColor: 0x6FB9F0), isHidden: false)
+    let peers = FakePeers(stored: topic)
+    let screen = makeScreen(purpose: .edit(topic, 7), peers: peers)
+    check("topic with a letter icon: no General switch", screen.generalRow == nil)
+    check("topic with a letter icon: Done is enabled, as before", screen.doneEnabled)
+    screen.done()
+    check("topic with a letter icon: Done sends the title without an icon, as before", peers.requests == ["edit Alpha icon nil"])
+}
+
+do {
+    let peers = FakePeers(stored: general(hidden: false))
+    let screen = makeScreen(purpose: .create, peers: peers)
+    check("new topic: no General switch", screen.generalRow == nil)
+    screen.rename("Gamma")
+    check("new topic: Done is enabled", screen.doneEnabled)
+    screen.done()
+    check("new topic: Done creates the topic and sends no hidden state", peers.requests == ["create Gamma"])
+}
+
+let row = openGeneral(FakePeers(stored: general(hidden: false))).generalRow
+check("the switch moves only when the page state changes (autoswitch off), so it never shows a value Done won't send", row?.data.autoswitch == false)
+check("the row stays a checkbox for VoiceOver (no separate switch action)", row != nil && row?.data.switchAction == nil)
+check("the page renders with the forum's Manage Topics right", __PERMISSION_WIRED__)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
