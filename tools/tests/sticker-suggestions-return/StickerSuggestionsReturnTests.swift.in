@@ -1,0 +1,516 @@
+import CoreGraphics
+import Foundation
+
+final class NSEvent {
+    struct ModifierFlags: OptionSet {
+        let rawValue: UInt
+        static let command = ModifierFlags(rawValue: 1 << 20)
+    }
+}
+
+enum KeyboardKey: String {
+    case Return
+    case Tab
+    case Escape
+    case LeftArrow
+    case RightArrow
+    case DownArrow
+    case UpArrow
+}
+
+enum HandlerPriority: Int {
+    case low = 0
+    case medium = 1
+    case high = 2
+    case modal = 3
+    case supreme = 4
+}
+
+enum KeyHandlerResult {
+    case invoked
+    case rejected
+    case invokeNext
+}
+
+final class Window {
+    var handlers: [String: (NSEvent) -> KeyHandlerResult] = [:]
+
+    func set(handler: @escaping (NSEvent) -> KeyHandlerResult, with object: NSObject, for key: KeyboardKey, priority: HandlerPriority = .low, modifierFlags: NSEvent.ModifierFlags? = nil) {
+        self.handlers["\(key.rawValue)/\(priority.rawValue)/\(modifierFlags?.rawValue ?? 0)"] = handler
+    }
+
+    func removeAllHandlers(for object: NSObject) {
+        self.handlers = [:]
+    }
+
+    func press(_ key: KeyboardKey) -> KeyHandlerResult? {
+        return self.handlers["\(key.rawValue)/\(HandlerPriority.modal.rawValue)/0"]?(NSEvent())
+    }
+}
+
+protocol AccountContextProtocol: AnyObject {
+    var window: Window { get }
+    var isInGlobalSearch: Bool { get }
+}
+
+final class AccountContext: AccountContextProtocol {
+    let window = Window()
+    var isInGlobalSearch = false
+}
+
+final class TelegramPresentationTheme {
+}
+
+@dynamicMemberLookup
+struct Strings {
+    subscript(dynamicMember name: String) -> String {
+        return name
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+enum System {
+    static var backingScale: CGFloat = 2
+}
+
+__PIXELS__
+
+struct MediaId: Equatable {
+    let namespace: Int32
+    let id: Int64
+}
+
+struct TelegramMediaImageFlags: OptionSet {
+    let rawValue: Int32
+}
+
+final class TelegramMediaImage: Equatable {
+    init(imageId: MediaId, representations: [Int], immediateThumbnailData: Data?, reference: Int?, partialReference: Int?, flags: TelegramMediaImageFlags) {
+    }
+
+    static func ==(lhs: TelegramMediaImage, rhs: TelegramMediaImage) -> Bool {
+        return true
+    }
+}
+
+final class TelegramMediaFile: Equatable {
+    let number: Int
+    let previewRepresentations: [Int] = []
+
+    init(_ number: Int) {
+        self.number = number
+    }
+
+    static func ==(lhs: TelegramMediaFile, rhs: TelegramMediaFile) -> Bool {
+        return lhs.number == rhs.number
+    }
+}
+
+struct FoundStickerItem: Equatable {
+    let file: TelegramMediaFile
+}
+
+enum InputMediaContextEntry: Equatable {
+    case sticker(thumb: TelegramMediaImage, file: TelegramMediaFile)
+}
+
+__ROWS__
+
+__MAKE_ROWS__
+
+enum ChatPresentationInputQuery {
+    case none
+    case emoji(String, firstWord: Bool)
+    case stickers(String)
+}
+
+struct ChatTextInputState {
+    let inputText: String
+}
+
+struct ChatPresentationInterfaceState {
+    var effectiveInputContext: ChatPresentationInputQuery
+    var effectiveInput: ChatTextInputState
+}
+
+final class ChatInteraction {
+    var presentation = ChatPresentationInterfaceState(effectiveInputContext: .stickers("🙂"), effectiveInput: ChatTextInputState(inputText: "🙂"))
+    var sent: [Int] = []
+    var cleared = 0
+
+    func sendAppFile(_ file: TelegramMediaFile, _ silent: Bool, _ query: String?, _ schedule: Bool, _ collectionId: Int?, _ customAction: Int?, _ messageEffect: Int?) {
+        self.sent.append(file.number)
+    }
+
+    func clearInput() {
+        self.cleared += 1
+    }
+}
+
+enum TableScrollFocus {
+    case focus(Bool)
+
+    init(focus: Bool) {
+        self = .focus(focus)
+    }
+}
+
+enum TableScrollState {
+    case top(id: AnyHashable, innerId: AnyHashable?, animated: Bool, focus: TableScrollFocus, inset: CGFloat)
+    case bottom(id: AnyHashable, innerId: AnyHashable?, animated: Bool, focus: TableScrollFocus, inset: CGFloat)
+}
+
+protocol TableViewDelegate: AnyObject {
+    func selectionDidChange(row: Int, item: TableRowItem, byClick: Bool, isNew: Bool) -> Void
+    func selectionWillChange(row: Int, item: TableRowItem, byClick: Bool) -> Bool
+    func isSelectable(row: Int, item: TableRowItem) -> Bool
+}
+
+class TableRowItem {
+    weak var table: TableView?
+    let initialSize: NSSize
+    var redraws = 0
+
+    init(_ initialSize: NSSize) {
+        self.initialSize = initialSize
+    }
+
+    var stableId: AnyHashable {
+        return 0
+    }
+
+    var index: Int {
+        return self.table?.index(of: self) ?? -1
+    }
+
+    var height: CGFloat {
+        return 60
+    }
+
+    var accessibilityLabel: String? {
+        return nil
+    }
+
+    func viewClass() -> AnyClass {
+        return TableRowItem.self
+    }
+
+    func prepare(_ selected: Bool) {
+    }
+
+    func redraw(animated: Bool = false) {
+        self.redraws += 1
+    }
+}
+
+final class ContextStickerRowView {
+}
+
+final class ContextInlineSetupQuickReplyRowItem: TableRowItem {
+}
+
+final class ContextMediaRowItem: TableRowItem {
+}
+
+final class ContextClueRowItem: TableRowItem {
+    var clues: [String] = []
+    var animated: [Int] = []
+    var selectedIndex: Int?
+}
+
+__ITEM__
+
+final class TableView {
+    var list: [TableRowItem] = []
+    weak var delegate: TableViewDelegate?
+    var selectedhash: AnyHashable? = nil
+    var highlitedHash: AnyHashable? = nil
+
+    var count: Int {
+        return self.list.count
+    }
+
+    func item(at index: Int) -> TableRowItem {
+        return self.list[index]
+    }
+
+    func item(stableId: AnyHashable) -> TableRowItem? {
+        return self.list.first(where: { $0.stableId == stableId })
+    }
+
+    func index(of item: TableRowItem) -> Int? {
+        return self.list.firstIndex(where: { $0 === item })
+    }
+
+    func reloadData(row: Int, animated: Bool) {
+    }
+
+    func cancelHighlight() {
+        self.highlitedHash = nil
+    }
+
+    func scroll(to state: TableScrollState, inset: NSEdgeInsets, toVisible: Bool) {
+    }
+
+    func highlightNext(_ scroll: Bool = true, _ animated: Bool = false, turnDirection: Bool = true) {
+    }
+
+    func highlightPrev(_ scroll: Bool = true, _ animated: Bool = false, turnDirection: Bool = true) {
+    }
+
+__TABLE__
+}
+
+final class InputContextView {
+    let tableView = TableView()
+}
+
+final class InputContextViewController: NSObject, TableViewDelegate {
+    let context: any AccountContextProtocol
+    let chatInteraction: ChatInteraction
+    let highlightInsteadOfSelect = false
+    let genericView = InputContextView()
+    var escapeTextMarked: String?
+
+    init(context: any AccountContextProtocol, chatInteraction: ChatInteraction) {
+        self.context = context
+        self.chatInteraction = chatInteraction
+        super.init()
+        self.genericView.tableView.delegate = self
+    }
+
+    func viewDidAppear(_ animated: Bool) {
+__HANDLERS__
+
+    func invoke() -> KeyHandlerResult {
+        if let selectedItem = genericView.tableView.selectedItem() {
+            if false {
+__STICKER_RETURN__
+            }
+            return .invoked
+        }
+        return .rejected
+    }
+
+    func invokeTab() -> KeyHandlerResult {
+        return .invokeNext
+    }
+
+__NAVIGATION__
+
+__DELEGATE__
+}
+
+final class Suggestions {
+    let context = AccountContext()
+    let chatInteraction = ChatInteraction()
+    let controller: InputContextViewController
+    let rows: [InputMediaStickersRow]
+
+    init(width: CGFloat, stickers: Int) {
+        self.controller = InputContextViewController(context: self.context, chatInteraction: self.chatInteraction)
+        self.rows = makeStickerEntries((1 ... stickers).map { FoundStickerItem(file: TelegramMediaFile($0)) }, initialSize: NSMakeSize(width, 100))
+        let table = self.controller.genericView.tableView
+        table.list = self.rows.enumerated().map { index, row in
+            let item = ContextStickerRowItem(NSMakeSize(width, 100), self.context, row, Int64(index + 1), self.chatInteraction, presentation: nil)
+            item.table = table
+            return item
+        }
+        self.controller.viewDidAppear(true)
+    }
+
+    var rowSizes: [Int] {
+        return self.rows.map { $0.entries.count }
+    }
+
+    var position: (row: Int, column: Int?)? {
+        guard let item = self.controller.genericView.tableView.selectedItem() as? ContextStickerRowItem else {
+            return nil
+        }
+        return (item.index, item.selectedIndex)
+    }
+
+    var highlighted: Int? {
+        guard let item = self.controller.genericView.tableView.selectedItem() as? ContextStickerRowItem, let column = item.selectedIndex else {
+            return nil
+        }
+        return (0 ..< item.result.entries.count).contains(column) ? item.result.results[column].file.number : nil
+    }
+
+    func press(_ key: KeyboardKey) {
+        _ = self.context.window.press(key)
+    }
+}
+
+enum Key: String {
+    case down = "Down"
+    case up = "Up"
+    case left = "Left"
+    case right = "Right"
+
+    var keyboard: KeyboardKey {
+        switch self {
+        case .down:
+            return .DownArrow
+        case .up:
+            return .UpArrow
+        case .left:
+            return .LeftArrow
+        case .right:
+            return .RightArrow
+        }
+    }
+}
+
+struct Case {
+    let name: String
+    let width: CGFloat
+    let stickers: Int
+    let rows: [Int]
+    let keys: [Key]
+    let positions: [(Int, Int)]
+    let sends: Int
+    var click: Int? = nil
+    var highlighted: Int? = nil
+}
+
+func repeated(_ key: Key, _ count: Int) -> [Key] {
+    return Array(repeating: key, count: count)
+}
+
+let cases: [Case] = [
+    Case(name: "Down from the fifth column into a last row of two", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down] + repeated(.right, 4) + [.down],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 1)], sends: 7),
+    Case(name: "Down, Right, Up into a last row of one", width: 400, stickers: 6, rows: [5, 1],
+         keys: [.down, .right, .up],
+         positions: [(0, 0), (0, 1), (1, 0)], sends: 6),
+    Case(name: "Up from the seventh column wraps into a last row of two", width: 600, stickers: 9, rows: [7, 2],
+         keys: [.down] + repeated(.right, 6) + [.up],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (1, 1)], sends: 9),
+    Case(name: "Up from the fourth column wraps into the short third row", width: 400, stickers: 12, rows: [5, 5, 2],
+         keys: [.down] + repeated(.right, 3) + [.up],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (2, 1)], sends: 12),
+    Case(name: "Down twice from the fifth column reaches the short third row", width: 400, stickers: 12, rows: [5, 5, 2],
+         keys: [.down] + repeated(.right, 4) + [.down, .down],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 4), (2, 1)], sends: 12),
+    Case(name: "Left after Down into the short row moves from its last sticker", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down] + repeated(.right, 4) + [.down, .left],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 1), (1, 0)], sends: 6),
+    Case(name: "Right after Down into the short row goes to the first row", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down] + repeated(.right, 4) + [.down, .right],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 1), (0, 0)], sends: 1),
+    Case(name: "A column that fits in the last row is kept", width: 400, stickers: 13, rows: [5, 5, 3],
+         keys: [.down, .right, .right, .down, .down],
+         positions: [(0, 0), (0, 1), (0, 2), (1, 2), (2, 2)], sends: 13),
+    Case(name: "Up between full rows keeps the column", width: 400, stickers: 13, rows: [5, 5, 3],
+         keys: [.down, .down, .right, .right, .up],
+         positions: [(0, 0), (1, 0), (1, 1), (1, 2), (0, 2)], sends: 3),
+    Case(name: "Down from the short last row wraps to the first row", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.up, .right, .down],
+         positions: [(1, 0), (1, 1), (0, 1)], sends: 2),
+    Case(name: "Left at the start of a row goes to the end of the row above", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down, .down, .left],
+         positions: [(0, 0), (1, 0), (0, 4)], sends: 5),
+    Case(name: "Right past the end of a row goes to the next row", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down] + repeated(.right, 5),
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 0)], sends: 6),
+    Case(name: "Up with nothing selected starts the last row", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.up],
+         positions: [(1, 0)], sends: 6),
+    Case(name: "Down in a single row stays on the same sticker", width: 400, stickers: 3, rows: [3],
+         keys: [.down, .right, .right, .down],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 2)], sends: 3),
+    Case(name: "A click on the empty part of the short row after Down sends its highlighted sticker", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down] + repeated(.right, 4) + [.down],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 1)], sends: 7, click: 1),
+    Case(name: "A click on the empty part of a row without a highlighted sticker sends nothing", width: 400, stickers: 7, rows: [5, 2],
+         keys: [.down] + repeated(.right, 4) + [.down],
+         positions: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 1)], sends: 0, click: 0, highlighted: 7),
+]
+
+func shown(_ position: (row: Int, column: Int?)?) -> String {
+    guard let position = position else {
+        return "nothing"
+    }
+    return "row \(position.row + 1) column \(position.column.map { String($0 + 1) } ?? "none")"
+}
+
+func play(_ test: Case) -> Suggestions {
+    let suggestions = Suggestions(width: test.width, stickers: test.stickers)
+    for key in test.keys {
+        suggestions.press(key.keyboard)
+    }
+    return suggestions
+}
+
+let arguments = CommandLine.arguments
+if arguments.count == 3 && arguments[1] == "--finish" {
+    guard let number = Int(arguments[2]), cases.indices.contains(number) else {
+        print("no case \(arguments[2])")
+        exit(2)
+    }
+    let test = cases[number]
+    let suggestions = play(test)
+    if let row = test.click {
+        suggestions.controller.genericView.tableView.selectRow(index: row)
+    } else {
+        _ = suggestions.context.window.press(.Return)
+    }
+    let sent = suggestions.chatInteraction.sent.map(String.init).joined(separator: ",")
+    print("sent \(sent.isEmpty ? "-" : sent) cleared \(suggestions.chatInteraction.cleared)")
+    exit(0)
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+for (number, test) in cases.enumerated() {
+    let suggestions = Suggestions(width: test.width, stickers: test.stickers)
+    check("\(number) \(test.name): the stickers make rows of \(test.rows), got \(suggestions.rowSizes)", suggestions.rowSizes == test.rows)
+    for (step, key) in test.keys.enumerated() {
+        suggestions.press(key.keyboard)
+        let keys = test.keys.prefix(step + 1).map { $0.rawValue }.joined(separator: " ")
+        let expected = test.positions[step]
+        let position = suggestions.position
+        check("\(number) \(test.name): after \(keys) the selection is on \(shown((expected.0, expected.1))), got \(shown(position))", position?.row == expected.0 && position?.column == expected.1)
+        check("\(number) \(test.name): after \(keys) the selected sticker is one the row shows", suggestions.highlighted != nil)
+    }
+    let expectedSticker = test.highlighted ?? test.sends
+    check("\(number) \(test.name): sticker \(expectedSticker) is highlighted before \(test.click == nil ? "Return" : "the click"), got \(suggestions.highlighted.map(String.init) ?? "none")", suggestions.highlighted == expectedSticker)
+    print("expect \(number) \(test.sends) \(test.click.map { "click row \($0 + 1)" } ?? "Return")")
+}
+
+do {
+    let suggestions = Suggestions(width: 400, stickers: 7)
+    suggestions.press(.DownArrow)
+    suggestions.controller.genericView.tableView.selectNext(true, true)
+    suggestions.controller.selectFirstInRowIfCan(-3)
+    check("a negative start selects the first sticker of the row", suggestions.position?.row == 1 && suggestions.position?.column == 0)
+    suggestions.controller.selectFirstInRowIfCan(40, true)
+    check("a start past the row selects its last sticker", suggestions.position?.row == 1 && suggestions.position?.column == 1)
+    suggestions.controller.selectFirstInRowIfCan()
+    check("no start selects the first sticker of the row", suggestions.position?.row == 1 && suggestions.position?.column == 0)
+}
+
+do {
+    let suggestions = Suggestions(width: 400, stickers: 7)
+    let result = suggestions.context.window.press(.Return)
+    check("Return with nothing selected is left to the composer", result == .rejected && suggestions.chatInteraction.sent.isEmpty)
+}
+
+print("cases \(cases.count)")
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
