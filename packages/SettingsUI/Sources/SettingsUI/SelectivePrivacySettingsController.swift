@@ -1229,7 +1229,7 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
             let phoneDiscoveryChanged = phoneDiscoveryEnabled != initialState.phoneDiscoveryEnabled
             let globalSettingsChanged = updatedGlobalSettings != globalSettings
 
-            if settingsChanged || phoneDiscoveryChanged || globalSettingsChanged {
+            if settingsChanged || callSettingsChanged || phoneDiscoveryChanged || globalSettingsChanged {
                 updateState { current in
                     var current = current
                     current.saving = true
@@ -1272,12 +1272,17 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
                     basic = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: type, settings: settings)
                 }
                 
+                var updateCallP2PSettingsSignal: Signal<Void, NoError> = Signal.complete()
+                if let callSettings = callSettings, callSettingsChanged {
+                    updateCallP2PSettingsSignal = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: .voiceCallsP2P, settings: callSettings)
+                }
+                
                 var global: Signal<Never, NoError> = Signal.complete()
                 if let updatedGlobalSettings = updatedGlobalSettings, globalSettingsChanged {
                     global = context.engine.privacy.updateGlobalPrivacySettings(settings: updatedGlobalSettings)
                 }
 
-                updateSettingsDisposable.set(combineLatest(queue: .mainQueue(), updatePhoneDiscoverySignal, basic, global).start(completed: {
+                updateSettingsDisposable.set(combineLatest(queue: .mainQueue(), updatePhoneDiscoverySignal, basic, updateCallP2PSettingsSignal, global).start(completed: {
                     updateState { current in
                         var current = current
                         current.saving = false
