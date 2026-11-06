@@ -706,13 +706,11 @@ public class ChatPresentationInterfaceState: Equatable {
             case .pinned:
                 if canPinMessageInPeer {
                     return .action(strings().chatPinnedUnpinAllOther(pinnedMessageId?.totalCount ?? 0), { chatInteraction in
-                        let navigation = chatInteraction.context.bindings.rootNavigation()
-                        (navigation.previousController as? ChatInterfaceController)?.chatInteraction.unpinAllMessages()
+                        chatInteraction.pinnedMessagesOpener?.chatInteraction.unpinAllMessages()
                     }, right: nil, left: nil)
                 } else {
                     return .action(strings().chatPinnedDontShow, { chatInteraction in
-                        let navigation = chatInteraction.context.bindings.rootNavigation()
-                        (navigation.previousController as? ChatInterfaceController)?.chatInteraction.unpinAllMessages()
+                        chatInteraction.pinnedMessagesOpener?.chatInteraction.unpinAllMessages()
                     }, right: nil, left: nil)
                 }
                 

@@ -937,10 +937,9 @@ public class ChatRowItem: TableRowItem {
         if let message = message {
             switch chatInteraction.mode {
             case .pinned:
-                let navigation = chatInteraction.interactionContext.bindings.rootNavigation()
-                let controller = navigation.previousController as? ChatInterfaceController
+                let controller = chatInteraction.pinnedMessagesOpener
                 controller?.chatInteraction.focusPinnedMessageId(message.id)
-                navigation.back()
+                controller?.navigationController?.back()
             default:
                 for attr in message.attributes {
                     if let attr = attr as? SourceReferenceMessageAttribute {

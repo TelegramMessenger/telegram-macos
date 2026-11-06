@@ -1,0 +1,563 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let id: Int64
+
+    init(_ id: Int64) {
+        self.id = id
+    }
+}
+
+struct MessageId: Hashable {
+    let peerId: PeerId
+    let id: Int32
+}
+
+final class Message {
+    let id: MessageId
+
+    init(_ peerId: PeerId, _ id: Int32) {
+        self.id = MessageId(peerId: peerId, id: id)
+    }
+}
+
+enum ChatLocation: Equatable {
+    case peer(PeerId)
+
+    var peerId: PeerId {
+        switch self {
+        case let .peer(peerId):
+            return peerId
+        }
+    }
+}
+
+enum ChatMode: Equatable {
+    case history
+    case pinned
+    case preview
+}
+
+struct ChatFocusTarget {
+    let messageId: MessageId
+
+    init(messageId: MessageId) {
+        self.messageId = messageId
+    }
+}
+
+struct ChatPinnedMessage {
+    let messageId: MessageId
+    let totalCount: Int
+}
+
+enum L10n {
+    static func chatPinnedUnpinAllOther(_ p1: Int) -> String {
+        return "Unpin All \(p1) Messages"
+    }
+
+    static var chatPinnedDontShow: String {
+        return "Don't Show Pinned Messages"
+    }
+}
+
+func strings() -> L10n.Type {
+    return L10n.self
+}
+
+final class AdditionAction {
+}
+
+enum ChatState {
+    case normal
+    case action(String, (ChatInteraction)->Void, right: AdditionAction?, left: AdditionAction?, accent: Bool = false)
+}
+
+class ViewController {
+    let name: String
+    weak var navigationController: NavigationViewController?
+
+    init(name: String) {
+        self.name = name
+    }
+
+    func loadViewIfNeeded() {
+    }
+}
+
+final class NavigationViewController {
+    private(set) var stack: [ViewController] = []
+
+    init(_ controller: ViewController) {
+        self.push(controller)
+    }
+
+    var stackCount: Int {
+        return self.stack.count
+    }
+
+    var controller: ViewController {
+        return self.stack[self.stack.count - 1]
+    }
+
+__PREVIOUS_CONTROLLER__
+
+    func push(_ controller: ViewController) {
+        controller.navigationController = self
+        controller.loadViewIfNeeded()
+        self.stack.removeAll(where: { $0 === controller })
+        self.stack.append(controller)
+    }
+
+    func back() {
+        if self.stackCount > 1 {
+            self.stack.removeLast()
+        }
+    }
+
+    func removeImmediately(_ controller: ViewController) {
+        self.stack.removeAll(where: { $0 === controller })
+    }
+
+    var titles: [String] {
+        return self.stack.map { $0.name }
+    }
+}
+
+final class AccountContextBindings {
+    let rootNavigation: () -> NavigationViewController
+
+    init(rootNavigation: @escaping () -> NavigationViewController) {
+        self.rootNavigation = rootNavigation
+    }
+}
+
+final class AccountContext {
+    var bindings: AccountContextBindings!
+}
+
+__INTERFACE_CONTROLLER__
+
+final class ChatInteraction {
+    let context: AccountContext
+    let chatLocation: ChatLocation
+    let mode: ChatMode
+
+    init(chatLocation: ChatLocation, context: AccountContext, mode: ChatMode) {
+        self.chatLocation = chatLocation
+        self.context = context
+        self.mode = mode
+    }
+
+    var interactionContext: AccountContext {
+        return self.context
+    }
+
+    var focusPinnedMessageId: (MessageId) -> Void = { _ in }
+__PINNED_FIELDS__
+}
+
+struct ChatPresentationInterfaceState {
+    let chatMode: ChatMode
+    let canPinMessageInPeer: Bool
+    let pinnedMessageId: ChatPinnedMessage?
+
+    var inputState: ChatState {
+            switch chatMode {
+__FOOTER__
+            default:
+                break
+            }
+        return .normal
+    }
+}
+
+enum Event: Equatable, CustomStringConvertible {
+    case unpinAll(String)
+    case focus(String, Int32)
+
+    var description: String {
+        switch self {
+        case let .unpinAll(name):
+            return "Unpin All for \(name)"
+        case let .focus(name, id):
+            return "go to message \(id) in \(name)"
+        }
+    }
+}
+
+var events: [Event] = []
+var names: [PeerId: String] = [:]
+
+class ChatController: ViewController, ChatInterfaceController {
+    let context: AccountContext
+    let chatLocation: ChatLocation
+    let mode: ChatMode
+    let chatInteraction: ChatInteraction
+    private var isLoaded = false
+
+    init(context: AccountContext, chatLocation: ChatLocation, mode: ChatMode = .history, focusTarget: ChatFocusTarget? = nil) {
+        self.context = context
+        self.chatLocation = chatLocation
+        self.mode = mode
+        self.chatInteraction = ChatInteraction(chatLocation: chatLocation, context: context, mode: mode)
+        let title = names[chatLocation.peerId] ?? "\(chatLocation.peerId.id)"
+        switch mode {
+        case .history:
+            super.init(name: title)
+        case .pinned:
+            super.init(name: "pinned list of \(title)")
+        case .preview:
+            super.init(name: "preview of \(title)")
+        }
+    }
+
+    override func loadViewIfNeeded() {
+        if !self.isLoaded {
+            self.isLoaded = true
+            self.viewDidLoad()
+        }
+    }
+
+    func viewDidLoad() {
+        let chatInteraction = self.chatInteraction
+        let context = self.context
+        let peerId = self.chatLocation.peerId
+
+        let chatLocation:()->ChatLocation = { [weak self] in
+            guard let self else {
+                return .peer(peerId)
+            }
+            return self.chatLocation
+        }
+
+__OPEN_PINNED__
+        chatInteraction.unpinAllMessages = { [weak self] in
+            guard let self else {
+                return
+            }
+            events.append(.unpinAll(self.name))
+            self.navigationController?.back()
+        }
+
+        chatInteraction.focusPinnedMessageId = { [weak self] messageId in
+            guard let self else {
+                return
+            }
+            events.append(.focus(self.name, messageId.id))
+        }
+    }
+}
+
+final class ChatAdditionController: ChatController {
+}
+
+final class ChatRowItem {
+    let chatInteraction: ChatInteraction
+    let message: Message?
+
+    init(_ chatInteraction: ChatInteraction, _ message: Message) {
+        self.chatInteraction = chatInteraction
+        self.message = message
+    }
+
+    func gotoSourceMessage() {
+        if let message = message {
+            switch chatInteraction.mode {
+            case .pinned:
+__GOTO_PINNED__
+            default:
+                break
+            }
+        }
+    }
+}
+
+final class App {
+    let context = AccountContext()
+    let main: NavigationViewController
+    var preview: NavigationViewController?
+
+    init() {
+        events = []
+        let main = NavigationViewController(ViewController(name: "Empty"))
+        self.main = main
+        self.context.bindings = AccountContextBindings(rootNavigation: { [unowned main] in
+            return main
+        })
+    }
+
+    @discardableResult
+    func open(_ peerId: PeerId) -> ChatController {
+        let chat = ChatController(context: self.context, chatLocation: .peer(peerId))
+        self.main.push(chat)
+        return chat
+    }
+
+    @discardableResult
+    func openFromLink(_ peerId: PeerId, in navigation: NavigationViewController) -> ChatController {
+        let chat = ChatAdditionController(context: self.context, chatLocation: .peer(peerId))
+        navigation.push(chat)
+        return chat
+    }
+
+    func openProfile(of chat: ChatController) {
+        self.main.push(ViewController(name: "profile of \(chat.name)"))
+    }
+
+    func showPreview(_ peerId: PeerId) {
+        self.preview = NavigationViewController(ChatController(context: self.context, chatLocation: .peer(peerId), mode: .preview))
+    }
+
+    var previewTitles: [String] {
+        return self.preview?.titles ?? []
+    }
+
+    func openPinnedList(_ chat: ChatController, at messageId: Int32) -> ChatController? {
+        chat.chatInteraction.openPinnedMessages(MessageId(peerId: chat.chatLocation.peerId, id: messageId))
+        for navigation in [self.main] + (self.preview.map { [$0] } ?? []) {
+            if let list = navigation.controller as? ChatController, list.mode == .pinned, list.chatLocation == chat.chatLocation {
+                return list
+            }
+        }
+        return nil
+    }
+
+    @discardableResult
+    func pressBottomButton(_ list: ChatController, canPin: Bool = true, count: Int = 2) -> String? {
+        let state = ChatPresentationInterfaceState(chatMode: list.mode, canPinMessageInPeer: canPin, pinnedMessageId: ChatPinnedMessage(messageId: MessageId(peerId: list.chatLocation.peerId, id: 1), totalCount: count))
+        if case let .action(text, action, _, _, _) = state.inputState {
+            action(list.chatInteraction)
+            return text
+        }
+        return nil
+    }
+
+    func goToMessage(_ list: ChatController, _ id: Int32) {
+        ChatRowItem(list.chatInteraction, Message(list.chatLocation.peerId, id)).gotoSourceMessage()
+    }
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAIL: \(name)")
+    }
+}
+
+let groupA = PeerId(101)
+let groupB = PeerId(102)
+let groupC = PeerId(103)
+names[groupA] = "group A"
+names[groupB] = "group B"
+names[groupC] = "group C"
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    if let list = app.openPinnedList(a, at: 11) {
+        check("the pinned list of a chat in the main pane opens on top of it (\(app.main.titles))", app.main.titles == ["Empty", "group A", "pinned list of group A"])
+        let text = app.pressBottomButton(list, count: 3)
+        check("its bottom button shows the list's own count (\(text ?? "no button"))", text == "Unpin All 3 Messages")
+        check("Unpin All in the main pane acts on the chat under the list (\(events))", events == [.unpinAll("group A")])
+        check("Unpin All in the main pane closes the list (\(app.main.titles))", app.main.titles == ["Empty", "group A"])
+    } else {
+        check("the pinned list of a chat in the main pane opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    if let list = app.openPinnedList(a, at: 11) {
+        let text = app.pressBottomButton(list, canPin: false)
+        check("without the right to pin the bottom button is Don't Show (\(text ?? "no button"))", text == "Don't Show Pinned Messages")
+        check("Don't Show in the main pane acts on the chat under the list (\(events))", events == [.unpinAll("group A")])
+    } else {
+        check("the pinned list of a chat in the main pane opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    if let list = app.openPinnedList(a, at: 11) {
+        app.goToMessage(list, 12)
+        check("the arrow on a pinned message in the main pane goes to it in the chat under the list (\(events))", events == [.focus("group A", 12)])
+        check("the arrow in the main pane closes the list (\(app.main.titles))", app.main.titles == ["Empty", "group A"])
+    } else {
+        check("the pinned list of a chat in the main pane opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    let b = app.openFromLink(groupB, in: app.main)
+    if let list = app.openPinnedList(b, at: 21) {
+        app.pressBottomButton(list)
+        check("Unpin All in the list of a chat opened from a link over another chat acts on the linked chat (\(events))", events == [.unpinAll("group B")])
+        check("and closes only the list (\(app.main.titles))", app.main.titles == ["Empty", "group A", "group B"])
+    } else {
+        check("the pinned list of a chat opened from a link opens", false)
+    }
+    _ = a
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    app.openProfile(of: a)
+    app.showPreview(groupC)
+    let b = app.openFromLink(groupB, in: app.preview!)
+    if let list = app.openPinnedList(b, at: 21) {
+        check("the pinned list of a chat opened inside a preview opens in the preview window (\(app.previewTitles))", app.previewTitles == ["preview of group C", "group B", "pinned list of group B"])
+        app.pressBottomButton(list)
+        check("Unpin All in the pinned list inside a preview unpins the chat of the list, not the chat in the main pane (\(events))", events == [.unpinAll("group B")])
+        check("Unpin All inside a preview leaves the main pane as it was (\(app.main.titles))", app.main.titles == ["Empty", "group A", "profile of group A"])
+        check("Unpin All inside a preview closes the list in the preview window (\(app.previewTitles))", app.previewTitles == ["preview of group C", "group B"])
+    } else {
+        check("the pinned list of a chat opened inside a preview opens", false)
+    }
+}
+
+do {
+    let app = App()
+    app.open(groupA)
+    app.showPreview(groupC)
+    let b = app.openFromLink(groupB, in: app.preview!)
+    if let list = app.openPinnedList(b, at: 21) {
+        app.pressBottomButton(list)
+        check("Unpin All inside a preview over a plain chat in the main pane is not lost (\(events))", events == [.unpinAll("group B")])
+        check("and leaves the main pane as it was (\(app.main.titles))", app.main.titles == ["Empty", "group A"])
+        check("and closes the list in the preview window (\(app.previewTitles))", app.previewTitles == ["preview of group C", "group B"])
+    } else {
+        check("the pinned list of a chat opened inside a preview opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    app.openProfile(of: a)
+    app.showPreview(groupA)
+    let b = app.openFromLink(groupB, in: app.preview!)
+    if let list = app.openPinnedList(b, at: 21) {
+        let text = app.pressBottomButton(list, canPin: false)
+        check("Don't Show inside a preview is the button shown without the right to pin (\(text ?? "no button"))", text == "Don't Show Pinned Messages")
+        check("Don't Show inside a preview acts on the chat of the list, not the chat in the main pane (\(events))", events == [.unpinAll("group B")])
+        check("Don't Show inside a preview leaves the main pane as it was (\(app.main.titles))", app.main.titles == ["Empty", "group A", "profile of group A"])
+    } else {
+        check("the pinned list of a chat opened inside a preview opens", false)
+    }
+}
+
+do {
+    let app = App()
+    app.open(groupA)
+    app.showPreview(groupC)
+    let b = app.openFromLink(groupB, in: app.preview!)
+    if let list = app.openPinnedList(b, at: 21) {
+        app.goToMessage(list, 22)
+        check("the arrow on a pinned message inside a preview goes to it in the chat of the list (\(events))", events == [.focus("group B", 22)])
+        check("the arrow inside a preview does not close the chat in the main pane (\(app.main.titles))", app.main.titles == ["Empty", "group A"])
+        check("the arrow inside a preview closes the list in the preview window (\(app.previewTitles))", app.previewTitles == ["preview of group C", "group B"])
+    } else {
+        check("the pinned list of a chat opened inside a preview opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    app.openProfile(of: a)
+    app.showPreview(groupC)
+    let b = app.openFromLink(groupB, in: app.preview!)
+    if let list = app.openPinnedList(b, at: 21) {
+        app.goToMessage(list, 22)
+        check("the arrow inside a preview does not look for message 22 of group B in group A (\(events))", events == [.focus("group B", 22)])
+        check("the arrow inside a preview does not close the profile in the main pane (\(app.main.titles))", app.main.titles == ["Empty", "group A", "profile of group A"])
+    } else {
+        check("the pinned list of a chat opened inside a preview opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let a = app.open(groupA)
+    let mainList = app.openPinnedList(a, at: 11)
+    app.showPreview(groupC)
+    let b = app.openFromLink(groupB, in: app.preview!)
+    if let mainList, let previewList = app.openPinnedList(b, at: 21) {
+        app.pressBottomButton(previewList)
+        check("with two pinned lists open, Unpin All in the preview acts on its own chat (\(events))", events == [.unpinAll("group B")])
+        check("with two pinned lists open, the list in the main pane stays open (\(app.main.titles))", app.main.titles == ["Empty", "group A", "pinned list of group A"])
+        app.pressBottomButton(mainList)
+        check("with two pinned lists open, Unpin All in the main pane acts on its own chat (\(events))", events == [.unpinAll("group B"), .unpinAll("group A")])
+        check("with two pinned lists open, the preview keeps its chat (\(app.previewTitles))", app.previewTitles == ["preview of group C", "group B"])
+    } else {
+        check("two pinned lists open at once", false)
+    }
+}
+
+func listOfChatThatLeft(_ app: App) -> (list: ChatController?, chatFreed: Bool) {
+    app.open(groupA)
+    weak var openedChat: ChatController?
+    var list: ChatController?
+    do {
+        let b = app.openFromLink(groupB, in: app.main)
+        openedChat = b
+        list = app.openPinnedList(b, at: 21)
+        app.main.removeImmediately(b)
+    }
+    return (list, openedChat == nil)
+}
+
+do {
+    let app = App()
+    let (list, chatFreed) = listOfChatThatLeft(app)
+    check("the pinned list does not keep alive the chat that opened it", chatFreed)
+    if let list {
+        app.pressBottomButton(list)
+        check("Unpin All in a list whose chat has left the navigation does not act on the chat now under it (\(events))", events.isEmpty)
+        check("Unpin All in a list whose chat has left the navigation closes nothing (\(app.main.titles))", app.main.titles == ["Empty", "group A", "pinned list of group B"])
+    } else {
+        check("the pinned list of a chat opened from a link opens", false)
+    }
+}
+
+do {
+    let app = App()
+    let (list, _) = listOfChatThatLeft(app)
+    if let list {
+        app.goToMessage(list, 22)
+        check("the arrow in a list whose chat has left the navigation does not act on the chat now under it (\(events))", events.isEmpty)
+        check("the arrow in a list whose chat has left the navigation closes nothing (\(app.main.titles))", app.main.titles == ["Empty", "group A", "pinned list of group B"])
+    } else {
+        check("the pinned list of a chat opened from a link opens", false)
+    }
+}
+
+do {
+    let app = App()
+    app.open(groupA)
+    weak var openedChat: ChatController?
+    weak var openedList: ChatController?
+    do {
+        app.showPreview(groupC)
+        let b = app.openFromLink(groupB, in: app.preview!)
+        openedChat = b
+        openedList = app.openPinnedList(b, at: 21)
+    }
+    check("the chat and its pinned list are alive while the preview is open", openedChat != nil && openedList != nil)
+    app.preview = nil
+    check("closing the preview frees the chat and its pinned list", openedChat == nil && openedList == nil)
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
