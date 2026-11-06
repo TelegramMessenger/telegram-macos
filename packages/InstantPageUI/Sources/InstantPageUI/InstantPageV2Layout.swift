@@ -2868,7 +2868,7 @@ private func layoutTypedMediaWithCaptionV2(
         scaledSize = fit(availableWidth)
     }
     if capHeight {
-        scaledSize.height = min(scaledSize.height, min(1000.0, availableWidth))
+        scaledSize = cappedMediaSize(scaledSize, availableWidth: availableWidth)
     }
 
     let mediaX = horizontalInset - bleedAmount + floor((availableWidth - scaledSize.width) / 2.0)
@@ -2890,10 +2890,20 @@ private func layoutTypedMediaWithCaptionV2(
                                         size: CGSize(width: lastText.frame.width, height: lastText.frame.height + 14.0))
                 result[lastIndex] = .text(lastText)
             }
+
         }
     }
 
     return result
+}
+
+func cappedMediaSize(_ size: CGSize, availableWidth: CGFloat) -> CGSize {
+    let maxHeight = min(1000.0, availableWidth)
+    guard size.height > maxHeight, size.height > 0.0 else {
+        return size
+    }
+    let scale = maxHeight / size.height
+    return CGSize(width: floor(size.width * scale), height: floor(size.height * scale))
 }
 
 private func layoutMediaWithCaptionV2(

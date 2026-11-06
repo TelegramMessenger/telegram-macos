@@ -119,4 +119,12 @@ final class InstantPageTableSpanTests: XCTestCase {
         XCTAssertEqual(tableRowsWithClampedSpans(rows), rows)
         XCTAssertGreaterThan(richMessageLayout(rows).contentSize.height, 0.0)
     }
+
+    func testTallMediaCapPreservesAspectRatio() {
+        let scaled = cappedMediaSize(CGSize(width: 500.0, height: 1200.0), availableWidth: 500.0)
+
+        XCTAssertEqual(scaled.height, 500.0)
+        XCTAssertEqual(scaled.width, 208.0)
+        XCTAssertEqual(scaled.width / scaled.height, 208.0 / 500.0, accuracy: 0.001)
+    }
 }
