@@ -1,0 +1,154 @@
+import XCTest
+import Cocoa
+@testable import TGUIKit
+
+final class WritingDirectionAlignmentTests: XCTestCase {
+    private let alignmentDelegate = WritingDirectionAlignmentDelegate()
+
+    private func makeStorage(_ text: String = "", baseWritingDirection: NSWritingDirection = .natural) -> NSTextStorage {
+        let style = NSMutableParagraphStyle()
+        style.baseWritingDirection = baseWritingDirection
+        let storage = NSTextStorage()
+        storage.delegate = alignmentDelegate
+        storage.setAttributedString(NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 13), .paragraphStyle: style]))
+        return storage
+    }
+
+    private func alignment(_ storage: NSTextStorage, at index: Int) -> NSTextAlignment {
+        let style = storage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle ?? NSParagraphStyle.default
+        return style.alignment
+    }
+
+    private func append(_ text: String, to storage: NSTextStorage) {
+        let attributes = storage.length > 0 ? storage.attributes(at: storage.length - 1, effectiveRange: nil) : [.font: NSFont.systemFont(ofSize: 13)]
+        storage.append(NSAttributedString(string: text, attributes: attributes))
+    }
+
+    private func caretX(afterTyping text: String, alignsByWritingDirection: Bool) -> [CGFloat] {
+        let storage = NSTextStorage()
+        if alignsByWritingDirection {
+            storage.delegate = alignmentDelegate
+        }
+        let layoutManager = NSLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(size: CGSize(width: 300, height: 1000))
+        layoutManager.addTextContainer(container)
+        let style = NSMutableParagraphStyle()
+        style.baseWritingDirection = .natural
+        var result: [CGFloat] = []
+        for character in text {
+            storage.append(NSAttributedString(string: String(character), attributes: [.font: NSFont.systemFont(ofSize: 13), .paragraphStyle: style]))
+            layoutManager.ensureLayout(for: container)
+            let end = NSRange(location: storage.length, length: 0)
+            var count = 0
+            let rects = layoutManager.rectArray(forCharacterRange: end, withinSelectedCharacterRange: end, in: container, rectCount: &count)
+            result.append(count > 0 ? rects![0].minX : -1)
+        }
+        return result
+    }
+
+    func testRightToLeftParagraphIsRightAligned() {
+        let storage = makeStorage("سلام دنیا")
+        XCTAssertEqual(alignment(storage, at: 0), .right)
+    }
+
+    func testLeftToRightParagraphKeepsNaturalAlignment() {
+        let storage = makeStorage("hello world")
+        XCTAssertEqual(alignment(storage, at: 0), .natural)
+    }
+
+    func testFirstStrongCharacterDecidesDirection() {
+        XCTAssertEqual(alignment(makeStorage("123 سلام hello"), at: 0), .right)
+        XCTAssertEqual(alignment(makeStorage("123 hello سلام"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("שלום"), at: 0), .right)
+    }
+
+    func testArabicIndicDigitsAloneAreNotRightToLeft() {
+        XCTAssertEqual(alignment(makeStorage("۱۲۳ ٤٥٦"), at: 0), .natural)
+    }
+
+    func testExplicitBaseWritingDirectionWins() {
+        XCTAssertEqual(alignment(makeStorage("hello", baseWritingDirection: .rightToLeft), at: 0), .right)
+        XCTAssertEqual(alignment(makeStorage("سلام", baseWritingDirection: .leftToRight), at: 0), .natural)
+    }
+
+    func testEachParagraphIsAlignedOnItsOwn() {
+        let storage = makeStorage("سلام\nhello\nدنیا")
+        XCTAssertEqual(alignment(storage, at: 0), .right)
+        XCTAssertEqual(alignment(storage, at: 5), .natural)
+        XCTAssertEqual(alignment(storage, at: 11), .right)
+    }
+
+    func testAlignmentFollowsEditedText() {
+        let storage = makeStorage()
+        append("hi", to: storage)
+        XCTAssertEqual(alignment(storage, at: 0), .natural)
+        storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: "سلام")
+        XCTAssertEqual(alignment(storage, at: 0), .right)
+        storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: "hi")
+        XCTAssertEqual(alignment(storage, at: 0), .natural)
+    }
+
+    func testTrailingSpaceMovesCaretInRightToLeftText() {
+        let before = caretX(afterTyping: "سلام ", alignsByWritingDirection: false)
+        XCTAssertEqual(before[3], before[4], "left-aligned right-to-left text hides the trailing space")
+
+        let after = caretX(afterTyping: "سلام ", alignsByWritingDirection: true)
+        XCTAssertLessThan(after[4], after[3])
+    }
+
+    func testRightToLeftScriptsAreRightAlignedAndShowTrailingSpace() {
+        let samples: [(language: String, text: String)] = [
+            ("Persian", "سلام"),
+            ("Arabic", "مرحبا"),
+            ("Urdu", "سلام"),
+            ("Kurdish", "سڵاو"),
+            ("Pashto", "ښه"),
+            ("Uyghur", "ياخشى"),
+            ("Hebrew", "שלום"),
+            ("Yiddish", "שלום"),
+            ("Syriac", "ܫܠܡܐ"),
+            ("Dhivehi", "ސަލާމް"),
+            ("N'Ko", "ߊߟߎ"),
+        ]
+        for sample in samples {
+            XCTAssertEqual(alignment(makeStorage(sample.text), at: 0), .right, sample.language)
+            let caret = caretX(afterTyping: sample.text + " ", alignsByWritingDirection: true)
+            XCTAssertLessThan(caret[caret.count - 1], caret[caret.count - 2], sample.language)
+        }
+    }
+
+    func testLeftToRightScriptsKeepNaturalAlignmentAndShowTrailingSpace() {
+        let samples: [(language: String, text: String)] = [
+            ("English", "hello"),
+            ("Russian", "привет"),
+            ("Greek", "γεια"),
+            ("Turkish", "merhaba"),
+            ("Armenian", "բարեւ"),
+            ("Georgian", "გამარჯობა"),
+            ("Hindi", "नमस्ते"),
+            ("Thai", "สวัสดี"),
+            ("Chinese", "你好"),
+            ("Japanese", "こんにちは"),
+            ("Korean", "안녕"),
+        ]
+        for sample in samples {
+            XCTAssertEqual(alignment(makeStorage(sample.text), at: 0), .natural, sample.language)
+            let caret = caretX(afterTyping: sample.text + " ", alignsByWritingDirection: true)
+            XCTAssertGreaterThan(caret[caret.count - 1], caret[caret.count - 2], sample.language)
+        }
+    }
+
+    func testLeadingEmojiAndPunctuationDoNotDecideDirection() {
+        XCTAssertEqual(alignment(makeStorage("😀 «سلام»"), at: 0), .right)
+        XCTAssertEqual(alignment(makeStorage("😀 \"hello\""), at: 0), .natural)
+    }
+
+    func testSearchTextFieldAlignsRightToLeftQuery() {
+        let field = SearchTextField()
+        field.frame = NSRect(x: 0, y: 0, width: 200, height: 22)
+        field.insertText("سلام ", replacementRange: NSRange(location: 0, length: 0))
+        let storage = field.textStorage!
+        XCTAssertEqual(alignment(storage, at: 0), .right)
+    }
+}
