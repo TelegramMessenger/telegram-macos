@@ -3641,7 +3641,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             } else if layout.selectedRange.hasSelectText && event.clickCount == 1 && event.modifierFlags.contains(.shift) {
                 var range = layout.selectedRange.range
                 let index = layout.findCharacterIndex(at: point)
-                if index < range.min {
+                if index >= 0, index < range.min {
                     range.length += (range.location - index)
                     range.location = index
                 } else if index > range.max {

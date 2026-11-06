@@ -1,0 +1,394 @@
+import AppKit
+import CoreText
+
+setvbuf(stdout, nil, _IONBF, 0)
+
+extension String {
+    var length: Int {
+        return (self as NSString).length
+    }
+    var nsstring: NSString {
+        return self as NSString
+    }
+}
+
+extension NSRange {
+__RANGE__
+}
+
+extension CGPoint {
+__OFFSET__
+}
+
+extension NSColor {
+    var hexString: String {
+        return description
+    }
+}
+
+struct Colors {
+    let selectText = NSColor.selectedTextBackgroundColor
+}
+
+struct Presentation {
+    let colors = Colors()
+}
+
+let presentation = Presentation()
+
+__ALIGNMENT__
+
+__SELECTED_RANGE__
+
+__SELECTED_RANGE_EQUAL__
+
+var copiedTexts: [String] = []
+
+final class TextViewInteractions {
+    var copy: (() -> Bool)? = nil
+    var copyAttributedString: (NSAttributedString) -> Bool = { string in
+        copiedTexts.append(string.string)
+        return true
+    }
+}
+
+final class TextViewLine {
+    let line: CTLine
+    var frame: NSRect
+    let range: NSRange
+
+    init(line: CTLine, frame: NSRect, range: NSRange) {
+        self.line = line
+        self.frame = frame
+        self.range = range
+    }
+}
+
+final class TextViewLayout {
+    var attributedString: NSAttributedString
+    var lines: [TextViewLine] = []
+    var selectedRange = TextSelectedRange()
+    let interactions = TextViewInteractions()
+    var mayItems = true
+
+    init(_ attributedString: NSAttributedString) {
+        self.attributedString = attributedString
+    }
+
+    var string: String {
+        return attributedString.string
+    }
+
+__FIND_INDEX__
+
+__FIND_CHARACTER_INDEX__
+}
+
+struct FoldingBlock {
+    let text: TextViewLayout
+}
+
+final class FoldingTextLayout {
+    let blocks: [FoldingBlock]
+
+    init(_ texts: [TextViewLayout]) {
+        self.blocks = texts.map { FoldingBlock(text: $0) }
+    }
+
+__MERGED__
+}
+
+struct FakeEvent {
+    let clickCount: Int
+    let modifierFlags: NSEvent.ModifierFlags
+}
+
+func mouseUp(_ layout: TextViewLayout, at point: NSPoint, clickCount: Int, modifiers: NSEvent.ModifierFlags) {
+    let event = FakeEvent(clickCount: clickCount, modifierFlags: modifiers)
+    __SHIFT_CLICK__
+}
+
+final class LayerTextNode {
+    let layout: TextViewLayout
+
+    init(_ layout: TextViewLayout) {
+        self.layout = layout
+    }
+
+    func setSelection(_ range: NSRange) {
+        layout.selectedRange.range = range
+    }
+
+    func shiftClick(index: Int) {
+        __LAYER_SHIFT_CLICK__
+    }
+}
+
+let testPasteboard = NSPasteboard(name: NSPasteboard.Name("shift-click-past-line-end-tests-\(getpid())"))
+
+final class FakeTextView: NSObject {
+    let textLayout: TextViewLayout?
+
+    init(_ layout: TextViewLayout) {
+        self.textLayout = layout
+    }
+
+__COPY__
+}
+
+enum ChatMode: Equatable {
+    case history
+    case pinned
+    case scheduled
+
+    var isSavedMode: Bool {
+        return false
+    }
+
+    var customChatContents: Int? {
+        return nil
+    }
+}
+
+struct AdditionalData {
+    var translate: Int? = nil
+}
+
+struct HistoryEntry {
+    var additionalData = AdditionalData()
+}
+
+struct MenuData {
+    var isLogInteraction = false
+}
+
+typealias LinkType = Int
+
+func quoteText(_ textLayout: (TextViewLayout?, LinkType?)?) -> String? {
+    let mode = ChatMode.history
+    let entry: HistoryEntry? = HistoryEntry()
+    let data = MenuData()
+__QUOTE__
+        _ = selectedRange
+        return selectedString.string
+    }
+    return nil
+}
+
+final class ChatHistoryInAppLinkValue {
+    let link = ""
+}
+
+final class GlobalLinkExecutor {
+    func copyAttributedString(_ string: NSAttributedString) -> Bool {
+        copiedTexts.append(string.string)
+        return true
+    }
+}
+
+final class LinkHooks {
+    static let shared = LinkHooks()
+
+    func globalLinkExecutor() -> GlobalLinkExecutor {
+        return GlobalLinkExecutor()
+    }
+}
+
+func copySelectedText(_ textLayout: TextViewLayout?) {
+__COPY_SELECTED__
+}
+
+let font = NSFont.systemFont(ofSize: 13)
+let lineHeight: CGFloat = 16
+
+func makeLayout(_ text: String) -> TextViewLayout {
+    let attributed = NSMutableAttributedString(string: text, attributes: [.font: font]).copy() as! NSAttributedString
+    let layout = TextViewLayout(attributed)
+    let typesetter = CTTypesetterCreateWithAttributedString(attributed)
+    var start = 0
+    while start < attributed.length {
+        let count = CTTypesetterSuggestLineBreak(typesetter, start, 10_000)
+        let line = CTTypesetterCreateLine(typesetter, CFRange(location: start, length: count))
+        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        let frame = NSRect(x: 0, y: CGFloat(layout.lines.count + 1) * lineHeight, width: width, height: lineHeight)
+        layout.lines.append(TextViewLine(line: line, frame: frame, range: NSRange(location: start, length: count)))
+        start += count
+    }
+    return layout
+}
+
+func lineWidth(_ layout: TextViewLayout, _ line: Int) -> CGFloat {
+    return CGFloat(CTLineGetTypographicBounds(layout.lines[line].line, nil, nil, nil))
+}
+
+func viewWidth(_ layout: TextViewLayout) -> CGFloat {
+    return layout.lines.indices.map { lineWidth(layout, $0) }.max() ?? 0
+}
+
+func middle(_ line: Int) -> CGFloat {
+    return CGFloat(line) * lineHeight + lineHeight / 2
+}
+
+enum Click {
+    case pastEnd(line: Int)
+    case at(index: Int)
+
+    func point(in layout: TextViewLayout) -> NSPoint {
+        switch self {
+        case let .pastEnd(line):
+            return NSPoint(x: (lineWidth(layout, line) + viewWidth(layout)) / 2, y: middle(line))
+        case let .at(index):
+            let line = layout.lines.firstIndex { NSLocationInRange(index, $0.range) }!
+            return NSPoint(x: CTLineGetOffsetForStringIndex(layout.lines[line].line, index, nil) + 0.5, y: middle(line))
+        }
+    }
+
+    var landsPastEnd: Bool {
+        switch self {
+        case .pastEnd:
+            return true
+        case .at:
+            return false
+        }
+    }
+}
+
+struct Case {
+    let name: String
+    let blocks: [String]
+    let block: Int
+    let selection: NSRange?
+    let click: Click
+    let clickCount: Int
+    let modifiers: NSEvent.ModifierFlags
+    let expected: NSRange?
+
+    init(_ name: String, _ blocks: [String], block: Int = 0, selection: NSRange?, click: Click, clickCount: Int = 1, modifiers: NSEvent.ModifierFlags = [.shift], expected: NSRange?) {
+        self.name = name
+        self.blocks = blocks
+        self.block = block
+        self.selection = selection
+        self.click = click
+        self.clickCount = clickCount
+        self.modifiers = modifiers
+        self.expected = expected
+    }
+}
+
+let message = "Hi\nhello secret"
+let longer = "One\nsecond line here\nx"
+
+let cases: [Case] = [
+    Case("short-line-before-selection", [message], selection: NSRange(location: 3, length: 5), click: .pastEnd(line: 0), expected: NSRange(location: 3, length: 5)),
+    Case("selection-at-text-start", [message], selection: NSRange(location: 0, length: 2), click: .pastEnd(line: 0), expected: NSRange(location: 0, length: 2)),
+    Case("first-of-three-lines", [longer], selection: NSRange(location: 21, length: 1), click: .pastEnd(line: 0), expected: NSRange(location: 21, length: 1)),
+    Case("short-last-line", [longer], selection: NSRange(location: 4, length: 6), click: .pastEnd(line: 2), expected: NSRange(location: 4, length: 6)),
+    Case("first-block-of-two", [message, "Second block"], block: 0, selection: NSRange(location: 3, length: 5), click: .pastEnd(line: 0), expected: NSRange(location: 3, length: 5)),
+    Case("second-block-of-two", ["First block\n", message], block: 1, selection: NSRange(location: 3, length: 5), click: .pastEnd(line: 0), expected: NSRange(location: 3, length: 5)),
+    Case("extend-back-to-start", [message], selection: NSRange(location: 9, length: 6), click: .at(index: 0), expected: NSRange(location: 0, length: 15)),
+    Case("extend-back-across-lines", [longer], selection: NSRange(location: 21, length: 1), click: .at(index: 1), expected: NSRange(location: 1, length: 21)),
+    Case("extend-forward", [message], selection: NSRange(location: 0, length: 2), click: .at(index: 12), expected: NSRange(location: 0, length: 12)),
+    Case("inside-selection", [message], selection: NSRange(location: 3, length: 5), click: .at(index: 5), expected: NSRange(location: 3, length: 5)),
+    Case("no-selection", [message], selection: nil, click: .pastEnd(line: 0), expected: nil),
+    Case("double-click", [message], selection: NSRange(location: 3, length: 5), click: .pastEnd(line: 0), clickCount: 2, expected: NSRange(location: 3, length: 5)),
+    Case("no-shift", [message], selection: NSRange(location: 3, length: 5), click: .pastEnd(line: 0), modifiers: [], expected: NSRange(location: 3, length: 5)),
+]
+
+func describe(_ range: NSRange?) -> String {
+    guard let range, range.location != NSNotFound else {
+        return "none"
+    }
+    return "(\(range.location), \(range.length))"
+}
+
+func describe(_ text: String?) -> String {
+    return text?.debugDescription ?? "nil"
+}
+
+func at(_ consumer: String) {
+    print("at \(consumer)")
+}
+
+var failures = 0
+
+func check(_ test: Case, _ condition: Bool, _ text: String) {
+    if condition {
+        print("ok \(test.name): \(text)")
+    } else {
+        print("FAIL \(test.name): \(text)")
+        failures += 1
+    }
+}
+
+func copied(_ action: () -> Void) -> String? {
+    copiedTexts.removeAll()
+    action()
+    return copiedTexts.last
+}
+
+func run(_ test: Case) {
+    let layouts = test.blocks.map(makeLayout)
+    let layout = layouts[test.block]
+    if let selection = test.selection {
+        layout.selectedRange = TextSelectedRange(range: selection)
+    }
+    let point = test.click.point(in: layout)
+    let index = layout.findCharacterIndex(at: point)
+    if test.click.landsPastEnd {
+        check(test, index == -1, "the click lands past the end of its line (index \(index))")
+    } else {
+        check(test, index >= 0, "the click lands on a character (index \(index))")
+    }
+
+    let before = layout.selectedRange.range
+    at("the Shift branch of mouseUp")
+    mouseUp(layout, at: point, clickCount: test.clickCount, modifiers: test.modifiers)
+
+    let range = layout.selectedRange.range
+    let selected = range.location == NSNotFound ? nil : range
+    check(test, describe(selected) == describe(test.expected), "the selection is \(describe(test.expected)), got \(describe(selected))")
+    check(test, range.location == NSNotFound || (range.location >= 0 && NSMaxRange(range) <= layout.attributedString.length), "the selection stays inside the text, got \(describe(selected))")
+
+    if test.selection != nil, test.clickCount == 1, test.modifiers.contains(.shift) {
+        let node = LayerTextNode(makeLayout(test.blocks[test.block]))
+        node.layout.selectedRange.range = before
+        node.shiftClick(index: index)
+        let layer = node.layout.selectedRange.range
+        check(test, describe(layer) == describe(selected), "the layer-drawn path's Shift branch gives the same selection, got \(describe(layer))")
+    }
+
+    let offset = layouts[..<test.block].reduce(0) { $0 + $1.attributedString.length }
+    at("FoldingTextLayout.merged")
+    let merged = FoldingTextLayout(layouts).merged
+    let expectedMerged = test.expected.map { NSRange(location: offset + $0.location, length: $0.length) }
+    let mergedRange = merged.selectedRange.range.location == NSNotFound ? nil : merged.selectedRange.range
+    check(test, describe(mergedRange) == describe(expectedMerged), "the message's selection is \(describe(expectedMerged)), got \(describe(mergedRange))")
+
+    let expectedText = test.expected.map { layout.attributedString.attributedSubstring(from: $0).string }
+    at("the Quote item")
+    let quote = quoteText((merged, nil))
+    check(test, describe(quote) == describe(expectedText), "the menu's Quote item quotes \(describe(expectedText)), got \(describe(quote))")
+
+    if merged.selectedRange.hasSelectText {
+        at("the Copy Selected Text item")
+        let text = copied { copySelectedText(merged) }
+        check(test, describe(text) == describe(expectedText), "Copy Selected Text copies \(describe(expectedText)), got \(describe(text))")
+    }
+
+    at("TextView.copy(_:)")
+    let text = copied { FakeTextView(layout).copy(test) }
+    check(test, describe(text) == describe(expectedText), "Copy in the text view copies \(describe(expectedText)), got \(describe(text))")
+}
+
+let arguments = CommandLine.arguments
+if arguments.count < 2 {
+    print(cases.map(\.name).joined(separator: "\n"))
+    exit(0)
+}
+guard let test = cases.first(where: { $0.name == arguments[1] }) else {
+    print("FAIL \(arguments[1]): no such case")
+    exit(1)
+}
+run(test)
+testPasteboard.releaseGlobally()
+exit(failures == 0 ? 0 : 1)
