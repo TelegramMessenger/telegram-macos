@@ -1,0 +1,318 @@
+import Cocoa
+
+struct Theme {
+    let fontSize: CGFloat = 13
+}
+
+let theme = Theme()
+
+extension NSFont {
+    static func normal(_ size: CGFloat) -> NSFont {
+        return .systemFont(ofSize: size)
+    }
+    static func bold(_ size: CGFloat) -> NSFont {
+        return .boldSystemFont(ofSize: size)
+    }
+    static func italic(_ size: CGFloat) -> NSFont {
+        return NSFontManager.shared.convert(.systemFont(ofSize: size), toHaveTrait: .italicFontMask)
+    }
+    static func boldItalic(_ size: CGFloat) -> NSFont {
+        return NSFontManager.shared.convert(.boldSystemFont(ofSize: size), toHaveTrait: .italicFontMask)
+    }
+    static func menlo(_ size: CGFloat) -> NSFont {
+        return NSFont(name: "Menlo-Regular", size: size)!
+    }
+}
+
+struct TextInputAttributes {
+    static let bold = NSAttributedString.Key(rawValue: "Attribute__Bold")
+    static let italic = NSAttributedString.Key(rawValue: "Attribute__Italic")
+    static let monospace = NSAttributedString.Key(rawValue: "Attribute__Monospace")
+    static let strikethrough = NSAttributedString.Key(rawValue: "Attribute__Strikethrough")
+    static let underline = NSAttributedString.Key(rawValue: "Attribute__Underline")
+    static let textMention = NSAttributedString.Key(rawValue: "Attribute__TextMention")
+    static let textUrl = NSAttributedString.Key(rawValue: "Attribute__TextUrl")
+    static let spoiler = NSAttributedString.Key(rawValue: "Attribute__Spoiler")
+    static let customEmoji = NSAttributedString.Key(rawValue: "Attribute__CustomEmoji")
+    static let code = NSAttributedString.Key(rawValue: "Attribute__Code")
+    static let quote = NSAttributedString.Key(rawValue: "Attribute__Blockquote")
+    static let formattedDate = NSAttributedString.Key(rawValue: "Attribute__FormattedDate")
+    static let embedded = NSAttributedString.Key(rawValue: "Attribute__EmbeddedItem")
+}
+
+final class TextInputTextUrlAttribute: NSObject {
+    let url: String
+    init(url: String) {
+        self.url = url
+    }
+}
+
+struct PeerId {
+    struct Id {
+        func _internalGetInt64Value() -> Int64 {
+            return 0
+        }
+    }
+    let id = Id()
+}
+
+final class TelegramMediaFile {}
+struct ItemCollectionId {}
+
+final class ChatTextInputTextMentionAttribute: NSObject {
+    let peerId = PeerId()
+}
+
+final class TextInputTextCustomEmojiAttribute: NSObject {
+    let emoji = ""
+    let fileId: Int64 = 0
+    let file: TelegramMediaFile? = nil
+    let collectionId: ItemCollectionId? = nil
+}
+
+final class EmbeddedCustomEmojiAttributeValue: NSObject {
+    let customEmojiAttribute: TextInputTextCustomEmojiAttribute? = nil
+}
+
+final class TextInputTextDateAttribute: NSObject {
+    let date: Int32 = 0
+}
+
+final class TextInputTextQuoteAttribute: NSObject {
+    let collapsed = false
+}
+
+enum ChatTextInputAttribute {
+    case bold(Range<Int>)
+    case strikethrough(Range<Int>)
+    case spoiler(Range<Int>)
+    case underline(Range<Int>)
+    case italic(Range<Int>)
+    case pre(Range<Int>, String?)
+    case code(Range<Int>)
+    case uid(Range<Int>, Int64)
+    case url(Range<Int>, String)
+    case animated(Range<Int>, String, Int64, TelegramMediaFile?, ItemCollectionId?)
+    case quote(Range<Int>, Bool)
+    case date(Range<Int>, Int32)
+}
+
+func linkIsSelfReferential(text: String, url: String) -> Bool {
+    return text == url || text + "/" == url
+}
+
+extension String {
+    var nsstring: NSString {
+        return self as NSString
+    }
+    var length: Int {
+        return self.nsstring.length
+    }
+}
+
+extension NSAttributedString {
+    var range: NSRange {
+        return NSMakeRange(0, self.length)
+    }
+
+    var trimNewLines: NSAttributedString {
+        __TRIM_NEW_LINES__
+    }
+
+    __APPLY_RTF__
+}
+
+__CHAT_TEXT_ATTRIBUTES__
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func rtf(_ attributed: NSAttributedString) -> Data {
+    return attributed.rtf(from: NSMakeRange(0, attributed.length), documentAttributes: [:])!
+}
+
+func pasted(_ data: Data) -> NSAttributedString? {
+    return (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtfd], documentAttributes: nil)) ?? (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))
+}
+
+struct Paste {
+    let text: String
+    let formatting: [String]
+    let attachments: [NSTextAttachment]
+
+    func has(_ entry: String) -> Bool {
+        return formatting.contains(entry)
+    }
+
+    func on(_ part: String) -> [String] {
+        return formatting.filter { $0.hasSuffix(" \(part)") || $0.contains(" \(part) -> ") }
+    }
+
+    var shown: String {
+        return formatting.isEmpty ? "nothing" : formatting.joined(separator: ", ")
+    }
+}
+
+func formatting(of attributed: NSAttributedString) -> Paste {
+    let (result, attachments) = attributed.applyRtf()
+    let text = result.string
+    func part(_ range: Range<Int>) -> String {
+        return text.nsstring.substring(with: NSMakeRange(range.lowerBound, range.count))
+    }
+    let entries: [String] = chatTextAttributes(from: result).map { attribute in
+        switch attribute {
+        case let .bold(range):
+            return "bold \(part(range))"
+        case let .italic(range):
+            return "italic \(part(range))"
+        case let .code(range):
+            return "code \(part(range))"
+        case let .pre(range, _):
+            return "pre \(part(range))"
+        case let .strikethrough(range):
+            return "strikethrough \(part(range))"
+        case let .underline(range):
+            return "underline \(part(range))"
+        case let .spoiler(range):
+            return "spoiler \(part(range))"
+        case let .url(range, url):
+            return "url \(part(range)) -> \(url)"
+        case let .uid(range, _):
+            return "mention \(part(range))"
+        case let .animated(range, _, _, _, _):
+            return "emoji \(part(range))"
+        case let .quote(range, _):
+            return "quote \(part(range))"
+        case let .date(range, _):
+            return "date \(part(range))"
+        }
+    }
+    return Paste(text: text, formatting: entries.sorted(), attachments: attachments)
+}
+
+func pasting(_ data: Data) -> Paste? {
+    return pasted(data).map(formatting(of:))
+}
+
+func run(_ parts: [(String, [NSAttributedString.Key: Any])]) -> NSAttributedString {
+    let result = NSMutableAttributedString()
+    for (text, attributes) in parts {
+        var attributes = attributes
+        if attributes[.font] == nil {
+            attributes[.font] = NSFont(name: "Helvetica", size: 12)!
+        }
+        result.append(NSAttributedString(string: text, attributes: attributes))
+    }
+    return result
+}
+
+func font(_ name: String, _ size: CGFloat = 12) -> NSFont {
+    return NSFont(name: name, size: size)!
+}
+
+let textEdit = #"""
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;\f2\fswiss\fcharset0 Helvetica-Oblique;
+\f3\fswiss\fcharset0 Helvetica-BoldOblique;\f4\fnil\fcharset0 Menlo-Regular;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red0\green0\blue233;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;\cssrgb\c0\c0\c93333;}
+\deftab720
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Hello \f1\b world\f0\b0  \f2\i italic\f0\i0  \f3\i\b both\f0\i0\b0  \f4 mono
+\f0  \strike \strikec0 strike\strike0\striked0  \ul under\ulnone  {\field{\*\fldinst{HYPERLINK "https://example.com/a"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 link}}\
+}
+"""#
+
+if let paste = pasting(textEdit.data(using: .ascii)!) {
+    check("the TextEdit document keeps its text, got \(paste.text)", paste.text == "Hello world italic both mono strike under link")
+    check("bold text from TextEdit stays bold, got \(paste.shown)", paste.on("world") == ["bold world"])
+    check("italic text from TextEdit stays italic, got \(paste.shown)", paste.on("italic") == ["italic italic"])
+    check("bold italic text from TextEdit stays bold and italic, got \(paste.shown)", paste.on("both") == ["bold both", "italic both"])
+    check("Menlo text from TextEdit becomes code, got \(paste.shown)", paste.on("mono") == ["code mono"])
+    check("struck-through text from TextEdit stays struck through, got \(paste.shown)", paste.on("strike") == ["strikethrough strike"])
+    check("underlined text from TextEdit stays underlined, got \(paste.shown)", paste.on("under") == ["underline under"])
+    check("an underlined web link stays a link without an underline, got \(paste.shown)", paste.on("link") == ["url link -> https://example.com/a"])
+    check("the TextEdit document gets exactly its own formatting, got \(paste.shown)", paste.formatting == ["bold both", "bold world", "code mono", "italic both", "italic italic", "strikethrough strike", "underline under", "url link -> https://example.com/a"])
+} else {
+    check("AppKit reads the TextEdit document", false)
+}
+
+let written = run([
+    ("plain ", [:]),
+    ("system", [.font: NSFont.boldSystemFont(ofSize: 15)]),
+    (" ", [:]),
+    ("slanted", [.font: NSFontManager.shared.convert(NSFont.systemFont(ofSize: 15), toHaveTrait: .italicFontMask)]),
+    (" ", [:]),
+    ("courier", [.font: font("Courier")]),
+    (" ", [:]),
+    ("let", [.font: font("Menlo-Bold")]),
+    (" x = 1", [.font: font("Menlo-Regular")]),
+    (" ", [:]),
+    ("head", [.font: font("Helvetica-Bold", 24), .foregroundColor: NSColor.red]),
+    ("line", [.font: font("Times-Bold", 18), .foregroundColor: NSColor.blue]),
+    (" ", [:]),
+    ("double", [.underlineStyle: NSUnderlineStyle.double.rawValue]),
+    (" ", [:]),
+    ("thick", [.underlineStyle: NSUnderlineStyle.thick.rawValue]),
+    (" ", [:]),
+    ("dotted", [.underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue]),
+    (" ", [:]),
+    ("twice", [.strikethroughStyle: NSUnderlineStyle.double.rawValue]),
+    (" ", [:]),
+    ("all", [.font: font("Helvetica-BoldOblique"), .strikethroughStyle: NSUnderlineStyle.single.rawValue, .underlineStyle: NSUnderlineStyle.single.rawValue]),
+    (" ", [:]),
+    ("crossed", [.link: URL(string: "https://example.com/c")!, .strikethroughStyle: NSUnderlineStyle.single.rawValue]),
+    (" ", [:]),
+    ("strong", [.link: URL(string: "https://example.com/d")!, .font: font("Helvetica-Bold")]),
+    (" ", [:]),
+    ("https://example.com/b", [.link: URL(string: "https://example.com/b")!, .underlineStyle: NSUnderlineStyle.single.rawValue]),
+    (" red", [.foregroundColor: NSColor.red, .backgroundColor: NSColor.yellow, .kern: 2]),
+])
+
+if let paste = pasting(rtf(written)) {
+    check("the written document keeps its text, got \(paste.text)", paste.text == written.string)
+    check("bold system font text stays bold, got \(paste.shown)", paste.on("system") == ["bold system"])
+    check("italic system font text stays italic, got \(paste.shown)", paste.on("slanted") == ["italic slanted"])
+    check("Courier text becomes code, got \(paste.shown)", paste.on("courier") == ["code courier"])
+    check("bold Menlo next to plain Menlo becomes one code run without bold, got \(paste.shown)", paste.on("let x = 1") == ["code let x = 1"] && paste.on("let").isEmpty)
+    check("bold runs in different fonts, sizes and colors become one bold run, got \(paste.shown)", paste.on("headline") == ["bold headline"] && paste.on("head").isEmpty && paste.on("line").isEmpty)
+    check("a double underline stays underlined, got \(paste.shown)", paste.on("double") == ["underline double"])
+    check("a thick underline stays underlined, got \(paste.shown)", paste.on("thick") == ["underline thick"])
+    check("a dotted underline stays underlined, got \(paste.shown)", paste.on("dotted") == ["underline dotted"])
+    check("a double strikethrough stays struck through, got \(paste.shown)", paste.on("twice") == ["strikethrough twice"])
+    check("bold italic underlined struck-through text keeps all four, got \(paste.shown)", paste.on("all") == ["bold all", "italic all", "strikethrough all", "underline all"])
+    check("a struck-through link stays a link only, got \(paste.shown)", paste.on("crossed") == ["url crossed -> https://example.com/c"])
+    check("a bold link stays a link only, got \(paste.shown)", paste.on("strong") == ["url strong -> https://example.com/d"])
+    check("an underlined link labelled with its URL becomes plain text, got \(paste.shown)", paste.on("https://example.com/b").isEmpty)
+    check("plain text, colors and kerning bring no formatting, got \(paste.shown)", paste.on("plain").isEmpty && paste.on("red").isEmpty)
+} else {
+    check("AppKit reads the written document", false)
+}
+
+let unstyled = run([
+    ("none", [.underlineStyle: 0, .strikethroughStyle: 0]),
+    (" light", [.font: font("Helvetica-Light")]),
+    (" picture", [:]),
+])
+let picture = NSTextAttachment()
+let withPicture = NSMutableAttributedString(attributedString: unstyled)
+withPicture.append(NSAttributedString(attachment: picture))
+let direct = formatting(of: withPicture)
+check("a zero underline or strikethrough style brings no formatting, got \(direct.shown)", direct.on("none").isEmpty)
+check("a light font brings no formatting, got \(direct.shown)", direct.on("light").isEmpty)
+check("nothing is formatted in plain text, got \(direct.shown)", direct.formatting.isEmpty)
+check("the attachment is still returned", direct.attachments.count == 1 && direct.attachments.first === picture)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
