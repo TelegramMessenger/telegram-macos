@@ -371,6 +371,7 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public var openPinnedMessages: (MessageId)->Void = { _ in }
     public var unpinAllMessages: ()->Void = {}
+    public weak var pinnedMessagesOpener: ChatInterfaceController?
     public var setLocation: (ChatHistoryLocation)->Void = { _ in }
     public var scrollToTheFirst: () -> Void = {}
     public var openReplyThread:(MessageId, Bool, Bool, ReplyThreadMode)->Void = {  _, _, _, _ in }
