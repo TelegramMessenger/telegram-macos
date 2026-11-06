@@ -1502,9 +1502,10 @@ public extension String {
 }
 
 public extension NSAttributedString {
-    var stringEmojiReplacements:NSAttributedString {
+    func stringEmojiReplacements(skipping ranges: [NSRange]) -> NSAttributedString {
         let text:NSMutableAttributedString = self.mutableCopy() as! NSMutableAttributedString
         
+        var ranges = ranges
         for(key, obj) in emojiReplacements {
             var nextRange = NSRange(location: 0, length: text.length)
             var emojiRange = text.string.nsstring.range(of: key, options: [], range: nextRange)
@@ -1516,9 +1517,10 @@ public extension NSAttributedString {
                 let r_n = NSRange(location: max(0, emojiRange.length + emojiRange.location), length: min(1, text.length - (emojiRange.location + emojiRange.length)))
                 c_prev = text.string.nsstring.substring(with: r_p)
                 c_next = text.string.nsstring.substring(with: r_n)
-                if c_prev.trimmed.length == 0 && c_next.trimmed.length == 0 {
+                if c_prev.trimmed.length == 0 && c_next.trimmed.length == 0 && !ranges.contains(where: { NSIntersectionRange($0, emojiRange).length > 0 }) {
                     text.replaceCharacters(in: emojiRange, with: obj)
                     length = obj.length
+                    ranges = ranges.map { $0.location > emojiRange.location ? NSMakeRange($0.location + length - emojiRange.length, $0.length) : $0 }
                 }
                 nextRange = NSRange(location: emojiRange.location + length, length: text.length - emojiRange.location - length)
                 emojiRange = text.string.nsstring.range(of: key, options: [], range: nextRange)

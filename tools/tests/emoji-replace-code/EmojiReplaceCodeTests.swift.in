@@ -1,0 +1,404 @@
+import Foundation
+import AppKit
+
+extension String {
+    var nsstring: NSString { return self as NSString }
+    var length: Int { return self.nsstring.length }
+    var fixed: String { return self }
+    var emojiString: String { return "" }
+
+    __TRIMMED_STRING__
+}
+
+extension NSRange {
+    var min: Int { return self.location }
+    var max: Int { return self.location + self.length }
+}
+
+extension NSAttributedString {
+    static func initialize(string: String?, color: NSColor? = nil, font: NSFont? = nil) -> NSAttributedString {
+        guard let string, !string.isEmpty else {
+            return NSAttributedString(string: "")
+        }
+        return NSAttributedString(string: string)
+    }
+
+    __TRIMMED_TEXT__
+}
+
+enum FastSettings {
+    static var isPossibleReplaceEmojies: Bool = true
+}
+
+func arc4random64() -> Int64 {
+    return Int64.random(in: 0 ... Int64.max)
+}
+
+struct StringCodingKey: CodingKey, ExpressibleByStringLiteral {
+    var stringValue: String
+    var intValue: Int? { return nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+    init(stringLiteral value: String) { self.stringValue = value }
+}
+
+protocol Media {}
+
+struct TelegramMediaFile: Codable, Equatable, Media {
+    var isPremiumEmoji: Bool { return false }
+}
+
+struct ItemCollectionId: Codable, Hashable {}
+
+struct MediaId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Media {
+        static let CloudFile: Int32 = 0
+    }
+    enum Peer {
+        static let CloudUser: Int32 = 0
+    }
+}
+
+struct PeerId: Hashable {
+    struct Id: Hashable {
+        let value: Int64
+        static func _internalFromInt64Value(_ value: Int64) -> Id { return Id(value: value) }
+        func _internalGetInt64Value() -> Int64 { return self.value }
+    }
+    let namespace: Int32
+    let id: Id
+}
+
+extension PeerId {
+    init(_ value: Int64) {
+        self.init(namespace: Namespaces.Peer.CloudUser, id: .init(value: value))
+    }
+    func toInt64() -> Int64 {
+        return self.id.value
+    }
+}
+
+struct StickerPackReference: Equatable {}
+
+enum MessageTextEntityType: Equatable {
+    enum DateTimeFormat: Equatable {
+        enum TimeFormat: Equatable { case short }
+        enum DateFormat: Equatable { case short }
+        case relative
+        case full(timeFormat: TimeFormat?, dateFormat: DateFormat?, dayOfWeek: Bool)
+    }
+    case Unknown
+    case Mention
+    case Hashtag
+    case BotCommand
+    case Url
+    case Email
+    case Bold
+    case Italic
+    case Code
+    case Pre(language: String?)
+    case TextUrl(url: String)
+    case TextMention(peerId: PeerId)
+    case PhoneNumber
+    case Strikethrough
+    case BlockQuote(isCollapsed: Bool)
+    case Underline
+    case BankCard
+    case Spoiler
+    case CustomEmoji(stickerPack: StickerPackReference?, fileId: Int64)
+    case FormattedDate(format: DateTimeFormat, date: Int32)
+}
+
+struct MessageTextEntity: Equatable {
+    let range: Range<Int>
+    let type: MessageTextEntityType
+}
+
+struct TextEntitiesMessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+struct TextInputAttributes {
+    static let bold = NSAttributedString.Key(rawValue: "Attribute__Bold")
+    static let italic = NSAttributedString.Key(rawValue: "Attribute__Italic")
+    static let monospace = NSAttributedString.Key(rawValue: "Attribute__Monospace")
+    static let strikethrough = NSAttributedString.Key(rawValue: "Attribute__Strikethrough")
+    static let underline = NSAttributedString.Key(rawValue: "Attribute__Underline")
+    static let textMention = NSAttributedString.Key(rawValue: "Attribute__TextMention")
+    static let textUrl = NSAttributedString.Key(rawValue: "Attribute__TextUrl")
+    static let spoiler = NSAttributedString.Key(rawValue: "Attribute__Spoiler")
+    static let customEmoji = NSAttributedString.Key(rawValue: "Attribute__CustomEmoji")
+    static let code = NSAttributedString.Key(rawValue: "Attribute__Code")
+    static let quote = NSAttributedString.Key(rawValue: "Attribute__Blockquote")
+    static let formattedDate = NSAttributedString.Key(rawValue: "Attribute__FormattedDate")
+    static let embedded = NSAttributedString.Key(rawValue: "Attribute__EmbeddedItem")
+}
+
+final class ChatTextInputTextMentionAttribute: NSObject {
+    let peerId: PeerId
+    init(peerId: PeerId) { self.peerId = peerId }
+}
+
+final class TextInputTextUrlAttribute: NSObject {
+    let url: String
+    init(url: String) { self.url = url }
+}
+
+final class TextInputTextDateAttribute: NSObject {
+    let date: Int32
+    init(date: Int32) { self.date = date }
+}
+
+final class TextInputTextQuoteAttribute: NSObject {
+    let collapsed: Bool
+    init(collapsed: Bool) { self.collapsed = collapsed }
+}
+
+final class TextInputTextCustomEmojiAttribute: NSObject {
+    let collectionId: ItemCollectionId?
+    let fileId: Int64
+    let file: TelegramMediaFile?
+    let emoji: String
+    init(collectionId: ItemCollectionId? = nil, fileId: Int64, file: TelegramMediaFile?, emoji: String) {
+        self.collectionId = collectionId
+        self.fileId = fileId
+        self.file = file
+        self.emoji = emoji
+    }
+}
+
+protocol EmbeddedCustomEmojiAttributeValue {
+    var customEmojiAttribute: TextInputTextCustomEmojiAttribute? { get }
+}
+
+struct Updated_ChatTextInputState {
+    let inputText: NSAttributedString
+    let selectionRange: Range<Int>
+    init(inputText: NSAttributedString, selectionRange: Range<Int>) {
+        self.inputText = inputText
+        self.selectionRange = selectionRange
+    }
+}
+
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Hashtags = ParsingType(rawValue: 1 << 0)
+    static let Links = ParsingType(rawValue: 1 << 1)
+}
+
+struct DetectedTextLink {
+    let text: String
+    let range: NSRange
+}
+
+func detectedTextLinks(in text: String, type: ParsingType) -> [DetectedTextLink] {
+    return []
+}
+
+enum ExtractedDateFormat {
+    case relative
+    case full(Bool, Bool)
+}
+
+struct ExtractedDate {
+    let range: Range<Int>
+    let date: Date
+    let format: ExtractedDateFormat
+}
+
+func extractDates(from text: String) -> [ExtractedDate] {
+    return []
+}
+
+__STATE__
+
+__TABLE__
+
+__REPLACEMENTS__
+
+func prepare(_ input: ChatTextInputState) -> ChatTextInputState {
+    __FRONT__
+    return input
+}
+
+func send(_ input: ChatTextInputState) -> ChatTextInputState {
+    let input = prepare(input)
+    precondition(input.inputText.length < 4096, "cut_long_message would split this text")
+    return input.subInputState(from: NSMakeRange(0, input.inputText.length))
+}
+
+struct Span: Equatable, CustomStringConvertible {
+    let kind: String
+    let text: String
+    let language: String?
+
+    var description: String {
+        return "\(self.kind) \(self.text.debugDescription)\(self.kind == "pre" ? " language \((self.language ?? "").debugDescription)" : "")"
+    }
+
+    static func == (lhs: Span, rhs: Span) -> Bool {
+        return lhs.kind == rhs.kind && lhs.text == rhs.text && (lhs.language ?? "") == (rhs.language ?? "")
+    }
+}
+
+func kind(_ type: MessageTextEntityType) -> String {
+    switch type {
+    case .Pre:
+        return "pre"
+    case .Code:
+        return "code"
+    case .Bold:
+        return "bold"
+    case .TextUrl:
+        return "link"
+    case .TextMention:
+        return "mention"
+    default:
+        return "other"
+    }
+}
+
+func spans(of state: ChatTextInputState) -> [Span] {
+    let text = state.inputText as NSString
+    return state.messageTextEntities([.Hashtags]).sorted(by: { $0.range.lowerBound < $1.range.lowerBound }).map { entity in
+        var language: String?
+        if case let .Pre(value) = entity.type {
+            language = value
+        }
+        guard entity.range.lowerBound >= 0, entity.range.upperBound <= text.length else {
+            return Span(kind: kind(entity.type), text: "out of the text at \(entity.range)", language: language)
+        }
+        return Span(kind: kind(entity.type), text: text.substring(with: NSRange(location: entity.range.lowerBound, length: entity.range.count)), language: language)
+    }
+}
+
+func range(_ part: String, in text: String) -> Range<Int> {
+    let found = (text as NSString).range(of: part)
+    precondition(found.location != NSNotFound, "\(part) is not in \(text)")
+    return found.location ..< NSMaxRange(found)
+}
+
+struct Case {
+    let name: String
+    let text: String
+    let attributes: (String) -> [ChatTextInputAttribute]
+    let sent: String
+    let spans: [Span]
+}
+
+func pre(_ text: String, _ language: String = "") -> Span {
+    return Span(kind: "pre", text: text, language: language)
+}
+
+func code(_ text: String) -> Span {
+    return Span(kind: "code", text: text, language: nil)
+}
+
+func bold(_ text: String) -> Span {
+    return Span(kind: "bold", text: text, language: nil)
+}
+
+func link(_ text: String) -> Span {
+    return Span(kind: "link", text: text, language: nil)
+}
+
+func mention(_ text: String) -> Span {
+    return Span(kind: "mention", text: text, language: nil)
+}
+
+let none: (String) -> [ChatTextInputAttribute] = { _ in [] }
+
+let kiss = "\u{1F468}\u{200D}\u{2764}\u{FE0F}\u{200D}\u{1F48B}\u{200D}\u{1F468}"
+
+let cases: [Case] = [
+    Case(name: "a code block typed with fences", text: "```\nx = (1, 8)\ny = f(a, B)\n```", attributes: none,
+         sent: "x = (1, 8)\ny = f(a, B)", spans: [pre("x = (1, 8)\ny = f(a, B)")]),
+    Case(name: "a code block with a language", text: "```python\nprint(1, 8)\nfoo(a, B)\n```", attributes: none,
+         sent: "print(1, 8)\nfoo(a, B)", spans: [pre("print(1, 8)\nfoo(a, B)", "python")]),
+    Case(name: "a code block with four-backtick fences", text: "````\nx = (1, 8)\n````", attributes: none,
+         sent: "x = (1, 8)", spans: [pre("x = (1, 8)")]),
+    Case(name: "inline code typed with backticks", text: "Use `if a <3 then` here", attributes: none,
+         sent: "Use if a <3 then here", spans: [code("if a <3 then")]),
+    Case(name: "two inline code spans in a row", text: "`x :) y` `a B) z`", attributes: none,
+         sent: "x :) y a B) z", spans: [code("x :) y"), code("a B) z")]),
+    Case(name: "two inline code spans after some text", text: "Then set `x = 1` and call `f(a, B) + 1`", attributes: none,
+         sent: "Then set x = 1 and call f(a, B) + 1", spans: [code("x = 1"), code("f(a, B) + 1")]),
+    Case(name: "text around code still gets emoji", text: "nice :) `code :) here` bye :)", attributes: none,
+         sent: "nice 🙂 code :) here bye 🙂", spans: [code("code :) here")]),
+    Case(name: "code blocks with text between them", text: "```\na :) b\n```\nmid :)\n```\nc :) d\n```", attributes: none,
+         sent: "a :) b\n\nmid 🙂\n\nc :) d", spans: [pre("a :) b\n"), pre("\nc :) d")]),
+    Case(name: "a shorter shortcode before and after code", text: "a :grinning: b `c :grinning: d` :grinning: f", attributes: none,
+         sent: "a 😀 b c :grinning: d 😀 f", spans: [code("c :grinning: d")]),
+    Case(name: "longer shortcodes before code", text: "a :kiss_mm: :kiss_mm: :kiss_mm: `x :kiss_mm: y`", attributes: none,
+         sent: "a \(kiss) \(kiss) \(kiss) x :kiss_mm: y", spans: [code("x :kiss_mm: y")]),
+    Case(name: "an emoji and a shorter emoticon before code", text: "😀 :-) `a :) b`", attributes: none,
+         sent: "😀 🙂 a :) b", spans: [code("a :) b")]),
+    Case(name: "a pasted code block", text: "Look:\nx = (1, 8)\nok :)", attributes: { [.pre(range("x = (1, 8)", in: $0), nil)] },
+         sent: "Look:\nx = (1, 8)\nok 🙂", spans: [pre("x = (1, 8)")]),
+    Case(name: "a shorter shortcode before and after a pasted code block", text: "a :grinning: b\nc :grinning: d\ne :grinning: f", attributes: { [.pre(range("c :grinning: d", in: $0), nil)] },
+         sent: "a 😀 b\nc :grinning: d\ne 😀 f", spans: [pre("c :grinning: d")]),
+    Case(name: "inline code from the Format menu", text: "Run a :) b now :)", attributes: { [.code(range("a :) b", in: $0))] },
+         sent: "Run a :) b now 🙂", spans: [code("a :) b")]),
+    Case(name: "a text link label", text: "Try Adobe XD now", attributes: { [.url(range("Adobe XD", in: $0), "https://www.adobe.com/products/xd.html")] },
+         sent: "Try Adobe XD now", spans: [link("Adobe XD")]),
+    Case(name: "a mention of a user named XD", text: "thanks XD :)", attributes: { [.uid(range("XD", in: $0), 42)] },
+         sent: "thanks XD 🙂", spans: [mention("XD")]),
+    Case(name: "bold text still gets emoji", text: "**a :) b** ok :)", attributes: none,
+         sent: "a 🙂 b ok 🙂", spans: [bold("a 🙂 b")]),
+    Case(name: "plain text still gets emoji", text: ":) hello XD", attributes: none,
+         sent: "🙂 hello 😆", spans: []),
+    Case(name: "an object replacement character before inline code", text: "\u{fffc}`a :) b`", attributes: none,
+         sent: "a :) b", spans: [code("a :) b")]),
+    Case(name: "a line separator before inline code", text: "`x\u{2028}y ` :) ` end", attributes: { [.bold(range("end", in: $0))] },
+         sent: "`x\ny  :)  end", spans: [code(" :) "), bold("end")]),
+    Case(name: "a smiley with code on its last character", text: "ok :) end", attributes: { [.code(range(")", in: $0))] },
+         sent: "ok :) end", spans: [code(")")]),
+    Case(name: "backticks that stay text because bold covers them", text: "`x :) y` done :)", attributes: { [.bold(0 ..< $0.length)] },
+         sent: "`x :) y` done 🙂", spans: [bold("`x :) y` done 🙂")]),
+]
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAIL \(name)\(detail().isEmpty ? "" : ": \(detail())")")
+    }
+}
+
+let show = __SHOW__
+
+for item in cases {
+    let input = ChatTextInputState(inputText: item.text, selectionRange: item.text.length ..< item.text.length, attributes: item.attributes(item.text))
+    let sent = send(input)
+    let found = spans(of: sent)
+    if show {
+        print("== \(item.name)")
+        print("   typed:  \(item.text.debugDescription)")
+        print("   sent:   \(sent.inputText.debugDescription)")
+        print("   spans:  \(found)")
+    }
+    check("\(item.name): the sent text", sent.inputText == item.sent, sent.inputText.debugDescription)
+    check("\(item.name): the entities", found == item.spans, "\(found)")
+}
+
+let unclosed = send(ChatTextInputState(inputText: "```\nx = (1, 8)"))
+check("a fence without a closing fence makes no code block, so the text after it is still replaced", unclosed.inputText.hasSuffix("\nx = (1, 😍") && !spans(of: unclosed).contains(where: { $0.kind == "pre" }), "\(unclosed.inputText.debugDescription) \(spans(of: unclosed))")
+
+let dice = prepare(ChatTextInputState(inputText: ":game_die:"))
+check("a dice shortcode still turns into the dice emoji before the dice check", dice.inputText == "🎲", dice.inputText.debugDescription)
+
+FastSettings.isPossibleReplaceEmojies = false
+let off = send(ChatTextInputState(inputText: "a :) `b :) c`"))
+check("with the setting off nothing is replaced", off.inputText == "a :) b :) c" && spans(of: off) == [code("b :) c")], "\(off.inputText.debugDescription) \(spans(of: off))")
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

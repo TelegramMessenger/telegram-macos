@@ -589,6 +589,35 @@ public final class ChatTextInputState: Codable, Equatable {
         return string.copy() as! NSAttributedString
     }
 
+    public var literalRanges: [NSRange] {
+        var ranges: [NSRange] = []
+        for attribute in attributes {
+            switch attribute {
+            case .pre, .code, .uid, .url:
+                ranges.append(NSMakeRange(attribute.range.lowerBound, attribute.range.count))
+            default:
+                break
+            }
+        }
+        if let regex = markdownRegex {
+            var raw: String = inputText.replacingOccurrences(of: "\u{2028}", with: "\n").replacingOccurrences(of: "\u{fffc}", with: "\n", options: .literal)
+            var offset: Int = 0
+            while let match = regex.firstMatch(in: raw, range: NSMakeRange(0, raw.length)) {
+                let pre = match.range(at: 3)
+                if pre.location != NSNotFound {
+                    ranges.append(NSMakeRange(offset + pre.location, pre.length))
+                }
+                let code = match.range(at: 8)
+                if code.location != NSNotFound, raw.nsstring.substring(with: match.range(at: 7)) == "`" {
+                    ranges.append(NSMakeRange(offset + code.location, code.length))
+                }
+                offset += match.range.location + match.range.length
+                raw = raw.nsstring.substring(from: match.range.location + match.range.length)
+            }
+        }
+        return ranges
+    }
+
 
     public func subInputState(from range: NSRange) -> ChatTextInputState {
 //        let subText = convertMarkdownToAttributes(attributedString().attributedSubstring(from: range)).trimmed
