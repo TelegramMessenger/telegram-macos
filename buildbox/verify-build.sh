@@ -15,6 +15,7 @@ fail() {
 [ -d "$APP" ] || fail "$APP was not built"
 
 python3 "$SOURCE_DIR/buildbox/verify-no-labs.py" "$APP"
+python3 "$SOURCE_DIR/buildbox/verify-share-extension-signing.py" "$APP"
 
 expected_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$SOURCE_DIR/Telegram-Mac/Info.plist")
 built_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist")
