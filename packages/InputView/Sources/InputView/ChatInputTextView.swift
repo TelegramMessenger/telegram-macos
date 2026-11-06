@@ -745,6 +745,13 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     }
     
     
+    public func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) || editedMask.contains(.editedAttributes) else {
+            return
+        }
+        textStorage.alignParagraphsByWritingDirection(around: editedRange)
+    }
+
     public func layoutManager(_ layoutManager: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?, atEnd layoutFinishedFlag: Bool) {
         if textContainer !== self.customTextContainer {
             return

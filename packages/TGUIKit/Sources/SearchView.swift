@@ -5,18 +5,20 @@ import ColorPalette
 
 public class SearchTextField: BaseTextView {
 
-    
+    private let writingDirectionAlignment = WritingDirectionAlignmentDelegate()
+
     public init() {
         super.init(frame: .zero)
         self.translatesAutoresizingMaskIntoConstraints = false
         self.autoresizingMask = []
         self.autoresizesSubviews = false
         textContainer?.maximumNumberOfLines = 1
-        
+        textStorage?.delegate = writingDirectionAlignment
     }
     public override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
         super.init(frame: frameRect, textContainer: container)
         textContainer?.maximumNumberOfLines = 1
+        textStorage?.delegate = writingDirectionAlignment
     }
     
     
