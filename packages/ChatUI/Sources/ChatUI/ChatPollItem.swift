@@ -272,8 +272,11 @@ public class ChatPollItem: ChatRowItem {
 
     fileprivate let poll: TelegramMediaPoll
     fileprivate var canAddOption: Bool {
-        let hasVoted = options.contains(where: { $0.isSelected })
-        return poll.openAnswers && !isClosed && !hasVoted
+        return Self.canAddOption(poll: poll, isClosed: isClosed)
+    }
+
+    static func canAddOption(poll: TelegramMediaPoll, isClosed: Bool) -> Bool {
+        return poll.openAnswers && !isClosed
     }
     
     public var actionButtonText: String? {
