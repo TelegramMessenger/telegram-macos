@@ -2552,7 +2552,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
     private let replyMessageDisposable = MetaDisposable()
     private let deleteChatDisposable: MetaDisposable = MetaDisposable()
     private let loadSelectionMessagesDisposable: MetaDisposable = MetaDisposable()
-    private var currentRanks: CachedChannelAdminRanks?
+    private let currentRanks = Atomic<CachedChannelAdminRanks?>(value: nil)
     private let updateMediaDisposable = MetaDisposable()
     private let editCurrentMessagePhotoDisposable = MetaDisposable()
     private var editingSessionId: Int = 0
@@ -4101,6 +4101,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         })
 
         let previousHistoryViewUpdateId = Atomic<Int?>(value: nil)
+        let currentRanks = self.currentRanks
         let historyViewTransition = combineLatest(queue: queue,
                                                   historyViewUpdate,
                                                   appearanceSignal,
@@ -4192,7 +4193,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if case let .cacheEntry(id, data) = additionalEntry {
                         if id == cachedChannelAdminRanksEntryId(peerId: peerId), let data = data?.get(CachedChannelAdminRanks.self)  {
                             ranks = data
-                            self.currentRanks = data
+                            _ = currentRanks.swap(data)
                         }
                         break
                     }
@@ -5433,7 +5434,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         _ = peer.id
                         var _mustDeleteForEveryoneMessage: Bool = true
                         for message in messages {
-                            if !canDeleteMessage(message, account: context.account, chatLocation: chatLocation(), mode: mode, ranks: strongSelf.currentRanks) {
+                            if !canDeleteMessage(message, account: context.account, chatLocation: chatLocation(), mode: mode, ranks: strongSelf.currentRanks.with { $0 }) {
                                 canDelete = false
                             }
                             if !mustDeleteForEveryoneMessage(message) {
@@ -11558,7 +11559,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         var canForward:Bool = !messages.isEmpty && !context.isFrozen
                         if let chatInteraction = self?.chatInteraction {
                             for message in messages {
-                                if !canDeleteMessage(message, account: context.account, chatLocation: value.chatLocation, mode: mode, ranks: self?.currentRanks) {
+                                if !canDeleteMessage(message, account: context.account, chatLocation: value.chatLocation, mode: mode, ranks: self?.currentRanks.with { $0 }) {
                                     canDelete = false
                                 }
                                 if !canForwardMessage(message, chatInteraction: chatInteraction) {
