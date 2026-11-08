@@ -607,7 +607,7 @@ public class SplitView : View {
     public func needFullsize() {
         self.mustMinimisize = false
         self.isAutoMinimisize = false
-        self.state = .none
+        self.state = self.nextLayout
         self.forceNotice = true
         self.needsLayout = true
     }
