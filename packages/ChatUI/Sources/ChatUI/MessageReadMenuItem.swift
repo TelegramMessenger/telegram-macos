@@ -16,18 +16,98 @@ import TelegramMediaUtils
 import TelegramTheme
 import TelegramUtils
 import InlineStickerLayer
+import AlertsUI
 
 public func canDeleteReactionsInChat(message: Message) -> Bool {
-    guard let channel = message.peers[message.id.peerId] as? TelegramChannel else {
+    guard message.id.namespace == Namespaces.Message.Cloud,
+          message.reactionsAttribute?.canViewList == true else {
         return false
     }
-    if channel.groupAccess.isCreator {
-        return true
+    switch message.peers[message.id.peerId] {
+    case let channel as TelegramChannel:
+        guard case .group = channel.info, channel.participationStatus == .member else {
+            return false
+        }
+        return channel.hasPermission(.deleteAllMessages)
+    case let group as TelegramGroup:
+        guard group.membership == .Member else {
+            return false
+        }
+        switch group.role {
+        case .creator:
+            return true
+        case let .admin(rights, _):
+            return rights.rights.contains(.canDeleteMessages)
+        case .member:
+            return false
+        }
+    default:
+        return false
     }
-    if let rights = channel.adminRights, rights.rights.contains(.canDeleteMessages) {
-        return true
+}
+
+func reactionPeerModerationMenu(openProfile: @escaping () -> Void, deleteReaction: @escaping () -> Void, timestamp: String? = nil) -> ContextMenu {
+    let menu = ContextMenu()
+    menu.addItem(ContextMenuItem(strings().chatContextPeerOpenInfo, handler: openProfile, itemImage: MenuAnimation.menu_open_profile.value))
+    menu.addItem(ContextMenuItem(strings().deleteGroupMessagesDeleteReaction, handler: deleteReaction, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+    if let timestamp {
+        menu.addItem(ContextSeparatorItem())
+        let item = ContextMenuItem(timestamp, itemImage: MenuAnimation.menu_reactions.value, removeTail: false)
+        item.isEnabled = false
+        menu.addItem(item)
     }
-    return false
+    return menu
+}
+
+final class ReactionPeerModerationBinding {
+    private weak var item: ContextMenuItem?
+    private let message: Message
+    private let accountPeerId: PeerId
+    private let reactionPeerId: PeerId
+    private let reaction: MessageReaction.Reaction
+    private let timestamp: String?
+    private let openProfile: () -> Void
+    private let deleteReaction: (Message) -> Void
+    private var currentMessage: Message?
+
+    init(item: ContextMenuItem, message: Message, accountPeerId: PeerId, reactionPeerId: PeerId, reaction: MessageReaction.Reaction, timestamp: String? = nil, openProfile: @escaping () -> Void, deleteReaction: @escaping (Message) -> Void) {
+        self.item = item
+        self.message = message
+        self.accountPeerId = accountPeerId
+        self.reactionPeerId = reactionPeerId
+        self.reaction = reaction
+        self.timestamp = timestamp
+        self.openProfile = openProfile
+        self.deleteReaction = deleteReaction
+        update(peer: message.peers[message.id.peerId])
+    }
+
+    func update(peer: Peer?) {
+        if let peer, peer.id == message.id.peerId {
+            var peers = message.peers
+            peers[peer.id] = peer
+            currentMessage = message.withUpdatedPeers(peers)
+        } else {
+            currentMessage = nil
+        }
+        guard let item else { return }
+        if ReactionPeerMenu.canModerate(message: currentMessage, accountPeerId: accountPeerId, reactionPeerId: reactionPeerId, reaction: reaction) {
+            if item.submenu == nil {
+                item.submenu = reactionPeerModerationMenu(openProfile: openProfile, deleteReaction: { [weak self] in
+                    guard let self, let message = self.currentMessage,
+                          ReactionPeerMenu.canModerate(message: message, accountPeerId: self.accountPeerId, reactionPeerId: self.reactionPeerId, reaction: self.reaction) else {
+                        return
+                    }
+                    self.deleteReaction(message)
+                }, timestamp: timestamp)
+            }
+            item.handler = nil
+        } else {
+            item.submenu = nil
+            item.handler = openProfile
+        }
+        item.redraw?()
+    }
 }
 
 public final class MessageReadMenuRowItem : AppMenuRowItem {
@@ -255,7 +335,6 @@ public final class MessageReadMenuRowItem : AppMenuRowItem {
         let message = self.message
         let context = self.context
         let availableReactions = self.availableReactions
-        let canDeleteReactions = canDeleteReactionsInChat(message: message)
         let makeItem:(_ peer: (Peer, MessageReaction.Reaction?, Int32?)) -> ContextMenuItem = { [weak chatInteraction] peer in
             let title = peer.0.displayTitle.prefixWithDots(25)
 
@@ -283,7 +362,7 @@ public final class MessageReadMenuRowItem : AppMenuRowItem {
 
             let item = ReactionPeerMenu(title: title, handler: {
                 chatInteraction?.openInfo(peer.0.id, false, nil, nil)
-            }, peer: peer.0, context: context, reaction: reaction, readTimestamp: peer.2, message: message, canDelete: canDeleteReactions)
+            }, peer: peer.0, context: context, reaction: reaction, readTimestamp: peer.2, message: message, reactionValue: peer.1)
             let signal:Signal<(CGImage?, Bool), NoError>
             signal = peerAvatarImage(account: context.account, photo: .peer(peer.0, peer.0.smallProfileImage, peer.0.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer.0), nil, nil), displayDimensions: NSMakeSize(18 * System.backingScale, 18 * System.backingScale), font: .avatar(13), genCap: true, synchronousLoad: false) |> deliverOnMainQueue
             _ = signal.start(next: { [weak item] image, _ in
@@ -832,6 +911,18 @@ public final class ReactionPeerMenu : ContextMenuItem {
         case custom(Int64, TelegramMediaFile?)
         case stars(TelegramMediaFile, TelegramMediaFile?)
     }
+
+    static func canModerate(message: Message?, accountPeerId: PeerId, reactionPeerId: PeerId, reaction: MessageReaction.Reaction?) -> Bool {
+        guard let message, accountPeerId != reactionPeerId, let reaction else {
+            return false
+        }
+        switch reaction {
+        case .builtin, .custom:
+            return canDeleteReactionsInChat(message: message)
+        case .stars:
+            return false
+        }
+    }
     public enum Destination {
         case common
         case forward(callback: (PeerId, Int64?)->Void, canSelect: (Peer)->Bool)
@@ -845,8 +936,9 @@ public final class ReactionPeerMenu : ContextMenuItem {
     private let afterNameBadge: CGImage?
     private let message: Message?
     private let analyticsContext: AnalyticsContext
+    private var moderationBinding: ReactionPeerModerationBinding?
 
-    public init(title: String, handler:@escaping()->Void, peer: Peer, context: any AccountContextProtocol, reaction: Source?, readTimestamp: Int32? = nil, message: Message? = nil, destination: Destination = .common, afterNameBadge: CGImage? = nil, removeTail: Bool = true, overrideWidth: CGFloat? = nil, selfSaved: Bool = true, canDelete: Bool = false, analyticsContext: AnalyticsContext? = nil) {
+    public init(title: String, handler:@escaping()->Void, peer: Peer, context: any AccountContextProtocol, reaction: Source?, readTimestamp: Int32? = nil, message: Message? = nil, destination: Destination = .common, afterNameBadge: CGImage? = nil, removeTail: Bool = true, overrideWidth: CGFloat? = nil, selfSaved: Bool = true, reactionValue: MessageReaction.Reaction? = nil, analyticsContext: AnalyticsContext? = nil) {
         let inherited = message?.containsSecretMedia == true ? Analytics.shared.unresolvedContext() : (analyticsContext ?? Analytics.shared.unresolvedContext())
         let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message?.id.peerId ?? peer.id, inherited: inherited).restricting(peerId: peer.id)
         let presentation = origin.beginPresentation()
@@ -862,21 +954,49 @@ public final class ReactionPeerMenu : ContextMenuItem {
 
         super.init(title, handler: handler, removeTail: removeTail, overrideWidth: overrideWidth)
 
-        if canDelete, reaction != nil {
-            let menu = ContextMenu()
-            menu.addItem(ContextMenuItem(strings().messageContextDelete, handler: { [weak self] in
-                guard let self, let message = self.message else { return }
-                let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: self.analyticsContext).restricting(peerId: self.peer.id)
+        if case .common = destination, let message, let reactionValue, peer.id != context.peerId, reactionValue != .stars {
+            let timestamp = readTimestamp.map { stringForRelativeTimestamp(relativeTimestamp: $0, relativeTo: context.timestamp) }
+            let binding = ReactionPeerModerationBinding(item: self, message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue, timestamp: timestamp, openProfile: {
                 let presentation = origin.beginPresentation()
                 defer { presentation.end() }
-                let chatPeerId = message.id.peerId
-                guard let channel = message.peers[chatPeerId] as? TelegramChannel else {
-                    return
-                }
-                let reactionPeer = self.peer
-                showModal(with: DeleteGroupMessagesController(context: context, channel: channel, messages: [message], allPeers: Set([reactionPeer.id]), reactionAuthor: reactionPeer.id, analyticsContext: origin, onComplete: {}), for: context.window)
-            }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
-            self.submenu = menu
+                handler()
+            }, deleteReaction: { [weak self] message in
+                guard let self else { return }
+                let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: self.analyticsContext).restricting(peerId: peer.id)
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
+                let currentPeer = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId)) |> deliverOnMainQueue
+                _ = origin.preservingPresentation(currentPeer).startStandalone(next: { currentPeer in
+                    guard let currentPeer else { return }
+                    let chatPeer = currentPeer._asPeer()
+                    var peers = message.peers
+                    peers[peer.id] = peer
+                    peers[chatPeer.id] = chatPeer
+                    let message = message.withUpdatedPeers(peers)
+                    guard Self.canModerate(message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue) else { return }
+                    let confirmationPresentation = origin.beginPresentation()
+                    verifyAlert(for: context.window, header: strings().deleteGroupMessagesDeleteReaction, information: peer.displayTitle, ok: strings().confirmDelete, successHandler: { _ in
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        let refreshedPeer = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId)) |> deliverOnMainQueue
+                        _ = origin.preservingPresentation(refreshedPeer).startStandalone(next: { refreshedPeer in
+                            guard let refreshedPeer else { return }
+                            var peers = message.peers
+                            peers[refreshedPeer.id] = refreshedPeer._asPeer()
+                            let message = message.withUpdatedPeers(peers)
+                            guard Self.canModerate(message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue) else { return }
+                            _ = origin.preservingPresentation(context.engine.messages.deleteReaction(messageId: message.id, authorId: peer.id)).startStandalone()
+                        })
+                    }, onDeinit: {
+                        confirmationPresentation.end()
+                    })
+                })
+            })
+            self.moderationBinding = binding
+            let currentPeer = context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId)) |> deliverOnMainQueue
+            disposable.set(origin.preservingPresentation(currentPeer).start(next: { [weak binding] currentPeer in
+                binding?.update(peer: currentPeer?._asPeer())
+            }))
         }
 
         if peer.isCommunity, case let .forward(callback, canSelect) = destination {
@@ -955,7 +1075,7 @@ public final class ReactionPeerMenu : ContextMenuItem {
             }
         }
         ContextMenuItem.makeItemAvatar(self, account: context.account, peer: peer, source: .peer(peer, peer.smallProfileImage, peer.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer), message, nil), selfAsSaved: selfSaved)
-        if !peer.isCommunity {
+        if !peer.isCommunity, moderationBinding == nil {
             ContextMenuItem.checkPremiumRequired(self, context: context, peer: peer)
         }
     }
@@ -992,6 +1112,10 @@ public final class ReactionPeerMenu : ContextMenuItem {
     }
 }
 
+func reactionPeerMenuSubmenuInset(_ item: AppMenuRowItem) -> CGFloat {
+    return item.item.submenu != nil && item.showMoreIfNeeded ? 6 : 0
+}
+
 private final class ReactionPeerMenuItem : AppMenuRowItem {
     
     
@@ -1007,8 +1131,6 @@ private final class ReactionPeerMenuItem : AppMenuRowItem {
         self.readTimestamp = readTimestamp
         self.afterNameBadge = afterNameBadge
         super.init(.zero, item: item, interaction: interaction, presentation: presentation)
-        
-        self.showMoreIfNeeded = reaction == nil
         
         if item.image == nil {
             let image = generateImage(NSMakeSize(imageSize, imageSize), rotatedContext: { size, ctx in
@@ -1056,7 +1178,7 @@ private final class ReactionPeerMenuItem : AppMenuRowItem {
         var size = super.effectiveSize
         
         if let _ = reaction {
-            size.width += 16 + 2 + self.innerInset
+            size.width += 16 + 2 + self.innerInset + reactionPeerMenuSubmenuInset(self)
         }
         
         if let s = PremiumStatusControl.controlSize(peer, false, left: false), peer.id != context.peerId {
@@ -1135,7 +1257,19 @@ private final class ReadTimestampView : View {
     }
 }
 
-private final class ReactionPeerMenuItemView : AppMenuRowView {
+class ReactionPeerMenuRowView: AppMenuRowView {
+    override func invokeClick() {
+        if let item = self.item as? AppMenuRowItem, item.item.submenu != nil, item.item.handler == nil {
+            if item.item.isEnabled {
+                item.interaction?.presentSubmenu(item.item)
+            }
+        } else {
+            super.invokeClick()
+        }
+    }
+}
+
+private final class ReactionPeerMenuItemView : ReactionPeerMenuRowView {
     private let imageView = AnimationLayerContainer(frame: NSMakeRect(0, 0, 16, 16))
     private var statusControl: PremiumStatusControl?
     private let delayDisposable = MetaDisposable()
@@ -1167,12 +1301,11 @@ private final class ReactionPeerMenuItemView : AppMenuRowView {
         
         if let statusControl = statusControl {
             statusControl.centerY(x: maxX)
-            imageView.centerY(x: self.rightX - imageView.frame.width)
             maxX += statusControl.frame.width + 2
 
         }
-        
-        imageView.centerY(x: self.rightX - imageView.frame.width)
+
+        imageView.centerY(x: self.rightX - imageView.frame.width - reactionPeerMenuSubmenuInset(item))
 
         if let timestamp = timestamp {
             timestamp.centerY(x: self.textX)
@@ -1208,7 +1341,7 @@ private final class ReactionPeerMenuItemView : AppMenuRowView {
         guard let item = self.item as? ReactionPeerMenuItem else {
             return
         }
-        if state == .Hover, let timestamp = item.readTimestamp {
+        if state == .Hover, item.item.submenu == nil, let timestamp = item.readTimestamp {
             contentView.change(pos: NSMakePoint(0, -contentView.frame.height), animated: true, duration: 0.35, timingFunction: .spring)
             contentView.change(opacity: 0, animated: true)
 
