@@ -2091,7 +2091,7 @@ public class ChatServiceItem: ChatRowItem {
                         }
                         attributedString.detectBoldColorInString(with: .medium(.text))
                         
-                        let purpose: Star_TransactionPurpose = .starGift(gift: .unique(gift), convertStars: nil, text: text, entities: nil, nameHidden: false, savedToProfile: savedToProfile, converted: false, fromProfile: false, upgraded: true, prepaidUpgradeHash: nil, transferStars: transferStars, canExportDate: canExportDate, reference: .message(messageId: message.id), sender: senderId.flatMap { message.peers[$0].flatMap(EnginePeer.init)}, saverId: saverId, canTransferDate: canTransferDate, canResaleDate: canResaleDate, dropOriginalDetailsStars: dropOriginalDetailsStars, canUpgrade: false, number: nil, isRefunded: false, canCraftAt: canCraftAt, craftChancePermille: gift.craftChancePermille, upgradeStars: nil)
+                        let purpose: Star_TransactionPurpose = .starGift(gift: .unique(gift), convertStars: nil, text: giftText, entities: giftEntities, nameHidden: nameHidden, savedToProfile: savedToProfile, converted: false, fromProfile: false, upgraded: true, prepaidUpgradeHash: nil, transferStars: transferStars, canExportDate: canExportDate, reference: .message(messageId: message.id), sender: senderId.flatMap { message.peers[$0].flatMap(EnginePeer.init)} ?? message.author.flatMap(EnginePeer.init), saverId: saverId, canTransferDate: canTransferDate, canResaleDate: canResaleDate, dropOriginalDetailsStars: dropOriginalDetailsStars, canUpgrade: false, number: nil, isRefunded: false, canCraftAt: canCraftAt, craftChancePermille: gift.craftChancePermille, upgradeStars: nil)
                         
 
                         
