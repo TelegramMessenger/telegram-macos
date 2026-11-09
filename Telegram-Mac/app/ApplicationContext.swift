@@ -1411,6 +1411,9 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
             pendingApplyWindowChrome = false
             applyWindowChrome(forState: self.view.splitView.state)
         }
+        if let mode = appliedChromeMode {
+            window.applyCornerRadius(for: mode)
+        }
     }
 
     private func applyWindowChrome(forState state: SplitViewState) {
@@ -1438,7 +1441,7 @@ extension Window {
             let selector = Selector(("_setCornerRadius:"))
             if self.responds(to: selector) {
                 typealias SetCornerRadius = @convention(c) (AnyObject, Selector, Double) -> Void
-                let radius: Double = mode == .standard ? 28 : 0
+                let radius: Double = mode == .standard && !isFullScreen ? 28 : 0
                 unsafeBitCast(self.method(for: selector), to: SetCornerRadius.self)(self, selector, radius)
             }
         }
