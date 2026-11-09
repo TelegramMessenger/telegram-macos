@@ -2741,6 +2741,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     let initialState = State(source: source, gift: gift, ignoreUpgradeGifts: Set(), transaction: transaction, converted: source.isQuickLook, purpose: purpose, attributes: source.attributes, accountPeerId: context.peerId, pinnedInfo: pinnedInfo)
     
     var close:(()->Void)? = nil
+    var closeWithoutMorph:(()->Void)? = nil
     
     
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
@@ -3277,7 +3278,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
             showModalText(for: window, text: !pinnedInfo.pinnedInfo ? strings().giftTooltipPinned : strings().giftTooltipUnpinned)
         }
     }, openPeer: { peer, toChat in
-        close?()
+        closeWithoutMorph?()
         if toChat {
             StarsHooks.shared.openChat(context, peer.id, nil)
         } else {
@@ -3893,6 +3894,10 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
 
     close = { [weak modalController] in
         modalController?.modal?.close()
+    }
+
+    closeWithoutMorph = { [weak modalController] in
+        modalController?.modal?.close(animationType: .noMorph)
     }
 
     return modalController
