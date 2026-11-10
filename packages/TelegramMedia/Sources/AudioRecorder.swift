@@ -7,124 +7,96 @@ import AVFoundation
 import TelegramCore
 
 private final class CustomAudioConverter {
-    struct Format: Equatable {
-        let numChannels: Int
-        let sampleRate: Int
-    }
+    private let inputFormat: AVAudioFormat
+    private let outputBuffer: AVAudioPCMBuffer
+    private let converter: AVAudioConverter
+    private let bytesPerFrame: UInt32
+    private var hasInput = false
+    private var isFinished = false
 
-    let format: Format
-
-    var asbd: AudioStreamBasicDescription
-    var currentBuffer: AudioBuffer?
-    var currentBufferOffset: UInt32 = 0
-
-    init(asbd: AudioStreamBasicDescription) {
-        self.asbd = asbd
-        self.format = Format(
-            numChannels: Int(asbd.mChannelsPerFrame),
-            sampleRate: Int(asbd.mSampleRate)
-        )
+    init?(asbd: AudioStreamBasicDescription) {
+        var description = asbd
+        guard description.mFormatID == kAudioFormatLinearPCM, description.mChannelsPerFrame == 1,
+            description.mSampleRate.isFinite, description.mSampleRate > 0,
+            description.mBytesPerFrame > 0,
+            let inputFormat = AVAudioFormat(streamDescription: &description),
+            let outputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: Double(opusDecodedSampleRate), channels: 1, interleaved: true),
+            let converter = AVAudioConverter(from: inputFormat, to: outputFormat),
+            let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: 4096) else {
+            return nil
+        }
+        self.inputFormat = inputFormat
+        self.outputBuffer = outputBuffer
+        self.converter = converter
+        self.bytesPerFrame = description.mBytesPerFrame
     }
 
     func convert(buffer: AudioBuffer) -> Data? {
-                
-        let bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
-
-        
-
-        let size = bufferList.mBuffers.mDataByteSize
-        guard size != 0, let mData = bufferList.mBuffers.mData else {
+        guard !self.isFinished, buffer.mDataByteSize.isMultiple(of: self.bytesPerFrame) else {
             return nil
         }
-
-        var outputDescription = AudioStreamBasicDescription(
-            mSampleRate: 48000.0,
-            mFormatID: kAudioFormatLinearPCM,
-            mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: 2,
-            mFramesPerPacket: 1,
-            mBytesPerFrame: 2,
-            mChannelsPerFrame: 1,
-            mBitsPerChannel: 16,
-            mReserved: 0
-        )
-        var maybeAudioConverter: AudioConverterRef?
-        let _ = AudioConverterNew(&asbd, &outputDescription, &maybeAudioConverter)
-        guard let audioConverter = maybeAudioConverter else {
+        guard buffer.mDataByteSize > 0 else {
+            return Data()
+        }
+        let frameCount = buffer.mDataByteSize / self.bytesPerFrame
+        guard let data = buffer.mData,
+            let inputBuffer = AVAudioPCMBuffer(pcmFormat: self.inputFormat, frameCapacity: frameCount) else {
             return nil
         }
-        
-        self.currentBuffer = AudioBuffer(
-            mNumberChannels: asbd.mChannelsPerFrame,
-            mDataByteSize: UInt32(size),
-            mData: mData
-        )
-        self.currentBufferOffset = 0
+        inputBuffer.frameLength = frameCount
+        guard let destination = inputBuffer.mutableAudioBufferList.pointee.mBuffers.mData else {
+            return nil
+        }
+        memcpy(destination, data, Int(buffer.mDataByteSize))
+        self.hasInput = true
+        return self.convert(input: inputBuffer, endOfStream: false)
+    }
 
-        var numPackets: UInt32?
-        let outputSize = 32768 * 2
-        var outputBuffer = Data(count: outputSize)
-        outputBuffer.withUnsafeMutableBytes { (outputBytes: UnsafeMutableRawBufferPointer) -> Void in
-            var outputBufferList = AudioBufferList()
-            outputBufferList.mNumberBuffers = 1
-            outputBufferList.mBuffers.mNumberChannels = outputDescription.mChannelsPerFrame
-            outputBufferList.mBuffers.mDataByteSize = UInt32(outputSize)
-            outputBufferList.mBuffers.mData = outputBytes.baseAddress!
+    func finish() -> Data? {
+        guard !self.isFinished else {
+            return Data()
+        }
+        self.isFinished = true
+        guard self.hasInput else {
+            return Data()
+        }
+        return self.convert(input: nil, endOfStream: true)
+    }
 
-            var outputDataPacketSize = UInt32(outputSize) / outputDescription.mBytesPerPacket
-
-            let result = AudioConverterFillComplexBuffer(
-                audioConverter,
-                converterComplexInputDataProc,
-                Unmanaged.passUnretained(self).toOpaque(),
-                &outputDataPacketSize,
-                &outputBufferList,
-                nil
-            )
-            if result == noErr {
-                numPackets = outputDataPacketSize
+    private func convert(input: AVAudioPCMBuffer?, endOfStream: Bool) -> Data? {
+        var suppliedInput = false
+        var data = Data()
+        while true {
+            self.outputBuffer.frameLength = 0
+            var error: NSError?
+            let status = self.converter.convert(to: self.outputBuffer, error: &error) { _, inputStatus in
+                if let input = input, !suppliedInput {
+                    suppliedInput = true
+                    inputStatus.pointee = .haveData
+                    return input
+                }
+                inputStatus.pointee = endOfStream ? .endOfStream : .noDataNow
+                return nil
+            }
+            guard status != .error else {
+                return nil
+            }
+            if self.outputBuffer.frameLength > 0 {
+                let buffer = self.outputBuffer.audioBufferList.pointee.mBuffers
+                data.append(buffer.mData!.assumingMemoryBound(to: UInt8.self), count: Int(buffer.mDataByteSize))
+            }
+            switch status {
+            case .haveData:
+                guard self.outputBuffer.frameLength > 0 else { return nil }
+            case .inputRanDry, .endOfStream:
+                return data
+            case .error:
+                return nil
+            @unknown default:
+                return nil
             }
         }
-
-        AudioConverterDispose(audioConverter)
-
-        if let numPackets = numPackets {
-            outputBuffer.count = Int(numPackets * outputDescription.mBytesPerPacket)
-            return outputBuffer
-        } else {
-            return nil
-        }
     }
-}
-
-
-
-private func converterComplexInputDataProc(inAudioConverter: AudioConverterRef, ioNumberDataPackets: UnsafeMutablePointer<UInt32>, ioData: UnsafeMutablePointer<AudioBufferList>, ioDataPacketDescription: UnsafeMutablePointer<UnsafeMutablePointer<AudioStreamPacketDescription>?>?, inUserData: UnsafeMutableRawPointer?) -> Int32 {
-    guard let inUserData = inUserData else {
-        ioNumberDataPackets.pointee = 0
-        return 0
-    }
-    let instance = Unmanaged<CustomAudioConverter>.fromOpaque(inUserData).takeUnretainedValue()
-    guard let currentBuffer = instance.currentBuffer else {
-        ioNumberDataPackets.pointee = 0
-        return 0
-    }
-    let currentInputDescription = instance.asbd
-
-    let numPacketsInBuffer = currentBuffer.mDataByteSize / currentInputDescription.mBytesPerPacket
-    let numPacketsAvailable = numPacketsInBuffer - instance.currentBufferOffset / currentInputDescription.mBytesPerPacket
-
-    let numPacketsToRead = min(ioNumberDataPackets.pointee, numPacketsAvailable)
-    ioNumberDataPackets.pointee = numPacketsToRead
-
-    ioData.pointee.mNumberBuffers = 1
-    ioData.pointee.mBuffers.mData = currentBuffer.mData?.advanced(by: Int(instance.currentBufferOffset))
-    ioData.pointee.mBuffers.mDataByteSize = currentBuffer.mDataByteSize - instance.currentBufferOffset
-    ioData.pointee.mBuffers.mNumberChannels = currentBuffer.mNumberChannels
-
-    instance.currentBufferOffset += numPacketsToRead * currentInputDescription.mBytesPerPacket
-
-    return 0
 }
 
 
@@ -387,10 +359,9 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
     
     private var micLevelPeak: Int16 = 0
     private var micLevelPeakCount: Int = 0
-    private var sampleRate: Int32 = 0
     
     private var encoderState: [AnyHashable : Any]?
-    private var convertor: CustomAudioConverter!
+    private var convertor: CustomAudioConverter?
     
     private var recordingStateUpdateTimestamp: Double?
     private var pcmTap: ((Data) -> Void)?
@@ -496,13 +467,16 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
         }
         
         var audioStreamDescription = audioRecorderNativeStreamDescription(inputSampleRate.mMaximum)
-        sampleRate = Int32(inputSampleRate.mMaximum)
         guard AudioUnitSetProperty(audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &audioStreamDescription, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)) == noErr else {
             AudioComponentInstanceDispose(audioUnit)
             return
         }
         
-        self.convertor = CustomAudioConverter(asbd: audioStreamDescription)
+        guard let convertor = CustomAudioConverter(asbd: audioStreamDescription) else {
+            AudioComponentInstanceDispose(audioUnit)
+            return
+        }
+        self.convertor = convertor
         
         guard AudioUnitSetProperty(audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &audioStreamDescription, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)) == noErr else {
             AudioComponentInstanceDispose(audioUnit)
@@ -581,6 +555,19 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
             if status != noErr {
                 trace1("ManagedAudioRecorder", what: "AudioComponentInstanceDispose returned \(status)")
             }
+        }
+        self.flushAudioConverter()
+    }
+
+    private func flushAudioConverter() {
+        guard let convertor = self.convertor else {
+            return
+        }
+        self.convertor = nil
+        if let data = convertor.finish() {
+            self.processAudioData(data)
+        } else {
+            trace1("ManagedAudioRecorder", what: "Audio converter flush failed")
         }
     }
     
@@ -714,93 +701,80 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
 //    }
     
     func processAndDisposeAudioBuffer(_ buffer: AudioBuffer) {
-            assert(self.queue.isCurrent())
-            
-            var buffer = buffer
-            
-            if(sampleRate == 16000 || sampleRate == 24000) {
-                let ratio = UInt32(48000.0 / Float(sampleRate))
-                let initialBuffer=malloc(Int(buffer.mDataByteSize+(ratio - 1)));
-                memcpy(initialBuffer, buffer.mData, Int(buffer.mDataByteSize));
-                buffer.mData=realloc(buffer.mData, Int(buffer.mDataByteSize*ratio))
-                let values = initialBuffer!.assumingMemoryBound(to: Int16.self)
-                let resampled = buffer.mData!.assumingMemoryBound(to: Int16.self)
-                values[Int(buffer.mDataByteSize/2)]=values[Int(buffer.mDataByteSize/2)-1]
-                for i: Int in 0 ..< Int(buffer.mDataByteSize/2) {
-                    let intRatio = Int(ratio)
-                    if sampleRate == 16000 {
-                        resampled[i*intRatio]=values[i]
-                        resampled[i*intRatio+1]=values[i]/3+values[i+1]/3*2
-                        resampled[i*intRatio+2]=values[i]/3*2+values[i+1]/3
-                    } else {
-                        resampled[i*intRatio]=values[i]
-                        resampled[i*intRatio+1]=values[i]/2+values[i+1]/2
-                    }
-                }
-                free(initialBuffer)
-                buffer.mDataByteSize*=ratio
-            }
-            
-            defer {
-                free(buffer.mData)
-            }
-            
-            let millisecondsPerPacket = 60
-            let encoderPacketSizeInBytes = 16000 / 1000 * millisecondsPerPacket * 2
-            
-            let currentEncoderPacket = malloc(encoderPacketSizeInBytes)!
-            defer {
-                free(currentEncoderPacket)
-            }
-            
-            var bufferOffset = 0
-            
-            while true {
-                var currentEncoderPacketSize = 0
-                
-                while currentEncoderPacketSize < encoderPacketSizeInBytes {
-                    if audioBuffer.count != 0 {
-                        let takenBytes = min(self.audioBuffer.count, encoderPacketSizeInBytes - currentEncoderPacketSize)
-                        if takenBytes != 0 {
-                            self.audioBuffer.withUnsafeBytes { (bytes: UnsafePointer<Int8>) -> Void in
-                                memcpy(currentEncoderPacket.advanced(by: currentEncoderPacketSize), bytes, takenBytes)
-                            }
-                            self.audioBuffer.replaceSubrange(0 ..< takenBytes, with: Data())
-                            currentEncoderPacketSize += takenBytes
+        assert(self.queue.isCurrent())
+        defer {
+            free(buffer.mData)
+        }
+        guard !self.paused else {
+            return
+        }
+        guard let data = self.convertor?.convert(buffer: buffer) else {
+            trace1("ManagedAudioRecorder", what: "Audio conversion failed")
+            self.convertor = nil
+            self.stop()
+            return
+        }
+        self.processAudioData(data)
+    }
+
+    private func processAudioData(_ data: Data) {
+        guard !data.isEmpty else {
+            return
+        }
+
+        let millisecondsPerPacket = 60
+        let encoderPacketSizeInBytes = 16000 / 1000 * millisecondsPerPacket * 2
+
+        let currentEncoderPacket = malloc(encoderPacketSizeInBytes)!
+        defer {
+            free(currentEncoderPacket)
+        }
+
+        var bufferOffset = 0
+
+        while true {
+            var currentEncoderPacketSize = 0
+
+            while currentEncoderPacketSize < encoderPacketSizeInBytes {
+                if audioBuffer.count != 0 {
+                    let takenBytes = min(self.audioBuffer.count, encoderPacketSizeInBytes - currentEncoderPacketSize)
+                    if takenBytes != 0 {
+                        self.audioBuffer.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Void in
+                            memcpy(currentEncoderPacket.advanced(by: currentEncoderPacketSize), bytes.baseAddress!, takenBytes)
                         }
-                    } else if bufferOffset < Int(buffer.mDataByteSize) {
-                        let takenBytes = min(Int(buffer.mDataByteSize) - bufferOffset, encoderPacketSizeInBytes - currentEncoderPacketSize)
-                        if takenBytes != 0 {
-                            self.audioBuffer.withUnsafeBytes { (bytes: UnsafePointer<Int8>) -> Void in
-                                memcpy(currentEncoderPacket.advanced(by: currentEncoderPacketSize), buffer.mData?.advanced(by: bufferOffset), takenBytes)
-                            }
-                            bufferOffset += takenBytes
-                            currentEncoderPacketSize += takenBytes
-                        }
-                    } else {
-                        break
+                        self.audioBuffer.replaceSubrange(0 ..< takenBytes, with: Data())
+                        currentEncoderPacketSize += takenBytes
                     }
-                }
-                
-                if currentEncoderPacketSize < encoderPacketSizeInBytes {
-                    self.audioBuffer.append(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), count: currentEncoderPacketSize)
-                    break
+                } else if bufferOffset < data.count {
+                    let takenBytes = min(data.count - bufferOffset, encoderPacketSizeInBytes - currentEncoderPacketSize)
+                    if takenBytes != 0 {
+                        data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Void in
+                            memcpy(currentEncoderPacket.advanced(by: currentEncoderPacketSize), bytes.baseAddress!.advanced(by: bufferOffset), takenBytes)
+                        }
+                        bufferOffset += takenBytes
+                        currentEncoderPacketSize += takenBytes
+                    }
                 } else {
-                    
-                    self.processWaveformPreview(samples: currentEncoderPacket.assumingMemoryBound(to: Int16.self), count: currentEncoderPacketSize / 2)
-                    
-                    self.oggWriter.writeFrame(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(currentEncoderPacketSize))
-                    self.pcmTap?(Data(bytes: currentEncoderPacket, count: currentEncoderPacketSize))
-                    liveUploading?.fileDidChangedSize(false)
-                    let timestamp = CACurrentMediaTime()
-                    if self.recordingStateUpdateTimestamp == nil || self.recordingStateUpdateTimestamp! + 0.1 < timestamp {
-                        self.recordingStateUpdateTimestamp = timestamp
-                        self.recordingState.set(.recording(duration: oggWriter.encodedDuration(), durationMediaTimestamp: timestamp))
-                    }
-                    
+                    break
+                }
+            }
+
+            if currentEncoderPacketSize < encoderPacketSizeInBytes {
+                self.audioBuffer.append(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), count: currentEncoderPacketSize)
+                break
+            } else {
+                self.processWaveformPreview(samples: currentEncoderPacket.assumingMemoryBound(to: Int16.self), count: currentEncoderPacketSize / 2)
+                self.oggWriter.writeFrame(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(currentEncoderPacketSize))
+                self.pcmTap?(Data(bytes: currentEncoderPacket, count: currentEncoderPacketSize))
+                liveUploading?.fileDidChangedSize(false)
+                let timestamp = CACurrentMediaTime()
+                if self.recordingStateUpdateTimestamp == nil || self.recordingStateUpdateTimestamp! + 0.1 < timestamp {
+                    self.recordingStateUpdateTimestamp = timestamp
+                    self.recordingState.set(.recording(duration: oggWriter.encodedDuration(), durationMediaTimestamp: timestamp))
                 }
             }
         }
+    }
 
     
     func processWaveformPreview(samples: UnsafePointer<Int16>, count: Int) {
@@ -911,6 +885,7 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
     }
 
     func takeData() -> RecordedAudioData? {
+        self.stop()
         guard self.oggWriter.writeFrame(nil, frameByteCount: 0) else {
             return nil
         }
