@@ -33,6 +33,7 @@ public struct AccessibilityIssue: Equatable, CustomStringConvertible {
 public enum AccessibilityAudit {
     private static let interactiveRoles: Set<NSAccessibility.Role> = [
         .button, .checkBox, .radioButton, .popUpButton, .menuButton, .link, .slider, .incrementor, .disclosureTriangle,
+        .textField, .textArea, .comboBox,
     ]
     private static let minimumImageSide: CGFloat = 12
 

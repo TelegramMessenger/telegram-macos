@@ -403,4 +403,13 @@ final class AccessibilityBaseTests: XCTestCase {
         XCTAssertTrue(row.accessibilityPerformPress())
         XCTAssertEqual(row.events, ["info", "open"])
     }
+    func testUnlabeledTextFieldIsReported() {
+        let field = NSTextField(frame: NSMakeRect(0, 0, 200, 24))
+        field.setAccessibilityLabel(nil)
+        host(field)
+        XCTAssertEqual(field.accessibilityRole(), .textField)
+        XCTAssertEqual(AccessibilityAudit.audit(window).map(\.kind), [.unlabeledControl])
+        field.setAccessibilityLabel("Search")
+        XCTAssertEqual(AccessibilityAudit.audit(window), [])
+    }
 }
