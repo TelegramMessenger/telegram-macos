@@ -38,12 +38,14 @@ public protocol Peer {
     var id: PeerId { get }
     var associatedPeerId: PeerId? { get }
     var associatedPeerOverridesIdentity: Bool { get }
+    var notificationSettingsPeerId: PeerId? { get }
 }
 
 class TestPeer: Peer {
     let id: PeerId
     let associatedPeerId: PeerId?
     var associatedPeerOverridesIdentity: Bool { associatedPeerId != nil }
+    var notificationSettingsPeerId: PeerId? { nil }
 
     init(_ id: Int64, associatedId: Int64? = nil) {
         self.id = PeerId(id)
@@ -55,7 +57,9 @@ final class TelegramUser: TestPeer {
     var botInfo: Bool?
 }
 
-final class TelegramSecretChat: TestPeer {}
+final class TelegramSecretChat: TestPeer {
+    override var notificationSettingsPeerId: PeerId? { associatedPeerId }
+}
 final class TelegramGroup: TestPeer {}
 final class TelegramCommunity: TestPeer {}
 
@@ -129,8 +133,8 @@ final class Transaction {
     var peer: Peer?
     var groupId: PeerGroupId? = .root
     var isUnread = false
-    var isContact = false
-    var muted: Bool?
+    var contactPeerIds: Set<PeerId> = []
+    var mutedPeers: [PeerId: Bool] = [:]
     var globallyMuted = false
     var mentionCount: Int32 = 0
     var pendingMentionCount: Int32 = 0
@@ -154,8 +158,7 @@ final class Transaction {
     }
 
     func isPeerContact(peerId: PeerId) -> Bool {
-        precondition(peer?.id == peerId)
-        return isContact
+        return contactPeerIds.contains(peerId)
     }
 
     func getGlobalNotificationSettings() -> PostboxGlobalNotificationSettings {
@@ -163,8 +166,7 @@ final class Transaction {
     }
 
     func getPeerNotificationSettings(id: PeerId) -> PeerNotificationSettings? {
-        precondition(peer?.id == id)
-        return muted.map(TestNotificationSettings.init)
+        return mutedPeers[id].map(TestNotificationSettings.init)
     }
 
     func getMessageTagSummary(peerId: PeerId, threadId: Int64?, tagMask: MessageTags, namespace: MessageId.Namespace, customTag: Data?) -> MessageHistoryTagNamespaceSummary? {
@@ -212,6 +214,53 @@ private enum Tests {
         }
     }
 
+    static func testSecretChatSettings() {
+        let secret = TelegramSecretChat(7, associatedId: peer.id.toInt64())
+        let transaction = Transaction(peer: secret)
+        var data = ChatListFilterData()
+        data.categories = [.contacts]
+        transaction.contactPeerIds = [peer.id]
+        assertMembership(true, transaction: transaction, data: data)
+        data.categories = [.nonContacts]
+        assertMembership(false, transaction: transaction, data: data)
+        transaction.contactPeerIds = [secret.id]
+        assertMembership(true, transaction: transaction, data: data)
+        data.categories = [.contacts]
+        assertMembership(false, transaction: transaction, data: data)
+        print("PASS secret chat contact categories follow the associated user")
+
+        data = ChatListFilterData()
+        data.excludeMuted = true
+        transaction.mutedPeers = [secret.id: false, peer.id: true]
+        assertMembership(false, transaction: transaction, data: data)
+        transaction.mutedPeers = [secret.id: true, peer.id: false]
+        assertMembership(true, transaction: transaction, data: data)
+        transaction.mutedPeers = [secret.id: false]
+        transaction.globallyMuted = true
+        assertMembership(false, transaction: transaction, data: data)
+        transaction.mutedPeers[peer.id] = false
+        assertMembership(true, transaction: transaction, data: data)
+        transaction.mutedPeers = [secret.id: true]
+        transaction.globallyMuted = false
+        assertMembership(true, transaction: transaction, data: data)
+        print("PASS secret chat mute overrides and global fallback use the associated user's settings")
+
+        data.excludeRead = true
+        transaction.isUnread = false
+        assertMembership(false, transaction: transaction, data: data)
+        transaction.isUnread = true
+        assertMembership(true, transaction: transaction, data: data)
+        transaction.mutedPeers[peer.id] = true
+        assertMembership(false, transaction: transaction, data: data)
+        transaction.isUnread = false
+        transaction.mentionCount = 2
+        transaction.pendingMentionCount = 1
+        assertMembership(true, transaction: transaction, data: data)
+        transaction.pendingMentionCount = 2
+        assertMembership(false, transaction: transaction, data: data)
+        print("PASS secret chat unread state and unconsumed mentions retain the secret chat identity")
+    }
+
     static func main() {
         let transaction = Transaction(peer: peer)
         var unreadFolder = ChatListFilterData()
@@ -236,7 +285,7 @@ private enum Tests {
         var data = unreadFolder
         data.excludeMuted = true
         transaction.isUnread = true
-        transaction.muted = true
+        transaction.mutedPeers[peer.id] = true
         assertMembership(false, transaction: transaction, data: data)
         transaction.mentionCount = 2
         transaction.pendingMentionCount = 1
@@ -247,22 +296,22 @@ private enum Tests {
         transaction.mentionCount = 0
         transaction.pendingMentionCount = 0
         transaction.isUnread = true
-        transaction.muted = nil
+        transaction.mutedPeers[peer.id] = nil
         transaction.globallyMuted = true
         assertMembership(false, transaction: transaction, data: data)
-        transaction.muted = false
+        transaction.mutedPeers[peer.id] = false
         assertMembership(true, transaction: transaction, data: data)
         print("PASS current unread, peer/global mute and unconsumed mention summaries use canonical folder semantics")
 
         data = ChatListFilterData()
         data.categories = [.contacts]
-        transaction.isContact = true
+        transaction.contactPeerIds = [peer.id]
         assertMembership(true, transaction: transaction, data: data)
-        transaction.isContact = false
+        transaction.contactPeerIds = []
         assertMembership(false, transaction: transaction, data: data)
         data.categories = [.nonContacts]
         assertMembership(true, transaction: transaction, data: data)
-        transaction.isContact = true
+        transaction.contactPeerIds = [peer.id]
         assertMembership(false, transaction: transaction, data: data)
         print("PASS contact and non-contact category changes are read for the incoming peer")
 
@@ -270,7 +319,7 @@ private enum Tests {
         data.excludeMuted = true
         data.excludeArchived = true
         transaction.isUnread = false
-        transaction.muted = true
+        transaction.mutedPeers[peer.id] = true
         transaction.groupId = Namespaces.PeerGroup.archive
         data.includePeers.peers = [peer.id]
         assertMembership(true, transaction: transaction, data: data)
@@ -302,6 +351,8 @@ private enum Tests {
         precondition(criteria(secretPolicy, for: .init(accountId: account, peerId: secret.id.toInt64())).hasPrefix("telegram-focus:\(account):\(secret.id.toInt64());"))
         precondition(!secretPolicy.includes(accountId: account, peerId: peer.id.toInt64(), effect: .notifications))
         print("PASS associated peer folder rules retain the actual namespaced notification chat identity")
+
+        testSecretChatSettings()
 
         let explicit = FocusChatIdentifier(accountId: account, peerId: peer.id.toInt64())
         let explicitPolicy = policy(transaction, unreadFolder, explicitPeers: [explicit])

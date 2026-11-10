@@ -25,9 +25,10 @@ private struct FocusNotificationChatState {
         }
         self.peer = peer
         self.groupId = groupId
+        let notificationSettingsPeerId = peer.notificationSettingsPeerId ?? peer.id
         isUnread = transaction.getCombinedPeerReadState(peerId)?.isUnread ?? false
-        isContact = transaction.isPeerContact(peerId: peerId)
-        isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: transaction.getGlobalNotificationSettings(), peer: peer, peerSettings: transaction.getPeerNotificationSettings(id: peerId))
+        isContact = transaction.isPeerContact(peerId: notificationSettingsPeerId)
+        isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: transaction.getGlobalNotificationSettings(), peer: peer, peerSettings: transaction.getPeerNotificationSettings(id: notificationSettingsPeerId))
     }
 
     func belongs(to predicate: ChatListFilterPredicate?, transaction: Transaction) -> Bool {

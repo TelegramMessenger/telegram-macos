@@ -190,6 +190,11 @@ without invalidating an old system predicate. Notification delivery must obtain
 current per-chat folder membership before the local gate, sound and criteria are
 created; the debounced picker catalogue is not a delivery-time authority.
 
+Delivery-time folder evaluation resolves contact status and individual mute
+settings through the peer's notification-settings identity, matching the chat-list
+view predicate. For a secret chat these belong to the associated user; unread
+state, mention summaries and notification identity still belong to the secret chat.
+
 State recovery follows Apple's extension/shared-storage design. It restores the
 last configuration delivered by macOS; it cannot independently establish current
 system state if macOS fails to execute the extension. No private Focus APIs or
@@ -216,6 +221,8 @@ test uses lightweight transaction fixtures around the production projection.
 The notification test combines the production live adapter and folder mapper with
 the pinned Postbox predicate and mute resolver, checking a newly unread chat
 against both selection rules without waiting for catalogue publication.
+Secret-chat cases give the chat and associated user opposite contact/mute values,
+cover global mute fallback and keep unread/mention lookups on the secret chat.
 Injected resolver checks cover a configuration change during a pending lookup,
 fallbacks and avoiding unnecessary lookups. Native-query checks compile actual
 extension sources against isolated providers and verify ID-based uniqueness,
