@@ -18,6 +18,35 @@ open class CodeEntryControl : View {
         
         public var locked: Bool = false
 
+        public var accessibilityPosition: Int = 0
+        public var accessibilityTotal: Int = 0
+        public var accessibilityLabelProvider: ((Int, Int) -> String?)?
+
+        public override func accessibilityRole() -> NSAccessibility.Role? {
+            return .textField
+        }
+
+        public override func accessibilityLabel() -> String? {
+            if let provider = accessibilityLabelProvider, let label = provider(accessibilityPosition + 1, accessibilityTotal), !label.isEmpty {
+                return label
+            }
+            return super.accessibilityLabel()
+        }
+
+        public override func accessibilityValue() -> Any? {
+            guard let current = current else {
+                return nil
+            }
+            return "\(current)"
+        }
+
+        public override func accessibilityPerformPress() -> Bool {
+            guard !locked, userInteractionEnabled else {
+                return false
+            }
+            return window?.makeFirstResponder(self) ?? false
+        }
+
         public required init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             layer?.cornerRadius = 10
@@ -112,6 +141,7 @@ open class CodeEntryControl : View {
                         }
                     }
                     self.current = number
+                    NSAccessibility.post(element: self, notification: .valueChanged)
                     self.next?(self, false)
                 } else {
                     self.shake(beep: true)
@@ -122,6 +152,7 @@ open class CodeEntryControl : View {
                 }
                 self.textView = nil
                 self.current = nil
+                NSAccessibility.post(element: self, notification: .valueChanged)
             }
         }
         
@@ -179,6 +210,7 @@ open class CodeEntryControl : View {
     
     public var takeNext:((String)->Void)?
     public var takeError:(()->Void)?
+    public var accessibilityElementLabel: ((Int, Int) -> String?)?
 
     public var locked: Bool = false
     public required init(frame frameRect: NSRect) {
@@ -253,8 +285,12 @@ open class CodeEntryControl : View {
     public override func layout() {
         super.layout()
         var x: CGFloat = 10
-        for subview in subviews {
+        let elements = subviews.compactMap { $0 as? CodeEntryElement }
+        for (index, subview) in elements.enumerated() {
             subview.setFrameOrigin(NSMakePoint(x, 0))
+            subview.accessibilityPosition = index
+            subview.accessibilityTotal = elements.count
+            subview.accessibilityLabelProvider = accessibilityElementLabel
             x += subview.frame.width + 8
         }
     }

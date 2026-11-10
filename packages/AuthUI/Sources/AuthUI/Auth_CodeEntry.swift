@@ -137,6 +137,9 @@ public final class Auth_CodeEntryView: View {
     public required init(frame frameRect: NSRect) {
         header = Auth_CodeEntryHeaderView(frame: frameRect.size.bounds)
         super.init(frame: frameRect)
+        control.accessibilityElementLabel = { index, count in
+            strings().voiceOverLoginCodeDigit(index, count)
+        }
         container.addSubview(header)
         container.addSubview(control)
         container.addSubview(error)

@@ -20474,6 +20474,10 @@ public final class L10n {
   public static var voiceOverInstantPageIncreaseFontSize: String  { return L10n.tr("Localizable", "VoiceOver.InstantPage.IncreaseFontSize") }
   /// Reset Font Size
   public static var voiceOverInstantPageResetFontSize: String  { return L10n.tr("Localizable", "VoiceOver.InstantPage.ResetFontSize") }
+  /// Code digit %d of %d
+  public static func voiceOverLoginCodeDigit(_ p1: Int, _ p2: Int) -> String {
+    return L10n.tr("Localizable", "VoiceOver.Login.CodeDigit", p1, p2)
+  }
   /// Password
   public static var voiceOverLoginPassword: String  { return L10n.tr("Localizable", "VoiceOver.Login.Password") }
   /// Phone country code
