@@ -774,6 +774,7 @@ public final class AccountControllerView : Control {
         statusContainer.addSubview(textView)
         edit.scaleOnClick = true
         qrCode.scaleOnClick = true
+        qrCode.setAccessibilityLabel(strings().voiceOverCommonQRCode)
     }
 
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {

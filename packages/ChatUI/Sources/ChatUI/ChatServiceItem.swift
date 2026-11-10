@@ -128,8 +128,17 @@ public class ChatServiceItem: ChatRowItem {
             self.author = author
         }
         
+        var stickerSize: NSSize {
+            switch source {
+            case .starGift:
+                return NSMakeSize(120, 120)
+            default:
+                return NSMakeSize(150, 150)
+            }
+        }
+
         public var height: CGFloat {
-            var height = 170 + text.layoutSize.height + 15
+            var height = 10 + stickerSize.height + 10 + text.layoutSize.height + 15
             if let info {
                 height += 4 + info.layoutSize.height
             }
@@ -4494,8 +4503,9 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
                 }
             }
             
+            stickerView.setFrameSize(data.stickerSize)
             disposable.set(stickerFile.start(next: { [weak self] file in
-                self?.setFile(file, context: context)
+                self?.setFile(file, size: data.stickerSize, context: context)
             }))
             
             if item.shouldBlurService {
@@ -4610,9 +4620,9 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
             needsLayout = true
         }
         
-        private func setFile(_ file: TelegramMediaFile, context: any AccountContextProtocol) {
+        private func setFile(_ file: TelegramMediaFile, size: NSSize, context: any AccountContextProtocol) {
             let parameters = ChatAnimatedStickerMediaLayoutParameters(playPolicy: .onceEnd, media: file)
-            stickerView.update(with: file, size: NSMakeSize(150, 150), context: context, table: nil, parameters: parameters, animated: false)
+            stickerView.update(with: file, size: size, context: context, table: nil, parameters: parameters, animated: false)
             needsLayout = true
         }
         

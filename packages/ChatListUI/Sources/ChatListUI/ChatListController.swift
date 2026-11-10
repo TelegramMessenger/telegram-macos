@@ -1456,7 +1456,6 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
             return item.isFixedItem || item.groupId != .root
         }
         
-        self.updatePinnedItems(self.collectPinnedItems)
         self.genericView.tableView.resortController?.resortRange = pinnedRange
         
         
@@ -1555,25 +1554,6 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         
     }
     
-    public override var collectPinnedItems:[PinnedItemId] {
-        var items:[PinnedItemId] = []
-        
-        
-        self.genericView.tableView.enumerateItems { item -> Bool in
-            guard let item = item as? ChatListRowItem else {return false}
-            if let location = item.chatLocation {
-                switch item.pinnedType {
-                case .some, .last:
-                    items.append(location.pinnedItemId)
-                default:
-                    break
-                }
-            }
-            return item.isFixedItem || item.groupId != .root
-        }
-        return items
-    }
-
     
     public override func scrollup(force: Bool = false) {
         
