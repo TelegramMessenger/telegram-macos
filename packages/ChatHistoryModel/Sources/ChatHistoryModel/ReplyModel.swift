@@ -156,7 +156,7 @@ public class ReplyModel: ChatAccessoryModel {
             
             if let imageDimensions = imageDimensions {
                 let boundingSize = CGSize(width: 30.0, height: 30.0)
-                let arguments = TransformImageArguments(corners: ImageCorners(radius: 2.0), imageSize: imageDimensions.aspectFilled(boundingSize), boundingSize: boundingSize, intrinsicInsets: NSEdgeInsets())
+                let arguments = TransformImageArguments(corners: ImageCorners(radius: hasRoundImage ? boundingSize.width / 2.0 : 2.0), imageSize: imageDimensions.aspectFilled(boundingSize), boundingSize: boundingSize, intrinsicInsets: NSEdgeInsets())
                 
                 let imageHost = view.makeAccessoryImage()
                 imageHost.accessoryImageFrame = NSRect(origin: NSMakePoint(super.leftInset, self.mediaTopInset), size: boundingSize)
