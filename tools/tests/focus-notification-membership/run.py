@@ -21,6 +21,9 @@ def without_imports(source):
     return "\n".join(line for line in source.splitlines() if not line.startswith("import "))
 
 adapter = without_imports((root / "Telegram-Mac/account/FocusNotificationMembership.swift").read_text())
+membership = without_imports((root / "Telegram-Mac/account/FocusFolderMembership.swift").read_text())
+catalog = (root / "Telegram-Mac/account/FocusCatalogProjection.swift").read_text()
+catalog = catalog[catalog.index("func focusAccountCatalog("):]
 notification_filter = without_imports((root / "packages/FocusFilterCore/Sources/FocusFilterInfrastructure/FocusNotificationFilter.swift").read_text())
 resolver = without_imports((root / "Telegram-Mac/account/FocusNotificationResolver.swift").read_text())
 core = sorted((root / "packages/FocusFilterCore/Sources/FocusFilterCore").glob("*.swift"))
@@ -28,6 +31,7 @@ fixture = Path(__file__).with_name("FocusNotificationMembershipTests.swift").rea
 fixture = fixture.replace("__PEER_GROUP__", (postbox / "PeerGroup.swift").read_text().replace("import Foundation", ""))
 fixture = fixture.replace("__SUMMARY_TYPES__", summaries).replace("__POSTBOX_PREDICATE__", predicate)
 fixture = fixture.replace("__NOTIFICATION_SETTINGS__", notification_settings).replace("__CANONICAL_FOLDER_MAPPER__", mapper).replace("__LIVE_NOTIFICATION_ADAPTER__", adapter)
+fixture = fixture.replace("__FOLDER_MEMBERSHIP__", membership).replace("__CATALOG_PROJECTION__", catalog)
 
 with tempfile.TemporaryDirectory(prefix="telegram-focus-notifications-") as directory:
     directory = Path(directory)

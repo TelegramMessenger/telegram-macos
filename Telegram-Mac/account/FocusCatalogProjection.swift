@@ -32,22 +32,24 @@ func focusTelegramChatId(_ peerId: PeerId) -> Int64? {
 
 func focusAccountCatalog(transaction: Transaction, accountId: Int64, filters: [ChatListFilter], communityCategories: [PeerId: ChatListFilterPeerCategories]) -> FocusFilterCatalog {
     let groups: [PeerGroupId] = [.root, Namespaces.PeerGroup.archive]
-    var peers: [PeerId: (peer: Peer, isArchived: Bool)] = [:]
+    var peers: [PeerId: (peer: Peer, groupId: PeerGroupId)] = [:]
     for groupId in groups {
         for peer in transaction.getChatListPeers(groupId: groupId, filterPredicate: nil, additionalFilter: nil) {
-            peers[peer.id] = (peer, groupId == Namespaces.PeerGroup.archive)
+            peers[peer.id] = (peer, groupId)
         }
     }
     let chats = peers.values.map { entry in
-        FocusCatalogChat(id: FocusChatIdentifier(accountId: accountId, peerId: entry.peer.id.toInt64()), title: focusCatalogTitle(entry.peer), isArchived: entry.isArchived, telegramChatId: focusTelegramChatId(entry.peer.id))
+        FocusCatalogChat(id: FocusChatIdentifier(accountId: accountId, peerId: entry.peer.id.toInt64()), title: focusCatalogTitle(entry.peer), isArchived: entry.groupId == Namespaces.PeerGroup.archive, telegramChatId: focusTelegramChatId(entry.peer.id))
     }.sorted { $0.id.peerId < $1.id.peerId }
+    let globalSettings = transaction.getGlobalNotificationSettings()
+    let folderStates = filters.isEmpty ? [] : peers.values.map { entry in
+        FocusFolderChatState(transaction: transaction, peer: entry.peer, groupId: entry.groupId, globalSettings: globalSettings)
+    }
     let folders = filters.map { filter -> FocusCatalogFolder in
         let predicate = chatListFilterPredicate(for: filter, communityCategories: communityCategories)
         var peerIds = Set<Int64>()
-        for groupId in groups {
-            for peer in transaction.getChatListPeers(groupId: groupId, filterPredicate: predicate, additionalFilter: nil) {
-                peerIds.insert(peer.id.toInt64())
-            }
+        for state in folderStates where state.belongs(to: predicate, transaction: transaction) {
+            peerIds.insert(state.peer.id.toInt64())
         }
         return FocusCatalogFolder(id: FocusFolderIdentifier(accountId: accountId, folderId: filter.id), title: filter.title, peerIds: peerIds)
     }.sorted { $0.id.folderId < $1.id.folderId }

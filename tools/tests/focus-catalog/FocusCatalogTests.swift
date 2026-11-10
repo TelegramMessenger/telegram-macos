@@ -74,11 +74,31 @@ func chatListFilterPredicate(for filter: ChatListFilter, communityCategories: [P
     filter.predicate
 }
 
+struct PostboxGlobalNotificationSettings {}
+
+struct FocusFolderChatState {
+    let peer: Peer
+    let groupId: PeerGroupId
+
+    init(transaction: Transaction, peer: Peer, groupId: PeerGroupId, globalSettings: PostboxGlobalNotificationSettings) {
+        self.peer = peer
+        self.groupId = groupId
+    }
+
+    func belongs(to predicate: ChatListFilterPredicate?, transaction: Transaction) -> Bool {
+        predicate?.includes(peer) ?? true
+    }
+}
+
 final class Transaction {
     var groups: [PeerGroupId: [Peer]]
 
     init(groups: [PeerGroupId: [Peer]]) {
         self.groups = groups
+    }
+
+    func getGlobalNotificationSettings() -> PostboxGlobalNotificationSettings {
+        PostboxGlobalNotificationSettings()
     }
 
     func getChatListPeers(groupId: PeerGroupId, filterPredicate: ChatListFilterPredicate?, additionalFilter: ((Peer) -> Bool)?) -> [Peer] {

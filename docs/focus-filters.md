@@ -190,10 +190,16 @@ without invalidating an old system predicate. Notification delivery must obtain
 current per-chat folder membership before the local gate, sound and criteria are
 created; the debounced picker catalogue is not a delivery-time authority.
 
-Delivery-time folder evaluation resolves contact status and individual mute
-settings through the peer's notification-settings identity, matching the chat-list
-view predicate. For a secret chat these belong to the associated user; unread
-state, mention summaries and notification identity still belong to the secret chat.
+Catalogue publication and delivery-time folder evaluation use the same application
+adapter to resolve contact status and individual mute settings through the peer's
+notification-settings identity, matching the chat-list view predicate. For a
+secret chat these belong to the associated user; unread state, mention summaries,
+pinned membership and exported chat identity still belong to the secret chat.
+The catalogue enumerates root/archive chats without a folder predicate, then
+applies each canonical folder predicate to the shared per-chat state in the same
+transaction. Global settings are loaded once per catalogue snapshot, and chat
+state is reused across folders. Changes to contacts and individual/global mute
+settings continue to trigger catalogue updates through the existing subscriptions.
 
 State recovery follows Apple's extension/shared-storage design. It restores the
 last configuration delivered by macOS; it cannot independently establish current
@@ -218,11 +224,14 @@ python3 tools/tests/focus-filters/build_extension.py --configuration Release
 The chat-list test compiles the actual production predicate adapter with the
 predicate and group type extracted from the pinned Postbox source. The catalogue
 test uses lightweight transaction fixtures around the production projection.
-The notification test combines the production live adapter and folder mapper with
-the pinned Postbox predicate and mute resolver, checking a newly unread chat
-against both selection rules without waiting for catalogue publication.
+The notification test combines the production catalogue projection, shared folder
+state, live adapter and folder mapper with the pinned Postbox predicate and mute
+resolver. It compares catalogue-derived chat-list policy with delivery-time policy
+under both selection rules, including a newly unread chat before publication.
 Secret-chat cases give the chat and associated user opposite contact/mute values,
 cover global mute fallback and keep unread/mention lookups on the secret chat.
+The associated user need not have an entry in the chat list. Repeated snapshots,
+archive membership and pinned/include/exclude precedence use the same checks.
 Injected resolver checks cover a configuration change during a pending lookup,
 fallbacks and avoiding unnecessary lookups. Native-query checks compile actual
 extension sources against isolated providers and verify ID-based uniqueness,

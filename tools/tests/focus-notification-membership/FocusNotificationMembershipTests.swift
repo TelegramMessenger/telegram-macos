@@ -152,6 +152,17 @@ final class Transaction {
         return (groupId, 0)
     }
 
+    func getChatListPeers(groupId: PeerGroupId, filterPredicate: ChatListFilterPredicate?, additionalFilter: ((Peer) -> Bool)?) -> [Peer] {
+        guard self.groupId == groupId, let peer else { return [] }
+        if let predicate = filterPredicate {
+            let isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: getGlobalNotificationSettings(), peer: peer, peerSettings: getPeerNotificationSettings(id: peer.id))
+            let tagSummary: Bool? = predicate.messageTagSummary == nil ? nil : mentionCount > pendingMentionCount
+            let included = predicate.pinnedPeerIds.contains(peer.id) || predicate.includes(peer: peer, groupId: groupId, isRemovedFromTotalUnreadCount: isMuted, isUnread: isUnread, isContact: isPeerContact(peerId: peer.id), messageTagSummaryResult: tagSummary)
+            guard included else { return [] }
+        }
+        return additionalFilter?(peer) == false ? [] : [peer]
+    }
+
     func getCombinedPeerReadState(_ peerId: PeerId) -> CombinedPeerReadState? {
         precondition(peer?.id == peerId)
         return CombinedPeerReadState(isUnread: isUnread)
@@ -180,6 +191,11 @@ final class Transaction {
     }
 }
 
+func focusCatalogTitle(_ peer: Peer) -> String { String(peer.id.toInt64()) }
+func focusTelegramChatId(_ peerId: PeerId) -> Int64? { peerId.toInt64() }
+
+__FOLDER_MEMBERSHIP__
+__CATALOG_PROJECTION__
 __LIVE_NOTIFICATION_ADAPTER__
 
 @main
@@ -205,12 +221,21 @@ private enum Tests {
 
     static func assertMembership(_ expected: Bool, transaction: Transaction, data: ChatListFilterData?, categories: [PeerId: ChatListFilterPeerCategories] = [:]) {
         let peerId = transaction.peer?.id ?? peer.id
+        let catalog = focusAccountCatalog(transaction: transaction, accountId: account, filters: [.init(id: folder.folderId, title: "Projects", data: data)], communityCategories: categories)
+        let expectedMembers: Set<Int64> = expected ? [peerId.toInt64()] : []
+        precondition(catalog.folders.first?.peerIds == expectedMembers)
+        let expectedChats: [FocusChatIdentifier] = transaction.groupId == nil ? [] : [.init(accountId: account, peerId: peerId.toInt64())]
+        precondition(catalog.chats.map { $0.id } == expectedChats)
         for mode in [FocusFilterMode.allowSelected, .excludeSelected] {
             let live = policy(transaction, data, mode: mode, categories: categories)
+            let published = FocusFilterPolicy(configuration: live.configuration, catalog: catalog)
             let allows = mode == .allowSelected ? expected : !expected
             precondition(live.includes(accountId: account, peerId: peerId.toInt64(), effect: .notifications) == allows)
+            precondition(published.includes(accountId: account, peerId: peerId.toInt64(), effect: .notifications) == allows)
+            precondition(published.includes(accountId: account, peerId: peerId.toInt64(), effect: .chatList) == allows)
             let criteria = criteria(live, for: .init(accountId: account, peerId: peerId.toInt64()))
             precondition(predicate(live).evaluate(with: criteria) == allows)
+            precondition(criteria == self.criteria(published, for: .init(accountId: account, peerId: peerId.toInt64())))
         }
     }
 
@@ -259,6 +284,30 @@ private enum Tests {
         transaction.pendingMentionCount = 2
         assertMembership(false, transaction: transaction, data: data)
         print("PASS secret chat unread state and unconsumed mentions retain the secret chat identity")
+
+        data = ChatListFilterData()
+        data.categories = []
+        data.excludeArchived = true
+        transaction.groupId = Namespaces.PeerGroup.archive
+        transaction.mentionCount = 0
+        transaction.pendingMentionCount = 0
+        data.includePeers.peers = [peer.id]
+        assertMembership(true, transaction: transaction, data: data)
+        data.excludePeers = [peer.id]
+        assertMembership(false, transaction: transaction, data: data)
+        data.includePeers.pinnedPeers = [secret.id]
+        assertMembership(true, transaction: transaction, data: data)
+        data.includePeers.pinnedPeers = []
+        data.includePeers.peers = []
+        data.excludePeers = []
+        data.categories = .all
+        assertMembership(false, transaction: transaction, data: data)
+        data.excludeArchived = false
+        assertMembership(true, transaction: transaction, data: data)
+        transaction.groupId = .root
+        assertMembership(true, transaction: transaction, data: data)
+        precondition(transaction.requestedPeers.allSatisfy { $0 == secret.id })
+        print("PASS catalog and delivery agree for secret chat includes, exclusions, pins and archive changes without loading the associated user")
     }
 
     static func main() {

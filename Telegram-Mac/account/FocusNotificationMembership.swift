@@ -10,47 +10,10 @@ struct FocusNotificationMembershipRequest {
     let communityCategories: [PeerId: ChatListFilterPeerCategories]
 }
 
-private struct FocusNotificationChatState {
-    let peer: Peer
-    let groupId: PeerGroupId
-    let isMuted: Bool
-    let isUnread: Bool
-    let isContact: Bool
-
-    init?(transaction: Transaction, peerId: PeerId) {
-        guard let peer = transaction.getPeer(peerId),
-              let (groupId, _) = transaction.getPeerChatListIndex(peerId),
-              groupId == .root || groupId == Namespaces.PeerGroup.archive else {
-            return nil
-        }
-        self.peer = peer
-        self.groupId = groupId
-        let notificationSettingsPeerId = peer.notificationSettingsPeerId ?? peer.id
-        isUnread = transaction.getCombinedPeerReadState(peerId)?.isUnread ?? false
-        isContact = transaction.isPeerContact(peerId: notificationSettingsPeerId)
-        isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: transaction.getGlobalNotificationSettings(), peer: peer, peerSettings: transaction.getPeerNotificationSettings(id: notificationSettingsPeerId))
-    }
-
-    func belongs(to predicate: ChatListFilterPredicate?, transaction: Transaction) -> Bool {
-        guard let predicate = predicate else { return true }
-        if predicate.pinnedPeerIds.contains(peer.id) {
-            return true
-        }
-        return predicate.includes(peer: peer, groupId: groupId, isRemovedFromTotalUnreadCount: isMuted, isUnread: isUnread, isContact: isContact, messageTagSummaryResult: messageTagSummary(predicate.messageTagSummary, transaction: transaction))
-    }
-
-    private func messageTagSummary(_ calculation: ChatListMessageTagSummaryResultCalculation?, transaction: Transaction) -> Bool? {
-        guard let calculation = calculation else { return nil }
-        let addCount = transaction.getMessageTagSummary(peerId: peer.id, threadId: nil, tagMask: calculation.addCount.tag, namespace: calculation.addCount.namespace, customTag: nil)?.count ?? 0
-        let subtractCount = transaction.getPendingMessageActionsSummary(peerId: peer.id, type: calculation.subtractCount.type, namespace: calculation.subtractCount.namespace) ?? 0
-        return addCount - subtractCount > 0
-    }
-}
-
 func focusNotificationPolicy(transaction: Transaction, request: FocusNotificationMembershipRequest) -> FocusFilterPolicy {
     let configuration = request.configuration
     guard configuration.effect.contains(.notifications), configuration.accountIds.contains(request.chat.accountId),
-          let state = FocusNotificationChatState(transaction: transaction, peerId: PeerId(request.chat.peerId)) else {
+          let state = FocusFolderChatState(transaction: transaction, peerId: PeerId(request.chat.peerId)) else {
         return FocusFilterPolicy(configuration: configuration)
     }
     let selectedFolders = configuration.folderIds.filter { $0.accountId == request.chat.accountId }
