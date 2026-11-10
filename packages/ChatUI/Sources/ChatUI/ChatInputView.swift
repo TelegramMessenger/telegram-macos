@@ -1809,8 +1809,8 @@ public class ChatInputView: View, Notifable {
                 self.disallowText = current
             }
             current.removeAllHandlers()
-            current.set(handler: { _ in
-                showModalText(for: context.window, text: text)
+            current.set(handler: { [weak self] _ in
+                showModalText(for: context.window, text: text, theme: self?.currentChatTheme ?? theme)
             }, for: .Click)
             current.setAccessibilityLabel(text)
             current.set(cursor: .arrow, for: .Normal)
@@ -2063,7 +2063,7 @@ public class ChatInputView: View, Notifable {
     /// the empty-content guard); here we just surface the empty error early for the common no-content case.
     private func sendInlineRichDraft() {
         if let blocks = container.richDraftPreview?.currentOutgoing(), !richTextOutgoingHasContent(blocks) {
-            showModalText(for: chatInteraction.interactionContext.window, text: strings().chatInputEmptyMessageError)
+            showModalText(for: chatInteraction.interactionContext.window, text: strings().chatInputEmptyMessageError, theme: currentChatTheme ?? theme)
             return
         }
         chatInteraction.sendMessage(false, nil, chatInteraction.presentation.messageEffect)

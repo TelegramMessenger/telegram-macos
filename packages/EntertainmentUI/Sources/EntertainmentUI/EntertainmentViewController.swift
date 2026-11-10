@@ -501,8 +501,13 @@ public class EntertainmentViewController<Context: AccountContextProtocol>: Teleg
         if gifs.isLoaded() {
             tables.append(gifs.genericView.tableView)
         }
-        for table in tables where table.contentInsets != insets {
-            table.contentInsets = insets
+        for table in tables {
+            if table.contentInsets != insets {
+                table.contentInsets = insets
+            }
+            if table.scrollerInsets.bottom != 0 {
+                table.scrollerInsets.bottom = 0
+            }
         }
     }
 

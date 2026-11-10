@@ -3599,7 +3599,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                 self.updateInks(layout, animated: true)
                 return
             }
-            if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }) {
+            if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }), layout.mayItems {
                 if let string = layout.blockQuoteText(startingWith: blockHeader.1) {
                     _ = layout.interactions.copyToClipboard?(string)
                     showModalText(for: window, text: localizedString("Share.Link.Copied"))

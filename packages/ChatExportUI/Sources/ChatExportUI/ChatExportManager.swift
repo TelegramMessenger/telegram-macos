@@ -78,6 +78,50 @@ public func currentExportThemeColors() -> ExportThemeColors {
     )
 }
 
+public func chatExportIsRestricted(peer: Peer, cachedData: CachedPeerData?) -> Bool {
+    if peer is TelegramSecretChat || peer.isCopyProtectionEnabled {
+        return true
+    }
+    if let cachedData = cachedData as? CachedUserData {
+        return cachedData.flags.contains(.copyProtectionEnabled) || cachedData.flags.contains(.myCopyProtectionEnabled)
+    }
+    return false
+}
+
+private let chatExportUnverifiedText = "Could not check this chat"
+
+private func chatExportVerifiedRestriction(context: any AccountContextProtocol, peerId: PeerId) -> Signal<Bool?, NoError> {
+    let refreshed: Signal<Bool, NoError>
+    if peerId.namespace == Namespaces.Peer.CloudUser, peerId != context.peerId {
+        refreshed = context.engine.peers.fetchAndUpdateCachedPeerData(peerId: peerId)
+    } else {
+        refreshed = .single(true)
+    }
+    return refreshed
+    |> take(1)
+    |> mapToSignal { isFresh -> Signal<Bool?, NoError> in
+        guard isFresh else {
+            return .single(nil)
+        }
+        return context.account.postbox.transaction { transaction -> Bool? in
+            guard let peer = transaction.getPeer(peerId) else {
+                return nil
+            }
+            return chatExportIsRestricted(peer: peer, cachedData: transaction.getPeerCachedData(peerId: peerId))
+        }
+    }
+}
+
+private func chatExportSkipsMessage(_ message: Message) -> Bool {
+    if message.containsSecretMedia || message.isCopyProtected() {
+        return true
+    }
+    if message.media.first is TelegramMediaAction, let replyAttribute = message.replyAttribute, let target = message.associatedMessages[replyAttribute.messageId] {
+        return target.containsSecretMedia || target.isCopyProtected()
+    }
+    return false
+}
+
 public func exportChatToHtml(context: any AccountContextProtocol, peerId: PeerId, peerTitle: String, settings: ChatExportSettings) -> Signal<ChatExportUpdate, NoError> {
     return Signal { subscriber in
         let queue = Queue(name: "org.telegram.chatExport")
@@ -164,7 +208,14 @@ private final class ChatExportRun {
     // MARK: - Driver
 
     @discardableResult
-    public func run() -> Bool {
+    public func run(isVerified: Bool = false) -> Bool {
+        if !isVerified {
+            let isRestricted = blockingFirst(chatExportVerifiedRestriction(context: context, peerId: peerId), timeout: 30.0) ?? nil
+            if isRestricted != false {
+                emit(.failed(isRestricted == true ? strings().copyRestrictedChat : chatExportUnverifiedText))
+                return false
+            }
+        }
         let baseURL = outputURL ?? destinationURL()
         chatBaseURL = baseURL
         if format.includesHtml {
@@ -238,6 +289,9 @@ private final class ChatExportRun {
                 if let untilTimestamp = settings.untilTimestamp, entry.message.timestamp >= untilTimestamp {
                     reachedRangeEnd = true
                     break
+                }
+                if chatExportSkipsMessage(entry.message) {
+                    continue
                 }
                 appendMessage(entry.message)
                 processedCount += 1
@@ -1375,6 +1429,13 @@ private final class FullExportRun {
         var paneItems: [ExportChatPaneItem] = []
         for (index, chat) in chats.enumerated() {
             if isCancelled { break }
+            let isRestricted = blockingFirst(chatExportVerifiedRestriction(context: context, peerId: chat.peerId), timeout: 30.0) ?? nil
+            if isRestricted != false {
+                if isRestricted == nil, !isCancelled {
+                    failedChats.append(FullExportChatFailure(peer: PeerEquatable(chat.peer), reason: chatExportUnverifiedText))
+                }
+                continue
+            }
             let folder = String(format: "%04ld", index) + "_" + sanitize(chat.title)
             let chatURL = baseURL.appendingPathComponent("chats", isDirectory: true).appendingPathComponent(folder, isDirectory: true)
             let chatSettings = ChatExportSettings(mediaTypes: settings.mediaTypes, sizeLimit: settings.sizeLimit, path: settings.path)
@@ -1382,7 +1443,7 @@ private final class FullExportRun {
             let run = ChatExportRun(context: context, peerId: chat.peerId, peerTitle: chat.title, settings: chatSettings, cancelled: cancelled, outputURL: chatURL, format: settings.format, jsonSink: jsonWriter != nil ? { [weak jsonWriter] object in jsonWriter?.appendMessage(object) } : nil, jsonMediaPrefix: "chats/\(folder)/", emit: { [weak self] update in
                 self?.forwardChatProgress(update, chatIndex: index + 1, chatCount: chatCount, chat: chat)
             })
-            let succeeded = run.run()
+            let succeeded = run.run(isVerified: true)
             jsonWriter?.endChat()
             if isCancelled { break }
             if !succeeded {
