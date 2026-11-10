@@ -538,7 +538,34 @@ final class AppMenuController : NSObject  {
         return self.windows.sorted(by: { $0.key.timestamp > $1.key.timestamp }).first?.value.view
     }
     
+    private func invokeReturnKeyEquivalent(_ event: NSEvent) -> Bool {
+        guard let activeMenu = self.activeMenu else {
+            return false
+        }
+        var found: AppMenuBasicItem?
+        activeMenu.tableView.enumerateItems(with: { item in
+            if let item = item as? AppMenuBasicItem, let contextItem = item.menuItem,
+               contextItem.isEnabled, !contextItem.isHidden, !contextItem.isSeparatorItem, contextItem.submenu == nil,
+               contextItem.matchesReturnKeyEquivalent(event) {
+                found = item
+                return false
+            }
+            return true
+        })
+        guard let found, let item = found.menuItem else {
+            return false
+        }
+        if !event.isARepeat {
+            _ = activeMenu.tableView.select(item: found)
+            found.interaction?.action(item)
+        }
+        return true
+    }
+
     private func addStackEvent(_ event: NSEvent) {
+        if invokeReturnKeyEquivalent(event) {
+            return
+        }
         let chars = event.characters
         if let chars = chars?.trimmingCharacters(in: CharacterSet.alphanumerics.inverted), !chars.isEmpty {
             

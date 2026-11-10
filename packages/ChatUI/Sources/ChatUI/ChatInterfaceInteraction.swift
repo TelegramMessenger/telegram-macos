@@ -1911,12 +1911,15 @@ public func sendMessageMenuItems(chatInteraction: ChatInteraction, analyticsCont
     var items:[ContextMenuItem] = []
 
     if peer.id != context.account.peerId {
-        items.append(ContextMenuItem(strings().chatSendWithoutSound, handler: {
+        let item = ContextMenuItem(strings().chatSendWithoutSound, handler: {
             guard deferredSendAction.takeIfCurrent() else { return }
             let presentation = getAnalyticsContext().beginPresentation()
             defer { presentation.end() }
             send(true, nil)
-        }, itemImage: MenuAnimation.menu_mute.value))
+        }, itemImage: MenuAnimation.menu_mute.value)
+        item.keyEquivalent = ChatSilentSendShortcut.keyEquivalent
+        item.keyEquivalentModifierMask = ChatSilentSendShortcut.modifierFlags
+        items.append(item)
     }
 
     switch chatInteraction.mode {

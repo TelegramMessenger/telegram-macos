@@ -1022,6 +1022,10 @@ public class ChatInputView: View, Notifable {
             // ⌘-Enter — which the editor never receives as `insertNewline` — still sends.
             window.set(handler: { [weak self] event -> KeyHandlerResult in
                 guard let self = self, self.chatInteraction.richTextDraft != nil else { return .rejected }
+                let silentResult = self.processRichDraftSilentSendShortcut(event)
+                if silentResult != .rejected {
+                    return silentResult
+                }
                 if FastSettings.checkSendingAbility(for: event) {
                     self.chatInteraction.sendMessage(false, nil, self.chatInteraction.presentation.messageEffect)
                     return .invoked
@@ -1041,6 +1045,10 @@ public class ChatInputView: View, Notifable {
             // Enter sends (honoring the Enter / ⌘-Enter send preference).
             window.set(handler: { [weak self] event -> KeyHandlerResult in
                 guard let self = self, self.chatInteraction.richTextDraft != nil else { return .rejected }
+                let silentResult = self.processRichDraftSilentSendShortcut(event)
+                if silentResult != .rejected {
+                    return silentResult
+                }
                 if FastSettings.checkSendingAbility(for: event) {
                     self.chatInteraction.sendMessage(false, nil, self.chatInteraction.presentation.messageEffect)
                     return .invoked
@@ -1074,14 +1082,35 @@ public class ChatInputView: View, Notifable {
         })
     }
     
+    private func processRichDraftSilentSendShortcut(_ event: NSEvent) -> KeyHandlerResult {
+        guard ChatSilentSendShortcut.matches(event) else {
+            return .rejected
+        }
+        let window = chatInteraction.interactionContext.window
+        if let input = window.firstResponder as? NSTextInputClient, input.hasMarkedText() {
+            return .invokeNext
+        }
+        guard let responder = window.firstResponder as? NSView, responder.isDescendant(of: self) else {
+            return .invokeNext
+        }
+        if !event.isARepeat, ChatSilentSendShortcut.isAvailable(for: chatInteraction) {
+            chatInteraction.sendMessage(true, nil, chatInteraction.presentation.messageEffect)
+        }
+        return .invoked
+    }
+
     private var markNextTextChangeToFalseActivity: Bool = false
 
     public func textViewEnterPressed(_ event: NSEvent) -> Bool {
         
         let interaction = self.chatInteraction
         let context = interaction.interactionContext
-        
-        if FastSettings.checkSendingAbility(for: event) {
+        let silent = ChatSilentSendShortcut.matches(event)
+
+        if silent && (event.isARepeat || !ChatSilentSendShortcut.isAvailable(for: interaction)) {
+            return true
+        }
+        if silent || FastSettings.checkSendingAbility(for: event) {
             let text = textView.string().trimmed
             if text.length > interaction.maxInputCharacters {
                 if context.isPremium || context.premiumIsBlocked {
@@ -1100,7 +1129,7 @@ public class ChatInputView: View, Notifable {
                 return true
             }
             if !text.isEmpty || !interaction.presentation.interfaceState.forwardMessageIds.isEmpty || interaction.presentation.state == .editing {
-                interaction.sendMessage(false, nil, interaction.presentation.messageEffect)
+                interaction.sendMessage(silent, nil, interaction.presentation.messageEffect)
                 if interaction.peerIsAccountPeer {
                     interaction.interactionContext.account.updateLocalInputActivity(peerId: interaction.activitySpace, activity: .typingText, isPresent: false)
                 }
