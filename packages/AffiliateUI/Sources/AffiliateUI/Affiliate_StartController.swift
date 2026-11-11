@@ -15,6 +15,7 @@ import AlertsUI
 import LocalAnimations
 import SceneEffects
 import ObjcUtils
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -239,6 +240,7 @@ public func Affiliate_StartController(context: (any AccountContextProtocol), pee
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().affiliateSetupTitleNew, removeAfterDisappear: false, doneString: { starRefProgram == nil ? strings().affiliateStart : strings().affiliateUpdate })
+    controller.analyticsScreen = .peerInfoAffiliateProgram
     
     controller.validateData = { _ in
         return .fail(.doSomething(next: { next in

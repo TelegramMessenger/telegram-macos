@@ -30,8 +30,67 @@ func deliverOnMainQueue<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
     return signal
 }
 
+func mapToSignal<T, U, E>(_ f: @escaping (T) -> Signal<U, E>) -> (Signal<T, E>) -> Signal<U, E> {
+    return { signal in f(signal.value) }
+}
+
+final class AnalyticsScope {}
+
+final class AnalyticsPresentation {
+    func end() {}
+}
+
+final class AnalyticsContext {
+    let scope: AnalyticsScope? = nil
+    var isExcluded: Bool {
+        return false
+    }
+    func restricting(peerId: PeerId) -> AnalyticsContext {
+        return self
+    }
+    func beginPresentation() -> AnalyticsPresentation {
+        return AnalyticsPresentation()
+    }
+    func preservingPresentation<Value, Failure>(_ signal: Signal<Value, Failure>) -> Signal<Value, Failure> {
+        return signal
+    }
+}
+
+struct TelegramEngine {}
+
+final class Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> AnalyticsContext {
+        return AnalyticsContext()
+    }
+    func captureContext(engine: TelegramEngine, peerId: PeerId, inherited: AnalyticsContext? = nil) -> AnalyticsContext {
+        return inherited ?? AnalyticsContext()
+    }
+}
+
+enum AnalyticsFlows {
+    enum ChatForwardPicker {
+        enum EntryPoint {
+            case messageSelection
+            case messageMenu
+            case moreMenu
+            case replacementMenu
+            case rowAction
+        }
+    }
+}
+
+final class AnalyticsForwardPickerJourney {
+    init(context: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint) {}
+    func restrict(to context: AnalyticsContext) {}
+    func discard() {}
+}
+
 struct MessageId: Hashable {
     let id: Int32
+    var peerId: PeerId {
+        return PeerId(namespace: Namespaces.Peer.CloudUser, id: 0)
+    }
 }
 
 protocol Media {}
@@ -43,6 +102,7 @@ final class Message {
     let groupingKey: Int64?
     let media: [Media] = [Photo()]
     let activeEphemeralReplacementMessage: Message? = nil
+    let containsSecretMedia = false
     init(_ id: Int32, groupingKey: Int64? = nil) {
         self.id = MessageId(id: id)
         self.groupingKey = groupingKey
@@ -166,6 +226,9 @@ extension AccountContextProtocol {
     var concrete: AccountContext {
         return self as! AccountContext
     }
+    var engine: TelegramEngine {
+        return TelegramEngine()
+    }
 }
 
 __SELECTED_WITH_ALBUMS__
@@ -217,9 +280,12 @@ protocol ChatHistoryForwardMessagesObject: AnyObject {
 
 final class ForwardMessagesObject: ShareObject, ChatHistoryForwardMessagesObject {
     fileprivate let messages: [Message]
+    let forwardingAnalyticsContext: AnalyticsContext
     __OBJECT_IDS__
     private let album: Bool
     private let getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?
+
+    __OBJECT_CONVENIENCE_INIT__
 
     __OBJECT_INIT__
 
@@ -240,13 +306,16 @@ final class ForwardMessagesObject: ShareObject, ChatHistoryForwardMessagesObject
     }
 }
 
-class ModalViewController {}
+class ModalViewController {
+    var analyticsContext: AnalyticsContext?
+}
 
 final class ShareModalController: ModalViewController {
     let share: ShareObject
-    init(_ share: ShareObject) {
+    init(_ share: ShareObject, analyticsContext: AnalyticsContext? = nil) {
         self.share = share
     }
+    func setAnalyticsForwardJourney(_ journey: AnalyticsForwardPickerJourney) {}
 }
 
 func showModal(with controller: ModalViewController, for window: Int) {
@@ -260,12 +329,13 @@ __MESSAGE_FOR_FORWARDING__
 final class ChatUIHooks {
     static var shared: ChatUIHooks!
     let makeForwardMessagesShareModal: (any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController
+    var makeForwardMessagesShareModalWithContext: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, AnalyticsContext) -> ModalViewController)?
+    var makeForwardMessagesShareModalWithSource: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, AnalyticsContext, AnalyticsFlows.ChatForwardPicker.EntryPoint) -> ModalViewController)?
+    var attachForwardJourney: (ModalViewController, AnalyticsForwardPickerJourney) -> Void = { _, journey in journey.discard() }
     init(makeForwardMessagesShareModal: @escaping (any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController) {
         self.makeForwardMessagesShareModal = makeForwardMessagesShareModal
     }
-    func makeForwardMessagesShareModalObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ getMessages: @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController {
-        __SHARE_MODAL_OBSERVED__
-    }
+    __SHARE_MODAL_OBSERVED__
 }
 
 struct ChatListFilter {
@@ -280,11 +350,11 @@ struct FolderIcon {
 final class ChatHistoryUIHooks {
     static var shared: ChatHistoryUIHooks!
     let makeForwardMessagesObject: (any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject
-    var makeForwardMessagesObjectWithContext: ((any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject)?
+    var makeForwardMessagesObjectWithContext: ((any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?, AnalyticsContext) -> ChatHistoryForwardMessagesObject)?
     init(makeForwardMessagesObject: @escaping (any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject) {
         self.makeForwardMessagesObject = makeForwardMessagesObject
     }
-    func makeForwardMessagesObjectObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ album: Bool, _ getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject {
+    func makeForwardMessagesObjectObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ album: Bool, _ getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?, analyticsContext: AnalyticsContext) -> ChatHistoryForwardMessagesObject {
         __OBJECT_OBSERVED__
     }
     func chatListFilterTitle(_ filter: ChatListFilter) -> String {
@@ -298,13 +368,23 @@ final class ChatHistoryUIHooks {
 let historyHooks = ChatHistoryUIHooks(makeForwardMessagesObject: { context, messages, album, getMessages in
     __OBJECT_PLAIN__
 })
-historyHooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages in
+historyHooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages, analyticsContext in
     __OBJECT_WITH_CONTEXT__
 }
 ChatHistoryUIHooks.shared = historyHooks
-ChatUIHooks.shared = ChatUIHooks(makeForwardMessagesShareModal: { context, messages, getMessages in
+let uiHooks = ChatUIHooks(makeForwardMessagesShareModal: { context, messages, getMessages in
     __SHARE_MODAL__
 })
+uiHooks.makeForwardMessagesShareModalWithContext = { context, messages, getMessages, analyticsContext in
+    __SHARE_MODAL_WITH_CONTEXT__
+}
+uiHooks.makeForwardMessagesShareModalWithSource = { context, messages, getMessages, analyticsContext, entry in
+    __SHARE_MODAL_WITH_SOURCE__
+}
+uiHooks.attachForwardJourney = { controller, journey in
+    __ATTACH_FORWARD_JOURNEY__
+}
+ChatUIHooks.shared = uiHooks
 
 __DEFERRED_SEND_ACTION__
 
@@ -312,7 +392,10 @@ final class ChatInteraction {
     let context: AccountContext
     let mode: ChatMode
     var presentation = Presentation()
-    var forwardMessages: ([Message]) -> Void = { _ in }
+    var peerId: PeerId {
+        return context.peerId
+    }
+    __FORWARD_MESSAGES_OBSERVED__
     init(context: AccountContext, mode: ChatMode) {
         self.context = context
         self.mode = mode
@@ -320,10 +403,13 @@ final class ChatInteraction {
     func getMessages(_ messageIds: [MessageId], _ album: Bool) -> Signal<[Message], NoError> {
         __GET_MESSAGES__
     }
+    func captureAnalyticsContext(sourcePeerId: PeerId? = nil) -> AnalyticsContext {
+        return Analytics.shared.unresolvedContext()
+    }
     func captureDeferredSendAction() -> ChatDeferredSendAction {
         return ChatDeferredSendAction(isCurrent: { true })
     }
-    func quickForward(_ object: ChatHistoryForwardMessagesObject, peerId: PeerId, threadId: Int64?, action: ChatDeferredSendAction) {
+    func quickForward(_ object: ChatHistoryForwardMessagesObject, peerId: PeerId, threadId: Int64?, analyticsContext: AnalyticsContext, action: ChatDeferredSendAction) {
         guard action.takeIfCurrent() else {
             return
         }
@@ -340,9 +426,7 @@ final class ChatControllerStub {
     let chatInteraction: ChatInteraction
     init(context: AccountContext, chatInteraction: ChatInteraction) {
         self.chatInteraction = chatInteraction
-        chatInteraction.forwardMessages = { [weak self] messages in
-            __CHAT_FORWARD_MESSAGES__
-        }
+        __CHAT_FORWARD_MESSAGES__
     }
 }
 

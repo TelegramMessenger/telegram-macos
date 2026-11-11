@@ -1,0 +1,58 @@
+<!--
+  common profile: only what WebView, Blitz and litehtml all render (corpus/common/README.md)
+  idea: a stack of five alerts (info / success / warning / error / plain) with a colour rail, dismiss on click
+-->
+<style>
+  :root { --fg: #000; --muted: #6e6e73; --card: #fff; --fill: rgba(127,127,127,0.12); --fill2: rgba(127,127,127,0.22); --border: rgba(0,0,0,0.10);
+    --blue: #007aff; --green: #34c759; --red: #ff3b30; --orange: #ff9500; --purple: #af52de; --teal: #30b0c7; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #fff; --muted: #98989d; --card: #1c1c1e; --border: rgba(255,255,255,0.14); } }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.3; color: var(--fg); }
+  .card { width: 392px; max-width: 100%; box-sizing: border-box; background-color: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+  .row { display: flex; align-items: center; } .between { justify-content: space-between; } .grow { flex-grow: 1; flex-basis: 0; }
+  .muted { color: var(--muted); } .small { font-size: 12px; } .tiny { font-size: 11px; } .bold { font-weight: 700; }
+  .btn { display: inline-block; padding: 6px 14px; border-radius: 9px; font-weight: 600; text-align: center; background-color: var(--fill); color: var(--fg); cursor: pointer; }
+  .btn.primary { background-color: var(--blue); color: #fff; }
+  .btn:active { background-color: var(--fill2); }
+  [hidden] { display: none; }
+
+  .stack { width: 392px; max-width: 100%; }
+  .al { display: flex; align-items: flex-start; margin-bottom: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background-color: var(--card); overflow: hidden; }
+  .rail { width: 4px; border-radius: 2px; margin-right: 10px; flex-shrink: 0; align-self: stretch; }
+  .ic { width: 22px; height: 22px; border-radius: 11px; margin-right: 10px; flex-shrink: 0; color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .al .t { font-weight: 700; }
+  .al .x { margin-left: 8px; color: var(--muted); font-weight: 700; cursor: pointer; padding: 0 4px; }
+  .info .rail, .info .ic { background-color: var(--blue); }
+  .ok .rail, .ok .ic { background-color: var(--green); }
+  .warn .rail, .warn .ic { background-color: var(--orange); }
+  .err .rail, .err .ic { background-color: var(--red); }
+  .plain .rail, .plain .ic { background-color: var(--fill2); }
+  .plain .ic { color: var(--fg); }
+  .warn { background-color: rgba(255,149,0,0.07); }
+  .err { background-color: rgba(255,59,48,0.07); }
+  .acts { margin-top: 6px; }
+  .acts span { display: inline-block; font-size: 12px; font-weight: 700; color: var(--blue); margin-right: 12px; cursor: pointer; }
+  .empty { text-align: center; padding: 20px; color: var(--muted); }
+</style>
+<div class="stack" id="stack">
+  <div class="row between" style="margin-bottom: 8px"><span class="bold" style="font-size: 16px">Notifications</span><span class="tiny muted" id="count">5 unread</span></div>
+  <div class="al info"><div class="rail"></div><div class="ic">i</div><div class="grow"><div class="t">New comment on “Kit v2”</div><div class="small">Leo: “Can we make the chips 2px rounder?”</div><div class="acts"><span data-act="reply" role="button">Reply</span><span data-act="open" role="button">Open</span></div></div><span class="x" data-act="dismiss" role="button">×</span></div>
+  <div class="al ok"><div class="rail"></div><div class="ic">+</div><div class="grow"><div class="t">Deploy finished</div><div class="small">web · <span class="bold">v2.14.0</span> is live in eu-west-1 · 2 min 10 s</div></div><span class="x" data-act="dismiss" role="button">×</span></div>
+  <div class="al warn"><div class="rail"></div><div class="ic">!</div><div class="grow"><div class="t">Storage at 91%</div><div class="small">Old build artifacts can be pruned to free about 4 GB.</div><div class="acts"><span data-act="prune" role="button">Prune now</span><span data-act="later" role="button">Remind me later</span></div></div><span class="x" data-act="dismiss" role="button">×</span></div>
+  <div class="al err"><div class="rail"></div><div class="ic">×</div><div class="grow"><div class="t">Payment failed</div><div class="small">Card ending 4421 was declined. Update the card to keep the Pro plan.</div><div class="acts"><span data-act="card" role="button">Update card</span></div></div><span class="x" data-act="dismiss" role="button">×</span></div>
+  <div class="al plain"><div class="rail"></div><div class="ic">@</div><div class="grow"><div class="t">Priya mentioned you</div><div class="small">in #design-crew: “ask @maya about the spacing scale”</div></div><span class="x" data-act="dismiss" role="button">×</span></div>
+</div>
+<script>
+const stack = document.getElementById('stack'), count = document.getElementById('count');
+let left = 5;
+stack.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]');
+  if (!t) return;
+  const al = t.closest('.al');
+  if (t.dataset.act === 'dismiss') {
+    al.remove();
+    left--;
+    count.textContent = left ? left + ' unread' : 'all clear';
+    if (!left) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Nothing new. Nice.'; stack.appendChild(d); }
+  } else if (typeof TelegramWidget !== 'undefined') TelegramWidget.sendMessage(t.textContent + ': ' + al.querySelector('.t').textContent);
+});
+</script>

@@ -172,6 +172,25 @@ final class LinkParsingTests: XCTestCase {
         assertPeer("https://t.me/alice/42?t=90&option=AQ", username: "alice", post: 42, action: .pollOption(Data([1])))
     }
 
+    func testOutOfRangeTimecodesAreIgnored() {
+        let outOfRange = [
+            "3000000000000000h",
+            "153722867280912931m",
+            "9223372036854775807s",
+            "2562047788015215h1000000m",
+            "99999999999999999999h",
+            "596524h",
+            "596523h14m8s",
+            "3000000000",
+        ]
+        for t in outOfRange {
+            assertPeer("https://t.me/x/1?t=\(t)", username: "x", post: 1)
+            assertPeer("https://t.me/c/123/42?t=\(t)", username: "_private_123", post: 42)
+        }
+        assertPeer("https://t.me/x/1?t=596523h14m7s", username: "x", post: 1, action: .openMedia(Int32.max))
+        assertPeer("https://t.me/x/1?t=596523h", username: "x", post: 1, action: .openMedia(2147482800))
+    }
+
     func testTopicsCommentsAndStories() {
         guard case let .comments(_, username, thread, comment) = parse("https://t.me/alice/42?comment=7") else {
             return XCTFail("Expected comments")

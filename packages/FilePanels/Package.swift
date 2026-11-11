@@ -12,6 +12,7 @@ let package = Package(
         .package(name: "TGUIKit", path: "../TGUIKit"),
         .package(name: "TelegramTheme", path: "../TelegramTheme"),
         .package(name: "ColorPalette", path: "../ColorPalette"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
     ],
     targets: [
         .target(
@@ -20,6 +21,7 @@ let package = Package(
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
                 .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil),
                 .product(name: "ColorPalette", package: "ColorPalette", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
             ],
             path: "Sources/FilePanels"),
     ]

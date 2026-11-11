@@ -1,8 +1,10 @@
 import Foundation
 import AVFoundation
+import AudioToolbox
 import CoreImage
 import SwiftSignalKit
 import Localization
+import TelegramMediaUtils
 
 public enum EditVideoTool: String, CaseIterable, Equatable {
     case enhance
@@ -465,6 +467,21 @@ public enum EditVideoExport {
         return Int64(Double(quality.videoBitrate + audio) * duration / 8.0)
     }
 
+    static func preferredAudioTrack(in asset: AVAsset) -> AVAssetTrack? {
+        let tracks = asset.tracks(withMediaType: .audio)
+        return tracks.first(where: { track in
+            guard let description = track.formatDescriptions.first else { return false }
+            return CMFormatDescriptionGetMediaSubType(description as! CMFormatDescription) == kAudioFormatMPEG4AAC
+        }) ?? tracks.first
+    }
+
+    static func linearPCMAudioSettings(channelCount: Int) -> [String: Any] {
+        var layout = AudioChannelLayout()
+        layout.mChannelLayoutTag = channelCount == 1 ? kAudioChannelLayoutTag_Mono : kAudioChannelLayoutTag_Stereo
+        return [AVFormatIDKey: kAudioFormatLinearPCM, AVNumberOfChannelsKey: channelCount,
+                AVChannelLayoutKey: Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)]
+    }
+
     static func trimmedComposition(_ spec: EditVideoRenderSpec) -> AVMutableComposition? {
         let asset = AVURLAsset(url: spec.url)
         let duration = asset.duration
@@ -484,12 +501,9 @@ public enum EditVideoExport {
             }
             try compositionVideo.insertTimeRange(range, of: videoTrack, at: .zero)
             compositionVideo.preferredTransform = videoTrack.preferredTransform
-            if !spec.isMuted {
-                for audioTrack in asset.tracks(withMediaType: .audio) {
-                    if let compositionAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                        try compositionAudio.insertTimeRange(CMTimeRangeGetIntersection(range, otherRange: audioTrack.timeRange), of: audioTrack, at: .zero)
-                    }
-                }
+            if !spec.isMuted, let audioTrack = preferredAudioTrack(in: asset),
+               let compositionAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try compositionAudio.insertTimeRange(CMTimeRangeGetIntersection(range, otherRange: audioTrack.timeRange), of: audioTrack, at: .zero)
             }
         } catch {
             return nil
@@ -540,6 +554,63 @@ public enum EditVideoExport {
         }
     }
 
+    public static func exportProgressively(_ spec: EditVideoRenderSpec, to url: URL, useStreamingWriter: Bool = true) -> Signal<PendingVideoRenderEvent, NoError> {
+        return Signal { subscriber in
+            guard url.standardizedFileURL != spec.url.standardizedFileURL else {
+                subscriber.putNext(.completed(false))
+                subscriber.putCompletion()
+                return EmptyDisposable
+            }
+            try? FileManager.default.removeItem(at: url)
+            let cancelled = Atomic<Bool>(value: false)
+            let exposedBody = Atomic<Bool>(value: false)
+            let result: Signal<URL?, NoError>
+            if useStreamingWriter, spec.needsRender {
+                result = streamingReencode(spec, fileGrowth: { path, size, headerSize in
+                    if size > PendingVideoRenderEvent.minimumStreamingSize {
+                        _ = exposedBody.swap(true)
+                    }
+                    subscriber.putNext(.progress(path: path, size: size, headerSize: headerSize))
+                }) |> mapToSignal { value -> Signal<URL?, NoError> in
+                    if value == nil && !exposedBody.with({ $0 }) {
+                        return reencode(spec)
+                    }
+                    return .single(value)
+                }
+            } else {
+                result = export(spec)
+            }
+            let disposable = result.start(next: { result in
+                guard !cancelled.with({ $0 }) else {
+                    if let result { try? FileManager.default.removeItem(at: result) }
+                    return
+                }
+                guard let result else {
+                    subscriber.putNext(.completed(false))
+                    subscriber.putCompletion()
+                    return
+                }
+                do {
+                    try? FileManager.default.removeItem(at: url)
+                    try FileManager.default.moveItem(at: result, to: url)
+                    if cancelled.with({ $0 }) {
+                        try? FileManager.default.removeItem(at: url)
+                        return
+                    }
+                    subscriber.putNext(.completed(true))
+                } catch {
+                    try? FileManager.default.removeItem(at: result)
+                    subscriber.putNext(.completed(false))
+                }
+                subscriber.putCompletion()
+            })
+            return ActionDisposable {
+                _ = cancelled.swap(true)
+                disposable.dispose()
+            }
+        }
+    }
+
     static func export(_ spec: EditVideoRenderSpec) -> Signal<URL?, NoError> {
         if spec.needsRender {
             return reencode(spec)
@@ -571,6 +642,124 @@ public enum EditVideoExport {
             return ActionDisposable {
                 if session.status == .waiting || session.status == .exporting {
                     session.cancelExport()
+                }
+            }
+        } |> runOn(.concurrentDefaultQueue())
+    }
+
+    static func streamingReencode(_ spec: EditVideoRenderSpec, fileGrowth: @escaping (String, Int64, Int64) -> Void) -> Signal<URL?, NoError> {
+        return Signal { subscriber in
+            let url = URL(fileURLWithPath: NSTemporaryDirectory() + "edited_video_stream_\(Int64.random(in: 0 ... Int64.max)).mp4")
+            let stopped = Atomic<Bool>(value: false)
+            let finished = Atomic<Bool>(value: false)
+            let fail: () -> Void = {
+                guard !finished.swap(true) else { return }
+                try? FileManager.default.removeItem(at: url)
+                subscriber.putNext(nil)
+                subscriber.putCompletion()
+            }
+            guard let composition = trimmedComposition(spec), let reader = try? AVAssetReader(asset: composition) else {
+                fail()
+                return EmptyDisposable
+            }
+            let display = displaySize(of: spec.url)
+            let outputSize = EditVideoRenderer.outputSize(display: display, spec: spec)
+            let quality = spec.quality ?? EditVideoQuality.bestAvailable(for: display)
+            let videoComposition = EditVideoRenderer.videoComposition(for: composition, spec: spec, outputSize: outputSize)
+            let videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: composition.tracks(withMediaType: .video), videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            videoOutput.videoComposition = videoComposition
+            videoOutput.alwaysCopiesSampleData = false
+            guard reader.canAdd(videoOutput) else { fail(); return EmptyDisposable }
+            reader.add(videoOutput)
+            let audioTracks = composition.tracks(withMediaType: .audio)
+            let audioOutput: AVAssetReaderAudioMixOutput?
+            var audioSettings: [String: Any] = [:]
+            if !spec.isMuted, !audioTracks.isEmpty {
+                let output = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: linearPCMAudioSettings(channelCount: quality.audioChannels))
+                guard reader.canAdd(output) else { fail(); return EmptyDisposable }
+                reader.add(output)
+                audioOutput = output
+                audioSettings = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44100, AVNumberOfChannelsKey: quality.audioChannels, AVEncoderBitRateKey: quality.audioBitrate]
+            } else {
+                audioOutput = nil
+            }
+            let sourceRate = composition.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30
+            let configuration = EditVideoStreamingConfiguration(videoSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: Int(outputSize.width), AVVideoHeightKey: Int(outputSize.height), AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: quality.videoBitrate, AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel, AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCABAC]], audioSettings: audioSettings, dimensions: outputSize, frameRate: Int32(max(1, sourceRate.rounded())))
+            let writer = EditVideoStreamingWriter(expectedDuration: composition.duration.seconds)
+            writer.setup(configuration: configuration, outputPath: url.path)
+            writer.setupVideoInput(configuration: configuration, preferredTransform: nil, sourceFrameRate: sourceRate)
+            if audioOutput != nil { writer.setupAudioInput(configuration: configuration) }
+            writer.onFileGrowth = { size, headerSize in
+                if !stopped.with({ $0 }), !finished.with({ $0 }) {
+                    fileGrowth(url.path, size, headerSize)
+                }
+            }
+            guard reader.startReading(), writer.startWriting() else {
+                reader.cancelReading()
+                writer.cancelWriting()
+                fail()
+                return EmptyDisposable
+            }
+            writer.startSession(atSourceTime: .zero)
+            let queue = DispatchQueue(label: "org.telegram.editVideo.streaming")
+            let remaining = Atomic<Int>(value: audioOutput == nil ? 1 : 2)
+            let finish: () -> Void = {
+                guard !stopped.with({ $0 }), reader.status != .failed, reader.status != .cancelled else {
+                    reader.cancelReading()
+                    writer.cancelWriting()
+                    fail()
+                    return
+                }
+                writer.finishWriting {
+                    guard !stopped.with({ $0 }), writer.status == .completed, !writer.wroteMoovAtEnd else { fail(); return }
+                    guard !finished.swap(true) else { return }
+                    subscriber.putNext(url)
+                    subscriber.putCompletion()
+                }
+            }
+            writer.requestVideoDataWhenReady(on: queue) {
+                while writer.isReadyForMoreVideoData {
+                    if !stopped.with({ $0 }), reader.status == .reading, let buffer = videoOutput.copyNextSampleBuffer() {
+                        if !writer.appendVideoBuffer(buffer) {
+                            _ = stopped.swap(true)
+                            reader.cancelReading()
+                            writer.cancelWriting()
+                            fail()
+                            return
+                        }
+                    } else {
+                        writer.markVideoAsFinished()
+                        if remaining.modify({ $0 - 1 }) == 0 { finish() }
+                        return
+                    }
+                }
+            }
+            if let audioOutput {
+                writer.requestAudioDataWhenReady(on: queue) {
+                    while writer.isReadyForMoreAudioData {
+                        if !stopped.with({ $0 }), reader.status == .reading, let buffer = audioOutput.copyNextSampleBuffer() {
+                            if !writer.appendAudioBuffer(buffer) {
+                                _ = stopped.swap(true)
+                                reader.cancelReading()
+                                writer.cancelWriting()
+                                fail()
+                                return
+                            }
+                        } else {
+                            writer.markAudioAsFinished()
+                            if remaining.modify({ $0 - 1 }) == 0 { finish() }
+                            return
+                        }
+                    }
+                }
+            }
+            return ActionDisposable {
+                if !finished.swap(true) {
+                    _ = stopped.swap(true)
+                    reader.cancelReading()
+                    writer.cancelWriting()
+                    writer.onFileGrowth = nil
+                    try? FileManager.default.removeItem(at: url)
                 }
             }
         } |> runOn(.concurrentDefaultQueue())
@@ -622,7 +811,7 @@ public enum EditVideoExport {
             var pairs: [(AVAssetReaderOutput, AVAssetWriterInput, String)] = [(videoOutput, videoInput, "video")]
             let audioTracks = composition.tracks(withMediaType: .audio)
             if !spec.isMuted, !audioTracks.isEmpty {
-                let output = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [AVFormatIDKey: kAudioFormatLinearPCM])
+                let output = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: linearPCMAudioSettings(channelCount: quality.audioChannels))
                 let input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                     AVFormatIDKey: kAudioFormatMPEG4AAC,
                     AVSampleRateKey: 44100,

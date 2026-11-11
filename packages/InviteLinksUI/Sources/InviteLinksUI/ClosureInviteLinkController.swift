@@ -22,6 +22,7 @@ import SwiftSignalKit
 import Postbox
 import TelegramCore
 import FoundationUtils
+import AppAnalytics
 
 private final class InviteLinkArguments {
     let context: any AccountContextProtocol
@@ -507,6 +508,7 @@ public func ClosureInviteLinkController(context: any AccountContextProtocol, pee
 
     
     let controller = InputDataController(dataSignal: dataSignal, title: mode.title)
+    controller.analyticsScreen = .peerInfoInviteLinksEditor
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: {
         getModalController?()?.close()

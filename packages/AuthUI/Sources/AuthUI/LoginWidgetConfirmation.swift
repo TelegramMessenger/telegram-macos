@@ -13,6 +13,7 @@ import AvatarUI
 import AlertsUI
 import PhoneNumberUtils
 import InlineStickerLayer
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -965,8 +966,15 @@ public func LoginWidgetConfirmationController(context: any AccountContextProtoco
         return controller
     }
 
+    controller.analyticsScreen = initialState.isSelectionMode ? AnalyticsScreen.authWebsiteLoginMatchCode : AnalyticsScreen.authWebsiteLogin
 
-
+    controller.afterTransaction = { controller in
+        let screen = stateValue.with { $0.isSelectionMode } ? AnalyticsScreen.authWebsiteLoginMatchCode : AnalyticsScreen.authWebsiteLogin
+        if controller.analyticsScreen != screen {
+            controller.analyticsScreen = screen
+            Analytics.shared.screens.show(ObjectIdentifier(controller), screen: screen)
+        }
+    }
 
     controller.onDeinit = {
         actionsDisposable.dispose()

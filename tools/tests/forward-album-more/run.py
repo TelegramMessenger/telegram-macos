@@ -53,6 +53,12 @@ def closure_body(text, start):
     return text[begin + len(start):end]
 
 
+def through(text, start, last):
+    begin = text.index(start)
+    _, _, end = braced(text[begin:], last)
+    return text[begin:begin + end + 1]
+
+
 def if_else(text, start):
     begin, _, end = braced(text, start)
     while text[end + 1:].lstrip().startswith('else'):
@@ -87,13 +93,18 @@ parts = {
     '__SELECTED_WITH_ALBUMS__': without_imports(code('packages/ChatHistoryModel/Sources/ChatHistoryModel/SelectedMessagesWithAlbums.swift')),
     '__MESSAGE_FOR_FORWARDING__': statement(code('packages/MessageUtils/Sources/MessageUtils/MessageExtras.swift'), 'public func messageForForwarding('),
     '__GET_MESSAGES__': body(interaction, 'public func getMessages(_ messageIds: [MessageId], _ album: Bool)'),
-    '__CHAT_FORWARD_MESSAGES__': closure_body(controller, 'chatInteraction.forwardMessages = { [weak self] messages in'),
-    '__SHARE_MODAL_OBSERVED__': body(ui_hooks, 'public func makeForwardMessagesShareModalObserved('),
+    '__FORWARD_MESSAGES_OBSERVED__': through(interaction, 'public var forwardMessages: ([Message]) -> Void = {_ in}', 'public func forwardMessagesObserved(_ messages: [Message], analyticsContext: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint?, journey: AnalyticsForwardPickerJourney?)'),
+    '__CHAT_FORWARD_MESSAGES__': through(controller, 'chatInteraction.forwardMessages = { [weak self] messages in', 'chatInteraction.forwardMessagesWithJourney = { messages, origin, entry, journey in'),
+    '__SHARE_MODAL_OBSERVED__': through(ui_hooks, 'public func makeForwardMessagesShareModalObserved(', 'journey: AnalyticsForwardPickerJourney?) -> ModalViewController'),
     '__SHARE_MODAL__': closure_body(ui_install, 'makeForwardMessagesShareModal: { context, messages, getMessages in'),
+    '__SHARE_MODAL_WITH_CONTEXT__': closure_body(ui_install, 'hooks.makeForwardMessagesShareModalWithContext = { context, messages, getMessages, analyticsContext in'),
+    '__SHARE_MODAL_WITH_SOURCE__': closure_body(ui_install, 'hooks.makeForwardMessagesShareModalWithSource = { context, messages, getMessages, analyticsContext, entry in'),
+    '__ATTACH_FORWARD_JOURNEY__': closure_body(ui_install, 'hooks.attachForwardJourney = { controller, journey in'),
     '__OBJECT_OBSERVED__': body(history_hooks, 'public func makeForwardMessagesObjectObserved('),
     '__OBJECT_PLAIN__': closure_body(history_install, 'makeForwardMessagesObject: { context, messages, album, getMessages in'),
-    '__OBJECT_WITH_CONTEXT__': closure_body(history_install, 'hooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages in'),
+    '__OBJECT_WITH_CONTEXT__': closure_body(history_install, 'hooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages, analyticsContext in'),
     '__OBJECT_IDS__': statement(forward_object, 'public var messageIds: [MessageId]'),
+    '__OBJECT_CONVENIENCE_INIT__': statement(forward_object, 'public convenience init(_ context: any AccountContextProtocol, messages: [Message]'),
     '__OBJECT_INIT__': statement(forward_object, 'public init(_ context: any AccountContextProtocol, messages: [Message]'),
     '__OBJECT_ALBUM__': line(single_peer, r'let album = [^\n]+'),
     '__OBJECT_IDS_LINE__': line(single_peer, r'let messageIds = [^\n]+'),

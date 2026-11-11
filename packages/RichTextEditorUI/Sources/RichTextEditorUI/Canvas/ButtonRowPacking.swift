@@ -57,6 +57,8 @@ func richTextButtonBadgeReserve(_ button: ButtonRef, metrics: RichTextButtonMetr
         return richTextStringIsSingleEmoji(url) ? 0.0 : smallIconReserve
     case .copyText:
         return smallIconReserve
+    case .userProfile:
+        return largeIconReserve
     case .disabled:
         switch button.labelText {
         case "Open": return smallIconReserve

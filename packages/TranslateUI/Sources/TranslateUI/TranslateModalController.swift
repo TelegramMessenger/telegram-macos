@@ -19,6 +19,7 @@ import LocalAnimations
 import ChatUI
 import InputView
 import InlineStickerLayer
+import AppAnalytics
 
 private enum TranslateTabMode: Equatable {
     case translate
@@ -110,6 +111,7 @@ private final class Arguments {
     let isRich: Bool
     let richPage: InstantPage?
     let updateCustomPrompt:(String)->Void
+    var toggleAlwaysUse: (() -> Void)?
 
     init(context: any AccountContextProtocol, revealFrom:@escaping()->Void, revealTo:@escaping()->Void, updateFrom:@escaping(String?)->Void, updateTo:@escaping(String)->Void, updateTone:@escaping(String)->Void, copyTranslation:@escaping()->Void, translateEntireChat:(()->Void)? = nil, updateMode:@escaping(TranslateTabMode)->Void = { _ in }, updateStyle:@escaping(String)->Void = { _ in }, toggleEmojify:@escaping()->Void = { }, showStyleTooltip:@escaping()->Void = { }, createNewStyle:@escaping()->Void = { }, styleMenu:@escaping(TranslationStyleItem)->ContextMenu? = { _ in nil }, isInputMode: Bool = false, isRich: Bool = false, richPage: InstantPage? = nil, updateCustomPrompt:@escaping(String)->Void = { _ in }) {
         self.context = context
@@ -173,6 +175,34 @@ private struct State : Equatable {
     var richCache: [ComposeKey: InstantPage] = [:]
     var canCopy: Bool = true
     var copyRestriction: String? = nil
+    var alwaysUse: Bool?
+    var restoredStyle: TelegramComposeAIMessageMode.CloudStyle.Reference?
+
+    var alwaysUseSettings: ChatAIEditorSettings? {
+        switch mode {
+        case .translate:
+            guard !to.isEmpty else { return nil }
+            return ChatAIEditorSettings(kind: .translate, language: to, emojify: emojify, style: toneId == "neutral" ? nil : .standard(toneId))
+        case .style:
+            guard styleId != "prompt", let selectedStyle else { return nil }
+            return ChatAIEditorSettings(kind: .style, emojify: emojify, style: selectedStyle)
+        case .fix:
+            return ChatAIEditorSettings(kind: .fix)
+        }
+    }
+
+    var canToggleAlwaysUse: Bool {
+        guard let alwaysUse else { return false }
+        return alwaysUse || alwaysUseSettings != nil
+    }
+
+    var selectedStyle: TelegramComposeAIMessageMode.CloudStyle.Reference? {
+        guard !styleId.isEmpty else { return nil }
+        if let style = styles.first(where: { $0.id == styleId })?.reference {
+            return style
+        }
+        return restoredStyle ?? .standard(styleId)
+    }
 
     var cacheKey: ComposeKey {
         return ComposeKey(mode: mode, toLang: to, styleId: styleId, emojify: emojify, toneId: toneId, prompt: styleId == "prompt" ? customPrompt : "")
@@ -732,10 +762,22 @@ private func flagEmoji(for langCode: String) -> String {
     return flag.isEmpty ? "🌐" : flag
 }
 
-private func languageMenuItem(for language: Translate.Value, selected: Bool, handler: @escaping () -> Void) -> ContextMenuItem {
-    let flag = flagEmoji(for: language.code[0])
-    let title = "\(flag) \(language.language)"
-    return ContextMenuItem(title, handler: handler, state: selected ? .on : nil)
+private func languageMenuItems(selectedCode: String?, update: @escaping (String) -> Void) -> [ContextMenuItem] {
+    let languages = Translate.codes
+    let normalizedCode = selectedCode.map(Translate.normalizeLanguageCode)
+    let selectedIndex = normalizedCode.flatMap { code in
+        languages.firstIndex { $0.code.contains(code) }
+    }
+    var items = languages.enumerated().map { index, language in
+        let code = language.code[0]
+        let title = "\(flagEmoji(for: code)) \(language.language)"
+        return ContextMenuItem(title, handler: { update(code) }, state: index == selectedIndex ? .on : nil)
+    }
+    if let selectedIndex, selectedIndex != items.startIndex {
+        let selected = items.remove(at: selectedIndex)
+        items.insert(selected, at: 0)
+    }
+    return items
 }
 
 private func generateX50Badge(textColor: NSColor) -> CGImage {
@@ -763,6 +805,8 @@ private func generateX50Badge(textColor: NSColor) -> CGImage {
         CTLineDraw(line, ctx)
     })!
 }
+
+private let alwaysUseIdentifier = InputDataIdentifier("always_use_ai")
 
 private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
@@ -806,18 +850,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                     label: strings().translateFrom,
                     language: fromName,
                     languageMenu: {
-                        var items: [ContextMenuItem] = []
-                        if let fromCode = state.from, let selected = Translate.codes.first(where: { $0.code.contains(fromCode) }) {
-                            items.append(languageMenuItem(for: selected, selected: true, handler: {
-                                arguments.updateFrom(selected.code[0])
-                            }))
-                        }
-                        for language in Translate.codes {
-                            items.append(languageMenuItem(for: language, selected: language.code.contains(state.from ?? ""), handler: {
-                                arguments.updateFrom(language.code[0])
-                            }))
-                        }
-                        return items
+                        languageMenuItems(selectedCode: state.from, update: arguments.updateFrom)
                     },
                     toneLabel: nil,
                     toneName: nil,
@@ -894,16 +927,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                     items.append(toneItem)
                     items.append(ContextSeparatorItem())
 
-                    if let selected = Translate.codes.first(where: { $0.code.contains(state.to) }) {
-                        items.append(languageMenuItem(for: selected, selected: true, handler: {
-                            arguments.updateTo(selected.code[0])
-                        }))
-                    }
-                    for language in Translate.codes {
-                        items.append(languageMenuItem(for: language, selected: language.code.contains(state.to), handler: {
-                            arguments.updateTo(language.code[0])
-                        }))
-                    }
+                    items.append(contentsOf: languageMenuItems(selectedCode: state.to, update: arguments.updateTo))
                     return items
                 },
                 toneLabel: nil,
@@ -978,6 +1002,15 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         sectionId += 1
     }
 
+    if let enabled = state.alwaysUse, let toggle = arguments.toggleAlwaysUse {
+        let title = strings().translateModalControllerAlwaysUse
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: alwaysUseIdentifier, data: .init(name: title, color: theme.colors.text, type: .switchable(enabled), viewType: .singleItem, enabled: state.canToggleAlwaysUse, action: toggle)))
+        index += 1
+        let description = strings().translateModalControllerAlwaysUseInfo
+        entries.append(.desc(sectionId: sectionId, index: index, text: .plain(description), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+        entries.append(.sectionId(sectionId + 1, type: .normal))
+    }
+
     return entries
 }
 
@@ -1035,8 +1068,14 @@ func translateBlocks(context: any AccountContextProtocol, from: String?, to: Str
     
     return signal
 }
-public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], draft: ChatTextInputState? = nil, canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil) -> InputDataModalController {
+public func TranslateModalController(context: any AccountContextProtocol, from: String?, toLang: String, text: String, entities: [MessageTextEntity] = [], draft: ChatTextInputState? = nil, canBreak: Bool = true, configState: AppConfigTranslateState = .enabled, messageId: MessageId? = nil, isRichMessage: Bool = false, richMessagePage: InstantPage? = nil, onUse: ((NSAttributedString)->Void)? = nil, onSend: ((NSAttributedString)->Void)? = nil, richBlocks: [Block]? = nil, onUseRich: (([Block])->Void)? = nil, dismissOnly: Bool = false, onToneChanged: ((TranslationTone)->Void)? = nil, translateEntireChat: (()->Void)? = nil, alwaysUsePeerId: PeerId? = nil, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
 
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: messageId?.peerId ?? context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
+    let getAnalyticsContext: () -> AnalyticsContext = {
+        Analytics.shared.captureContext(engine: context.engine, peerId: messageId?.peerId ?? context.peerId, inherited: origin)
+    }
     let actionsDisposable = DisposableSet()
     let disposable = MetaDisposable()
     actionsDisposable.add(disposable)
@@ -1072,7 +1111,18 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
-        statePromise.set(stateValue.modify (f))
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
+        let previous = stateValue.with { $0 }
+        let next = stateValue.modify(f)
+        if let alwaysUsePeerId, let wasEnabled = previous.alwaysUse, let enabled = next.alwaysUse {
+            if enabled, let settings = next.alwaysUseSettings, !wasEnabled || previous.alwaysUseSettings != settings {
+                ChatAIEditorSettings.save(settings, postbox: context.account.postbox, peerId: alwaysUsePeerId)
+            } else if wasEnabled, !enabled {
+                ChatAIEditorSettings.save(nil, postbox: context.account.postbox, peerId: alwaysUsePeerId)
+            }
+        }
+        statePromise.set(next)
     }
 
     if let messageId {
@@ -1103,17 +1153,23 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     let reloadCounter: Atomic<Int32> = Atomic(value: 0)
     let pinnedNewStyleIds: Atomic<[Int64]> = Atomic(value: [])
     let triggerReloadStyles: () -> Void = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         reloadStyles.set(reloadCounter.modify { $0 + 1 })
     }
     let cloudStylesSignal: Signal<[TranslationStyleItem], NoError> = reloadStyles.get()
     |> mapToSignal { _ in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         return context.engine.messages.composeAIMessageStyles()
     }
     |> map { cloudStyles in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         return cloudStyles.map { makeStyleItem(from: $0) }
     }
 
-    actionsDisposable.add((cloudStylesSignal |> deliverOnMainQueue).start(next: { styles in
+    actionsDisposable.add(getAnalyticsContext().preservingPresentation(cloudStylesSignal |> deliverOnMainQueue).start(next: { styles in
         var reordered = styles
         let pinned = pinnedNewStyleIds.with { $0 }
         if !pinned.isEmpty {
@@ -1135,7 +1191,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         }
         if !authorIds.isEmpty {
             let authorsSignal = context.engine.data.get(EngineDataMap(authorIds.map { TelegramEngine.EngineData.Item.Peer.Peer(id: $0) }))
-            actionsDisposable.add((authorsSignal |> deliverOnMainQueue).start(next: { peers in
+            actionsDisposable.add(getAnalyticsContext().preservingPresentation(authorsSignal |> deliverOnMainQueue).start(next: { peers in
                 updateState { current in
                     var current = current
                     for (id, peer) in peers {
@@ -1160,6 +1216,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
 
 
     let request:()->Void = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         let state = stateValue.with { $0 }
 
         if state.limitExceeded {
@@ -1203,7 +1261,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
             // the chat's inline translation shows the same rich result.
             let richSignal = context.engine.messages.translateRichMessage(messageId: messageId, toLang: state.to, tone: state.tone)
             |> deliverOnMainQueue
-            disposable.set((richSignal).start(next: { page in
+            disposable.set(getAnalyticsContext().preservingPresentation(richSignal).start(next: { page in
                 updateState { current in
                     var current = current
                     if let page {
@@ -1259,7 +1317,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
 
             let richSignal = context.engine.messages.composeRichMessageWithAI(instantPage: richPage, proofread: proofread, translateToLang: translateToLang, changeStyle: changeStyle, customPrompt: customPrompt, emojify: emojify)
             |> deliverOnMainQueue
-            disposable.set((richSignal).start(next: { page in
+            disposable.set(getAnalyticsContext().preservingPresentation(richSignal).start(next: { page in
                 let (previewText, previewEntities) = richTextPlainPreview(from: page)
                 updateState { current in
                     var current = current
@@ -1293,12 +1351,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
             let proofread = state.mode == .fix
             let translateToLang: String? = state.mode == .translate ? state.to : nil
             let changeStyle: TelegramComposeAIMessageMode.CloudStyle.Reference?
-            if state.mode == .style && !state.styleId.isEmpty {
-                if let selected = state.styles.first(where: { $0.id == state.styleId })?.reference {
-                    changeStyle = selected
-                } else {
-                    changeStyle = .standard(state.styleId)
-                }
+            if state.mode == .style {
+                changeStyle = state.selectedStyle
             } else if state.mode == .translate && state.toneId != "neutral" {
                 changeStyle = .standard(state.toneId)
             } else {
@@ -1331,7 +1385,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         } else {
             signal = translateBlocks(context: context, from: stateValue.with { $0.from }, to: stateValue.with { $0.to }, blocks: blocks, configState: configState, tone: stateValue.with { $0.tone })
         }
-        disposable.set((signal).start(next: { result in
+        disposable.set(getAnalyticsContext().preservingPresentation(signal).start(next: { result in
             updateState { current in
                 var current = current
                 if result.result.isEmpty {
@@ -1368,6 +1422,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     var getController: (()->InputDataController?)? = nil
 
     let showStyleTooltip: () -> Void = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         if let view = getController?()?.tableView.item(stableId: InputDataEntryId.custom(InputDataIdentifier("style_selector")))?.view as? StyleEmojiRowView {
             let middleIndex = view.itemViews.count / 2 - 1
             if middleIndex >= 0, middleIndex < view.itemViews.count {
@@ -1377,18 +1433,24 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     }
 
     let arguments = Arguments(context: context, revealFrom: {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.fromIsRevealed = true
             return current
         }
     }, revealTo: {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.toIsRevealed = true
             return current
         }
     }, updateFrom: { language in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.from = language
@@ -1396,6 +1458,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         }
         request()
     }, updateTo: { language in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.to = language
@@ -1403,6 +1467,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         }
         request()
     }, updateTone: { tone in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.toneId = tone
@@ -1412,15 +1478,21 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         request()
         onToneChanged?(TranslationTone(rawValue: tone) ?? .neutral)
     }, copyTranslation: {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         let text = stateValue.with { $0.translatedAttr(context: context) }
         if let text {
             _ = LinkHooks.shared.globalLinkExecutor().copyAttributedString(text)
             showModalText(for: context.window, text: strings().shareLinkCopied)
         }
     }, translateEntireChat: translateEntireChat != nil ? {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         translateEntireChat?()
         close?()
     } : nil, updateMode: { mode in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.mode = mode
@@ -1436,13 +1508,18 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
             }
         }
     }, updateStyle: { styleId in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.styleId = styleId
+            current.restoredStyle = nil
             return current
         }
         request()
     }, toggleEmojify: {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.emojify = !current.emojify
@@ -1450,12 +1527,15 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         }
         request()
     }, showStyleTooltip: showStyleTooltip, createNewStyle: {
+        let analyticsContext = getAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         showModal(with: AIStyleModalController(context: context, onCompleted: { newStyleId in
             if let newStyleId {
                 _ = pinnedNewStyleIds.modify { [newStyleId] + $0.filter { $0 != newStyleId } }
             }
             triggerReloadStyles()
-        }), for: context.window)
+        }, analyticsContext: analyticsContext), for: context.window)
     }, styleMenu: { style -> ContextMenu? in
         guard case .custom(let styleId, let accessHash) = style.reference else {
             return nil
@@ -1463,18 +1543,28 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         let menu = ContextMenu()
         if style.isAuthor, let cloudStyle = style.cloudStyle {
             menu.addItem(ContextMenuItem(strings().translateModalEditStyle, handler: {
+                let analyticsContext = getAnalyticsContext()
+                let presentation = analyticsContext.beginPresentation()
+                defer { presentation.end() }
                 showModal(with: AIStyleModalController(context: context, editing: cloudStyle, onCompleted: { _ in
                     triggerReloadStyles()
-                }), for: context.window)
+                }, analyticsContext: analyticsContext), for: context.window)
             }, itemImage: MenuAnimation.menu_edit.value))
         }
         menu.addItem(ContextMenuItem(strings().translateModalShareStyle, handler: {
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             if let slug = style.slug {
-                TranslateUIHooks.shared.shareLinkObserved(context, context.meUrlPrefix + "addstyle/\(slug)")
+                TranslateUIHooks.shared.shareLinkObserved(context, context.meUrlPrefix + "addstyle/\(slug)", analyticsContext: analyticsContext)
             }
         }, itemImage: MenuAnimation.menu_share.value))
         menu.addItem(ContextSeparatorItem())
         menu.addItem(ContextMenuItem(strings().translateModalDeleteStyle, handler: {
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
+            let confirmationPresentation = analyticsContext.beginPresentation()
             let removedId = style.id
             let removeLocal: () -> Void = {
                 updateState { current in
@@ -1489,23 +1579,35 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
             }
             if style.isAuthor {
                 verifyAlert(for: context.window, header: strings().translateModalDeleteStyleHeader, information: strings().translateModalDeleteStyleConfirm, ok: strings().modalDelete, option: strings().translateModalDeleteStyleForAll, successHandler: { result in
+                    let analyticsContext = getAnalyticsContext()
+                    let presentation = analyticsContext.beginPresentation()
+                    defer { presentation.end() }
                     switch result {
                     case .thrid:
-                        _ = (context.engine.messages.deleteAITextStyle(id: styleId, accessHash: accessHash)).startStandalone()
+                        _ = analyticsContext.preservingPresentation(context.engine.messages.deleteAITextStyle(id: styleId, accessHash: accessHash)).startStandalone()
                     case .basic:
-                        _ = (context.engine.messages.unsaveAITextStyle(id: styleId, accessHash: accessHash)).startStandalone()
+                        _ = analyticsContext.preservingPresentation(context.engine.messages.unsaveAITextStyle(id: styleId, accessHash: accessHash)).startStandalone()
                     }
                     removeLocal()
+                }, onDeinit: {
+                    confirmationPresentation.end()
                 })
             } else {
                 verifyAlert(for: context.window, header: strings().translateModalDeleteStyleHeader, information: strings().translateModalDeleteStyleConfirm, ok: strings().modalDelete, successHandler: { _ in
-                    _ = (context.engine.messages.unsaveAITextStyle(id: styleId, accessHash: accessHash)).startStandalone()
+                    let analyticsContext = getAnalyticsContext()
+                    let presentation = analyticsContext.beginPresentation()
+                    defer { presentation.end() }
+                    _ = analyticsContext.preservingPresentation(context.engine.messages.unsaveAITextStyle(id: styleId, accessHash: accessHash)).startStandalone()
                     removeLocal()
+                }, onDeinit: {
+                    confirmationPresentation.end()
                 })
             }
         }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
         return menu
     }, isInputMode: isInputMode, isRich: richPage != nil, richPage: richPage, updateCustomPrompt: { prompt in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.customPrompt = prompt
@@ -1513,15 +1615,68 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         }
     })
     
-    request()
-    
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    if let alwaysUsePeerId {
+        arguments.toggleAlwaysUse = {
+            updateState { current in
+                var current = current
+                if let enabled = current.alwaysUse, current.canToggleAlwaysUse {
+                    current.alwaysUse = !enabled
+                }
+                return current
+            }
+        }
+        actionsDisposable.add((ChatAIEditorSettings.observe(postbox: context.account.postbox, peerId: alwaysUsePeerId)
+            |> take(1)
+            |> deliverOnMainQueue).start(next: { saved in
+                updateState { current in
+                    var current = current
+                    current.alwaysUse = saved != nil
+                    if let saved {
+                        current.emojify = saved.emojify
+                        switch saved.kind {
+                        case .translate:
+                            current.mode = .translate
+                            current.to = saved.language ?? current.to
+                            if case let .standard(tone) = saved.style {
+                                current.toneId = tone
+                                current.tone = TranslationTone(rawValue: tone) ?? .neutral
+                            }
+                        case .style:
+                            current.mode = .style
+                            current.restoredStyle = saved.style
+                            switch saved.style {
+                            case let .standard(style):
+                                current.styleId = style
+                            case let .custom(id, _):
+                                current.styleId = "custom_\(id)"
+                            case nil:
+                                break
+                            }
+                        case .fix:
+                            current.mode = .fix
+                        }
+                    }
+                    return current
+                }
+                request()
+            }))
+    } else {
+        request()
+    }
+
+    let signal = getAnalyticsContext().preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
     let controller = InputDataController(dataSignal: signal, title: isInputMode ? strings().translateAIEditor : strings().translateTitle)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = isInputMode ? AnalyticsScreen.chatAiEditor : AnalyticsScreen.chatTranslation
 
     controller.updateDatas = { data in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         if let prompt = data[InputDataIdentifier("custom_prompt")]?.stringValue {
             let changed = stateValue.with { $0.customPrompt != prompt }
             if changed {
@@ -1530,7 +1685,7 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
                     current.customPrompt = prompt
                     return current
                 }
-                promptRequestDisposable.set((Signal<Void, NoError>.single(Void()) |> delay(1.0, queue: .mainQueue())).start(completed: {
+                promptRequestDisposable.set(getAnalyticsContext().preservingPresentation(Signal<Void, NoError>.single(Void()) |> delay(1.0, queue: .mainQueue())).start(completed: {
                     request()
                 }))
             }
@@ -1538,9 +1693,21 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         return .fail(.none)
     }
 
+    if alwaysUsePeerId != nil {
+        controller.willDisappear = { controller in
+            let table = controller.tableView
+            if let index = table.index(hash: InputDataEntryId.general(alwaysUseIdentifier)),
+               let row = table.viewNecessary(at: index) as? GeneralInteractedRowView {
+                row.switchView?.finishPendingChange()
+            }
+        }
+    }
+
     getController = { [weak controller] in controller }
 
     controller.onDeinit = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         actionsDisposable.dispose()
     }
     
@@ -1557,9 +1724,12 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     if isInputMode {
         let sendIcon: CGImage? = onSend != nil ? theme.icons.send_message_large : nil
         modalInteractions = ModalInteractions(acceptTitle: strings().translateApply, accept: {
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             if stateValue.with({ $0.limitExceeded }) {
                 close?()
-                FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, .aiCompose, false, nil)
+                FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, .aiCompose, false, nil, analyticsContext: analyticsContext)
                 return
             }
             if let onUseRich {
@@ -1571,21 +1741,30 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
                 return
             }
             if let text = appliedText(), let onUse {
-                onUse(text)
+                onUse(analyticsContext.isExcluded || analyticsContext.scope?.isValid != true ? chatInputTextExcludingAnalytics(text) : text)
                 close?()
             }
         }, singleButton: true, extraActionImage: sendIcon, extraAction: onSend != nil ? {
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             if let text = appliedText() {
-                onSend?(text)
+                onSend?(analyticsContext.isExcluded || analyticsContext.scope?.isValid != true ? chatInputTextExcludingAnalytics(text) : text)
                 close?()
             }
         } : nil)
     } else if dismissOnly {
         modalInteractions = ModalInteractions(acceptTitle: strings().modalOK, accept: {
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             close?()
         }, singleButton: true)
     } else {
         modalInteractions = ModalInteractions(acceptTitle: strings().contextCopy, accept: {
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             let text = stateValue.with { $0.translatedAttr(context: context) }
             if let text {
                 _ = LinkHooks.shared.globalLinkExecutor().copyAttributedString(text)
@@ -1596,19 +1775,26 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(360, 0))
     
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     })
 
     if isInputMode {
         controller.rightModalHeader = ModalHeaderData(image: theme.icons.chatActionInfo, handler: {
-            TranslateUIHooks.shared.showAboutCocoonModalObserved(context)
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
+            TranslateUIHooks.shared.showAboutCocoonModalObserved(context, analyticsContext: getAnalyticsContext())
         })
     }
     
     var limitTooltipShown = false
     controller.afterTransaction = { [weak modalInteractions] controller in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         let state = stateValue.with { $0 }
         modalInteractions?.updateDone { d in
             d.isEnabled = state.translated != nil && !state.isTranslating
@@ -1625,6 +1811,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
         if state.limitExceeded && !limitTooltipShown {
             limitTooltipShown = true
             delay(0.2, closure: {
+                let presentation = getAnalyticsContext().beginPresentation()
+                defer { presentation.end() }
                 showModalText(for: context.window, text: strings().translateDailyLimitInfo, title: strings().translateDailyLimitReached)
             })
         }
@@ -1632,6 +1820,8 @@ public func TranslateModalController(context: any AccountContextProtocol, from: 
     
     
     close = { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.modal?.close()
     }
     

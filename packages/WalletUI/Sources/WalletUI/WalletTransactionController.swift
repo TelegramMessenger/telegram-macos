@@ -11,6 +11,7 @@ import Postbox
 import WalletContext
 import TelegramCore
 import PasscodeCore
+import AppAnalytics
 
 @available(macOS 10.15, *)
 public enum WalletTransactionSubject {
@@ -1599,6 +1600,9 @@ public func WalletTransactionController(context: any AccountContextProtocol, env
     }
 
     performSubmit = { preparedTransfer in
+        let analyticsContext = getController?()?.analyticsContext ?? Analytics.shared.unresolvedContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         preparedTransferNeedsRefresh = false
         let recipientName = subjectRecipientName
         var session: PasscodeSession? = nil
@@ -1615,7 +1619,7 @@ public func WalletTransactionController(context: any AccountContextProtocol, env
             close?()
             submitWalletTransferDetached(context: context, environment: environment, walletContext: walletContext, prepared: preparedTransfer, window: context.window, recipientName: recipientName, session: session, submitted: {
                 onSuccess?()
-            })
+            }, analyticsContext: analyticsContext)
             return
         }
         var returnedToWallet = false
@@ -1653,8 +1657,8 @@ public func WalletTransactionController(context: any AccountContextProtocol, env
         }, failed: {
             returnToWalletDisposable.set(nil)
             close?()
-        })
-        returnToWalletDisposable.set((walletContext.state
+        }, analyticsContext: analyticsContext)
+        returnToWalletDisposable.set(analyticsContext.preservingPresentation(walletContext.state
         |> filter { state in
             return state.pendingTransfers.contains(where: { $0.id == preparedTransfer.id }) && state.transactions.items.contains(where: { $0.presentationId == "pending:\(preparedTransfer.id)" && $0.status != .failed })
         }
@@ -1928,6 +1932,14 @@ public func WalletTransactionController(context: any AccountContextProtocol, env
     let controller = InputDataController(dataSignal: signal, title: title, hasDone: false, getBackgroundColor: {
         arguments.usesCollectibleModalHeader ? theme.colors.listBackground : theme.colors.background
     })
+    switch subject {
+    case .transaction:
+        controller.analyticsScreen = AnalyticsScreen.walletTransaction
+    case .preview:
+        controller.analyticsScreen = AnalyticsScreen.walletTransferConfirmation
+    case .collectiblePreview:
+        controller.analyticsScreen = AnalyticsScreen.walletCollectibleConfirmation
+    }
     getController = { [weak controller] in
         return controller
     }

@@ -14,6 +14,7 @@ import ShortPeerRow
 import Strings
 import InAppSettings
 import TelegramIconsTheme
+import AppAnalytics
 
 private class QuickSwitcherArguments {
     let context: any AccountContextProtocol
@@ -459,6 +460,12 @@ public class QuickSwitcherModalController: ModalViewController, TableViewDelegat
         self.source = source
         super.init(frame: NSMakeRect(0, 0, 300, 360))
         bar = .init(height: 0)
+        switch source {
+        case .quick:
+            self.analyticsScreen = .macosQuickSwitcher
+        case .accounts:
+            self.analyticsScreen = .macosAccountSwitcher
+        }
     }
     
     public override func viewClass() -> AnyClass {

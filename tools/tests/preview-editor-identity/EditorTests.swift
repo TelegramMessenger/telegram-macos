@@ -6,7 +6,16 @@ __EDITS__
 __PENDING__
 __DEFERRED__
 
-final class Context { let window = 1 }
+final class Lease { func end() {} }
+final class Context {
+    let window = 1
+    func beginPresentation() -> Lease { Lease() }
+__SIGNAL_CONTEXT__
+}
+final class Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> Context { Context() }
+}
 final class ChatInteraction {
     var revision = 0
     func captureDeferredSendAction() -> ChatDeferredSendAction {
@@ -16,6 +25,14 @@ final class ChatInteraction {
 }
 final class Slot { var resets = 0; func set(_ value: Int?) { resets += 1 } }
 struct EditedVideoData: Equatable { let value: Int }
+final class Journey {
+    enum Step: Equatable { case applyEditor, cancelEditor, openEditor, openCoverPicker, cancelCoverPicker, applyCover, removeCover }
+    enum Blocker: Equatable { case emptySelection, preparation }
+    var blockers: [Blocker] = []
+    func blocked(_ value: Blocker) { blockers.append(value) }
+    var steps: [Step] = []
+    func step(_ step: Step) { steps.append(step) }
+}
 final class PendingVideoRenders {
     static let shared = PendingVideoRenders()
     var cancelled: [String] = []
@@ -24,6 +41,7 @@ final class PendingVideoRenders {
 final class EditVideoController {
     static var instances: [EditVideoController] = []
     let completion: (URL, EditedVideoData?) -> Void
+    var analyticsContext: Context?
     var onCancelled: (() -> Void)?
     init(context: Context, url: URL, edited: EditedVideoData?, completion: @escaping (URL, EditedVideoData?) -> Void) {
         self.completion = completion
@@ -32,6 +50,7 @@ final class EditVideoController {
 }
 enum Animation { case scaleCenter }
 func showModal(with editor: EditVideoController, for window: Int, animationType: Animation) {
+    XCTAssertNotNil(editor.analyticsContext)
 }
 struct TelegramMediaFile {
     struct Dimensions { let size: Int }
@@ -43,7 +62,7 @@ struct EditedImageData {}
 let photoExts = ["jpg"]
 struct FileCallbacks { let cancelled: () -> Void; let completion: ([String]?) -> Void }
 var fileCallbacks: [FileCallbacks] = []
-func filePanel(with: [String], allowMultiple: Bool, for window: Int, cancelled: @escaping () -> Void, completion: @escaping ([String]?) -> Void) {
+func filePanel(with: [String], allowMultiple: Bool, for window: Int, analyticsContext: Context, cancelled: @escaping () -> Void, completion: @escaping ([String]?) -> Void) {
     fileCallbacks.append(FileCallbacks(cancelled: cancelled, completion: completion))
 }
 final class EditImageModalController {
@@ -52,6 +71,7 @@ final class EditImageModalController {
     static var completeWithoutOutput = false
     let pipe = ValuePipe<(URL, EditedImageData?)>()
     var result: Signal<(URL, EditedImageData?), NoError> { Self.completeWithoutOutput ? .complete() : pipe.signal() }
+    var analyticsContext: Context?
     var onCancelled: (() -> Void)?
     let settings: EditControllerSettings
     init?(_ url: URL, context: Context, settings: EditControllerSettings) {
@@ -60,13 +80,15 @@ final class EditImageModalController {
         Self.instances.append(self)
     }
 }
-func showModal(with editor: EditImageModalController, for window: Int, animationType: Animation) {}
+func showModal(with editor: EditImageModalController, for window: Int, animationType: Animation) { XCTAssertNotNil(editor.analyticsContext) }
 final class Controller {
     let pendingActions = PreviewSenderPendingActions()
     let attachmentEdits = PreviewSenderAttachmentEdits()
     let chatInteraction = ChatInteraction()
     let editorDisposable = MetaDisposable()
     let context = Context()
+    let analyticsContext: Context? = Context()
+    var analyticsMediaJourney: Journey? = Journey()
     var sent = false
     var urls: [URL] { didSet { attachmentEdits.update(urls); if urls != oldValue { pendingActions.invalidate() } } }
     var editedVideos: [URL: EditedVideoData] = [:]
@@ -140,6 +162,7 @@ final class EditorTests: XCTestCase {
         let controller = Controller(urls: [a])
         controller.runVideoEditor(b)
         XCTAssertTrue(EditVideoController.instances.isEmpty)
+        XCTAssertTrue(controller.analyticsMediaJourney!.steps.isEmpty)
     }
     func testVideoUsesValueEqualURLAndTransfersMetadataOnce() {
         let controller = Controller(urls: [a])
@@ -148,6 +171,7 @@ final class EditorTests: XCTestCase {
         controller.previews[a.path] = "/cover"
         controller.runVideoEditor(URL(fileURLWithPath: a.path))
         let editor = EditVideoController.instances[0]
+        XCTAssertTrue(editor.analyticsContext === controller.analyticsContext)
         editor.completion(b, data)
         editor.completion(URL(fileURLWithPath: "/duplicate"), nil)
         editor.onCancelled?()
@@ -155,6 +179,7 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(controller.editedVideos, [b: data])
         XCTAssertEqual(controller.previews, [b.path: "/cover"])
         XCTAssertEqual(PendingVideoRenders.shared.cancelled, [a.path])
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openEditor, .applyEditor])
     }
     func testVideoCancelPreventsLaterOutput() {
         let controller = Controller(urls: [a])
@@ -162,6 +187,7 @@ final class EditorTests: XCTestCase {
         let editor = EditVideoController.instances[0]
         editor.onCancelled?(); editor.onCancelled?(); editor.completion(b, nil)
         XCTAssertEqual(controller.urls, [a])
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openEditor, .cancelEditor])
     }
     func testVideoRejectsRemovedReaddedOrChangedChatAndClosedPreview() {
         for invalidation in 0..<4 {
@@ -177,6 +203,7 @@ final class EditorTests: XCTestCase {
             editor.completion(b, EditedVideoData(value: 3))
             XCTAssertEqual(controller.urls, [a])
             XCTAssertTrue(controller.editedVideos.isEmpty)
+            XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openEditor])
         }
     }
     func testVideoOldCallbackCannotReplaceNewEditorOutput() {
@@ -215,13 +242,17 @@ final class CoverTests: XCTestCase {
         let controller = Controller(urls: [video])
         let callbacks = open(controller)
         callbacks.cancelled(); callbacks.completion(nil); callbacks.completion(["/image"])
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker, .cancelCoverPicker])
         XCTAssertTrue(EditImageModalController.instances.isEmpty)
     }
     func testUnknownAndEmptyPickerResultsAreDistinct() {
         let unknown = Controller(urls: [video])
         open(unknown).completion(nil)
+        XCTAssertEqual(unknown.analyticsMediaJourney?.steps, [.openCoverPicker])
+        XCTAssertTrue(unknown.analyticsMediaJourney!.blockers.isEmpty)
         let empty = Controller(urls: [video])
         open(empty).completion([])
+        XCTAssertEqual(empty.analyticsMediaJourney?.blockers, [.emptySelection])
         XCTAssertTrue(EditImageModalController.instances.isEmpty)
     }
     func testCoverApplicationKeepsContextAndConsumesResultOnce() {
@@ -230,9 +261,11 @@ final class CoverTests: XCTestCase {
         callbacks.completion(["/image"]); callbacks.completion(["/duplicate"])
         XCTAssertEqual(EditImageModalController.instances.count, 1)
         let editor = EditImageModalController.instances[0]
+        XCTAssertTrue(editor.analyticsContext === controller.analyticsContext)
         XCTAssertEqual(editor.settings, .disableSizes(dimensions: 16, circle: false))
         editor.pipe.putNext((cover, nil)); editor.pipe.putNext((URL(fileURLWithPath: "/late"), nil))
         XCTAssertEqual(controller.previews, [video.path: cover.path])
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker, .openEditor, .applyCover])
     }
     func testEditorCancelPreventsCoverApplication() {
         let controller = Controller(urls: [video])
@@ -240,6 +273,7 @@ final class CoverTests: XCTestCase {
         let editor = EditImageModalController.instances[0]
         editor.onCancelled?(); editor.onCancelled?(); editor.pipe.putNext((cover, nil))
         XCTAssertTrue(controller.previews.isEmpty)
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker, .openEditor, .cancelEditor])
     }
     func testRemovingCoverInvalidatesPendingSelectionEvenWhenAlreadyEmpty() {
         let controller = Controller(urls: [video])
@@ -247,6 +281,7 @@ final class CoverTests: XCTestCase {
         controller.removeVideoCover(for: video)
         callbacks.completion(["/late"])
         XCTAssertTrue(EditImageModalController.instances.isEmpty)
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker])
     }
     func testRemovalRecordsOnlyActualChangeAndRejectsOldEditor() {
         let controller = Controller(urls: [video])
@@ -256,6 +291,7 @@ final class CoverTests: XCTestCase {
         controller.removeVideoCover(for: video); controller.removeVideoCover(for: video)
         editor.pipe.putNext((cover, nil))
         XCTAssertTrue(controller.previews.isEmpty)
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker, .openEditor, .removeCover])
     }
     func testStaleAttachmentChatAndClosedPreviewRejectEditorOutput() {
         for state in 0..<3 {
@@ -267,14 +303,15 @@ final class CoverTests: XCTestCase {
             if state == 2 { controller.pendingActions.close() }
             editor.pipe.putNext((cover, nil))
             XCTAssertTrue(controller.previews.isEmpty)
+            XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker, .openEditor])
         }
     }
-    func testConstructorFailureDoesNotApplyCover() {
+    func testConstructorFailureIsPreparationBlocker() {
         EditImageModalController.failConstruction = true
         let controller = Controller(urls: [video])
         open(controller).completion(["/image"])
-        XCTAssertTrue(controller.previews.isEmpty)
-        XCTAssertTrue(EditImageModalController.instances.isEmpty)
+        XCTAssertEqual(controller.analyticsMediaJourney?.blockers, [.preparation])
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker])
     }
     func testEditorCompletionWithoutOutputDoesNotInventCancellationOrApply() {
         EditImageModalController.completeWithoutOutput = true
@@ -283,6 +320,7 @@ final class CoverTests: XCTestCase {
         let editor = EditImageModalController.instances[0]
         editor.onCancelled?(); editor.pipe.putNext((cover, nil))
         XCTAssertTrue(controller.previews.isEmpty)
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openCoverPicker, .openEditor])
     }
     func testMissingAttachmentAndCommittedPreviewDoNotOpenPicker() {
         let controller = Controller(urls: [])
@@ -291,5 +329,6 @@ final class CoverTests: XCTestCase {
         controller.sent = true
         controller.editVideoCover(for: video, media: TelegramMediaFile())
         XCTAssertTrue(fileCallbacks.isEmpty)
+        XCTAssertTrue(controller.analyticsMediaJourney!.steps.isEmpty)
     }
 }

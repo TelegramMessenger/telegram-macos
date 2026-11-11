@@ -1,4 +1,6 @@
+import WidgetSandbox
 import Cocoa
+import AppAnalytics
 import WalletUI
 import WalletContext
 import TelegramCore
@@ -20,6 +22,18 @@ func showWallet(context: AccountContext, for window: Window, morphSource: (() ->
 @available(macOS 10.15, *)
 func walletMoveGiftToProfile(context: AccountContext, walletContext: WalletContext, gift: StarGift.UniqueGift, window: Window) {
     WalletUI.walletMoveCollectibleToGifts(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, collectible: nil, slug: gift.slug, name: "\(gift.title) #\(gift.number)", window: window)
+}
+
+@available(macOS 10.15, *)
+func showWallet(context: AccountContext, for window: Window, analyticsContext: AnalyticsContext, opensCollectibles: Bool = false) {
+    WalletUI.showWallet(context: context, environment: AppWalletUIEnvironment(context), walletContext: context.walletContext, for: window, analyticsContext: analyticsContext, opensCollectibles: opensCollectibles)
+}
+
+@available(macOS 10.15, *)
+func walletProcessTonConnectUrl(_ url: String, context: AccountContext, walletContext: WalletContext, window: Window) {
+    WalletUI.walletEnsureSigningAccess(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, window: window, next: {
+        walletContext.processTonConnectUrl(url)
+    })
 }
 
 func walletCopyAddress(_ address: String, context: AccountContext, window: Window) {
@@ -51,16 +65,24 @@ func WalletSendController(context: AccountContext, walletContext: WalletContext,
     WalletUI.WalletSendController(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, peer: peer, address: address, publicKey: publicKey, initialAmount: initialAmount)
 }
 
-
 @available(macOS 10.15, *)
 func showWalletSendMoney(context: AccountContext, walletContext: WalletContext, peer: Peer) {
     WalletUI.showWalletSendMoney(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, peer: peer)
 }
 
+@available(macOS 10.15, *)
+func showWalletSendMoney(context: AccountContext, walletContext: WalletContext, peer: Peer, analyticsContext: AnalyticsContext) {
+    WalletUI.showWalletSendMoney(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, peer: peer, analyticsContext: analyticsContext)
+}
 
 @available(macOS 10.15, *)
 func showWalletPeerBalance(context: AccountContext, walletContext: WalletContext, peer: Peer, morphSource: (() -> NSView?)? = nil) {
     WalletUI.showWalletPeerBalance(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, peer: peer, morphSource: morphSource)
+}
+
+@available(macOS 10.15, *)
+func showWalletPeerBalance(context: AccountContext, walletContext: WalletContext, peer: Peer, morphSource: (() -> NSView?)? = nil, analyticsContext: AnalyticsContext) {
+    WalletUI.showWalletPeerBalance(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, peer: peer, morphSource: morphSource, analyticsContext: analyticsContext)
 }
 
 
@@ -82,8 +104,8 @@ func WalletInfoController(context: AccountContext, walletContext: WalletContext,
 }
 
 @available(macOS 10.15, *)
-func WalletTonConnectController(context: AccountContext, walletContext: WalletContext, subject: WalletTonConnectSubject, approve: @escaping (@escaping (Result<Void, WalletContext.WalletError>) -> Void) -> Void, cancelled: @escaping () -> Void, closed: @escaping () -> Void) -> (InputDataModalController, () -> Void) {
-    WalletUI.WalletTonConnectController(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, subject: subject, approve: approve, cancelled: cancelled, closed: closed)
+func WalletTonConnectController(context: AccountContext, walletContext: WalletContext, subject: WalletTonConnectSubject, showConnectionSuccess: Bool, approve: @escaping (@escaping (Result<Void, WalletContext.WalletError>) -> Void) -> Void, cancelled: @escaping () -> Void, closed: @escaping () -> Void) -> (InputDataModalController, () -> Void) {
+    WalletUI.WalletTonConnectController(context: context, environment: AppWalletUIEnvironment(context), walletContext: walletContext, subject: subject, showConnectionSuccess: showConnectionSuccess, approve: approve, cancelled: cancelled, closed: closed)
 }
 
 private final class AppWalletUIEnvironment: WalletUIEnvironment {
@@ -432,4 +454,144 @@ private func walletUICopyToClipboard(_ text: String) {
 @available(macOS 10.15, *)
 func preloadWalletPeerCard(context: AccountContext, card: WalletCard) {
     WalletUI.preloadWalletPeerCard(context: context, card: card)
+}
+
+@available(macOS 10.15, *)
+func widgetWalletAvailable(_ context: AccountContext) -> Bool {
+    context.walletContext != nil && WalletConfiguration.with(appConfiguration: context.appConfiguration).isAvailable
+}
+
+@available(macOS 10.15, *)
+func openWidgetWallet(context: AccountContext, message: Message, call: WidgetSandbox.WalletCall, complete: @escaping (Result<WidgetSandbox.WidgetRequestAnswer, WidgetSandbox.WidgetRequestFailure>) -> Void) {
+    guard widgetWalletAvailable(context), let wallet = context.walletContext else { complete(.failure(.notAllowed)); return }
+    let bot: TelegramUser?
+    if let inline = message.inlineBotAttribute, let id = inline.peerId {
+        bot = message.peers[id] as? TelegramUser
+    } else if let author = message.forwardInfo?.author as? TelegramUser, author.botInfo != nil {
+        bot = author
+    } else {
+        bot = message.author as? TelegramUser
+    }
+    guard let bot, bot.botInfo != nil else { complete(.failure(.notAllowed)); return }
+    let hasSigningWallet: Bool
+    if case let .wallet(info) = wallet.stateValue.phase { hasSigningWallet = info.canSign } else { hasSigningWallet = false }
+    if !hasSigningWallet {
+        let waiting = MetaDisposable()
+        let demand = wallet.beginWalletScreenUpdates()
+        var resuming = false
+        let setup = WalletUI.WalletController(context: context, environment: AppWalletUIEnvironment(context), walletContext: wallet)
+        let closed = setup.onDeinit
+        setup.onDeinit = {
+            closed?()
+            waiting.dispose()
+            demand.dispose()
+            if !resuming { complete(.failure(.rejected)) }
+        }
+        waiting.set((wallet.state |> deliverOnMainQueue |> filter { state in
+            if case let .wallet(info) = state.phase { return info.canSign }
+            return false
+        } |> take(1)).start(next: { [weak setup] _ in
+            resuming = true
+            setup?.close()
+            openWidgetWallet(context: context, message: message, call: call, complete: complete)
+        }))
+        showModal(with: setup, for: context.window)
+        return
+    }
+    if case .sendTransaction = call, case let .wallet(info) = wallet.stateValue.phase, wallet.stateValue.balance.currentValue == 0 {
+        let waiting = MetaDisposable()
+        let demand = wallet.beginWalletScreenUpdates()
+        var resuming = false
+        let receive = WalletUI.WalletReceiveController(context: context, environment: AppWalletUIEnvironment(context), walletContext: wallet, address: info.address, closed: {
+            waiting.dispose()
+            demand.dispose()
+            if !resuming { complete(.failure(.rejected)) }
+        })
+        waiting.set((wallet.state |> deliverOnMainQueue |> filter { ($0.balance.currentValue ?? 0) > 0 } |> take(1)).start(next: { [weak receive] _ in
+            resuming = true
+            receive?.close()
+            openWidgetWallet(context: context, message: message, call: call, complete: complete)
+        }))
+        showModal(with: receive, for: context.window)
+        return
+    }
+    let payload: [String: Any]
+    switch call {
+    case let .sendTransaction(transaction, _): payload = transaction.json
+    case let .signData(signature, _): payload = signature.json
+    }
+    guard let json = try? JSONSerialization.data(withJSONObject: payload), let json = String(data: json, encoding: .utf8) else { complete(.failure(.badRequest)); return }
+    let operations = DisposableSet()
+    let demand = wallet.beginWalletScreenUpdates()
+    operations.add(demand)
+    var finished = false
+    var approved = false
+    typealias PreparedWidgetCall = (
+        request: WalletContext.TonConnectOperationRequest,
+        discard: () -> Void,
+        submit: () -> Signal<BotWidgetQueryType, WalletContext.WidgetWalletFailure>
+    )
+    let requester = WalletContext.WidgetWalletRequester(botId: bot.id.id._internalGetInt64Value(), name: bot.displayTitle, username: bot.addressName)
+    let preparation: Signal<PreparedWidgetCall, WalletContext.WidgetWalletFailure>
+    switch call {
+    case .sendTransaction:
+        preparation = wallet.prepareWidgetTransaction(json: json, requester: requester)
+        |> map { value -> PreparedWidgetCall in
+            return (request: value.request, discard: { wallet.discardWidgetTransaction(value) }, submit: {
+                return wallet.submitWidgetTransaction(value)
+                |> map { .sentTransaction(wallet: $0.wallet, msgHash: $0.msgHash) }
+            })
+        }
+    case .signData:
+        preparation = wallet.prepareWidgetSignData(json: json, requester: requester)
+        |> map { value -> PreparedWidgetCall in
+            return (request: value.request, discard: {}, submit: {
+                return wallet.signWidgetData(value)
+                |> map { .signData(wallet: $0.wallet, json: $0.responseJson) }
+            })
+        }
+    }
+    var prepared: PreparedWidgetCall?
+    let finish: (Result<WidgetSandbox.WidgetRequestAnswer, WidgetSandbox.WidgetRequestFailure>) -> Void = { result in
+        guard !finished else { return }
+        finished = true
+        prepared?.discard()
+        complete(result)
+        operations.dispose()
+    }
+    let failure: (WalletContext.WidgetWalletFailure) -> WidgetSandbox.WidgetRequestFailure = { error in
+        switch error {
+        case .rejected: return .rejected
+        case .badRequest, .insufficientBalance: return .badRequest
+        case .failed: return .failed
+        }
+    }
+    operations.add((preparation |> deliverOnMainQueue).start(next: { value in
+        prepared = value
+        let result = WalletUI.WalletTonConnectController(context: context, environment: AppWalletUIEnvironment(context), walletContext: wallet, subject: .operation(value.request), requestingBot: bot, inputDelay: 0.75, approve: { approvedUI in
+            approved = true
+            operations.add((value.submit() |> deliverOnMainQueue).start(next: { queryType in
+                operations.add((context.engine.messages.requestBotWidgetQueryAnswer(messageId: message.id, queryType: queryType, data: Data(call.data.utf8)) |> deliverOnMainQueue).start(next: { answer in
+                    finish(.success(WidgetSandbox.WidgetRequestAnswer(result: answer.flatMap { String(data: $0, encoding: .utf8) })))
+                }, error: { error in
+                    switch error {
+                    case .timeout: finish(.failure(.timeout))
+                    case .rateLimited: finish(.failure(.rateLimited))
+                    case .failed: finish(.failure(.failed))
+                    }
+                }))
+                approvedUI(.success(()))
+            }, error: { error in
+                finish(.failure(failure(error)))
+                approvedUI(.success(()))
+            }))
+        }, cancelled: {
+            if !approved { finish(.failure(.rejected)) }
+        }, closed: {
+            if !approved { finish(.failure(.rejected)) }
+        })
+        showModal(with: result.0, for: context.window)
+    }, error: { error in
+        finish(.failure(failure(error)))
+    }))
 }

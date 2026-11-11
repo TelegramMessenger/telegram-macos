@@ -5,7 +5,7 @@ import SwiftSignalKit
 
 var clockNow=Date()
 
-class View {weak var window:Window?;var frame:NSRect;required init(frame:NSRect) {self.frame=frame};func addSubview(_ view:View) {}}
+class View {weak var window:Window?;var frame:NSRect;var bounds:NSRect {NSRect(origin:.zero,size:frame.size)};required init(frame:NSRect) {self.frame=frame};func addSubview(_ view:View) {}}
 class CalendarMonthView:View {
     var previewUpdates=0;func updateDayPreviews(animated:Bool) {previewUpdates+=1}
     var layouts=0;func layout(for month:CalendarMonthStruct) {layouts+=1}
@@ -24,6 +24,7 @@ class ViewController {
     var frame:NSRect {view.frame}
     init(frame:NSRect = .zero) {view=View(frame:frame)}
     func isLoaded()->Bool {true}
+    func viewDidResized(_ size:NSSize) {}
     func viewDidLoad() {};func viewDidAppear(_ animated:Bool) {};func viewWillDisappear(_ animated:Bool) {};func viewDidDisappear(_ animated:Bool) {};func viewWillAppear(_ animated:Bool) {};func readyOnce() {};func addSubview(_ v:View) {view.addSubview(v)};var isAutoclosePopover:Bool {true}
 }
 class GenericViewController<T:View>:ViewController {override init(frame:NSRect = .zero) {super.init(frame:frame);view=T(frame:frame)};var genericView:T {view as! T}}
@@ -71,6 +72,25 @@ final class CalendarSelectionTests:XCTestCase {
     func current(_ c:CalendarController)->CalendarMonthController {c.navigation.controller as! CalendarMonthController}
     func next(_ c:CalendarController) {c.interactions.nextAction?(current(c).month.month)}
     func previous(_ c:CalendarController) {c.interactions.backAction?(current(c).month.month)}
+    func testEmbeddedNavigationFitsInitialCalendarBounds() {
+        let controller = CalendarController(NSMakeRect(0, 0, 300, 300), window, current: date(), lowYear: 1900, selectHandler: { _ in })
+        controller.view.frame = NSMakeRect(0, 0, 300, 246)
+        controller.viewDidLoad()
+        XCTAssertEqual(controller.navigation.view.frame, controller.view.bounds)
+    }
+
+    func testEmbeddedNavigationFollowsResizeAcrossMonthAndYearChanges() {
+        let controller = make()
+        controller.viewDidLoad()
+        for size in [NSMakeSize(300, 246), NSMakeSize(380, 344), NSMakeSize(300, 310)] {
+            next(controller)
+            controller.interactions.changeYear(2024, current(controller).month.month)
+            controller.view.frame.size = size
+            controller.viewDidResized(size)
+            XCTAssertEqual(controller.navigation.view.frame, controller.view.bounds)
+        }
+    }
+
     func testDayPreviewsFollowMonthNavigationWithoutChangingSelection() {
         let controller = make()
         let preview = NSView()
@@ -102,6 +122,56 @@ final class CalendarSelectionTests:XCTestCase {
     func testClickedDayBecomesConfirmedDate() {let c=make();click(c,25);XCTAssertEqual(c.date,date(2000,6,25))}
     func testSelectionCallbackSeesUpdatedDate() {var seen:Date?;weak var weakController:CalendarController?;let c=make(selected:{_ in seen=weakController?.date});weakController=c;click(c,25);XCTAssertEqual(seen,date(2000,6,25))}
     func testMultipleClicksKeepLatestDate() {let c=make();click(c,25);click(c,3);XCTAssertEqual(c.date,date(2000,6,3))}
+    func testRangeSelectionFollowsTheIOSRules() {
+        var picked: [Date] = []
+        let c = make(selected: { picked.append($0) })
+        c.setSelecting(true)
+        click(c, 10)
+        XCTAssertEqual(c.selectedRange, date(2000, 6, 10) ... date(2000, 6, 10))
+        XCTAssertEqual(c.selectedDaysCount, 1)
+        click(c, 14)
+        XCTAssertEqual(c.selectedRange, date(2000, 6, 10) ... date(2000, 6, 14))
+        XCTAssertEqual(c.selectedDaysCount, 5)
+        XCTAssertEqual(current(c).month.selectedRange, 10 ... 14)
+        click(c, 12)
+        XCTAssertEqual(c.selectedRange, date(2000, 6, 12) ... date(2000, 6, 12))
+        click(c, 5)
+        XCTAssertEqual(c.selectedRange, date(2000, 6, 5) ... date(2000, 6, 12))
+        click(c, 12)
+        XCTAssertNil(c.selectedRange)
+        XCTAssertTrue(picked.isEmpty, "selecting days must not pick a date")
+    }
+    func testRangeSpansMonthsAndClearsWhenSelectionEnds() {
+        let c = make()
+        c.setSelecting(true)
+        click(c, 28)
+        next(c)
+        click(c, 2)
+        XCTAssertEqual(c.selectedDaysCount, 5)
+        XCTAssertEqual(current(c).month.selectedRange, 1 ... 2)
+        previous(c)
+        XCTAssertEqual(current(c).month.selectedRange, 28 ... 30)
+        XCTAssertTrue(current(c).month.isSelecting)
+        c.setSelecting(false)
+        XCTAssertNil(c.selectedRange)
+        XCTAssertNil(current(c).month.selectedRange)
+        XCTAssertFalse(current(c).month.isSelecting)
+    }
+    func testFittedMonthsReportTheirWeekCount() {
+        let c = make(date(2026, 10, 17))
+        var reported: [Int] = []
+        c.weeksChanged = { reported.append($0) }
+        XCTAssertEqual(c.weeksCount, 6)
+        c.fitsWeeks = true
+        XCTAssertEqual(c.weeksCount, 5)
+        previous(c)
+        XCTAssertEqual(c.weeksCount, 5)
+        c.interactions.changeYear(2021, date(2021, 2, 1))
+        XCTAssertEqual(c.weeksCount, 4)
+        c.interactions.changeYear(2026, date(2026, 8, 1))
+        XCTAssertEqual(c.weeksCount, 6)
+        XCTAssertEqual(reported, [5, 4, 6])
+    }
     func testMonthBrowsingDoesNotChangeSelection() {let c=make();next(c);XCTAssertEqual(c.date,date());previous(c);previous(c);XCTAssertEqual(c.date,date())}
     func testSelectedDayRestoredWhenReturningToMonth() {let c=make();next(c);previous(c);XCTAssertEqual(current(c).month.selectedDay,15)}
     func testNewSelectionRestoredWhenReturningToMonth() {let c=make();next(c);click(c,23);next(c);previous(c);XCTAssertEqual(current(c).month.selectedDay,23);XCTAssertEqual(c.date,date(2000,7,23))}

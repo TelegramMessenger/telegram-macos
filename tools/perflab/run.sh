@@ -23,7 +23,17 @@ BEFORE=$(ls "$OUT" 2>/dev/null | sort)
 open -n "$APP" --args -PerfLab "$LAB" -PerfLabLabel "$LABEL" -PerfLabQuit "$@"
 sleep 3
 PID=$(pgrep -f '^[^ ]*Debug/Telegram[.]app/Contents/MacOS/Telegram' | head -1)
+if [ -n "$PERFLAB_PROFILE" ]; then
+    DELAY=${PERFLAB_PROFILE%%:*}; LIMIT=${PERFLAB_PROFILE##*:}
+    TRACE="$RESULTS/$LAB-$LABEL.trace"
+    rm -rf "$TRACE"
+    ( sleep "$DELAY"
+      xcrun xctrace record --template 'Time Profiler' --attach "$PID" --time-limit "${LIMIT}s" --output "$TRACE" >/dev/null 2>&1
+      xcrun xctrace export --input "$TRACE" --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' > "$RESULTS/$LAB-$LABEL-profile.xml" 2>/dev/null ) &
+    PROFILER=$!
+fi
 while kill -0 "$PID" 2>/dev/null; do sleep 1; done
+[ -n "$PROFILER" ] && wait "$PROFILER"
 AFTER=$(ls "$OUT" | sort)
 REPORT=$(comm -13 <(echo "$BEFORE") <(echo "$AFTER") | grep "^$LAB-$LABEL-.*\.json$" | tail -1)
 if [ -z "$REPORT" ]; then
@@ -32,3 +42,6 @@ if [ -z "$REPORT" ]; then
 fi
 cp "$OUT/$REPORT" "$RESULTS/"
 python3 "$DIR/merge.py" "$RESULTS/$REPORT" "$SYS" | tee "$RESULTS/${REPORT%.json}.txt"
+if [ -s "$RESULTS/$LAB-$LABEL-profile.xml" ]; then
+    echo "profile: $RESULTS/$LAB-$LABEL-profile.xml (tools/perflab/profile.py <xml> [regex])"
+fi

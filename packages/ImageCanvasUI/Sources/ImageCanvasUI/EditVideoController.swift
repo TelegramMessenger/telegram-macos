@@ -1,3 +1,4 @@
+import AppAnalytics
 import Cocoa
 import AVFoundation
 import TGUIKit
@@ -498,6 +499,7 @@ public final class EditVideoController: ModalViewController {
             self?.data.crop = crop
             self?.refreshPreview()
         })
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
 
@@ -512,6 +514,7 @@ public final class EditVideoController: ModalViewController {
             self?.renderOverlay()
             self?.refreshPreview()
         }, closeHandler: {}, alone: true)
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
 
@@ -525,6 +528,7 @@ public final class EditVideoController: ModalViewController {
             self?.data.tint = tint
             self?.refreshPreview()
         })
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
 
@@ -574,7 +578,8 @@ public final class EditVideoController: ModalViewController {
         let info = PendingVideoRenderInfo(duration: data.trimEnd - data.trimStart, dimensions: EditVideoExport.outputDimensions(spec, display: displaySize), hasAudio: hasAudio && !data.isMuted, frame: {
             return EditVideoExport.frame(spec, maxSide: 800).flatMap(editedVideoFrameData)
         })
-        PendingVideoRenders.shared.add(path: url.path, info: info, render: EditVideoExport.export(spec, to: url))
+        let useStreamingWriter = context?.appConfiguration.data?["macos_killswitch_disable_chat_streaming_video_writer"] == nil
+        PendingVideoRenders.shared.add(path: url.path, info: info, rendering: EditVideoExport.exportProgressively(spec, to: url, useStreamingWriter: useStreamingWriter))
         completion(url, data)
         close()
     }

@@ -18,6 +18,7 @@ import LocalAnimations
 import FilePanels
 import AvatarEditorUI
 import SelectPeersUI
+import AppAnalytics
 
 
 fileprivate final class Arguments {
@@ -335,9 +336,11 @@ class CreateGroupViewController<Context: AccountContextProtocol>: ComposeViewCon
     
 
     private let defaultText: String
+    private let flow: AnalyticsFlow<AnalyticsFlows.CreateGroup>
     
     init(titles: ComposeTitles, context: Context, defaultText: String = "", requires: CreateGroupRequires = []) {
         self.defaultText = defaultText
+        self.flow = AnalyticsFlow(engine: context.engine)
         let initialState = State(text: defaultText, requires: requires)
         
         self.statePromise = ValuePromise(initialState, ignoreRepeated: true)
@@ -346,10 +349,14 @@ class CreateGroupViewController<Context: AccountContextProtocol>: ComposeViewCon
         super.init(titles: titles, context: context)
     }
     
+    func analyticsDidCreate() {
+        flow.finish(.success)
+    }
     
     override func restart(with result: ComposeState<[PeerId]>) {
         super.restart(with: result)
         assert(isLoaded())
+        let flow = self.flow
         let initialSize = self.atomicSize
         let stateValue = self.stateValue
         let context = self.context
@@ -426,6 +433,7 @@ class CreateGroupViewController<Context: AccountContextProtocol>: ComposeViewCon
                             |> deliverOnMainQueue
                             
                             _ = signal.start(next: { value in
+                                flow.step(.changePhoto)
                                 updateState { current in
                                     var current = current
                                     current.picture = value
@@ -449,18 +457,21 @@ class CreateGroupViewController<Context: AccountContextProtocol>: ComposeViewCon
             }
             
         }, updatedText: { text in
+            flow.step(.changeTitle)
             updateState { current in
                 var current = current
                 current.text = text
                 return current
             }
         }, setupGlobalAutoremove: { timeout in
+            flow.step(.setAutoDelete)
             updateState { current in
                 var current = current
                 current.autoremoveTimeout = timeout
                 return current
             }
         }, deletePeer: { peerId in
+            flow.step(.removeMember)
             updateState { current in
                 var current = current
                 current.peerIds.removeAll(where: {
@@ -471,6 +482,7 @@ class CreateGroupViewController<Context: AccountContextProtocol>: ComposeViewCon
         }, addMembers: {
             actionsDisposable.add(selectModalPeers(window: context.window, context: context, title: strings().composeSelectUsers, settings: [.contacts, .remote], excludePeerIds: stateValue.with { $0.peerIds }).start(next: { peerIds in
                 if !peerIds.isEmpty {
+                    flow.step(.addMember)
                 }
                 updateState { current in
                     var current = current

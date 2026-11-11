@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -7,10 +8,13 @@ import TelegramContext
 
 public struct GroupsInCommonHooks {
     public let openChat: (any AccountContextProtocol, PeerId) -> Void
-    public var openChatWithContext: ((any AccountContextProtocol, PeerId) -> Void)?
-    public func openChatObserved(_ context: any AccountContextProtocol, _ peerId: PeerId) {
+    public var openChatWithContext: ((any AccountContextProtocol, PeerId, AnalyticsContext) -> Void)?
+    public func openChatObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let openChatWithContext {
-            openChatWithContext(context, peerId)
+            openChatWithContext(context, peerId, origin)
         } else {
             openChat(context, peerId)
         }

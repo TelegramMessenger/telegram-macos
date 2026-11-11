@@ -133,7 +133,7 @@ public func userPresenceStringRefreshTimeout(_ presence: TelegramUserPresence, t
             return Double.infinity
         }
         if statusTimestamp >= timestamp {
-            return Double(statusTimestamp - timestamp)
+            return max(1.0, Double(statusTimestamp - timestamp))
         } else {
             let difference = timestamp - statusTimestamp
             if difference < 30 {
@@ -307,15 +307,18 @@ public func stringForMediumDate(timestamp: Int32) -> String {
     var t: time_t = Int(timestamp)
     var timeinfo = tm()
     localtime_r(&t, &timeinfo);
-    let formatter = DateFormatter()
-    formatter.timeStyle = .short
 
     let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-    let time = formatter.string(from: date)
 
     if date.isToday || date.timeIntervalSince1970 < Date().timeIntervalSince1970 {
         return DateUtils.string(forLastSeen: timestamp)
-    } else if date.isTomorrow {
+    }
+
+    let formatter = DateFormatter()
+    formatter.timeStyle = .short
+    let time = formatter.string(from: date)
+
+    if date.isTomorrow {
         return strings().timeTomorrowAt(time)
     }
 

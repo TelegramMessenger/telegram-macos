@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import SwiftSignalKit
 import TelegramCore
@@ -317,7 +318,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-private func giftTransferConfirmController(context: any AccountContextProtocol, gift: StarGift.UniqueGift, peer: EnginePeer, transferStars: Int64?, transfer: @escaping () -> Void) -> InputDataController {
+private func giftTransferConfirmController(context: any AccountContextProtocol, analyticsContext: AnalyticsContext, gift: StarGift.UniqueGift, peer: EnginePeer, transferStars: Int64?, transfer: @escaping () -> Void) -> InputDataController {
     let info: String
     let ok: String
     if let stars = transferStars, stars > 0 {
@@ -345,6 +346,8 @@ private func giftTransferConfirmController(context: any AccountContextProtocol, 
     entries.append(.sectionId(3, type: .customModern(20)))
 
     let controller = InputDataController(dataSignal: .single(InputDataSignalValue(entries: entries)), title: strings().giftTransferConfirmationTitle, hasDone: false)
+    controller.analyticsScreen = .giftsTransferConfirmation
+    controller.analyticsContext = analyticsContext
     controller.centerModalHeader = ModalHeaderData(title: nil)
     controller.validateData = { _ in
         transfer()
@@ -353,7 +356,8 @@ private func giftTransferConfirmController(context: any AccountContextProtocol, 
     return controller
 }
 
-func showGiftTransfer(context: any AccountContextProtocol, window: Window, gift: StarGift.UniqueGift, reference: StarGiftReference, giftsContext: ProfileGiftsContext, canExportDate: Int32?, transferStars: Int64?, transfer: @escaping (EnginePeer, @escaping () -> Void) -> Void) {
+func showGiftTransfer(context: any AccountContextProtocol, window: Window, analyticsContext: AnalyticsContext, gift: StarGift.UniqueGift, reference: StarGiftReference, giftsContext: ProfileGiftsContext, canExportDate: Int32?, transferStars: Int64?, transfer: @escaping (EnginePeer, @escaping () -> Void) -> Void) {
+    let presentation = analyticsContext.beginPresentation()
     let actionsDisposable = DisposableSet()
     let searchDisposable = MetaDisposable()
     actionsDisposable.add(searchDisposable)
@@ -371,7 +375,7 @@ func showGiftTransfer(context: any AccountContextProtocol, window: Window, gift:
 
     let accountPeerId = context.peerId
 
-    let blockchainOption = canExportDate != nil ? StarsHooks.shared.giftTransferBlockchainOptionObserved(context, window, gift, reference, giftsContext) : nil
+    let blockchainOption = canExportDate != nil ? StarsHooks.shared.giftTransferBlockchainOptionObserved(context, window, gift, reference, giftsContext, analyticsContext: analyticsContext) : nil
     let blockchain = blockchainOption.map { option in
         return BlockchainRow(title: option.title, subtitle: canExportDate.flatMap(giftTransferUnlockDays).map { strings().giftTransferSendUnlocks(strings().timerDaysOther(Int($0))) }, icon: option.icon)
     }
@@ -424,7 +428,8 @@ func showGiftTransfer(context: any AccountContextProtocol, window: Window, gift:
             return
         }
         if let days = giftTransferUnlockDays(canExportDate) {
-            alert(for: window, header: strings().giftTransferUnlockPendingTitle, info: strings().giftTransferUnlockPendingText(strings().timerDaysOther(Int(days))))
+            let presentation = analyticsContext.beginPresentation()
+            alert(for: window, header: strings().giftTransferUnlockPendingTitle, info: strings().giftTransferUnlockPendingText(strings().timerDaysOther(Int(days))), onDeinit: { presentation.end() })
         } else {
             blockchainOption.action()
         }
@@ -434,12 +439,14 @@ func showGiftTransfer(context: any AccountContextProtocol, window: Window, gift:
         guard let modal = getModal?(), modal.current === getController?() else {
             return
         }
-        let confirm = giftTransferConfirmController(context: context, gift: gift, peer: peer, transferStars: transferStars, transfer: {
+        let recipientContext = analyticsContext.restricting(peerId: peer.id)
+        let recipientPresentation = recipientContext.beginPresentation()
+        let confirm = giftTransferConfirmController(context: context, analyticsContext: recipientContext, gift: gift, peer: peer, transferStars: transferStars, transfer: {
             transfer(peer, {
                 getModal?()?.close()
             })
         })
-        confirm.onDeinit = { }
+        confirm.onDeinit = { recipientPresentation.end() }
         confirm.leftModalHeader = ModalHeaderData(image: theme.icons.chatNavigationBack, handler: {
             getModal?()?.pop(animated: true)
         }, isCloseButton: false)
@@ -507,6 +514,8 @@ func showGiftTransfer(context: any AccountContextProtocol, window: Window, gift:
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().giftTransferControllerTitle, hasDone: false)
+    controller.analyticsScreen = .giftsTransferRecipient
+    controller.analyticsContext = analyticsContext
 
     getController = { [weak controller] in
         return controller
@@ -514,9 +523,11 @@ func showGiftTransfer(context: any AccountContextProtocol, window: Window, gift:
 
     controller.onDeinit = {
         actionsDisposable.dispose()
+        presentation.end()
     }
 
     let modalController = InputDataModalController(controller, size: NSMakeSize(360, 0))
+    modalController.analyticsContext = analyticsContext
 
     getModal = { [weak modalController] in
         return modalController

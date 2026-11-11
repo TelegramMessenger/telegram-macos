@@ -1,3 +1,4 @@
+import AppAnalytics
 import AlertsUI
 import InputDataUI
 import Localization
@@ -38,19 +39,25 @@ final class InviteJoinAction {
     }
 }
 
-func performInviteJoin(context: any AccountContextProtocol, hash: String, window: Window, requestSentAsSuccess: Bool, takeResult: @escaping (Bool) -> Bool, close: @escaping () -> Void, interaction: @escaping (Peer) -> Void) -> Disposable {
+func performInviteJoin(context: any AccountContextProtocol, hash: String, window: Window, analyticsContext: AnalyticsContext, requestSentAsSuccess: Bool, takeResult: @escaping (Bool) -> Bool, close: @escaping () -> Void, interaction: @escaping (Peer) -> Void) -> Disposable {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let signal = context.engine.peers.joinChatInteractively(with: hash) |> take(1) |> deliverOnMainQueue
-    return (showModalProgress(signal: signal, for: window)).start(next: { outcome in
+    return origin.preservingPresentation(showModalProgress(signal: signal, for: window)).start(next: { outcome in
         guard takeResult(true) else { return }
         switch outcome {
         case let .joined(peer):
             if let peer {
+                let destination = origin.restricting(peerId: peer.id)
+                let delivery = destination.beginPresentation()
+                defer { delivery.end() }
                 interaction(peer._asPeer())
             }
             close()
         case let .webView(webView):
             close()
-            FeatureNavigationHooks.shared.openJoinChatBotWebViewObserved(context, webView.botPeer.id, webView.url, webView.queryId, webView.peerId)
+            FeatureNavigationHooks.shared.openJoinChatBotWebViewObserved(context, webView.botPeer.id, webView.url, webView.queryId, webView.peerId, analyticsContext: origin)
         }
     }, error: { error in
         guard takeResult(false) else { return }
@@ -59,7 +66,7 @@ func performInviteJoin(context: any AccountContextProtocol, hash: String, window
         case .generic:
             text = strings().unknownError
         case .tooMuchJoined:
-            FeatureNavigationHooks.shared.showInactiveChannelsObserved(context, .join)
+            FeatureNavigationHooks.shared.showInactiveChannelsObserved(context, .join, analyticsContext: origin)
             return
         case .tooMuchUsers:
             text = strings().groupUsersTooMuchError

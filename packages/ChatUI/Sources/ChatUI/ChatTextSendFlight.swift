@@ -12,23 +12,23 @@ enum ChatTextSendFlightMotion {
     static let verticalDamping: CGFloat = 33.0
 }
 
+struct ChatTextSendFlightSource {
+    let contents: Any
+    let fieldRect: NSRect
+    let textRect: NSRect
+    let baseline: NSPoint
+}
+
 final class ChatTextSendFlight {
-    private final class Source {
+    private struct Source {
         let id: Int
-        let snapshot: CGImage
+        let snapshot: Any
         let fieldRect: NSRect
         let snapshotRect: NSRect
         let baseline: NSPoint
         let knownStableIds: Set<AnyHashable>
-
-        init(id: Int, snapshot: CGImage, fieldRect: NSRect, snapshotRect: NSRect, baseline: NSPoint, knownStableIds: Set<AnyHashable>) {
-            self.id = id
-            self.snapshot = snapshot
-            self.fieldRect = fieldRect
-            self.snapshotRect = snapshotRect
-            self.baseline = baseline
-            self.knownStableIds = knownStableIds
-        }
+        let fadesInMessageBubble: Bool
+        let handOff: ((Bool) -> Void)?
     }
 
     private final class Flight {
@@ -77,29 +77,46 @@ final class ChatTextSendFlight {
         return NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || TelegramUtilsHooks.shared.isLite(.animations)
     }
 
-    func launch() {
+    private func cancelPending() {
+        let handOff = self.pending?.handOff
         self.pending = nil
-        guard !self.reduceMotion, let view = self.view, view.window != nil else {
-            return
-        }
-        let tableView = view.tableView
-        let textView = view.inputView.textView
-        let scrollView = textView.scrollView
-        let input = textView.inputView
-        let fieldView = view.inputView.textFieldContainer
-        guard tableView.documentOffset.y < 20, !fieldView.isHidden, !scrollView.bounds.isEmpty, let layoutManager = input.layoutManager, layoutManager.numberOfGlyphs > 0 else {
-            return
-        }
+        handOff?(false)
+    }
 
+    private func canLaunch(_ view: ChatControllerView) -> Bool {
+        guard !self.reduceMotion, view.window != nil, view.tableView.documentOffset.y < 20 else {
+            return false
+        }
         var hasAd = false
-        tableView.enumerateVisibleItems(with: { item in
+        view.tableView.enumerateVisibleItems(with: { item in
             if let item = item as? ChatRowItem, item.isAdRow {
                 hasAd = true
                 return false
             }
             return true
         })
-        guard !hasAd else {
+        return !hasAd
+    }
+
+    func launch(from source: ChatTextSendFlightSource, handOff: @escaping (Bool) -> Void) {
+        self.cancelPending()
+        guard let view = self.view, self.canLaunch(view) else {
+            handOff(false)
+            return
+        }
+        self.enqueue(view: view, snapshot: source.contents, fieldRect: view.convert(source.fieldRect, from: nil), snapshotRect: view.convert(source.textRect, from: nil), baseline: view.convert(source.baseline, from: nil), fadesInMessageBubble: false, handOff: handOff)
+    }
+
+    func launch(compactSource: Bool = false) {
+        self.cancelPending()
+        guard let view = self.view, self.canLaunch(view) else {
+            return
+        }
+        let textView = view.inputView.textView
+        let scrollView = textView.scrollView
+        let input = textView.inputView
+        let fieldView = view.inputView.textFieldContainer
+        guard !fieldView.isHidden, !scrollView.bounds.isEmpty, let layoutManager = input.layoutManager, layoutManager.numberOfGlyphs > 0 else {
             return
         }
 
@@ -121,9 +138,21 @@ final class ChatTextSendFlight {
         guard let snapshot else {
             return
         }
+        var fieldBounds = fieldView.bounds
+        if compactSource, let container = input.textContainer {
+            let usedRect = layoutManager.usedRect(for: container).offsetBy(dx: origin.x, dy: origin.y)
+            let textRect = input.convert(usedRect, to: fieldView)
+            let sourceWidth = ceil(textRect.maxX - fieldBounds.minX + 16)
+            if sourceWidth > 0 {
+                fieldBounds.size.width = min(fieldBounds.width, sourceWidth)
+            }
+        }
+        self.enqueue(view: view, snapshot: snapshot, fieldRect: fieldView.convert(fieldBounds, to: view), snapshotRect: scrollView.convert(scrollView.bounds, to: view), baseline: baseline, fadesInMessageBubble: true, handOff: nil)
+    }
 
+    private func enqueue(view: ChatControllerView, snapshot: Any, fieldRect: NSRect, snapshotRect: NSRect, baseline: NSPoint, fadesInMessageBubble: Bool, handOff: ((Bool) -> Void)?) {
         var knownStableIds = Set<AnyHashable>()
-        tableView.enumerateItems(with: { item in
+        view.tableView.enumerateItems(with: { item in
             if let item = item as? ChatRowItem, let message = item.message, !message.flags.contains(.Incoming), message.flags.contains(.Unsent) {
                 knownStableIds.insert(item.stableId)
             }
@@ -132,10 +161,10 @@ final class ChatTextSendFlight {
 
         self.nextId += 1
         let id = self.nextId
-        self.pending = Source(id: id, snapshot: snapshot, fieldRect: fieldView.convert(fieldView.bounds, to: view), snapshotRect: scrollView.convert(scrollView.bounds, to: view), baseline: baseline, knownStableIds: knownStableIds)
+        self.pending = Source(id: id, snapshot: snapshot, fieldRect: fieldRect, snapshotRect: snapshotRect, baseline: baseline, knownStableIds: knownStableIds, fadesInMessageBubble: fadesInMessageBubble, handOff: handOff)
         delay(ChatVoiceSendFlightMotion.handOverTimeout, closure: { [weak self] in
-            if self?.pending?.id == id {
-                self?.pending = nil
+            if let self, self.pending?.id == id {
+                self.cancelPending()
             }
         })
     }
@@ -177,21 +206,22 @@ final class ChatTextSendFlight {
         NSAnimationContext.current.duration = 0
         NSAnimationContext.current.timingFunction = nil
         NSAnimationContext.current.allowsImplicitAnimation = false
-        self.start(source: pending, rowItemView: target, view: view)
+        let started = self.start(source: pending, rowItemView: target, view: view)
         NSAnimationContext.endGrouping()
+        pending.handOff?(started)
     }
 
-    private func start(source: Source, rowItemView: ChatMessageView, view: ChatControllerView) {
+    private func start(source: Source, rowItemView: ChatMessageView, view: ChatControllerView) -> Bool {
         rowItemView.layoutSubtreeIfNeeded()
         guard let item = rowItemView.item as? ChatMessageItem, item.isBubbled, item.hasBubble, rowItemView.window === view.window, let text = rowItemView.textContentView, let textBaseline = rowItemView.firstTextBaseline(in: view) else {
-            return
+            return false
         }
         let rowView = rowItemView.rowView
         let bubbleView = rowItemView.bubbleView
         let tableRect = view.tableView.convert(view.tableView.bounds, to: view)
         let bubbleRect = bubbleView.convert(bubbleView.bounds, to: view)
         guard !bubbleRect.isEmpty, tableRect.contains(bubbleRect) else {
-            return
+            return false
         }
 
         CATransaction.begin()
@@ -293,7 +323,9 @@ final class ChatTextSendFlight {
                 addHorizontal(gradient, "position", from: NSValue(point: NSMakePoint(-offset.x, 0)), to: NSValue(point: .zero), additive: true, key: "textFlightGradientX")
                 addVertical(gradient, "position", from: NSValue(point: NSMakePoint(0, offset.y)), to: NSValue(point: .zero), additive: true, key: "textFlightGradientY")
             }
-            layer.add(flightAnimation(keyPath: "opacity", from: 0.0 as NSNumber, to: 1.0 as NSNumber, duration: 0.1, timingFunction: fade, additive: false), forKey: "textFlightAlpha")
+            if source.fadesInMessageBubble {
+                layer.add(flightAnimation(keyPath: "opacity", from: 0.0 as NSNumber, to: 1.0 as NSNumber, duration: 0.1, timingFunction: fade, additive: false), forKey: "textFlightAlpha")
+            }
         }
 
         if let layer = text.layer {
@@ -315,5 +347,6 @@ final class ChatTextSendFlight {
         }
 
         CATransaction.commit()
+        return true
     }
 }

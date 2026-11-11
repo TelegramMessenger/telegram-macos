@@ -58,6 +58,8 @@ let package = Package(
             name: "ShortPeerRowTests",
             dependencies: [
                 "ShortPeerRow",
+                .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
+                .product(name: "Postbox", package: "Postbox", condition: nil),
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
                 .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil),
                 .product(name: "GeneralRows", package: "GeneralRows", condition: nil),

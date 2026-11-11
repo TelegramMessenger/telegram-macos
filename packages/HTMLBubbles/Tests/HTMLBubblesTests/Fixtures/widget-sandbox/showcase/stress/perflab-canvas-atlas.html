@@ -1,0 +1,12 @@
+<style>
+body{margin:0;background:#111924;color:#e9eff9;font:14px -apple-system,sans-serif}header{padding:16px;display:flex;align-items:center;justify-content:space-between}h2{margin:0;font-size:20px}button{background:#293b55;color:white;border:0;border-radius:8px;padding:8px 12px}p{margin:0;padding:0 16px 12px;color:#9eb0c8}canvas{display:block;width:480px;max-width:100%;height:720px}
+</style>
+<header><h2>Signal atlas</h2><button id="pause">Pause</button></header><p>48 clipped instruments · paths, gradients and shadows</p><canvas id="atlas" width="960" height="1440"></canvas>
+<script>
+const ctx=document.getElementById('atlas').getContext('2d');ctx.scale(2,2);const shape=new Path2D();shape.moveTo(0,-8);shape.bezierCurveTo(12,-13,13,12,0,8);shape.bezierCurveTo(-12,13,-13,-12,0,-8);shape.closePath();
+const clip=new Path2D();clip.roundRect(0,0,108,80,9);const fill=ctx.createLinearGradient(0,0,108,80);fill.addColorStop(0,'#173c5e');fill.addColorStop(.5,'#264764');fill.addColorStop(1,'#192c44');
+let running=true,start=0;
+function draw(t){ctx.clearRect(0,0,480,720);for(let p=0;p<48;p++){const x=12+(p%4)*116,y=10+Math.floor(p/4)*59;ctx.save();ctx.translate(x,y);ctx.scale(1,.66);ctx.clip(clip);ctx.fillStyle=fill;ctx.fillRect(0,0,108,80);ctx.strokeStyle='#3e6486';ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(0,40);ctx.lineTo(108,40);ctx.stroke();ctx.setLineDash([]);for(let k=0;k<8;k++){ctx.save();ctx.translate(12+k*13,40+Math.sin(t*1.7+p*.3+k*.7)*23);ctx.rotate(t*.5+k);ctx.fillStyle=k%2?'#69a6f0':'#35d6b3';if(k===3){ctx.shadowColor='#39d6c0';ctx.shadowBlur=8;}ctx.fill(shape);ctx.restore();}ctx.font='9px Menlo';ctx.fillStyle='#e9eff9';ctx.fillText('CH '+String(p+1).padStart(2,'0'),6,13);ctx.restore();}}
+function frame(ms){if(!start)start=ms;if(running)draw((ms-start)/1000);requestAnimationFrame(frame);}
+const pause=document.getElementById('pause');pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};window.stress={freeze:function(){running=false;draw(1.25);pause.textContent='Resume';},resume:function(){running=true;pause.textContent='Pause';}};draw(0);requestAnimationFrame(frame);
+</script>
