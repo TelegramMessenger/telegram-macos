@@ -2,11 +2,11 @@ import AppKit
 import ColorPalette
 import TGUIKit
 import TelegramTheme
-import ThemeSettings
 
 final class ChatBubbleWallpaperMaterial {
     enum Style {
         case incoming(tint: NSColor?, tintOpacity: CGFloat)
+        case incomingLight
         case outgoing(tint: NSColor)
     }
 
@@ -52,19 +52,32 @@ final class ChatBubbleWallpaperMaterial {
         CATransaction.commit()
     }
 
-    static func glassColor(over average: NSColor, matrix values: [CGFloat]) -> NSColor {
-        let rgb = average.usingColorSpace(.sRGB) ?? average
-        let input = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent, 1]
-        func channel(_ row: Int) -> CGFloat {
-            let base = row * 5
-            return min(1, max(0, values[base] * input[0] + values[base + 1] * input[1] + values[base + 2] * input[2] + values[base + 3] * input[3] + values[base + 4]))
+    static let incomingGlassReference = NSColor(0x3B3B3D)
+    static let incomingTintOpacity: CGFloat = 0.3
+    static let incomingLightWhiteness: CGFloat = 0.8
+
+    static func incomingStyle(_ colors: ColorPalette) -> Style {
+        guard colors.isDark else {
+            return .incomingLight
         }
-        return NSColor(srgbRed: channel(0), green: channel(1), blue: channel(2), alpha: 1)
+        return .incoming(tint: colors.tinted ? colors.bubbleBackground_outgoing.first : nil, tintOpacity: incomingTintOpacity)
     }
 
-    static let incomingGlassReference = NSColor(0x3B3B3D)
-    static let incomingOutlineColor = NSColor.white.withAlphaComponent(0.18)
-    static let glassGlyphColor = NSColor.white.withAlphaComponent(0.55)
+    static func quantized(_ color: NSColor) -> NSColor {
+        let rgb = color.usingColorSpace(.sRGB) ?? color
+        func step(_ value: CGFloat) -> CGFloat {
+            return (value * 64).rounded() / 64
+        }
+        return NSColor(srgbRed: step(rgb.redComponent), green: step(rgb.greenComponent), blue: step(rgb.blueComponent), alpha: 1)
+    }
+
+    static func incomingOutlineColor(dark: Bool) -> NSColor {
+        return NSColor.white.withAlphaComponent(dark ? 0.18 : 0.5)
+    }
+
+    static func glassGlyphColor(dark: Bool) -> NSColor {
+        return dark ? NSColor.white.withAlphaComponent(0.55) : NSColor.black.withAlphaComponent(0.45)
+    }
 
     static func tinted(_ image: CGImage, _ color: NSColor) -> CGImage {
         let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
@@ -93,66 +106,21 @@ final class ChatBubbleWallpaperMaterial {
     }
 
     static func frostedFill(_ color: NSColor) -> NSColor {
-        return (color.blended(withFraction: 0.45, of: .white) ?? color).withAlphaComponent(0.22)
-    }
-
-    private struct ContentThemeKey: Equatable {
-        let palette: String
-        let accent: UInt32
-        let outgoing: [UInt32]
-        let bubbled: Bool
-        let fontSize: CGFloat
-        let wallpaper: ThemeWallpaper
-        let backgroundSize: NSSize
-        let liquidGlass: Bool
-    }
-
-    private static let contentThemeLock = NSLock()
-    private static var contentThemes: [(key: ContentThemeKey, theme: TelegramPresentationTheme)] = []
-    private static let contentThemeLimit = 6
-
-    static func contentTheme(for presentation: TelegramPresentationTheme, liteBlur: Bool) -> TelegramPresentationTheme {
-        guard !presentation.colors.isDark, isActive(presentation, hasBubble: true, liteBlur: liteBlur) else {
-            return presentation
-        }
-        let source = presentation.colors
-        let key = ContentThemeKey(
-            palette: source.name,
-            accent: source.accent.argb,
-            outgoing: source.bubbleBackground_outgoing.map { $0.argb },
-            bubbled: presentation.bubbled,
-            fontSize: presentation.fontSize,
-            wallpaper: presentation.wallpaper,
-            backgroundSize: presentation.backgroundSize,
-            liquidGlass: presentation.liquidGlass
-        )
-        contentThemeLock.lock()
-        defer {
-            contentThemeLock.unlock()
-        }
-        if let index = contentThemes.firstIndex(where: { $0.key == key }) {
-            let cached = contentThemes.remove(at: index)
-            contentThemes.append(cached)
-            return cached.theme
-        }
-        let palette = darkPalette.withAccentColor(PaletteAccentColor(source.accent, source.bubbleBackground_outgoing), disableTint: true)
-        let theme = generateTheme(palette: palette, cloudTheme: nil, bubbled: presentation.bubbled, fontSize: presentation.fontSize, wallpaper: presentation.wallpaper, backgroundSize: presentation.backgroundSize, liquidGlass: presentation.liquidGlass)
-        contentThemes.append((key, theme))
-        if contentThemes.count > contentThemeLimit {
-            contentThemes.removeFirst()
-        }
-        return theme
+        return color.withAlphaComponent(0.28)
     }
 
     static func matrix(outgoing: Bool, tint: NSColor, luminance: CGFloat) -> [CGFloat] {
         let light = min(1, max(0, luminance))
         if outgoing {
             let rgb = tint.usingColorSpace(.sRGB) ?? tint.usingColorSpace(.deviceRGB) ?? .white
-            let bias = 0.17 + 0.1 * light
+            let shift = 0.17 + 0.1 * light
             let weights: [CGFloat] = [0.08504, 0.28608, 0.02888, 0]
-            return weights + [min(0.97, rgb.redComponent) - bias]
-                + weights + [min(0.97, rgb.greenComponent) - bias]
-                + weights + [min(0.97, rgb.blueComponent) - bias]
+            func bias(_ channel: CGFloat) -> CGFloat {
+                return min(0.78, max(-0.22, min(1, channel) - shift))
+            }
+            return weights + [bias(rgb.redComponent)]
+                + weights + [bias(rgb.greenComponent)]
+                + weights + [bias(rgb.blueComponent)]
                 + [0, 0, 0, 1, 0]
         }
         let index = light * CGFloat(grayBlueWeights.count - 1)
@@ -168,10 +136,26 @@ final class ChatBubbleWallpaperMaterial {
                 0, 0, 0, 1, 0]
     }
 
+    static func lightMatrix(luminance: CGFloat) -> [CGFloat] {
+        let dark = matrix(outgoing: false, tint: .white, luminance: 1 - luminance)
+        let keep = 1 - incomingLightWhiteness * 0.6
+        var values = dark
+        for row in 0 ..< 3 {
+            for column in 0 ..< 3 {
+                values[row * 5 + column] = dark[row * 5 + column] * keep
+            }
+            let sum = values[row * 5] + values[row * 5 + 1] + values[row * 5 + 2]
+            values[row * 5 + 4] = 1 - sum - dark[row * 5 + 4] * keep
+        }
+        return values
+    }
+
     static func matrix(style: Style, luminance: CGFloat) -> [CGFloat] {
         switch style {
         case let .outgoing(tint):
             return matrix(outgoing: true, tint: tint, luminance: luminance)
+        case .incomingLight:
+            return lightMatrix(luminance: luminance)
         case let .incoming(tint, opacity):
             var values = matrix(outgoing: false, tint: .white, luminance: luminance)
             guard let tint, opacity > 0 else {
@@ -229,7 +213,6 @@ final class ChatBubbleWallpaperMaterialRenderer {
 
     struct Sample {
         let luminance: Float
-        let average: NSColor
     }
 
     private struct SnapshotKey: Equatable {
@@ -274,7 +257,6 @@ final class ChatBubbleWallpaperMaterialRenderer {
             return nil
         }
         var luminance: CGFloat = 0
-        var red = 0, green = 0, blue = 0
         for row in 0 ..< 4 {
             for column in 0 ..< 8 {
                 let x = clipped.minX + (CGFloat(column) + 0.5) * clipped.width / 8
@@ -284,14 +266,10 @@ final class ChatBubbleWallpaperMaterialRenderer {
                 let offset = (py * snapshot.width + px) * 4
                 let r = Int(snapshot.pixels[offset]), g = Int(snapshot.pixels[offset + 1]), b = Int(snapshot.pixels[offset + 2])
                 luminance += linearTable[r] * 0.2126 + linearTable[g] * 0.7152 + linearTable[b] * 0.0722
-                red += r
-                green += g
-                blue += b
             }
         }
         return Sample(
-            luminance: Float(luminance / 32),
-            average: NSColor(srgbRed: CGFloat(red) / (32 * 255), green: CGFloat(green) / (32 * 255), blue: CGFloat(blue) / (32 * 255), alpha: 1)
+            luminance: Float(luminance / 32)
         )
     }
 

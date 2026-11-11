@@ -50,10 +50,10 @@ public struct LiteMode : Codable, Equatable {
             .init(rawValue: $0)
         }
         self.liquidGlassEnabled = (try? container.decode(Bool.self, forKey: LiteMode.CodingKeys.liquidGlassEnabled)) ?? true
-        self.glassBubblesEnabled = (try? container.decode(Bool.self, forKey: LiteMode.CodingKeys.glassBubblesEnabled)) ?? true
+        self.glassBubblesEnabled = (try? container.decode(Bool.self, forKey: LiteMode.CodingKeys.glassBubblesEnabled)) ?? false
     }
 
-    init(enabled: Bool, lowBatteryPercent: Int32, keys: [LiteModeKey], liquidGlassEnabled: Bool = true, glassBubblesEnabled: Bool = true) {
+    init(enabled: Bool, lowBatteryPercent: Int32, keys: [LiteModeKey], liquidGlassEnabled: Bool = true, glassBubblesEnabled: Bool = false) {
         self.enabled = enabled
         self.lowBatteryPercent = lowBatteryPercent
         self.keys = keys

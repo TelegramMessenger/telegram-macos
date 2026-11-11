@@ -102,6 +102,7 @@ public class ChatMediaLayoutParameters : Equatable {
     
     public var fillContent: Bool? = nil
     public var bubbleCorners: () -> ImageCorners? = { nil }
+    public var flatSides: LayoutPositionFlags = []
 
     public init(presentation: ChatMediaPresentation, media: Media, automaticDownload: Bool = true, autoplayMedia: AutoplayMediaPreferences = .defaultSettings, isRevealed: Bool? = nil, colors: [LottieColor] = []) {
         self.automaticDownloadFunc = { _ in
@@ -215,18 +216,19 @@ public func ==(lhs:ChatMediaLayoutParameters, rhs:ChatMediaLayoutParameters) -> 
 }
 
 public extension ImageCorners {
-    static func chatMedia(_ positionFlags: LayoutPositionFlags?, bubble: ImageCorners?, inner: CGFloat = .cornerRadius) -> ImageCorners {
+    static func chatMedia(_ positionFlags: LayoutPositionFlags?, bubble: ImageCorners?, inner: CGFloat = .cornerRadius, flat: LayoutPositionFlags = []) -> ImageCorners {
         func corner(_ vertical: LayoutPositionFlags, _ horizontal: LayoutPositionFlags, _ edge: ImageCorner?) -> ImageCorner {
-            guard let positionFlags, positionFlags.contains(vertical), positionFlags.contains(horizontal) else {
-                return .Corner(inner)
+            if let positionFlags, positionFlags.contains(vertical), positionFlags.contains(horizontal) {
+                return edge ?? .Corner(inner * 3 + 2)
             }
-            return edge ?? .Corner(inner * 3 + 2)
+            return flat.contains(vertical) ? .Corner(0) : .Corner(inner)
         }
         return ImageCorners(
             topLeft: corner(.top, .left, bubble?.topLeft),
             topRight: corner(.top, .right, bubble?.topRight),
             bottomLeft: corner(.bottom, .left, bubble?.bottomLeft),
-            bottomRight: corner(.bottom, .right, bubble?.bottomRight)
+            bottomRight: corner(.bottom, .right, bubble?.bottomRight),
+            smoothing: bubble?.smoothing ?? 0.0
         )
     }
 }

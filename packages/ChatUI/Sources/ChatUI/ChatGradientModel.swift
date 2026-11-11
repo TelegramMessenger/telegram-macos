@@ -59,6 +59,8 @@ public final class ChatMessageBubbleBackdrop: NSView {
     private var backgroundContent: SimpleLayer?
     private let borderLayer = ChatBubbleSliceLayer()
     private var glassLayer: CALayer?
+    private var gradientImage: CGImage?
+    private var gradientPixels: (image: ObjectIdentifier, pixels: [UInt8], width: Int, height: Int)?
     private var glassMatrix: [CGFloat]?
     public var fill: NSColor = .clear {
         didSet {
@@ -112,6 +114,38 @@ public final class ChatMessageBubbleBackdrop: NSView {
         }
         self.currentSize = size
         self.applyImages()
+    }
+
+    public func gradientColor() -> NSColor? {
+        guard let content = self.backgroundContent, let image = self.gradientImage, let layer = self.layer, content.bounds.width > 0, content.bounds.height > 0 else {
+            return nil
+        }
+        let pixels: (image: ObjectIdentifier, pixels: [UInt8], width: Int, height: Int)
+        if let cached = self.gradientPixels, cached.image == ObjectIdentifier(image) {
+            pixels = cached
+        } else {
+            let width = max(1, min(image.width, 64)), height = max(1, min(image.height, 64))
+            var buffer = [UInt8](repeating: 0, count: width * height * 4)
+            let drawn = buffer.withUnsafeMutableBytes { raw -> Bool in
+                guard let context = CGContext(data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                    return false
+                }
+                context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                return true
+            }
+            guard drawn else {
+                return nil
+            }
+            pixels = (ObjectIdentifier(image), buffer, width, height)
+            self.gradientPixels = pixels
+        }
+        let point = layer.convert(CGPoint(x: self.bounds.midX, y: self.bounds.midY), to: content)
+        let fx = min(1, max(0, point.x / content.bounds.width))
+        let fy = min(1, max(0, point.y / content.bounds.height))
+        let column = min(pixels.width - 1, Int(fx * CGFloat(pixels.width)))
+        let row = min(pixels.height - 1, Int((1 - fy) * CGFloat(pixels.height)))
+        let offset = (row * pixels.width + column) * 4
+        return NSColor(srgbRed: CGFloat(pixels.pixels[offset]) / 255, green: CGFloat(pixels.pixels[offset + 1]) / 255, blue: CGFloat(pixels.pixels[offset + 2]) / 255, alpha: 1)
     }
 
     public func setWallpaperGlass(_ matrix: [CGFloat]?) {
@@ -211,6 +245,7 @@ public final class ChatMessageBubbleBackdrop: NSView {
             }
             current.contents = background
         }
+        self.gradientImage = image == nil ? nil : background
 
         self.applyImages()
     }

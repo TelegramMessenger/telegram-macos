@@ -779,7 +779,7 @@ public class ChatAccessoryView : Button {
             switch model.modelType {
             case .modern:
                 if model.presentation.frosted {
-                    self.backgroundView.backgroundColor = (model.presentation.colors.main.blended(withFraction: 0.45, of: .white) ?? model.presentation.colors.main).withAlphaComponent(0.22).cgColor
+                    self.backgroundView.backgroundColor = model.presentation.colors.main.withAlphaComponent(0.28).cgColor
                 } else {
                     self.backgroundView.backgroundColor = model.presentation.colors.main.withAlphaComponent(0.1).cgColor
                 }

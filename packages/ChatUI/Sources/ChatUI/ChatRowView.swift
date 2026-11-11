@@ -550,18 +550,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         let colors = item.presentation.colors
         let style: ChatBubbleWallpaperMaterial.Style
         if item.isIncoming {
-            style = .incoming(tint: colors.tinted ? colors.bubbleBackground_outgoing.first : nil, tintOpacity: 0.24)
+            style = ChatBubbleWallpaperMaterial.incomingStyle(colors)
         } else {
-            style = .outgoing(tint: colors.blendedOutgoingColors)
+            style = .outgoing(tint: ChatBubbleWallpaperMaterial.quantized(bubbleView.gradientColor() ?? colors.blendedOutgoingColors))
         }
         let luminance = (CGFloat(sample.luminance) * 64).rounded() / 64
-        let matrix = ChatBubbleWallpaperMaterial.matrix(style: style, luminance: luminance)
-        let textColor = item.presentation.chat.textColor(item.isIncoming, item.renderType == .bubble)
-        if ChatBubbleWallpaperMaterial.contrastRatio(textColor, ChatBubbleWallpaperMaterial.glassColor(over: sample.average, matrix: matrix)) < 3.0 {
-            bubbleView.setWallpaperGlass(nil)
-            return
-        }
-        bubbleView.setWallpaperGlass(matrix)
+        bubbleView.setWallpaperGlass(ChatBubbleWallpaperMaterial.matrix(style: style, luminance: luminance))
     }
 
     private func clearWallpaperMaterial() {
@@ -2047,7 +2041,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             return
         }
         let colors = item.presentation.colors
-        let style = ChatBubbleWallpaperMaterial.Style.incoming(tint: colors.tinted ? colors.bubbleBackground_outgoing.first : nil, tintOpacity: 0.24)
+        let style = ChatBubbleWallpaperMaterial.incomingStyle(colors)
         let matrix = ChatBubbleWallpaperMaterial.matrix(style: style, luminance: (CGFloat(sample.luminance) * 64).rounded() / 64)
         let glass: CALayer
         if let existing {
@@ -2069,11 +2063,11 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         layer.cornerRadius = control.bounds.height / 2
         layer.masksToBounds = true
         layer.borderWidth = 1
-        layer.borderColor = ChatBubbleWallpaperMaterial.incomingOutlineColor.cgColor
+        layer.borderColor = ChatBubbleWallpaperMaterial.incomingOutlineColor(dark: colors.isDark).cgColor
         CATransaction.commit()
         ChatBubbleWallpaperMaterial.applyGlassMatrix(matrix, to: glass)
         let icon = item.hasSource ? item.presentation.chat.chat_goto_message_bubble(theme: item.presentation) : item.presentation.chat.chat_share_bubble(theme: item.presentation)
-        control.set(image: ChatBubbleWallpaperMaterial.tinted(icon, ChatBubbleWallpaperMaterial.glassGlyphColor), for: .Normal)
+        control.set(image: ChatBubbleWallpaperMaterial.tinted(icon, ChatBubbleWallpaperMaterial.glassGlyphColor(dark: colors.isDark)), for: .Normal)
     }
 
     public func fillReactions(_ item: ChatRowItem, animated: Bool) {

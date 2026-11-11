@@ -291,6 +291,8 @@ private final class AppAppearanceViewArguments {
     public let context: any AccountContextProtocol
     public let togglePalette:(InstallThemeSource)->Void
     public let toggleBubbles:(Bool)->Void
+    public let toggleGlassBubbles:()->Void
+    public let alertGlassBubbles:()->Void
     public let toggleFontSize:(CGFloat)->Void
     public let selectAccentColor:(AppearanceAccentColor?)->Void
     public let selectChatBackground:()->Void
@@ -303,10 +305,12 @@ private final class AppAppearanceViewArguments {
     public let toggleRevealThemes:()->Void
     public let userNameColor:()->Void
     public let selectAppIcon:(TelegramApplicationIcons.Icon)->Void
-    public init(context: any AccountContextProtocol, togglePalette: @escaping(InstallThemeSource)->Void, toggleBubbles: @escaping(Bool)->Void, toggleFontSize: @escaping(CGFloat)->Void, selectAccentColor: @escaping(AppearanceAccentColor?)->Void, selectChatBackground:@escaping()->Void, openAutoNightSettings:@escaping()->Void, removeTheme:@escaping(TelegramTheme)->Void, editTheme: @escaping(TelegramTheme)->Void, shareTheme:@escaping(TelegramTheme)->Void, shareLocal:@escaping(ColorPalette)->Void, toggleDarkMode: @escaping(Bool)->Void, toggleRevealThemes:@escaping()->Void, userNameColor:@escaping()->Void, selectAppIcon:@escaping(TelegramApplicationIcons.Icon)->Void) {
+    public init(context: any AccountContextProtocol, togglePalette: @escaping(InstallThemeSource)->Void, toggleBubbles: @escaping(Bool)->Void, toggleGlassBubbles: @escaping()->Void, alertGlassBubbles: @escaping()->Void, toggleFontSize: @escaping(CGFloat)->Void, selectAccentColor: @escaping(AppearanceAccentColor?)->Void, selectChatBackground:@escaping()->Void, openAutoNightSettings:@escaping()->Void, removeTheme:@escaping(TelegramTheme)->Void, editTheme: @escaping(TelegramTheme)->Void, shareTheme:@escaping(TelegramTheme)->Void, shareLocal:@escaping(ColorPalette)->Void, toggleDarkMode: @escaping(Bool)->Void, toggleRevealThemes:@escaping()->Void, userNameColor:@escaping()->Void, selectAppIcon:@escaping(TelegramApplicationIcons.Icon)->Void) {
         self.context = context
         self.togglePalette = togglePalette
         self.toggleBubbles = toggleBubbles
+        self.toggleGlassBubbles = toggleGlassBubbles
+        self.alertGlassBubbles = alertGlassBubbles
         self.toggleFontSize = toggleFontSize
         self.selectAccentColor = selectAccentColor
         self.selectChatBackground = selectChatBackground
@@ -327,6 +331,7 @@ private let _id_theme_preview = InputDataIdentifier("_id_theme_preview")
 private let _id_theme_list = InputDataIdentifier("_id_theme_list")
 private let _id_theme_accent_list = InputDataIdentifier("_id_theme_accent_list")
 private let _id_theme_chat_mode = InputDataIdentifier("_id_theme_chat_mode")
+private let _id_theme_glass_bubbles = InputDataIdentifier("_id_theme_glass_bubbles")
 private let _id_theme_wallpaper1 = InputDataIdentifier("_id_theme_wallpaper")
 private let _id_theme_text_size = InputDataIdentifier("_id_theme_text_size")
 private let _id_theme_auto_night = InputDataIdentifier("_id_theme_auto_night")
@@ -499,6 +504,13 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
         arguments.toggleBubbles(!appearance.presentation.bubbled)
     })))
     index += 1
+
+    if appearance.presentation.bubbled {
+        let liteMode = appearance.presentation.liteMode
+        let glassAvailable = !liteMode.enabled && liteMode.liquidGlassEnabled
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_theme_glass_bubbles, data: InputDataGeneralData(name: _NSLocalizedString("Appearance.Settings.GlassBubbles"), color: appearance.presentation.colors.text, type: .switchable(glassAvailable && liteMode.glassBubblesEnabled), viewType: .innerItem, enabled: glassAvailable, action: arguments.toggleGlassBubbles, disabledAction: arguments.alertGlassBubbles)))
+        index += 1
+    }
     
    
     if appearance.presentation.bubbled {
@@ -699,6 +711,20 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
         updateDisposable.set(updateThemeInteractivetly(accountManager: context.sharedContext.accountManager, f: { settings in
             return settings.withUpdatedBubbled(value)
         }).start())
+    }, toggleGlassBubbles: {
+        _ = updateBaseAppSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
+            return settings.updateLiteMode { current in
+                var current = current
+                current.glassBubblesEnabled = !current.glassBubblesEnabled
+                return current
+            }
+        }).start(completed: {
+            delay(0.1, closure: {
+                LiteModeHooks.shared.updateTheme(theme.new(), false)
+            })
+        })
+    }, alertGlassBubbles: {
+        showModalText(for: context.window, text: _NSLocalizedString("Appearance.Settings.GlassBubbles.RequiresLiquidGlass"))
     }, toggleFontSize: { value in
         updateDisposable.set(updateThemeInteractivetly(accountManager: context.sharedContext.accountManager, f: { settings in
             return settings.withUpdatedFontSize(value)
