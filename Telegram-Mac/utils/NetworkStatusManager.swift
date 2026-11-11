@@ -53,6 +53,7 @@ public final class NetworkStatusManager {
     private let account: Account
     private let sharedContext: any SharedAccountContextProtocol
     private let window: Window
+    private let managesWindowTitle: Bool
     private let disposable = MetaDisposable()
 
     private let statusPromise = Promise<NetworkConnectingStatus?>(nil)
@@ -62,9 +63,10 @@ public final class NetworkStatusManager {
 
     private var peer: EnginePeer?
 
-    public init(account: Account, window: Window, sharedContext: any SharedAccountContextProtocol) {
+    public init(account: Account, window: Window, sharedContext: any SharedAccountContextProtocol, managesWindowTitle: Bool = true) {
         self.account = account
         self.window = window
+        self.managesWindowTitle = managesWindowTitle
         self.sharedContext = sharedContext
         initialize()
     }
@@ -129,6 +131,9 @@ public final class NetworkStatusManager {
         self.peer = peer
         statusPromise.set(.single(status))
 
+        guard managesWindowTitle else {
+            return
+        }
         if status == nil {
             if let peer {
                 window.title = appName + " @ " + peer._asPeer().compactDisplayTitle
