@@ -8,7 +8,7 @@ url=git@github.com:telegramdesktop/libtgvoip
 [submodule "submodules/telegram-ios"]
 	branch = master
 	path = submodules/telegram-ios
-url=git@gitlab.com:peter-iakovlev/telegram-ios.git
+	url = https://github.com/TelegramMessenger/Telegram-iOS
 [submodule "submodules/tgcalls"]
 	path = submodules/tgcalls
 	url = git@github.com:TelegramMessenger/tgcalls.git

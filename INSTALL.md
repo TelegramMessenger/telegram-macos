@@ -141,6 +141,15 @@ xcodebuild -workspace Telegram-Mac.xcworkspace -scheme Telegram -configuration D
 The main app targets macOS 11.0 and the share extension macOS 10.13. Swift packages are
 resolved from the local paths in the workspace; no network access is needed.
 
+### Telegram-iOS compatibility
+
+The Telegram-iOS submodule points to the official upstream commit. The framework
+preparation applies `scripts/telegram-ios-macos.patch` to keep the Mac app's
+shared-core changes. If the frameworks are already built, run
+`sh scripts/prepare-telegram-ios.sh` before opening Xcode or resolving packages.
+Run `sh scripts/prepare-telegram-ios.sh --reverse` before checking out a different
+Telegram-iOS revision if the patch is applied.
+
 ### Generated TelegramApi sources
 
 `scripts/configure_frameworks.sh` prepares the generated Swift and Objective-C API
