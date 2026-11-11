@@ -1128,6 +1128,16 @@ public final class AnimatedEmojiesCategories : Control {
         deinit {
         }
         
+        // The one-shot icon animation is dropped by InlineStickerItemLayer when a frame
+        // arrives while the view is off-window (e.g. categories are rebuilt as the panel
+        // closes). Nothing restarted it, leaving an invisible but clickable category.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                player?.resumeIfNeeded()
+            }
+        }
+        
         override func layout() {
             super.layout()
             updateLayout(size: self.frame.size, transition: .immediate)
