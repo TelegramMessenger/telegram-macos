@@ -25,6 +25,7 @@ import StarsUI
 import AffiliateUI
 import BoostUI
 import InlineStickerLayer
+import AppAnalytics
 
 
 private func transactionSegments(_ modes: [State.TransactionMode], transactionMode: State.TransactionMode) -> [ScrollableSegmentItem] {
@@ -964,6 +965,7 @@ public func FragmentMonetizationController(context: any AccountContextProtocol, 
     }
     
     let controller = InputDataController(dataSignal: signal, title: onlyTonContext == nil ?  strings().statsMonetization : strings().statsTon, hasDone: false)
+    controller.analyticsScreen = .peerInfoMonetization
     getController = { [weak controller] in controller }
     
     controller.contextObject = contextObject
@@ -1396,6 +1398,7 @@ private func withdrawStarBalance(context: any AccountContextProtocol, state: Sta
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .peerInfoStarsBalanceWithdraw
     
     controller.validateData = { _ in
         if let value = Int64(interactions.presentation.string) {

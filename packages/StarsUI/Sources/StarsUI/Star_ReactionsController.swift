@@ -15,6 +15,7 @@ import AvatarUI
 import MessageUtils
 import LocalAnimations
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -1149,6 +1150,12 @@ public func Star_ReactionsController(context: any AccountContextProtocol, source
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    if case .liveStream = source {
+        controller.analyticsScreen = AnalyticsScreen.storiesLiveStars
+    } else {
+        controller.analyticsScreen = AnalyticsScreen.starsReaction
+    }
+    
     controller.validateData = { _ in
         react()
         return .none

@@ -18,12 +18,29 @@ final class Probe<T> {
     func send(_ value: T) { for s in subscribers { s.putNext(value) } }
     func complete() { for s in subscribers { s.putCompletion() } }
 }
+final class AnalyticsContext {}
+final class Analytics { static let shared = Analytics(); func unresolvedContext() -> AnalyticsContext { AnalyticsContext() } }
+final class AnalyticsRecordingRequest {
+    enum Failure { case preparation }
+    var failures = 0, ends = 0
+    func fail(_ value: Failure) { failures += 1 }
+    func end() { ends += 1 }
+    func observingPreparation<T>(_ signal: Signal<T, NoError>) -> Signal<T, NoError> { signal }
+}
+final class AnalyticsRecordingJourney {
+    enum Spec { enum SubmitVia { case release, keyboard } }
+    var requests: [AnalyticsRecordingRequest] = []
+    func prepareSubmission(via: Spec.SubmitVia) -> AnalyticsRecordingRequest? { let r = AnalyticsRecordingRequest(); requests.append(r); return r }
+    func setOneTime(_ value: Bool) {}
+}
 struct MediaSenderContainer { var path: String; var duration: Double }
 struct AudioData { let duration: Double; var id: Int64 = 1 }
 func VoiceSenderContainer(data: AudioData, id: Int64, isOneTime: Bool) -> MediaSenderContainer { MediaSenderContainer(path: "audio", duration: data.duration) }
 final class Interaction { var recorder: Recorder? }
 final class Hooks {
     var sent = 0, cleared = 0, media: [MediaSenderContainer] = []
+    var setPendingRecording: ((Any, Signal<[MediaSenderContainer], NoError>, AnalyticsContext, AnalyticsRecordingRequest?) -> Void)?
+    var setPendingMediaWithContext: ((Any, Signal<[MediaSenderContainer], NoError>, AnalyticsContext) -> Void)?
     func setPendingMedia(_ interaction: Any, _ signal: Signal<[MediaSenderContainer], NoError>) { sent += 1; _ = signal.start(next: { self.media += $0 }) }
     func clearRecordingState(_ interaction: Any) { cleared += 1 }
 }
@@ -32,6 +49,8 @@ var closedAll = 0
 func closeAllModals() { closedAll += 1 }
 enum ChatRecordingSubmissionState { case idle, preparing, failed }
 final class Recorder {
+    var analyticsRecordingJourney: AnalyticsRecordingJourney? = AnalyticsRecordingJourney()
+    var analyticsContext: AnalyticsContext? = AnalyticsContext()
     var trimRange: Range<Double>? = 2..<8
     var trimSourceDuration: Double? = 10
     var isCancelled = false, isPreparingSubmission = false, hasSubmitted = false, isOneTime = false
@@ -90,11 +109,13 @@ final class Input {
     __UI__
 }
 final class EmptySender {
+    final class Request { enum Reason { case preparation }; var failed = 0; func fail(_ reason: Reason) { failed += 1 } }
+    final class Journey { enum Reason { case emptySelection }; var failed = 0; func fail(_ reason: Reason) { failed += 1 } }
     final class Flight { var cancelled = 0; func cancel() { cancelled += 1 } }
     final class Interaction { var voiceSendFlight: Flight? = Flight() }
     let chatInteraction = Interaction()
     var continued = 0
-    func send(_ media: [Int]) {
+    func send(_ media: [Int], recordingRequest: Request?, journey: Journey?) {
         let callback = { [weak self] in
             __EMPTY__
             self?.continued += 1
@@ -109,15 +130,15 @@ class Case: XCTestCase {
         AVURLAsset.duration = 5.95
     }
     func drain() { let e = expectation(description: "main"); DispatchQueue.main.async { e.fulfill() }; wait(for: [e], timeout: 2) }
-    func send(_ r: Recorder, _ i: Interaction) { r.send(from: i, closingOtherModals: true) }
+    func send(_ r: Recorder, _ i: Interaction) { r.send(from: i, via: .keyboard, closingOtherModals: true) }
 }
 final class SendTests: Case {
     func testPendingTrimKeepsRecorderAndDoesNotReadOrStop() { let r = Recorder(), i = Interaction(); send(r,i); XCTAssertTrue(r.isPreparingSubmission); XCTAssertEqual(r.stops,0); XCTAssertEqual(r.reads,0); XCTAssertEqual(MediaRecorderHooks.shared.cleared,0); XCTAssertEqual(r.closes,0) }
-    func testFailurePreservesSelectionAndAllowsRetry() { let r = Recorder(), i = Interaction(); send(r,i); r.operation.send(false); drain(); XCTAssertEqual(r.trimRange,2..<8); XCTAssertEqual(r.stops,0); XCTAssertFalse(r.isPreparingSubmission); send(r,i); XCTAssertEqual(r.trimCalls,2) }
-    func testEmptyCompletionIsFailure() { let r = Recorder(), i = Interaction(); send(r,i); r.operation.complete(); drain(); XCTAssertFalse(r.isPreparingSubmission); XCTAssertEqual(MediaRecorderHooks.shared.sent,0) }
+    func testFailurePreservesSelectionAndAllowsRetry() { let r = Recorder(), i = Interaction(); send(r,i); r.operation.send(false); drain(); XCTAssertEqual(r.trimRange,2..<8); XCTAssertEqual(r.stops,0); XCTAssertFalse(r.isPreparingSubmission); XCTAssertEqual(r.analyticsRecordingJourney?.requests.first?.failures,1); send(r,i); XCTAssertEqual(r.trimCalls,2) }
+    func testEmptyCompletionIsFailure() { let r = Recorder(), i = Interaction(); send(r,i); r.operation.complete(); drain(); XCTAssertFalse(r.isPreparingSubmission); XCTAssertEqual(MediaRecorderHooks.shared.sent,0); XCTAssertEqual(r.analyticsRecordingJourney?.requests.first?.failures,1) }
     func testSuccessClearsSelectionThenStopsAndHandsOff() { let r = Recorder(), i = Interaction(); send(r,i); r.operation.send(true); drain(); XCTAssertNil(r.trimRange); XCTAssertEqual(r.stops,1); XCTAssertEqual(MediaRecorderHooks.shared.sent,1); XCTAssertEqual(MediaRecorderHooks.shared.cleared,1); XCTAssertEqual(closedAll,1) }
     func testOnlyFirstTrimResultIsAccepted() { let r = Recorder(), i = Interaction(); send(r,i); r.operation.send(false); r.operation.send(true); drain(); XCTAssertEqual(MediaRecorderHooks.shared.sent,0); XCTAssertEqual(r.trimRange,2..<8) }
-    func testDuplicatePendingSendStartsOneTrim() { let r = Recorder(), i = Interaction(); send(r,i); send(r,i); XCTAssertEqual(r.trimCalls,1) }
+    func testDuplicatePendingSendStartsOneTrim() { let r = Recorder(), i = Interaction(); send(r,i); send(r,i); XCTAssertEqual(r.trimCalls,1); XCTAssertEqual(r.analyticsRecordingJourney?.requests.count,1) }
     func testDuplicateFinishedSendDoesNotResubmit() { let r = Recorder(), i = Interaction(); r.trimRange = nil; send(r,i); send(r,i); XCTAssertEqual(MediaRecorderHooks.shared.sent,1) }
     func testUntrimmedSendKeepsImmediateBehavior() { let r = Recorder(), i = Interaction(); r.trimRange = nil; send(r,i); XCTAssertEqual(r.trimCalls,0); XCTAssertEqual(MediaRecorderHooks.shared.sent,1); XCTAssertEqual(r.stops,1) }
     func testCancelledRecorderDoesNotSend() { let r = Recorder(), i = Interaction(); r.cancel(); send(r,i); XCTAssertEqual(MediaRecorderHooks.shared.sent,0); XCTAssertEqual(r.trimCalls,0) }
@@ -133,8 +154,9 @@ final class SendTests: Case {
     func testPendingSendDoesNotRetainInteractionAndRecorderCycle() { var i: Interaction? = Interaction(); var r: Recorder? = Recorder(); i!.recorder = r; weak var weakInteraction = i; weak var weakRecorder = r; send(r!,i!); i = nil; r = nil; XCTAssertNil(weakInteraction); XCTAssertNil(weakRecorder) }
     func testFailureObserverCanRetrySynchronously() { let r=Recorder(), i=Interaction(); var failures=0; let d=r.submissionState.get().start(next:{ if case .failed = $0 { failures += 1; if failures == 1 { self.send(r,i) } } }); send(r,i); r.operation.send(false); drain(); XCTAssertEqual(r.trimCalls,2); XCTAssertTrue(r.isPreparingSubmission); r.operation.send(true); drain(); XCTAssertEqual(MediaRecorderHooks.shared.sent,1); d.dispose() }
     func testReleasedDestinationCannotReceivePreparedMedia() { let r=Recorder(); var i:Interaction?=Interaction(); send(r,i!); i=nil; r.operation.send(true); drain(); XCTAssertEqual(MediaRecorderHooks.shared.sent,0); XCTAssertFalse(r.isPreparingSubmission); XCTAssertNil(r.trimRange) }
-    func testMediaHookReceivesOnlyPreparedRecording() { let r = Recorder(), i = Interaction(); send(r, i); XCTAssertEqual(MediaRecorderHooks.shared.sent, 0); r.operation.send(true); drain(); XCTAssertEqual(MediaRecorderHooks.shared.sent, 1); XCTAssertEqual(MediaRecorderHooks.shared.media.map(\.path), ["prepared"]) }
-    func testPreparingObserverCannotSubmitAgain() { let r=Recorder(), i=Interaction(); let d=r.submissionState.get().start(next:{ if case .preparing = $0 { self.send(r,i) } }); send(r,i); XCTAssertEqual(r.trimCalls,1); d.dispose() }
+    func testRecordingHookReceivesOnlyPreparedMedia() { let r=Recorder(), i=Interaction(); var received=0; MediaRecorderHooks.shared.setPendingRecording={ _, data, _, _ in received += 1; _=data.start() }; send(r,i); XCTAssertEqual(received,0); r.operation.send(true); drain(); XCTAssertEqual(received,1); XCTAssertEqual(MediaRecorderHooks.shared.sent,0) }
+    func testContextFallbackReceivesOnlyPreparedMedia() { let r=Recorder(), i=Interaction(); var received=0; MediaRecorderHooks.shared.setPendingMediaWithContext={ _, data, _ in received += 1; _=data.start() }; send(r,i); XCTAssertEqual(received,0); r.operation.send(true); drain(); XCTAssertEqual(received,1); XCTAssertEqual(MediaRecorderHooks.shared.sent,0) }
+    func testPreparingObserverCannotSubmitAgain() { let r=Recorder(), i=Interaction(); let d=r.submissionState.get().start(next:{ if case .preparing = $0 { self.send(r,i) } }); send(r,i); XCTAssertEqual(r.trimCalls,1); XCTAssertEqual(r.analyticsRecordingJourney?.requests.count,1); d.dispose() }
     func testPreparingObserverCanCancelBeforeBackendStarts() { let r = Recorder(), i = Interaction(); let d = r.submissionState.get().start(next:{ if case .preparing = $0 { r.cancel() } }); send(r,i); XCTAssertEqual(r.trimCalls,0); XCTAssertEqual(MediaRecorderHooks.shared.sent,0); d.dispose() }
 }
 final class DataTests: Case {
@@ -149,13 +171,13 @@ final class DataTests: Case {
 }
 final class InputTests: Case {
     func testSendKeepsPreviewUntilPreparationCompletes() { let i=Input(); i.stopAndSend(); XCTAssertEqual(i.resets,0) }
-    func testSendWhilePreparingDoesNotResetPreview() { let i=Input(); i.recorder.isPreparingSubmission=true; i.stopAndSend(); XCTAssertEqual(i.resets,0) }
+    func testSendWhilePreparingDoesNotResetPreview() { let i=Input(); i.recorder.isPreparingSubmission=true; i.stopAndSend(); XCTAssertEqual(i.resets,0); XCTAssertEqual(i.recorder.analyticsRecordingJourney?.requests.count,0) }
     func testPreparingStopsPreviewAndLocksControls() { let i=Input(); i.updateSubmissionState(.preparing); XCTAssertEqual(i.teardowns,1); XCTAssertFalse(i.singleTimeControl.isEnabled); XCTAssertFalse(i.pauseControl.isEnabled); XCTAssertFalse(i.scrubber.userInteractionEnabled) }
     func testFailureReloadsPreviewAndShowsError() { let i=Input(); i.updateSubmissionState(.preparing); i.updateSubmissionState(.failed); XCTAssertEqual(i.loads,1); XCTAssertTrue(i.singleTimeControl.isEnabled); XCTAssertEqual(alerts,1); XCTAssertTrue(i.pauseControl.isEnabled); XCTAssertTrue(i.scrubber.userInteractionEnabled) }
     func testDiscardedInputDoesNotShowStaleFailure() { let i=Input(); i.recorder.isCancelled=true; i.updateSubmissionState(.failed); XCTAssertEqual(alerts,0); XCTAssertEqual(i.loads,0) }
     func testResumeCleanupDoesNotUnlockPendingSend() { let i=Input(); i.recorder.isPreparingSubmission=true; i.setResuming(false); XCTAssertFalse(i.pauseControl.isEnabled); XCTAssertFalse(i.scrubber.userInteractionEnabled) }
-    func testEmptyMediaDoesNotProceedToSchedulingOrEnqueue() { let s=EmptySender(); s.send([]); XCTAssertEqual(s.continued,0); XCTAssertEqual(s.chatInteraction.voiceSendFlight?.cancelled,1) }
-    func testNonEmptyMediaContinues() { let s=EmptySender(); s.send([1]); XCTAssertEqual(s.continued,1) }
+    func testEmptyMediaDoesNotProceedToSchedulingOrEnqueue() { let s=EmptySender(), r=EmptySender.Request(), j=EmptySender.Journey(); s.send([],recordingRequest:r,journey:j); XCTAssertEqual(s.continued,0); XCTAssertEqual(r.failed,1); XCTAssertEqual(j.failed,1); XCTAssertEqual(s.chatInteraction.voiceSendFlight?.cancelled,1) }
+    func testNonEmptyMediaContinues() { let s=EmptySender(); s.send([1],recordingRequest:nil,journey:nil); XCTAssertEqual(s.continued,1) }
 }
 
 extension String {

@@ -32,6 +32,7 @@ import LocalAnimations
 import InputView
 import ChatModeTypes
 import InlineStickerLayer
+import AppAnalytics
 
 struct StoryReactionAction {
     let item: UpdateMessageReaction
@@ -209,18 +210,24 @@ final class StoryInteraction : InterfaceObserver {
         }
     }
 
-    func startRecording(context: any AccountContextProtocol, autohold: Bool, sendMedia:@escaping([MediaSenderContainer])->Void) {
+    func startRecording(context: any AccountContextProtocol, analyticsContext: AnalyticsContext, autohold: Bool, via: AnalyticsValues.Via? = nil, sendMedia:@escaping([MediaSenderContainer])->Void, sendRecordingMedia: (([MediaSenderContainer], AnalyticsRecordingRequest?) -> Void)? = nil) {
+        let journey = AnalyticsRecordingJourney(context: analyticsContext, kind: self.presentation.recordType == .voice ? .voice : .video, surface: .storyReply, initialMode: autohold ? .locked : .hold, via: via)
         let state: ChatRecordingState
         if self.presentation.recordType == .voice {
             state = ChatRecordingAudioState(context: context, liveUpload: false, autohold: autohold)
+            state.inheritAnalyticsContext(analyticsContext)
+            state.analyticsRecordingJourney = journey
         } else {
             let videoState = ChatRecordingVideoState(context: context, liveUpload: false, autohold: autohold)
             state = videoState
+            state.inheritAnalyticsContext(analyticsContext)
+            state.analyticsRecordingJourney = journey
             let controller = VideoRecorderModalController(state: state, pipeline: videoState.pipeline, sendMedia: { medias in
                 sendMedia(medias)
             }, resetState: { [weak self] in
                 self?.resetRecording()
             })
+            controller.sendRecordedMedia = sendRecordingMedia
             showModal(with: controller, for: context.window)
         }
         state.start()
@@ -2201,6 +2208,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
     private let inputSwapDisposable = MetaDisposable()
     private let slowModeDisposable = MetaDisposable()
     private let balanceDisposable = MetaDisposable()
+    private let paidReplyDisposable = MetaDisposable()
     private let deleteStoryDisposable = MetaDisposable()
     private var deleteStoryOperationId: UUID?
     private var acceptsStoryDeletion = true
@@ -2211,7 +2219,26 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
     
     private var arguments: StoryArguments?
 
-    public init(context: Context, stories: StoryContentContext, initialId: StoryInitialIndex?) {
+    private func purchaseStarsForReply(amount: Int64, origin: AnalyticsContext, cancelled: @escaping () -> Void = {}, send: @escaping (AnalyticsContext) -> Void) {
+        let action = chatInteraction.captureDeferredSendAction()
+        let replyIsCurrent = interactions.captureReplyValidity()
+        paidReplyDisposable.set(nil)
+        FeatureNavigationHooks.shared.showStarsPurchaseForStoryReply(context, context.window, amount, origin, { [weak self] paid in
+            guard let self, !self.closed, paid, replyIsCurrent(), action.isAvailable else { cancelled(); return }
+            let balance = self.context.starsContext.state |> map { $0?.balance.value } |> deliverOnMainQueue
+            let ready = storyPaidReplyBalanceReady(balance, required: amount, isCurrent: { [weak self] in self?.closed == false && replyIsCurrent() && action.isAvailable })
+            self.paidReplyDisposable.set(ready.start(next: { [weak self] in
+                guard let self, !self.closed, replyIsCurrent(), action.takeIfCurrent() else { cancelled(); return }
+                send(origin)
+            }))
+            self.context.starsContext.load(force: true)
+        })
+    }
+
+    public init(context: Context, stories: StoryContentContext, initialId: StoryInitialIndex?, analyticsContext: AnalyticsContext? = nil) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         self.entertainment = EntertainmentViewController(size: NSMakeSize(350, 350), context: context, mode: .stories, presentation: darkAppearance)
         self.emoji = EmojiesController(context, presentation: darkAppearance)
         self.emoji.showsGlassSurface = true
@@ -2220,9 +2247,14 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         self.initialId = initialId
         self.stories = stories
         self.chatInteraction = ChatInteraction(chatLocation: .peer(PeerId(0)), context: context)
+        self.chatInteraction.inheritedAnalyticsContext = origin
         super.init()
+        self.analyticsContext = origin
+        self.entertainment.analyticsContext = origin
+        self.emoji.analyticsContext = origin
         self._frameRect = context.window.contentView!.bounds
         self.bar = .init(height: 0)
+        self.analyticsScreen = .storiesViewer
         #if DEBUG
         StoryMorphLab.closeActiveStory = { [weak self] in
             self?.close()
@@ -2574,7 +2606,8 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         
         let statisticsStory:(StoryContentItem)->Void = { [weak self] story in
             if let peer = story.peer {
-                FeatureNavigationHooks.shared.openStoryStatsObserved(context, story.storyItem, peer)
+                let origin = self?.chatInteraction.captureAnalyticsContext(sourcePeerId: peer.id) ?? Analytics.shared.unresolvedContext()
+                FeatureNavigationHooks.shared.openStoryStatsObserved(context, story.storyItem, peer, analyticsContext: origin)
             }
             self?.close()
         }
@@ -2602,9 +2635,16 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         
         
         
-        let sendText: (ChatTextInputState, PeerId, Int32, StoryViewController.TooptipView.Source, Int64?) -> Void = { [weak self, weak interactions] input, peerId, id, source, stars in
+        let captureStoryReplyContext: (PeerId) -> AnalyticsContext = { [weak self] peerId in
+            guard let self, let peer = self.chatInteraction.peer else { return Analytics.shared.unresolvedContext() }
+            return self.chatInteraction.captureAnalyticsContext(sourcePeerId: peer.id).restricting(peerId: peerId)
+        }
+        let sendText: (ChatTextInputState, PeerId, Int32, StoryViewController.TooptipView.Source, Int64?, AnalyticsContext) -> Void = { [weak self, weak interactions] input, peerId, id, source, stars, inheritedContext in
             guard let self, !self.closed, let interactions, !interactions.presentation.lock,
                   interactions.presentation.entryId == peerId, interactions.presentation.storyId == id else { return }
+            let analyticsContext = chatInteraction.captureAnalyticsContext(inherited: inheritedContext).restricting(peerId: peerId)
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             if let timeout = self.arguments?.interaction.presentation.slowMode?.timeout {
                 self.genericView.showTooltip(.tooltip(slowModeTooltipText(timeout), MenuAnimation.menu_clear_history))
                 return
@@ -2626,9 +2666,9 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             } else {
                 clearSubmittedDraft = false
             }
-            let takeSendAction: () -> Bool = { [weak self] in
-                guard let self, !self.closed, replyIsCurrent(), sendAction.takeIfCurrent() else { return false }
-                return true
+            let resolveOrigin: () -> AnalyticsContext? = { [weak self] in
+                guard let self, !self.closed, replyIsCurrent(), sendAction.takeIfCurrent() else { return nil }
+                return chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: peerId)
             }
             let finish: (Bool) -> Void = { [weak self, weak interactions] stream in
                 guard let self, !self.closed, let interactions, replyIsCurrent() else { return }
@@ -2639,14 +2679,18 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 }
                 if !stream { self.genericView.showTooltip(source) }
             }
-            let purchase: (Int64?) -> Void = { amount in
-                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, amount)
+            let purchaseForLiveStream: (Int64?, AnalyticsContext) -> Void = { amount, origin in
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
+                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, amount, origin)
             }
-            let enqueue: () -> Void = {
+            let enqueue: (AnalyticsContext) -> Void = { origin in
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
                 if let call {
                     let myStars = interactions.presentation.myStars?.value ?? 0
                     if myStars < (stars ?? 0) {
-                        purchase(stars)
+                        purchaseForLiveStream(stars, origin)
                         return
                     }
                     beforeCompletion()
@@ -2658,14 +2702,22 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                     finish(true)
                 } else {
                     beforeCompletion()
-                    _ = (Sender.enqueue(input: input, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), sendAsPeerId: nil, sendPaidMessageStars: slice?.additionalPeerData.paidMessage)).start(completed: {
+                    _ = origin.preservingPresentation(Sender.enqueue(input: input, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), sendAsPeerId: nil, sendPaidMessageStars: slice?.additionalPeerData.paidMessage)).start(completed: {
                         finish(false)
                     })
                 }
             }
+            let purchase: (Int64?, AnalyticsContext) -> Void = { [weak self] amount, origin in
+                guard let self, let amount else { return }
+                if call != nil {
+                    purchaseForLiveStream(amount, origin)
+                } else {
+                    self.purchaseStarsForReply(amount: amount, origin: origin, send: enqueue)
+                }
+            }
             let invoke: () -> Void = {
-                guard takeSendAction() else { return }
-                enqueue()
+                guard let origin = resolveOrigin() else { return }
+                enqueue(origin)
             }
             let state = self.chatInteraction.presentation
             if let payStars = state.sendPaidMessageStars, let peer = state.peer, let starsState = state.starsState {
@@ -2674,20 +2726,22 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 let messagesCount = 1
                 if !state.alwaysPaidMessage {
                     let messageCountText = strings().chatPayStarsConfirmMessagesOther(messagesCount)
-                    verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, successHandler: { result in
-                        guard takeSendAction() else { return }
-                        if starsState.balance.value > starsPrice {
+                    verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, analyticsContext: analyticsContext, successHandler: { result in
+                        guard let origin = resolveOrigin() else { return }
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        if (context.starsContext.currentState?.balance.value ?? starsState.balance.value) >= starsPrice {
                             chatInteraction.update { $0.withUpdatedAlwaysPaidMessage(result == .thrid) }
                             if result == .thrid { FastSettings.toggleCofirmPaid(peer.id, price: starsPrice) }
-                            enqueue()
+                            enqueue(origin)
                         } else {
-                            purchase(Int64(starsPrice))
+                            purchase(Int64(starsPrice), origin)
                         }
                     })
-                } else if starsState.balance.value > starsPrice {
+                } else if (context.starsContext.currentState?.balance.value ?? starsState.balance.value) >= starsPrice {
                     invoke()
-                } else if takeSendAction() {
-                    purchase(Int64(starsPrice))
+                } else if let origin = resolveOrigin() {
+                    purchase(Int64(starsPrice), origin)
                 }
             } else {
                 invoke()
@@ -2749,22 +2803,26 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         let react:(StoryReactionAction)->Void = { [weak self, weak interactions] reaction in
             
             if let entryId = interactions?.presentation.entryId, let id = interactions?.presentation.storyId {
+                let analyticsContext = captureStoryReplyContext(entryId)
+                let presentation = analyticsContext.beginPresentation()
+                defer { presentation.end() }
                 switch reaction.item {
                 case let .builtin(value):
-                    sendText(.init(inputText: value.normalizedEmoji), entryId, id, .reaction(reaction), nil)
+                    sendText(.init(inputText: value.normalizedEmoji), entryId, id, .reaction(reaction), nil, analyticsContext)
                     self?.genericView.playReaction(reaction)
                 case let .custom(fileId, file):
                     if let file = file, let text = file.customEmojiText {
                         if file.isPremiumEmoji, !context.isPremium {
                             let premiumAction = interactions?.captureReplyAction()
+                            let premiumPresentation = analyticsContext.beginPresentation()
                             showModalText(for: context.window, text: strings().emojiPackPremiumAlert, callback: { _ in
-                                do {
+                                withExtendedLifetime(premiumPresentation) {
                                     guard premiumAction?() == true else { return }
-                                    FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, .premiumStickers, false, darkAppearance)
+                                    FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, .premiumStickers, false, darkAppearance, analyticsContext: analyticsContext)
                                 }
                             })
                         } else {
-                            sendText(.init(inputText: text, selectionRange: 0..<0, attributes: [.animated(0..<text.length, text, fileId, file, nil)]), entryId, id, .reaction(reaction), nil)
+                            sendText(.init(inputText: text, selectionRange: 0..<0, attributes: [.animated(0..<text.length, text, fileId, file, nil)]), entryId, id, .reaction(reaction), nil, analyticsContext)
                             self?.genericView.playReaction(reaction)
                         }
                     }
@@ -2841,7 +2899,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         }, sendMessage: { [weak self] peerId, id in
             let input = self?.interactions.presentation.input
             if let input = input {
-                sendText(input, peerId, id, .text, self?.interactions.presentation.messageStarPrice)
+                sendText(input, peerId, id, .text, self?.interactions.presentation.messageStarPrice, captureStoryReplyContext(peerId))
             }
         }, toggleRecordType: { [weak self] in
             FastSettings.toggleRecordingState()
@@ -2852,6 +2910,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             }
         }, deleteStory: deleteStory, markAsRead: { [weak self] peerId, storyId in
             if let peer = self?.stories.stateValue?.slice?.peer, peer.id == peerId {
+                Analytics.shared.send(AnalyticsEvents.storiesView(owner: peerId == context.peerId ? .self : .other, peerType: AnalyticsValues.PeerType(peer: peer._asPeer())))
             }
             self?.stories.markAsSeen(id: .init(peerId: peerId, id: storyId))
         }, showViewers: { [weak self] story in
@@ -2862,7 +2921,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                     if let list = self?.genericView.storyViewList {
                         showModal(with: StoryViewersModalController(context: context, list: list, peerId: peerId, isChannel: story.peer?._asPeer().isChannel == true, story: story.storyItem, presentation: darkAppearance, callback: { peerId in
                             openPeerInfo(peerId, nil)
-                        }), for: context.window)
+                        }, analyticsContext: captureStoryReplyContext(peerId)), for: context.window)
                     }
                 }
             }
@@ -2879,8 +2938,15 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             if !self.interactions.presentation.canRecordVoice {
                 self.genericView.showVoiceError()
             } else {
-                self.interactions.startRecording(context: context, autohold: autohold, sendMedia: { [weak chatInteraction = self.chatInteraction] medias in
-                    chatInteraction?.sendMedia(medias)
+                let analyticsContext = self.chatInteraction.peer.map { self.chatInteraction.captureAnalyticsContext(sourcePeerId: $0.id) } ?? Analytics.shared.unresolvedContext()
+                self.interactions.startRecording(context: context, analyticsContext: analyticsContext, autohold: autohold, sendMedia: { [weak chatInteraction = self.chatInteraction] medias in
+                    chatInteraction?.sendMediaObserved(medias, journey: nil, analyticsContext: analyticsContext)
+                }, sendRecordingMedia: { [weak chatInteraction = self.chatInteraction] medias, request in
+                    guard let chatInteraction else {
+                        request?.end()
+                        return
+                    }
+                    chatInteraction.sendRecordingMediaObserved(medias, analyticsContext: analyticsContext, request: request)
                 })
             }
         }, togglePinned: { [weak self] story in
@@ -2904,7 +2970,8 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 self.genericView.showTooltip(story.storyItem.isPinned ? .removedFromProfile(peer._asPeer()) : .addedToProfile(peer._asPeer()))
             }))
         }, hashtag: { [weak self] string in
-            showModal(with: StoryFoundListController(context: context, source: .hashtag(nil, string), presentation: darkAppearance), for: context.window)
+            let origin = self?.chatInteraction.captureAnalyticsContext() ?? Analytics.shared.unresolvedContext()
+            showModal(with: StoryFoundListController(context: context, source: .hashtag(nil, string), presentation: darkAppearance, analyticsContext: origin), for: context.window)
         },
         toggleHide: toggleHide,
         showFriendsTooltip: { [weak self] _, story in
@@ -3111,7 +3178,8 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         }, invokeMediaArea: { [weak self] area in
             switch area {
             case .venue:
-                showModal(with: StoryFoundListController(context: context, source: .mediaArea(area), presentation: darkAppearance), for: context.window)
+                let origin = self?.chatInteraction.captureAnalyticsContext() ?? Analytics.shared.unresolvedContext()
+                showModal(with: StoryFoundListController(context: context, source: .mediaArea(area), presentation: darkAppearance, analyticsContext: origin), for: context.window)
             case let .channelMessage(_, messageId):
                 openChat(messageId.peerId, messageId, nil)
             case let .link(_, url):
@@ -3140,8 +3208,9 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 return
             }
             if current != nil {
+                Analytics.shared.send(AnalyticsEvents.storiesReact())
             }
-            _ = context.engine.messages.setStoryReaction(peerId: peerId, id: story, reaction: current).start()
+            _ = context.engine.messages.setStoryReaction(peerId: peerId, id: story, reaction: current, previousReaction: slice.item.storyItem.myReaction).start()
         }, showLikePanel: { [weak self, weak interactions] control, story in
             if let entryId = interactions?.presentation.entryId {
                 
@@ -3176,7 +3245,8 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 return .init(nil)
             }
         }, openStory: { [weak self] storyId in
-            StoryModalController.ShowSingleStory(context: context, storyId: storyId, initialId: nil)
+            let origin = self?.chatInteraction.captureAnalyticsContext(sourcePeerId: storyId.peerId) ?? Analytics.shared.unresolvedContext()
+            StoryModalController.ShowSingleStory(context: context, storyId: storyId, initialId: nil, analyticsContext: origin)
         }, setMessagePrice: { [weak self] in
             
             let story = self?.genericView.storyContext?.stateValue?.slice?.item
@@ -3207,15 +3277,19 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             let id = interactions?.presentation.storyId
             
             if let peer, let id {
+                let analyticsContext = captureStoryReplyContext(peer.id)
+                let presentation = analyticsContext.beginPresentation()
+                defer { presentation.end() }
                 if fast {
-                    sendText(.init(inputText: ""), peer.id, id, .text, 1)
+                    sendText(.init(inputText: ""), peer.id, id, .text, 1, analyticsContext)
                 } else {
                     let topPeers = interactions?.presentation.mediaCall?.messages?.topStars
                     let action = interactions?.captureReplyAction()
                     let controller = Star_ReactionsController(context: context, source: .liveStream(peer, (topPeers ?? []), callback: .init(value: { count, privacy, fromRect in
                         guard action?() == true else { return }
-                        sendText(.init(inputText: ""), peer.id, id, .text, Int64(count))
+                        sendText(.init(inputText: ""), peer.id, id, .text, Int64(count), analyticsContext)
                     })), presentation: darkAppearance)
+                    controller.analyticsContext = analyticsContext
                     showModal(with: controller, for: window)
                 }
             }
@@ -3276,45 +3350,73 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             interactions?.presentation.mediaCall?.call?.setDefaultSendAs(peerId)
         }
 
-        let sendStoryFile: (TelegramMediaFile) -> Void = { [weak self] file in
+        let sendStoryFile: (TelegramMediaFile, AnalyticsContext?, AnalyticsStickerSendRequest?) -> Void = { [weak self] file, inheritedContext, stickerRequest in
             guard let self, !self.closed,
                   let peerId = self.interactions.presentation.entryId,
                   let id = self.interactions.presentation.storyId else {
+                stickerRequest?.end()
                 return
             }
+            let analyticsContext: AnalyticsContext
+            if let peer = chatInteraction.peer {
+                analyticsContext = chatInteraction.captureAnalyticsContext(inherited: inheritedContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: peer.id).restricting(peerId: peerId)
+            } else {
+                analyticsContext = Analytics.shared.unresolvedContext()
+            }
+            stickerRequest?.restrict(to: analyticsContext)
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             if let timeout = self.arguments?.interaction.presentation.slowMode?.timeout {
+                stickerRequest?.fail(.slowMode)
                 self.genericView.showTooltip(.tooltip(slowModeTooltipText(timeout), MenuAnimation.menu_clear_history))
                 return
             }
             let slice = self.genericView.storyContext?.stateValue?.slice
             guard slice?.peer.id == peerId else {
+                stickerRequest?.end()
                 return
             }
             if let restrictionText = permissionText(from: slice?.peer._asPeer(), for: .banSendFiles), !canAvoidGroupRestrictions() {
+                stickerRequest?.fail(.chatPermission)
                 self.genericView.showTooltip(.tooltip(restrictionText, MenuAnimation.menu_clear_history))
                 return
             }
             let replyAction = self.interactions.captureReplyAction()
             let composerAction = chatInteraction.captureDeferredSendAction()
-            let takeSendAction: () -> Bool = { [weak self] in
+            let resolveOrigin: () -> AnalyticsContext? = { [weak self] in
                 guard let self, !self.closed, replyAction(), composerAction.takeIfCurrent() else {
-                    return false
+                    stickerRequest?.end()
+                    return nil
                 }
-                return true
+                let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: peerId)
+                stickerRequest?.restrict(to: origin)
+                return origin
             }
-            let enqueue: () -> Void = { [weak self] in
+            let enqueue: (AnalyticsContext) -> Void = { [weak self] origin in
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
                 beforeCompletion()
-                _ = (Sender.enqueue(media: file, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), sendPaidMessageStars: slice?.additionalPeerData.paidMessage)).start(completed: {
+                let submission = stickerRequest?.commit(scheduled: false, silent: false)
+                _ = origin.preservingPresentation(Sender.enqueue(media: file, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), sendPaidMessageStars: slice?.additionalPeerData.paidMessage, observedResult: { expectedCount, ids in
+                    submission?.complete {
+                        guard expectedCount == 1, ids.count == 1 else { return nil }
+                        return ids[0] != nil ? .accepted : .terminalFailure(.enqueueRejected)
+                    }
+                })).start(completed: {
+                    submission?.end()
                     afterCompletion()
                     self?.genericView.showTooltip(.media([file]))
                 })
             }
             let invoke: () -> Void = {
-                guard takeSendAction() else { return }
-                enqueue()
+                guard let origin = resolveOrigin() else { return }
+                enqueue(origin)
             }
-            let purchase: (Int) -> Void = { price in
-                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, Int64(price))
+            var awaitingTopUp = false
+            let purchase: (Int, AnalyticsContext) -> Void = { [weak self] price, origin in
+                guard let self else { stickerRequest?.end(); return }
+                awaitingTopUp = true
+                self.purchaseStarsForReply(amount: Int64(price), origin: origin, cancelled: { stickerRequest?.end() }, send: enqueue)
             }
             let state = self.chatInteraction.presentation
             if let payStars = state.sendPaidMessageStars, let peer = state.peer, let starsState = state.starsState {
@@ -3323,30 +3425,44 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 let messagesCount = 1
                 if !state.alwaysPaidMessage {
                     let messageCountText = strings().chatPayStarsConfirmMessagesOther(messagesCount)
-                    verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, successHandler: { result in
-                        guard takeSendAction() else { return }
-                        if starsState.balance.value > starsPrice {
+                    stickerRequest?.step(.openConfirmation)
+                    verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, analyticsContext: analyticsContext, successHandler: { result in
+                        guard let origin = resolveOrigin() else { return }
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        if (context.starsContext.currentState?.balance.value ?? starsState.balance.value) >= starsPrice {
                             chatInteraction.update { $0.withUpdatedAlwaysPaidMessage(result == .thrid) }
                             if result == .thrid { FastSettings.toggleCofirmPaid(peer.id, price: starsPrice) }
-                            enqueue()
+                            enqueue(origin)
                         } else {
-                            purchase(starsPrice)
+                            purchase(starsPrice, origin)
                         }
                     }, cancelHandler: {
-                        guard takeSendAction() else { return }
+                        guard let origin = resolveOrigin() else { return }
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        stickerRequest?.step(.cancelConfirmation)
+                        stickerRequest?.cancel()
                     }, dismissed: {
+                        if !awaitingTopUp { stickerRequest?.end() }
                     })
-                } else if starsState.balance.value > starsPrice {
+                } else if (context.starsContext.currentState?.balance.value ?? starsState.balance.value) >= starsPrice {
                     invoke()
-                } else if takeSendAction() {
-                    purchase(starsPrice)
+                } else if let origin = resolveOrigin() {
+                    purchase(starsPrice, origin)
                 }
             } else {
                 invoke()
             }
         }
         chatInteraction.sendAppFile = { file, _, _, _, _, _, _ in
-            sendStoryFile(file)
+            sendStoryFile(file, nil, nil)
+        }
+        chatInteraction.sendCreatedStickerWithAnalytics = { file, analyticsContext, request in
+            sendStoryFile(file, analyticsContext, request)
+        }
+        chatInteraction.sendAppFileWithContext = { file, _, _, _, _, _, _, analyticsContext in
+            sendStoryFile(file, analyticsContext, nil)
         }
         chatInteraction.sendPlainText = { [weak self] text in
             _ = self?.interactions.appendText(.initialize(string: text))
@@ -3390,13 +3506,22 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         
         
        
-        chatInteraction.presentPreviewSender = { [weak self] urls, asMedia, attributedString in
+        chatInteraction.presentPreviewSender = { [weak chatInteraction] urls, asMedia, attributedString, analyticsContext in
+            chatInteraction?.showPreviewSender(urls, asMedia, attributedString, analyticsContext: analyticsContext, journey: nil)
+        }
+        chatInteraction.presentPreviewSenderWithJourney = { [weak self] urls, asMedia, attributedString, inheritedContext, journey in
             guard let self, !self.closed, let peerId = self.interactions.presentation.entryId, self.interactions.presentation.storyId != nil else {
+                journey?.discard()
                 return
             }
             let replyIsCurrent = self.interactions.captureReplyValidity()
+            let analyticsContext = self.chatInteraction.captureAnalyticsContext(inherited: inheritedContext).restricting(peerId: peerId)
+            journey?.restrict(to: analyticsContext)
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             
             if self.interactions.presentation.mediaCall != nil {
+                journey?.discard()
                 return
             }
             
@@ -3415,31 +3540,50 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 }
             }
             if !updated.isEmpty {
-                if let controller = FeatureNavigationHooks.shared.makePreviewSenderWithContext(updated, chatInteraction, asMedia, attributedString, darkAppearance) {
+                if updated.count < urls.count { journey?.blocked(.missingFiles) }
+                journey?.selected(count: updated.count, mode: asMedia ? .media : .file)
+                if let controller = FeatureNavigationHooks.shared.makePreviewSenderWithContext(updated, chatInteraction, asMedia, attributedString, darkAppearance, analyticsContext) {
                     guard ChatUIHooks.shared.bindPreviewSendValidation(controller, { [weak self] in
                         guard let self, !self.closed else { return false }
                         return replyIsCurrent()
                     }) else {
+                        journey?.discard()
                         return
                     }
+                    if let journey { ChatUIHooks.shared.attachPreviewJourney(controller, journey) }
                     showModal(with: controller, for: context.window)
                 } else {
+                    journey?.discard()
                 }
             } else {
+                journey?.fail(urls.isEmpty ? .emptySelection : .missingFiles)
             }
         }
         
-        chatInteraction.sendMedias = { [weak self] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText in
+        chatInteraction.sendMessageWithAnalytics = { _, _, _, submission, part in
+            submission?.skip(part: part)
+        }
+        chatInteraction.sendMedias = { [weak chatInteraction] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText in
+            chatInteraction?.sendMediasObserved(medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText, submission: nil, part: 0)
+        }
+        chatInteraction.sendMediasWithAnalytics = { [weak self] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText, submission, part in
             guard let self, !self.closed,
                   let peerId = self.interactions.presentation.entryId,
                   let id = self.interactions.presentation.storyId else {
+                submission?.discard()
                 return
             }
+            let analyticsContext = self.chatInteraction.captureAnalyticsContext(inherited: submission?.context ?? Analytics.shared.unresolvedContext()).restricting(peerId: peerId)
+            submission?.restrict(to: analyticsContext)
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             guard !medias.isEmpty else {
+                submission?.discard()
                 return
             }
             
             if let timeout = self.arguments?.interaction.presentation.slowMode?.timeout {
+                submission?.discard()
                 self.genericView.showTooltip(.tooltip(slowModeTooltipText(timeout), MenuAnimation.menu_clear_history))
                 return
             }
@@ -3449,26 +3593,52 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             let restrictionText = permissionText(from: self.genericView.storyContext?.stateValue?.slice?.peer._asPeer(), for: .banSendMedia)
             
             if let restrictionText, !canAvoidGroupRestrictions() {
+                submission?.discard()
                 self.genericView.showTooltip(.tooltip(restrictionText, MenuAnimation.menu_clear_history))
                 return
             }
             
             guard slice?.peer.id == peerId else {
+                submission?.discard()
                 return
             }
             beforeCompletion()
-            _ = (Sender.enqueue(media: medias, caption: caption, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate?.date, isSpoiler: isSpoiler, messageEffect: messageEffect, leadingText: leadingText, sendPaidMessageStars: slice?.additionalPeerData.paidMessage)).start(completed: { [weak self] in
+            let resultGroup = submission?.group(part: part, count: 1)
+            _ = analyticsContext.preservingPresentation(Sender.enqueue(media: medias, caption: caption, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate?.date, isSpoiler: isSpoiler, messageEffect: messageEffect, leadingText: leadingText, sendPaidMessageStars: slice?.additionalPeerData.paidMessage, observedResult: { expectedCount, ids in
+                resultGroup?.complete(index: 0, buildResult: {
+                    guard expectedCount > 0, ids.count == expectedCount else { return nil }
+                    let acceptedCount = ids.compactMap { $0 }.count
+                    if acceptedCount == expectedCount { return .accepted }
+                    return acceptedCount == 0 ? .rejected : .partiallyAccepted
+                })
+            })).start(completed: { [weak self] in
+                resultGroup?.end()
                 afterCompletion()
                 self?.genericView.showTooltip(.media(medias))
             })
         }
 
-        chatInteraction.sendMedia = { [weak self] container in
+        chatInteraction.sendMedia = { [weak chatInteraction] container in
+            chatInteraction?.sendMediaObserved(container, journey: nil)
+        }
+        let sendStoryMedia: ([MediaSenderContainer], AnalyticsMediaJourney?, AnalyticsContext?, AnalyticsRecordingRequest?) -> Void = { [weak self] container, journey, inheritedContext, recordingRequest in
+            journey?.discard()
+            let analyticsContext: AnalyticsContext
+            if let peer = chatInteraction.peer, let peerId = interactions.presentation.entryId {
+                analyticsContext = chatInteraction.captureAnalyticsContext(inherited: inheritedContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: peer.id).restricting(peerId: peerId)
+            } else {
+                analyticsContext = Analytics.shared.unresolvedContext()
+            }
+            recordingRequest?.restrict(to: analyticsContext)
+            let sendPresentation = analyticsContext.beginPresentation()
+            defer { sendPresentation.end() }
             guard !container.isEmpty else {
+                recordingRequest?.fail(.preparation)
                 return
             }
             
             if let timeout = self?.arguments?.interaction.presentation.slowMode?.timeout {
+                recordingRequest?.fail(.slowMode)
                 self?.genericView.showTooltip(.tooltip(slowModeTooltipText(timeout), MenuAnimation.menu_clear_history))
                 return
             }
@@ -3478,6 +3648,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             let restrictionText = permissionText(from: self?.genericView.storyContext?.stateValue?.slice?.peer._asPeer(), for: .banSendMedia)
             
             if let restrictionText, !canAvoidGroupRestrictions() {
+                recordingRequest?.fail(.chatPermission)
                 self?.genericView.showTooltip(.tooltip(restrictionText, MenuAnimation.menu_clear_history))
                 return
             }
@@ -3486,31 +3657,46 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                   let peerId = interactions.presentation.entryId,
                   let id = interactions.presentation.storyId,
                   slice?.peer.id == peerId else {
+                recordingRequest?.end()
                 return
             }
             let replyAction = interactions.captureReplyAction()
             let deferredAction = chatInteraction.captureDeferredSendAction()
-            let takeSendAction: () -> Bool = { [weak self] in
+            let resolveSendContext: () -> AnalyticsContext? = { [weak self] in
                 guard let self, !self.closed, replyAction(), deferredAction.takeIfCurrent() else {
-                    return false
+                    recordingRequest?.end()
+                    return nil
                 }
-                return true
+                let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: peerId)
+                recordingRequest?.restrict(to: origin)
+                return origin
             }
-            let enqueue: () -> Void = { [weak self] in
+            let enqueue: (AnalyticsContext) -> Void = { [weak self] sendContext in
+                let presentation = sendContext.beginPresentation()
+                defer { presentation.end() }
                 beforeCompletion()
-                let send = (Sender.enqueue(media: container, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), sendPaidMessageStars: slice?.additionalPeerData.paidMessage))
+                let send = sendContext.preservingPresentation(Sender.enqueue(media: container, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), sendPaidMessageStars: slice?.additionalPeerData.paidMessage))
+                let recordingSubmission = recordingRequest?.commit(scheduled: false)
                 _ = send.start(next: { ids in
+                    recordingSubmission?.complete {
+                        guard container.count == 1, ids.count == 1 else { return nil }
+                        return ids[0] != nil
+                    }
                 }, completed: {
+                    recordingSubmission?.end()
                     afterCompletion()
                     self?.genericView.showTooltip(.media([]))
                 })
             }
             let invoke: () -> Void = {
-                guard takeSendAction() else { return }
-                enqueue()
+                guard let origin = resolveSendContext() else { return }
+                enqueue(origin)
             }
-            let purchase: (Int) -> Void = { price in
-                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, Int64(price))
+            var awaitingTopUp = false
+            let purchase: (Int, AnalyticsContext) -> Void = { [weak self] price, origin in
+                guard let self else { recordingRequest?.end(); return }
+                awaitingTopUp = true
+                self.purchaseStarsForReply(amount: Int64(price), origin: origin, cancelled: { recordingRequest?.end() }, send: enqueue)
             }
             let presentation = self.chatInteraction.presentation
             if let payStars = presentation.sendPaidMessageStars, let peer = presentation.peer, let starsState = presentation.starsState {
@@ -3519,36 +3705,52 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 let messagesCount = 1
                 if !presentation.alwaysPaidMessage {
                     let messageCountText = strings().chatPayStarsConfirmMessagesOther(messagesCount)
-                    verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, successHandler: { result in
-                        guard takeSendAction() else { return }
-                        if starsState.balance.value > starsPrice {
+                    recordingRequest?.step(.openConfirmation)
+                    verifyChatSendPayment(for: chatInteraction.interactionContext.window, header: strings().chatPayStarsConfirmTitle, information: strings().chatPayStarsConfirmText(peer.displayTitle, amount, amount, messageCountText), ok: strings().chatPayStarsConfirmPayOther(messagesCount), option: strings().chatPayStarsConfirmCheckbox, analyticsContext: analyticsContext, successHandler: { result in
+                        guard let origin = resolveSendContext() else { return }
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        if (context.starsContext.currentState?.balance.value ?? starsState.balance.value) >= starsPrice {
                             chatInteraction.update({ current in
                                 current.withUpdatedAlwaysPaidMessage(result == .thrid)
                             })
                             FastSettings.toggleCofirmPaid(peer.id, price: starsPrice)
-                            enqueue()
+                            enqueue(origin)
                         } else {
-                            purchase(starsPrice)
+                            purchase(starsPrice, origin)
                         }
                     }, cancelHandler: {
-                        guard takeSendAction() else { return }
+                        guard let origin = resolveSendContext() else { return }
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        recordingRequest?.step(.cancelConfirmation)
+                        recordingRequest?.cancel()
                     }, dismissed: {
+                        if !awaitingTopUp { recordingRequest?.end() }
                     })
-                } else if starsState.balance.value > starsPrice {
+                } else if (context.starsContext.currentState?.balance.value ?? starsState.balance.value) >= starsPrice {
                     invoke()
-                } else if takeSendAction() {
-                    purchase(starsPrice)
+                } else if let origin = resolveSendContext() {
+                    purchase(starsPrice, origin)
                 }
             } else {
                 invoke()
             }
         }
 
+        chatInteraction.sendMediaWithJourney = { media, journey, analyticsContext in
+            sendStoryMedia(media, journey, analyticsContext, nil)
+        }
+        chatInteraction.sendRecordingMediaWithAnalytics = { media, analyticsContext, request in
+            sendStoryMedia(media, nil, analyticsContext, request)
+        }
 
-        let selectStoryAttachments: ([String]?, Bool) -> Void = { [weak self] exts, asMedia in
+        let selectStoryAttachments: ([String]?, Bool, AnalyticsMediaJourney.Spec.EntryPoint) -> Void = { [weak self] exts, asMedia, entry in
             guard let self, !self.closed,
                   let peerId = self.interactions.presentation.entryId,
                   self.interactions.presentation.mediaCall == nil else { return }
+            let analyticsContext = chatInteraction.peer.map { chatInteraction.captureAnalyticsContext(sourcePeerId: $0.id).restricting(peerId: peerId) } ?? Analytics.shared.unresolvedContext()
+            let journey = chatInteraction.makeMediaAnalyticsJourney(context: analyticsContext, entry: entry, mode: asMedia ? .media : .file, source: .storiesViewer)
             let replyAction = self.interactions.captureReplyAction()
             let composerAction = chatInteraction.captureDeferredSendAction()
             var resolved = false
@@ -3556,18 +3758,28 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 guard !resolved else { return false }
                 resolved = true
                 guard let self, !self.closed, replyAction(), composerAction.takeIfCurrent() else {
+                    journey?.discard()
                     return false
                 }
                 return true
             }
-            filePanel(with: exts, canChooseDirectories: true, for: context.window, appearance: darkAppearance.appearance, cancelled: {
+            filePanel(with: exts, canChooseDirectories: true, for: context.window, appearance: darkAppearance.appearance, analyticsContext: analyticsContext, cancelled: {
                 guard takeSelection() else { return }
+                let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: peerId)
+                journey?.restrict(to: origin)
+                journey?.cancel()
             }, completion: { result in
                 guard let result else {
+                    if takeSelection() { journey?.discard() }
                     return
                 }
                 guard takeSelection() else { return }
+                let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: peerId)
+                journey?.restrict(to: origin)
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
                 guard !result.isEmpty else {
+                    journey?.fail(.emptySelection)
                     return
                 }
                 var rejectedSize: Int64?
@@ -3578,14 +3790,16 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                     return allowed
                 }
                 if accepted.isEmpty {
+                    journey?.fail(rejectedSize == nil ? .fileUnavailable : .sizeLimit)
                     FeatureNavigationHooks.shared.showFileLimit(context, rejectedSize)
                 } else {
-                    chatInteraction.showPreviewSender(accepted.map(URL.init(fileURLWithPath:)), asMedia, nil)
+                    if accepted.count < result.count { journey?.blocked(rejectedSize == nil ? .fileUnavailable : .sizeLimit) }
+                    chatInteraction.showPreviewSender(accepted.map(URL.init(fileURLWithPath:)), asMedia, nil, analyticsContext: origin, journey: journey)
                 }
             })
         }
         chatInteraction.attachFile = { _ in
-            selectStoryAttachments(nil, false)
+            selectStoryAttachments(nil, false, .attachFile)
         }
         chatInteraction.attachPhotoOrVideo = { type in
             let exts: [String]
@@ -3594,7 +3808,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             case .video?: exts = videoExts
             case nil: exts = mediaExts
             }
-            selectStoryAttachments(exts, true)
+            selectStoryAttachments(exts, true, .attachPhotoVideo)
         }
 
         let signal = stories.state |> deliverOnMainQueue
@@ -3637,6 +3851,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 self?.initialId = nil
                 self?.close()
             } else if let stories = self?.stories {
+                self?.updateAnalyticsScreen(state.slice)
                 self?.genericView.update(context: context, storyContext: stories, initial: initialId)
                 if ready {
                     self?.readyOnce()
@@ -3722,6 +3937,20 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
     }
     
     
+    private func updateAnalyticsScreen(_ slice: StoryContentContextState.FocusedSlice?) {
+        let screen: AnalyticsScreen
+        if case .liveStream = slice?.item.storyItem.media {
+            screen = AnalyticsScreen.storiesLive
+        } else {
+            screen = AnalyticsScreen.storiesViewer
+        }
+        if self.analyticsScreen != screen {
+            self.analyticsScreen = screen
+            if isLoaded(), view.window != nil {
+                Analytics.shared.screens.show(ObjectIdentifier(self), screen: screen)
+            }
+        }
+    }
     
     public override func viewDidAppear(_ animated: Bool) {
         ViewControllerLifecycleHooks.didAppear?(self)
@@ -3838,8 +4067,15 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             if !self.interactions.presentation.canRecordVoice {
                 self.genericView.showVoiceError()
             } else {
-                self.interactions.startRecording(context: context, autohold: true, sendMedia: { [weak chatInteraction = self.chatInteraction] medias in
-                    chatInteraction?.sendMedia(medias)
+                let analyticsContext = self.chatInteraction.peer.map { self.chatInteraction.captureAnalyticsContext(sourcePeerId: $0.id) } ?? Analytics.shared.unresolvedContext()
+                self.interactions.startRecording(context: context, analyticsContext: analyticsContext, autohold: true, via: .shortcut, sendMedia: { [weak chatInteraction = self.chatInteraction] medias in
+                    chatInteraction?.sendMediaObserved(medias, journey: nil, analyticsContext: analyticsContext)
+                }, sendRecordingMedia: { [weak chatInteraction = self.chatInteraction] medias, request in
+                    guard let chatInteraction else {
+                        request?.end()
+                        return
+                    }
+                    chatInteraction.sendRecordingMediaObserved(medias, analyticsContext: analyticsContext, request: request)
                 })
             }
             return .invoked
@@ -4009,6 +4245,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         actionsDisposable.dispose()
         slowModeDisposable.dispose()
         balanceDisposable.dispose()
+        paidReplyDisposable.dispose()
         deleteStoryDisposable.dispose()
         profileStoryDisposable.dispose()
         contextQueryState?.1.dispose()
@@ -4038,6 +4275,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
     private var closed: Bool = false
     
     public override func close(animationType: ModalAnimationCloseBehaviour = .common) {
+        paidReplyDisposable.dispose()
         if !self.closed {
             super.close(animationType: .common)
         }
@@ -4059,18 +4297,23 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         return true
     }
     
-    public static func ShowStories(context: Context, isHidden: Bool, initialId: StoryInitialIndex?, singlePeer: Bool = false) {
+    public static func ShowStories(context: Context, isHidden: Bool, initialId: StoryInitialIndex?, singlePeer: Bool = false, analyticsContext: AnalyticsContext? = nil) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: initialId?.peerId ?? context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let storyContent = StoryContentContextImpl(context: context, isHidden: isHidden, focusedPeerId: initialId?.peerId, singlePeer: singlePeer)
         
-        let signal = ((storyContent.state
+        let signal = origin.preservingPresentation(origin.preservingPresentation(storyContent.state
         |> deliverOn(prepareQueue)
         |> take(1))
         |> mapToSignal { state -> Signal<StoryContentContextState, NoError> in
             if let slice = state.slice {
-                return (waitUntilStoryMediaPreloaded(context: context, peerId: slice.peer.id, storyItem: slice.item.storyItem)
+                let source = origin.restricting(peerId: slice.peer.id)
+                let presentation = source.beginPresentation()
+                defer { presentation.end() }
+                return source.preservingPresentation(waitUntilStoryMediaPreloaded(context: context, peerId: slice.peer.id, storyItem: slice.item.storyItem)
                 |> timeout(4.0, queue: .mainQueue(), alternate: .complete())
                 |> map { _ -> StoryContentContextState in
-                    return state
                 }
                 |> then(.single(state)))
             } else {
@@ -4080,7 +4323,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         |> deliverOnMainQueue
         |> map { state in
             guard let slice = state.slice else { return }
-            showModal(with: StoryModalController(context: context, stories: storyContent, initialId: initialId), for: context.window, animationType: .animateBackground)
+            showModal(with: StoryModalController(context: context, stories: storyContent, initialId: initialId, analyticsContext: origin.restricting(peerId: slice.peer.id)), for: context.window, animationType: .animateBackground)
         }
         |> afterDisposed {
             
@@ -4094,7 +4337,10 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         }
 
     }
-    public static func ShowSingleStory(context: Context, storyId: StoryId, initialId: StoryInitialIndex?, readGlobally: Bool = true, emptyCallback:(()->Void)? = nil) {
+    public static func ShowSingleStory(context: Context, storyId: StoryId, initialId: StoryInitialIndex?, readGlobally: Bool = true, emptyCallback:(()->Void)? = nil, analyticsContext: AnalyticsContext? = nil) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: storyId.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         
         var initialSignal: Signal<StoryId?, NoError> = context.account.postbox.transaction { transaction -> StoryId? in
             if let _ = transaction.getStory(id: storyId)?.get(Stories.StoredItem.self) {
@@ -4129,15 +4375,15 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         }
         
         
-        _ = (showModalProgress(signal: (initialSignal), for: context.window)).start(next: { storyId in
+        _ = origin.preservingPresentation(showModalProgress(signal: origin.preservingPresentation(initialSignal), for: context.window)).start(next: { storyId in
             if let storyId = storyId {
                 let storyContent = SingleStoryContentContextImpl(context: context, storyId: storyId, readGlobally: readGlobally)
-                let _ = (storyContent.state
+                let _ = origin.preservingPresentation(storyContent.state
                 |> filter { $0.slice != nil }
                 |> take(1)
                 |> deliverOnMainQueue).start(next: { state in
                     guard let slice = state.slice else { return }
-                    showModal(with: StoryModalController(context: context, stories: storyContent, initialId: initialId), for: context.window, animationType: .animateBackground)
+                    showModal(with: StoryModalController(context: context, stories: storyContent, initialId: initialId, analyticsContext: origin.restricting(peerId: slice.peer.id)), for: context.window, animationType: .animateBackground)
                 })
             } else {
                 emptyCallback?()
@@ -4146,14 +4392,17 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         
         
     }
-    public static func ShowListStory(context: Context, listContext: StoryListContext, peerId: PeerId, initialId: StoryInitialIndex?) {
+    public static func ShowListStory(context: Context, listContext: StoryListContext, peerId: PeerId, initialId: StoryInitialIndex?, analyticsContext: AnalyticsContext? = nil) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let storyContent = PeerStoryListContentContextImpl(context: context, peerId: peerId, listContext: listContext, initialId: initialId?.id)
-        let _ = (storyContent.state
+        let _ = origin.preservingPresentation(storyContent.state
         |> filter { $0.slice != nil }
         |> take(1)
         |> deliverOnMainQueue).start(next: { state in
             guard let slice = state.slice else { return }
-            showModal(with: StoryModalController(context: context, stories: storyContent, initialId: initialId), for: context.window, animationType: .animateBackground)
+            showModal(with: StoryModalController(context: context, stories: storyContent, initialId: initialId, analyticsContext: origin.restricting(peerId: slice.peer.id)), for: context.window, animationType: .animateBackground)
         
         })
     }

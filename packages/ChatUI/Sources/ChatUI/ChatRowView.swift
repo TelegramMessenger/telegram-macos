@@ -353,6 +353,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     private var shareView:ImageButton?
     private var shareVisibleForCurrentItem: Bool = false
     private var reactionsView:ChatReactionsView?
+    private var spareReactionsView: ChatReactionsView?
     private var channelCommentsBubbleControl: ChannelCommentsBubbleControl?
     private var channelCommentsBubbleSmallControl: ChannelCommentsSmallControl?
 
@@ -377,6 +378,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
 
     private var cutBandViews: [NSView] = []
     
+    private var authorVerificationControl: PremiumStatusControl?
     private var statusControl: PremiumStatusControl? = nil
     private var forwardStatusControl: PremiumStatusControl? = nil
     
@@ -389,6 +391,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     private var _cachedBubbleFrame: NSRect?
     private var _cachedContentFrame: NSRect?
     private var _cachedRightFrame: NSRect?
+
+    #if DEBUG
+    public static var debugMediaReuse = false
+    #else
+    public static let debugMediaReuse = false
+    #endif
 
     public func invalidateFrameCache() {
         _cachedBubbleFrame = nil
@@ -1113,7 +1121,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     }
     
     public func namePoint(_ item: ChatRowItem) -> NSPoint {
-        return ChatRowGeometry.authorPoint(.init(item: item, contentFrame: cachedContentFrame(item)))
+        return ChatRowGeometry.authorPoint(.init(item: item, contentFrame: cachedContentFrame(item))).offsetBy(dx: item.authorVerificationInset, dy: 0)
     }
 
     public func ephemeralBadgePoint(_ item: ChatRowItem) -> NSPoint {
@@ -1434,11 +1442,6 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         
         if let peer = item.peer {
             avatar.setPeer(item: item, peer: peer, storyStats: item.entry.additionalData.authorStoryStats, message: item.message)
-            if peer.id.id._internalGetInt64Value() != 0 {
-                avatar.contextMenu = photoContextMenu(item, peer: peer, setOpenProgress: { [weak avatar] signal in
-                    avatar?.setOpenProgress(signal)
-                })
-            }
         }
         return avatar
     }
@@ -1517,7 +1520,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                             }, itemImage: MenuAnimation.menu_tag_rename.value))
                         }
 
-                        if channel.hasPermission(.banMembers) {
+                        if chatInteraction?.isLogInteraction == true {
+                            menu.items += ChatHistoryUIHooks.shared.participantModerationMenuItems(context, channel, peer, nil)
+                        } else if channel.hasPermission(.banMembers) {
                             menu.addItem(ContextMenuItem(strings().channelMemberRestrict, handler: {
                                 _ = fetchParticipant.start(next: { rendered in
                                     if let rendered = rendered {
@@ -1553,6 +1558,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             
         } else {
             if let view = avatar {
+                view.updateContextMenu(nil)
                 performSubviewRemoval(view, animated: animated, scale: true)
                 self.avatar = nil
             }
@@ -1584,6 +1590,20 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     }
     
     public func fillStatus(_ item: ChatRowItem, animated: Bool) -> Void {
+        if let peer = item.authorVerificationPeer, let control = PremiumStatusControl.control(peer, account: item.context.account, inlinePacksContext: item.context.inlinePacksContext, left: true, isSelected: false, playTwice: true, color: item.authorVerificationColor, cached: authorVerificationControl, animated: animated, autoupdate: false) {
+            rowView.addSubview(control)
+            control.frame = ChatAuthorVerification.frame(nameOrigin: namePoint(item), nameHeight: item.authorText?.layoutSize.height ?? 0, size: control.frame.size)
+            control.userInteractionEnabled = true
+            control.removeAllHandlers()
+            control.set(handler: { [weak item] _ in
+                guard let item, let peer = item.authorVerificationPeer else { return }
+                item.chatInteraction.openInfo(peer.id, peer.isChannel, nil, nil)
+            }, for: .Click)
+            authorVerificationControl = control
+        } else if let control = authorVerificationControl {
+            performSubviewRemoval(control, animated: animated)
+            authorVerificationControl = nil
+        }
         if !ChatRowView.usesLegacyRowChrome, let scene = rowView as? ChatLayerRowView {
             if let view = statusControl {
                 view.removeFromSuperview()
@@ -1966,15 +1986,28 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     public func fillReactions(_ item: ChatRowItem, animated: Bool) {
         if let reactionsLayout = item.reactionsLayout  {
             if reactionsView == nil {
-                reactionsView = ChatReactionsView(frame: reactionsRect(item))
-                rowView.addSubview(reactionsView!)
+                if let spare = spareReactionsView {
+                    spareReactionsView = nil
+                    spare.frame = reactionsRect(item)
+                    spare.isHidden = false
+                    reactionsView = spare
+                } else {
+                    reactionsView = ChatReactionsView(frame: reactionsRect(item))
+                    rowView.addSubview(reactionsView!)
+                }
             }
             guard let reactionsView = reactionsView else {return}
             reactionsView.update(with: reactionsLayout, animated: animated)
         } else {
             if let view = self.reactionsView {
                 self.reactionsView = nil
-                performSubviewRemoval(view, animated: animated, scale: true)
+                if !animated, spareReactionsView == nil, view.superview === rowView {
+                    view.layer?.removeAllAnimations()
+                    view.isHidden = true
+                    spareReactionsView = view
+                } else {
+                    performSubviewRemoval(view, animated: animated, scale: true)
+                }
             }
         }
     }
@@ -2394,7 +2427,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                 let tempRect: NSRect
             }
             let restoreRight = moveHostedRightForShake()
-            var views:[NSView] = [self.rightView.isContentHosted ? nil : self.rightView, self.statusControl, self.forwardStatusControl, self.replyView, self.adminBadge, self.adminBadgeBg, self.boostBadge, self.forwardPhoto, self.viaAccessory].compactMap { $0 }
+            var views:[NSView] = [self.rightView.isContentHosted ? nil : self.rightView, self.authorVerificationControl, self.statusControl, self.forwardStatusControl, self.replyView, self.adminBadge, self.adminBadgeBg, self.boostBadge, self.forwardPhoto, self.viaAccessory].compactMap { $0 }
             views.append(contentsOf: self.captionViews.map { $0.view })
             let shakeItems = views.map { view -> ShakeItem in
                 return ShakeItem(view: view, rect: view.frame, tempRect: self.bubbleView.convert(view.frame, from: view.superview))
@@ -2435,9 +2468,18 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         
     }
     
+    @inline(__always) func bindStep(_ name: String, _ body: () -> Void) {
+        #if DEBUG
+        ChatBindProbe.measure(name, body)
+        #else
+        body()
+        #endif
+    }
+
     public override func set(item:TableRowItem, animated:Bool = false) {
         #if DEBUG
         ChatMergeProbe.noteBind(previous: self.item, next: item)
+        ChatBindProbe.binds += 1
         #endif
         invalidateFrameCache()
         let previousItem = self.item as? ChatRowItem
@@ -2465,29 +2507,29 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             updateBackground(animated: false, item: item, clean: true)
         }
         
-        renderLayoutType(item, animated: animated)
+        bindStep("renderLayoutType") { renderLayoutType(item, animated: animated) }
 
         updateInteractionObserver(item.chatInteraction)
         
         updateSelectingState(selectingMode:item.chatInteraction.presentation.selectionState != nil, item: item, needUpdateColors: false)
         
-        rightView.set(item:item, animated:animated)
-        updateRightHosting(item)
-        fillTopicLink(item, animated: animated)
-        fillReply(item, animated: animated)
-        fillName(item, animated: animated)
-        fillForward(item, animated: animated)
-        fillForwardHeader(item, animated: animated)
-        fillForwardLine(item, animated: animated)
-        fillPhoto(item, animated: animated)
-        fillStatus(item, animated: animated)
-        fillPsaButton(item, animated: animated)
-        fillShareView(item, animated: animated)
-        fillReactions(item, animated: animated)
-        fillReplyMarkup(item, animated: animated)
-        fillCaption(item, animated: animated)
-        fillFactCheck(item, animated: animated)
-        fillChannelComments(item, animated: animated)
+        bindStep("right") { rightView.set(item:item, animated:animated) }
+        bindStep("rightHosting") { updateRightHosting(item) }
+        bindStep("topicLink") { fillTopicLink(item, animated: animated) }
+        bindStep("reply") { fillReply(item, animated: animated) }
+        bindStep("name") { fillName(item, animated: animated) }
+        bindStep("forward") { fillForward(item, animated: animated) }
+        bindStep("forwardHeader") { fillForwardHeader(item, animated: animated) }
+        bindStep("forwardLine") { fillForwardLine(item, animated: animated) }
+        bindStep("photo") { fillPhoto(item, animated: animated) }
+        bindStep("status") { fillStatus(item, animated: animated) }
+        bindStep("psaButton") { fillPsaButton(item, animated: animated) }
+        bindStep("shareView") { fillShareView(item, animated: animated) }
+        bindStep("reactions") { fillReactions(item, animated: animated) }
+        bindStep("replyMarkup") { fillReplyMarkup(item, animated: animated) }
+        bindStep("caption") { fillCaption(item, animated: animated) }
+        bindStep("factCheck") { fillFactCheck(item, animated: animated) }
+        bindStep("channelComments") { fillChannelComments(item, animated: animated) }
         
         //self.needsLayout = true
 
@@ -2626,6 +2668,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                 host.updateLayout(frame.size, transition: .immediate)
             }
             scene.layoutChromeNode(node, frame: frame, transition: transition)
+        }
+        if let view = authorVerificationControl {
+            transition.updateFrame(view: view, frame: ChatAuthorVerification.frame(nameOrigin: namePoint(item), nameHeight: item.authorText?.layoutSize.height ?? 0, size: view.frame.size))
         }
         if let view = statusControl {
             transition.updateFrame(view: view, frame: CGRect(origin: statusPoint(item), size: view.frame.size))

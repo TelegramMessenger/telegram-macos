@@ -9,6 +9,7 @@ import TelegramUtils
 final class ChatFloatingAvatarScene: ChatLayerSceneView {
     private let containerFlipped: Bool
     private var registered: [ObjectIdentifier: ChatFloatingAvatarNode] = [:]
+    var recycle: ((ChatFloatingAvatarNode) -> Void)?
 
     init(frame frameRect: NSRect, flipped: Bool) {
         self.containerFlipped = flipped
@@ -126,6 +127,7 @@ final class ChatFloatingAvatarScene: ChatLayerSceneView {
         guard animated else {
             detach(node)
             releaseEmptyLayerContent()
+            recycle?(node)
             return
         }
         let layer = node.control.layer
@@ -134,6 +136,7 @@ final class ChatFloatingAvatarScene: ChatLayerSceneView {
             guard finish, let self, let node, self.contains(node) else { return }
             self.detach(node)
             self.releaseEmptyLayerContent()
+            self.recycle?(node)
         })
     }
 
@@ -179,7 +182,11 @@ final class ChatFloatingAvatarNode {
 
     func setPeer(item: ChatRowItem, peer: Peer, message: Message?) {
         let context = item.chatInteraction.interactionContext
+        if let table = item.table, table.window == nil {
+            avatar.attemptLoadNextSynchronous = true
+        }
         avatar.setPeer(account: context.account, peer: peer, message: message, size: nil, disableForum: false)
+        avatar.attemptLoadNextSynchronous = false
         control.removeAllHandlers()
         control.set(handler: { [weak item] _ in
             if item?.chatInteraction.presentation.state == .selecting {
@@ -202,12 +209,14 @@ final class ChatFloatingAvatar {
     let view: ChatAvatarView?
     let node: ChatFloatingAvatarNode?
 
-    init(_ item: ChatRowItem) {
+    init(_ item: ChatRowItem, reusing reusable: ChatFloatingAvatarNode? = nil) {
         if ChatFloatingAvatar.prefersNode(item), let peer = item.peer {
-            let node = ChatFloatingAvatarNode()
+            let node = reusable ?? ChatFloatingAvatarNode()
             node.setPeer(item: item, peer: peer, message: item.message)
             if peer.id.id._internalGetInt64Value() != 0 {
                 node.control.contextMenu = ChatRowView.photoContextMenu(item, peer: peer, setOpenProgress: { _ in })
+            } else {
+                node.control.contextMenu = nil
             }
             self.node = node
             self.view = nil

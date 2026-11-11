@@ -30,6 +30,7 @@ import LokiRng
 import FoundationUtils
 import InputView
 import InputTextView
+import AppAnalytics
 
 
 private final class HeaderItem : GeneralRowItem {
@@ -217,6 +218,7 @@ public func StarGift_LearnAboutGifts(context: (any AccountContextProtocol)) -> I
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsAbout
     
     getController = { [weak controller] in
         return controller

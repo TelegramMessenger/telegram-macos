@@ -22,6 +22,7 @@ import TelegramLinks
 import ChatHistoryModel
 import FilePanels
 import WallpaperUI
+import AppAnalytics
 
 fileprivate let _id_disabled = InputDataIdentifier("disabled")
 fileprivate let _id_scheduled = InputDataIdentifier("enabled")
@@ -314,6 +315,7 @@ public func AutoNightSettingsController(context: any AccountContextProtocol) -> 
         removeAfterDisappear: true,
         hasDone: false,
         identifier: "auto-night")
+    controller.analyticsScreen = .settingsAppearanceAutoNight
     return controller
 }
 

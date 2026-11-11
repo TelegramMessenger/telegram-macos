@@ -392,6 +392,7 @@ public final class EditImageCanvasController : ModalViewController {
             } else {
                 view = ImageView()
                 view.isEventLess = true
+                view.isAccessibilityDecorative = true
                 contentView.addSubview(view)
                 stickerDragView = view
             }

@@ -10,6 +10,7 @@ import InputDataUI
 import ChatHistoryModel
 import TelegramCallsCore
 import ChatModeTypes
+import AppAnalytics
 
 public protocol ChatInterfaceSyntaxTheme: AnyObject {
 }
@@ -24,6 +25,7 @@ public protocol ChatInterfaceInlineResultAction: NavigationModalAction {
 
 public protocol ChatInterfaceController: ViewController {
     var chatInteraction: ChatInteraction { get }
+    func inheritAnalyticsContext(_ inherited: AnalyticsContext)
 }
 
 public enum ChatInterfaceInAppLink {

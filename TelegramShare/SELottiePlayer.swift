@@ -7,12 +7,11 @@ import GZIP
 import Accelerate
 import QuartzCore
 import CoreMedia
-import RLottie
 import TLottie
 import libwebp
 import AppKit
 
-public protocol SE_R_LottieBridge: NSObject {
+public protocol SE_LottieRendererBridge: NSObject {
     func renderFrame(with index: Int32, into buffer: UnsafeMutablePointer<UInt8>, width: Int32, height: Int32, bytesPerRow: Int32)
     func startFrame() -> Int32
     func endFrame() -> Int32
@@ -20,11 +19,7 @@ public protocol SE_R_LottieBridge: NSObject {
     func setColor(_ color: NSColor, forKeyPath keyPath: String)
 }
 
-extension RLottieBridge : SE_R_LottieBridge {
-   
-}
-
-extension TLottieBridge : SE_R_LottieBridge {
+extension TLottieBridge : SE_LottieRendererBridge {
 
 }
 
@@ -1015,9 +1010,9 @@ private final class SE_WebPRenderer : SE_RenderContainer {
 private final class SE_LottieRenderer : SE_RenderContainer {
     
     private let animation: SE_LottieAnimation
-    private let bridge: SE_R_LottieBridge?
+    private let bridge: SE_LottieRendererBridge?
     
-    init(animation: SE_LottieAnimation, bridge: SE_R_LottieBridge?) {
+    init(animation: SE_LottieAnimation, bridge: SE_LottieRendererBridge?) {
         self.animation = animation
         self.bridge = bridge
     }
@@ -1053,7 +1048,7 @@ private final class SE_LottieRenderer : SE_RenderContainer {
             return nil
         }
         if data == nil {
-            func renderFrame(s: (w: Int, h: Int), bridge: SE_R_LottieBridge?, frame: Int32) -> Data? {
+            func renderFrame(s: (w: Int, h: Int), bridge: SE_LottieRendererBridge?, frame: Int32) -> Data? {
                 let bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: s.w)
                 let bufferSize = s.h * bytesPerRow
 
@@ -1155,23 +1150,6 @@ public final class SE_LottieAnimation : Equatable {
         return SE_LottieAnimation(compressed: self.compressed, key: self.key.withUpdatedSize(size), type: self.type, playPolicy: self.playPolicy, maximumFps: self.maximumFps, colors: colors, postbox: self.postbox, runOnQueue: self.runOnQueue, metalSupport: self.metalSupport)
     }
     
-    var cacheKey: String {
-        switch key.key {
-        case let .media(id):
-            if let id = id {
-                if let fitzModifier = key.fitzModifier {
-                    return "animation-\(id.namespace)-\(id.id)-\(key.mirror)-fitz\(fitzModifier.rawValue)" + self.colors.map { $0.keyPath + $0.color.hexString }.joined(separator: " ")
-                } else {
-                    return "animation-\(id.namespace)-\(id.id)-\(key.mirror)" + self.colors.map { $0.keyPath + $0.color.hexString }.joined(separator: " ")
-                }
-            } else {
-                return "\(arc4random())"
-            }
-        case let .bundle(string):
-            return string + self.colors.map { $0.keyPath + $0.color.hexString }.joined(separator: " ")
-        }
-    }
-    
     var bufferSize: Int {
         let s:(w: Int, h: Int) = (w: Int(size.width) * backingScale, h: Int(size.height) * backingScale)
         let bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: s.w)
@@ -1200,13 +1178,7 @@ public final class SE_LottieAnimation : Equatable {
                 }
                
                 if let json = String(data: modified, encoding: .utf8) {
-                    let bridge: SE_R_LottieBridge?
-                    if LottieBackend.usesTLottie {
-                        bridge = TLottieBridge(json: json)
-                    } else {
-                        bridge = RLottieBridge(json: json, key: self.cacheKey)
-                    }
-                    if let bridge = bridge {
+                    if let bridge = TLottieBridge(json: json) {
                         for color in self.colors {
                             bridge.setColor(color.color, forKeyPath: color.keyPath)
                         }

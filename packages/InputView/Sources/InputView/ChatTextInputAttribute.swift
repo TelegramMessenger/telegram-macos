@@ -126,7 +126,7 @@ public func stateAttributedStringForText(_ text: NSAttributedString) -> NSAttrib
     
     sourceString.enumerateAttributes(in: fullRange, options: [], using: { attributes, range, _ in
         for (key, value) in attributes {
-            if TextInputAttributes.allAttributes.contains(key) || key == NSAttributedString.Key.attachment {
+            if TextInputAttributes.allAttributes.contains(key) || key == NSAttributedString.Key.attachment || key == chatInputAnalyticsExcludedAttribute {
                 result.addAttribute(key, value: value, range: range)
             }
         }
@@ -190,7 +190,9 @@ public func textAttributedStringForStateText(_ stateText: NSAttributedString, fo
         var fontAttributes: ChatTextFontAttributes = []
         
         for (key, value) in attributes {
-            if key == TextInputAttributes.textMention || key == TextInputAttributes.textUrl {
+            if key == chatInputAnalyticsExcludedAttribute {
+                result.addAttribute(key, value: true as NSNumber, range: range)
+            } else if key == TextInputAttributes.textMention || key == TextInputAttributes.textUrl {
                 result.addAttribute(key, value: value, range: range)
                 result.addAttribute(NSAttributedString.Key.foregroundColor, value: accentTextColor, range: range)
                 if accentTextColor.isEqual(textColor) {
@@ -679,7 +681,9 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
         textStorage.removeAttribute(TextInputAttributes.spoiler, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.customEmoji, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.quote, range: fullRange)
+        textStorage.removeAttribute(TextInputAttributes.code, range: fullRange)
         textStorage.removeAttribute(TextInputAttributes.formattedDate, range: fullRange)
+        textStorage.removeAttribute(chatInputAnalyticsExcludedAttribute, range: fullRange)
         
         textStorage.addAttribute(NSAttributedString.Key.font, value: NSFont.normal(baseFontSize), range: fullRange)
         textStorage.addAttribute(NSAttributedString.Key.foregroundColor, value: primaryTextColor, range: fullRange)
@@ -691,7 +695,9 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
             var fontAttributes: ChatTextFontAttributes = []
             
             for (key, value) in attributes {
-                if key == TextInputAttributes.textMention || key == TextInputAttributes.textUrl {
+                if key == chatInputAnalyticsExcludedAttribute {
+                    textStorage.addAttribute(key, value: true as NSNumber, range: range)
+                } else if key == TextInputAttributes.textMention || key == TextInputAttributes.textUrl {
                     textStorage.addAttribute(key, value: value, range: range)
                     textStorage.addAttribute(NSAttributedString.Key.foregroundColor, value: accentTextColor, range: range)
                     
@@ -704,6 +710,9 @@ public func refreshTextInputAttributes(textView: NSTextView, primaryTextColor: N
                 } else if key == TextInputAttributes.italic {
                     textStorage.addAttribute(key, value: value, range: range)
                     fontAttributes.insert(.italic)
+                } else if key == TextInputAttributes.code {
+                    textStorage.addAttribute(key, value: value, range: range)
+                    fontAttributes.insert(.monospace)
                 } else if key == TextInputAttributes.monospace {
                     textStorage.addAttribute(key, value: value, range: range)
                     fontAttributes.insert(.monospace)
@@ -888,7 +897,7 @@ public func breakChatInputText(_ text: NSAttributedString) -> [NSAttributedStrin
     }
 }
 
-private let markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)|@(\\d+)\\s*\\((.+?)\\)"
+private let markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let markdownRegex = try? NSRegularExpression(pattern: markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
 
 public func convertMarkdownToAttributes(_ text: NSAttributedString) -> NSAttributedString {

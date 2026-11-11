@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import TelegramCore
 import Postbox
 import SwiftSignalKit
@@ -95,12 +96,15 @@ public final class ChannelStatsSegmentController : SectionViewController {
     private let context: any AccountContextProtocol
     private let peerId: PeerId
     private let onlyMonetization: Bool
-    public init(_ context: any AccountContextProtocol, peerId: PeerId, isChannel: Bool, monetization: Bool = false, stars: Bool = false, onlyMonetization: Bool = false) {
+    public init(_ context: any AccountContextProtocol, peerId: PeerId, isChannel: Bool, monetization: Bool = false, stars: Bool = false, onlyMonetization: Bool = false, analyticsContext: AnalyticsContext? = nil) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         self.context = context
         self.peerId = peerId
         self.onlyMonetization = onlyMonetization
         if isChannel {
-            self.stats = ChannelStatsViewController(context, peerId: peerId)
+            self.stats = ChannelStatsViewController(context, peerId: peerId, analyticsContext: origin)
             if monetization {
                 self.monetization = StatisticsHooks.shared.makeMonetizationController(context, peerId)
             } else {
@@ -112,11 +116,21 @@ public final class ChannelStatsSegmentController : SectionViewController {
                 self.stars = nil
             }
         } else {
-            self.stats = GroupStatsViewController(context, peerId: peerId)
+            self.stats = GroupStatsViewController(context, peerId: peerId, analyticsContext: origin)
             self.monetization = nil
             self.stars = nil
         }
         self.boosts = StatisticsHooks.shared.makeBoostStatsController(context, peerId)
+
+        for controller in [stats, boosts] + [self.monetization, self.stars].compactMap({ $0 }) {
+            let childOrigin: AnalyticsContext
+            if let current = controller.analyticsContext, current.isExcluded || current.scope?.isValid != true {
+                childOrigin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: current)
+            } else {
+                childOrigin = origin
+            }
+            controller.analyticsContext = childOrigin
+        }
 
         var items:[SectionControllerItem] = []
         if !onlyMonetization {
@@ -131,6 +145,7 @@ public final class ChannelStatsSegmentController : SectionViewController {
             items.append(SectionControllerItem(title: { "" }, controller: stars))
         }
         super.init(sections: items, selected: 0, hasBar: true)
+        self.analyticsContext = origin
 
     }
     

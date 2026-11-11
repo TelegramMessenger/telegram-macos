@@ -23,6 +23,7 @@ let package = Package(
         .package(name: "CalendarUtils", path: "../CalendarUtils"),
         .package(name: "CalendarUI", path: "../CalendarUI"),
         .package(name: "DateUtils", path: "../DateUtils"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
     ],
     targets: [
         .target(
@@ -42,6 +43,7 @@ let package = Package(
                 .product(name: "CalendarUtils", package: "CalendarUtils", condition: nil),
                 .product(name: "CalendarUI", package: "CalendarUI", condition: nil),
                 .product(name: "DateUtils", package: "DateUtils", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
             ],
             path: "Sources/DateSelectorUI"),
     ]

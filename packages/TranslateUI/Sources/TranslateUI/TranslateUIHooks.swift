@@ -2,49 +2,65 @@ import Cocoa
 import TGUIKit
 import TelegramCore
 import TelegramContext
+import AppAnalytics
 
 public struct TranslateUIHooks {
     public let showAboutCocoonModal: (any AccountContextProtocol) -> Void
-    public var showAboutCocoonModalWithContext: ((any AccountContextProtocol) -> Void)?
+    public var showAboutCocoonModalWithContext: ((any AccountContextProtocol, AnalyticsContext) -> Void)?
 
-    public func showAboutCocoonModalObserved(_ context: any AccountContextProtocol) {
+    public func showAboutCocoonModalObserved(_ context: any AccountContextProtocol, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showAboutCocoonModalWithContext {
-            showAboutCocoonModalWithContext(context)
+            showAboutCocoonModalWithContext(context, origin)
         } else {
             showAboutCocoonModal(context)
         }
     }
 
     public let shareLink: (any AccountContextProtocol, String) -> Void
-    public var shareLinkWithContext: ((any AccountContextProtocol, String) -> Void)?
+    public var shareLinkWithContext: ((any AccountContextProtocol, String, AnalyticsContext) -> Void)?
 
-    public func shareLinkObserved(_ context: any AccountContextProtocol, _ link: String) {
+    public func shareLinkObserved(_ context: any AccountContextProtocol, _ link: String, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let shareLinkWithContext {
-            shareLinkWithContext(context, link)
+            shareLinkWithContext(context, link, origin)
         } else {
             shareLink(context, link)
         }
     }
 
     public let followResolvedName: (String, String, any AccountContextProtocol) -> Void
-    public var followResolvedNameWithContext: ((String, String, any AccountContextProtocol) -> Void)?
+    public var followResolvedNameWithContext: ((String, String, any AccountContextProtocol, AnalyticsContext) -> Void)?
 
-    public func followResolvedNameObserved(_ handle: String, _ username: String, _ context: any AccountContextProtocol) {
+    public func followResolvedNameObserved(_ handle: String, _ username: String, _ context: any AccountContextProtocol, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let followResolvedNameWithContext {
-            followResolvedNameWithContext(handle, username, context)
+            followResolvedNameWithContext(handle, username, context, origin)
         } else {
             followResolvedName(handle, username, context)
         }
     }
     public let showStyleEmojiPicker: (any AccountContextProtocol, Control, @escaping (TelegramMediaFile) -> Void) -> Void
-    public var showStyleEmojiPickerWithContext: ((any AccountContextProtocol, Control, @escaping (TelegramMediaFile) -> Void) -> Void)?
+    public var showStyleEmojiPickerWithContext: ((any AccountContextProtocol, Control, AnalyticsContext, @escaping (TelegramMediaFile) -> Void) -> Void)?
 
-    public func showStyleEmojiPickerObserved(_ context: any AccountContextProtocol, _ control: Control, selected: @escaping (TelegramMediaFile) -> Void) {
+    public func showStyleEmojiPickerObserved(_ context: any AccountContextProtocol, _ control: Control, analyticsContext: AnalyticsContext, selected: @escaping (TelegramMediaFile) -> Void) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let completion: (TelegramMediaFile) -> Void = { file in
+            let current = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+            let presentation = current.beginPresentation()
+            defer { presentation.end() }
             selected(file)
         }
         if let showStyleEmojiPickerWithContext {
-            showStyleEmojiPickerWithContext(context, control, completion)
+            showStyleEmojiPickerWithContext(context, control, origin, completion)
         } else {
             showStyleEmojiPicker(context, control, completion)
         }

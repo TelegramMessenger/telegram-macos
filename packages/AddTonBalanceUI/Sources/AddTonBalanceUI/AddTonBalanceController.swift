@@ -12,6 +12,7 @@ import ColorPalette
 import LocalAnimations
 import TelegramCore
 import Postbox
+import AppAnalytics
 private final class Arguments {
     public let context: any AccountContextProtocol
     public init(context: any AccountContextProtocol) {
@@ -80,6 +81,7 @@ public func AddTonBalanceController(context: any AccountContextProtocol, tonAmou
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().fragmentTonAddFundsTitle)
+    controller.analyticsScreen = .tonAddFunds
 
     getController = { [weak controller] in
         return controller

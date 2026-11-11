@@ -127,12 +127,16 @@ public extension NSView {
         }
 
         // Bounds end value (size + bounds origin in own coords).
-        let endBounds: CGRect
+        var endBounds: CGRect
         if let boundsAnim = layer.animation(forKey: "bounds") as? CABasicAnimation,
            let toBounds = (boundsAnim.toValue as? NSValue)?.rectValue {
             endBounds = toBounds
         } else {
             endBounds = layer.bounds
+        }
+        if let heightAnimation = layer.animation(forKey: "bounds.size.height") as? CABasicAnimation,
+           let height = heightAnimation.toValue as? NSNumber {
+            endBounds.size.height = CGFloat(height.doubleValue)
         }
 
         // Convert layer.position (anchored) → frame.origin.
@@ -264,6 +268,7 @@ public extension ContainedViewLayoutTransition {
                     view.change(size: frame.size, animated: true, duration: duration, timingFunction: curve.timingFunction, completion: { completed in
                         completion?(completed)
                     })
+                    view.layer?.removeAnimation(forKey: "boundsOriginYAdditive")
                 }
                 
                 var notifyOnOrigin: Bool = false

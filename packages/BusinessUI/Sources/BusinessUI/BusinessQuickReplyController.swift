@@ -21,6 +21,7 @@ import ChatModeTypes
 import MapKit
 import FoundationUtils
 import MessageTextUtils
+import AppAnalytics
 
 public final class QuickReplyRowItem : GeneralRowItem {
     
@@ -596,6 +597,7 @@ public func BusinessQuickReplyController(context: (any AccountContextProtocol)) 
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessQuickReplyTitle, removeAfterDisappear: false, identifier: "business_quick_reply")
+    controller.analyticsScreen = .settingsBusinessQuickReplies
     
     controller.updateDoneValue = { data in
         return { f in
@@ -708,6 +710,7 @@ private func BusinessAddQuickReply(context: (any AccountContextProtocol), action
     
     
     let controller = InputDataController(dataSignal: signal, title: reply == nil ? strings().businessQuickReplyAddInfo : strings().businessQuickReplyEditInfo)
+    controller.analyticsScreen = .settingsBusinessQuickRepliesName
     
     let modalInteractions = ModalInteractions(acceptTitle: strings().modalDone, accept: { [weak controller] in
         _ = controller?.returnKeyAction()

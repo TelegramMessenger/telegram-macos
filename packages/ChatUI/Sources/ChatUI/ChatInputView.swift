@@ -1,5 +1,6 @@
 import Foundation
 import Cocoa
+import MediaRecorderUI
 import TGUIKit
 import TGUIKit
 import SwiftSignalKit
@@ -26,6 +27,7 @@ import GeneralRows
 import InputTextView
 import PremiumUI
 import InlineStickerLayer
+import AppAnalytics
 
 public protocol ChatInputDelegate : AnyObject {
     func inputChanged(height:CGFloat, animated:Bool);
@@ -90,6 +92,7 @@ public final class ChatInputContainerView: FlippableView {
     public var sendRichDraft: (() -> Void)?
     /// The inline editor's content grew/shrank → host propagates the new input height.
     public var richDraftHeightChanged: (() -> Void)?
+    public var richDraftContentChanged: (() -> Void)?
 
     public let accessory: ChatInputAccessory
     public let contentView: FlippableView
@@ -125,7 +128,14 @@ public final class ChatInputContainerView: FlippableView {
     public var bottomHeight: CGFloat = 0
 
     var glassSlotsOverride: (() -> ChatInputGlassSlots?)?
+    var aiRewriteHeightFloor: CGFloat = 0
     var springsFieldMerge = false
+    var isTranscribing = false
+    var dictationHeight = ChatDictationHeightHold()
+
+    var isSendButtonInField: Bool {
+        return sendButton.isInField
+    }
     private static let sendAppearOffset: CGFloat = 8
 
     public init(frame frameRect: NSRect, chatInteraction: ChatInteraction, textInteractions: TextView_Interactions) {
@@ -223,7 +233,7 @@ public final class ChatInputContainerView: FlippableView {
         if richDraftPreviewHeight > 0 {
             return richDraftSlotHeight + accessoryHeight
         }
-        let base = (chatState == .normal || chatState == .editing) ? textViewSize(width).0.height : CGFloat(textView.min_height)
+        let base = (chatState == .normal || chatState == .editing || chatInteraction.voiceTranscription?.isActive == true) ? textViewSize(width).0.height : CGFloat(textView.min_height)
         return base + accessoryHeight
     }
 
@@ -244,6 +254,9 @@ public final class ChatInputContainerView: FlippableView {
                 }
                 current.onSend = { [weak self] in
                     self?.sendRichDraft?()
+                }
+                current.onEditorContentChange = { [weak self] in
+                    self?.richDraftContentChanged?()
                 }
                 current.onEditorHeightChange = { [weak self] in
                     guard let self = self, let preview = self.richDraftPreview else { return }
@@ -300,7 +313,8 @@ public final class ChatInputContainerView: FlippableView {
         let actionsWidth = actionsView.visibleWidth + sendSlot.inField
         let textWidth = max(0, containerWidth - textLeftInset - actionsWidth)
         let height = self.textView.height(for: textWidth)
-        return (NSMakeSize(textWidth, min(max(height, textView.min_height), textView.max_height)), height)
+        let fitted = dictationHeight.fit(min(max(height, textView.min_height), textView.max_height), transcribing: isTranscribing)
+        return (NSMakeSize(textWidth, max(fitted, aiRewriteHeightFloor)), height)
     }
 
     private func sendSlot(gap: CGFloat) -> (outside: CGFloat, inField: CGFloat) {
@@ -350,7 +364,7 @@ public final class ChatInputContainerView: FlippableView {
 
         var leftInset: CGFloat = 0
         if let view = botMenuView, let botMenu = chatInteraction.presentation.botMenu {
-            let compact = !textView.string().isEmpty
+            let compact = isTranscribing || !textView.string().isEmpty
             view.update(botMenu, compact: compact, animated: transition.isAnimated)
             let desired = view.desiredSize
             view.updateLayout(size: desired, transition: transition)
@@ -499,6 +513,8 @@ public final class ChatInputContainerView: FlippableView {
             transition.updateFrame(view: preview, frame: NSMakeRect(textLeftInset, previewY, textSize.width, richDraftPreviewHeight))
         } else {
             textView.isHidden = false
+            let natural = min(max(textHeight, CGFloat(textView.min_height)), CGFloat(textView.max_height))
+            textView.textAnchorHeight = natural < textRect.height ? natural : nil
             transition.updateFrame(view: textView, frame: textRect)
             textView.updateLayout(size: textRect.size, textHeight: textHeight, transition: transition)
         }
@@ -679,6 +695,49 @@ public class ChatInputView: View, Notifable {
     /// theme pass and flashing the global app colours.
     private var currentChatTheme: TelegramPresentationTheme?
     private var recordingPanelView: ChatInputRecordingView?
+    private(set) var isTranscribing = false
+    private var dictationHeight: ChatDictationHeightHold {
+        get { container.dictationHeight }
+        set { container.dictationHeight = newValue }
+    }
+
+    func transcriptionFrame(in view: NSView) -> NSRect {
+        return textFieldContainer.convert(textFieldContainer.bounds, to: view)
+    }
+
+    func setTranscribing(_ value: Bool, animated: Bool = false) {
+        guard isTranscribing != value else { return }
+        isTranscribing = value
+        if value {
+            dictationHeight.release()
+        }
+        sendButton.setDictating(value, animated: animated)
+        if value {
+            container.isTranscribing = true
+        }
+        finishGlassMorph()
+        needUpdateChatState(with: chatState, false)
+        updateInput(chatInteraction.presentation, prevState: chatInteraction.presentation, animated: false)
+        container.updateLayout(transition: .immediate)
+        for ghost in [attachGhost, textGhost, voiceGhost, botMenuGhost, keyboardGhost].compactMap({ $0 }) {
+            ghost.layer?.removeAllAnimations()
+            ghost.appearanceContainer.layer?.removeAllAnimations()
+            ghost.effectView.layer?.removeAllAnimations()
+        }
+        inputDidUpdateLayout(animated: false)
+        if !value {
+            container.isTranscribing = false
+            let sendState = ChatInputView.sendButtonState(
+                from: chatInteraction.presentation,
+                hasRichDraft: chatInteraction.richTextDraft != nil,
+                canStopIncomingStreamingMessage: canStopIncomingStreamingMessage
+            )
+            updateSendButton(sendState, animated: animated)
+            dictationHeight.release()
+            inputDidUpdateLayout(animated: animated)
+        }
+    }
+
     private var stateView: ChatInputStateView?
     private var disallowText: Control?
     private var messageEffect: InputMessageEffectView?
@@ -693,6 +752,8 @@ public class ChatInputView: View, Notifable {
     private let slowModeUntilDisposable = MetaDisposable()
     private let accessoryDisposable:MetaDisposable = MetaDisposable()
     private let richDraftDisposable = MetaDisposable()
+    private let inlineRichDraftStoreDisposable = MetaDisposable()
+    private var hasPendingInlineRichDraftStore = false
     private let incomingTypingDraftDisposable = MetaDisposable()
     private var incomingTypingDraftKey: PeerAndThreadId?
     private var canStopIncomingStreamingMessage = false
@@ -728,6 +789,9 @@ public class ChatInputView: View, Notifable {
 
         self.textView.context = chatInteraction.interactionContext
         self.textView.isSecretChat = chatInteraction.peerId.namespace == Namespaces.Peer.SecretChat || chatInteraction.presentation.peer?.isSecretChat == true
+        self.textView.analyticsContextProvider = { [weak self] in
+            self?.chatInteraction.captureAnalyticsContext() ?? Analytics.shared.unresolvedContext()
+        }
 
         self.animates = true
 
@@ -752,6 +816,7 @@ public class ChatInputView: View, Notifable {
             guard let `self` = self else {
                 return
             }
+            self.chatInteraction.voiceTranscription?.composerDidUpdate(state.textInputState())
             self.set(state)
             self.inputDidUpdateLayout(animated: true)
         }
@@ -784,18 +849,32 @@ public class ChatInputView: View, Notifable {
         container.sendRichDraft = { [weak self] in
             self?.sendInlineRichDraft()
         }
+        chatInteraction.storePendingRichTextDraft = { [weak self] in
+            guard let self, self.hasPendingInlineRichDraftStore else {
+                return
+            }
+            self.cancelInlineRichDraftStore()
+            self.storeInlineRichDraft(threadId: self.chatInteraction.chatLocation.threadId)
+        }
         // Just before any send reads the stored draft, write the live inline-editor content into it (or into
         // the composer text when the content reduced to plain) — so the send button posts the edited content.
         chatInteraction.flushRichTextDraft = { [weak self] in
+            self?.cancelInlineRichDraftStore()
             guard let self = self, let preview = self.container.richDraftPreview, preview.isInlineEditing,
                   let blocks = preview.currentOutgoing() else { return }
+            let origin = self.chatInteraction.captureAnalyticsContext()
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             switch composeRichMessage(from: blocks, media: preview.currentMedia()) {
             case let .rich(page):
-                self.chatInteraction.setRichTextDraft(page)
+                self.chatInteraction.setRichTextDraft(page, analyticsContext: origin)
             case let .plain(text, entities):
                 self.chatInteraction.setRichTextDraft(nil)
                 if !text.isEmpty {
                     var attributes = chatTextAttributes(from: TextEntitiesMessageAttribute(entities: entities))
+                    if origin.isExcluded || origin.scope?.isValid != true {
+                        attributes.append(.analyticsExcluded(0 ..< text.length))
+                    }
                     let restored = ChatTextInputState(inputText: text, selectionRange: text.length ..< text.length, attributes: attributes)
                     self.chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(restored) } }
                 }
@@ -809,6 +888,9 @@ public class ChatInputView: View, Notifable {
         // truth; the send path composes from it directly.
         container.richDraftHeightChanged = { [weak self] in
             self?.inputDidUpdateLayout(animated: true)
+        }
+        container.richDraftContentChanged = { [weak self] in
+            self?.scheduleInlineRichDraftStore()
         }
         richDraftDisposable.set((chatInteraction.richTextDraftSignal |> deliverOnMainQueue).start(next: { [weak self] page in
             guard let self = self else { return }
@@ -827,6 +909,29 @@ public class ChatInputView: View, Notifable {
         }))
         chatInteraction.reloadRichTextDraft()
         self.bindIncomingTypingDraft(for: chatInteraction.chatLocation, animated: false)
+    }
+
+    private func scheduleInlineRichDraftStore() {
+        hasPendingInlineRichDraftStore = true
+        let threadId = chatInteraction.chatLocation.threadId
+        inlineRichDraftStoreDisposable.set((Signal<Void, NoError>.single(Void()) |> delay(0.5, queue: .mainQueue())).start(completed: { [weak self] in
+            self?.storeInlineRichDraft(threadId: threadId)
+        }))
+    }
+
+    private func cancelInlineRichDraftStore() {
+        hasPendingInlineRichDraftStore = false
+        inlineRichDraftStoreDisposable.set(nil)
+    }
+
+    private func storeInlineRichDraft(threadId: Int64?) {
+        hasPendingInlineRichDraftStore = false
+        guard let preview = container.richDraftPreview, preview.isInlineEditing, let blocks = preview.currentOutgoing() else {
+            return
+        }
+        if let page = richTextInstantPage(from: blocks, media: preview.currentMedia()) {
+            chatInteraction.storeRichTextDraftSnapshot(page, threadId: threadId)
+        }
     }
 
     private func bindIncomingTypingDraft(for chatLocation: ChatLocation, animated: Bool) {
@@ -874,12 +979,13 @@ public class ChatInputView: View, Notifable {
     }
 
     private func updateSendButton(_ state: ChatInputSendButton.State, animated: Bool) {
-        let wasInField = sendButton.isInField
+        guard !isTranscribing else { return }
+        let wasInField = container.isSendButtonInField
         let hadState = sendButton.hasAppliedState
         let desiredChanged = sendButton.update(state: state, animated: animated)
         let animated = animated && hadState && window != nil
-        if wasInField != sendButton.isInField {
-            container.springsFieldMerge = animated && sendButton.isInField && chatInteraction.presentation.state == .normal
+        if wasInField != container.isSendButtonInField {
+            container.springsFieldMerge = animated && container.isSendButtonInField && chatInteraction.presentation.state == .normal
             container.updateLayout(transition: animated ? .animated(duration: ChatInputSendButton.fieldMotionDuration, curve: .easeOut) : .immediate)
             container.springsFieldMerge = false
         } else if desiredChanged {
@@ -888,7 +994,7 @@ public class ChatInputView: View, Notifable {
     }
 
     /// The just-deleted rich draft, kept so ⌘Z can restore it.
-    private var deletedRichDraft: InstantPage?
+    private var deletedRichDraft: (page: InstantPage, origin: AnalyticsContext)?
 
     /// Window key handlers active only around a rich draft (the text field is hidden, so its own handlers
     /// can't fire). While a draft is shown: Enter sends it, Delete removes the whole draft. After a delete:
@@ -900,20 +1006,13 @@ public class ChatInputView: View, Notifable {
         window.remove(object: self, for: .Z, modifierFlags: [.command], forceCheckFlags: true)
         window.remove(object: self, for: .Z, modifierFlags: [.command, .shift], forceCheckFlags: true)
 
-        // Whether the draft is shown in the LIVE inline editor (vs the read-only media preview). Matches the
-        // preview's block-based decision (NOT `media.isEmpty`, which can be non-empty for a text-only draft):
-        // a draft with no unsupported-media block is the live inline editor. Both cases get a window Return
+        // Whether the draft is shown in the LIVE inline editor (vs the read-only preview). On macOS 12+ the
+        // preview hosts every draft, media blocks included, in the inline editor. Both cases get a window Return
         // handler honoring the send preference; the inline case rejects non-send Returns so the editor adds a
         // newline, while Delete/⌘Z go to the editor.
         let isInlineEditable: Bool = {
-            guard #available(macOS 12, *), let draft = chatInteraction.richTextDraft else { return false }
-            let hasUninlineableBlock = draft.blocks.contains { block in
-                switch block {
-                case .video, .audio, .map, .collage, .slideshow: return true
-                default: return false
-                }
-            }
-            return !hasUninlineableBlock
+            guard #available(macOS 12, *) else { return false }
+            return chatInteraction.richTextDraft != nil
         }()
 
         if isInlineEditable {
@@ -952,7 +1051,7 @@ public class ChatInputView: View, Notifable {
             // Delete removes the whole draft, stashing it for ⌘Z.
             window.set(handler: { [weak self] _ -> KeyHandlerResult in
                 guard let self = self, let draft = self.chatInteraction.richTextDraft else { return .rejected }
-                self.deletedRichDraft = draft
+                self.deletedRichDraft = (draft, self.chatInteraction.captureAnalyticsContext())
                 self.chatInteraction.setRichTextDraft(nil)
                 return .invoked
             }, with: self, for: .Delete, priority: .high, modifierFlags: nil)
@@ -963,7 +1062,7 @@ public class ChatInputView: View, Notifable {
                 guard let self = self, let draft = self.deletedRichDraft,
                       self.chatInteraction.presentation.effectiveInput.inputText.isEmpty else { return .rejected }
                 self.deletedRichDraft = nil
-                self.chatInteraction.setRichTextDraft(draft)
+                self.chatInteraction.setRichTextDraft(draft.page, analyticsContext: draft.origin)
                 return .invoked
             }, with: self, for: .Z, priority: .high, modifierFlags: [.command])
         }
@@ -1102,6 +1201,8 @@ public class ChatInputView: View, Notifable {
                 return strings().welcomeMessageInputPlaceholder
             case .searchHashtag:
                 return ""
+            case .htmlDemo:
+                return strings().messagesPlaceholderSentMessage
             }
         }
         if case .customLink = chatInteraction.mode {
@@ -1232,6 +1333,16 @@ public class ChatInputView: View, Notifable {
         if let value = value as? ChatPresentationInterfaceState {
             if let oldValue = oldValue as? ChatPresentationInterfaceState, value.chatLocation != oldValue.chatLocation {
                 self.bindIncomingTypingDraft(for: value.chatLocation, animated: animated)
+                if value.chatLocation.peerId != oldValue.chatLocation.peerId || value.chatLocation.threadId != oldValue.chatLocation.threadId {
+                    if self.hasPendingInlineRichDraftStore {
+                        self.storeInlineRichDraft(threadId: oldValue.chatLocation.threadId)
+                    }
+                    self.cancelInlineRichDraftStore()
+                    self.container.richDraftPreview?.reseedEditorOnNextUpdate()
+                    self.deletedRichDraft = nil
+                    self.chatInteraction.reloadRichTextDraft()
+                    self.chatInteraction.loadPersistentRichTextDraft()
+                }
             }
             let sendState = ChatInputView.sendButtonState(
                 from: value,
@@ -1560,11 +1671,16 @@ public class ChatInputView: View, Notifable {
         return slots
     }
 
-
     public func needUpdateChatState(with state:ChatState, _ animated:Bool) -> Void {
         CATransaction.begin()
 
-        let morphsGlass = animated && canMorphGlass
+        let startsDictation: Bool
+        if case let .recording(recorder) = state {
+            startsDictation = (recorder as? ChatRecordingAudioState)?.startsDictation == true
+        } else {
+            startsDictation = false
+        }
+        let morphsGlass = animated && canMorphGlass && !isTranscribing && !startsDictation
         let isInputState = state == .normal || state == .editing
         var morphInSlots: ChatInputGlassSlots?
         if morphsGlass, isInputState {
@@ -1629,6 +1745,7 @@ public class ChatInputView: View, Notifable {
 
         // Recording panel — lazy create / reuse across same-kind transitions,
         // remove when the new state isn't `.recording`.
+        var dictationPanelToActivate: ChatInputRecordingView?
         if case let .recording(recorder) = state {
             let current: ChatInputRecordingView
             var isNew = false
@@ -1639,6 +1756,7 @@ public class ChatInputView: View, Notifable {
                 current.glassInset = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 12 + sendButton.frame.width)
                 self.recordingPanelView = current
                 self.addSubview(current)
+                dictationPanelToActivate = current
                 isNew = true
             }
             current.updateLayout(size: current.frame.size, transition: .immediate)
@@ -1700,8 +1818,16 @@ public class ChatInputView: View, Notifable {
         case .normal, .editing:
             self.contentView.isHidden = false
             self.contentView.change(opacity: 1.0, animated: animated)
+            if isTranscribing {
+                container.updateLayout(transition: .immediate)
+                for ghost in [attachGhost, textGhost, voiceGhost, botMenuGhost, keyboardGhost].compactMap({ $0 }) {
+                    ghost.layer?.removeAllAnimations()
+                    ghost.appearanceContainer.layer?.removeAllAnimations()
+                    ghost.effectView.layer?.removeAllAnimations()
+                }
+            }
             self.container.isHidden = false
-            if wasRecording, animated, morphInSlots == nil {
+            if wasRecording, animated, morphInSlots == nil, !isTranscribing {
                 self.container.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.25, timingFunction: .spring)
             }
         case .selecting:
@@ -1737,7 +1863,15 @@ public class ChatInputView: View, Notifable {
             view.update(action: action, chatInteraction: chatInteraction)
             installStateView(view)
         case .recording:
-            if !morphsOut {
+            if isTranscribing || startsDictation {
+                contentView.isHidden = false
+                contentView.layer?.opacity = 1
+                container.isHidden = false
+                textView.isHidden = false
+                textFieldContainer.isHidden = false
+                attachView.isHidden = true
+                sendButton.isHidden = false
+            } else if !morphsOut {
                 textView.isHidden = true
                 textFieldContainer.isHidden = true
                 attachView.isHidden = true
@@ -1766,8 +1900,8 @@ public class ChatInputView: View, Notifable {
                 self.disallowText = current
             }
             current.removeAllHandlers()
-            current.set(handler: { _ in
-                showModalText(for: context.window, text: text)
+            current.set(handler: { [weak self] _ in
+                showModalText(for: context.window, text: text, theme: self?.currentChatTheme ?? theme)
             }, for: .Click)
             current.setAccessibilityLabel(text)
             current.set(cursor: .arrow, for: .Normal)
@@ -1779,8 +1913,20 @@ public class ChatInputView: View, Notifable {
         }
 
         CATransaction.commit()
+        dictationPanelToActivate?.startDictation()
     }
     
+    private func updateTranscriptionSelection(_ selection: Range<Int>) {
+        guard isTranscribing else { return }
+        let length = textView.inputView.string.utf16.count
+        let lower = max(0, min(selection.lowerBound, length))
+        let upper = max(lower, min(selection.upperBound, length))
+        let range = NSRange(location: lower, length: upper - lower)
+        if textView.inputView.selectedRange() != range {
+            textView.inputView.setSelectedRange(range)
+        }
+    }
+
     public func updateInput(_ state:ChatPresentationInterfaceState, prevState: ChatPresentationInterfaceState, animated:Bool = true, initial: Bool = false) -> Void {
         
         if let peer = state.peer, let _ = permissionText(from: peer, for: .banSendText, cachedData: state.cachedData), state.state == .normal {
@@ -1800,8 +1946,13 @@ public class ChatInputView: View, Notifable {
         
         let input = state.effectiveInput
         
+        if isTranscribing {
+            textView.inputView.isEditable = true
+            textView.isHidden = false
+        }
         self.textView.interactions.inputIsEnabled = self.isEnabled()
         self.textView.set(input)
+        updateTranscriptionSelection(input.selectionRange)
         let placeholder = textPlaceholder
         self.textView.placeholder = placeholder
         self.textView.inputView.setAccessibilityLabel(placeholder)
@@ -1958,14 +2109,14 @@ public class ChatInputView: View, Notifable {
             let sendWidth = sendButton.frame.width
             let sendMinX = size.width - edge - sendWidth
             let recContentY = contentView.frame.origin.y
-            let totalHeight = standart
+            let totalHeight = isTranscribing ? contentHeight(for: size.width) : standart
 
             let panelMinX: CGFloat = edge
             let panelWidth = size.width - edge - panelMinX
             let panelFrame = NSMakeRect(panelMinX, recContentY, panelWidth, totalHeight)
             transition.updateFrame(view: view, frame: panelFrame)
 
-            let sendCenter = NSMakePoint(sendMinX + sendWidth / 2, standart / 2)
+            let sendCenter = NSMakePoint(sendMinX + sendWidth / 2, totalHeight - standart / 2)
             view.updateSendButtonCenter(NSMakePoint(sendCenter.x - panelMinX, sendCenter.y), transition: transition)
             view.updateLayout(size: panelFrame.size, transition: transition)
         }
@@ -2020,7 +2171,7 @@ public class ChatInputView: View, Notifable {
     /// the empty-content guard); here we just surface the empty error early for the common no-content case.
     private func sendInlineRichDraft() {
         if let blocks = container.richDraftPreview?.currentOutgoing(), !richTextOutgoingHasContent(blocks) {
-            showModalText(for: chatInteraction.interactionContext.window, text: strings().chatInputEmptyMessageError)
+            showModalText(for: chatInteraction.interactionContext.window, text: strings().chatInputEmptyMessageError, theme: currentChatTheme ?? theme)
             return
         }
         chatInteraction.sendMessage(false, nil, chatInteraction.presentation.messageEffect)
@@ -2144,6 +2295,10 @@ public class ChatInputView: View, Notifable {
     
     
     deinit {
+        if self.hasPendingInlineRichDraftStore {
+            self.storeInlineRichDraft(threadId: self.chatInteraction.chatLocation.threadId)
+        }
+        self.inlineRichDraftStoreDisposable.dispose()
         self.accessoryDisposable.dispose()
         self.rtfAttachmentsDisposable.dispose()
         self.slowModeUntilDisposable.dispose()
@@ -2170,7 +2325,7 @@ public class ChatInputView: View, Notifable {
            historyCount >= limit {
             return false
         }
-        return self.chatState == .normal || self.chatState == .editing
+        return self.chatState == .normal || self.chatState == .editing || isTranscribing
     }
     
     
@@ -2179,6 +2334,7 @@ public class ChatInputView: View, Notifable {
     }
     
     public func processPaste(_ pasteboard: NSPasteboard) -> Bool {
+        let analyticsContext = chatInteraction.captureAnalyticsContext()
         
         let interaction = self.chatInteraction
         
@@ -2247,10 +2403,13 @@ public class ChatInputView: View, Notifable {
                             let (attributed, attachments) = attributed.applyRtf()
                             
                             if !attachments.isEmpty {
+                                let journey = interaction.makeMediaAnalyticsJourney(context: analyticsContext, entry: .clipboard, mode: .media)
+                                journey?.preparing()
                                 rtfAttachmentsDisposable.set((prepareTextAttachments(attachments) |> deliverOnMainQueue).start(next: { [weak self] urls in
                                     if !urls.isEmpty, let interaction = self?.chatInteraction {
-                                        interaction.showPreviewSender(urls, true, attributed)
+                                        interaction.showPreviewSender(urls, true, attributed, analyticsContext: analyticsContext, journey: journey)
                                     } else if urls.isEmpty {
+                                        journey?.fail(.preparation)
                                     }
                                 }))
                             } else {

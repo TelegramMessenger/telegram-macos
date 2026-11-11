@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramTheme
 import AlertsUI
 import LocalAnimations
+import AppAnalytics
 
 
 
@@ -76,6 +77,7 @@ public func GigagroupLandingController(context: any AccountContextProtocol, peer
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().broadcastGroupsIntroTitle)
+    controller.analyticsScreen = .peerInfoBroadcastGroupIntro
 
     controller.onDeinit = {
         actionsDisposable.dispose()

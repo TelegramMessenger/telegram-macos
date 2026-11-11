@@ -149,7 +149,6 @@ public enum ChatState : Equatable {
         }
     }
 
-
     case normal
     case selecting
     case block(String)
@@ -287,7 +286,8 @@ public class ChatPresentationInterfaceState: Equatable {
         public var paywall: Bool
         public var tone: TranslationTone = .neutral
         public var result:[ChatLiveTranslateContext.State.Key : ChatLiveTranslateContext.State.Result]
-        public init(canTranslate: Bool, translate: Bool, from: String? = nil, to: String, paywall: Bool, tone: TranslationTone = .neutral, result: [ChatLiveTranslateContext.State.Key : ChatLiveTranslateContext.State.Result]) {
+        public var translationEligibility: [ChatLiveTranslateContext.State.Key: ChatTranslationSource]
+        public init(canTranslate: Bool, translate: Bool, from: String? = nil, to: String, paywall: Bool, tone: TranslationTone = .neutral, result: [ChatLiveTranslateContext.State.Key : ChatLiveTranslateContext.State.Result], translationEligibility: [ChatLiveTranslateContext.State.Key: ChatTranslationSource] = [:]) {
             self.canTranslate = canTranslate
             self.translate = translate
             self.from = from
@@ -295,6 +295,24 @@ public class ChatPresentationInterfaceState: Equatable {
             self.paywall = paywall
             self.tone = tone
             self.result = result
+            self.translationEligibility = translationEligibility
+        }
+
+        public init(_ state: ChatLiveTranslateContext.State) {
+            self.init(canTranslate: state.canTranslate, translate: state.translate, from: state.from, to: state.to, paywall: state.paywall, tone: state.tone, result: state.result, translationEligibility: state.translationEligibility)
+        }
+
+        public func pinnedTranslationResult(for message: Message, accountPeerId: PeerId) -> ChatLiveTranslateContext.State.Result? {
+            guard canTranslate, translate else {
+                return nil
+            }
+            let key = ChatLiveTranslateContext.State.Key(id: message.id, toLang: to)
+            if message.author?.id == accountPeerId || !message.effectivelyIncoming(accountPeerId) {
+                guard translationEligibility[key] == ChatTranslationSource(message) else {
+                    return nil
+                }
+            }
+            return result[key]
         }
     }
     
@@ -578,9 +596,20 @@ public class ChatPresentationInterfaceState: Equatable {
     
     public var state:ChatState {
         if self.selectionState == nil {
-            if let initialAction = initialAction, case .start = initialAction  {
+            if ChatBotForumControls.showsStart(
+                isBot: (peer as? TelegramUser)?.botInfo != nil,
+                isScheduled: chatMode == .scheduled,
+                historyCount: historyCount,
+                threadId: chatLocation.threadId,
+                isBlocked: isBlocked == true
+            ) {
+                if let initialAction = initialAction, case .start = initialAction {
+                    return .botStart(strings().chatInputStartBot, { chatInteraction in
+                        chatInteraction.invokeInitialAction()
+                    })
+                }
                 return .botStart(strings().chatInputStartBot, { chatInteraction in
-                    chatInteraction.invokeInitialAction()
+                    chatInteraction.startBot()
                 })
             }
             
@@ -705,7 +734,7 @@ public class ChatPresentationInterfaceState: Equatable {
                 #if APP_STORE
                 if let restrictionInfo = restrictionInfo {
                     for rule in restrictionInfo.rules {
-                        if rule.platform == "ios" || rule.platform == "all" {
+                        if rule.appliesTo(platform: "ios", contentSettings: contentSettings ?? .default) {
                             return .action(strings().chatInputClose, { chatInteraction in
                                 chatInteraction.back()
                             }, right: nil, left: nil)
@@ -868,25 +897,9 @@ public class ChatPresentationInterfaceState: Equatable {
             }
             
             if let blocked = isBlocked, blocked {
-                
-                if let peer = peer, peer.isBot {
-                    return .action(strings().chatInputRestart, { chatInteraction in
-                        chatInteraction.unblock()
-                        chatInteraction.startBot()
-                    }, right: nil, left: nil)
-                }
-                
                 return .action(strings().chatInputUnblock, { chatInteraction in
                     chatInteraction.unblock()
                 }, right: nil, left: nil)
-            }
-            
-            if let peer = peer as? TelegramUser {
-                if let _ = peer.botInfo, let historyCount = historyCount, historyCount == 0 {
-                    return .botStart(strings().chatInputStartBot, { chatInteraction in
-                        chatInteraction.startBot()
-                    })
-                }
             }
            
             
@@ -1006,7 +1019,7 @@ public class ChatPresentationInterfaceState: Equatable {
         self.inputQueryResult = nil
         self.keyboardButtonsMessage = nil
         self.initialAction = nil
-        self.historyCount = 0
+        self.historyCount = nil
         self.searchMode = .init(inSearch: false)
         self.recordingState = nil
         self.isBlocked = nil
@@ -1486,11 +1499,7 @@ public class ChatPresentationInterfaceState: Equatable {
         if let selectionState = self.selectionState {
             selectedIds.formUnion(selectionState.selectedIds)
         }
-        if selectedIds.count < 100 {
-            selectedIds.insert(messageId)
-        } else {
-            NSSound.beep()
-        }
+        selectedIds.insert(messageId)
         
         return ChatPresentationInterfaceState(interfaceState: self.interfaceState, peer: self.peer, notificationSettings: self.notificationSettings, inputQueryResult: self.inputQueryResult, keyboardButtonsMessage:self.keyboardButtonsMessage, initialAction:initialAction, historyCount: self.historyCount, searchMode: self.searchMode, recordingState: self.recordingState, isBlocked: self.isBlocked, peerStatus: self.peerStatus, pinnedMessageId: self.pinnedMessageId, urlPreview: self.urlPreview, selectionState: self.selectionState?.withUpdatedSelectedIds(selectedIds), sidebarEnabled: self.sidebarEnabled, sidebarShown: self.sidebarShown, layout: self.layout, canAddContact: self.canAddContact, isEmojiSection: self.isEmojiSection, chatLocation: self.chatLocation, chatMode: self.chatMode, canInvokeBasicActions: self.canInvokeBasicActions, isNotAccessible: self.isNotAccessible, restrictionInfo: self.restrictionInfo, mainPeer: self.mainPeer, limitConfiguration: self.limitConfiguration, discussionGroupId: self.discussionGroupId, slowMode: self.slowMode, hasScheduled: self.hasScheduled, failedMessageIds: self.failedMessageIds, hidePinnedMessage: self.hidePinnedMessage, canPinMessage: self.canPinMessage, tempPinnedMaxId: self.tempPinnedMaxId, groupCall: self.groupCall, messageSecretTimeout: self.messageSecretTimeout, reportMode: self.reportMode, botMenu: self.botMenu, inviteRequestsPending: self.inviteRequestsPending, inviteRequestsPendingPeers: self.inviteRequestsPendingPeers, currentSendAsPeerId: self.currentSendAsPeerId, sendAsPeers: self.sendAsPeers, allowedReactions: self.allowedReactions, attachItems: self.attachItems, cachedData: self.cachedData, threadInfo: self.threadInfo, translateState: self.translateState, presence: self.presence, savedMessageTags: self.savedMessageTags, accountPeer: self.accountPeer, displaySavedChatsAsTopics: self.displaySavedChatsAsTopics, shortcuts: self.shortcuts, connectedBot: self.connectedBot, contentSettings: self.contentSettings, playedMessageEffects: self.playedMessageEffects, adMessage: self.adMessage, acknowledgedPaidMessage: self.acknowledgedPaidMessage, alwaysPaidMessage: self.alwaysPaidMessage, starsState: self.starsState, sendPaidMessageStars: self._sendPaidMessageStars, freezeAccount: self.freezeAccount, freezeAccountAppealAddressName: self.freezeAccountAppealAddressName, monoforumState: self.monoforumState, monoforumTopics: self.monoforumTopics, removePaidMessageFeeData: self.removePaidMessageFeeData)
     }
@@ -1508,11 +1517,7 @@ public class ChatPresentationInterfaceState: Equatable {
         if isSelected {
             let _ = selectedIds.remove(messageId)
         } else {
-            if selectedIds.count < 100 {
-                selectedIds.insert(messageId)
-            } else {
-                NSSound.beep()
-            }
+            selectedIds.insert(messageId)
         }
         
         var selectionState: ChatInterfaceSelectionState = self.selectionState?.withUpdatedSelectedIds(selectedIds) ?? ChatInterfaceSelectionState(selectedIds: selectedIds, lastSelectedId: nil)

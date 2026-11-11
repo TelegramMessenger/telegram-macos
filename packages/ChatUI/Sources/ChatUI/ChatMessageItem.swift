@@ -205,7 +205,7 @@ public class ChatMessageItem: ChatRowItem {
         }
         if let webpage = webpageLayout {
             let link = ChatHistoryLink.inApp(for: webpage.content.url.nsstring, context: context, messageId: message?.id, openInfo: chatInteraction.openInfo)
-            ChatHistoryLink.execute(inapp: link)
+            ChatHistoryLink.execute(inapp: link, morphSource: morphSource)
         } else if unsupported {
             invokeUpdateApp()
         }
@@ -537,7 +537,7 @@ public class ChatMessageItem: ChatRowItem {
                         }
                     }
                 }
-                showChatGallery(context: context, message: message, self?.table, (self?.webpageLayout as? WPMediaLayout)?.parameters, type: .alone, chatMode: chatInteraction.mode, chatLocation: chatInteraction.chatLocation, cachedPeerData: chatInteraction.presentation.cachedData)
+                showChatGallery(context: context, message: message, self?.table, (self?.webpageLayout as? WPMediaLayout)?.parameters, type: .alone, chatMode: chatInteraction.mode, chatLocation: chatInteraction.chatLocation, cachedPeerData: chatInteraction.presentation.cachedData, analyticsContext: chatInteraction.captureAnalyticsContext())
             }
             
             openSpecificTimecodeFromReply = { [weak self] timecode in
@@ -934,6 +934,7 @@ public class ChatMessageItem: ChatRowItem {
                 header = TextNode.layoutText(.initialize(string: lg.prefixWithDots(15), color: color, font: .medium(.text)), nil, 1, .end, NSMakeSize(.greatestFiniteMagnitude, .greatestFiniteMagnitude), nil, false, .left)
                 
                 string.addAttribute(TextInputAttributes.quote, value: TextViewBlockQuoteData(id: Int(arc4random64()), colors: .init(main: color, secondary: nil, tertiary: theme.colors.isDark ? .black : color), isCode: true, space: 4, header: header), range: range)
+                string.addAttribute(TextInputAttributes.code, value: language ?? "", range: range)
                 fontAttributes.append((range, .monospace))
                 string.addAttribute(NSAttributedString.Key.foregroundColor, value: monospacedPre, range: range)
                 string.addAttribute(TextInputAttributes.monospace, value: true as NSNumber, range: range)
@@ -1094,7 +1095,10 @@ public class ChatMessageItem: ChatRowItem {
     }
 
     public override func inset(for text: String, range: NSRange?) -> CGFloat {
-        if let rect = self.textLayout.rect(for: text, range: range) {
+        let layoutString = self.textLayout.attributedString
+        let layoutRange = chatQuoteTextRange(in: layoutString, text: text, offset: range?.location)
+        let layoutText = layoutRange.map { (layoutString.string as NSString).substring(with: $0) } ?? text
+        if let rect = self.textLayout.rect(for: layoutText, range: layoutRange) {
             return rect.maxY
         } else {
             return super.inset(for: text, range: range)

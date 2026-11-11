@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Postbox
 import TelegramCore
 
@@ -114,7 +115,7 @@ public final class ChatExportHtmlWriter {
         try FileManager.default.createDirectory(at: jsDir, withIntermediateDirectories: true, attributes: nil)
         try (ChatExportHtmlWriter.styleCss(themeColors).data(using: .utf8) ?? Data()).write(to: cssDir.appendingPathComponent("style.css"))
         try (ChatExportHtmlWriter.scriptJs.data(using: .utf8) ?? Data()).write(to: jsDir.appendingPathComponent("script.js"))
-        openPage(0)
+        try openPage(0)
     }
 
     private func pageFileName(_ index: Int) -> String {
@@ -136,10 +137,12 @@ public final class ChatExportHtmlWriter {
         return "<div class=\"subtitle details\">\(esc(subtitle))</div>\n"
     }
 
-    private func openPage(_ index: Int) {
+    private func openPage(_ index: Int) throws {
         let url = baseURL.appendingPathComponent(pageFileName(index))
-        FileManager.default.createFile(atPath: url.path, contents: nil, attributes: nil)
-        handle = try? FileHandle(forWritingTo: url)
+        guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        handle = try FileHandle(forWritingTo: url)
         let header = """
         <!DOCTYPE html>
         <html>
@@ -163,11 +166,15 @@ public final class ChatExportHtmlWriter {
         <div class="history">
 
         """
-        write(header)
+        try write(header)
         lastAuthorId = nil
     }
 
-    private func closePage(hasNext: Bool) {
+    private func closePage(hasNext: Bool) throws {
+        defer {
+            handle?.closeFile()
+            handle = nil
+        }
         var pagination = ""
         let hasPrev = currentPageIndex > 0
         if hasPrev || hasNext {
@@ -190,56 +197,54 @@ public final class ChatExportHtmlWriter {
         </body>
         </html>
         """
-        write(footer)
-        handle?.closeFile()
-        handle = nil
+        try write(footer)
     }
 
-    public func finish() -> URL {
-        closePage(hasNext: false)
+    public func finish() throws -> URL {
+        try closePage(hasNext: false)
         return baseURL.appendingPathComponent(pageFileName(0))
     }
 
     // MARK: - Appending
 
-    private func rolloverIfNeeded() {
+    private func rolloverIfNeeded() throws {
         if messagesInCurrentPage >= messagesPerPage {
-            closePage(hasNext: true)
+            try closePage(hasNext: true)
             currentPageIndex += 1
             messagesInCurrentPage = 0
-            openPage(currentPageIndex)
+            try openPage(currentPageIndex)
         }
     }
 
-    private func insertDateDividerIfNeeded(_ timestamp: Int32) {
+    private func insertDateDividerIfNeeded(_ timestamp: Int32) throws {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
         let key = dayFormatter.string(from: date)
         if key != lastDayKey {
             lastDayKey = key
             let text = dividerFormatter.string(from: date)
-            writeServiceBlock(id: nil, html: esc(text))
+            try writeServiceBlock(id: nil, html: esc(text))
             lastAuthorId = nil
         }
     }
 
-    public func appendService(id: Int32?, html: String, timestamp: Int32) {
-        rolloverIfNeeded()
-        insertDateDividerIfNeeded(timestamp)
-        writeServiceBlock(id: id, html: html)
+    public func appendService(id: Int32?, html: String, timestamp: Int32) throws {
+        try rolloverIfNeeded()
+        try insertDateDividerIfNeeded(timestamp)
+        try writeServiceBlock(id: id, html: html)
         lastAuthorId = nil
         lastTimestamp = timestamp
         messagesInCurrentPage += 1
     }
 
-    private func writeServiceBlock(id: Int32?, html: String) {
+    private func writeServiceBlock(id: Int32?, html: String) throws {
         let idAttr = id.flatMap { " id=\"message\($0)\"" } ?? ""
         let block = "<div class=\"message service\"\(idAttr)>\n<div class=\"body details\">\n\(html)\n</div>\n</div>\n"
-        write(block)
+        try write(block)
     }
 
-    public func appendMessage(_ message: ExportMessageModel) {
-        rolloverIfNeeded()
-        insertDateDividerIfNeeded(message.timestamp)
+    public func appendMessage(_ message: ExportMessageModel) throws {
+        try rolloverIfNeeded()
+        try insertDateDividerIfNeeded(message.timestamp)
 
         let joined = message.authorId != nil
             && message.authorId == lastAuthorId
@@ -322,7 +327,7 @@ public final class ChatExportHtmlWriter {
 
         html += "</div>\n</div>\n"
 
-        write(html)
+        try write(html)
 
         lastAuthorId = message.authorId
         lastTimestamp = message.timestamp
@@ -921,10 +926,25 @@ public final class ChatExportHtmlWriter {
 
     // MARK: - IO
 
-    private func write(_ string: String) {
-        guard let handle = handle, let data = string.data(using: .utf8) else {
-            return
+    private func write(_ string: String) throws {
+        guard let handle else {
+            throw CocoaError(.fileWriteUnknown)
         }
-        handle.write(data)
+        try Data(string.utf8).withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            guard let baseAddress = bytes.baseAddress else {
+                return
+            }
+            var offset = 0
+            while offset < bytes.count {
+                let written = Darwin.write(handle.fileDescriptor, baseAddress.advanced(by: offset), bytes.count - offset)
+                if written > 0 {
+                    offset += written
+                } else if written < 0 && errno == EINTR {
+                    continue
+                } else {
+                    throw NSError(domain: NSPOSIXErrorDomain, code: Int(written < 0 ? errno : EIO))
+                }
+            }
+        }
     }
 }

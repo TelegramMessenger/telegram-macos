@@ -102,7 +102,15 @@ public final class AppMenu {
         ModalMorphContextSource.registerOwner(view)
 
         if System.legacyMenu || self.menu.isLegacy {
-            NSMenu.popUpContextMenu(self.menu, with: event, for: view)
+            if #unavailable(macOS 12.0), view is TableRowView {
+                guard self.menu.numberOfItems > 0, let window = view.window else {
+                    return
+                }
+                let location = window.convertPoint(toScreen: event.locationInWindow)
+                self.menu.popUp(positioning: nil, at: location, in: nil)
+            } else {
+                NSMenu.popUpContextMenu(self.menu, with: event, for: view)
+            }
         } else {
             let controller = AppMenuController(self.menu, presentation: menu.presentation, holder: self, betterInside: menu.betterInside, appearMode: self.appearMode, parentView: view)
             

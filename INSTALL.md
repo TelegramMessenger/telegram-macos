@@ -121,7 +121,7 @@ committed; every machine builds it.
 ## 4. Build the app
 
 Open `Telegram-Mac.xcworkspace` in Xcode, not `Telegram.xcodeproj`. The workspace also
-contains the `RLottie_Xcode`, `CodeSyntax` and `Sparkle` projects that the app links,
+contains the `CodeSyntax` and `Sparkle` projects that the app links,
 and a bare `Telegram.xcodeproj` build cannot find them.
 
 Schemes:
@@ -140,6 +140,15 @@ xcodebuild -workspace Telegram-Mac.xcworkspace -scheme Telegram -configuration D
 
 The main app targets macOS 11.0 and the share extension macOS 10.13. Swift packages are
 resolved from the local paths in the workspace; no network access is needed.
+
+### Telegram-iOS compatibility
+
+The Telegram-iOS submodule points to the official upstream commit. The framework
+preparation applies `scripts/telegram-ios-macos.patch` to keep the Mac app's
+shared-core changes. If the frameworks are already built, run
+`sh scripts/prepare-telegram-ios.sh` before opening Xcode or resolving packages.
+Run `sh scripts/prepare-telegram-ios.sh --reverse` before checking out a different
+Telegram-iOS revision if the patch is applied.
 
 ### Generated TelegramApi sources
 
@@ -315,7 +324,7 @@ cd packages/TGUIKit && swift build
 - **`duplicate symbol '_rust_eh_personality'`**: tlottie was built with a different Rust
   toolchain than the engines. Delete `core-xprojects/tlottie/build` and rerun
   `sh core-xprojects/tlottie/build.sh`.
-- **RLottie or CodeSyntax not found**: you opened `Telegram.xcodeproj`. Open the
+- **CodeSyntax or Sparkle not found**: you opened `Telegram.xcodeproj`. Open the
   workspace instead.
 - **"The macOS deployment target 'MACOSX_DEPLOYMENT_TARGET' is set to 10.13, but the range
   of supported deployment target versions is 12.0 to 27.0.x"**: you are building with

@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECTS=(
     Telegram.xcodeproj/project.pbxproj
     submodules/CodeSyntax/CodeSyntax/CodeSyntax.xcodeproj/project.pbxproj
-    submodules/RLottie_Xcode/RLottie_Xcode.xcodeproj/project.pbxproj
     submodules/Sparkle/Sparkle.xcodeproj/project.pbxproj
     core-xprojects/OpenH264/OpenH264.xcodeproj/project.pbxproj
     core-xprojects/openssl/OpenSSLEncryption.xcodeproj/project.pbxproj

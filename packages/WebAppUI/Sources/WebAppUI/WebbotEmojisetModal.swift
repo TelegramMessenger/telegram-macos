@@ -37,6 +37,7 @@ import SwiftSignalKit
 import TelegramCore
 import Postbox
 import InlineStickerLayer
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     fileprivate let state: State
@@ -260,6 +261,7 @@ public func WebbotEmojisetModal(context: (any AccountContextProtocol), bot: Engi
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .botMiniAppEmojiStatusRequest
     
     controller.onDeinit = {
         complete(.fail)
