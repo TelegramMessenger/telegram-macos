@@ -144,6 +144,8 @@ struct Strings {
     let chatInputUnmute = "Unmute"
     let chatContextEnableNotifications = "Mute"
     let chatContextDisableNotifications = "Unmute"
+    let chatListContextMute = "Mute"
+    let chatListContextUnmute = "Unmute"
 }
 
 func strings() -> Strings {
@@ -203,6 +205,20 @@ struct ChatInteraction {
 func headerMenuItem(_ notificationSettings: TelegramPeerNotificationSettings, _ chatInteraction: ChatInteraction) -> (label: String, argument: Bool) {
     __HEADER_PRELUDE__
     return (__HEADER_LABEL__, __HEADER_ARGUMENT__)
+}
+
+func sidebarMenuItem(_ peerView: PeerView, _ state: ChatState) -> (label: String, muteInterval: Int32) {
+    let isMuted = __SIDEBAR_MUTED__
+    return (__SIDEBAR_LABEL__, __SIDEBAR_INTERVAL__)
+}
+
+func updatePeerMuteSetting(_ currentSettings: TelegramPeerNotificationSettings?, muteInterval: Int32) -> TelegramPeerNotificationSettings {
+    let previousSettings = currentSettings ?? TelegramPeerNotificationSettings.defaultSettings
+    if muteInterval == 0 {
+        return previousSettings.withUpdatedMuteState(.unmuted)
+    } else {
+        return previousSettings.withUpdatedMuteState(.muted(until: muteInterval == Int32.max ? Int32.max : now + muteInterval))
+    }
 }
 
 func chatToggleNotifications(_ isMuted: Bool?, peer: Peer, currentSettings: TelegramPeerNotificationSettings?, global: GlobalNotificationSettings) -> TelegramPeerNotificationSettings {
@@ -352,6 +368,30 @@ for kind in headerKinds {
             check("\(name): \(item.label) leaves the chat \(afterMuted ? "muted" : "unmuted")", afterMuted == (item.label == "Mute"))
             let afterInteraction = ChatInteraction(presentation: ChatState(notificationSettings: after, mutedByDefault: chatInteraction.presentation.mutedByDefault))
             check("\(name): after the click the menu reads \(item.label == "Mute" ? "Unmute" : "Mute")", headerMenuItem(after, afterInteraction).label != item.label)
+        }
+    }
+}
+
+let sidebarKinds: [Kind] = [.supergroup]
+
+for kind in sidebarKinds {
+    for enabled in [true, false] {
+        for (settingsName, settings) in settingsCases {
+            guard let settings = settings else {
+                continue
+            }
+            let name = "chat sidebar menu, \(kind.rawValue), category \(enabled ? "on" : "off"), \(settingsName)"
+            let globalSettings = global(for: kind, enabled: enabled)
+            let peer = Peer(kind)
+            let state = ChatState(notificationSettings: settings, mutedByDefault: chatMutedByDefault(peer: peer, globalNotificationSettings: globalSettings))
+            let item = sidebarMenuItem(PeerView(peer: peer, notificationSettings: settings), state)
+            let chatList = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: peer, peerSettings: settings)
+            check("\(name): the menu reads \(item.label), the chat list offers \(label(chatList))", item.label == label(chatList))
+            let after = updatePeerMuteSetting(settings, muteInterval: item.muteInterval)
+            let afterMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings.postboxAccessor, peer: peer, peerSettings: after)
+            check("\(name): \(item.label) leaves the chat \(afterMuted ? "muted" : "unmuted")", afterMuted == (item.label == "Mute"))
+            let afterItem = sidebarMenuItem(PeerView(peer: peer, notificationSettings: after), ChatState(notificationSettings: after, mutedByDefault: state.mutedByDefault))
+            check("\(name): after the click the menu reads \(item.label == "Mute" ? "Unmute" : "Mute")", afterItem.label != item.label)
         }
     }
 }

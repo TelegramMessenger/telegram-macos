@@ -11692,7 +11692,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         guard !context.isFrozen, let kind = chatSidebarKind(state), let peerView = currentPeerView,
               let channel = peerViewMainPeer(peerView) as? TelegramChannel else { return [] }
         let peerId = channel.id
-        let isMuted = (peerView.notificationSettings as? TelegramPeerNotificationSettings)?.isMuted == true
+        let isMuted = (peerView.notificationSettings as? TelegramPeerNotificationSettings)?.isRemovedFromTotalUnreadCount(default: state.mutedByDefault) == true
         let actions = ForumSidebarMenuPolicy.actions(kind: kind, canCreateTopics: channel.hasPermission(.createTopics), canInviteMembers: channel.hasPermission(.inviteMembers))
         let items = actions.map { action -> ContextMenuItem in
             switch action {

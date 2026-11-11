@@ -177,6 +177,13 @@ if not menu_match:
     print('the chat header menu item has an unexpected shape')
     raise SystemExit(2)
 
+sidebar = block(chat, 'private func forumSidebarMenuItems() -> [ContextMenuItem] {')
+sidebar_muted = re.search(r'\n\s*let isMuted = (?P<expr>[^\n]+)\n', sidebar)
+sidebar_item = re.search(r'case \.mute:\n\s*return ContextMenuItem\((?P<label>.+?), handler: \{ \[weak self\] in\n\s*guard let self else \{ return \}\n\s*_ = self\.context\.engine\.peers\.updatePeerMuteSetting\(peerId: peerId, threadId: nil, muteInterval: (?P<interval>[^\n]+?)\)\.start\(\)\n', sidebar)
+if not sidebar_muted or not sidebar_item:
+    print('the chat sidebar Mute item has an unexpected shape')
+    raise SystemExit(2)
+
 chat_default = re.search(r'present = present\.updatedNotificationSettings\(notificationSettings, mutedByDefault: (?P<expr>[^\n]+)\)\n', chat)
 chat_default_expr = chat_default.group('expr') if chat_default else 'false'
 chat_reads_settings = (
@@ -215,6 +222,7 @@ if all(path.exists() for path in (toggle_file, include_file, settings_file, reso
         ('isRemovedFromTotalUnreadCount matches TelegramCore', 'public func isRemovedFromTotalUnreadCount(`default`: Bool) -> Bool { switch self.muteState { case .unmuted: return false case .muted: return true case .default: return `default` } }' in core_settings),
         ('the chat list rule matches Postbox', 'let defaultValue = !globalSettings.defaultIncludePeer(peer) if let peerSettings = peerSettings { return peerSettings.isRemovedFromTotalUnreadCount(default: defaultValue) } else { return defaultValue }' in core_resolve),
         ('the toggle model matches TelegramCore', 'switch previousSettings.muteState { case .default: let globalNotificationSettings = transaction.getGlobalNotificationSettings() if resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalNotificationSettings, peer: peer, peerSettings: previousSettings) { updatedSettings = previousSettings.withUpdatedMuteState(.unmuted) } else { updatedSettings = previousSettings.withUpdatedMuteState(.muted(until: Int32.max)) } case .unmuted: updatedSettings = previousSettings.withUpdatedMuteState(.muted(until: Int32.max)) case .muted: updatedSettings = previousSettings.withUpdatedMuteState(.unmuted) }' in core_toggle),
+        ('the mute setter model matches TelegramCore', 'let muteState: PeerMuteState if let muteInterval = muteInterval { if muteInterval == 0 { muteState = .unmuted } else { let absoluteUntil: Int32 if muteInterval == Int32.max { absoluteUntil = Int32.max } else { absoluteUntil = Int32(Date().timeIntervalSince1970) + muteInterval } muteState = .muted(until: absoluteUntil) } } else { muteState = .default } let updatedSettings = previousSettings.withUpdatedMuteState(muteState)' in core_toggle),
         ('the category model matches TelegramCore', 'if peer is TelegramUser || peer is TelegramSecretChat { return settings.privateChats.enabled } else if peer is TelegramGroup { return settings.groupChats.enabled } else if let channel = peer as? TelegramChannel { switch channel.info { case .group: return settings.groupChats.enabled case .broadcast: return settings.channels.enabled } }' in core_include),
     ]
 else:
@@ -249,6 +257,9 @@ fixture = (Path(__file__).with_name('ProfileMuteCategoryTests.swift.in').read_te
            .replace('__HEADER_PRELUDE__', menu_prelude)
            .replace('__HEADER_LABEL__', menu_match.group('label'))
            .replace('__HEADER_ARGUMENT__', menu_match.group('argument'))
+           .replace('__SIDEBAR_MUTED__', sidebar_muted.group('expr'))
+           .replace('__SIDEBAR_LABEL__', sidebar_item.group('label'))
+           .replace('__SIDEBAR_INTERVAL__', sidebar_item.group('interval'))
            .replace('__BAR_FUNCTIONS__', '\n'.join(functions))
            .replace('__BAR_SITES__', '[' + ', '.join(f'("{name}", .{kind})' for name, kind, _ in sites) + ']')
            .replace('__SOURCE_CHECKS__', '\n'.join(f'    ("{name}", {"true" if passed else "false"}),' for name, passed in source_checks)))
