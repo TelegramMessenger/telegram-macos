@@ -95,7 +95,7 @@ public class ReplyModel: ChatAccessoryModel {
     
     public override weak var view:ChatAccessoryView? {
         didSet {
-            updateImageIfNeeded()
+            updateImageIfNeeded(updatesView: false)
         }
     }
     
@@ -132,7 +132,7 @@ public class ReplyModel: ChatAccessoryModel {
         return nil
     }
     
-    private func updateImageIfNeeded() {
+    private func updateImageIfNeeded(updatesView: Bool = true) {
         if let message = self.replyMessage, let updatedMedia = self.updatedMedia, let view = self.view {
             
             var imageDimensions: CGSize?
@@ -226,7 +226,9 @@ public class ReplyModel: ChatAccessoryModel {
         } else {
             self.view?.removeAccessoryImage()
         }
-        self.view?.updateModel(self, animated: false)
+        if updatesView {
+            self.view?.updateModel(self, animated: false)
+        }
     }
     
     public func make(with message:Message?, isLoading: Bool = true, display: Bool) -> Void {

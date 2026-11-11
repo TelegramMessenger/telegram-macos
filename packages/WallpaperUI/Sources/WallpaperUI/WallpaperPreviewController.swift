@@ -20,6 +20,7 @@ import TelegramIconsTheme
 import TelegramMediaUtils
 import ChatHistoryModel
 import PremiumUI
+import AppAnalytics
 
 private final class WallpaperActionButton : Control {
     private let glass: LiquidGlassView = LiquidGlassView(frame: .zero, cornerRadius: 999, hasShadow: true, hasBorder: true, forceAppearance: .forceDark)
@@ -1443,6 +1444,7 @@ public func WallpaperPreviewController(_ context: any AccountContextProtocol, wa
     }
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .appWallpaperPreview
 
     let hasShare: Bool
     switch initialWallpaper {

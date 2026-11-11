@@ -1602,7 +1602,7 @@ public class SelectPeersController: SelectPeersMainController<[PeerId], Void, Se
                 alert(for: context.window, info: strings().composeCreateGroupLimitError)
             }
             
-            let tokens = added.map {
+            let tokens = value.orderedSelected.filter { added.contains($0) }.map {
                 return SearchToken(name: value.peers[$0]?.compactDisplayTitle ?? strings().peerDeletedUser, uniqueId: $0.toInt64())
             }
             genericView.tokenView.addTokens(tokens: tokens, animated: animated)
@@ -1727,7 +1727,7 @@ public class SelectPeersController: SelectPeersMainController<[PeerId], Void, Se
     }
 
     public override func executeNext() {
-        onComplete.set(.single(Array(interactions.presentation.selected)))
+        onComplete.set(.single(interactions.presentation.orderedSelected))
     }
 
     deinit {
@@ -1819,7 +1819,7 @@ open class SelectPeersModalController : ModalViewController, Notifable {
                     }
                 } else {
 
-                    let tokens = added.map {
+                    let tokens = value.orderedSelected.filter { added.contains($0) }.map {
                         return SearchToken(name: value.peers[$0]?.compactDisplayTitle ?? strings().peerDeletedUser, uniqueId: $0.toInt64())
                     }
 
@@ -1898,7 +1898,7 @@ open class SelectPeersModalController : ModalViewController, Notifable {
         
         let peers: Signal<[Peer], NoError> = context.account.postbox.transaction { transaction in
             var peers:[Peer] = []
-            for peerId in selectedPeerIds {
+            for peerId in selectedPeerIds.sorted() {
                 if let peer = transaction.getPeer(peerId) {
                     peers.append(peer)
                 } else if peerId.namespace._internalGetInt32Value() == ChatListFilterPeerCategories.Namespace {
@@ -2019,7 +2019,7 @@ open class SelectPeersModalController : ModalViewController, Notifable {
     
     public override func returnKeyAction() -> KeyHandlerResult {
         if !interactions.presentation.peers.values.isEmpty {
-            self.confirmSelected(Array(interactions.presentation.selected), Array(interactions.presentation.peers.values))
+            self.confirmSelected(interactions.presentation.orderedSelected, Array(interactions.presentation.peers.values))
         }
         
         return .invoked
@@ -2046,7 +2046,7 @@ open class SelectPeersModalController : ModalViewController, Notifable {
         } else {
             return ModalInteractions(acceptTitle: behavior.okTitle ?? self.okTitle, accept: { [weak self] in
                 if let interactions = self?.interactions {
-                   self?.confirmSelected(Array(interactions.presentation.selected), Array(interactions.presentation.peers.values))
+                   self?.confirmSelected(interactions.presentation.orderedSelected, Array(interactions.presentation.peers.values))
                 }
             }, drawBorder: false, height: 50, singleButton: true, customTheme: { [weak self] in
                 return self?.modalTheme ?? .init()

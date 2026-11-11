@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -17,29 +18,38 @@ public struct StatisticsHooks {
     public let makeStarMonetizationController: (any AccountContextProtocol, PeerId) -> ViewController
     public let makeBoostStatsController: (any AccountContextProtocol, PeerId) -> ViewController
     public let openPeerInfo: (any AccountContextProtocol, PeerId) -> Void
-    public var openPeerInfoWithContext: ((any AccountContextProtocol, PeerId) -> Void)?
-    public func openPeerInfoObserved(_ context: any AccountContextProtocol, _ peerId: PeerId) {
+    public var openPeerInfoWithContext: ((any AccountContextProtocol, PeerId, AnalyticsContext) -> Void)?
+    public func openPeerInfoObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         if let openPeerInfoWithContext {
-            openPeerInfoWithContext(context, peerId)
+            openPeerInfoWithContext(context, peerId, origin)
         } else {
             openPeerInfo(context, peerId)
         }
     }
     public let makeSharedRowItem: (NSSize, AnyHashable, any AccountContextProtocol, StoryStatsPublicForwardsContext.State.Forward, GeneralViewType, @escaping () -> Void) -> TableRowItem
     public let openMessage: (any AccountContextProtocol, MessageId) -> Void
-    public var openMessageWithContext: ((any AccountContextProtocol, MessageId) -> Void)?
-    public func openMessageObserved(_ context: any AccountContextProtocol, _ message: EngineMessage) {
+    public var openMessageWithContext: ((any AccountContextProtocol, MessageId, AnalyticsContext) -> Void)?
+    public func openMessageObserved(_ context: any AccountContextProtocol, _ message: EngineMessage, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: message.containsSecretMedia ? Analytics.shared.unresolvedContext() : analyticsContext)
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         if let openMessageWithContext {
-            openMessageWithContext(context, message.id)
+            openMessageWithContext(context, message.id, origin)
         } else {
             openMessage(context, message.id)
         }
     }
     public let showStory: (any AccountContextProtocol, PeerId, Int32) -> Void
-    public var showStoryWithContext: ((any AccountContextProtocol, PeerId, Int32) -> Void)?
-    public func showStoryObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ storyId: Int32) {
+    public var showStoryWithContext: ((any AccountContextProtocol, PeerId, Int32, AnalyticsContext) -> Void)?
+    public func showStoryObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ storyId: Int32, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         if let showStoryWithContext {
-            showStoryWithContext(context, peerId, storyId)
+            showStoryWithContext(context, peerId, storyId, origin)
         } else {
             showStory(context, peerId, storyId)
         }

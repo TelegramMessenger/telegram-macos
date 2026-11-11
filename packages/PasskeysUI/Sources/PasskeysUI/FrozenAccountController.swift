@@ -15,6 +15,7 @@ import DateUtils
 import TelegramIconsTheme
 import TelegramCore
 import Postbox
+import AppAnalytics
 
 private final class HeaderItem: GeneralRowItem {
     fileprivate let title: TextViewLayout
@@ -292,6 +293,7 @@ public func FrozenAccountController(context: any AccountContextProtocol) -> Inpu
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .appFrozenAccount
     
     getController = { [weak controller] in
         return controller

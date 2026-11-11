@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -694,6 +695,7 @@ public func StarNftOfferController(context: (any AccountContextProtocol), peer: 
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     let controller = InputDataController(dataSignal: signal, title: strings().starGiftOfferTitle)
+    controller.analyticsScreen = .giftsOffer
     
     controller.validateData = { _ in
         

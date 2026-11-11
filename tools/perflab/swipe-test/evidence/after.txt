@@ -1,0 +1,80 @@
+Test Suite 'Selected tests' started at 2026-10-26 1:45:40.264 PM.
+Test Suite 'TwidgetRendererTests.xctest' started at 2026-10-26 1:45:40.267 PM.
+Test Suite 'ScrollLayerTests' started at 2026-10-26 1:45:40.267 PM.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testClipOverflowDoesNotBecomeAScrollContainerForStickyContent]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testClipOverflowDoesNotBecomeAScrollContainerForStickyContent]' passed (0.026 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testFixedScrollerEscapesOrdinaryAncestorOverflowClip]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testFixedScrollerEscapesOrdinaryAncestorOverflowClip]' passed (0.001 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testFixedScrollerInsideTransformStaysWithinOuterClip]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testFixedScrollerInsideTransformStaysWithinOuterClip]' passed (0.001 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testHiddenOverflowAcceptsScriptsAndPassesWheelGesturesToItsParent]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testHiddenOverflowAcceptsScriptsAndPassesWheelGesturesToItsParent]' passed (0.152 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testHiddenScrollerKeepsItsLayerWithoutFlashingAnIndicator]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testHiddenScrollerKeepsItsLayerWithoutFlashingAnIndicator]' passed (0.136 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testInitialScrollRequestsWaitForTheirNewContainerLayout]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testInitialScrollRequestsWaitForTheirNewContainerLayout]' passed (0.004 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testInvalidatedPendingScrollTileRetriesWithLatestDocument]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testInvalidatedPendingScrollTileRetriesWithLatestDocument]' passed (0.009 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testNestedScrollRefreshesCachedAncestorAndHitRegion]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testNestedScrollRefreshesCachedAncestorAndHitRegion]' passed (0.010 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testNewScrollLayerShowsVisibleTilesInItsFirstCommit]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testNewScrollLayerShowsVisibleTilesInItsFirstCommit]' passed (0.001 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testOffsetsClampAndDriveHitTesting]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testOffsetsClampAndDriveHitTesting]' passed (0.002 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRemovedScrollLayerSkipsQueuedRasterWork]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRemovedScrollLayerSkipsQueuedRasterWork]' passed (0.001 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testResizedClipRestoresWheelScrollingWithoutAProgrammaticOffset]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testResizedClipRestoresWheelScrollingWithoutAProgrammaticOffset]' passed (0.002 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testResizingClipsStopRetilingAndRecoverLayersForScriptedScrolling]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testResizingClipsStopRetilingAndRecoverLayersForScriptedScrolling]' passed (0.013 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRevealAlignmentAndNearestEdges]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRevealAlignmentAndNearestEdges]' passed (0.000 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRevealNewTargetInNestedScrollers]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRevealNewTargetInNestedScrollers]' passed (0.004 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRubberBandingResistsAndSettles]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testRubberBandingResistsAndSettles]' passed (0.000 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollContentRastersInContentCoordinates]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollContentRastersInContentCoordinates]' passed (0.003 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollersReportViewportAndContent]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollersReportViewportAndContent]' passed (0.002 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollHitViewportRespectsEveryClippingAncestor]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollHitViewportRespectsEveryClippingAncestor]' passed (0.001 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollingInsidePromotedModalRefreshesItsPixels]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollingInsidePromotedModalRefreshesItsPixels]' passed (0.018 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollingMovesPromotedDescendantsWithTheirContents]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollingMovesPromotedDescendantsWithTheirContents]' passed (0.038 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollOnlyBatchesMoveContentWithoutRebuildingLayout]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollOnlyBatchesMoveContentWithoutRebuildingLayout]' passed (0.003 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollRequestsUseUpdatedGeometryAndPreserveOrder]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollRequestsUseUpdatedGeometryAndPreserveOrder]' passed (0.003 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollTileSamplingPreservesTranslucentContentAtTileBoundaries]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testScrollTileSamplingPreservesTranslucentContentAtTileBoundaries]' passed (0.571 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testSmoothRevealMovesDocumentAndCanBeInterrupted]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testSmoothRevealMovesDocumentAndCanBeInterrupted]' passed (1.283 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testTrackpadGesturesScrollRubberBandAndSettle]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testTrackpadGesturesScrollRubberBandAndSettle]' passed (0.038 seconds).
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testWheelOutsideClippedScrollerLeavesItsOffsetUnchanged]' started.
+Test Case '-[TwidgetRendererTests.ScrollLayerTests testWheelOutsideClippedScrollerLeavesItsOffsetUnchanged]' passed (0.001 seconds).
+Test Suite 'ScrollLayerTests' passed at 2026-10-26 1:45:42.594 PM.
+	 Executed 27 tests, with 0 failures (0 unexpected) in 2.323 (2.328) seconds
+Test Suite 'SwipeWidgetRegressionTests' started at 2026-10-26 1:45:42.594 PM.
+Test Case '-[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets]' started.
+Test Case '-[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets]' passed (2.784 seconds).
+Test Suite 'SwipeWidgetRegressionTests' passed at 2026-10-26 1:45:45.379 PM.
+	 Executed 1 test, with 0 failures (0 unexpected) in 2.784 (2.784) seconds
+Test Suite 'TwidgetRendererTests.xctest' passed at 2026-10-26 1:45:45.379 PM.
+	 Executed 28 tests, with 0 failures (0 unexpected) in 5.107 (5.112) seconds
+Test Suite 'Selected tests' passed at 2026-10-26 1:45:45.379 PM.
+	 Executed 28 tests, with 0 failures (0 unexpected) in 5.107 (5.115) seconds
+SWIPE BEFORE enabled=true vertical overflow=hidden/auto viewport=(12.0, 38.0, 336.0, 170.0) regions=[(14.0, 40.0, 332.0, 166.0), (14.0, 268.0, 332.0, 101.0)]
+SWIPE AFTER enabled=true vertical offset=(0.0, 234.0) JS=Vertical offset: 234 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false
+SWIPE BEFORE enabled=true horizontal overflow=auto/hidden viewport=(12.0, 266.0, 336.0, 105.0) regions=[(14.0, 40.0, 332.0, 166.0), (14.0, 268.0, 332.0, 101.0)]
+SWIPE AFTER enabled=true horizontal offset=(240.0, 0.0) JS=Horizontal offset: 240 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false
+SWIPE BEFORE enabled=false vertical overflow=hidden/hidden viewport=(12.0, 38.0, 336.0, 170.0) regions=[]
+SWIPE AFTER enabled=false vertical offset=(0.0, 0.0) JS=Vertical offset: 0 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false
+SWIPE BEFORE enabled=false horizontal overflow=hidden/hidden viewport=(12.0, 266.0, 336.0, 105.0) regions=[]
+SWIPE AFTER enabled=false horizontal offset=(0.0, 0.0) JS=Horizontal offset: 0 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false
+SWIPE BEFORE enabled=true vertical overflow=hidden/auto viewport=(12.0, 38.0, 336.0, 170.0) regions=[(14.0, 268.0, 332.0, 101.0), (14.0, 40.0, 332.0, 166.0)]
+SWIPE AFTER enabled=true vertical offset=(0.0, 234.0) JS=Vertical offset: 234 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false
+SWIPE BEFORE enabled=true horizontal overflow=auto/hidden viewport=(12.0, 266.0, 336.0, 105.0) regions=[(14.0, 268.0, 332.0, 101.0), (14.0, 40.0, 332.0, 166.0)]
+SWIPE AFTER enabled=true horizontal offset=(240.0, 0.0) JS=Horizontal offset: 240 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false

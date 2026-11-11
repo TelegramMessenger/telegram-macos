@@ -16,6 +16,7 @@ import DateUtils
 import TelegramIconsTheme
 import Postbox
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class PasskeyRowItem : GeneralRowItem {
@@ -609,6 +610,7 @@ public func PasskeysController(context: any AccountContextProtocol, passkeys: [T
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().passkeysTitle)
+    controller.analyticsScreen = .settingsPrivacyPasskeys
     
     getController = { [weak controller] in
         return controller

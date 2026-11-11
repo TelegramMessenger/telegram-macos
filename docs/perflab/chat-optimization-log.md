@@ -193,5 +193,326 @@ Second follow-up: replies to copy-protected messages stay `ChatAccessoryView`s (
 
 Parity, photos per path: Saved Messages 11 (47/47 and 46/46 stable rows identical), "Telegram macOS Talk" 17 (44/45 and 44/46; the differences are the known animated rows, diff boxes on the sender's animated emoji status and the "100" reaction). A 1 pt image shift (`-PerfLabParityMutateMedia 1`) is caught on 10 photo rows, the 11th unstable in that run. Gallery snapshots (`copy()` on both paths for the same item, compared by frame, clipping, rasterization and image pixels): 11/11 and 16/16 identical. `photoLayers` / `photoViews` count the hosts on each path.
 
-Not yet done: video and GIF thumbnails on the same layer (`evidence/2026-10-19-video-thumbnail-layer-wip/video-thumbnail-layer.patch`). It builds, but has no parity run yet. With the image as a layer, "directly above the image" for the autoplay and live-photo players becomes "first subview" (`placeAboveImage` / `isPlacedAboveImage`), so they stay under the duration badge and progress views. Verify with `photoLayers`-style `videoLayers` / `videoViews` counters before applying.
+Video and GIF thumbnails (`TelegramMediaFile` with `isVideo` or `isAnimated`) now use the same layer, under the same conditions (not protected, not a spoiler, not secret media). With the image as a layer, "directly above the image" for the autoplay and live-photo players becomes "first subview" (`placeAboveImage` / `isPlacedAboveImage`), so they stay under the duration badge and progress views; the thumbnail layer is at `zPosition` -1 either way. The parity lab counts the hosts (`videoLayers` / `videoViews`), lists each video row's outcome (`videoRows` note), includes video rows in the gallery snapshot comparison and names the rows whose snapshots differ (`snapshot` note). When a chat title is not in the local store (a fresh login keeps only part of the chat list), the lab falls back to the server search, own chats first.
 
+Parity, "Telegram macOS Talk", 49 rows, 7 video/GIF rows (14 hosts per path): 42/43 stable rows identical, every video row identical; the one difference is row 27, a text row whose sender's animated emoji status landed on another frame (268 pixels, all inside the status emoji; `nativeStatic`). Gallery snapshots 23/23 identical, video rows included. Saved Messages 5/5 (no video rows in this account's local history). A 1 pt image shift (`-PerfLabParityMutateMedia 1`) is caught on 6 of 7 video rows, the 7th unstable in that run (GIF playing), and on the photo rows as before.
+
+
+## 2026-10-19: finding, glass date pills relayout on every scroll step (not changed)
+
+A `sample` profile of "Telegram macOS Talk" at 2400 pt/s showed about 70 % of the window layout pass in SwiftUI (`AG::Graph` updates) inside `_NSCoreHostingView<RootView>`, the host inside `NSGlassEffectView`. By layout depth it is the glass of the date pills that are rows in the table (`ChatDateStickView` → `LiquidGlassView` → `AdaptiveGlassEffectView`), 533 samples, against 37 for the sticky header's glass, which does not move in the window. An lldb breakpoint on `-[NSView setNeedsLayout:]` for hosting views shows why: every clip-view scroll step (`translateOriginToPoint:`) posts AppKit's geometry-in-window notification down the document, the glass host observes it and invalidates its view graph, and the next display cycle lays it out again. This is AppKit's glass behavior, not a call from our code (the DEBUG `tg_swizzled_setFrame` detector is a pass-through).
+
+`-PerfLabDateBlur 1` (DEBUG) builds the date pills with `LiquidGlassView(forceBlur: true)`, the existing blur fallback, to measure the ceiling. Interleaved A/B, 3 rounds × 2 passes: glass 20.69 / 20.96 / 20.55 % main, blur 19.59 / 19.67 / 19.65 % (mean −1.1 points, −5 %); hitches, worst frame, process CPU and GPU unchanged. Dropping glass from in-table pills changes how they look, so it is left as a design decision.
+
+Follow-up, 16,000 pt/s fling (optimized build, 3 passes each, `sample` of the same window): glass 31.46 % main thread (median), hitches 42.2 %; blur 28.02 % main thread, hitches 32.6 %. In the profiles window layout (`___NSViewLayout_block_invoke`) drops from 6.6 % to 0.6 % and SwiftUI frames disappear (2,367 lines → 2), CA commit 25.9 % → 21.5 %, `prepareContentInRect` 8.2 % → 5.7 %. In a fling the pills are the largest single cost a chat row adds; the decision is still a design one.
+
+A standalone probe (10 `NSGlassEffectView`s over a striped background, 400 steps, time to display and flush each step) separates moving glass from glass being scrolled: no glass 0.46 ms per step, glass inside a scrolled document 1.9–2.2 ms, the same glass in a non-scrolling overlay with its frame origin moved 2.3–2.5 ms, and the overlay moved by its layer's `sublayerTransform` 0.10 ms, with screenshots of the last two pixel-identical. Any glass whose AppKit geometry in the window changes is laid out again through SwiftUI; glass moved by Core Animation alone is not. That keeps a look-preserving option open: draw the in-table pills' glass in a layer between the wallpaper and the table, translated by the scroll offset, with the pill text left in the row. It was not built: the glass would have to follow every row animation (history merges, the animated scroll when a message arrives, insert springs, the hover-expand width), which Telegram drives with Core Animation on the rows themselves.
+
+## 2026-10-19: ChatRowItem.leftInset without copying the history entry
+
+Profiles from here on use an optimized build of the Debug configuration (`SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule`, so the DEBUG labs are kept); the -Onone build overstates Swift getters. In that build the remaining app-side scroll cost is small (`TableView.updateScroll` 1.2 % of main-thread samples, `ChatRowView.set(item:)` 0.3 %); AppKit's tracking-area walk (2.2 %), window layout (3.1 %, mostly the glass date pills above) and display dominate. Tracking areas are marked dirty about 71 times per pass, all by new rows, row frames and sticky-header rebinds.
+
+`leftInset` is read for every floating-avatar group on every scroll step and read `entry.additionalData.monoforumState`, which copied the whole `ChatHistoryEntry` each time. Whether the entry has a vertical monoforum is now stored when the item is created (the entry, `isIncoming` and `renderType` never change afterwards). `sample`, "Telegram macOS Talk" at 2400 pt/s, same pass: `leftInset` 24 → 3 samples, entry copies 12 → 4 (about 0.1 % of the main thread; below run-to-run noise in macro metrics).
+
+Follow-up, 16,000 pt/s fling (optimized build): the remaining `ChatHistoryEntry` copies came from `effectiveCommentMessage` (a `switch entry`, read by `hasPhoto` and others on every bind and layout) and `stableId`. Both depend only on the entry, so they are now stored when the item is created; `stableId` stays an overridable property. `sample` of the same fling, main thread: `effectiveCommentMessage` 17 → 0 samples, `stableId` 6 → 0, `entry` getter 20 → 3, entry copies 15 → 3. Parity in the same build: 39/41 stable rows identical, the two differences are the known animated emoji status (row 14) and the animated "100" reaction (row 35).
+
+Follow-up, reaction and avatar binds: `NSFont.avatar(_:)` checked the shared font cache but never stored into it, and that cache is only prefilled for whole sizes 10–19, while avatars ask for `height / 3 + 3` (9.67 for a 20 pt reaction avatar). Every avatar layer, including each reaction-chip avatar on every bind, built a rounded bold font through a font descriptor. Avatar fonts for other sizes are now kept in their own cache behind a lock (the font can be requested off the main thread). 16,000 pt/s fling, `sample`, main thread: `NSFont.avatar` 13 → 1 samples, `AvatarContentLayer.init` 26 → 10.
+
+Checked, not changed: in a 16,000 pt/s fling profile, 1.6 % of main-thread samples built chat items (`prepareEntries` → `makeItem`) on the main thread. The scroll lab now reports `mainThreadItems` per pass (counted from the start of the pass): 0 in every fling pass, while history merges (8–11 per pass, about 70 rows swapped each) are prepared on the history queue. The main-thread builds come from the lab's `scrollToLatest` between passes, an `.Initial` reload that is prepared on the main queue on purpose (`prepareOnMainQueue`), as the scroll-to-bottom button does.
+
+## 2026-10-19: where chat row time stands (optimized build, main thread, `sample`)
+
+| Scenario | Row bind (`ChatRowView.set`) | Row insertion (`_addRowViewForVisibleRow`, includes bind) | Largest other cost |
+|---|---|---|---|
+| "Telegram macOS Talk" scroll, 2400 pt/s | 0.3–0.4 % | ~1 % | glass date pills' SwiftUI layout 2.0 %, tracking areas 2.0–2.2 % |
+| Same chat, 16,000 pt/s fling | 1.5–2.3 % | 5.7–6.8 % | Core Animation commit 23–27 %, window layout 4.6–5.2 % |
+| Chat open, 12 opens | ~5 ms per open (`rowViewForRow`) | — | navigation push and view insertion; glass SwiftUI layout 1.4 % |
+
+Checked and left: batching floating-avatar detaches (updates almost always move one avatar, no change in a fling profile, reverted); an incremental node index for `ChatLayerNode.setChildren` (at most ~0.2 % of a fling, in tree code every row uses); `TableRowView.cursorUpdate` forwarding (0.35 %); AppKit's key-view-loop layout on row insertion (layout the pass does anyway). Earlier sample totals in this log that came from a parser counting every thread were re-checked against the main thread alone; the numbers above and in the entries today are main-thread counts.
+
+## 2026-10-19: reaction avatar clip images and the right view's blur view
+
+Reaction-chip avatars (`AvatarContentLayer`, `AvatarContentView`) drew a second, clipped copy of every avatar with Core Graphics on the main thread on each bind, even when the avatar came from the memory cache (the cached signal emits synchronously). The clipped image is now kept in an `NSCache` keyed by the source image, frame size, inset and scale; the entry keeps its source image so a hit is checked by identity. `ChatRightView` created and removed an `NSVisualEffectView` whenever a reused row switched between a blurred media row and a plain row; the view is now hidden and shown, and `canHostContent` ignores it, so plain rows still host the right view in the row layer. 16,000 pt/s fling, `sample`, main thread: `AvatarContentLayer.init` 23 → 6 samples, `fillReactions` 69 → 34, `blurBackground` setter 11 → 1, `ChatRowView.set(item:)` 213 → 170 (1.9 → 1.5 %). Parity twice in the same build: 40 and 43 stable rows identical, the one difference both times is the animated "100" reaction (row 35); hosted right views 84 and reaction-chip hit tests 50/50, as before.
+
+## 2026-10-19: reuse floating avatar nodes
+
+A 16,000 pt/s fling pass in "Telegram macOS Talk" creates and removes about 463 floating avatars (each group gets a new `ChatFloatingAvatar` when the visible grouping changes). Layer-based avatar nodes removed from a scene (after the fade, when animated) now go to a pool of up to eight on `ChatControllerView`, and new node avatars take one from it; the context menu is reset on reuse, and `AvatarImageLayer.setPeer` already clears the image when the peer changes (and skips work when it is the same peer). The scroll lab reports `floatingReuses`: 409–411 of 463 creates per pass. `sample`, main thread: `ChatFloatingAvatarNode.init` 11 → 0 samples, `ChatFloatingAvatar.init` 51 → 37, `collectFloatingPhotos` 140 → 112. `floatparity` 10 equal, 0 different (avatar hit checks 59/88, the same as before the change: the misses are points under glass bars and date pills or just off screen), row parity 52 equal with the known animated reaction (row 35) and an autoplaying video (row 19) different.
+
+## 2026-10-19: sticky header bookkeeping without class-name strings
+
+`TableView.updatePrimaryStickAfterScroll` (and its secondary twin) runs on every scroll step and compared classes through `NSObject.className`, which builds a string with `NSStringFromClass` per call, for every table subview and the candidate rows. One of those comparisons matched subview class names against the stick *item* class, so it never matched and the sticky view was re-added below the scroller on every step. Item checks now use `isMember(of:)`, view checks compare `object_getClass`, the position check looks for the sticky view itself, and the scroller search drops the clause that could not match. 16,000 pt/s fling, `sample`, main thread: `updatePrimaryStickAfterScroll` 49 → 37 samples, `NSStringFromClass` 13 → 0. Snapshots of the same chat show the sticky date pills as before.
+
+## 2026-10-19: one floating-avatar pass per scroll step
+
+Each scroll step positioned floating avatars twice: `scrollDidUpdate` (from `scrollDidChangedBounds`) ran `updateFloatingPhotos` with the current grouping, and when the visible range changed the range listener then regrouped in `collectFloatingPhotos` and positioned them again, so the first pass placed and moved avatars for groups that were replaced before the frame was drawn. `scrollDidUpdate` now goes through `collectFloatingPhotos`, which regroups first when the visible range or its edge messages changed and otherwise goes straight to the same positioning. 16,000 pt/s fling, `sample`, main thread: `ChatControllerView.updateFloating` 134 → 99 samples, `TableView.updateScroll` 291 → 266 (the per-step range check adds a little to `collectFloatingPhotos`). `floatparity` 10 equal, 0 different; row parity 54 equal, 0 different; floating avatar counters per pass unchanged within noise.
+
+## 2026-10-19: correction, the glass date pills cost nothing measurable outside a profiler
+
+The fling numbers in the glass follow-up above (glass 31.46 % main thread and 42.2 % hitches against blur 28.02 % and 32.6 %) were taken while `sample` was attached, and they do not hold without it. Interleaved runs without a profiler, optimized build, "Telegram macOS Talk":
+
+| Run | 16,000 pt/s fling (3 passes) | 2400 pt/s scroll (2 passes) |
+|---|---|---|
+| glass | 31.18 / 31.18 % main, hitches 1.37 / 1.30 % | 19.80 / 20.22 / 21.23 % main, hitches 0.25 % |
+| blur | 31.09 / 31.20 % main, hitches 1.36 / 1.17 % | 19.62 / 20.82 / 20.99 % main, hitches 0.23–0.32 % |
+
+The differences are inside run-to-run drift (the 2400 pt/s rounds drift by 1.4 points from round to round, more than any mode difference). `sample` suspends the process about every millisecond, and under it the fling hitch rate rises from about 1.3 % to about 40 %, so profiles still rank where main-thread work goes, but timing comparisons between modes have to come from runs without it. The earlier −1.1 point scroll result for blur was a single interleaved set and is not reproduced here.
+
+A look-preserving prototype was also built and dropped: the in-table pills' glass drawn in a DEBUG overlay between the wallpaper and the table and moved with a layer `sublayerTransform`, with the row's own glass taken out of the document and the overlay's glass views pooled. It cut window layout under `sample` from 6.6 % to 3.6 % and hosting-view invalidations from 27 to 9 in a 15 s lldb window, but without a profiler it measured the same as glass and blur (fling 31.24 / 31.43 % main, scroll 19.72 / 21.27 / 21.38 %), so it was removed rather than committed.
+
+## 2026-10-19: item building on the history queue
+
+Chat items are built and measured off the main thread, and a 16,000 pt/s fling spends about 140 samples there in `makeItem` (all threads, `sample`). Three costs in it were repeated work:
+
+- `stringForMediumDate` (the "edited" label's date) created a `DateFormatter` and formatted a time on every call, then returned `DateUtils.string(forLastSeen:)` for any past date without using it. The formatter is now created only for future dates. 19 → 2 samples; `ChatRowItem.init` 53 → 36.
+- `ChatRowItem.reactionsLayout` kept a built layout but not a missing one, so for messages without reactions every access copied the entry, checked `unsupported` and computed `effectiveReactions` again. It now remembers "no layout" when the reason cannot change (log, fake or saved-messages entry, unsupported message, no reactions on the message); a missing `available` reactions list is still checked again because it loads later. 10 → 8 samples, so most items read it once.
+- `NSAttributedString.trimNewLinesToSpace` (reply previews and others) compiled the `\n` regular expression on each call; it is compiled once.
+
+Parity 45 equal, 0 different; `floatparity` 10 equal, 0 different (avatar hit checks 58/88).
+
+The timing baseline moved during this session for reasons outside the code: with no profiler, the 16,000 pt/s fling now drops frames (about 1,250 frames per pass instead of 1,516, hitches about 19 %) and the 2400 pt/s scroll hitches about 0.9 %, with main-thread busy unchanged or lower and no thermal warning recorded. A rebuild of the parent commit measured the same (fling 19.72 % hitches, 29.60 % main; scroll 0.98 %, 16.75 %) as this change (fling 18.52 %, 30.64 %; scroll 0.87 %, 17.89 %), so compare later runs against a baseline taken in the same sitting.
+
+## 2026-10-19: row insertion and removal, notification observers and pointer tracking
+
+Rows that scroll out are removed from the table and rows that scroll in are added, and part of that cost was app code reacting to the window change:
+
+- `AnimatableContentObserver` (media rows' content listeners) unregistered with `NotificationCenter.removeObserver(_:)`, which scans every registration in the process. It now removes the name and object pairs it added, holding the objects weakly, and falls back to the full removal if one of them is gone. A new test detaches and reattaches a view in a different scroll view and checks that only the current one is followed.
+- `ChatLayerSceneView.updateTrackingAreas` removed the pointer tracking area whenever a scene left the window and created a new one when it came back. The area is now kept while the scene is out of a window; AppKit keeps tracking areas with the view.
+
+16,000 pt/s fling, `sample`, main thread: `_CFXNotificationRemoveObservers` 41 → 19 samples, `ChatLayerSceneView.updateTrackingAreas` 21 → 11, `_NSTrackingAreaAKViewHelper addTrackingArea:` 35 → 25. The scroll lab now reports `scenesTracking` and `scenesMissingTracking` (visible scenes that should track the pointer and whether their area is installed): 6 and 0 after every pass. Parity 45 equal, 0 different; `floatparity` 10 equal, 0 different (avatar hit checks 59/88).
+
+## 2026-10-19: keep `Control` tracking areas out of the window
+
+`Control.updateTrackingAreas` had the same pattern as the layer scenes: it removed its tracking area when the control left the window and created one when it came back, for every control in every row that scrolls in. It now keeps the area while the control is out of a window and still removes it in a window when `visibleRect` is empty. The scroll lab's tracking check now also counts visible `Control`s in the table without a tracking area: 7 tracked, 0 missing after every pass (scenes 6 and 0). 16,000 pt/s fling, `sample`, main thread: `addTrackingArea:` 25 → 15 samples, `Control.updateTrackingAreas` 16 → 8, row `addSubview` 112 → 93. Parity 45 equal, 0 different; `floatparity` 10 equal, 0 different (avatar hit checks 59/88).
+
+## 2026-10-19: one accessory update when a reply view is attached
+
+Assigning `ReplyModel.view` ran `ChatAccessoryView.updateModel` twice: the base `ChatAccessoryModel.view` observer removes the accessory image and updates the view, then `ReplyModel`'s observer adds the reply thumbnail and updated the view again. `updateModel` does not read the thumbnail, so the second update repeated the first. `updateImageIfNeeded` now skips it when called from the view observer; frame changes still update the view. A first attempt skipped the base update instead and was dropped: the thumbnail layer was then created before the gift pattern layers and parity showed the pattern drawn over the thumbnail (row 44, a reply to a video with a pattern). 16,000 pt/s fling, `sample`, main thread: `ChatAccessoryView.updateModel` 20 → 14 samples, `ChatRowView.fillReply` 40 → 31, `ChatRowView.set(item:)` 186 → 161. Parity twice: 45 and 43 equal, 0 different.
+
+## 2026-10-19: the pointer over the chat, and cursor updates during scrolling
+
+The jump in fling hitches recorded above (about 1.3 % to about 19 % with the same main-thread time, in the parent build too) was the mouse pointer, which had come to rest over the chat window. The scroll lab now takes `-PerfLabCursor inside|outside` to place the pointer at the table's centre or beside the window before each pass, and reports `cursorInWindow`. Same build, 16,000 pt/s fling: outside 0.46 % hitches, 28.51 % main; inside 17.46 %, 29.48 %.
+
+With the pointer still and rows moving under it, every tracking area with `.cursorUpdate` that passes the pointer posts a cursor-update event, and `-[NSApplication sendEvent:]` routes each one through `routeCursorRect` → `_NSFindWindowUnderMouse` → `SLSCopyWindowRoutingRecordsForScreenLocation`, a synchronous WindowServer call (12 % of main-thread samples in a sampled fling; type 17 at a breakpoint there). The app now runs as `TGApplication` (TGUIKit, created in `main.swift` before `NSApplicationMain`), which keeps only the latest cursor update while a `ScrollView` has received a scroll event in the last 0.1 s and delivers it when scrolling stops. The cursor after a scroll is the one the last update set, as before; hover still follows entered and exited events. The lab reports `cursorUpdatesDeferred` and `cursorUpdatesDelivered`: about 1,200 deferred and 1 delivered per pass with the pointer inside.
+
+| Run, pointer inside | Hitches | Main thread |
+|---|---|---|
+| 16,000 pt/s fling, before | 17.46 % | 29.48 % |
+| 16,000 pt/s fling, after | 2.08 % | 30.98 % |
+| 2400 pt/s scroll, before | 0.87–0.98 % | 17.9 % |
+| 2400 pt/s scroll, after | 0.35 % | 18.74 % |
+
+With the pointer outside: fling 0.39 % (0.46 % before). Parity 43 equal, 0 different; `floatparity` 10 equal, 0 different (avatar hit checks 59/88). Timing comparisons from here on should state the pointer placement.
+
+## 2026-10-19: one pressure configuration for every table row
+
+With cursor updates deferred, the rest of the cost of a pointer over the chat was `-[_NSTrackingAreaAKManager _updateActiveTrackingAreasForWindowLocation:]` → `_updateTrackpadBehavior` → `SLSTrackingRegionSetForceConfig`, another synchronous WindowServer call (6.9 % of main-thread samples in a sampled fling with the pointer inside). `_updateTrackpadBehavior` takes the pressure configuration of the active tracking area's view and calls WindowServer when it is a different object from the last one. Every `TableRowView` created its own `NSPressureConfiguration(pressureBehavior: .primaryDeepClick)`, so each row passing under the pointer counted as a change. Rows now share one configuration object; the behaviour is the same deep click.
+
+| Run | Hitches | Main thread | CPU cores |
+|---|---|---|---|
+| 16,000 pt/s fling, pointer inside, before | 2.08 % | 30.98 % | 0.68 |
+| 16,000 pt/s fling, pointer inside, after | 0.52 % (0.58 %, 0.20 % in two more runs) | 28.42 % | 0.59 |
+| 16,000 pt/s fling, pointer outside, after | 0.65 % | 27.02 % | 0.58 |
+| 2400 pt/s scroll, pointer inside, after | 0.38 % | 18.54 % | 0.27 |
+
+With the pointer inside the chat a fling now hitches as little as with the pointer outside. Parity: 40 equal with rows 7 and 19 different (both videos, reported as `layerAnimates`), then 43 equal with the animated reaction row (35) different; `floatparity` 12 equal, 0 different.
+
+## 2026-10-19: correction, the cursor-update deferral is not needed, and a bind-step probe
+
+After rows shared one pressure configuration, the scroll lab counted no cursor-update events at all with the pointer inside the chat (`cursorUpdatesDeferred` and `cursorUpdatesDelivered` both 0 in every pass, against about 1,200 deferred before). The cursor updates were AppKit re-evaluating the cursor each time the pressure configuration under the pointer changed, so the shared configuration removes them at the source. `TGApplication` and its scroll hook are removed again; cursor behaviour is as before that entry. Interleaved 16,000 pt/s flings on the build without it, while another app kept the machine busy (load average 3.5–3.9): pointer inside 5.06 % and 4.62 % hitches, outside 5.20 % and 4.81 %, so the pointer costs nothing measurable now. (The higher absolute level comes from the load: the previous build measured 28.5 % main and 0.58 % hitches on a quiet machine.)
+
+`sample` and `vmmap` currently hang on this machine before attaching (even to Finder), so the scroll lab now reports bind time per step of `ChatRowView.set(item:)` (`binds`, `bindMs_<step>`, DEBUG only). 16,000 pt/s fling, pointer inside, 578 binds per pass: reactions 17.7 ms, reply 15.1, status 7.8, name 7.4, right view 6.0, layout type 5.4, caption 5.3, forward 1.6, everything else under 1 ms; about 126 µs per bind in the base row in total.
+
+## 2026-10-19: profiling with xctrace, and the benchmark chat
+
+`sample` and `vmmap` stopped attaching on this machine (they hang before printing anything, even for Finder). `xctrace` still works, and it does not suspend the process the way `sample` does. `tools/perflab/run.sh` now takes `PERFLAB_PROFILE=<delay>:<seconds>`: it attaches the Time Profiler to the lab app after the delay and exports the samples to `results/<lab>-<label>-profile.xml`, and `tools/perflab/profile.py <xml> [regex]` prints main-thread inclusive counts (`profile.py <xml> '' under '<symbol>' <depth>` breaks one symbol down).
+
+From about 21:55 the benchmark chat "Telegram macOS Talk" opens with "Sorry, this group is not accessible." and a Join button, so scroll passes report `avg_rows` 1 and `scrolledRange` 0. Runs after that time measured an empty chat; every result in this log was taken before it (the last full pass at 21:50 scrolled 191 rows over 26,331 pt).
+
+Correction at 23:15: membership is lost too. After the long flood wait expired the server still answers `400 USER_NOT_PARTICIPANT` and the group opens with a Join button, so "Telegram macOS Talk" needs the account owner to rejoin before it can be the benchmark again. The flood wait explains why every other remote chat came up empty in the same window: at 21:54:44 the server answered with `420 FLOOD_WAIT_4360` (73 minutes) and the request failed, and the same screen then appears for "jewproxy changelogs" and the public `@telegram` channel ("No messages here yet"), while Saved Messages still scrolls from the local database. Every lab launch reconnects and resyncs the real account; today's logs hold about 700 flood waits, including 2,594 s and 8,202 s waits at 18:03. Space out lab runs against a real account, and check `debug/logs` for `FLOOD_WAIT` before trusting a run with `scrolledRange` 0.
+
+## 2026-10-19: reactions container skips the effect hop when nothing was newly selected
+
+`ChatReactionsView.update(with:animated:)` queued a `DispatchQueue.main.async` block on every bind to play the select effect, and the block returned at once when no reaction had just been selected, which is every bind during a scroll. It now returns before queuing when `new` is empty; when a reaction was just selected the block runs exactly as before. Reactions were the largest bind step (24 ms over 578 binds in `lblcache1/2`), but this hop runs after the bind, so `bindMs_reactions` does not include it. Not measured yet: no remote chat had content at the time (see above).
+
+## 2026-10-19: picking a benchmark chat without the benchmark group
+
+`-PerfLabScenarios list` writes every read channel and basic group in the main chat list (the sweep's candidates: nothing unread, so opening one changes no read state) to the report as `peerId`/`title`, and `-PerfLabPeerId <id>` opens one of them directly. At 23:16 the only real candidate, "Анекдоти, за які нам соромно" (member, Unmute bar), also opened as "No messages here yet" and the run issued no `messages.getHistory` at all, while Saved Messages still scrolled from the local database. Remote history is not being requested for channels on this account right now; benchmarking stays blocked until a chat with stored history is available.
+
+## 2026-10-19: why remote chats stopped loading at 21:54
+
+The first log line of the 21:54:44 launch is `[Api] Type constructor b90c2afd not found`. From then on the server answers `users.getFullUser` and `channels.getFullChannel` with constructors this build's `swift_scheme.tl` does not have (`b90c2afd`, `fbce613`, `adf3f567`, `c4c4dd40`; 464 times by 23:18), and the responses log `could not be parsed` (181 `users.getFullUser`, 36 `channels.getFullChannel`). No earlier log today has a single parse failure. The generated TelegramApi copy (14:04) matches the schema (14:00) and was unchanged through every good run, so this is the server sending objects from a newer layer, not the build. Without a parsed full channel the chat opens as not accessible or empty, which is what every remote chat has shown since. The flood waits and the lost "Telegram macOS Talk" membership are real but secondary. Chat benchmarks need a schema that knows these constructors, or the server to stop sending them to this layer.
+
+## 2026-10-19: a synthetic chat for benchmarks that need no server
+
+`-PerfLabSynthetic <count>` opens a real `ChatController` over `ChatSyntheticContents`, a `ChatCustomContentsProtocol` built entirely in memory (the same mechanism as the HTML demo chats): a fake basic group with eleven fake members, `count` text messages of one to three sentences, a reply on every fourth message (with the replied message in `associatedMessages`), one to four reaction chips on every third, and every ninth outgoing. Timestamps start from a fixed base, so snapshots of two builds compare pixel for pixel. Nothing is stored in Postbox or sent, and no media is included (a fake resource would be fetched from the server). With 400 messages a 3 s fling at 16,000 pt/s scrolls 37,353 pt and binds 786 rows per run, and the bind steps repeat within about ±2 ms, so A/B runs need no real chat.
+
+Baseline app copies for A/B must sit at a path ending in `Debug/Telegram.app` (for example `/Users/tmac/Projects/perflab-base/Debug/Telegram.app`): `run.sh` finds the lab process with that pattern, and a copy elsewhere returns at once and overlaps the next run.
+
+## 2026-10-19: keep a spare reactions container per row
+
+Profiling the synthetic fling put 94 of 1,652 main-thread samples in `fillReactions`, and a third of those were not chips: when a recycled row went from a message with reactions to one without, `ChatReactionsView` was removed from the row (`-[NSView removeFromSuperview]`, 20 samples of window and superview teardown) and a new one created and added for the next message with reactions (init 6, `addSubview` 8). A non-animated removal now clears the container's chips (`removeAllChips`, which detaches each chip through its own `removeFromContainer`), hides it and keeps it as the row's spare; the next reactions fill unhides it with the new frame. `reactionsView` is still nil whenever the row shows no reactions, so every existing check keeps its meaning, and an animated removal still animates out as before.
+
+Interleaved A/B, synthetic chat with 400 messages, two rounds of three flings per side: `bindMs_reactions` 75.6 → 63.8 ms per fling (−16%; ranges 73.3–77.6 and 62.0–67.2), other steps unchanged, main thread 23.9% → 22.5%. Snapshots are identical in the chat pane; the only differences are chat-list timestamps, which differ between two baseline runs as well.
+
+## 2026-10-19: the spare reactions container keeps its chips
+
+With the container reused, the profile still spent 13 samples clearing chips, 9 creating them, 15 attaching them and 14 fetching each new chip's emoji layer (`getInlineLayer`), out of 2,318 main-thread samples. The spare now keeps its chips. The next non-animated `update(with:)` recycles them through the reuse path that already served non-animated updates, preferring a chip that shows the same reaction, so most binds create, attach and look up nothing. While the spare is hidden its chips cannot play: a hidden view and every view under it report an empty `visibleRect` (checked with a standalone AppKit program), which is what emoji playability reads, and `ChatReactionsView.isHidden` now asks each chip to recheck its emoji visibility whenever it changes (`chipVisibilityChanged`, for node chips and both view kinds) instead of waiting for the next scroll notification.
+
+Interleaved A/B against the build before the spare container, synthetic chat with 400 messages, two rounds of three flings: `bindMs_reactions` 76.2 → 40.8 ms per fling (−46%; ranges 74.4–77.6 and 40.3–41.7; the container alone had reached 63.8), other steps unchanged, main thread 23.9% → 22.7%. Snapshots differ only in the chat list, as two baseline runs do.
+
+## 2026-10-20: the bubble mask skips its colour conversions
+
+`renderLayoutType` spent 18 of its 22 samples in `ChatRowItem.bubbleImage`: `messageBubbleImageModern` converted its fill and stroke colours to device RGB on every call just to build the cache key (`NSColor.argb`, 8 samples), and `bubbleNeighbors` copied the whole `ChatHistoryEntry` to test `case .MessageEntry` (5 samples). Chat rows always ask for the black-on-clear mask, so `messageBubbleMaskImage(incoming:neighbors:)` now passes the two keys computed once; the cache, its keys and the generated images are the same as before, and every other caller still goes through `messageBubbleImageModern`. The item stores whether its entry is a `.MessageEntry` at init (`entry` is only assigned there). The check stays before `reactionsLayout`, which caches a layout and captures an analytics context when first read, so the order in which that happens is unchanged.
+
+Interleaved A/B against HEAD (135f7c99c), synthetic chat with 400 messages, two rounds of three flings: `bindMs_renderLayoutType` 6.6 → 2.4 ms per fling (−63%; ranges 6.6–6.8 and 2.3–2.5), total bind time 81.0 → 75.9 ms, other steps unchanged. The chat pane is pixel-identical.
+
+## 2026-10-20: checking the reaction spares
+
+Parity on the synthetic chat (`-PerfLabScenarios scroll,parity -PerfLabParityRows 60 -PerfLabSynthetic 400`) after the spare containers: 60 of 60 rows equal between legacy and layer chrome, reaction chip hit tests 100 of 100, reply hit tests 30 of 30. Parity binds fresh views, so it covers what a reused container shows only through the scroll scenario's snapshots.
+
+The scroll scenario now also reports `spareReactions`, `spareReactionChips`, `spareReactionPlayable` and `shownReactionPlayable` for the rows in the table after each pass (typically 4 hidden spares holding 13 chips). They cannot yet show that hidden chips stop playing: in lab runs `shownReactionPlayable` is 0 as well, because emoji play only in the key window and the lab's window is not key. That hidden chips do not play rests on a hidden view reporting an empty `visibleRect` and on `ChatReactionsView.isHidden` asking each chip to recheck. The synthetic chat has built-in reactions only, so animated custom-emoji reactions remain unexercised by these changes.
+
+## 2026-10-20: reuse parity
+
+`-PerfLabScenarios reuseparity` checks what a recycled row shows. For each of the first `-PerfLabParityRows` rows it renders the item in a fresh view, then binds two other rows into one pooled view of the same class (one with reactions and one without, so the reactions container goes through its hidden spare and its chips are recycled) before binding the target, and compares the window pixels. A difference is counted only when a second fresh render agrees with the first; otherwise the row is `unstable` (an animation caught mid-frame). The synthetic chat now also puts a paid star reaction first on every eleventh message, so chips move between star and plain reactions, which adds and removes the stars effect layer and the right-click handler.
+
+Synthetic chat, 80 rows: 77 equal, 3 unstable, 0 different, with 159 prior binds; 3 of the compared rows and 13 of the 134 reaction rows used as prior binds carry a star reaction.
+
+## 2026-10-20: hidden spare chips do not play
+
+`-PerfLabIgnoreKeyWindow 1` (DEBUG only) lets `ChatReactionEmojiLayer` treat the lab window as key, so the playability counters mean something. Synthetic chat, three flings at 16,000 pt/s: every pass reports `shownReactionPlayable` 8 and `spareReactionPlayable` 0, with 4 hidden spares holding 13 chips. This replaces the earlier reasoning with a direct measurement.
+
+Negative control: with the `isHidden` recheck disabled, the counters are the same (shown 8, spare 0, 12 spare chips). By the time the pass is measured, scroll-driven visibility updates have already stopped the hidden chips, because a hidden view reports an empty `visibleRect`. The recheck only stops a hidden chip at once instead of at the next visibility update, and the scroll scenario cannot tell the two apart.
+
+## 2026-10-20: AppKit's display walk (no change)
+
+In the synthetic fling profile, `-[NSView _recursiveTickleNeedsDisplay]` takes about 13% of main-thread samples: 216 of 1,681, 159 of them in `convertRect:toView:`. It recurses up to 22 levels deep. A temporary census just before `-[NSWindow displayIfNeeded]` found no view reporting `needsDisplay`. It did find every visible `ChatMessageView` with a layer that stays `needsDisplay` from frame to frame (5,479 of 5,759 dirty rows were already dirty the frame before). That comes from `TableRowView`'s empty `draw(_:)` override together with `layerContentsRedrawPolicy = .never`. Removing the override cleared the flag (5,759 → 269), but an interleaved A/B (two rounds of three flings per side) showed no gain: main thread 14.78% and 14.68% for base against 14.54% and 15.09% with the change. The override stays. 97 row classes draw through `draw(_:in:)`, and a version scoped to rows that don't draw would have nothing to gain. What drives the walk remains unidentified.
+
+`blockWidth` now reads the stored `hasVerticalMonoforum` instead of copying the whole `ChatHistoryEntry` to look at `additionalData.monoforumState`. The entry is only assigned in init, so the result is the same. The profile attributed 7 samples (0.4%) to the copy, too few to show in an A/B.
+
+The census on the synthetic chat shows message rows are already lean: 38 views across 7 `ChatMessageView` rows, out of 567 views in the window. The layer-tree rebuild (`NSViewBuildLayerTreeForDisplay`, about 8%) and the display walk partly cover the whole window. Removing the chat list's stories strip (`StoryListChatListRowView`, 198 views, many of them hidden avatars) for a lab run cut the walk from 184 to 146 samples, the layer-tree rebuild from 138 to 95 and the opaque-region pass from 39 to 16. In that single run, main-thread share did not drop (15.25% → 15.93%), and the strip is outside the chat row, so nothing changed.
+
+## 2026-10-20: reaction count tooltips are memoized
+
+Every chip bind set its tooltip to the count formatted by `Formatter.withSeparator`, an `NSNumberFormatter` call (6 of 55 samples in `fillReactions`). That formatter is a `static let` whose locale is fixed at first use, so a given count always gives the same string. Chips now take it from a memo of counts below 10,000; larger counts are formatted as before. The tooltip text is unchanged.
+
+Interleaved A/B against 398e312ed, synthetic chat with 400 messages, two rounds of three flings: `bindMs_reactions` 35.2 → 31.8 ms per fling (ranges 33.9–35.6 and 30.4–33.2), total bind time 78.7 → 74.8 ms. Main thread 14.89% → 14.72%, within noise.
+
+## 2026-10-20: what is left after the tooltip memo
+
+Synthetic fling profile, main thread. Bind work totals about 9% of samples, and no single remaining item in it exceeds about 1%:
+- reactions: container merge 6 samples, chip install 6 (first attach of new chips only), text layer 4, `getInlineLayer` 4
+- sender name: `ChatLayerTextNode.update` 7 samples
+- message text: 10 samples
+- `updateColors`: 22 samples, spread over a dozen colour setters
+- the second `updateLayout` that `layout()` runs on about a third of binds: 11 samples
+- `RightToolTip`: 8 samples, already skipped when unchanged
+- per-chip notification re-registration when a row returns to the window: 14 samples
+
+Most of the remaining cost is AppKit's: the display walk (about 10–13%), the layer-tree rebuild (about 8%), and table row removal and window attach (about 6%). The last two scale partly with the whole window's view count rather than with the chat rows.
+
+Tried: node chips keep their scroll observers registered while their row is out of the window (`updateEmojiListeners` returns early when the container has no window). Interleaved A/B, three rounds: main thread 14.93% → 14.68% on average (14.79–15.07 against 14.61–14.79). The profile shows no saving behind that difference: `AnimatableContentObserver.unregister` takes 11 samples before and 10 after, and `update` 8 before and 17 after. Observers are still dropped and rebuilt on another path, so the main-thread difference is noise. Reverted.
+
+Tried: keep the frame cache filled during `set(item:)` for the `updateLayout` that `rowViewForRow` runs straight after, at the same row width. Interleaved A/B, three rounds: main thread 14.81% → 14.61% on average. In the profile, `ChatRowItem.bubbleFrame` takes 12 samples both before and after, so the bubble frame is not computed twice on that path, and the difference is noise. Reverted. A real version would also have needed a guard against the hundreds of other `set(item:)` callers that do not lay out immediately.
+
+## 2026-10-20: what one view per row costs
+
+A temporary lab flag added N empty views to every message row (synthetic chat, three flings per run, two rounds, interleaved):
+
+| N | main thread |
+|---|---|
+| 0 | 14.78%, 14.65% |
+| 5 | 15.30%, 15.36% |
+| 20 | 16.95%, 16.85% |
+
+Each view per row costs about 0.11 points of main thread (about 0.7% of its time) during a fling. The cost is in AppKit's row detach, attach and layer-tree passes, not in bind.
+
+A text message row has 5 views: `ChatMessageView`, `ChatLayerRowView`, `ChatMessageBubbleBackdrop`, the `contentView` wrapper and `ChatLayerMessageTextView`, plus the hidden reactions spare on rows that had reactions once. The backdrop is the obvious candidate for a plain layer, but other views use it as their superview (polls, grouped media, todos, `ChatRowView` itself). It is also the scene's `layerHitBackground` and a coordinate space for the send flights. `contentView` is public API for every row subclass. Neither conversion is worth about 0.1 point. The reactions spare costs about 0.1 point on the rows that hold one and saves 35 ms of bind time per fling, so it stays.
+
+## 2026-10-20: why recycled rows lay out twice
+
+`ChatRowView.layout()` reruns `updateLayout` on recycled rows (10–12 samples per profile) right after `rowViewForRow` has laid them out. A temporary recorder on `needsLayout` showed who marks the row:
+- `-[NSView prepareForReuse]` on every dequeue
+- the Auto Layout engine, when NSTableView places the row (`NSISEngine` marker replacement, constraint optimisation and pending change notifications from `updateConstraintsForSubtreeIfNeeded`), about 45 times each per pass
+- `-[NSTableRowView setFrameSize:]`, 40 times
+
+Clearing the flag after `super.prepareForReuse()` left `layout()` at 10 samples against 12 (main thread 14.81% → 14.71%, noise), because the engine marks the row again. Reverted. Stopping the second pass would mean taking table rows out of NSTableView's constraint engine, which `TableRowView` has a commented-out attempt at (`translatesAutoresizingMaskIntoConstraints`). That would affect every table in the app, not just the chat.
+
+Tried: `ChatRowView` alone answers `translatesAutoresizingMaskIntoConstraints = false`. In the profile, `layout()` fell from 12 to 6 samples and `updateLayout` from 39 to 30, and the chat pane snapshots are identical. But `-[NSISEngine withBehaviors:performModifications:]` rose to 68 samples, and the interleaved A/B over three rounds showed no gain: main thread 14.78% for base against 14.85% for the change. Reverted.
+
+## 2026-10-20: media rows in the synthetic chat
+
+`-PerfLabSyntheticMedia 1` adds media to the synthetic chat:
+- a photo on every fifth message, with a caption on every tenth (`LocalFileMediaResource` with no data, so it stays a placeholder with a download control)
+- a PDF on every seventh
+- a forward header on every thirteenth
+
+Text-only rows had hidden three costs: content creation, content update and forward headers. On this chat a 3 s fling at 16,000 pt/s scrolls 47,996 pt in 626 binds. Main thread is about 21% (14.8% for text only). Per-fling bind steps:
+
+| step | ms |
+|---|---|
+| reactions | 27.4 |
+| reply | 11.5 |
+| mediaUpdate | 10.3 |
+| mediaCreate | 10.2 |
+| name | 9.7 |
+| messageText | 7.4 |
+| right | 6.6 |
+| forward | 6.5 |
+| caption | 4.4 |
+
+The total is 99.9 ms. The window's drag-margin pass (`_opaqueFullSizeContentViewRegionWithClipRect`) also rises to 3.1% of samples.
+
+`mediaCreate` is high because `ChatMediaView.set(item:)` discards its content view and creates a new one whenever the message's `stableId` changes, so a recycled media row never reuses its content view. `-PerfLabMediaReuse 1` (DEBUG only; release keeps the current check) reuses the content view whenever its class matches. Interleaved, two rounds: main thread 20.62% and 20.75% against 19.81% and 19.83%, with hitches 4 and 6 against 3 and 4.
+
+This is not enabled. Reuse parity on the media chat has 61 equal, 0 different and 19 unstable rows both with and without reuse, and the unstable rows are the media rows: their spinner animates, so the pixel check does not cover them. The synthetic photos never load, so loaded images, autoplaying video, spoilers and download progress are untested. `ChatInteractiveContentView.update` already handles a message change (it clears the image at once when the `stableId` differs). The other content classes (file, audio, voice, video message, sticker, dice, map) would each need checking, and real media chats to try it in.
+
+Correction, same day: the gain above came from placeholder photos. The synthetic photos now get real JPEG data (striped, a different colour per message), written to the media box when the lab opens the chat, so they render as loaded images. With loaded photos, interleaved, two rounds:
+- `-PerfLabMediaReuse 1` (all content classes): main thread 19.11% and 19.20% against 18.98% and 18.94%, noise.
+- Reuse in release code for still photos only (`ChatInteractiveContentView` with `TelegramMediaImage`, no video), three rounds: `mediaCreate` 11.0 → 8.3 ms, but `mediaUpdate` 10.7 → 11.9 ms and total bind time unchanged. Main thread 18.99% → 19.11%.
+
+Rebuilding the download-progress spinner made recreation expensive. A loaded photo is cheap to recreate. Reverted.
+
+With loaded photos, reuse parity on the media chat is meaningful: 116 equal, 0 different and 4 unstable of 120 rows, both with and without reuse. The scenario keeps one pooled view per row class, so each photo row after the first is drawn into a view that last showed another photo.
+
+## 2026-10-20: main-thread text rasterization
+
+`CA::Layer::display_if_needed` takes about 10% of main-thread samples on both synthetic chats. The biggest part is glyph rasterization when the display list is replayed at commit: `CGDisplayListDrawInContextDelegate > CGContextDelegateDrawGlyphs > ripc_DrawGlyphs`, 60 of 1,699 samples. Recording in `TextViewLayer.draw(in:)` adds another 21.
+
+Tried: `drawsAsynchronously` on `ChatLayerTextNode.drawingLayer`, behind a lab flag. Interleaved, two rounds: main thread 14.76% and 14.83% against 14.80% and 14.82%, while CPU rose from 0.16–0.17 to 0.18 cores. Snapshots differ inside the chat pane (up to x = 745), so text renders differently. Reverted. (`ScrollView` and `TGClipView` have commented-out `drawsAsynchronously = System.drawAsync` from an earlier attempt.)
+
+A temporary counter in `TextViewLayer.draw(in:)` showed 3,332 text draws for 786 binds per scroll pass, 4.2 per bind: sender name, message text, reply name and text, and timestamp. No layer redrew the layout it had already drawn at the same size, so there are no redundant redraws.
+
+Two facts about the synthetic chat behind these counts:
+- Each pass scrolls down and back up, so every row is bound twice.
+- The author formula `(index * 7 + index / 3) % 11` only produces users 0, 3 and 7, so only Alice, Dana and Hana write messages (134, 133 and 89). Consecutive messages from one author are therefore more common than in a real group. The formula is left unchanged so earlier measurements stay comparable.
+
+## 2026-10-20: window drag margins
+
+`-[NSWindow(Regions) _resetDragMargins]` takes 3.3% of main-thread samples on the text chat and 5.3% on the media chat. Two thirds of that is the walk over opaque views (`_regionForOpaqueDescendants`), and the rest is the resize and titlebar regions. A temporary lab-only replacement for `_setNeedsToResetDragMargins:` (one 3 s pass on the media chat) counted 97 invalidations:
+- 79 from NSTableView adding row views (`_addRowViewForVisibleRow`)
+- 10 from `ChatFileContentView` adding its status view
+- 6 from the reactions spare being unhidden
+- 2 others
+
+A standalone AppKit check in a `.fullSizeContentView` window with a transparent titlebar:
+- adding a view invalidates the margins only when the view lands under the titlebar, whatever its `isOpaque` or `mouseDownCanMoveWindow`
+- removing a view never invalidates them
+
+Chat rows scroll in under the transparent titlebar and header, so this cost comes from the window design. Nothing in the row view avoids it. No change.
+
+Upper bound check: a temporary lab-only switch replaced `_setNeedsToResetDragMargins:` with a no-op. The profile confirmed `_resetDragMargins` was gone, yet in four interleaved rounds on the media chat (16k pt/s, 3 runs each) main thread was 18.88% with the reset and 19.12% without. Moving rows out from under the titlebar would not buy a measurable gain, so the window design stays.
+
+## 2026-10-20: tracking area updates
+
+`-[_NSTrackingAreaAKManager displayCycleUpdateStructuralRegions]` takes 7.9% of main-thread samples on the media chat at 16k pt/s. Almost all of it is `-[_NSTrackingAreaAKViewHelper updateTrackingAreasWithInvalidCursorRects:]` walking subviews 13 to 21 levels deep, 117 of 163 samples under one `NSScrollView`. Upper bound with a temporary lab-only no-op for that method (breaks hover, measurement only), four interleaved rounds: 19.01/18.78/18.77/18.81% main thread with the walk and 17.59/17.98/17.95/24.62% without, so about one point once the outlier round is set aside. This is the one AppKit cost left whose removal shows up in main%. Next step: find which views keep tracking areas dirty during a scroll and keep them clean.
+
+Attribution (temporary lab-only timer around `-[NSScrollView _updateTrackingAreasWithInvalidCursorRects:]`, media chat, one 3 s pass at 16k pt/s): every frame walks every scroll view in the window, not only the one that scrolls. Per pass, about 1,436 calls each:
+- stories strip `ScrollView` in the chat list, 201 descendants: 43.8 ms
+- chat `TableView`, 38 to 46 descendants: about 40 ms in total
+- chat list `TableView`, 58 descendants: 17.5 ms
+- folder sidebar `TableView`, 29 descendants: 8.5 ms
+
+The cost grows with the total descendant count, hidden ones included (the strip already hides items outside its visible range). Split across that upper bound of about one main-thread point, the strip is worth about 0.4 points, the chat table 0.4, the chat list 0.15 and the sidebar 0.08. Each is below the run-to-run noise, which matches the earlier result where removing the strip showed no main% drop. Taking hidden strip items out of the hierarchy would touch the stories collapse animations for a gain the lab cannot resolve. No change.
+
+A tracking-area census on the same window: 598 views and 276 tracking areas, of which only 25 are inside chat rows (`AvatarControl` 73, `TextView` 48, `ComponentView` and `ItemView` 29 each, all in the chat list and strip).

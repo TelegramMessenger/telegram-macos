@@ -14,6 +14,7 @@ import GeneralRows
 import InputDataUI
 import AlertsUI
 import DiceCache
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -152,6 +153,7 @@ public func CustomEmojiController(context: any AccountContextProtocol) -> InputD
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().installedStickersCustomEmoji, hasDone: false)
+    controller.analyticsScreen = .settingsStickersEmojiCustomEmoji
     
     controller.onDeinit = {
         actionsDisposable.dispose()

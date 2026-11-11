@@ -14,6 +14,7 @@ import InputDataUI
 import AlertsUI
 import ChatHistoryModel
 import ChatUI
+import AppAnalytics
 import LocalAnimations
 
 private let _id_tag_preview = InputDataIdentifier("_id_tag_preview")
@@ -63,6 +64,7 @@ private final class TagPreviewRowItem: GeneralRowItem {
         let groupPeer = TelegramGroup(id: groupPeerId, title: "", photo: [], participantCount: 0, role: .member, membership: .Member, flags: [], defaultBannedRights: nil, migrationReference: nil, creationDate: 0, version: 0)
 
         let chatInteraction = ChatInteraction(chatLocation: .peer(groupPeerId), context: context, isLogInteraction: true, disableSelectAbility: true)
+        chatInteraction.inheritedAnalyticsContext = Analytics.shared.unresolvedContext()
 
         let fromUser = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(peer.id.id._internalGetInt64Value() % 7 * 100)), accessHash: nil, firstName: peer.compactDisplayTitle, lastName: "", username: nil, phone: nil, photo: peer.profileImageRepresentations, botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: peer.emojiStatus, usernames: [], storiesHidden: nil, nameColor: peer.nameColor, backgroundEmojiId: peer.backgroundEmojiId, profileColor: peer.profileColor, profileBackgroundEmojiId: peer.profileBackgroundEmojiId, subscriberCount: nil, verificationIconFileId: nil)
 
@@ -277,7 +279,10 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func ChannelParticipantController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, participant: RenderedChannelParticipant) -> InputDataModalController {
+public func ChannelParticipantController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, participant: RenderedChannelParticipant, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: participant.peer.id).restricting(peerId: participant.participant.peerId)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
 
@@ -319,23 +324,37 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     let openRestrictions: (ChannelParticipant) -> Void = { participant in
+        let targetOrigin = origin.restricting(peerId: participant.peerId)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
         close?()
         showModal(with: RestrictedModalController(context, peerId: peerId, memberId: participant.peerId, initialParticipant: participant, updated: { updatedRights in
+            let presentation = targetOrigin.beginPresentation()
+            defer { presentation.end() }
             let signal = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: participant.peerId, bannedRights: updatedRights)
-            _ = (signal).start()
-        }), for: context.window)
+            _ = targetOrigin.preservingPresentation(signal).start()
+        }, analyticsContext: targetOrigin), for: context.window)
     }
 
     let arguments = Arguments(context: context, peerId: peerId, promote: { participant in
+        let targetOrigin = origin.restricting(peerId: participant.peerId)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
         close?()
-        if let controller = FeatureNavigationHooks.shared.makeChannelAdminControllerObserved(context, peerId, participant.peerId, participant, { _ in }, { _, _ in }) { showModal(with: controller, for: context.window) }
+        if let controller = FeatureNavigationHooks.shared.makeChannelAdminControllerObserved(context, peerId, participant.peerId, participant, { _ in }, { _, _ in }, analyticsContext: targetOrigin) { showModal(with: controller, for: context.window) }
     }, restrict: { participant in
         openRestrictions(participant)
     }, remove: { channelParticipant in
+        let targetOrigin = origin.restricting(peerId: channelParticipant.peerId)
+        let presentation = targetOrigin.beginPresentation()
         verifyAlert_button(for: context.window, information: strings().peerInfoConfirmRemovePeer(participant.peer._asPeer().compactDisplayTitle), ok: strings().modalRemove, successHandler: { _ in
+            let delivery = targetOrigin.beginPresentation()
+            defer { delivery.end() }
             let signal = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: channelParticipant.peerId, bannedRights: TelegramChatBannedRights(flags: [.banReadMessages], untilDate: 0))
-            actionsDisposable.add((signal).start())
+            actionsDisposable.add(targetOrigin.preservingPresentation(signal).start())
             close?()
+        }, onDeinit: {
+            presentation.end()
         })
     }, updateTag: { tag in
         updateState { state in
@@ -352,6 +371,8 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().channelParticipantMember)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoMember
 
     controller.updateDatas = { data in
         updateState { state in
@@ -365,11 +386,13 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     controller.validateData = { _ in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let state = stateValue.with { $0 }
         let tag = state.tag.trimmingCharacters(in: .whitespacesAndNewlines)
         if tag != state.initialTag {
             let signal = showModalProgress(signal: context.peerChannelMemberCategoriesContextsManager.updateChatRank(peerId: peerId, memberId: participant.peer.id, rank: tag.isEmpty ? nil : tag, participant: participant), for: context.window) |> deliverOnMainQueue
-            actionsDisposable.add((signal).start(error: { _ in
+            actionsDisposable.add(origin.preservingPresentation(signal).start(error: { _ in
                 showModalText(for: context.window, text: strings().channelParticipantTagUpdateError)
             }, completed: {
                 close?()
@@ -406,6 +429,7 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(350, 350))
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()
@@ -490,8 +514,7 @@ public func channelParticipantModerationMenuItems(context: any AccountContextPro
             case .unauthorized:
                 alert(for: context.window, info: strings().unknownError)
             case .unverified:
-                //TODOLANG
-                alert(for: context.window, info: "Could not confirm the updated permissions. Check the member’s permissions before trying again.")
+                alert(for: context.window, info: strings().channelParticipantControllerPermissionsUnverified)
             }
         })
     }

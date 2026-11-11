@@ -205,7 +205,7 @@ public class ChatMessageItem: ChatRowItem {
         }
         if let webpage = webpageLayout {
             let link = ChatHistoryLink.inApp(for: webpage.content.url.nsstring, context: context, messageId: message?.id, openInfo: chatInteraction.openInfo)
-            ChatHistoryLink.execute(inapp: link)
+            ChatHistoryLink.execute(inapp: link, morphSource: morphSource)
         } else if unsupported {
             invokeUpdateApp()
         }
@@ -537,7 +537,7 @@ public class ChatMessageItem: ChatRowItem {
                         }
                     }
                 }
-                showChatGallery(context: context, message: message, self?.table, (self?.webpageLayout as? WPMediaLayout)?.parameters, type: .alone, chatMode: chatInteraction.mode, chatLocation: chatInteraction.chatLocation, cachedPeerData: chatInteraction.presentation.cachedData)
+                showChatGallery(context: context, message: message, self?.table, (self?.webpageLayout as? WPMediaLayout)?.parameters, type: .alone, chatMode: chatInteraction.mode, chatLocation: chatInteraction.chatLocation, cachedPeerData: chatInteraction.presentation.cachedData, analyticsContext: chatInteraction.captureAnalyticsContext())
             }
             
             openSpecificTimecodeFromReply = { [weak self] timecode in
@@ -1095,7 +1095,10 @@ public class ChatMessageItem: ChatRowItem {
     }
 
     public override func inset(for text: String, range: NSRange?) -> CGFloat {
-        if let rect = self.textLayout.rect(for: text, range: range) {
+        let layoutString = self.textLayout.attributedString
+        let layoutRange = chatQuoteTextRange(in: layoutString, text: text, offset: range?.location)
+        let layoutText = layoutRange.map { (layoutString.string as NSString).substring(with: $0) } ?? text
+        if let rect = self.textLayout.rect(for: layoutText, range: layoutRange) {
             return rect.maxY
         } else {
             return super.inset(for: text, range: range)

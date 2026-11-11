@@ -11,6 +11,7 @@ import TelegramCore
 import Postbox
 import CurrencyFormat
 import WalletContext
+import AppAnalytics
 import UniqueGiftRenderer
 import InlineStickerLayer
 
@@ -280,7 +281,7 @@ private final class WalletCollectibleHeroRowView: TableRowView {
         giftView.isEventLess = true
         compositionView.isAccessibilityDecorative = true
         giftView.isAccessibilityDecorative = true
-        giftControl.setAccessibilityLabel("Replay Gift Animation") //TODOLANG
+        giftControl.setAccessibilityLabel(strings().walletCollectibleDetailsControllerReplayGiftAnimation)
         addSubview(compositionView)
         placeholderView.layer?.cornerRadius = 16
         lottieView.layer?.cornerRadius = 16
@@ -559,6 +560,16 @@ private final class WalletCollectibleActionRowItem: GeneralRowItem {
             case .removeColor: return strings().walletCollectibleHeaderRemoveColor
             case .addToCard: return strings().walletCollectibleHeaderAddToCard
             case .removeFromCard: return strings().walletCollectibleHeaderRemoveFromCard
+            }
+        }
+
+        var menuTitle: String {
+            switch self {
+            case .applyColor, .restrictedColor: return strings().walletCollectablesApplyColor
+            case .removeColor: return strings().walletCollectablesRemoveColor
+            case .addToCard: return strings().walletCollectablesAddToCard
+            case .removeFromCard: return strings().walletCollectablesRemoveFromCard
+            case .transfer, .wear, .sell: return title
             }
         }
 
@@ -1221,6 +1232,7 @@ func WalletCollectibleDetailsController(context: any AccountContextProtocol, env
         InputDataSignalValue(entries: walletCollectibleDetailsEntries(state, context: context, environment: environment, arguments: arguments))
     }
     let controller = InputDataController(dataSignal: signal, title: "", hasDone: false)
+    controller.analyticsScreen = .walletCollectible
     arguments.updateHeader = walletCollectibleModalHeader(controller: controller, close: { arguments.close() }, menu: { arguments.menu() })
     let interactions = ModalInteractions(acceptTitle: strings().walletCollectibleDetailsControllerOK, accept: { close?() }, singleButton: true, customTheme: { walletModalTheme })
     let result = WalletModalController(controller, modalInteractions: interactions, size: NSMakeSize(400, 0))
@@ -1270,11 +1282,11 @@ func WalletCollectibleDetailsController(context: any AccountContextProtocol, env
         for action in state.cardActions {
             switch action {
             case .applyColor, .removeColor:
-                items.append(ContextMenuItem(action.title, handler: arguments.toggleColor))
+                items.append(ContextMenuItem(action.menuTitle, handler: arguments.toggleColor))
             case .addToCard, .removeFromCard:
-                items.append(ContextMenuItem(action.title, handler: arguments.toggleCard))
+                items.append(ContextMenuItem(action.menuTitle, handler: arguments.toggleCard))
             case .restrictedColor:
-                items.append(ContextMenuItem(action.title, handler: {
+                items.append(ContextMenuItem(action.menuTitle, handler: {
                     arguments.restrictColor(controller.tableView)
                 }))
             default: break
@@ -1298,13 +1310,13 @@ func WalletCollectibleDetailsController(context: any AccountContextProtocol, env
             items.append(ContextMenuItem(title, handler: arguments.toggleProfile))
         }
         if current.kind == .gift {
-            items.append(ContextMenuItem(strings().walletCollectibleDetailsControllerActionTransfer, handler: arguments.transfer))
+            items.append(ContextMenuItem(strings().giftContextTransfer, handler: arguments.transfer))
         }
         if let url = walletCollectibleExplorerUrl(context: context, environment: environment, address: current.address) {
             items.append(ContextMenuItem(strings().walletCollectibleDetailsControllerViewInExplorer, handler: { environment.openExternalURL(url) }))
         }
         if current.kind == .gift {
-            items.append(ContextMenuItem(strings().walletCollectibleDetailsControllerActionSell, handler: sell))
+            items.append(ContextMenuItem(strings().walletCollectibleDetailsControllerContextSell, handler: sell))
         }
         return items
     }

@@ -11,6 +11,7 @@ import TelegramTheme
 import ColorPalette
 import PhoneNumberUtils
 import Postbox
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -100,6 +101,7 @@ public func SelectCountries(context: any AccountContextProtocol, selected: [Coun
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().selectCountriesTitle)
+    controller.analyticsScreen = .appCountryPicker
     
     controller.onDeinit = {
         actionsDisposable.dispose()

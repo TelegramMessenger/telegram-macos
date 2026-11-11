@@ -43,7 +43,9 @@ let deps: [(String, String)] = [
     ("ChatHistoryModel", "../ChatHistoryModel"),
     ("ChatUI", "../ChatUI"),
     ("InlineStickerLayer", "../InlineStickerLayer"),
-
+    ("HTMLBubbles", "../HTMLBubbles"),
+    ("AppAnalytics", "../AppAnalytics"),
+    ("RevealOptions", "../RevealOptions"),
 ]
 
 let package = Package(

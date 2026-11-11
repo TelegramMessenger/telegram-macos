@@ -11,6 +11,11 @@ public struct AnimatableContentObserverOptions: OptionSet {
     public static let ownBounds = AnimatableContentObserverOptions(rawValue: 1 << 3)
 }
 
+private struct AnimatableContentRegistration {
+    let name: Notification.Name
+    weak var object: AnyObject?
+}
+
 private final class AnimatableContentNotificationTarget: NSObject {
     weak var target: AnyObject?
     var selector: Selector?
@@ -30,6 +35,7 @@ public final class AnimatableContentObserver {
     private weak var observedView: NSView?
     private lazy var notificationTarget = AnimatableContentNotificationTarget()
     private var observedOptions: AnimatableContentObserverOptions = []
+    private var registrations: [AnimatableContentRegistration] = []
     private var registered = false
 
     public init() {
@@ -66,6 +72,7 @@ public final class AnimatableContentObserver {
         let center = NotificationCenter.default
         func add(_ name: Notification.Name, _ object: AnyObject) {
             center.addObserver(notificationTarget, selector: #selector(AnimatableContentNotificationTarget.forwardNotification(_:)), name: name, object: object)
+            registrations.append(AnimatableContentRegistration(name: name, object: object))
         }
         add(NSWindow.didBecomeKeyNotification, window)
         add(NSWindow.didResignKeyNotification, window)
@@ -96,7 +103,15 @@ public final class AnimatableContentObserver {
         guard registered else {
             return
         }
-        NotificationCenter.default.removeObserver(notificationTarget)
+        let center = NotificationCenter.default
+        if registrations.contains(where: { $0.object == nil }) {
+            center.removeObserver(notificationTarget)
+        } else {
+            for registration in registrations {
+                center.removeObserver(notificationTarget, name: registration.name, object: registration.object)
+            }
+        }
+        registrations.removeAll()
         notificationTarget.target = nil
         notificationTarget.selector = nil
         observedWindow = nil

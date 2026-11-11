@@ -1,3 +1,4 @@
+import AppAnalytics
 import Cocoa
 import TGUIKit
 import TelegramCore

@@ -17,6 +17,7 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
 
 // MARK: - Centered header (avatar + title + subtitle)
 
@@ -128,6 +129,7 @@ public func CommunityPrivateChatController(context: (any AccountContextProtocol)
     entries.append(.sectionId(sectionId, type: .normal)); sectionId += 1
 
     let controller = InputDataController(dataSignal: .single(InputDataSignalValue(entries: entries)), title: "", hasDone: false)
+    controller.analyticsScreen = .communityPrivateChat
 
     let modalInteractions: ModalInteractions
     if requestedBy != nil {

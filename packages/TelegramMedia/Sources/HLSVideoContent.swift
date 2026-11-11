@@ -5,6 +5,8 @@ import TGUIKit
 import Foundation
 import AppKit
 import TelegramMediaResources
+import RangeSet
+import HLSPlayback
 
 
 
@@ -90,67 +92,25 @@ public final class HLSVideoContent : UniversalVideoContent {
         return false
     }
     
+    public static func qualityKey(keys: [Int], initialQuality: UniversalVideoContentVideoQuality?) -> Int? {
+        switch initialQuality {
+        case let .quality(quality)?:
+            return keys.sorted().min(by: { abs($0 - quality) < abs($1 - quality) })
+        case .auto?, nil:
+            return HLSLevels.preloadQualityKey(keys: keys)
+        }
+    }
+    
     public static func minimizedHLSQuality(file: FileMediaReference, initialQuality: UniversalVideoContentVideoQuality? = nil) -> (playlist: FileMediaReference, file: FileMediaReference)? {
         guard let qualitySet = HLSQualitySet(baseFile: file) else {
             return nil
         }
-        
-        let sorted = qualitySet.qualityFiles.sorted(by: { $0.key < $1.key })
-        
-        // If initialQuality is specified, find the closest match
-        if let initialQuality = initialQuality {
-            let targetQuality: Int
-            switch initialQuality {
-            case .auto:
-                // For auto, use the default behavior of finding first quality >= 400
-                return findFirstQualityAbove(400, in: sorted, qualitySet: qualitySet)
-            case .quality(let quality):
-                targetQuality = quality
-                // Find the closest quality
-                return findClosestQuality(to: targetQuality, in: sorted, qualitySet: qualitySet)
-            }
-        } else {
-            // Original behavior: find first quality >= 400
-            return findFirstQualityAbove(400, in: sorted, qualitySet: qualitySet)
-        }
-    }
-
-    // Helper function to find closest quality
-    private static func findClosestQuality(
-        to targetQuality: Int,
-        in sorted: [(key: Int, value: FileMediaReference)],
-        qualitySet: HLSQualitySet
-    ) -> (playlist: FileMediaReference, file: FileMediaReference)? {
-        guard !sorted.isEmpty else { return nil }
-        
-        // Find the quality with minimal difference from target
-        let closestQuality = sorted.min(by: { abs($0.key - targetQuality) < abs($1.key - targetQuality) })
-        
-        guard let closestQuality = closestQuality,
-              let playlistFile = qualitySet.playlistFiles[closestQuality.key] else {
+        guard let quality = HLSVideoContent.qualityKey(keys: Array(qualitySet.qualityFiles.keys), initialQuality: initialQuality), let qualityFile = qualitySet.qualityFiles[quality], let playlistFile = qualitySet.playlistFiles[quality] else {
             return nil
         }
-        
-        return (playlistFile, closestQuality.value)
+        return (playlistFile, qualityFile)
     }
-
-    // Helper function to find first quality above threshold
-    private static func findFirstQualityAbove(
-        _ threshold: Int,
-        in sorted: [(key: Int, value: FileMediaReference)],
-        qualitySet: HLSQualitySet
-    ) -> (playlist: FileMediaReference, file: FileMediaReference)? {
-        for (quality, qualityFile) in sorted {
-            if quality >= threshold {
-                guard let playlistFile = qualitySet.playlistFiles[quality] else {
-                    return nil
-                }
-                return (playlistFile, qualityFile)
-            }
-        }
-        return nil
-    }
-       
+    
     public static func minimizedHLSQualityPreloadData(postbox: Postbox, file: FileMediaReference, userLocation: MediaResourceUserLocation, prefixSeconds: Int, autofetchPlaylist: Bool, initialQuality: UniversalVideoContentVideoQuality? = nil) -> Signal<(FileMediaReference, Range<Int64>)?, NoError> {
         guard let fileSet = minimizedHLSQuality(file: file, initialQuality: initialQuality) else {
             return .single(nil)
@@ -159,78 +119,20 @@ public final class HLSVideoContent : UniversalVideoContent {
         let playlistData: Signal<Range<Int64>?, NoError> = Signal { subscriber in
             var fetchDisposable: Disposable?
             if autofetchPlaylist {
-                
-                
-                fetchDisposable = fetchedMediaResource(mediaBox: postbox.mediaBox, userLocation: userLocation, userContentType: MediaResourceUserContentType(file: fileSet.playlist.media), reference: fileSet.playlist.resourceReference(fileSet.playlist.media.resource)).start()
+                fetchDisposable = (fetchedMediaResource(mediaBox: postbox.mediaBox, userLocation: userLocation, userContentType: MediaResourceUserContentType(file: fileSet.playlist.media), reference: fileSet.playlist.resourceReference(fileSet.playlist.media.resource))
+                |> retry(2.0, maxDelay: 30.0, onQueue: Queue.concurrentDefaultQueue())).start()
             }
             let dataDisposable = postbox.mediaBox.resourceData(fileSet.playlist.media.resource).start(next: { data in
                 if !data.complete {
                     return
                 }
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)) else {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)), let text = String(data: data, encoding: .utf8), let playlist = try? HLSMediaPlaylist.parse(text) else {
                     subscriber.putNext(nil)
                     subscriber.putCompletion()
                     return
                 }
-                guard let playlistString = String(data: data, encoding: .utf8) else {
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
-                    return
-                }
-                
-                var durations: [Int] = []
-                var byteRanges: [Range<Int>] = []
-                
-                let extinfRegex = try! NSRegularExpression(pattern: "EXTINF:(\\d+)", options: [])
-                let byteRangeRegex = try! NSRegularExpression(pattern: "EXT-X-BYTERANGE:(\\d+)@(\\d+)", options: [])
-                
-                let extinfResults = extinfRegex.matches(in: playlistString, range: NSRange(playlistString.startIndex..., in: playlistString))
-                for result in extinfResults {
-                    if let durationRange = Range(result.range(at: 1), in: playlistString) {
-                        if let duration = Int(String(playlistString[durationRange])) {
-                            durations.append(duration)
-                        }
-                    }
-                }
-                
-                let byteRangeResults = byteRangeRegex.matches(in: playlistString, range: NSRange(playlistString.startIndex..., in: playlistString))
-                for result in byteRangeResults {
-                    if let lengthRange = Range(result.range(at: 1), in: playlistString), let upperBoundRange = Range(result.range(at: 2), in: playlistString) {
-                        if let length = Int(String(playlistString[lengthRange])), let lowerBound = Int(String(playlistString[upperBoundRange])) {
-                            byteRanges.append(lowerBound ..< (lowerBound + length))
-                        }
-                    }
-                }
-                
-                if durations.count != byteRanges.count {
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
-                    return
-                }
-                
-                var rangeUpperBound: Int64 = 0
-                var remainingSeconds = prefixSeconds
-                
-                for i in 0 ..< durations.count {
-                    if remainingSeconds <= 0 {
-                        break
-                    }
-                    let duration = durations[i]
-                    let byteRange = byteRanges[i]
-                    
-                    remainingSeconds -= duration
-                    rangeUpperBound = max(rangeUpperBound, Int64(byteRange.upperBound))
-                }
-                
-                if rangeUpperBound != 0 {
-                    subscriber.putNext(0 ..< rangeUpperBound)
-                    subscriber.putCompletion()
-                } else {
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
-                }
-                
-                return
+                subscriber.putNext(playlist.prefixRange(seconds: Double(prefixSeconds)))
+                subscriber.putCompletion()
             })
             
             return ActionDisposable {
@@ -247,6 +149,119 @@ public final class HLSVideoContent : UniversalVideoContent {
             return (fileSet.file, range)
         }
     }
+}
 
+public func fetchedResourceRangeUntilOnDisk(mediaBox: MediaBox, resource: MediaResource, range: Range<Int64>, fetch: Signal<FetchResourceSourceType, FetchResourceError>) -> Signal<Never, NoError> {
+    let isOnDisk: Signal<Never, FetchResourceError> = mediaBox.resourceRangesStatus(resource)
+    |> take(1)
+    |> castError(FetchResourceError.self)
+    |> mapToSignal { ranges -> Signal<Never, FetchResourceError> in
+        return ranges.isSuperset(of: RangeSet(range)) ? .complete() : .fail(.generic)
+    }
+    return (fetch |> ignoreValues |> then(isOnDisk))
+    |> retry(2.0, maxDelay: 30.0, onQueue: Queue.concurrentDefaultQueue())
+}
 
+public final class HLSQualitySet {
+    public let qualityFiles: [Int: FileMediaReference]
+    public let playlistFiles: [Int: FileMediaReference]
+    public let thumbnails: [Int: (file: FileMediaReference, fileMap: FileMediaReference)]
+    
+    public init?(baseFile: FileMediaReference) {
+        
+        
+        func isNativeVideoCodecSupported(videoCodec: String) -> Bool {
+            return videoCodec == "h264" || videoCodec == "h265" || videoCodec == "avc" || videoCodec == "hevc"
+        }
+        
+        var qualityFiles: [Int: FileMediaReference] = [:]
+        var thumbnailFiles: [FileMediaReference] = []
+        var thumbnailFileMaps: [Int: (mapFile: FileMediaReference, thumbnailFileId: Int64)] = [:]
+        
+        for alternativeRepresentation in baseFile.media.alternativeRepresentations {
+            let alternativeFile = alternativeRepresentation
+            if alternativeFile.mimeType == "application/x-tgstoryboard" {
+                thumbnailFiles.append(baseFile.withMedia(alternativeFile))
+            } else if alternativeFile.mimeType == "application/x-tgstoryboardmap" {
+                var qualityId: Int?
+                for attribute in alternativeFile.attributes {
+                    switch attribute {
+                    case let .ImageSize(size):
+                        qualityId = Int(min(size.width, size.height))
+                    default:
+                        break
+                    }
+                }
+                
+                if let qualityId, let fileName = alternativeFile.fileName {
+                    if fileName.hasPrefix("mtproto:") {
+                        if let fileId = Int64(fileName[fileName.index(fileName.startIndex, offsetBy: "mtproto:".count)...]) {
+                            thumbnailFileMaps[qualityId] = (mapFile: baseFile.withMedia(alternativeFile), thumbnailFileId: fileId)
+                        }
+                    }
+                }
+            } else {
+                for attribute in alternativeFile.attributes {
+                    if case let .Video(_, size, _, _, _, videoCodec) = attribute {
+                        if let videoCodec, isNativeVideoCodecSupported(videoCodec: videoCodec) {
+                            let key = Int(min(size.width, size.height))
+                            if let currentFile = qualityFiles[key] {
+                                var currentCodec: String?
+                                for attribute in currentFile.media.attributes {
+                                    if case let .Video(_, _, _, _, _, videoCodec) = attribute {
+                                        currentCodec = videoCodec
+                                    }
+                                }
+                                if let currentCodec, (currentCodec == "av1" || currentCodec == "av01") {
+                                } else {
+                                    qualityFiles[key] = baseFile.withMedia(alternativeFile)
+                                }
+                            } else {
+                                qualityFiles[key] = baseFile.withMedia(alternativeFile)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        var playlistFiles: [Int: FileMediaReference] = [:]
+        for alternativeRepresentation in baseFile.media.alternativeRepresentations {
+            let alternativeFile = alternativeRepresentation
+            if alternativeFile.mimeType == "application/x-mpegurl" {
+                if let fileName = alternativeFile.fileName {
+                    if fileName.hasPrefix("mtproto:") {
+                        let fileIdString = String(fileName[fileName.index(fileName.startIndex, offsetBy: "mtproto:".count)...])
+                        if let fileId = Int64(fileIdString) {
+                            for (quality, file) in qualityFiles {
+                                if file.media.fileId.id == fileId {
+                                    playlistFiles[quality] = baseFile.withMedia(alternativeFile)
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !playlistFiles.isEmpty && playlistFiles.keys == qualityFiles.keys {
+            self.qualityFiles = qualityFiles
+            self.playlistFiles = playlistFiles
+            
+            var thumbnails: [Int: (file: FileMediaReference, fileMap: FileMediaReference)] = [:]
+            for (quality, thubmailMap) in thumbnailFileMaps {
+                for file in thumbnailFiles {
+                    if file.media.fileId.id == thubmailMap.thumbnailFileId {
+                        thumbnails[quality] = (
+                            file: file,
+                            fileMap: thubmailMap.mapFile
+                        )
+                    }
+                }
+            }
+            self.thumbnails = thumbnails
+        } else {
+            return nil
+        }
+    }
 }
