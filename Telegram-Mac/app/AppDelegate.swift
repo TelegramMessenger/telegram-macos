@@ -5,6 +5,7 @@ import Postbox
 import TelegramCore
 import DateUtils
 import TGUIKit
+import AppAnalytics
 import Quartz
 import MtProtoKit
 import MTProtoRustEngine
@@ -27,7 +28,6 @@ import WebKit
 import CodeSyntax
 import MetalEngine
 import TelegramMedia
-import RLottie
 import TLottie
 import KeyboardKey
 import PasscodeCore
@@ -51,6 +51,7 @@ import SettingsUI
 import FocusFilterCore
 import FocusFilterInfrastructure
 import OSLog
+import HTMLBubbles
 
 //#if BETA || DEBUG
 //import Firebase
@@ -186,11 +187,7 @@ private final class CtxInstallLayer : SimpleLayer {
     }
 }
 
-extension RLottieBridge : @retroactive R_LottieBridge {
-   
-}
-
-extension TLottieBridge : @retroactive R_LottieBridge {
+extension TLottieBridge : @retroactive LottieRendererBridge {
 
 }
 
@@ -255,8 +252,18 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     fileprivate var contextValue: AuthorizedApplicationContext? {
         didSet {
             updateActiveContexts()
+            Analytics.shared.setEngine(contextValue?.context.engine)
+            if contextValue == nil {
+                Analytics.shared.screens.reset()
+            } else if !analyticsLaunchReported {
+                analyticsLaunchReported = true
+                Analytics.shared.send(AnalyticsEvents.appLaunch(start: .cold, durationMs: Int(((Analytics.shared.now - analyticsLaunchStart) * 1000).rounded())))
+            }
         }
     }
+    private var analyticsLaunchReported = false
+    private var analyticsLaunchStart: TimeInterval = 0
+    private var analyticsForegroundStart: TimeInterval?
     private let context = Promise<AuthorizedApplicationContext?>()
     
     private var authContextValue: UnauthorizedApplicationContext?
@@ -281,6 +288,14 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         TGUIKitAccessibility.isEnabled = FastSettings.accessibilityTreeEffective
+        Analytics.shared.isEnabled = false
+        analyticsLaunchStart = Analytics.shared.now
+        AnalyticsLifecycle.install()
+        #if DEBUG
+        Analytics.shared.log = { text in
+            Logger.shared.log("Analytics", text)
+        }
+        #endif
         CodeSyntax.initialize()
         
         
@@ -381,11 +396,8 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             self?.updateDisplayColorSpace()
         })
         
-        makeRLottie = { json, key in
-            if LottieBackend.usesTLottie {
-                return TLottieBridge(json: json)
-            }
-            return RLottieBridge(json: json, key: key)
+        makeLottieRenderer = { json in
+            return TLottieBridge(json: json)
         }
         
         guard let containerUrl = ApiEnvironment.containerURL else {
@@ -669,7 +681,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 
                 
                 let previousBackingScale: Atomic<CGFloat> = Atomic(value: System.backingScale)
-                let signal: Signal<TelegramPresentationTheme?, NoError> = combineLatest(queue: .mainQueue(), themeSettingsView(accountManager: accountManager), backingProperties.get(), systemThemeColorsSignal()) |> map { settings, backingScale, systemColors in
+                let signal: Signal<(theme: TelegramPresentationTheme, animated: Bool)?, NoError> = combineLatest(queue: .mainQueue(), themeSettingsView(accountManager: accountManager), backingProperties.get(), systemThemeColorsSignal()) |> map { settings, backingScale, systemColors in
                     System.legacyMenu = settings.legacyMenu
                     let resolved = settings.palette.name == systemPalette.name ? settings.withUpdatedPalette(systemColors) : settings
                     return (resolved, backingScale)
@@ -677,19 +689,20 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                     let previous = basicTheme.swap(settings)
                     let previousScale = previousBackingScale.swap(backingScale)
                     if previous?.palette != settings.palette || previous?.bubbled != settings.bubbled || previous?.wallpaper != settings.wallpaper || previous?.fontSize != settings.fontSize || previous?.cloudTheme != settings.cloudTheme || previousScale != backingScale  {
-                        return updateTheme(with: settings, resolvedSystemPalette: settings.palette, scaleFactor: backingScale)
+                        let animated = (previous?.fontSize == settings.fontSize && previous?.palette != settings.palette) || previous?.bubbled != settings.bubbled || previous?.cloudTheme?.id != settings.cloudTheme?.id || previous?.palette.isDark != settings.palette.isDark
+                        return (theme: updateTheme(with: settings, animated: animated, resolvedSystemPalette: settings.palette, scaleFactor: backingScale), animated: animated)
                     } else {
                         return nil
                     }
                 } |> deliverOnMainQueue
                 
-                _ = signal.start(next: { updatedTheme in
-                    if let theme = updatedTheme {
+                _ = signal.start(next: { updated in
+                    if let (theme, animated) = updated {
                         if self.contextValue == nil {
-                            telegramUpdateTheme(theme, window: window, animated: true)
+                            telegramUpdateTheme(theme, window: window, animated: animated)
                         } else {
                             self.enumerateApplicationContexts({ context in
-                                telegramUpdateTheme(theme, window: context.context.window, animated: true)
+                                telegramUpdateTheme(theme, window: context.context.window, animated: animated)
                                 context.applyNewTheme()
                             })
                         }
@@ -1486,6 +1499,20 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             self.window.deminiaturize(self)
             if let context = self.contextValue?.context {
                 AppDelegate.eventProcessed = nil
+                if context.appConfiguration.getGeneralValue("dev", orElse: 0) == 1,
+                   let components = URLComponents(string: url), components.scheme == "tg", components.host == "voxelclash",
+                   let gameLink = components.queryItems?.first(where: { $0.name == "url" })?.value,
+                   let gameURL = URL(string: gameLink), gameURL.scheme == "https", gameURL.host == "voxel-clash-production.up.railway.app",
+                   let chat = HTMLDemoCatalog.chat("html-voxel-clash") {
+                    let contents = HTMLDemoChatContents.reusing(chat: chat, accountPeerId: context.peerId, accountName: (context.myPeer as? TelegramUser)?.firstName ?? "You")
+                    contents.openGameLink(gameLink)
+                    contents.openExternalLink = { link in
+                        if let url = URL(string: link), url.scheme == "https" { NSWorkspace.shared.open(url) }
+                    }
+                    context.bindings.rootNavigation().push(ChatAdditionController(context: context, chatLocation: .peer(context.peerId), mode: .customChatContents(contents: contents)), true)
+                    return
+                }
+                
                 let link = inApp(for: url as NSString, context: context, openInfo: { (peerId, isChat, postId, action) in
                     context.bindings.rootNavigation().push(ChatController(context: context, chatLocation: .peer(peerId), focusTarget: .init(messageId: postId), initialAction:action), true)
                 }, applyProxy: { proxy in
@@ -1563,6 +1590,9 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
             focusFilterCoordinator?.refresh()
         }
         updatePeerPresence()
+        Analytics.shared.startSession()
+        analyticsForegroundStart = Analytics.shared.now
+        Analytics.shared.send(AnalyticsEvents.appForeground())
     }
     
     func tryApplyAutologinToken(_ url: String) -> String? {
@@ -1679,7 +1709,10 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     
     func applicationDidResignActive(_ notification: Notification) {
         updatePeerPresence()
-
+        if let start = analyticsForegroundStart {
+            analyticsForegroundStart = nil
+            Analytics.shared.send(AnalyticsEvents.appBackground(durationMs: Int(((Analytics.shared.now - start) * 1000).rounded())))
+        }
         if viewer != nil, NSScreen.main == viewer?.window.screen {
             viewer?.window.orderOut(nil)
         }
@@ -1748,6 +1781,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         
         if let context = contextValue?.context {
             if NSApp.currentEvent?.type == .keyDown {
+                Analytics.shared.send(AnalyticsEvents.shortcutUse(shortcut: .settings))
             }
             context.bindings.mainViewController.showPreferences()
         }
@@ -1757,6 +1791,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     @IBAction func globalSearch(_ sender: Any) {
         if let context = contextValue?.context {
             if NSApp.currentEvent?.type == .keyDown {
+                Analytics.shared.send(AnalyticsEvents.shortcutUse(shortcut: .globalSearch))
             }
             context.bindings.mainViewController.focusSearch(animated: true)
         }

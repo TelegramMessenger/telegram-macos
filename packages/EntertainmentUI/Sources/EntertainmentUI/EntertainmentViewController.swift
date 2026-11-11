@@ -16,6 +16,7 @@ import ChatModeTypes
 import InlineStickerLayer
 import PremiumStatusUI
 import InputDataUI
+import AppAnalytics
 
 
 public enum ESearchCommand {
@@ -375,6 +376,7 @@ public class EntertainmentViewController<Context: AccountContextProtocol>: Teleg
         self.emoji = EmojiesController(context, mode: mode == .stories ? .stories : .emoji, presentation: presentation)
         self.emoji.isGlass = true
         if mode == .common || mode == .stories {
+            self.emoji.analyticsScreen = .chatInputEmoji
         }
         self.stickers = NStickersViewController(context, presentation: presentation)
         self.gifs = GifKeyboardController(context, presentation: presentation)

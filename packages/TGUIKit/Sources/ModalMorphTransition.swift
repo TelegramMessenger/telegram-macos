@@ -235,9 +235,6 @@ public final class ModalMorphTransition {
         controlLayer.masksToBounds = true
         controlLayer.zPosition = 1
 
-        host.addSubview(shadowView)
-        host.addSubview(bubbleView)
-
         let contentSize: CGSize
         let contentAnchor: CGPoint
         if let liveView = liveView {
@@ -259,10 +256,19 @@ public final class ModalMorphTransition {
             transition.liveContentAutoresizing = liveView.autoresizingMask
             liveView.autoresizingMask = []
             liveView.frame = CGRect(origin: .zero, size: contentSize)
-            bubbleView.addSubview(liveView)
         }
-        bubble.addSublayer(controlLayer)
-        realView?.isHidden = true
+
+        if opening {
+            realView?.isHidden = true
+        }
+        let revealBubble = prepareLayerAnimation([shadowView, bubbleView]) {
+            host.addSubview(shadowView)
+            host.addSubview(bubbleView)
+            if let liveView {
+                bubbleView.addSubview(liveView)
+            }
+            bubble.addSublayer(controlLayer)
+        }
 
         let start = opening ? control : modal
         let end = opening ? modal : control
@@ -276,6 +282,8 @@ public final class ModalMorphTransition {
             Channel(from: start.height, to: end.height, spring: heightSpring, tolerance: geometryTolerance)
         ]
         transition.animate(Segment(channels: channels, modal: modal, contentSize: contentSize, startSize: control.size, startFraction: 0))
+        revealBubble()
+        realView?.isHidden = true
         return transition
     }
 

@@ -81,6 +81,8 @@ open class InputDataModalController : ModalViewController {
             guard let self, let controller, self.current === controller else {
                 return
             }
+            previous?.viewWillDisappear(animated)
+            controller.viewWillAppear(animated)
             let width = self.frame.width
             controller.view.frame = NSMakeRect(0, 0, width, self.view.frame.height)
             if animated {
@@ -102,6 +104,8 @@ open class InputDataModalController : ModalViewController {
             self.updateLocalizationAndTheme(theme: theme)
             self.modal?.updateLocalizationAndTheme(theme: theme)
             self.updateScroll(controller.tableView.scrollPosition().current)
+            previous?.viewDidDisappear(animated)
+            controller.viewDidAppear(animated)
 
             delay(0.25, closure: { [weak self] in
                 self?.updateSize(false)
@@ -121,7 +125,10 @@ open class InputDataModalController : ModalViewController {
 
     open func pop(animated: Bool) {
         if !_stake.isEmpty {
+            let previous = self.current
+            previous.viewWillDisappear(animated)
             var controller: InputDataController? = _stake.removeLast()
+            self.current.viewWillAppear(animated)
             if let popped = controller {
                 self.didPopController?(popped)
             }
@@ -159,6 +166,8 @@ open class InputDataModalController : ModalViewController {
             })
 
             self.updateScroll(self.controller.tableView.scrollPosition().current)
+            previous.viewDidDisappear(animated)
+            self.current.viewDidAppear(animated)
 
         }
     }
@@ -1014,8 +1023,19 @@ public class InputDataController: GenericViewController<InputDataView> {
         
         let onMainQueue: Atomic<Bool> = Atomic(value: !prepareAllItems)
         
+        let hasModalHeader: () -> Bool = { [weak self] in
+            guard let self else {
+                return false
+            }
+            return self.isModal && !self.defaultBarTitle.isEmpty
+        }
+
         let signal: Signal<TableUpdateTransition, NoError> = combineLatest(queue: .mainQueue(), appearanceSignal, values.get()) |> mapToQueue { appearance, state in
-            let entries = state.entries.map({AppearanceWrapperEntry(entry: $0, appearance: appearance)})
+            var stateEntries = state.entries
+            if hasModalHeader(), case let .sectionId(sectionId, type: .normal)? = stateEntries.first {
+                stateEntries[0] = .sectionId(sectionId, type: .customModern(10))
+            }
+            let entries = stateEntries.map({AppearanceWrapperEntry(entry: $0, appearance: appearance)})
             return prepareInputDataTransition(left: previous.swap(entries), right: entries, animated: state.animated, searchState: state.searchState, initialSize: initialSize.modify{$0}, arguments: arguments, onMainQueue: onMainQueue.swap(false), animateEverything: state.animateEverything, grouping: state.grouping, makeFirstFast: makeFirstFast)
         } |> deliverOnMainQueue |> afterDisposed {
             previous.swap([])

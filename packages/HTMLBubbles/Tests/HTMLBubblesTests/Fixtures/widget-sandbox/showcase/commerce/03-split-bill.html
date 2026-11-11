@@ -1,0 +1,89 @@
+<!--
+  showcase: full web profile (corpus/showcase/README.md)
+  idea: splitting a restaurant bill — tap a dish, then the friends who shared it; per-person totals tween, the tip is a range slider, "Request" sends the amounts to the chat
+-->
+<style>
+  :root { color-scheme: light dark;
+    --fg: light-dark(#0a0a0a, #f5f5f7); --muted: light-dark(#6e6e73, #98989d); --card: light-dark(#fff, #1c1c1e); --card2: light-dark(#f2f2f7, #2c2c2e);
+    --border: light-dark(rgba(0,0,0,.08), rgba(255,255,255,.12)); --blue: #007aff; --green: #34c759;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 10px 30px rgba(0,0,0,.10); }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.35; color: var(--fg); -webkit-font-smoothing: antialiased; }
+  .card { width: 100%; box-sizing: border-box; background: var(--card); overflow: hidden; padding: 16px 18px; }
+  h3 { margin: 0; font-size: 18px; } .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .people { display: flex; gap: 10px; margin: 14px 0 6px; }
+  .pp { flex: 1; text-align: center; padding: 10px 4px 8px; border-radius: 14px; background: var(--card2); position: relative; transition: transform .25s, box-shadow .25s; cursor: pointer; }
+  .pp.sel { box-shadow: 0 0 0 2px var(--blue); transform: translateY(-2px); }
+  .pp .av { width: 38px; height: 38px; border-radius: 50%; margin: 0 auto 6px; display: grid; place-items: center; font-weight: 800; color: #fff; font-size: 14px; }
+  .pp .n { font-size: 12px; font-weight: 600; } .pp .amt { font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .pp .paid { position: absolute; top: 6px; right: 6px; width: 16px; height: 16px; border-radius: 50%; background: var(--green); color: #fff; font-size: 10px; display: grid; place-items: center; transform: scale(0); transition: transform .3s cubic-bezier(.34,1.56,.64,1); } .pp.paid .paid { transform: scale(1); }
+  .hint { font-size: 12px; color: var(--muted); min-height: 16px; margin: 6px 0 8px; transition: color .3s; } .hint.hot { color: var(--blue); font-weight: 600; }
+  .dish { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; cursor: pointer; transition: background .2s; border: 1.5px solid transparent; }
+  .dish:hover { background: var(--card2); } .dish.sel { border-color: var(--blue); background: light-dark(#eaf3ff, #10243d); }
+  .dish .nm { flex: 1; } .dish .pr { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .dish .who { display: flex; } .dish .who i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--card); margin-left: -7px; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: #fff; font-style: normal; animation: in .3s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes in { from { transform: scale(0); } }
+  .dish .who i.none { background: var(--border); color: var(--muted); margin-left: 0; }
+  .tip { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+  .tip b { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { flex: 1; accent-color: var(--blue); }
+  .tot { display: flex; justify-content: space-between; font-weight: 800; font-size: 16px; margin-top: 6px; } .tot span:last-child { font-variant-numeric: tabular-nums; }
+  .req { margin-top: 12px; width: 100%; padding: 13px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; transition: transform .15s, background .3s; }
+  .req:active { transform: scale(.98); } .req.sent { background: var(--green); }
+</style>
+<div class="card">
+  <h3>Split the bill · Barbarestan</h3><div class="sub" id="sub">4 dishes · 4 people · tap a dish, then who shared it</div>
+  <div class="people" id="people"></div>
+  <div class="hint" id="hint">Everything is split evenly to start with</div>
+  <div id="dishes"></div>
+  <div class="tip"><span>Tip</span><input type="range" id="tip" min="0" max="25" step="5" value="10"><b id="tipV">10%</b></div>
+  <div class="tot"><span>Total with tip</span><span>₾<span id="total">0</span></span></div>
+  <button class="req" id="req">Request from everyone</button>
+</div>
+<script>
+  const bot = window.TelegramWidget || { sendMessage() {}, openLink() {}, ready() {} }; // reference mode has no host bridge
+  const PEOPLE = [{ n: 'You', c: '#007aff' }, { n: 'Nino', c: '#af52de' }, { n: 'Dato', c: '#ff9500' }, { n: 'Mira', c: '#34c759' }];
+  const DISHES = [{ n: 'Chakapuli (lamb)', p: 38 }, { n: 'Pkhali platter', p: 22 }, { n: 'Khinkali ×10', p: 28 }, { n: 'Saperavi, bottle', p: 46 }, { n: 'Churchkhela dessert', p: 14 }];
+  let share = DISHES.map(() => new Set([0, 1, 2, 3])), sel = -1, tip = 10, paid = new Set();
+  const people = document.getElementById('people'), dishes = document.getElementById('dishes'), hint = document.getElementById('hint');
+  people.innerHTML = PEOPLE.map((p, i) => '<div class="pp" data-i="' + i + '" role="button"><div class="av" style="background:' + p.c + '">' + p.n[0] + '</div><div class="n">' + p.n + '</div><div class="amt">₾<span>0</span></div><span class="paid">✓</span></div>').join('');
+  dishes.innerHTML = DISHES.map((d, i) => '<div class="dish" data-i="' + i + '" role="button"><span class="nm">' + d.n + '</span><span class="who"></span><span class="pr">₾' + d.p + '</span></div>').join('');
+  const amts = [...people.querySelectorAll('.amt span')], tweens = new Map();
+  function tween(el, to) {
+    const from = Number(el.textContent) || 0; tweens.set(el, to); const t0 = performance.now();
+    (function s() { if (tweens.get(el) !== to) return; const t = Math.min(1, (performance.now() - t0) / 500); el.textContent = (from + (to - from) * (1 - Math.pow(1 - t, 3))).toFixed(t < 1 ? 1 : 2).replace(/\.?0+$/, ''); if (t < 1) requestAnimationFrame(s); })();
+  }
+  function calc() {
+    const per = [0, 0, 0, 0];
+    DISHES.forEach((d, i) => { const s = share[i]; if (s.size) for (const p of s) per[p] += d.p / s.size; });
+    const sub = DISHES.reduce((a, d) => a + d.p, 0), t = 1 + tip / 100;
+    per.forEach((v, i) => tween(amts[i], v * t));
+    tween(document.getElementById('total'), sub * t);
+    dishes.querySelectorAll('.dish').forEach((el, i) => {
+      el.classList.toggle('sel', i === sel);
+      el.querySelector('.who').innerHTML = share[i].size ? [...share[i]].sort().map(p => '<i style="background:' + PEOPLE[p].c + '">' + PEOPLE[p].n[0] + '</i>').join('') : '<i class="none">?</i>';
+    });
+    people.querySelectorAll('.pp').forEach((el, i) => el.classList.toggle('sel', sel >= 0 && share[sel].has(i)));
+  }
+  dishes.addEventListener('click', e => {
+    const d = e.target.closest('.dish'); if (!d) return; const i = Number(d.dataset.i);
+    sel = sel === i ? -1 : i;
+    hint.textContent = sel >= 0 ? 'Who had the ' + DISHES[sel].n.split(' (')[0].toLowerCase() + '? Tap the people' : 'Tap a dish to change who shared it';
+    hint.classList.toggle('hot', sel >= 0);
+    calc();
+  });
+  people.addEventListener('click', e => {
+    const p = e.target.closest('.pp'); if (!p) return; const i = Number(p.dataset.i);
+    if (sel < 0) { hint.textContent = 'Pick a dish first, then the people who shared it'; return; }
+    const s = share[sel]; if (s.has(i)) { if (s.size > 1) s.delete(i); } else s.add(i);
+    calc();
+  });
+  document.getElementById('tip').addEventListener('input', e => { tip = Number(e.target.value); document.getElementById('tipV').textContent = tip + '%'; calc(); });
+  document.getElementById('req').addEventListener('click', e => {
+    const b = e.currentTarget; if (b.classList.contains('sent')) return;
+    b.classList.add('sent'); b.textContent = 'Requests sent';
+    const msg = PEOPLE.slice(1).map((p, i) => p.n + ' ₾' + amts[i + 1].textContent).join(', ');
+    bot.sendMessage('Bill split (tip ' + tip + '%): ' + msg);
+    PEOPLE.slice(1).forEach((p, i) => setTimeout(() => people.children[i + 1].classList.add('paid'), 1500 + i * 1200));
+  });
+  calc();
+</script>

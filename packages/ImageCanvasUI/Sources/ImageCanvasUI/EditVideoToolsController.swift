@@ -284,7 +284,7 @@ final class EditVideoToolsView: View {
         preview.isAccessibilityDecorative = true
         addSubview(preview)
         addSubview(previewControl)
-        previewControl.setAccessibilityLabel("Show Original") //TODOLANG
+        previewControl.setAccessibilityLabel(strings().editVideoToolsControllerShowOriginal)
 
         panel.backgroundColor = NSColor.black.withAlphaComponent(0.6)
         panel.layer?.cornerRadius = 12
@@ -472,7 +472,7 @@ public final class EditVideoToolsController: ModalViewController {
     private func setShowsOriginal(_ showsOriginal: Bool) {
         self.showsOriginal = showsOriginal
         self.genericView.showHud(showsOriginal ? strings().editVideoToolsControllerOriginal : nil)
-        self.genericView.previewControl.setAccessibilityLabel(showsOriginal ? "Show Edited" : "Show Original") //TODOLANG
+        self.genericView.previewControl.setAccessibilityLabel(showsOriginal ? strings().editVideoToolsControllerShowEdited : strings().editVideoToolsControllerShowOriginal)
         self.renderPreview()
     }
 

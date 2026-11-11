@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -8,9 +9,19 @@ import TelegramContext
 public enum BrowserLinkKind {
     case external
     case shareUrl
+    case tonConnect
     case tonsite(String)
     case instantView
     case other
+
+    var keepsSourceBrowserOpen: Bool {
+        switch self {
+        case .external, .shareUrl, .tonConnect:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 public enum BrowserLoginWidgetResult {
@@ -41,11 +52,14 @@ public struct BrowserHooks {
     public let shareViaCallback: (any AccountContextProtocol, Window, @escaping ([PeerId]) -> Void) -> Void
     public let openPeerInfo: (any AccountContextProtocol, PeerId) -> Void
     public let openChat: (any AccountContextProtocol, PeerId) -> Void
-    public var openChatWithContext: ((any AccountContextProtocol, PeerId) -> Void)?
+    public var openChatWithContext: ((any AccountContextProtocol, PeerId, AnalyticsContext) -> Void)?
 
-    public func openChatObserved(_ context: any AccountContextProtocol, _ peerId: PeerId) {
+    public func openChatObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, analyticsContext: AnalyticsContext) {
+        let origin = analyticsContext.restricting(peerId: peerId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let openChatWithContext {
-            openChatWithContext(context, peerId)
+            openChatWithContext(context, peerId, origin)
         } else {
             openChat(context, peerId)
         }
@@ -54,16 +68,20 @@ public struct BrowserHooks {
     public let sharePreparedMessage: (any AccountContextProtocol, Peer, PreparedInlineMessage, Window, @escaping (Bool) -> Void) -> Void
     public let openPremiumBoarding: (any AccountContextProtocol, Window) -> Void
     public let openInvoice: (any AccountContextProtocol, TelegramMediaInvoice, String, Window, @escaping (String) -> Void) -> Void
-    public var openInvoiceWithContext: ((any AccountContextProtocol, TelegramMediaInvoice, String, Window, @escaping (String) -> Void) -> Void)?
+    public var openInvoiceWithContext: ((any AccountContextProtocol, TelegramMediaInvoice, String, Window, AnalyticsContext, @escaping (String) -> Void) -> Void)?
 
-    public func openInvoiceObserved(_ context: any AccountContextProtocol, _ invoice: TelegramMediaInvoice, _ slug: String, _ window: Window, completion: @escaping (String) -> Void) {
+    public func openInvoiceObserved(_ context: any AccountContextProtocol, _ invoice: TelegramMediaInvoice, _ slug: String, _ window: Window, analyticsContext: AnalyticsContext, completion: @escaping (String) -> Void) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let lifetime = origin.beginPresentation()
         let completed = Atomic(value: false)
         let observed: (String) -> Void = { status in
             guard ["paid", "failed", "cancelled", "pending"].contains(status), !completed.swap(true) else { return }
+            let delivery = origin.beginPresentation()
+            defer { delivery.end(); lifetime.end() }
             completion(status)
         }
         if let openInvoiceWithContext {
-            openInvoiceWithContext(context, invoice, slug, window, observed)
+            openInvoiceWithContext(context, invoice, slug, window, origin, observed)
         } else {
             openInvoice(context, invoice, slug, window, observed)
         }
@@ -76,42 +94,52 @@ public struct BrowserHooks {
     public let makeStickerView: (NSRect) -> NSView
     public let uploadStory: (any AccountContextProtocol, String, Peer, String?, Window) -> Void
     public let selectPeerForWebView: (any AccountContextProtocol, ReplyMarkupButtonRequestPeerType, PeerId, String, Int32, Int32, Window, @escaping (Bool) -> Void) -> Void
-    public let makeSharePreviewMessageItem: (NSSize, any AccountContextProtocol, Message) -> TableRowItem
+    public let makeSharePreviewMessageItem: (NSSize, any AccountContextProtocol, Message, @escaping () -> Void) -> TableRowItem
     public let makeShareChatContextResultModal: (any AccountContextProtocol, PreparedInlineMessage, @escaping (Bool) -> Void) -> ModalViewController
-    public var makeShareChatContextResultModalWithContext: ((any AccountContextProtocol, PreparedInlineMessage, @escaping (Bool) -> Void) -> ModalViewController)?
-    public var makeShareChatContextResultModalWithResult: ((any AccountContextProtocol, PreparedInlineMessage, @escaping (BrowserPreparedShareResult) -> Void) -> ModalViewController)?
+    public var makeShareChatContextResultModalWithContext: ((any AccountContextProtocol, PreparedInlineMessage, AnalyticsContext, @escaping (Bool) -> Void) -> ModalViewController)?
+    public var makeShareChatContextResultModalWithResult: ((any AccountContextProtocol, PreparedInlineMessage, AnalyticsContext, @escaping (BrowserPreparedShareResult) -> Void) -> ModalViewController)?
 
-    public func makeShareChatContextResultModalObservedResult(_ context: any AccountContextProtocol, _ preparedMessage: PreparedInlineMessage, completion: @escaping (BrowserPreparedShareResult) -> Void) -> ModalViewController {
+    public func makeShareChatContextResultModalObservedResult(_ context: any AccountContextProtocol, _ preparedMessage: PreparedInlineMessage, analyticsContext: AnalyticsContext, completion: @escaping (BrowserPreparedShareResult) -> Void) -> ModalViewController {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext).restricting(peerId: preparedMessage.botId)
+        let lifetime = origin.beginPresentation()
         let completed = Atomic(value: false)
         let observed: (BrowserPreparedShareResult) -> Void = { value in
-            do {
+            withExtendedLifetime(lifetime) {
                 guard !completed.swap(true) else { return }
+                let delivery = origin.beginPresentation()
+                defer { delivery.end() }
                 completion(value)
             }
         }
         let controller: ModalViewController
         if let makeShareChatContextResultModalWithResult {
-            controller = makeShareChatContextResultModalWithResult(context, preparedMessage, observed)
+            controller = makeShareChatContextResultModalWithResult(context, preparedMessage, origin, observed)
         } else {
-            controller = makeShareChatContextResultModalObserved(context, preparedMessage, completion: { observed($0 ? .accepted : .notAccepted) })
+            controller = makeShareChatContextResultModalObserved(context, preparedMessage, analyticsContext: origin, completion: { observed($0 ? .accepted : .notAccepted) })
         }
+        controller.analyticsContext = origin
         return controller
     }
 
-    public func makeShareChatContextResultModalObserved(_ context: any AccountContextProtocol, _ preparedMessage: PreparedInlineMessage, completion: @escaping (Bool) -> Void) -> ModalViewController {
+    public func makeShareChatContextResultModalObserved(_ context: any AccountContextProtocol, _ preparedMessage: PreparedInlineMessage, analyticsContext: AnalyticsContext, completion: @escaping (Bool) -> Void) -> ModalViewController {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext).restricting(peerId: preparedMessage.botId)
+        let lifetime = origin.beginPresentation()
         let completed = Atomic(value: false)
         let observed: (Bool) -> Void = { value in
-            do {
+            withExtendedLifetime(lifetime) {
                 guard !completed.swap(true) else { return }
+                let delivery = origin.beginPresentation()
+                defer { delivery.end() }
                 completion(value)
             }
         }
         let controller: ModalViewController
         if let makeShareChatContextResultModalWithContext {
-            controller = makeShareChatContextResultModalWithContext(context, preparedMessage, observed)
+            controller = makeShareChatContextResultModalWithContext(context, preparedMessage, origin, observed)
         } else {
             controller = makeShareChatContextResultModal(context, preparedMessage, observed)
         }
+        controller.analyticsContext = origin
         return controller
     }
 
@@ -133,7 +161,7 @@ public struct BrowserHooks {
                 makeStickerView: @escaping (NSRect) -> NSView,
                 uploadStory: @escaping (any AccountContextProtocol, String, Peer, String?, Window) -> Void,
                 selectPeerForWebView: @escaping (any AccountContextProtocol, ReplyMarkupButtonRequestPeerType, PeerId, String, Int32, Int32, Window, @escaping (Bool) -> Void) -> Void,
-                makeSharePreviewMessageItem: @escaping (NSSize, any AccountContextProtocol, Message) -> TableRowItem,
+                makeSharePreviewMessageItem: @escaping (NSSize, any AccountContextProtocol, Message, @escaping () -> Void) -> TableRowItem,
                 makeShareChatContextResultModal: @escaping (any AccountContextProtocol, PreparedInlineMessage, @escaping (Bool) -> Void) -> ModalViewController) {
         self.classifyLink = classifyLink
         self.openLink = openLink

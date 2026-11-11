@@ -1,3 +1,5 @@
+import AppAnalytics
+import ChatHistoryModel
 import InputDataUI
 import PaymentsUI
 import StarsUI
@@ -9,11 +11,15 @@ import Postbox
 import TelegramCore
 import SwiftSignalKit
 import WebAppUI
+import WalletContext
 
 func installBrowserUIHooks() {
     var hooks = BrowserHooks(classifyLink: { context, url in
         guard let context = context as? AccountContext else {
             return .other
+        }
+        if #available(macOS 10.15, *), WalletContext.isTonConnectUrl(normalizedTelegramLinkQuery(url)) {
+            return .tonConnect
         }
         let link = inApp(for: url.nsstring, context: context)
         switch link {
@@ -41,9 +47,7 @@ func installBrowserUIHooks() {
                 PeerInfoController.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId)
                 context.window.makeKeyAndOrderFront(nil)
             }
-            if initialAction != nil {
-                navigatedAway()
-            }
+            navigatedAway()
         }, hashtag: nil, command: nil, applyProxy: nil, confirm: confirm)
         execute(inapp: link, window: window)
     }, resolveInstantView: { context, url in
@@ -118,7 +122,7 @@ func installBrowserUIHooks() {
         }
         prem(with: PremiumBoardingController(context: context), for: window)
     }, openInvoice: { context, invoice, slug, window, completion in
-        presentBrowserInvoice(context: context, invoice: invoice, slug: slug, window: window, completion: completion)
+        presentBrowserInvoice(context: context, invoice: invoice, slug: slug, window: window, analyticsContext: Analytics.shared.unresolvedContext(), completion: completion)
     }, showLoginWidget: { context, domain, bot, clientData, flags, matchCodes, userIdHint, oauthUrl, inAppOrigin, completion in
         guard let context = context as? AccountContext else {
             return
@@ -172,17 +176,21 @@ func installBrowserUIHooks() {
             return
         }
         selectSpecificPeerForWebView(context: context, peerType: peerType, botPeerId: botPeerId, requestId: requestId, buttonId: buttonId, maxQuantity: maxQuantity, window: window, completion: completion)
-    }, makeSharePreviewMessageItem: { initialSize, context, message in
+    }, makeSharePreviewMessageItem: { initialSize, context, message, heightDidChange in
         let interactions = ChatInteraction(chatLocation: .peer(context.peerId), context: context, isLogInteraction: true)
-        return ChatRowItem.item(initialSize, from: .MessageEntry(message, .init(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, .init()), interaction: interactions, theme: theme)
+        let entry = ChatHistoryEntry.MessageEntry(message, .init(message), true, theme.bubbled ? .bubble : .list, .Full(rank: nil, rankType: .none, header: .normal), nil, .init())
+        if let widget = message.media.first as? TelegramMediaWidget {
+            return ChatHTMLRowItem(initialSize, interactions, context, entry, theme: theme, previewWidget: widget, heightDidChange: heightDidChange)
+        }
+        return ChatRowItem.item(initialSize, from: entry, interaction: interactions, theme: theme)
     }, makeShareChatContextResultModal: { context, preparedMessage, completion in
         return ShareModalController(ShareChatContextResult(context as! AccountContext, preparedMessage: preparedMessage), completion: completion)
     })
-    hooks.makeShareChatContextResultModalWithContext = { context, preparedMessage, completion in
-        return ShareModalController(ShareChatContextResult(context.concrete, preparedMessage: preparedMessage), completion: completion)
+    hooks.makeShareChatContextResultModalWithContext = { context, preparedMessage, analyticsContext, completion in
+        return ShareModalController(ShareChatContextResult(context.concrete, preparedMessage: preparedMessage), completion: completion, analyticsContext: analyticsContext)
     }
-    hooks.makeShareChatContextResultModalWithResult = { context, preparedMessage, completion in
-        let controller = ShareModalController(ShareChatContextResult(context.concrete, preparedMessage: preparedMessage))
+    hooks.makeShareChatContextResultModalWithResult = { context, preparedMessage, analyticsContext, completion in
+        let controller = ShareModalController(ShareChatContextResult(context.concrete, preparedMessage: preparedMessage), analyticsContext: analyticsContext)
         controller.resultCompletion = { result in
             switch result {
             case .accepted: completion(.accepted)
@@ -194,12 +202,12 @@ func installBrowserUIHooks() {
         }
         return controller
     }
-    hooks.openInvoiceWithContext = { context, invoice, slug, window, completion in
-        presentBrowserInvoice(context: context, invoice: invoice, slug: slug, window: window, completion: completion)
+    hooks.openInvoiceWithContext = { context, invoice, slug, window, analyticsContext, completion in
+        presentBrowserInvoice(context: context, invoice: invoice, slug: slug, window: window, analyticsContext: analyticsContext, completion: completion)
     }
-    hooks.openChatWithContext = { context, peerId in
+    hooks.openChatWithContext = { context, peerId, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        navigateToChat(navigation: context.bindings.rootNavigation(), context: context, chatLocation: .peer(peerId))
+        navigateToChat(navigation: context.bindings.rootNavigation(), context: context, chatLocation: .peer(peerId), analyticsContext: analyticsContext)
     }
     installBrowserHooks(hooks)
 }
@@ -217,19 +225,23 @@ extension MediaAnimatedStickerView: @retroactive BrowserStickerView {
     }
 }
 
-private func presentBrowserInvoice(context: any AccountContextProtocol, invoice: TelegramMediaInvoice, slug: String, window: Window, completion: @escaping (String) -> Void) {
+private func presentBrowserInvoice(context: any AccountContextProtocol, invoice: TelegramMediaInvoice, slug: String, window: Window, analyticsContext: AnalyticsContext, completion: @escaping (String) -> Void) {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+    let lifetime = origin.beginPresentation()
     let result = Atomic(value: "cancelled")
     let update: (String) -> Void = { status in
         _ = result.modify { current in current == "paid" ? current : status }
     }
     let controller: InputDataModalController
     if invoice.currency == XTR {
-        controller = Star_PurschaseInApp(context: context, invoice: invoice, source: .slug(slug), type: invoice.subscriptionPeriod != nil ? .botSubscription(invoice) : .bot, completion: { update($0.rawValue) })
+        controller = Star_PurschaseInApp(context: context, invoice: invoice, source: .slug(slug), type: invoice.subscriptionPeriod != nil ? .botSubscription(invoice) : .bot, analyticsContext: origin, completion: { update($0.rawValue) })
     } else {
-        controller = PaymentsCheckoutController(context: context, source: .slug(slug), invoice: invoice, completion: { update($0.rawValue) })
+        controller = PaymentsCheckoutController(context: context, source: .slug(slug), invoice: invoice, analyticsContext: origin, completion: { update($0.rawValue) })
     }
     let onDeinit = controller.onDeinit
     controller.onDeinit = {
+        let delivery = origin.beginPresentation()
+        defer { delivery.end(); lifetime.end() }
         onDeinit?()
         completion(result.with { $0 })
     }

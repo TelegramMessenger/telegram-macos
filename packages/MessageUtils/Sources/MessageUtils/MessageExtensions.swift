@@ -128,12 +128,12 @@ public extension Message {
         }
         return false
     }
-    var itHasRestrictedContent: Bool {
+    func hasRestrictedContent(_ contentSettings: ContentSettings?) -> Bool {
         #if APP_STORE || DEBUG
         for attr in attributes {
             if let attr = attr as? RestrictedContentMessageAttribute {
                 for rule in attr.rules {
-                    if rule.platform == "ios" || rule.platform == "macos" {
+                    if rule.appliesTo(platform: "ios", contentSettings: contentSettings ?? .default) || rule.appliesTo(platform: "macos", contentSettings: contentSettings ?? .default) {
                         return true
                     }
                 }
@@ -147,7 +147,7 @@ public extension Message {
         for attr in attributes {
             if let attr = attr as? RestrictedContentMessageAttribute, let contentSettings {
                 for rule in attr.rules {
-                    if rule.platform == "ios" || rule.platform == "all" || contentSettings.addContentRestrictionReasons.contains(rule.platform) {
+                    if rule.appliesTo(platform: "ios", contentSettings: contentSettings) {
                         if !contentSettings.ignoreContentRestrictionReasons.contains(rule.reason) {
                             if rule.reason != "sensitive" && !contentConfig.canAdjustSensitiveContent {
                                 return rule.text

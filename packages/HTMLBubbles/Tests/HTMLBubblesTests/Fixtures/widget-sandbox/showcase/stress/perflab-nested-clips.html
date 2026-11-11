@@ -1,0 +1,90 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:16px 16px 10px}h2{font-size:20px;margin:0 0 10px}.controls{display:flex;gap:8px;flex-wrap:wrap}
+button{background:#293d58;color:white;border:0;border-radius:8px;padding:8px 10px}
+.summary{margin:0 16px 12px;color:#a6b8cf;line-height:1.4}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:0 12px 12px;box-sizing:border-box}
+.card{min-width:0;padding:7px;background:#1c2c40;border:1px solid #39516e;border-radius:12px}
+.label{display:flex;justify-content:space-between;margin-bottom:6px;font:10px Menlo,monospace}
+.outer{position:relative;height:88px;overflow:hidden;border-radius:14px;background:#0c1420}
+.stage{position:absolute;left:4px;top:7px;width:94%;height:72px;overflow:hidden;border-radius:11px;background:#3d566c}
+.window{position:absolute;left:5px;top:6px;width:90%;height:60px;overflow:hidden;border-radius:8px;background:#122634;z-index:1}
+.track{position:absolute;left:0;top:0;display:flex;width:264px;height:36px;align-items:stretch;white-space:nowrap;z-index:0}
+.track.second{top:24px;z-index:1}.segment{width:66px;flex-shrink:0;box-sizing:border-box;padding:10px 5px;color:#a1f4dc;background:linear-gradient(90deg,#164349,#253962);font-size:11px}
+.segment:nth-child(even){background:linear-gradient(90deg,#6e4e27,#43315e);color:#ffe0a9}
+.second .segment{background:linear-gradient(90deg,#59295d,#203f6b);color:#f5b9ed}.second .segment:nth-child(even){background:linear-gradient(90deg,#265f6e,#315929);color:#d0f7aa}
+.badge{position:absolute;right:3px;top:25px;width:24px;height:24px;border-radius:7px;background:#f3be64;color:#17283b;text-align:center;line-height:24px;font-weight:600;z-index:2}
+</style>
+<header><h2>Nested clip monitors</h2><div class="controls"><button id="pause">Pause</button><button id="resize">Lock width</button><button id="count">48 scenes</button><button id="freeze">Freeze</button></div></header>
+<p class="summary" id="summary">48 scenes · 144 rounded clips · 96 overlapping tracks · changing widths and paint order</p>
+<div class="grid" id="grid"></div>
+<script>
+const grid=document.getElementById('grid'),pause=document.getElementById('pause'),resize=document.getElementById('resize'),countButton=document.getElementById('count'),summary=document.getElementById('summary');
+let stages=[],windows=[],tracks=[],readings=[],orders=[];
+let count=48,running=true,resizing=true,time=0,previous=null,frameID=0,frames=0;
+function build(next){
+  count=next;
+  let html='';
+  for(let i=0;i<count;i++){
+    let first='',second='';
+    for(let j=0;j<4;j++){
+      first+='<span class="segment">Live '+(i*4+j)+'</span>';
+      second+='<span class="segment">Queue '+((i+j)%17)+'</span>';
+    }
+    html+='<div class="card"><div class="label"><span>N'+String(i+1).padStart(3,'0')+'</span><span class="reading">0.00</span></div><div class="outer"><div class="stage"><div class="window"><div class="track">'+first+'</div><div class="track second">'+second+'</div></div><div class="badge">'+String(i%10)+'</div></div></div></div>';
+  }
+  grid.innerHTML=html;
+  stages=grid.querySelectorAll('.stage');windows=grid.querySelectorAll('.window');tracks=grid.querySelectorAll('.track');
+  readings=Array.from(grid.querySelectorAll('.reading'),function(item){return item.firstChild;});
+  orders=Array(count).fill(-1);
+  countButton.textContent=count+' scenes';
+  summary.textContent=count+' scenes · '+count*3+' rounded clips · '+count*2+' overlapping tracks · changing widths and paint order';
+  draw(time,true,true);
+}
+function draw(t,all,initializeWidths){
+  if(resizing||initializeWidths)grid.style.width=(96+4*Math.sin(t*.63)).toFixed(3)+'%';
+  for(let i=0;i<count;i++){
+    const phase=i*.29;
+    if(resizing||initializeWidths){
+      stages[i].style.width=(84+10*Math.sin(t*.81+phase)).toFixed(3)+'%';
+      windows[i].style.width=(87+9*Math.sin(t*.57+phase*.7)).toFixed(3)+'%';
+    }
+    stages[i].style.transform='translateX('+(9*Math.sin(t*.73+phase)).toFixed(3)+'px)';
+    windows[i].style.transform='translateX('+(5*Math.sin(t*.91+phase+.4)).toFixed(3)+'px)';
+    for(let j=0;j<2;j++)tracks[i*2+j].style.transform='translateX('+(-93-77*Math.sin(t*.87+phase+j*.9)).toFixed(3)+'px)';
+    const order=Math.floor(t*.8+i/8)%2;
+    if(orders[i]!==order){
+      tracks[i*2].style.zIndex=String(order);tracks[i*2+1].style.zIndex=String(1-order);
+      windows[i].style.zIndex=String(order?3:1);orders[i]=order;
+    }
+    if(all||i%4===frames%4)readings[i].data=(50+49*Math.sin(t+phase)).toFixed(2);
+  }
+}
+function frame(ms){
+  frameID=0;
+  if(!running)return;
+  if(previous!==null)time+=(ms-previous)/1000;
+  previous=ms;draw(time,false,false);frames++;
+  frameID=requestAnimationFrame(frame);
+}
+function setRunning(value){
+  running=value;previous=null;
+  if(frameID){cancelAnimationFrame(frameID);frameID=0;}
+  pause.textContent=running?'Pause':'Resume';
+  if(running)frameID=requestAnimationFrame(frame);
+}
+function freeze(){
+  setRunning(false);resizing=true;time=1.25;frames=0;
+  resize.textContent='Lock width';draw(time,true,true);
+}
+pause.onclick=function(){setRunning(!running);};
+resize.onclick=function(){resizing=!resizing;resize.textContent=resizing?'Lock width':'Unlock width';};
+countButton.onclick=function(){build(count===24?48:count===48?96:24);};
+document.getElementById('freeze').onclick=freeze;
+window.stress={
+  freeze:freeze,
+  resume:function(){setRunning(true);},
+  setCount:function(value){build(Math.max(24,Math.min(96,Math.round(Number(value)||48))));},
+  describe:function(){return {scenes:count,clips:count*3,tracks:count*2,segments:count*8,badges:count,readingsPerFrame:Math.ceil(count/4),time:time,running:running,resizing:resizing};}
+};
+build(count);frameID=requestAnimationFrame(frame);
+</script>

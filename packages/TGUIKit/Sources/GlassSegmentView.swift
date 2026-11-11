@@ -11,6 +11,8 @@ public final class GlassSegmentView: View {
     private var labels: [TextView] = []
     private var currentTheme: PresentationTheme = presentation
     private var selectionPosition: CGFloat?
+    private lazy var lens = GlassSelectionLens(host: self, selectionView: selectionView)
+    private var lifted = false
 
     public private(set) var titles: [String] = []
     public private(set) var selectedIndex: Int?
@@ -43,7 +45,7 @@ public final class GlassSegmentView: View {
                 let label = TextView()
                 label.userInteractionEnabled = false
                 label.isSelectable = false
-                addSubview(label)
+                (lens.contentView ?? self).addSubview(label)
                 labels.append(label)
             }
             applyTheme()
@@ -132,12 +134,15 @@ public final class GlassSegmentView: View {
         }
         var position = CGFloat(pressedIndex)
         var moved = false
-        if pressedIndex != selectedIndex {
+        lens.updateMode(content: labels)
+        lifted = lens.liftsOnPress
+        if pressedIndex != selectedIndex || lifted {
             setSelection(position: position, animated: true)
         }
         while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if next.type == .leftMouseUp {
                 let index = Int(position.rounded())
+                lifted = false
                 setSelection(position: CGFloat(index), animated: true)
                 if !moved || index != selectedIndex {
                     didSelect?(index)
@@ -159,6 +164,9 @@ public final class GlassSegmentView: View {
     }
 
     private func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        if lens.updateMode(content: labels) {
+            lifted = false
+        }
         transition.updateFrame(view: glass, frame: size.bounds)
         glass.updateLayout(size: size, transition: transition)
 
@@ -168,12 +176,16 @@ public final class GlassSegmentView: View {
             transition.updateFrame(view: label, frame: labelFrame)
         }
 
+        var selection: NSRect?
         if let position = selectionPosition, !frames.isEmpty {
+            let frame = selectionFrame(at: position, frames: frames)
             let selectionTransition: ContainedViewLayoutTransition = selectionView.isHidden ? .immediate : transition
             selectionView.isHidden = false
-            selectionTransition.updateFrame(view: selectionView, frame: selectionFrame(at: position, frames: frames))
+            selectionTransition.updateFrame(view: selectionView, frame: frame)
+            selection = frame
         } else {
             selectionView.isHidden = true
         }
+        lens.update(selection: selection, lifted: lifted, sources: labels, appearance: currentTheme.appearance, transition: transition)
     }
 }

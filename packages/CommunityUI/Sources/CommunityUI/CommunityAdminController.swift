@@ -17,6 +17,37 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
+
+private func communityAdminRightsErrorText(_ error: UpdateChannelAdminRightsError, isGroup: Bool) -> String {
+    switch error {
+    case .notMemberCannotInvite:
+        return strings().channelAdminsPromoteUnmemberAdminError
+    case .userBlocked:
+        return isGroup ? strings().groupErrorAddBlocked : strings().channelErrorAddBlocked
+    case .adminsTooMuch, .generic:
+        return strings().channelAdminsAddAdminError
+    case let .addMemberError(error):
+        switch error {
+        case .notMutualContact:
+            return isGroup ? strings().groupInfoAddUserLeftError : strings().channelInfoAddUserLeftError
+        case .limitExceeded:
+            return strings().channelErrorAddTooMuch
+        case .botDoesntSupportGroups:
+            return strings().channelBotDoesntSupportGroups
+        case .tooMuchBots:
+            return strings().channelTooMuchBots
+        case .tooMuchJoined:
+            return strings().inviteChannelsTooMuch
+        case .restricted:
+            return isGroup ? strings().groupErrorAddBlocked : strings().channelErrorAddBlocked
+        case .kicked:
+            return strings().channelAddAdminKickedError
+        case .bot, .generic:
+            return strings().channelAdminsAddAdminError
+        }
+    }
+}
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -144,7 +175,10 @@ public func CommunityAdminController(_ context: (any AccountContextProtocol), co
         dismissAdmin: {
             verifyAlert(for: context.window, information: strings().communityAdminDismissConfirm, successHandler: { _ in
                 updateState { var s = $0; s.updating = true; return s }
-                actionsDisposable.add((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: communityId, memberId: adminId, adminRights: nil, rank: nil) |> deliverOnMainQueue).start(completed: {
+                actionsDisposable.add((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: communityId, memberId: adminId, adminRights: nil, rank: nil) |> deliverOnMainQueue).start(error: { error in
+                    updateState { var s = $0; s.updating = false; return s }
+                    alert(for: context.window, info: communityAdminRightsErrorText(error, isGroup: true))
+                }, completed: {
                     close?()
                 }))
             })
@@ -162,15 +196,16 @@ public func CommunityAdminController(_ context: (any AccountContextProtocol), co
     let acceptTitle = isExistingAdmin ? strings().communityAdminSave : strings().communityAdminAddAdmin
 
     let controller = InputDataController(dataSignal: signal, title: strings().communityAdminAddAdmin, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .communityAdminsRights
     controller.onDeinit = { actionsDisposable.dispose() }
 
     let performSave: () -> Void = {
         let state = stateValue.with { $0 }
         if state.updating { return }
         updateState { var s = $0; s.updating = true; return s }
-        actionsDisposable.add((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: communityId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: state.flags), rank: nil) |> deliverOnMainQueue).start(error: { _ in
+        actionsDisposable.add((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: communityId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: state.flags), rank: nil) |> deliverOnMainQueue).start(error: { error in
             updateState { var s = $0; s.updating = false; return s }
-            alert(for: context.window, info: strings().communityAdminErrorGeneric)
+            alert(for: context.window, info: communityAdminRightsErrorText(error, isGroup: true))
         }, completed: {
             close?()
         }))

@@ -23,6 +23,7 @@ import WallpaperUI
 import SettingsUI
 import SceneEffects
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class CollectionRowItem : GeneralRowItem {
@@ -2489,6 +2490,12 @@ public func SelectColorController(context: any AccountContextProtocol, peer: Pee
     let controller = InputDataController(dataSignal: signal, title: strings().telegramAppearanceViewController, removeAfterDisappear: false, hasDone: true, doneString: {
         return strings().selectColorApply
     })
+    
+    if case .account = source {
+        controller.analyticsScreen = .settingsAccountColor
+    } else {
+        controller.analyticsScreen = .peerInfoColor
+    }
     
     controller.willDisappear = { _ in saveAction.setActive(false) }
     controller.willAppear = { _ in saveAction.setActive(true) }

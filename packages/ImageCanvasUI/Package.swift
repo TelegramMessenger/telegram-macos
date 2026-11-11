@@ -9,6 +9,8 @@ let package = Package(
         .library(name: "ImageCanvasUI", targets: ["ImageCanvasUI"]),
     ],
     dependencies: [
+        .package(name: "FFMpegBinding", path: "../../submodules/telegram-ios/submodules/FFMpegBinding"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
         .package(name: "TGUIKit", path: "../TGUIKit"),
         .package(name: "ColorPalette", path: "../ColorPalette"),
         .package(name: "Localization", path: "../Localization"),
@@ -24,6 +26,8 @@ let package = Package(
         .target(
             name: "ImageCanvasUI",
             dependencies: [
+                .product(name: "FFMpegBinding", package: "FFMpegBinding", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
                 .product(name: "ColorPalette", package: "ColorPalette", condition: nil),
                 .product(name: "Localization", package: "Localization", condition: nil),

@@ -2,6 +2,10 @@
 
 Every pull request must use the [pull request template](.github/pull_request_template.md) and include the following information. Complete every section before requesting review.
 
+## Accessibility
+
+Every new feature must include accessibility support and work with VoiceOver. Verify the feature with VoiceOver as part of testing, and describe the accessibility verification in the pull request.
+
 ## Key change
 
 Describe the main change and the behavior it adds, fixes, or improves. Keep each pull request focused on one change.

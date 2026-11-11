@@ -1,0 +1,356 @@
+<!--
+  source: Telegram macOS 12.10 (283300), 13-3d-lab.chat, message 1
+  author: lab 10:00 · bare (full width, no bubble)
+  ported: classic 3D card; three.js from app:three draws through the twidget 3D side channel, and twidget3d.js drives render(), onAction, onPointer, onKey and onFocus
+-->
+<style>
+  :root { color-scheme: light dark;
+    --fg: light-dark(#000, #fff); --muted: light-dark(#6e6e73, #98989d);
+    --card: light-dark(#fff, #1c1c1e); --border: light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.14));
+    --blue: #007aff; --blue-h: #0a6ee0; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.3; color: var(--fg); }
+  .card { background-color: var(--card); border: 1px solid var(--border); border-radius: 14px; color: var(--fg); }
+  .pad { padding: 12px 14px; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .row { display: flex; align-items: center; } .between { justify-content: space-between; }
+  button { font-family: inherit; font-size: 14px; font-weight: 600; padding: 5px 13px; border: 0; border-radius: 9px; background-color: rgba(127,127,127,0.16); color: var(--fg); text-align: center; cursor: pointer; }
+  button:hover { background-color: rgba(127,127,127,0.28); }
+  button.primary { background-color: var(--blue); color: #fff; } button.primary:hover { background-color: var(--blue-h); }
+  button:active { background-color: rgba(127,127,127,0.40); } button.primary:active { background-color: var(--blue-h); }
+  .grow { flex: 1; min-width: 0; }
+</style>
+<style>
+  .ck { width: 400px; max-width: 100%; background-color: #5da540; border: 0; color: #ffffff; }
+  .ck .stage { height: 400px; border-radius: 14px; background-color: #6fb84c; text-align: center; }
+  .ck .stage .note { padding-top: 176px; font-size: 13px; font-weight: 600; color: #ffffff; }
+  .ck .head { padding: 8px 14px 0 14px; }
+  .ck .title { font-size: 14px; font-weight: 800; }
+  .ck .best { font-size: 12px; color: rgba(255,255,255,0.8); }
+  .ck .score { font-size: 22px; font-weight: 800; text-align: right; min-width: 48px; }
+  .ck .pads { padding: 6px 8px 4px 8px; text-align: center; }
+  .ck .pads button { width: 54px; margin: 0 3px; font-size: 15px; color: #ffffff; background-color: rgba(255,255,255,0.2); }
+  .ck .pads button:hover { background-color: rgba(255,255,255,0.3); }
+  .ck .hint { padding: 2px 14px 10px 14px; text-align: center; font-size: 12px; color: rgba(255,255,255,0.85); }
+  .ck .over { color: #ffe27a; font-weight: 700; }
+</style>
+<div class="card ck">
+  <div class="stage" data-3d><div class="note">Chicken Cross needs scripts and Metal</div></div>
+  <div class="row head"><div class="grow"><div class="title">🐔 Chicken Cross</div><div class="best">Best 0</div></div><div class="score">0</div></div>
+  <div class="hint">Cross the roads, dodge the cars.</div>
+</div>
+<script src="app:three"></script>
+<script>
+const COLS = 4, LANE_WIDTH = 25, AHEAD = 18, BEHIND = 7, HOP = 0.13, VIEW = 9.5;
+const renderer = new THREE.WebGLRenderer({ antialias: true, cornerRadius: 14 });
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x6fb84c);
+const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 60);
+const cameraOffset = new THREE.Vector3(2.2, 10.5, 7.6);
+const focus = new THREE.Vector3(0, 0, -2), desired = new THREE.Vector3();
+scene.add(new THREE.HemisphereLight(0xffffff, 0xa6cf86, 2.1));
+const sun = new THREE.DirectionalLight(0xfff6e5, 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 });
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const unit = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+const tint = new THREE.Color();
+function boxes(list) {
+  const bp = unit.attributes.position.array, bn = unit.attributes.normal.array, n = bp.length / 3;
+  const pos = new Float32Array(list.length * n * 3), nor = new Float32Array(pos.length), col = new Float32Array(pos.length);
+  list.forEach((b, k) => {
+    tint.set(b[6]);
+    for (let i = 0; i < n; i++) {
+      const o = (k * n + i) * 3;
+      pos[o] = bp[i * 3] * b[0] + b[3]; pos[o + 1] = bp[i * 3 + 1] * b[1] + b[4]; pos[o + 2] = bp[i * 3 + 2] * b[2] + b[5];
+      nor[o] = bn[i * 3]; nor[o + 1] = bn[i * 3 + 1]; nor[o + 2] = bn[i * 3 + 2];
+      col[o] = tint.r; col[o + 1] = tint.g; col[o + 2] = tint.b;
+    }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeBoundingSphere();
+  return g;
+}
+
+const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+const play = COLS * 2 + 1;
+const lanes = {
+  grassA: boxes([[LANE_WIDTH, 0.2, 1, 0, -0.1, 0, '#76b845'], [play, 0.2, 1, 0, -0.098, 0, '#90d65c']]),
+  grassB: boxes([[LANE_WIDTH, 0.2, 1, 0, -0.1, 0, '#70b041'], [play, 0.2, 1, 0, -0.098, 0, '#88cf54']]),
+  road: boxes([[LANE_WIDTH, 0.2, 1, 0, -0.14, 0, '#45494f'], [play, 0.2, 1, 0, -0.138, 0, '#575c63']]),
+};
+const dashes = [];
+for (let x = -12; x <= 12; x += 1.5) dashes.push([0.55, 0.02, 0.07, x, -0.03, 0.5, '#e6e6e6']);
+const stripe = boxes(dashes);
+const trees = [
+  boxes([[0.26, 0.36, 0.26, 0, 0.18, 0, '#8a5a36'], [0.72, 0.46, 0.72, 0, 0.58, 0, '#3f9a46'], [0.5, 0.3, 0.5, 0, 0.94, 0, '#4caf50']]),
+  boxes([[0.26, 0.36, 0.26, 0, 0.18, 0, '#8a5a36'], [0.76, 0.5, 0.76, 0, 0.6, 0, '#388e3c'], [0.6, 0.4, 0.6, 0, 1.04, 0, '#43a047'], [0.38, 0.28, 0.38, 0, 1.36, 0, '#4caf50']]),
+];
+const bodies = ['#ef5350', '#42a5f5', '#ffca28', '#ab47bc', '#26a69a', '#ff7043'];
+const car = color => boxes([
+  [1.28, 0.34, 0.68, 0, 0.32, 0, color], [0.7, 0.3, 0.62, -0.06, 0.63, 0, '#eef3f7'], [0.72, 0.13, 0.64, -0.06, 0.65, 0, '#37474f'],
+  [0.28, 0.26, 0.74, 0.38, 0.14, 0, '#212121'], [0.28, 0.26, 0.74, -0.38, 0.14, 0, '#212121'],
+  [0.04, 0.08, 0.14, 0.65, 0.36, 0.2, '#fff59d'], [0.04, 0.08, 0.14, 0.65, 0.36, -0.2, '#fff59d'],
+]);
+const truck = color => boxes([
+  [0.68, 0.62, 0.72, 0.98, 0.44, 0, color], [0.7, 0.16, 0.74, 1.04, 0.6, 0, '#37474f'], [1.72, 0.82, 0.76, -0.28, 0.56, 0, '#eceff1'],
+  [0.3, 0.28, 0.8, 0.98, 0.15, 0, '#212121'], [0.3, 0.28, 0.8, 0.0, 0.15, 0, '#212121'], [0.3, 0.28, 0.8, -0.78, 0.15, 0, '#212121'],
+]);
+const cars = bodies.map(car), trucks = ['#1e88e5', '#e53935', '#43a047'].map(truck);
+const chickenGeometry = boxes([
+  [0.52, 0.5, 0.56, 0, 0.42, 0.02, '#fafafa'], [0.42, 0.34, 0.38, 0, 0.82, -0.08, '#ffffff'],
+  [0.12, 0.14, 0.24, 0, 1.06, -0.06, '#e53935'], [0.14, 0.1, 0.16, 0, 0.82, -0.33, '#ffa000'], [0.08, 0.1, 0.06, 0, 0.71, -0.3, '#e53935'],
+  [0.44, 0.07, 0.07, 0, 0.9, -0.18, '#1b1b1b'], [0.62, 0.24, 0.34, 0, 0.46, 0.04, '#eeeeee'], [0.3, 0.18, 0.12, 0, 0.62, 0.32, '#f0f0f0'],
+  [0.08, 0.17, 0.08, 0.12, 0.085, 0.02, '#ffa000'], [0.08, 0.17, 0.08, -0.12, 0.085, 0.02, '#ffa000'],
+  [0.14, 0.04, 0.18, 0.12, 0.02, -0.03, '#ffa000'], [0.14, 0.04, 0.18, -0.12, 0.02, -0.03, '#ffa000'],
+]);
+
+const pools = new Map();
+function acquire(geometry, cast, receive, moving) {
+  let pool = pools.get(geometry);
+  if (!pool) { pool = []; pools.set(geometry, pool); }
+  const mesh = pool.pop() || new THREE.Mesh(geometry, material);
+  mesh.castShadow = cast; mesh.receiveShadow = receive;
+  mesh.matrixAutoUpdate = !!moving;
+  mesh.rotation.set(0, 0, 0);
+  mesh.scale.set(1, 1, 1);
+  scene.add(mesh);
+  return mesh;
+}
+function place(mesh, x, z, angle) {
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = angle || 0;
+  if (!mesh.matrixAutoUpdate) mesh.updateMatrix();
+  return mesh;
+}
+function release(mesh) {
+  scene.remove(mesh);
+  pools.get(mesh.geometry).push(mesh);
+}
+
+const chicken = new THREE.Mesh(chickenGeometry, material);
+chicken.castShadow = true;
+scene.add(chicken);
+
+let rows = new Map(), active = [], nextRow = 0, runLeft = 0, runKind = 'grass';
+let col = 0, row = 0, maxRow = 0, best = 0, state = 'play', focused = false;
+let hop = null, queued = null, facing = 0, deadAt = 0, last = 0, width = 0, height = 0;
+
+const random = (a, b) => a + Math.random() * (b - a);
+
+function pickKind(r) {
+  if (r < 6) return 'grass';
+  if (runLeft <= 0) {
+    runKind = runKind === 'road' ? 'grass' : 'road';
+    runLeft = runKind === 'road' ? 1 + Math.floor(Math.random() * Math.min(4, 2 + r / 25)) : 1 + Math.floor(Math.random() * 2);
+  }
+  runLeft--;
+  return runKind;
+}
+
+function addRow(r) {
+  const kind = pickKind(r);
+  const lane = { row: r, kind, meshes: [], blocked: new Uint8Array(play), vehicles: [], speed: 0, dir: 1 };
+  const z = -r;
+  if (kind === 'grass') {
+    lane.meshes.push(place(acquire(r % 2 ? lanes.grassA : lanes.grassB, false, true), 0, z));
+    const chance = r < 3 ? 0 : Math.min(0.2 + r / 400, 0.32);
+    if (r < 0) { for (let c = -COLS; c <= COLS; c++) lane.blocked[c + COLS] = 1; }
+    let count = 0;
+    for (let c = -COLS; c <= COLS; c++) {
+      const edge = (r < 6 && Math.abs(c) === COLS) || (r < 0 && Math.random() < 0.3);
+      if ((edge || Math.random() < chance) && !(r >= 0 && r < 3 && c === 0) && count < 5) {
+        lane.meshes.push(place(acquire(trees[Math.random() < 0.35 ? 1 : 0], true, true), c, z, Math.floor(Math.random() * 4) * Math.PI / 2));
+        lane.blocked[c + COLS] = 1;
+        count++;
+      }
+    }
+    for (let k = 0; k < 2; k++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      lane.meshes.push(place(acquire(trees[Math.random() < 0.5 ? 1 : 0], true, true), side * Math.round(random(COLS + 1.6, COLS + 6.5)), z));
+    }
+  } else {
+    lane.meshes.push(place(acquire(lanes.road, false, true), 0, z));
+    const previous = rows.get(r - 1);
+    if (previous && previous.kind === 'road') {
+      lane.meshes.push(place(acquire(stripe, false, false), 0, z));
+    }
+    lane.dir = Math.random() < 0.5 ? -1 : 1;
+    const big = Math.random() < 0.28;
+    lane.speed = (big ? 0.75 : 1) * (1.5 + Math.random() * 1.7 + Math.min(r * 0.012, 1.6));
+    const count = big ? 2 : 2 + (Math.random() < 0.45 ? 1 : 0);
+    const spacing = 22 / count, start = random(-11, 11);
+    for (let i = 0; i < count; i++) {
+      const geometry = big ? trucks[Math.floor(Math.random() * trucks.length)] : cars[Math.floor(Math.random() * cars.length)];
+      let x = start + i * spacing + random(-0.8, 0.8);
+      if (x > 11) x -= 22;
+      const mesh = place(acquire(geometry, true, false, true), x, z, lane.dir > 0 ? 0 : Math.PI);
+      lane.vehicles.push({ mesh, half: big ? 1.15 : 0.66 });
+      lane.meshes.push(mesh);
+    }
+  }
+  rows.set(r, lane);
+  active.push(lane);
+}
+
+function removeRow(lane) {
+  for (const mesh of lane.meshes) release(mesh);
+  rows.delete(lane.row);
+}
+
+function syncRows() {
+  while (nextRow <= maxRow + AHEAD) addRow(nextRow++);
+  const floor = row - BEHIND;
+  if (active.length && active[0].row < floor) {
+    const keep = [];
+    for (const lane of active) { if (lane.row < floor) removeRow(lane); else keep.push(lane); }
+    active = keep;
+  }
+}
+
+function reset() {
+  for (const lane of active) removeRow(lane);
+  rows = new Map(); active = []; nextRow = -BEHIND; runLeft = 0; runKind = 'grass';
+  col = 0; row = 0; maxRow = 0; state = 'play'; hop = null; queued = null; facing = 0;
+  chicken.position.set(0, 0, 0); chicken.rotation.set(0, 0, 0); chicken.scale.set(1, 1, 1);
+  focus.set(0, 0, -2);
+  syncRows();
+  dirty = true;
+}
+
+function blocked(c, r) {
+  const lane = rows.get(r);
+  return !lane || (lane.kind === 'grass' && lane.blocked[c + COLS] === 1);
+}
+
+function move(dc, dr) {
+  if (state !== 'play') return;
+  if (hop) { queued = [dc, dr]; return; }
+  facing = dr > 0 ? 0 : dr < 0 ? Math.PI : dc < 0 ? Math.PI / 2 : -Math.PI / 2;
+  const c = col + dc, r = row + dr;
+  const ok = c >= -COLS && c <= COLS && r >= Math.max(0, maxRow - 4) && !blocked(c, r);
+  hop = { fc: col, fr: row, tc: ok ? c : col, tr: ok ? r : row, t: 0 };
+}
+
+function finishHop() {
+  col = hop.tc; row = hop.tr;
+  hop = null;
+  if (row > maxRow) { maxRow = row; if (maxRow > best) best = maxRow; dirty = true; }
+  syncRows();
+  if (queued) { const q = queued; queued = null; move(q[0], q[1]); }
+}
+
+function die() {
+  state = 'over';
+  deadAt = performance.now();
+  hop = null; queued = null;
+  chicken.position.y = 0.02;
+  chicken.scale.set(1.25, 0.14, 1.25);
+  dirty = true;
+}
+
+function update(dt) {
+  for (const lane of active) {
+    if (lane.kind !== 'road') continue;
+    const step = lane.dir * lane.speed * dt;
+    for (const v of lane.vehicles) {
+      let x = v.mesh.position.x + step;
+      if (x > 11.5) x -= 23; else if (x < -11.5) x += 23;
+      v.mesh.position.x = x;
+    }
+  }
+  if (state === 'play') {
+    if (hop) {
+      hop.t = Math.min(1, hop.t + dt / HOP);
+      const e = hop.t < 0.5 ? 2 * hop.t * hop.t : 1 - Math.pow(-2 * hop.t + 2, 2) / 2;
+      chicken.position.x = hop.fc + (hop.tc - hop.fc) * e;
+      chicken.position.z = -(hop.fr + (hop.tr - hop.fr) * e);
+      const arc = Math.sin(Math.PI * hop.t);
+      chicken.position.y = arc * 0.42;
+      chicken.scale.set(1 - arc * 0.08, 1 + arc * 0.14, 1 - arc * 0.08);
+      if (hop.t >= 1) { chicken.scale.set(1, 1, 1); chicken.position.y = 0; finishHop(); }
+    }
+    let delta = facing - chicken.rotation.y;
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+    chicken.rotation.y += delta * Math.min(1, dt * 22);
+    const lane = rows.get(Math.round(-chicken.position.z));
+    if (lane && lane.kind === 'road' && chicken.position.y < 0.3) {
+      for (const v of lane.vehicles) {
+        if (Math.abs(v.mesh.position.x - chicken.position.x) < v.half + 0.26) { die(); break; }
+      }
+    }
+  }
+  desired.set(Math.max(-1.5, Math.min(1.5, chicken.position.x)) * 0.7, 0, chicken.position.z - 1.6);
+  focus.lerp(desired, 1 - Math.exp(-dt * 5));
+  camera.position.copy(focus).add(cameraOffset);
+  camera.lookAt(focus);
+  sun.position.set(focus.x - 3.5, 10, focus.z + 2.5);
+  sun.target.position.copy(focus);
+}
+
+function resize() {
+  const size = renderer.getSize(new THREE.Vector2());
+  if (size.x === width && size.y === height || size.x < 1 || size.y < 1) return;
+  width = size.x; height = size.y;
+  const aspect = width / height;
+  camera.left = -VIEW * aspect / 2; camera.right = VIEW * aspect / 2;
+  camera.top = VIEW / 2; camera.bottom = -VIEW / 2;
+  camera.updateProjectionMatrix();
+}
+
+function tick(t) {
+  const dt = last ? Math.min(0.05, (t - last) / 1000) : 0;
+  last = t;
+  resize();
+  update(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+function onKey(key) {
+  const k = String(key).toLowerCase();
+  if (state === 'over') { if ((k === ' ' || k === 'enter') && performance.now() - deadAt > 350) reset(); return; }
+  if (k === 'arrowup' || k === 'w' || k === ' ') move(0, 1);
+  else if (k === 'arrowdown' || k === 's') move(0, -1);
+  else if (k === 'arrowleft' || k === 'a') move(-1, 0);
+  else if (k === 'arrowright' || k === 'd') move(1, 0);
+}
+function onPointer(x, y) {
+  if (state === 'over') { if (performance.now() - deadAt > 350) reset(); return; }
+  if (width > 0 && x < width * 0.22) move(-1, 0);
+  else if (width > 0 && x > width * 0.78) move(1, 0);
+  else if (height > 0 && y > height * 0.82) move(0, -1);
+  else move(0, 1);
+}
+function onFocus(value) { focused = value; dirty = true; }
+function onAction(name, value) {
+  if (name === 'restart') reset();
+  else if (name === 'move') onKey({ up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' }[value] || '');
+}
+
+let dirty = true, html = '';
+function render() {
+  if (!dirty) return html;
+  dirty = false;
+  const stage = renderer.isSupported ? '' : '<div class="note">3D needs a Mac with Metal</div>';
+  const hint = state === 'over' ? '<span class="over">Splat!</span> Click the field or press Enter to try again.'
+    : focused ? 'Arrows or WASD to hop · Esc to stop playing' : 'Click the field to play, then use the arrow keys';
+  html = `<div class="card ck">
+  <div class="stage" data-3d>${stage}</div>
+  <div class="row head"><div class="grow"><div class="title">🐔 Chicken Cross</div><div class="best">Best ${best}</div></div><div class="score">${maxRow}</div></div>
+  <div class="pads"><button data-action="move" data-value="left">◀</button><button data-action="move" data-value="up">▲</button><button data-action="move" data-value="down">▼</button><button data-action="move" data-value="right">▶</button></div>
+  <div class="hint">${hint}</div>
+</div>`;
+  return html;
+}
+
+reset();
+requestAnimationFrame(tick);
+</script>
