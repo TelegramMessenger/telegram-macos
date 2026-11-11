@@ -32,6 +32,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 private func withGiftModalSource<Result>(for window: Window, perform action: () -> Result) -> Result {
     guard let source = Control.currentEventSource, source.window === window else {
@@ -1365,7 +1366,11 @@ private final class HeaderView : GeneralRowView {
                     
                     if uniqueGift.craftChancePermille != nil {
                         menu.addItem(ContextMenuItem(strings().starGiftCraftMenuItem, handler: {
-                            item.arguments.startCrafting()
+                            if item.source.craftGift != nil {
+                                item.arguments.startCrafting()
+                            } else {
+                                item.arguments.openCraftAbout(uniqueGift)
+                            }
                         }, itemImage: MenuAnimation.menu_craft.value))
                     }
                 }
@@ -2543,6 +2548,23 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
+private extension StarGiftNftSource {
+    var analyticsScreen: AnalyticsScreen {
+        switch self {
+        case .quickLook, .craftSuccess:
+            return AnalyticsScreen.giftsUnique
+        case .preview, .upgrade, .giftUpgrade:
+            return AnalyticsScreen.giftsUpgrade
+        case .crafting:
+            return AnalyticsScreen.giftsCraft
+        case .aboutCraft:
+            return AnalyticsScreen.giftsCraftAbout
+        case .previewWear:
+            return AnalyticsScreen.giftsWearPreview
+        }
+    }
+}
+
 public enum StarGiftNftSource : Equatable {
     case preview(EnginePeer, StarGiftUpgradePreview)
     case previewWear(EnginePeer, StarGift.UniqueGift)
@@ -2926,7 +2948,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
                     let resellAmount = CurrencyAmount(amount: StarsAmount.init(value: paidAmount, nanos: 0), currency: buyForSelected).fullyFormatted
                     _ = showModalProgress(signal: context.engine.payments.sendStarsPaymentForm(formId: formId, source: source), for: window).startStandalone(next: { result in
                         switch result {
-                        case .done:
+                        case let .done(_, _, purchasedGift):
                             context.starsContext.load(force: true)
                             context.tonContext.load(force: true)
                             context.starsSubscriptionsContext.load(force: true)
@@ -2941,7 +2963,8 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
                                 StarsHooks.shared.openChat(context, peer.id, nil)
                             }
 
-                            onPurchase?(.placeholder(gift: gift))
+                            let savedGift = purchasedGift.flatMap { $0.gift.id == gift.id ? $0 : nil }
+                            onPurchase?(savedGift ?? .placeholder(gift: gift))
                             close?()
                             topUpDisposable.set(nil)
                             payStep = nil
@@ -3015,6 +3038,34 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
 
     }
 
+    func canUseAsFirstCraftSource(_ gift: StarGift.UniqueGift) -> Bool {
+        return gift.giftAddress == nil || context.appConfiguration.getBoolValue("stargifts_craft_minted_first_source", orElse: false)
+    }
+
+    func selectCraftGift(_ gift: ProfileGiftsContext.State.StarGift, at slotIndex: Int, restarting: Bool = false) -> Bool {
+        guard let uniqueGift = gift.gift.unique, gift.reference != nil else { return false }
+        if slotIndex == 0, !canUseAsFirstCraftSource(uniqueGift) {
+            alert(for: window, header: strings().starGiftNftCantChooseFirst, info: strings().starGiftNftCantChooseFirstInfo)
+            return false
+        }
+        updateState { current in
+            var current = current
+            if restarting {
+                if case let .craftSuccess(gift) = current.source {
+                    current.source = .crafting(gift)
+                }
+                current.craftingState = .idle
+                current.craftSelectedSlots = [nil, nil, nil, nil]
+            }
+            current.craftSelectedSlots[slotIndex] = gift
+            if slotIndex == 0 {
+                current.craftInitialGiftRef = gift.reference
+            }
+            return current
+        }
+        return true
+    }
+
     let arguments = Arguments(context: context, window: { window }, dismiss:{
         let state = stateValue.with { $0 }
         if case .failed = state.craftingState {
@@ -3047,12 +3098,16 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
             return current
         }
     }, transfer: {
+        let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: getController?()?.analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         
         let state = stateValue.with { $0 }
         
         
         
         if let gift = state.gift.unique, gift.hostPeerId != nil, gift.giftAddress != nil {
+            let lockedPresentation = analyticsContext.beginPresentation()
             verifyAlert(
                 for: window,
                 header: strings().starGiftActionLockedTitle,
@@ -3060,7 +3115,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
                 ok: strings().starGiftActionLockedOpen,
                 successHandler: { _ in
                     LinkHooks.shared.openExternalLink(strings().starGiftActionLockedURL, false)
-                }
+                }, onDeinit: { lockedPresentation.end() }
             )
             return
         }
@@ -3079,7 +3134,8 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
         }
         
         if let canTransferDate, canTransferDate > context.timestamp {
-            alert(for: window, header: strings().giftTransferUnavailableTitle, info: strings().giftTransferUnavailableText(stringForFullDate(timestamp: canTransferDate)))
+            let unavailablePresentation = analyticsContext.beginPresentation()
+            alert(for: window, header: strings().giftTransferUnavailableTitle, info: strings().giftTransferUnavailableText(stringForFullDate(timestamp: canTransferDate)), onDeinit: { unavailablePresentation.end() })
             return
         }
         
@@ -3089,14 +3145,17 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
             return
         }
 
-        showGiftTransfer(context: context, window: window, gift: unique, reference: reference, giftsContext: giftsContext, canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
+        showGiftTransfer(context: context, window: window, analyticsContext: analyticsContext, gift: unique, reference: reference, giftsContext: giftsContext, canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
+            let transferContext = analyticsContext.restricting(peerId: peer.id)
+            let presentation = transferContext.beginPresentation()
+            defer { withExtendedLifetime(presentation) {} }
             if let convertStars, let starsState = stateValue.with({ $0.starsState }), starsState.balance.value < convertStars {
-                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, window, .stars, nil, convertStars)
+                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, window, .stars, nil, convertStars, transferContext)
                 return
             }
             dismiss()
-            _ = (giftsContext.transferStarGift(prepaid: transferStars == nil, reference: reference, peerId: peer.id)).startStandalone()
-            _ = (showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
+            _ = transferContext.preservingPresentation(giftsContext.transferStarGift(prepaid: transferStars == nil, reference: reference, peerId: peer.id)).startStandalone()
+            _ = transferContext.preservingPresentation(showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
             close?()
         })
     }, copyNftLink: { gift in
@@ -3333,15 +3392,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
         guard let craftCtx = craftGiftsContext else { return }
         let excludedReferences = Set(state.craftSelectedGifts.compactMap { $0.reference })
         showModal(with: StarGift_MarketplaceController(context: context, peerId: context.peerId, gift: cachedGift, craftGiftsContext: craftCtx, excludedReferences: excludedReferences, selectGift: { selectedGift in
-            if slotIndex == 0, selectedGift.gift.unique?.giftAddress != nil {
-                alert(for: window, header: strings().starGiftNftCantChooseFirst, info: strings().starGiftNftCantChooseFirstInfo)
-                return
-            }
-            updateState { current in
-                var current = current
-                current.craftSelectedSlots[slotIndex] = selectedGift
-                return current
-            }
+            selectCraftGift(selectedGift, at: slotIndex)
         }), for: window)
     }, showCraftAbout: {
         let state = stateValue.with { $0 }
@@ -3356,14 +3407,16 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     }, showPatternChanceHint: { name, percent in
         showModalText(for: window, text: strings().starGiftCraftPatternChanceHint("\(percent)%", name))
     }, openCraftAbout: { gift in
-        if gift.giftAddress != nil {
+        if !canUseAsFirstCraftSource(gift) {
             alert(for: window, header: strings().starGiftNftCantChooseFirst, info: strings().starGiftNftCantChooseFirstInfo)
             return
         }
 
+        let initialGift = craftGiftsContext?.currentState?.gifts.first(where: { $0.gift.id == gift.id })
         updateState { current in
             var current = current
-            current.craftSelectedSlots[0] = .placeholder(gift: gift)
+            current.craftSelectedSlots[0] = initialGift ?? .placeholder(gift: gift)
+            current.craftInitialGiftRef = initialGift?.reference
             return current
         }
 
@@ -3429,9 +3482,21 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     }, performCraft: { [weak giftsContext] startAnimation, onSuccess, onFailure, onError in
         guard let craftCtx = craftGiftsContext else { return }
         let state = stateValue.with { $0 }
+        guard let firstGift = state.craftSelectedSlots[0], let uniqueGift = firstGift.gift.unique else {
+            onError()
+            return
+        }
+        guard canUseAsFirstCraftSource(uniqueGift) else {
+            onError()
+            alert(for: window, header: strings().starGiftNftCantChooseFirst, info: strings().starGiftNftCantChooseFirstInfo)
+            return
+        }
         let selectedGifts = state.craftSelectedGifts
         let references = selectedGifts.compactMap { $0.reference }
-        guard !references.isEmpty else { return }
+        guard references.count == selectedGifts.count else {
+            onError()
+            return
+        }
 
         var animationStarted = false
 
@@ -3481,24 +3546,8 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
         guard let cachedGift = state.craftCachedGift else { return }
         guard let craftCtx = craftGiftsContext else { return }
 
-        updateState { current in
-            var current = current
-            current.craftingState = .idle
-            current.craftSelectedSlots = [nil, nil, nil, nil]
-            return current
-        }
-
         showModal(with: StarGift_MarketplaceController(context: context, peerId: context.peerId, gift: cachedGift, craftGiftsContext: craftCtx, excludedReferences: [], selectGift: { selectedGift in
-            if selectedGift.gift.unique?.giftAddress != nil {
-                alert(for: window, header: strings().starGiftNftCantChooseFirst, info: strings().starGiftNftCantChooseFirstInfo)
-                return
-            }
-            updateState { current in
-                var current = current
-                current.craftSelectedSlots[0] = selectedGift
-                current.craftInitialGiftRef = selectedGift.reference
-                return current
-            }
+            selectCraftGift(selectedGift, at: 0, restarting: true)
         }), for: window)
     }, showCraftSuccess: { uniqueGift in
         PlayConfetti(for: window)
@@ -3531,6 +3580,16 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = source.analyticsScreen
+    actionsDisposable.add((statePromise.get() |> map { $0.source.analyticsScreen } |> distinctUntilChanged |> deliverOnMainQueue).startStrict(next: { [weak controller] screen in
+        guard let controller = controller, controller.analyticsScreen != screen else {
+            return
+        }
+        controller.analyticsScreen = screen
+        if controller.isLoaded(), controller.view.window != nil {
+            Analytics.shared.screens.show(ObjectIdentifier(controller), screen: screen)
+        }
+    }))
     
     controller.didLoad = { controller, _ in
         controller.tableView.getBackgroundColor = {
@@ -3764,7 +3823,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
             })
         case .aboutCraft, .crafting:
             break
-        case let .craftSuccess(gift):
+        case .craftSuccess:
             guard let cachedGift = state.craftCachedGift else {
                 close?()
                 return .none
@@ -3773,20 +3832,8 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
                 close?()
                 return .none
             }
-            updateState { current in
-                var current = current
-                current.source = .crafting(gift)
-                current.craftingState = .idle
-                current.craftSelectedSlots = [nil, nil, nil, nil]
-                return current
-            }
             showModal(with: StarGift_MarketplaceController(context: context, peerId: context.peerId, gift: cachedGift, craftGiftsContext: craftCtx, excludedReferences: [], selectGift: { selectedGift in
-                updateState { current in
-                    var current = current
-                    current.craftSelectedSlots[0] = selectedGift
-                    current.craftInitialGiftRef = selectedGift.reference
-                    return current
-                }
+                selectCraftGift(selectedGift, at: 0, restarting: true)
             }), for: window)
         }
 
@@ -4340,6 +4387,7 @@ private func sellNft(context: (any AccountContextProtocol), resellPrice: [Curren
 
     
     let controller = InputDataController(dataSignal: signal, title: strings().starNftSellTitle)
+    controller.analyticsScreen = .giftsSale
     
     controller.validateData = { _ in
         
@@ -4942,6 +4990,7 @@ public func StarGift_AddMessage_Controller(context: (any AccountContextProtocol)
     }
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsPurchaseMessage
 
     controller.validateData = { _ in
         arguments.send()

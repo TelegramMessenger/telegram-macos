@@ -12,6 +12,7 @@ import TelegramUtils
 import GeneralRows
 import InputDataUI
 import ChatModeTypes
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -296,6 +297,13 @@ private func adsInfoController(context: any AccountContextProtocol, message: Mes
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    switch mode {
+    case .fragment:
+        controller.analyticsScreen = AnalyticsScreen.chatSponsoredInfo
+    case .searchAd:
+        controller.analyticsScreen = AnalyticsScreen.searchAdInfo
+    }
+    
     controller.onDeinit = {
         actionsDisposable.dispose()
     }

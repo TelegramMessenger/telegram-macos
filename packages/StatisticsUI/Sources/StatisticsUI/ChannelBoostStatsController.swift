@@ -16,6 +16,7 @@ import InputDataUI
 import BoostUI
 import InviteLinksUI
 import AvatarUI
+import AppAnalytics
 
 private func actionItems(state: State, width: CGFloat, arguments: Arguments, theme: TelegramPresentationTheme) -> [ActionItem] {
     var items: [ActionItem] = []
@@ -925,6 +926,7 @@ public func ChannelBoostStatsController(context: any AccountContextProtocol, pee
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().statsBoosts, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .peerInfoBoosts
     
     controller.contextObject = boostersContext
     

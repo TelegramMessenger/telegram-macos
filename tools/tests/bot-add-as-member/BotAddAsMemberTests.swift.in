@@ -213,6 +213,14 @@ enum ConvertGroupToSupergroupError {
     case tooManyChannels
 }
 
+enum UpdateChannelAdminRightsError {
+    case generic
+}
+
+func channelAdminRightsErrorText(_ error: UpdateChannelAdminRightsError, isGroup: Bool) -> String {
+    return isGroup ? "adminRightsErrorGroup" : "adminRightsErrorChannel"
+}
+
 enum RequestStartBotInGroupError {
     case generic
 }
@@ -423,7 +431,7 @@ final class FeatureNavigationHooks {
 
 __TOP__
 
-typealias AddBotError = (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)
+typealias AddBotError = (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)
 
 func runWindowMember(peer: Peer, admin: Peer) {
     let context = lab
@@ -438,11 +446,13 @@ func runWindowMember(peer: Peer, admin: Peer) {
             record("channel error \(describe(error))")
         } else if error.2 != nil {
             record("convert error")
+        } else if error.3 != nil {
+            record("admin rights error")
         }
     })
 }
 
-func runWindowError(_ value: AddBotError) {
+func runWindowError(_ value: AddBotError, peer: Peer) {
     let context = lab
     let handler: (AddBotError) -> Void = {__WINDOW_ERROR__}
     handler(value)
@@ -547,17 +557,20 @@ let windowErrors: [(AddChannelMemberError, String)] = [
 ]
 for (error, text) in windowErrors {
     check("window error \(describe(error)) shows \(text)", ["alert \(text)"]) {
-        runWindowError((nil, error, nil))
+        runWindowError((nil, error, nil, nil), peer: memberSupergroup)
     }
 }
 check("window error from a basic group shows unknownError", ["alert unknownError"]) {
-    runWindowError((.generic, nil, nil))
+    runWindowError((.generic, nil, nil, nil), peer: memberSupergroup)
 }
 check("window error from the upgrade to a supergroup shows unknownError", ["alert unknownError"]) {
-    runWindowError((nil, nil, .generic))
+    runWindowError((nil, nil, .generic, nil), peer: memberSupergroup)
 }
 check("window error for too many channels opens the inactive channels list", ["showInactiveChannels"]) {
-    runWindowError((nil, nil, .tooManyChannels))
+    runWindowError((nil, nil, .tooManyChannels, nil), peer: memberSupergroup)
+}
+check("window error from the admin rights update shows its own text", ["alert adminRightsErrorGroup"]) {
+    runWindowError((nil, nil, nil, .generic), peer: memberSupergroup)
 }
 
 check("addBotAsMember adds the bot to a basic group", ["addGroupMember Group Bot", "done Group"]) {

@@ -17,7 +17,7 @@ let deps: [(String, String)] = [
     ("FilePanels", "../FilePanels"),
     ("MessageTextUtils", "../MessageTextUtils"),
     ("MtProtoKit", "../../submodules/telegram-ios/submodules/MtProtoKit"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

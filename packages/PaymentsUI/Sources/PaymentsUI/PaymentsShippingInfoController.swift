@@ -16,6 +16,7 @@ import CurrencyFormat
 import InAppSettings
 import TelegramMediaUtils
 import AlertsUI
+import AppAnalytics
 
 private let cManager: CountryManager = CountryManager()
 
@@ -257,6 +258,7 @@ public func PaymentsShippingInfoController(context: (any AccountContextProtocol)
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().checkoutInfoTitle)
+    controller.analyticsScreen = .paymentsShippingInfo
     
     getController = { [weak controller] in
         return controller
@@ -304,10 +306,13 @@ public func PaymentsShippingInfoController(context: (any AccountContextProtocol)
         
         return .fail(.doSomething(next: { f in
             guard let controller = getController?(), stateValue.with({ $0.formInfo == formInfo && $0.saveInfo == state.saveInfo }), let requestId = requestState.begin() else { return }
+            let analyticsContext = controller.analyticsContext ?? Analytics.shared.unresolvedContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             let operation = MetaDisposable()
             requestDisposable.set(operation)
             let validation = showModalProgress(signal: context.engine.payments.validateBotPaymentForm(saveInfo: state.saveInfo, source: source, formInfo: formInfo), for: window) |> deliverOnMainQueue
-            operation.set((validation).start(next: { result in
+            operation.set(analyticsContext.preservingPresentation(validation).start(next: { result in
                 guard getController?() != nil, requestState.take(requestId) else { return }
                 formInfoUpdated(formInfo, result)
                 close?()
@@ -339,7 +344,8 @@ public func PaymentsShippingInfoController(context: (any AccountContextProtocol)
                     case .generic:
                         text = strings().unknownError
                 }
-                alert(for: window, info: text)
+                let alertPresentation = analyticsContext.beginPresentation()
+                alert(for: window, info: text, onDeinit: { alertPresentation.end() })
                 if let id = id {
                     f(.fail(.fields([id: .shake])))
                 }

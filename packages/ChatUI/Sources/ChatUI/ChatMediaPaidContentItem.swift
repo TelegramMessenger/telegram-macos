@@ -393,7 +393,8 @@ public final class ChatMediaPaidContentItem : ChatRowItem {
         let count = StarPurchaseType.PaidMediaCount(photoCount: photosCount, videoCount: videoCount)
 
         
-        payment.open(context: context, messageId: messageId, image: image, count: count)
+        let origin = chatInteraction.captureAnalyticsContext(sourcePeerId: messageId.peerId)
+        payment.open(context: context, messageId: messageId, image: image, count: count, analyticsContext: origin)
         
     }
 }

@@ -12,6 +12,7 @@ import GeneralRows
 import InputDataUI
 import LocalAnimations
 import InlineStickerLayer
+import AppAnalytics
 //
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -280,6 +281,7 @@ func MediaPaidSetterController(context: any AccountContextProtocol, callback:@es
     
 
     let controller = InputDataController(dataSignal: signal, title: strings().paidMediaTitle)
+    controller.analyticsScreen = .chatMediaComposerPrice
     
     controller.validateData = { _ in
         guard !resolved else { return .fail(.none) }

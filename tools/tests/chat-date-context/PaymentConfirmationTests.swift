@@ -41,28 +41,36 @@ final class PaymentConfirmationTests: XCTestCase {
         super.tearDown()
     }
 
-    private func present(success: @escaping (ConfirmResult) -> Void = { _ in }, cancel: @escaping () -> Void = {}, dismissed: @escaping () -> Void = {}) {
-        verifyChatSendPayment(for: Window(), header: "Pay", information: "Message", ok: "Send", option: "Remember", successHandler: success, cancelHandler: cancel, dismissed: dismissed)
+    private func present(_ origin: AnalyticsContext, success: @escaping (ConfirmResult) -> Void = { _ in }, cancel: @escaping () -> Void = {}, dismissed: @escaping () -> Void = {}) {
+        verifyChatSendPayment(for: Window(), header: "Pay", information: "Message", ok: "Send", option: "Remember", analyticsContext: origin, successHandler: success, cancelHandler: cancel, dismissed: dismissed)
     }
 
-    func testConstructionAndSelectionPreserveArguments() {
+    func testConstructionAndSelectionPreserveContextAndArguments() {
+        let origin = AnalyticsContext(excluded: true)
+        AlertFixture.shared.constructed = { XCTAssertEqual(origin.depth, 1) }
         var results: [ConfirmResult] = []
-        present(success: { result in
+        present(origin, success: { result in
+            XCTAssertEqual(origin.depth, 2)
             results.append(result)
         })
         XCTAssertEqual(AlertFixture.shared.labels, ["Pay", "Message", "Send", "Remember"])
         XCTAssertEqual(AlertFixture.shared.optionSelected, false)
+        XCTAssertEqual(origin.depth, 1)
         AlertFixture.shared.success?(.thrid)
         XCTAssertEqual(results, [.thrid])
+        XCTAssertEqual(origin.depth, 1)
         AlertFixture.shared.deinitCallback?()
         drainMainQueue()
+        XCTAssertEqual(origin.depth, 0)
     }
 
     func testExplicitCancelCannotBecomeSuccessOrUnknownDismissal() {
+        let origin = AnalyticsContext(excluded: true)
         var cancellations = 0
         var confirmations = 0
         var dismissals = 0
-        present(success: { _ in confirmations += 1 }, cancel: {
+        present(origin, success: { _ in confirmations += 1 }, cancel: {
+            XCTAssertEqual(origin.depth, 2)
             cancellations += 1
         }, dismissed: { dismissals += 1 })
         AlertFixture.shared.cancel?()
@@ -73,12 +81,15 @@ final class PaymentConfirmationTests: XCTestCase {
         XCTAssertEqual(cancellations, 1)
         XCTAssertEqual(confirmations, 0)
         XCTAssertEqual(dismissals, 0)
+        XCTAssertEqual(origin.depth, 0)
     }
 
     func testCloseBeforeCompletionStillDeliversConfirmation() {
+        let origin = AnalyticsContext(excluded: true)
         var confirmations = 0
         var dismissals = 0
-        present(success: { _ in
+        present(origin, success: { _ in
+            XCTAssertEqual(origin.depth, 2)
             confirmations += 1
         }, dismissed: { dismissals += 1 })
         AlertFixture.shared.deinitCallback?()
@@ -86,41 +97,51 @@ final class PaymentConfirmationTests: XCTestCase {
         drainMainQueue()
         XCTAssertEqual(confirmations, 1)
         XCTAssertEqual(dismissals, 0)
+        XCTAssertEqual(origin.depth, 0)
     }
 
-    func testUnknownDestructionResolvesOnceAndRejectsLateResults() {
+    func testUnknownDestructionResolvesOnceUnderOriginAndRejectsLateResults() {
+        let origin = AnalyticsContext(excluded: true)
         var confirmations = 0
         var dismissals = 0
-        present(success: { _ in confirmations += 1 }, dismissed: {
+        present(origin, success: { _ in confirmations += 1 }, dismissed: {
+            XCTAssertEqual(origin.depth, 2)
             dismissals += 1
         })
         AlertFixture.shared.deinitCallback?()
         AlertFixture.shared.deinitCallback?()
         XCTAssertEqual(dismissals, 0)
+        XCTAssertEqual(origin.depth, 1)
         drainMainQueue()
         AlertFixture.shared.success?(.basic)
         AlertFixture.shared.cancel?()
         XCTAssertEqual(confirmations, 0)
         XCTAssertEqual(dismissals, 1)
+        XCTAssertEqual(origin.depth, 0)
     }
 
-    func testReentrantDestructionDoesNotDeliverDismissalAfterSuccess() {
+    func testReentrantDestructionDoesNotLiftContextInsideSuccess() {
+        let origin = AnalyticsContext(excluded: true)
         var confirmations = 0
         var dismissals = 0
-        present(success: { _ in
+        present(origin, success: { _ in
+            XCTAssertEqual(origin.depth, 2)
             AlertFixture.shared.deinitCallback?()
             self.drainMainQueue()
+            XCTAssertEqual(origin.depth, 1)
             confirmations += 1
         }, dismissed: { dismissals += 1 })
         AlertFixture.shared.success?(.basic)
         XCTAssertEqual(confirmations, 1)
         XCTAssertEqual(dismissals, 0)
+        XCTAssertEqual(origin.depth, 0)
     }
 
     func testReentrantSuccessCannotDeliverSecondOutcome() {
+        let origin = AnalyticsContext(excluded: false)
         var confirmations = 0
         var cancellations = 0
-        present(success: { _ in
+        present(origin, success: { _ in
             confirmations += 1
             AlertFixture.shared.success?(.thrid)
             AlertFixture.shared.cancel?()
@@ -131,15 +152,18 @@ final class PaymentConfirmationTests: XCTestCase {
     }
 
     func testSynchronousFactoryCompletionUsesSameLifetimeRules() {
+        let origin = AnalyticsContext(excluded: true)
         var confirmations = 0
         AlertFixture.shared.constructed = {
             AlertFixture.shared.deinitCallback?()
             AlertFixture.shared.success?(.basic)
         }
-        present(success: { _ in
+        present(origin, success: { _ in
+            XCTAssertEqual(origin.depth, 2)
             confirmations += 1
         })
         drainMainQueue()
         XCTAssertEqual(confirmations, 1)
+        XCTAssertEqual(origin.depth, 0)
     }
 }

@@ -16,6 +16,7 @@ import CurrencyFormat
 import InAppSettings
 import TelegramMediaUtils
 import AlertsUI
+import AppAnalytics
 
 public enum PaymentProvider : Equatable {
     case stripe
@@ -439,12 +440,25 @@ public enum PaymentCheckoutCompletionStatus : String {
     case failed
 }
 
-
 public func PaymentsCheckoutController(context: (any AccountContextProtocol), source: BotPaymentInvoiceSource, invoice: TelegramMediaInvoice, completion:((PaymentCheckoutCompletionStatus)->Void)? = nil) -> InputDataModalController {
+    return PaymentsCheckoutController(context: context, source: source, invoice: invoice, analyticsContext: Analytics.shared.unresolvedContext(), completion: completion)
+}
+
+public func PaymentsCheckoutController(context: (any AccountContextProtocol), source: BotPaymentInvoiceSource, invoice: TelegramMediaInvoice, analyticsContext inheritedAnalyticsContext: AnalyticsContext, completion:((PaymentCheckoutCompletionStatus)->Void)? = nil) -> InputDataModalController {
+    let analyticsContext: AnalyticsContext = {
+        if case let .message(messageId) = source {
+            return inheritedAnalyticsContext.restricting(peerId: messageId.peerId)
+        }
+        return inheritedAnalyticsContext
+    }()
+    let construction = analyticsContext.beginPresentation()
+    defer { construction.end() }
 
     var completion = completion
     
     let invokeCompletion:(PaymentCheckoutCompletionStatus)->Void = { value in
+        let delivery = analyticsContext.beginPresentation()
+        defer { delivery.end() }
         let callback = completion
         completion = nil
         callback?(value)
@@ -458,12 +472,13 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
     }
 
     func showPaymentChild(_ create: @autoclosure () -> ModalViewController) {
-        let controller = paymentChildController( create: create)
+        let controller = paymentChildController(analyticsContext: analyticsContext, create: create)
         showModal(with: controller, for: window())
     }
 
     func showPaymentError(_ text: String) {
-        alert(for: window(), info: text)
+        let lifetime = analyticsContext.beginPresentation()
+        alert(for: window(), info: text, onDeinit: { lifetime.end() })
     }
     
     var close:(()->Void)? = nil
@@ -474,13 +489,18 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
+        let delivery = analyticsContext.beginPresentation()
+        defer { delivery.end() }
         statePromise.set(stateValue.modify (f))
     }
     
     let addPaymentMethod:(String, BotPaymentForm)->Void = { url, paymentForm in
         showPaymentChild(PaymentWebInteractionController(context: context, url: url, intent: .addPaymentMethod({ token in
+            let delivery = analyticsContext.beginPresentation()
+            defer { delivery.end() }
             let canSave = paymentForm.canSaveCredentials && !paymentForm.passwordMissing
             if canSave {
+                let confirmation = analyticsContext.beginPresentation()
                 verifyAlert_button(for: window(), information: strings().checkoutInfoSaveInfoHelp, ok: strings().modalYes, cancel: strings().modalNotNow, successHandler: { _ in
                     updateState { current in
                         var current = current
@@ -493,7 +513,7 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
                         current.paymentMethod = .webToken(token)
                         return current
                     }
-                })
+                }, onDeinit: { confirmation.end() })
             } else {
                 updateState { current in
                     var current = current
@@ -568,11 +588,15 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
             }
                         
             let pay:()->Void = {
+                let presentation = analyticsContext.beginPresentation()
+                defer { presentation.end() }
                 let paySignal = context.engine.payments.sendBotPaymentForm(source: source, formId: form.id, validatedInfoId: state.validatedInfo?.id, shippingOptionId: state.shippingOptionId?.id, tipAmount: state.form?.invoice.tip != nil ? (state.currentTip ?? 0) : nil, credentials: credentials)
                 
-                _ = (showModalProgress(signal: paySignal, for: window())).start(next: { result in
+                _ = analyticsContext.preservingPresentation(showModalProgress(signal: paySignal, for: window())).start(next: { result in
                     
                     let success:(Bool)->Void = { value in
+                        let delivery = analyticsContext.beginPresentation()
+                        defer { delivery.end() }
                         if value {
                             invokeCompletion(.paid)
                             close?()
@@ -627,15 +651,18 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
             if let providerId = form.providerId, let paymentBotId = form.paymentBotId {
                 let checkSignal = combineLatest(queue: .mainQueue(), ApplicationSpecificNotice.getBotPaymentLiability(accountManager: context.sharedContext.accountManager, peerId: paymentBotId), botPeer, context.account.postbox.loadedPeerWithId(providerId))
                 
-                let _ = (checkSignal).startStandalone(next: { value, botPeer, providerPeer in
+                let _ = analyticsContext.preservingPresentation(checkSignal).startStandalone(next: { value, botPeer, providerPeer in
                     if let botPeer = botPeer {
                         if value {
                             pay()
                         } else {
+                            let confirmation = analyticsContext.beginPresentation()
                             verifyAlert_button(for: window(), header: strings().paymentsWarninTitle, information: strings().paymentsWarningText(botPeer.compactDisplayTitle, providerPeer.compactDisplayTitle, botPeer.compactDisplayTitle, botPeer.compactDisplayTitle), successHandler: { _ in
+                                let delivery = analyticsContext.beginPresentation()
+                                defer { delivery.end() }
                                 pay()
                                 _ = ApplicationSpecificNotice.setBotPaymentLiability(accountManager: context.sharedContext.accountManager, peerId: botPeer.id).start()
-                            })
+                            }, onDeinit: { confirmation.end() })
                         }
                     }
                 })
@@ -649,7 +676,7 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
                 if let savedCredentialsToken = savedCredentialsToken {
                     pay(.saved(id: id, tempPassword: savedCredentialsToken.token))
                 } else {
-                    let _ = (context.engine.auth.cachedTwoStepPasswordToken()
+                    let _ = analyticsContext.preservingPresentation(context.engine.auth.cachedTwoStepPasswordToken()
                                                    |> deliverOnMainQueue).start(next: { token in
                         let timestamp = context.account.network.getApproximateRemoteTimestamp()
                         if let token = token, token.validUntilDate > timestamp - 1 * 60  {
@@ -658,7 +685,7 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
                             showPaymentChild(InputPasswordController(context: context, title: strings().checkoutPasswordEntryTitle, desc: strings().checkoutPasswordEntryText(title), checker: { password in
                                 Signal { subscriber in
                                     let checker = context.engine.auth.requestTemporaryTwoStepPasswordToken(password: password, period: 1 * 60, requiresBiometrics: false) |> deliverOnMainQueue
-                                    return (checker).start(next: { token in
+                                    return analyticsContext.preservingPresentation(checker).start(next: { token in
                                         pay(.saved(id: id, tempPassword: token.token))
                                         subscriber.putCompletion()
                                     }, error: { error in
@@ -706,6 +733,8 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().checkoutTitle)
+    controller.analyticsScreen = .paymentsCheckout
+    controller.analyticsContext = analyticsContext
     
     
     let themeParams: [String: Any] = [
@@ -737,7 +766,7 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
 
     let formPromise: Promise<(BotPaymentForm, BotPaymentValidatedFormInfo?)> = Promise()
     
-    formPromise.set((formAndMaybeValidatedInfo |> `catch` { _ in .complete() }))
+    formPromise.set(analyticsContext.preservingPresentation(formAndMaybeValidatedInfo |> `catch` { _ in .complete() }))
     
     
     let botPeer: Signal<Peer?, BotPaymentFormRequestError> = formPromise.get() |> mapToSignal { value in
@@ -750,7 +779,7 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
         }
     } |> castError(BotPaymentFormRequestError.self)
     
-    actionsDisposable.add((combineLatest(formPromise.get() |> castError(BotPaymentFormRequestError.self), botPeer)).start(next: { form, botPeer in
+    actionsDisposable.add(analyticsContext.preservingPresentation(combineLatest(formPromise.get() |> castError(BotPaymentFormRequestError.self), botPeer)).start(next: { form, botPeer in
         updateState { current in
             var current = current
             current.form = form.0
@@ -829,6 +858,7 @@ public func PaymentsCheckoutController(context: (any AccountContextProtocol), so
     })
     
     
+    modalController.analyticsContext = analyticsContext
 
     close = { [weak modalController] in
         modalController?.modal?.close()

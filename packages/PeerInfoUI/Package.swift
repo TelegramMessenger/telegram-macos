@@ -65,7 +65,7 @@ let deps: [(String, String)] = [
     ("UniqueGiftBackground", "../UniqueGiftBackground"),
     ("InlineMediaGrid", "../InlineMediaGrid"),
     ("PerfLab", "../PerfLab"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

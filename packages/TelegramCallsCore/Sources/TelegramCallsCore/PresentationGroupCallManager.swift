@@ -365,6 +365,7 @@ public protocol PresentationGroupCall : AnyObject {
     var audioLevels: Signal<[(PeerId, UInt32, Float, Bool)], NoError> { get }
     var myAudioLevel: Signal<Float, NoError> { get }
     var invitedPeers: Signal<[PresentationGroupCallInvitedPeer], NoError> { get }
+    var invitationErrors: Signal<InviteConferenceCallParticipantError, NoError> { get }
     var isMuted: Signal<Bool, NoError> { get }
     var summaryState: Signal<PresentationGroupCallSummaryState?, NoError> { get }
     var callInfo: Signal<GroupCallInfo?, NoError> { get }

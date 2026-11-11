@@ -9,6 +9,7 @@ import TelegramContext
 import TelegramTheme
 import TelegramUtils
 import TelegramMediaUtils
+import AppAnalytics
 
 private var reactions: ReactionsWindowController?
 
@@ -205,6 +206,7 @@ public final class ReactionsWindowController : NSObject {
     private var skipAppearAnimation = false
     
     private let parentWindow: Window
+    private let analyticsScreen: AnalyticsScreen?
     public init<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, selectedItems: [EmojiesSectionRowItem.SelectedItem], react: @escaping(StickerPackItem, NSRect?)->Void, reactLarge: ((StickerPackItem, NSRect?)->Void)? = nil, onClose:(()->Void)? = nil, presentation: TelegramPresentationTheme = theme, name: String = "", moveTop: Bool = false, mode: EmojiesController.Mode = .reactions, parentWindow: Window? = nil, orderedTags: [RecentReactionItem]? = nil) {
         self.parentWindow = parentWindow ?? context.window
         self.context = context
@@ -213,6 +215,14 @@ public final class ReactionsWindowController : NSObject {
         self.name = name
         self.moveTop = moveTop
         self.emojies = EmojiesController(context, mode: context.peerId == peerId ? .defaultTags : mode, selectedItems: selectedItems, presentation: presentation, orderedTags: orderedTags)
+        switch context.peerId == peerId ? .defaultTags : mode {
+        case .reactions, .defaultTags:
+            self.analyticsScreen = AnalyticsScreen.chatReactionPicker
+        case .messageEffects:
+            self.analyticsScreen = AnalyticsScreen.chatMessageEffectPicker
+        default:
+            self.analyticsScreen = nil
+        }
         self.emojies.loadViewIfNeeded()
         super.init()
         
@@ -273,6 +283,7 @@ public final class ReactionsWindowController : NSObject {
     public func show(_ initialView: NSView & StickerFramesCollector, animated: Bool = true) {
         reactions?.panel?.orderOut(nil)
         if let previous = reactions {
+            Analytics.shared.screens.hideStandalone(owner: previous)
         }
         
         reactions = self
@@ -300,6 +311,9 @@ public final class ReactionsWindowController : NSObject {
         panel.order(.below, relativeTo: initialWindow.windowNumber)
         
         self.panel = panel
+        if let analyticsScreen {
+            Analytics.shared.screens.showStandalone(analyticsScreen, owner: self)
+        }
         let context = self.context
                 
         
@@ -419,6 +433,7 @@ public final class ReactionsWindowController : NSObject {
     private func close(animated: Bool = false) {
         
         self.onClose?()
+        Analytics.shared.screens.hideStandalone(owner: self)
         
         self.overlay.removeFromSuperview()
         self.context.window.removeAllHandlers(for: self)

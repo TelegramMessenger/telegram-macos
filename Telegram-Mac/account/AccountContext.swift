@@ -13,6 +13,7 @@ import FetchManager
 import InAppPurchaseManager
 import CurrencyFormat
 import WalletContext
+import HTMLBubbles
 #endif
 import ApiCredentials
 
@@ -689,7 +690,6 @@ final class AccountContext {
         prefDisposable.add(account.postbox.preferencesView(keys: [PreferencesKeys.appConfiguration]).start(next: { view in
             let configuration = view.values[PreferencesKeys.appConfiguration]?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
             _ = appConfiguration.swap(configuration)
-            LottieBackend.update(appConfiguration: configuration)
             #if !SHARE
             let flag = configuration.data?["macos_accessibility_disabled"]
             let disabled = (flag as? Bool) ?? ((flag as? Double).map { $0 != 0 } ?? false)
@@ -944,6 +944,7 @@ final class AccountContext {
         }))
 
         actionsDisposable.add(requestApplicationIcons(engine: engine).start())
+        actionsDisposable.add(HTMLWidgetStorage.shared.pruneDeletedMessages(postbox: account.postbox, basePath: account.basePath))
     }
     #endif
 
