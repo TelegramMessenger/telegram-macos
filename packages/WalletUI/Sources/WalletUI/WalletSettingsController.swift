@@ -11,6 +11,7 @@ import TGUIKit
 import SwiftSignalKit
 import WalletContext
 import PasscodeCore
+import AppAnalytics
 
 @available(macOS 10.15, *)
 private final class Arguments {
@@ -221,12 +222,6 @@ public func WalletSettingsController(context: any AccountContextProtocol, enviro
                 current.previousWallets = deduplicated
                 return current
             }
-        }, error: { _ in
-            updateState { current in
-                var current = current
-                current.previousWallets = []
-                return current
-            }
         }))
     }
 
@@ -256,8 +251,12 @@ public func WalletSettingsController(context: any AccountContextProtocol, enviro
         restoreAuthorization.end()
     }
 
+    var isOpeningPreviousWalletPhrase = false
+
     let abandonWalletFlow: () -> Void = {
         abandonBackupAccess()
+        previousPhraseDisposable.set(nil)
+        isOpeningPreviousWalletPhrase = false
         disableBackupGeneration &+= 1
         disableBackupWalletIdentity = nil
         backupDisposable.set(nil)
@@ -658,14 +657,23 @@ public func WalletSettingsController(context: any AccountContextProtocol, enviro
     }, disableBackup: {
         beginBackupAction?(.disable)
     }, showPreviousWallet: { wallet in
+        guard !isOpeningPreviousWalletPhrase,
+              walletContext.stateValue.activeOperation == nil,
+              stateValue.with({ $0.previousWallets.contains(where: { $0.id == wallet.id }) }) else {
+            return
+        }
         abandonWalletFlow()
+        isOpeningPreviousWalletPhrase = true
         let targetWindow = window
         previousPhraseDisposable.set((walletModalProgress(signal: walletContext.previousWalletRecoveryPhrase(id: wallet.id), for: targetWindow)
         |> deliverOnMainQueue).start(next: { words in
+            isOpeningPreviousWalletPhrase = false
             showModal(with: WalletWordsController(context: context, environment: environment, walletContext: walletContext, words: words, dismissOnBackgroundOrLock: true), for: targetWindow)
         }, error: { error in
-            presentWalletAuthorizationError(environment: environment, error, window: targetWindow, fallbackTitle: strings().walletSettingsControllerShowSecretPhraseFailed, fallbackText: strings().walletSettingsControllerSecretPhraseNotStored)
-            reloadPreviousWallets()
+            isOpeningPreviousWalletPhrase = false
+            presentWalletAuthorizationError(environment: environment, error, window: targetWindow, fallbackTitle: strings().walletSettingsControllerShowSecretPhraseFailed, fallbackText: strings().walletSettingsControllerCheckNetwork)
+        }, completed: {
+            isOpeningPreviousWalletPhrase = false
         }))
     }, deleteWallet: {
         abandonWalletFlow()
@@ -683,6 +691,7 @@ public func WalletSettingsController(context: any AccountContextProtocol, enviro
         InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     let controller = InputDataController(dataSignal: signal, title: strings().walletSettingsControllerKeysAndBackup, hasDone: false)
+    controller.analyticsScreen = .walletSettings
     getController = { [weak controller] in
         controller
     }

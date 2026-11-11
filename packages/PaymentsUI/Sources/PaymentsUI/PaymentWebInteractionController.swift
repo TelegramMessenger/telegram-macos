@@ -16,6 +16,7 @@ import CurrencyFormat
 import InAppSettings
 import TelegramMediaUtils
 import AlertsUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -36,6 +37,12 @@ public final class PaymentWebInteractionController: ModalViewController, WKNavig
         self.url = url
         self.intent = intent
         super.init(frame: NSMakeRect(0, 0, 380, 440))
+        switch intent {
+        case .addPaymentMethod:
+            self.analyticsScreen = AnalyticsScreen.paymentsCard
+        case .externalVerification:
+            self.analyticsScreen = AnalyticsScreen.paymentsVerification
+        }
     }
     
     public override func viewDidLoad() {
@@ -128,6 +135,8 @@ public final class PaymentWebInteractionController: ModalViewController, WKNavig
     
     private func handleScriptMessage(_ message: WKScriptMessage) {
         guard !completed else { return }
+        let presentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { presentation.end() }
         guard let body = message.body as? [String: Any] else {
             return
         }
@@ -177,6 +186,8 @@ public final class PaymentWebInteractionController: ModalViewController, WKNavig
     }
        
    public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let presentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { presentation.end() }
         guard !completed else {
             decisionHandler(.cancel)
             return

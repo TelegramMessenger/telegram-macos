@@ -12,6 +12,7 @@ import GeneralRows
 import InputDataUI
 import ChatHistoryModel
 import ChatUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -206,6 +207,7 @@ public func AddContactModalController(_ context: any AccountContextProtocol) -> 
         }
         shouldMakeNextResponderAfterTransition = nil
     })
+    controller.analyticsScreen = .contactsAdd
     
     
     let modalInteractions = ModalInteractions(acceptTitle: strings().modalCreate, accept: { [weak controller] in

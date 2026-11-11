@@ -143,7 +143,7 @@ private func startGroupCall(context: any AccountContextProtocol, peerId: PeerId?
             title: initialCall.title,
             scheduleTimestamp: initialCall.scheduleTimestamp,
             subscribedToScheduled: initialCall.subscribedToScheduled,
-            isStream: false
+            isStream: initialCall.isStream
         ), reference)
     } else if let initialInfo {
         initial = (EngineGroupCallDescription(
@@ -152,7 +152,7 @@ private func startGroupCall(context: any AccountContextProtocol, peerId: PeerId?
             title: initialInfo.title,
             scheduleTimestamp: initialInfo.scheduleTimestamp,
             subscribedToScheduled: initialInfo.subscribedToScheduled,
-            isStream: false
+            isStream: initialInfo.isStream
         ), .id(id: initialInfo.id, accessHash: initialInfo.accessHash))
     } else if let initialCall {
         initial = (EngineGroupCallDescription(
@@ -161,12 +161,12 @@ private func startGroupCall(context: any AccountContextProtocol, peerId: PeerId?
             title: initialCall.title,
             scheduleTimestamp: initialCall.scheduleTimestamp,
             subscribedToScheduled: initialCall.subscribedToScheduled,
-            isStream: false
+            isStream: initialCall.isStream
         ), .id(id: initialCall.id, accessHash: initialCall.accessHash))
     }
     
     
-    return GroupCallContext(call: PresentationGroupCallImpl(accountContext: context, initialCall: initial, internalId: internalId, peerId: peerId, isChannel: isChannel, invite: joinHash, joinAsPeerId: joinAs, initialInfo: initialInfo, isStream: initialCall?.isStream ?? initialCall?.isStream ?? initialInfo?.isStream ?? false, streamPeerId: peerId, keyPair: keyPair, conferenceSourceId: nil, isConference: isConference, initialOutput: .init(isMuted: true), isLiveStream: false), peerMemberContextsManager: context.peerChannelMemberCategoriesContextsManager, window: makeGroupWindow(isStream: false))
+    return GroupCallContext(call: PresentationGroupCallImpl(accountContext: context, initialCall: initial, internalId: internalId, peerId: peerId, isChannel: isChannel, invite: joinHash, joinAsPeerId: joinAs, initialInfo: initialInfo, isStream: initialInfo?.isStream ?? initialCall?.isStream ?? false, streamPeerId: peerId, keyPair: keyPair, conferenceSourceId: nil, isConference: isConference, initialOutput: .init(isMuted: true), isLiveStream: false), peerMemberContextsManager: context.peerChannelMemberCategoriesContextsManager, window: makeGroupWindow(isStream: false))
 }
 
 public func createVoiceChat(context: any AccountContextProtocol, peerId: PeerId, displayAsList: [FoundPeer]? = nil, canBeScheduled: Bool = false) {

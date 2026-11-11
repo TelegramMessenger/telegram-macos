@@ -177,7 +177,14 @@ public enum PhotoCacheKeyEntry : Hashable {
             hasher.combine(scale)
         case let .background(wallpaper, palette, size):
             hasher.combine("wallpaper")
-            hasher.combine(palette.name)
+            switch wallpaper {
+            case .none, .builtin, .emoticon:
+                hasher.combine(palette.name)
+                hasher.combine(palette.colorSignature)
+            default:
+                break
+            }
+            hasher.combine(palette.isDark)
             // Key by the longest side (rounded): it is what the decode cap, and therefore the cached bitmap
             // resolution, is derived from — and it avoids spurious entries from sub-pixel float differences.
             hasher.combine(Int(max(size.width, size.height).rounded()))
@@ -315,8 +322,16 @@ public enum PhotoCacheKeyEntry : Hashable {
                 return false
             }
         case let .background(wallpaper, colors, size):
-            if case .background(wallpaper, colors, size) = rhs {
-                return true
+            if case let .background(otherWallpaper, otherColors, otherSize) = rhs {
+                guard wallpaper == otherWallpaper, colors.isDark == otherColors.isDark, Int(max(size.width, size.height).rounded()) == Int(max(otherSize.width, otherSize.height).rounded()) else {
+                    return false
+                }
+                switch wallpaper {
+                case .none, .builtin, .emoticon:
+                    return colors == otherColors
+                default:
+                    return true
+                }
             } else {
                 return false
             }
@@ -325,10 +340,29 @@ public enum PhotoCacheKeyEntry : Hashable {
 }
 
 
+private final class WallpaperCacheKey: NSObject {
+    let entry: PhotoCacheKeyEntry
+
+    init(_ entry: PhotoCacheKeyEntry) {
+        self.entry = entry
+    }
+
+    override var hash: Int {
+        return entry.hashValue
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? WallpaperCacheKey else {
+            return false
+        }
+        return entry == other.entry
+    }
+}
+
 private class WallpaperCache {
     public let memoryLimit:Int
-    private var values:NSCache<NSNumber, WallpaperCachedRecord> = NSCache()
-    private let weakValues = NSCache<NSNumber, WeakWallpaperCachedRecord>()
+    private var values:NSCache<WallpaperCacheKey, WallpaperCachedRecord> = NSCache()
+    private let weakValues = NSCache<WallpaperCacheKey, WeakWallpaperCachedRecord>()
     private let lock = NSLock()
     
     public init(_ memoryLimit:Int = 100, byteLimit: Int = 64 * 1024 * 1024) {
@@ -340,7 +374,7 @@ private class WallpaperCache {
     
     fileprivate func cacheImage(_ mode: TableBackgroundMode, for key:PhotoCacheKeyEntry) {
         let record = WallpaperCachedRecord(mode: mode)
-        let cacheKey = NSNumber(value: key.hashValue)
+        let cacheKey = WallpaperCacheKey(key)
         self.lock.lock()
         defer { self.lock.unlock() }
         if let weakRecord = WeakWallpaperCachedRecord(mode: mode) {
@@ -356,7 +390,7 @@ private class WallpaperCache {
     }
     
     public func cachedImage(for key:PhotoCacheKeyEntry) -> TableBackgroundMode? {
-        let cacheKey = NSNumber(value: key.hashValue)
+        let cacheKey = WallpaperCacheKey(key)
         self.lock.lock()
         defer { self.lock.unlock() }
         if let mode = self.values.object(forKey: cacheKey)?.mode {
@@ -540,12 +574,12 @@ public func cacheMedia(_ result: TransformImageResult, media: TelegramThemeSetti
 }
 
 
-public func cacheBackground(_ result: Wallpaper, palette: ColorPalette, size: NSSize, background: TableBackgroundMode) -> Void {
-    let entry:PhotoCacheKeyEntry = .background(result, palette, size)
+public func cacheBackground(_ result: Wallpaper, palette: ColorPalette, size: NSSize, background: TableBackgroundMode, scaleFactor: CGFloat = System.backingScale) -> Void {
+    let entry:PhotoCacheKeyEntry = .background(result, palette, NSSize(width: size.width * scaleFactor, height: size.height * scaleFactor))
     wallpaperCache.cacheImage(background, for: entry)
 }
-public func cachedBackground(_ wallpaper: Wallpaper, palette: ColorPalette, size: NSSize) -> TableBackgroundMode? {
-    return wallpaperCache.cachedImage(for: .background(wallpaper, palette, size))
+public func cachedBackground(_ wallpaper: Wallpaper, palette: ColorPalette, size: NSSize, scaleFactor: CGFloat = System.backingScale) -> TableBackgroundMode? {
+    return wallpaperCache.cachedImage(for: .background(wallpaper, palette, NSSize(width: size.width * scaleFactor, height: size.height * scaleFactor)))
 }
 
 

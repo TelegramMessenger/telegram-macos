@@ -1,3 +1,4 @@
+import AppAnalytics
 import Cocoa
 import TGUIKit
 import SwiftSignalKit
@@ -797,6 +798,8 @@ public class EditImageModalController: ModalViewController {
     
     public override func close(animationType: ModalAnimationCloseBehaviour = .common) {
         guard !hasClosed else { return }
+        let analyticsPresentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { analyticsPresentation.end() }
         hasClosed = true
         markAsClosed = true
         onCancelled = nil
@@ -829,6 +832,8 @@ public class EditImageModalController: ModalViewController {
 
     private func cancelEditing() {
         guard !hasClosed else { return }
+        let analyticsPresentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { analyticsPresentation.end() }
         let onCancelled = !markAsClosed ? self.onCancelled : nil
         self.onCancelled = nil
         markAsClosed = true
@@ -951,6 +956,7 @@ public class EditImageModalController: ModalViewController {
             return
         }
         genericView.hideElements(true)
+        let analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         _ = (self.editValue.get() |> take(1)).startStandalone(next: { [weak self] data in
             guard let self else {
                 return
@@ -987,6 +993,7 @@ public class EditImageModalController: ModalViewController {
             }, closeHandler: { [weak self] in
                 self?.genericView.hideElements(false)
             })
+            editor.analyticsContext = analyticsContext
             showModal(with: editor, for: window, animated: false, animationType: .alpha)
         })
         
@@ -1011,6 +1018,7 @@ public class EditImageModalController: ModalViewController {
             }
             self.genericView.hideElements(false)
         })
+        editor.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         showModal(with: editor, for: window, animated: false, animationType: .alpha)
     }
     

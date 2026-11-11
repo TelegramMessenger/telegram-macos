@@ -266,8 +266,10 @@ public final class GroupCallTitleView : Control {
 
 
         
-        settings.setSingle(handler: { _ in
-            settingsClick()
+        settings.setSingle(handler: { [weak self] _ in
+            ModalMorphContextSource.withSource({ [weak self] in self?.settings }) {
+                settingsClick()
+            }
         }, for: .Click)
                 
         let title: String = state.title

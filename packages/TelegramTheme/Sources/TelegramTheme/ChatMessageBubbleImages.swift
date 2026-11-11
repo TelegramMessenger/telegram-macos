@@ -217,10 +217,21 @@ public func clearMessageBubbleImageCache() {
     messageBubbleImageLock.unlock()
 }
 
+private let messageBubbleMaskFillArgb = NSColor.black.argb
+private let messageBubbleMaskStrokeArgb = NSColor.clear.argb
+
+public func messageBubbleMaskImage(incoming: Bool, neighbors: MessageBubbleImageNeighbors, fitting bubbleSize: CGSize? = nil) -> (CGImage, NSEdgeInsets) {
+    return messageBubbleImageModern(incoming: incoming, fillColor: .black, fillArgb: messageBubbleMaskFillArgb, strokeColor: .clear, strokeArgb: messageBubbleMaskStrokeArgb, neighbors: neighbors, fitting: bubbleSize)
+}
+
 public func messageBubbleImageModern(incoming: Bool, fillColor: NSColor, strokeColor: NSColor, neighbors: MessageBubbleImageNeighbors, fitting bubbleSize: CGSize? = nil) -> (CGImage, NSEdgeInsets) {
+    return messageBubbleImageModern(incoming: incoming, fillColor: fillColor, fillArgb: fillColor.argb, strokeColor: strokeColor, strokeArgb: strokeColor.argb, neighbors: neighbors, fitting: bubbleSize)
+}
+
+private func messageBubbleImageModern(incoming: Bool, fillColor: NSColor, fillArgb: UInt32, strokeColor: NSColor, strokeArgb: UInt32, neighbors: MessageBubbleImageNeighbors, fitting bubbleSize: CGSize?) -> (CGImage, NSEdgeInsets) {
     let scale = System.backingScale
     let geometry = bubbleSize.map { MessageBubbleFormGeometry.fitting($0, neighbors: neighbors) } ?? .legacy
-    let key = MessageBubbleImageKey(incoming: incoming, geometry: geometry, neighbors: neighbors, fillColor: fillColor.argb, strokeColor: strokeColor.argb, scale: scale)
+    let key = MessageBubbleImageKey(incoming: incoming, geometry: geometry, neighbors: neighbors, fillColor: fillArgb, strokeColor: strokeArgb, scale: scale)
     messageBubbleImageLock.lock()
     if let cached = messageBubbleImageCache[key] {
         messageBubbleImageLock.unlock()

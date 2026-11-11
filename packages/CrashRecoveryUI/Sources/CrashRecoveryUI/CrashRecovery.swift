@@ -4,6 +4,7 @@ import SwiftSignalKit
 import ColorPalette
 import KeyboardKey
 import Localization
+import AppAnalytics
 
 public enum CrashRecoveryUpdateState: Equatable {
     case checking
@@ -214,7 +215,9 @@ private final class CrashRecoveryWindowController: NSObject, NSWindowDelegate {
             }
             return event
         }
+        Analytics.shared.screens.showStandalone(.appCrashRecovery, owner: self)
         NSApp.runModal(for: window)
+        Analytics.shared.screens.hideStandalone(owner: self)
         if let quitMonitor = quitMonitor {
             NSEvent.removeMonitor(quitMonitor)
         }
@@ -309,7 +312,9 @@ private final class CrashRecoveryWindowController: NSObject, NSWindowDelegate {
         if #available(macOS 11.0, *) {
             reset.hasDestructiveAction = true
         }
+        Analytics.shared.screens.showStandalone(.appCrashRecoveryResetConfirmation, owner: alert)
         alert.beginSheetModal(for: window, completionHandler: { [weak self] response in
+            Analytics.shared.screens.hideStandalone(owner: alert)
             if response == .alertSecondButtonReturn {
                 self?.finish(.resetLocalData)
             }

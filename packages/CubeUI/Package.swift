@@ -34,6 +34,6 @@ let package = Package(
                 .product(name: "UniqueGiftBackground", package: "UniqueGiftBackground", condition: nil),
             ],
             path: "Sources/CubeUI",
-            resources: [.copy("Resources/Assets.xcassets")]),
+            resources: [.process("Resources/Assets.xcassets")]),
     ]
 )

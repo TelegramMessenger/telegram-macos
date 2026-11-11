@@ -13,6 +13,7 @@ import InputDataUI
 import StickerSettingsUI
 import EntertainmentUI
 import ChatUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -363,6 +364,7 @@ public func GroupEmojiPackController<Context: AccountContextProtocol>(context: C
         bar.button.scaleOnClick = true
         return bar
     })
+    controller.analyticsScreen = .peerInfoEmojiPack
     
     controller.afterDisappear = {
     }

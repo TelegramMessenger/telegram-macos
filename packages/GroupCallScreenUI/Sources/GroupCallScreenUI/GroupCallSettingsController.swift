@@ -91,40 +91,15 @@ private final class Arguments {
 }
 
 public final class GroupCallSettingsView : View {
-    fileprivate let tableView:TableView = TableView()
-    private let titleContainer = View()
-    fileprivate let backButton: ImageButton = ImageButton()
-    private let title: TextView = TextView()
-    private let liquidGlassBackgroundView: LiquidGlassView
+    fileprivate let tableView: TableView = TableView()
+
     public required init(frame frameRect: NSRect) {
-        liquidGlassBackgroundView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: 0, hasShadow: true, hasBorder: true, tintAlpha: 0.5, forceAppearance: .forceDark)
-        liquidGlassBackgroundView.customTint = GroupCallTheme.windowBackground.withAlphaComponent(0.6)
         super.init(frame: frameRect)
-
-        addSubview(liquidGlassBackgroundView)
-
         addSubview(tableView)
-        addSubview(titleContainer)
-        titleContainer.addSubview(backButton)
-        titleContainer.addSubview(title)
-        let backColor = NSColor(srgbRed: 175, green: 170, blue: 172, alpha: 1.0)
-
-        title.userInteractionEnabled = false
-        title.isSelectable = false
-
-        let icon = TelegramThemeHooks.shared.image(.iconNavigationBack).precomposed(backColor)
-        let activeIcon = TelegramThemeHooks.shared.image(.iconNavigationBack).precomposed(backColor.withAlphaComponent(0.7))
-        backButton.set(image: icon, for: .Normal)
-        backButton.setAccessibilityLabel(strings().voiceOverCommonBack)
-        backButton.set(image: activeIcon, for: .Highlight)
-
-        _ = backButton.sizeToFit(.zero, NSMakeSize(24, 24), thatFit: true)
-
-        let layout = TextViewLayout.init(.initialize(string: strings().voiceChatSettings, color: GroupCallTheme.customTheme.textColor, font: .medium(.header)))
-        layout.measure(width: frame.width - 200)
-        title.update(layout)
+        tableView.contentInsets = NSEdgeInsets(top: 56, left: 0, bottom: 0, right: 0)
+        tableView.scrollerInsets = NSEdgeInsets(top: 56, left: 0, bottom: 0, right: 0)
         tableView.getBackgroundColor = {
-            GroupCallTheme.windowBackground.withAlphaComponent(0.4)
+            GroupCallTheme.windowBackground
         }
         updateLocalizationAndTheme(theme: theme)
     }
@@ -134,24 +109,14 @@ public final class GroupCallSettingsView : View {
     }
 
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
-      //  super.updateLocalizationAndTheme(theme: theme)
-        backgroundColor = .clear
-        titleContainer.backgroundColor = .clear
-        title.backgroundColor = .clear
+        backgroundColor = GroupCallTheme.windowBackground
     }
-    
+
     public override func layout() {
         super.layout()
-        liquidGlassBackgroundView.frame = bounds
-        liquidGlassBackgroundView.updateLayout(size: bounds.size, transition: .immediate)
-        titleContainer.frame = NSMakeRect(0, 0, frame.width, 54)
-        tableView.frame = NSMakeRect(0, titleContainer.frame.maxY, frame.width, frame.height - titleContainer.frame.height)
-        backButton.centerY(x: 90)
-        let f = titleContainer.focus(title.frame.size)
-        title.setFrameOrigin(NSMakePoint(max(126, f.minX), f.minY))
+        tableView.frame = bounds
     }
 }
-
 
 public struct GroupCallSettingsState : Equatable {
     
@@ -649,7 +614,7 @@ private func groupCallSettingsEntries(callState: GroupCallUIState, devices: IODe
 //    index += 1
 //
 
-public final class GroupCallSettingsController : GenericViewController<GroupCallSettingsView> {
+public final class GroupCallSettingsController : ModalViewController {
 
     public override var defaultBarTitle: String {
         return localizedString("Telegram.GroupCallSettingsController")
@@ -671,13 +636,54 @@ public final class GroupCallSettingsController : GenericViewController<GroupCall
         self.call = call
         self.callState = callState
         self.context = context
-        super.init()
+        super.init(frame: NSMakeRect(0, 0, 460, 400))
         bar = .init(height: 0)
         self.insets = NSEdgeInsets()
     }
 
-    public override var containerCornerRadius: CGFloat {
-        return 0
+    public override func viewClass() -> AnyClass {
+        return GroupCallSettingsView.self
+    }
+
+    private var genericView: GroupCallSettingsView {
+        return view as! GroupCallSettingsView
+    }
+
+    public override var hasBorder: Bool {
+        return false
+    }
+
+    public override var containerBackground: NSColor {
+        return GroupCallTheme.windowBackground
+    }
+
+    public override var headerBackground: NSColor {
+        return GroupCallTheme.windowBackground
+    }
+
+    public override var headerBorderColor: NSColor {
+        return GroupCallTheme.memberSeparatorColor
+    }
+
+    public override var modalTheme: ModalViewController.Theme {
+        let theme = GroupCallTheme.customTheme
+        return .init(text: theme.textColor, grayText: theme.grayTextColor, background: .clear, border: .clear, accent: theme.accentColor, grayForeground: theme.grayForeground, activeBackground: GroupCallTheme.windowBackground, activeBorder: theme.borderColor, listBackground: GroupCallTheme.windowBackground)
+    }
+
+    public override var modalHeader: (left: ModalHeaderData?, center: ModalHeaderData?, right: ModalHeaderData?)? {
+        return (left: ModalHeaderData(image: TelegramThemeHooks.shared.darkAppearance().icons.modalClose, handler: { [weak self] in
+            self?.close()
+        }), center: ModalHeaderData(title: strings().voiceChatSettings), right: nil)
+    }
+
+    public override var dynamicSize: Bool {
+        return true
+    }
+
+    public override func measure(size: NSSize) {
+        let width = min(460, max(280, size.width - 40))
+        let height = min(tableView.listHeight, min(580, max(1, size.height - 120)))
+        modal?.resize(with: NSMakeSize(width, height), animated: false)
     }
     
     private var tableView: TableView {
@@ -730,10 +736,6 @@ public final class GroupCallSettingsController : GenericViewController<GroupCall
         return .rejected
     }
     
-    public override var enableBack: Bool {
-        return true
-    }
-    
     deinit {
         disposable.dispose()
         monitorPermissionDisposable.dispose()
@@ -783,7 +785,7 @@ public final class GroupCallSettingsController : GenericViewController<GroupCall
 
         
 
-        self.genericView.tableView._mouseDownCanMoveWindow = true
+        self.genericView.tableView._mouseDownCanMoveWindow = false
         
         let context = self.context
         
@@ -830,10 +832,6 @@ public final class GroupCallSettingsController : GenericViewController<GroupCall
                 return current
             }
         }))
-        
-        genericView.backButton.set(handler: { [weak self] _ in
-            self?.navigationController?.back()
-        }, for: .Click)
         
         let sharedContext = self.sharedContext
         
@@ -1024,8 +1022,14 @@ public final class GroupCallSettingsController : GenericViewController<GroupCall
         } |> deliverOnMainQueue
 
         disposable.set(signal.start(next: { [weak self] value in
-            self?.genericView.tableView.merge(with: value)
-            self?.readyOnce()
+            guard let self else {
+                return
+            }
+            self.genericView.tableView.merge(with: value)
+            if let size = self.window?.contentView?.bounds.size {
+                self.measure(size: size)
+            }
+            self.readyOnce()
         }))
         
     }
@@ -1047,8 +1051,8 @@ public final class GroupCallSettingsController : GenericViewController<GroupCall
     }
     
     public override func returnKeyAction() -> KeyHandlerResult {
-        self.navigationController?.back()
-        return super.returnKeyAction()
+        self.close()
+        return .invoked
     }
     
 }

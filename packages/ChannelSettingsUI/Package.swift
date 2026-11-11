@@ -27,7 +27,7 @@ let deps: [(String, String)] = [
     ("EntertainmentUI", "../EntertainmentUI"),
     ("InlineStickerLayer", "../InlineStickerLayer"),
     ("InviteLinksUI", "../InviteLinksUI"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

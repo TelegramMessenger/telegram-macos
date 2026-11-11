@@ -30,6 +30,7 @@ import LokiRng
 import FoundationUtils
 import InputView
 import InputTextView
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -213,6 +214,7 @@ public func StarUsePromoController(context: (any AccountContextProtocol)) -> Inp
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .starsAbout
     
     controller.onDeinit = {
         actionsDisposable.dispose()

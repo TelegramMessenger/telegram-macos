@@ -14,6 +14,7 @@ import TelegramTheme
 import TelegramUtils
 import ColorPalette
 import TelegramIconsTheme
+import AppAnalytics
 
 private func formattedJoinedMessage(from names: [String]) -> String {
     switch names.count {
@@ -271,6 +272,7 @@ public func JoinGroupCallController(context: any AccountContextProtocol, summary
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .groupCallConferenceInvitation
     
     getController = { [weak controller] in
         return controller

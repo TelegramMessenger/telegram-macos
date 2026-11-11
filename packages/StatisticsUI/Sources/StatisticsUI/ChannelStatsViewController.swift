@@ -20,6 +20,7 @@ import DateUtils
 import TelegramIconsTheme
 import TelegramMediaUtils
 import MessageTextUtils
+import AppAnalytics
 
 
 public enum StatsPostItem: Equatable {
@@ -450,7 +451,10 @@ private func statsEntries(_ state: ChannelStatsContextState, uiState: UIStatsSta
 }
 
 
-public func ChannelStatsViewController(_ context: any AccountContextProtocol, peerId: PeerId) -> ViewController {
+public func ChannelStatsViewController(_ context: any AccountContextProtocol, peerId: PeerId, analyticsContext: AnalyticsContext? = nil) -> ViewController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let lifetime = origin.beginPresentation()
+    defer { lifetime.end() }
 
     let initialState = UIStatsState(loading: [])
     
@@ -475,13 +479,16 @@ public func ChannelStatsViewController(_ context: any AccountContextProtocol, pe
 
     let openPost: (StatsPostItem)->Void = { item in
         let subject: MessageStatsSubject
+        let targetOrigin: AnalyticsContext
         switch item {
         case let .message(message, _):
             subject = .messageId(message.id)
+            targetOrigin = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : origin.restricting(peerId: message.id.peerId)
         case let .story(story, peer, _):
             subject = .story(story, .init(peer.peer))
+            targetOrigin = origin.restricting(peerId: peer.peer.id)
         }
-        context.bindings.rootNavigation().push(MessageStatsController(context, subject: subject))
+        context.bindings.rootNavigation().push(MessageStatsController(context, subject: subject, analyticsContext: targetOrigin))
     }
     
     let detailedDisposable = DisposableDict<InputDataIdentifier>()
@@ -528,6 +535,8 @@ public func ChannelStatsViewController(_ context: any AccountContextProtocol, pe
     
     
     let controller = InputDataController(dataSignal: signal, title: strings().channelStatsTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoStats
     
     controller.contextObject = statsContext
     controller.didLoad = { controller, _ in

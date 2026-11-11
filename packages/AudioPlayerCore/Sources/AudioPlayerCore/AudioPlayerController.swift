@@ -542,18 +542,23 @@ public protocol APDelegate : AnyObject {
     func audioDidCompleteQueue(for controller:APController, animated: Bool)
 }
 
-private final class ControlCenter {
-    private static weak var activeOwner: ControlCenter?
+public final class MediaPlaybackControlCenter {
+    private static weak var activeOwner: MediaPlaybackControlCenter?
     private static var activeOwnerId: UUID?
+    private static weak var persistentOwner: MediaPlaybackControlCenter?
     private let ownerId = UUID()
-    private var commandGeneration: UInt64 = 0
+    private(set) var commandGeneration: UInt64 = 0
     private let artworkDisposable = MetaDisposable()
     private var artworkGeneration: UInt64 = 0
     private var artworkResourceId: MediaResourceId?
     private var artwork: MPMediaItemArtwork?
     private var nowPlayingInfo: [String: Any]?
+    var restoreNowPlaying: (() -> Bool)?
 
     public func activate() {
+        if restoreNowPlaying != nil {
+            Self.persistentOwner = self
+        }
         if Self.activeOwnerId != self.ownerId {
             Self.activeOwner?.removeRemoteTransportControls()
             Self.activeOwner = self
@@ -577,13 +582,10 @@ private final class ControlCenter {
     private var togglePlayPauseCommand: Any?
     private var playbackPositionCommand: Any?
     
-    public let account: Account
-    
-    public init(account: Account) {
-        self.account = account
+    public init() {
     }
-    
-    public func setupNowPlaying(_ song: APSongItem) {
+
+    func setupNowPlaying(_ song: APSongItem, account: Account) {
         guard Self.activeOwnerId == self.ownerId else { return }
 
         let resource = song.coverResource
@@ -639,7 +641,7 @@ private final class ControlCenter {
             let generation = self.artworkGeneration
             let disposable = MetaDisposable()
             self.artworkDisposable.set(disposable)
-            disposable.set((self.account.postbox.mediaBox.resourceData(resource)
+            disposable.set((account.postbox.mediaBox.resourceData(resource)
             |> filter { $0.complete }
             |> take(1)
             |> deliverOnMainQueue).start(next: { [weak self] data in
@@ -656,6 +658,36 @@ private final class ControlCenter {
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = info
             }))
         }
+    }
+
+    public func setupNowPlaying(videoTitle: String, status: MediaPlayerStatus) {
+        guard Self.activeOwnerId == self.ownerId else { return }
+        let duration = status.duration.isFinite ? max(0, status.duration) : 0
+        let timestamp = status.timestamp.isFinite ? min(duration, max(0, status.timestamp)) : 0
+        let isPlaying: Bool
+        let rate: Double
+        switch status.status {
+        case .playing:
+            isPlaying = true
+            rate = status.baseRate.isFinite ? max(0, status.baseRate) : 0
+        case let .buffering(_, whilePlaying):
+            isPlaying = whilePlaying
+            rate = 0
+        case .paused:
+            isPlaying = false
+            rate = 0
+        }
+        let info: [String: Any] = [
+            MPMediaItemPropertyTitle: videoTitle,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue,
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: timestamp,
+            MPNowPlayingInfoPropertyPlaybackRate: rate
+        ]
+        self.nowPlayingInfo = info
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = isPlaying ? .playing : .paused
     }
 
     private func resetArtwork() {
@@ -693,12 +725,21 @@ private final class ControlCenter {
     }
 
     private static func clearOwner(_ ownerId: UUID) {
+        if Self.persistentOwner?.ownerId == ownerId {
+            Self.persistentOwner = nil
+        }
         guard Self.activeOwnerId == ownerId else { return }
         Self.activeOwner = nil
         Self.activeOwnerId = nil
         let nowPlayingInfoCenter = MPNowPlayingInfoCenter.default()
         nowPlayingInfoCenter.nowPlayingInfo = nil
         nowPlayingInfoCenter.playbackState = .stopped
+        if let owner = Self.persistentOwner {
+            owner.activate()
+            if owner.restoreNowPlaying?() != true {
+                owner.clearNowPlaying()
+            }
+        }
     }
 
     public func clearNowPlaying() {
@@ -721,15 +762,19 @@ private final class ControlCenter {
         }
     }
 
-    public func updateControlsAvaiability(nextEnabled: Bool, prevEnabled: Bool) {
+    public func updateControlsAvaiability(nextEnabled: Bool, prevEnabled: Bool, seekEnabled: Bool = true) {
         guard Self.activeOwnerId == self.ownerId else { return }
         let commandCenter = MPRemoteCommandCenter.shared()
 
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.previousTrackCommand.isEnabled = prevEnabled
         commandCenter.nextTrackCommand.isEnabled = nextEnabled
+        commandCenter.changePlaybackPositionCommand.isEnabled = seekEnabled
     }
     
-    private func performCommand(generation: UInt64, action: (ControlCenter) -> Bool) -> MPRemoteCommandHandlerStatus {
+    func performCommand(generation: UInt64, action: (MediaPlaybackControlCenter) -> Bool) -> MPRemoteCommandHandlerStatus {
         if !Thread.isMainThread {
             return DispatchQueue.main.sync {
                 self.performCommand(generation: generation, action: action)
@@ -814,7 +859,7 @@ public class APController : NSResponder {
     private var playlistGeneration: UInt64 = 0
     private var completingPlaylistGeneration: UInt64?
     
-    private let controlCenter: ControlCenter
+    private let controlCenter: MediaPlaybackControlCenter
    
     private let statusDisposable = MetaDisposable()
     private let readyDisposable = MetaDisposable()
@@ -947,7 +992,7 @@ public class APController : NSResponder {
             }
         }
         guard self.playlistGeneration == generation, self.song === item else { return }
-        self.controlCenter.setupNowPlaying(item)
+        self.controlCenter.setupNowPlaying(item, account: self.account)
         guard self.playlistGeneration == generation, self.song === item else { return }
         self.controlCenter.updateControlsAvaiability(nextEnabled: self.nextEnabled, prevEnabled: self.prevEnabled)
     }
@@ -962,7 +1007,7 @@ public class APController : NSResponder {
             }
         }
         guard self.playlistGeneration == generation, self.song === item else { return }
-        self.controlCenter.setupNowPlaying(item)
+        self.controlCenter.setupNowPlaying(item, account: self.account)
         guard self.playlistGeneration == generation, self.song === item else { return }
         self.controlCenter.updateControlsAvaiability(nextEnabled: self.nextEnabled, prevEnabled: self.prevEnabled)
     }
@@ -1024,7 +1069,7 @@ public class APController : NSResponder {
         self.state.volume = volume
         self.streamable = streamable
         self.state.baseRate = baseRate
-        self.controlCenter = ControlCenter(account: context.account)
+        self.controlCenter = MediaPlaybackControlCenter()
         super.init()
         
         controlCenter.play = { [weak self] in
@@ -1044,6 +1089,12 @@ public class APController : NSResponder {
         }
         controlCenter.seek = { [weak self] timestamp in
             return self?.set(seek: timestamp) ?? false
+        }
+        controlCenter.restoreNowPlaying = { [weak self] in
+            guard let self, let song = self.song else { return false }
+            self.controlCenter.setupNowPlaying(song, account: self.account)
+            self.controlCenter.updateControlsAvaiability(nextEnabled: self.nextEnabled, prevEnabled: self.prevEnabled)
+            return true
         }
     }
 

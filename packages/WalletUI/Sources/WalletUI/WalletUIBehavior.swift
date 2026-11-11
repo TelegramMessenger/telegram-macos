@@ -235,3 +235,15 @@ final class WalletTonConnectCompletion {
         close()
     }
 }
+
+struct WalletTonConnectInputGate {
+    private(set) var acceptsInputAfter: TimeInterval = 0
+
+    mutating func appear(now: TimeInterval, delay: TimeInterval) {
+        acceptsInputAfter = now + max(0, delay)
+    }
+
+    func allowsInput(now: TimeInterval) -> Bool {
+        now >= acceptsInputAfter
+    }
+}

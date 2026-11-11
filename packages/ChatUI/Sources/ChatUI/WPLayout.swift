@@ -497,7 +497,7 @@ public class WPLayout: Equatable {
             chatInteraction.markAdAction(adAttribute.opaqueId, adAttribute.hasContentMedia)
         } else {
             let link = ChatHistoryLink.inApp(for: self.content.url.nsstring, context: context, messageId: parent.id, openInfo: chatInteraction.openInfo)
-            ChatHistoryLink.execute(inapp: link)
+            ChatHistoryLink.execute(inapp: link, morphSource: morphSource)
         }
     }
     

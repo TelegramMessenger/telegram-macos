@@ -120,6 +120,8 @@ private func submoduleBevelWeight(normal: CGPoint, light: CGPoint) -> CGFloat {
 }
 
 private let walletCardChipHarness = """
+constant WalletCardStyle walletCardClassicStyle = {};
+
 struct WalletCardChipTestOutput { float4 position [[position]]; };
 
 vertex WalletCardChipTestOutput walletCardChipTestVertex(uint vertexID [[vertex_id]]) {
@@ -134,7 +136,7 @@ fragment float4 walletCardChipTestFragment(WalletCardChipTestOutput input [[stag
     texture2d<float> noiseMap [[texture(0)]], texture2d<float> qrMap [[texture(1)]]) {
     float2 position = input.position.xy / layout.z - layout.w * layout.xy;
     float2 cp = position / layout.xy + float2(268.5, 82.0);
-    return walletCardQRChip(cp, state.xy, state.z, noiseMap, qrMap);
+    return walletCardQRChip(cp, state.xy, state.z, noiseMap, qrMap, cp, walletCardClassicStyle);
 }
 """
 
@@ -168,7 +170,7 @@ final class WalletCardSurfaceSubmoduleCompatibilityTests: XCTestCase {
             "var rotation = CATransform3DRotate(CATransform3DIdentity, CGFloat(pitch), 1.0, 0.0, 0.0)",
             "rotation = CATransform3DRotate(rotation, CGFloat(yaw), 0.0, 1.0, 0.0)",
             "return CGPoint(x: depth * rotation.m31, y: depth * rotation.m32)",
-            "let edgeShift = self.edgeShift(pitch: cardPitch, yaw: self.currentCardY)",
+            "let edgeShift = self.edgeShift(pitch: cardPitch, yaw: self.stickerYaw)",
             "let x = self.projectedPoint(corner, transform: perspectiveTransform).point.x - anchorX",
             "reachX = max(reachX, max(abs(x), abs(x + edgeShift.x)))",
             "let fitScale = reachX > anchorX ? anchorX / reachX : 1.0",
@@ -176,7 +178,7 @@ final class WalletCardSurfaceSubmoduleCompatibilityTests: XCTestCase {
             "var backTransform = CATransform3DConcat(perspectiveTransform, CATransform3DMakeTranslation(edgeShift.x * fitScale, edgeShift.y * fitScale, 0.0))",
             "perspectiveTransform = scrolled(perspectiveTransform) backTransform = scrolled(backTransform)",
             "perspectiveTransform.m34 = -1.0 / 650.0",
-            "CGFloat(-self.currentCardY * 3.0), CGFloat(self.currentCardX * 2.5),",
+            "CGFloat(-self.stickerYaw * 3.0), CGFloat(self.currentCardX * 2.5),",
             "let detailsFraction = max(0.0, min(1.0, (self.balanceTransitionFraction - 0.3) / 0.3))",
             "let easedDetailsFraction = detailsFraction * detailsFraction * (3.0 - 2.0 * detailsFraction)",
             "self.qrAlpha = detailsAlpha self.qrBlurRadius = easedDetailsFraction * 8.0",

@@ -14,6 +14,7 @@ import InputDataUI
 import AlertsUI
 import LocalAnimations
 import ShortPeerRow
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -269,6 +270,7 @@ func DataStorageExceptions(context: any AccountContextProtocol, category: CacheS
     }
     
     let controller = InputDataController(dataSignal: signal, title: category.titleString, hasDone: true)
+    controller.analyticsScreen = .settingsStorageUsageExceptions
     controller.updateDoneValue = { data in
         return { f in
             if !stateValue.with({ $0.editing }) {
