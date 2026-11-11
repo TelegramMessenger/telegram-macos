@@ -10,6 +10,7 @@ import Localization
 import GeneralRows
 import InputDataUI
 import ShortPeerRow
+import AppAnalytics
 
 private final class RestrictedControllerArguments {
     let context: any AccountContextProtocol
@@ -449,8 +450,13 @@ private func restrictedInputDataEntries(_ entries: [RestrictedEntry], arguments:
     return result
 }
 
-public func RestrictedModalController(_ context: any AccountContextProtocol, peerId: PeerId, memberId: PeerId, initialParticipant: ChannelParticipant?, updated: @escaping (TelegramChatBannedRights) -> Void) -> InputDataModalController {
+public func RestrictedModalController(_ context: any AccountContextProtocol, peerId: PeerId, memberId: PeerId, initialParticipant: ChannelParticipant?, updated: @escaping (TelegramChatBannedRights) -> Void, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: memberId).restricting(peerId: initialParticipant?.peerId ?? memberId)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let updated: (TelegramChatBannedRights) -> Void = { [updated] rights in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         updated(rights)
     }
 
@@ -606,6 +612,8 @@ public func RestrictedModalController(_ context: any AccountContextProtocol, pee
     let controller = InputDataController(dataSignal: signal, title: strings().groupPermissionTitle, getBackgroundColor: {
         theme.colors.listBackground
     })
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoPermissionsException
 
     getTableView = { [weak controller] in
         return controller?.tableView
@@ -745,6 +753,7 @@ public func RestrictedModalController(_ context: any AccountContextProtocol, pee
     }, singleButton: true)
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(350, 360))
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()

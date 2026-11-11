@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import Postbox
 import SwiftSignalKit
 import TGUIKit
@@ -87,13 +88,14 @@ public enum SettingsStarsCurrency {
 public struct SettingsNavigationHooks {
     public var showMultigift: (any AccountContextProtocol, (() -> NSView?)?) -> Void = { _, _ in }
     public var openQrStudio: (any AccountContextProtocol, (() -> NSView?)?) -> Void = { _, _ in }
-    public var openQrStudioWithContext: ((any AccountContextProtocol, (() -> NSView?)?) -> Void)?
+    public var openQrStudioWithContext: ((any AccountContextProtocol, (() -> NSView?)?, AnalyticsContext) -> Void)?
 
-    public func openQrStudioObserved(_ context: any AccountContextProtocol, _ morphSource: (() -> NSView?)?) {
+    public func openQrStudioObserved(_ context: any AccountContextProtocol, _ morphSource: (() -> NSView?)?, analyticsContext: AnalyticsContext) {
         if let openQrStudioWithContext {
-            openQrStudioWithContext(context, morphSource)
+            openQrStudioWithContext(context, morphSource, analyticsContext)
         } else {
-            do {
+            let presentation = analyticsContext.beginPresentation()
+            withExtendedLifetime(presentation) {
                 openQrStudio(context, morphSource)
             }
         }
@@ -127,11 +129,14 @@ public struct SettingsNavigationHooks {
     public var showPremiumLimit: (any AccountContextProtocol, SettingsPremiumLimit) -> Void = { _, _ in }
     public var showPhotosGallery: (any AccountContextProtocol, PeerId, AnyHashable, InteractionContentViewProtocol?) -> Void = { _, _, _, _ in }
     public var openWebBot: (any AccountContextProtocol, AttachMenuBot) -> Void = { _, _ in }
-    public var openWebBotWithContext: ((any AccountContextProtocol, AttachMenuBot) -> Void)?
+    public var openWebBotWithContext: ((any AccountContextProtocol, AttachMenuBot, AnalyticsContext) -> Void)?
 
-    public func openWebBotObserved(_ context: any AccountContextProtocol, _ bot: AttachMenuBot) {
+    public func openWebBotObserved(_ context: any AccountContextProtocol, _ bot: AttachMenuBot, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: bot.peer.id, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let openWebBotWithContext {
-            openWebBotWithContext(context, bot)
+            openWebBotWithContext(context, bot, origin)
         } else {
             openWebBot(context, bot)
         }

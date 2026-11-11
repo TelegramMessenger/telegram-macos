@@ -2,13 +2,14 @@ import Foundation
 import AVFoundation
 import Speech
 import SwiftSignalKit
+import Translate
+import Localization
 
 enum ChatDictationError: Error, Equatable {
     case microphoneDenied
     case speechDenied
     case unsupportedLanguage
     case unavailable
-    case noInputDevice
     case failed
 }
 
@@ -17,7 +18,7 @@ protocol ChatDictationEngine: AnyObject {
     var onLevel: ((CGFloat) -> Void)? { get set }
     var onLanguage: ((String) -> Void)? { get set }
     var onFinish: ((ChatDictationError?) -> Void)? { get set }
-    func start() throws
+    func start()
     func stop()
     func cancel()
 }
@@ -30,84 +31,6 @@ private protocol ChatDictationRecognizer: AnyObject {
     func append(_ buffer: AVAudioPCMBuffer)
     func finishAudio()
     func cancel()
-}
-
-private final class ChatDictationAudioCapture {
-    private let engine = AVAudioEngine()
-    private var observer: NSObjectProtocol?
-    private var running = false
-    var onLevel: ((CGFloat) -> Void)?
-    var onInterrupted: (() -> Void)?
-
-    var inputFormat: AVAudioFormat {
-        return engine.inputNode.outputFormat(forBus: 0)
-    }
-
-    func start(_ consume: @escaping (AVAudioPCMBuffer) -> Void) throws {
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw ChatDictationError.noInputDevice
-        }
-        let onLevel = self.onLevel
-        input.installTap(onBus: 0, bufferSize: 1024, format: format, block: { buffer, _ in
-            consume(buffer)
-            let level = ChatDictationAudioCapture.level(of: buffer)
-            DispatchQueue.main.async {
-                onLevel?(level)
-            }
-        })
-        engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            input.removeTap(onBus: 0)
-            throw ChatDictationError.noInputDevice
-        }
-        running = true
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main, using: { [weak self] _ in
-            guard let self, self.running else {
-                return
-            }
-            self.onInterrupted?()
-        })
-    }
-
-    func stop() {
-        if let observer {
-            NotificationCenter.default.removeObserver(observer)
-            self.observer = nil
-        }
-        guard running else {
-            return
-        }
-        running = false
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-    }
-
-    deinit {
-        stop()
-    }
-
-    private static func level(of buffer: AVAudioPCMBuffer) -> CGFloat {
-        guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else {
-            return 0
-        }
-        let count = Int(buffer.frameLength)
-        var sum: Float = 0
-        for index in 0 ..< count {
-            let sample = channel[index]
-            sum += sample * sample
-        }
-        let rms = sqrt(sum / Float(count))
-        guard rms > 0 else {
-            return 0
-        }
-        let decibels = 20 * log10(rms)
-        let floor: Float = -50
-        return CGFloat(max(0, min(1, (decibels - floor) / -floor)))
-    }
 }
 
 @available(macOS 10.15, *)
@@ -146,6 +69,7 @@ private final class ChatDictationCandidate {
     var text: String = ""
     var stability = ChatInputDictationStability()
     var confidence: Double?
+    var isEnded = false
 
     init(recognizer: ChatDictationRecognizer, priority: Int) {
         self.recognizer = recognizer
@@ -162,7 +86,7 @@ private final class ChatDictationSession: ChatDictationEngine {
     var onTranscript: ((String) -> Void)?
     var onLevel: ((CGFloat) -> Void)? {
         didSet {
-            capture.onLevel = onLevel
+            source.onLevel = onLevel
         }
     }
     var onLanguage: ((String) -> Void)?
@@ -172,9 +96,11 @@ private final class ChatDictationSession: ChatDictationEngine {
     private static let forcedDecisionDelay: CFTimeInterval = 3.0
     private static let decisionMargin: Double = 0.12
 
-    private let capture = ChatDictationAudioCapture()
+    private let source: ChatDictationRecordingSource
     private let lock = NSLock()
     private var feeding: [ChatDictationRecognizer] = []
+    private var fedFrames: AVAudioFramePosition = 0
+    private var audioFinished = false
     private var candidates: [ChatDictationCandidate]
     private var leader: ChatDictationCandidate
     private var winner: ChatDictationCandidate?
@@ -183,8 +109,9 @@ private final class ChatDictationSession: ChatDictationEngine {
     private var finished = false
     private var timeout: DispatchWorkItem?
 
-    init(recognizers: [ChatDictationRecognizer]) {
+    init(recognizers: [ChatDictationRecognizer], source: ChatDictationRecordingSource) {
         precondition(!recognizers.isEmpty)
+        self.source = source
         self.candidates = recognizers.enumerated().map { ChatDictationCandidate(recognizer: $0.element, priority: $0.offset) }
         self.leader = candidates[0]
         if candidates.count == 1 {
@@ -192,8 +119,8 @@ private final class ChatDictationSession: ChatDictationEngine {
         }
     }
 
-    func start() throws {
-        let format = capture.inputFormat
+    func start() {
+        let format = source.inputFormat
         for candidate in candidates {
             candidate.recognizer.onUpdate = { [weak self, weak candidate] text, confidence in
                 guard let self, let candidate else {
@@ -214,18 +141,11 @@ private final class ChatDictationSession: ChatDictationEngine {
         for candidate in candidates {
             candidate.recognizer.start(inputFormat: format)
         }
-        capture.onInterrupted = { [weak self] in
+        source.onEnded = { [weak self] in
             self?.stop()
         }
-        do {
-            try capture.start { [weak self] buffer in
-                self?.feed(buffer)
-            }
-        } catch {
-            for candidate in candidates {
-                candidate.recognizer.cancel()
-            }
-            throw error
+        source.start { [weak self] buffer in
+            self?.feed(buffer)
         }
         onLanguage?(leader.language)
     }
@@ -233,6 +153,7 @@ private final class ChatDictationSession: ChatDictationEngine {
     private func feed(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
         let feeding = self.feeding
+        fedFrames += AVAudioFramePosition(buffer.frameLength)
         lock.unlock()
         for recognizer in feeding {
             recognizer.append(buffer)
@@ -319,6 +240,17 @@ private final class ChatDictationSession: ChatDictationEngine {
         }
         candidate.recognizer.onUpdate = nil
         candidate.recognizer.onEnd = nil
+        if audioFinished {
+            candidate.isEnded = true
+            guard candidates.allSatisfy({ $0.isEnded }) else {
+                return
+            }
+            if let best = candidates.filter({ !$0.text.isEmpty }).max(by: { $0.score < $1.score }) {
+                decide(best)
+            }
+            finish(nil)
+            return
+        }
         candidate.recognizer.cancel()
         candidates.removeAll(where: { $0 === candidate })
         lock.lock()
@@ -327,9 +259,6 @@ private final class ChatDictationSession: ChatDictationEngine {
         if let remaining = candidates.first {
             leader = remaining
             decide(remaining)
-            if stopping {
-                remaining.recognizer.finishAudio()
-            }
         } else {
             finish(failed ? .failed : nil)
         }
@@ -340,16 +269,27 @@ private final class ChatDictationSession: ChatDictationEngine {
             return
         }
         stopping = true
-        capture.stop()
-        if winner == nil {
-            decide(leader)
+        source.finish { [weak self] in
+            self?.finishAudio()
         }
-        winner?.recognizer.finishAudio()
+    }
+
+    private func finishAudio() {
+        guard !finished, !audioFinished else {
+            return
+        }
+        audioFinished = true
+        for candidate in candidates {
+            candidate.recognizer.finishAudio()
+        }
+        lock.lock()
+        let seconds = Double(fedFrames) / source.inputFormat.sampleRate
+        lock.unlock()
         let timeout = DispatchWorkItem { [weak self] in
             self?.finish(nil)
         }
         self.timeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: timeout)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0 + min(60.0, seconds * 0.25), execute: timeout)
     }
 
     func cancel() {
@@ -379,8 +319,9 @@ private final class ChatDictationSession: ChatDictationEngine {
     private func teardown() {
         timeout?.cancel()
         timeout = nil
-        capture.onLevel = nil
-        capture.stop()
+        source.onLevel = nil
+        source.onEnded = nil
+        source.stop()
         lock.lock()
         feeding = []
         lock.unlock()
@@ -392,19 +333,48 @@ private final class ChatDictationSession: ChatDictationEngine {
     }
 }
 
+struct ChatDictationLanguageOption {
+    let title: String
+    let code: String
+    let identifier: String
+}
+
 @available(macOS 10.15, *)
 enum ChatDictationEngineFactory {
     static var supportedIdentifiers: [String] {
         return SFSpeechRecognizer.supportedLocales().map(\.identifier)
     }
 
-    static var automaticPreferences: [String] {
+    static var languages: [ChatDictationLanguageOption] {
+        let supported = supportedIdentifiers
+        let preferred = systemPreferences
+        var identifiers: Set<String> = []
+        var result: [ChatDictationLanguageOption] = []
+        for value in Translate.codes {
+            guard let code = value.code.first, let identifier = ChatInputDictationText.resolveLanguage(value.code, preferred: preferred, supported: supported), identifiers.insert(identifier).inserted else {
+                continue
+            }
+            let localized = _NSLocalizedString(value.localizationKey)
+            result.append(ChatDictationLanguageOption(title: localized == value.localizationKey ? value.language : localized, code: code, identifier: identifier))
+        }
+        return result
+    }
+
+    static func resolveSelection(_ selection: String) -> String? {
+        return ChatInputDictationText.resolveLanguage([selection], preferred: systemPreferences, supported: supportedIdentifiers)
+    }
+
+    private static var systemPreferences: [String] {
         return Locale.preferredLanguages + [Locale.current.identifier]
     }
 
-    static func make(selection: String?, requiresOnDevice: Bool, completion: @escaping (Result<ChatDictationEngine, ChatDictationError>) -> Void) {
+    static func automaticPreferences(chatLanguage: String?, suggestedLanguages: [String] = []) -> [String] {
+        return suggestedLanguages + ChatInputDictationText.preferences(chatLanguage: chatLanguage, system: systemPreferences)
+    }
+
+    static func make(selection: String?, chatLanguage: String?, suggestedLanguages: [String] = [], requiresOnDevice: Bool, source: ChatDictationRecordingSource, completion: @escaping (Result<ChatDictationEngine, ChatDictationError>) -> Void) {
         let identifiers: [String]
-        switch plan(selection: selection, requiresOnDevice: requiresOnDevice) {
+        switch plan(selection: selection, chatLanguage: chatLanguage, suggestedLanguages: suggestedLanguages, requiresOnDevice: requiresOnDevice) {
         case let .success(value):
             identifiers = value
         case let .failure(error):
@@ -417,34 +387,47 @@ enum ChatDictationEngineFactory {
                 for identifier in identifiers {
                     if let analyzer = await ChatDictationAnalyzerRecognizer.make(identifier: identifier) {
                         recognizers.append(analyzer)
-                    } else if let recognizer = makeRecognizer(identifier: identifier, requiresOnDevice: requiresOnDevice) {
+                    } else if let recognizer = makeRecognizer(identifier: identifier, requiresOnDevice: requiresOnDevice || !recognizers.isEmpty) {
                         recognizers.append(recognizer)
                     }
+                    if recognizers.count == 2 { break }
                 }
                 let box = ChatDictationRecognizersBox(recognizers)
                 DispatchQueue.main.async {
                     let result = box.value
-                    completion(result.isEmpty ? .failure(.unavailable) : .success(ChatDictationSession(recognizers: result)))
+                    completion(result.isEmpty ? .failure(.unavailable) : .success(ChatDictationSession(recognizers: result, source: source)))
                 }
             }
         } else {
             let recognizers = identifiers.compactMap { makeRecognizer(identifier: $0, requiresOnDevice: requiresOnDevice) }
-            completion(recognizers.isEmpty ? .failure(.unavailable) : .success(ChatDictationSession(recognizers: recognizers)))
+            completion(recognizers.isEmpty ? .failure(.unavailable) : .success(ChatDictationSession(recognizers: recognizers, source: source)))
         }
     }
 
-    private static func plan(selection: String?, requiresOnDevice: Bool) -> Result<[String], ChatDictationError> {
-        let supported = supportedIdentifiers
+    private static func plan(selection: String?, chatLanguage: String?, suggestedLanguages: [String] = [], requiresOnDevice: Bool) -> Result<[String], ChatDictationError> {
         if let selection {
-            guard let identifier = ChatInputDictationText.resolveLocale(preferred: [selection], supported: supported) else {
+            guard let identifier = resolveSelection(selection) else {
                 return .failure(.unsupportedLanguage)
             }
             return .success([identifier])
         }
-        let candidates = ChatInputDictationText.automaticLocales(preferred: automaticPreferences, supported: supported, limit: 4)
+        let candidates = ChatInputDictationText.automaticLocales(preferred: automaticPreferences(chatLanguage: chatLanguage, suggestedLanguages: suggestedLanguages), supported: supportedIdentifiers, limit: 4)
         guard !candidates.isEmpty else {
             return .failure(.unsupportedLanguage)
         }
+        if #available(macOS 26.0, *) {
+            return .success(candidates)
+        }
+        let chosen = automaticIdentifiers(candidates: candidates, requiresOnDevice: requiresOnDevice)
+        return chosen.isEmpty ? .failure(.unavailable) : .success(chosen)
+    }
+
+    static func automaticIdentifiers(chatLanguage: String?, suggestedLanguages: [String] = [], requiresOnDevice: Bool) -> [String] {
+        let candidates = ChatInputDictationText.automaticLocales(preferred: automaticPreferences(chatLanguage: chatLanguage, suggestedLanguages: suggestedLanguages), supported: supportedIdentifiers, limit: 4)
+        return automaticIdentifiers(candidates: candidates, requiresOnDevice: requiresOnDevice)
+    }
+
+    private static func automaticIdentifiers(candidates: [String], requiresOnDevice: Bool) -> [String] {
         var chosen: [String] = []
         for identifier in candidates {
             guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: identifier)), recognizer.isAvailable else {
@@ -459,7 +442,7 @@ enum ChatDictationEngineFactory {
                 break
             }
         }
-        return chosen.isEmpty ? .failure(.unavailable) : .success(chosen)
+        return chosen
     }
 
     private static func makeRecognizer(identifier: String, requiresOnDevice: Bool) -> ChatDictationRecognizer? {
@@ -488,6 +471,11 @@ private final class ChatDictationSFRecognizer: NSObject, ChatDictationRecognizer
     private var stopping = false
     private var ended = false
     private var lastRestart: CFTimeInterval = 0
+    private var sampleRate: Double = 0
+    private var appendedFrames: AVAudioFramePosition = 0
+    private var rotating = false
+    private var held: [AVAudioPCMBuffer] = []
+    private static let requestLimit: Double = 50
 
     init(recognizer: SFSpeechRecognizer, identifier: String) {
         self.recognizer = recognizer
@@ -498,14 +486,26 @@ private final class ChatDictationSFRecognizer: NSObject, ChatDictationRecognizer
     }
 
     func start(inputFormat: AVAudioFormat) {
+        sampleRate = inputFormat.sampleRate
         startTask()
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
+        if rotating {
+            held.append(buffer)
+            lock.unlock()
+            return
+        }
         let request = self.request
-        lock.unlock()
+        appendedFrames += AVAudioFramePosition(buffer.frameLength)
+        let rotate = request?.requiresOnDeviceRecognition == false && sampleRate > 0 && Double(appendedFrames) >= ChatDictationSFRecognizer.requestLimit * sampleRate
+        rotating = rotate
         request?.append(buffer)
+        lock.unlock()
+        if rotate {
+            request?.endAudio()
+        }
     }
 
     private func startTask() {
@@ -516,10 +516,18 @@ private final class ChatDictationSFRecognizer: NSObject, ChatDictationRecognizer
             request.requiresOnDeviceRecognition = true
         }
         if #available(macOS 13.0, *) {
-            request.addsPunctuation = true
+            request.addsPunctuation = ChatDictationPunctuation.automatic
         }
         lock.lock()
         self.request = request
+        let held = self.held
+        self.held = []
+        rotating = false
+        appendedFrames = 0
+        for buffer in held {
+            appendedFrames += AVAudioFramePosition(buffer.frameLength)
+            request.append(buffer)
+        }
         lock.unlock()
         let identifier = ObjectIdentifier(request)
         task = recognizer.recognitionTask(with: request, resultHandler: { [weak self] result, error in
@@ -539,12 +547,18 @@ private final class ChatDictationSFRecognizer: NSObject, ChatDictationRecognizer
             let confidence = confidences.isEmpty ? nil : confidences.reduce(0, +) / Double(confidences.count)
             onUpdate?(transcript, confidence)
             if result.isFinal {
-                if stopping {
+                lock.lock()
+                let carrying = rotating
+                lock.unlock()
+                if stopping && !carrying {
                     end(failed: false)
                 } else {
                     committed = transcript
                     partial = ""
                     startTask()
+                    if stopping {
+                        request?.endAudio()
+                    }
                 }
                 return
             }
@@ -570,7 +584,12 @@ private final class ChatDictationSFRecognizer: NSObject, ChatDictationRecognizer
             return
         }
         stopping = true
-        request?.endAudio()
+        lock.lock()
+        let rotating = self.rotating
+        lock.unlock()
+        if !rotating {
+            request?.endAudio()
+        }
     }
 
     func cancel() {
@@ -600,6 +619,7 @@ private final class ChatDictationSFRecognizer: NSObject, ChatDictationRecognizer
         task = nil
         lock.lock()
         request = nil
+        held = []
         lock.unlock()
     }
 
@@ -616,7 +636,7 @@ private final class ChatDictationAnalyzerRecognizer: ChatDictationRecognizer, @u
     var onUpdate: ((String, Double?) -> Void)?
     var onEnd: ((Bool) -> Void)?
 
-    private let transcriber: SpeechTranscriber
+    private let transcriber: DictationTranscriber
     private let analyzer: SpeechAnalyzer
     private let format: AVAudioFormat
     private let stream: AsyncStream<AnalyzerInput>
@@ -647,10 +667,10 @@ private final class ChatDictationAnalyzerRecognizer: ChatDictationRecognizer, @u
     }
 
     static func make(identifier: String) async -> ChatDictationAnalyzerRecognizer? {
-        guard SpeechTranscriber.isAvailable, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier)) else {
+        guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier)) else {
             return nil
         }
-        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [.transcriptionConfidence])
+        let transcriber = DictationTranscriber(locale: locale, contentHints: [], transcriptionOptions: ChatDictationPunctuation.automatic ? [.punctuation] : [], reportingOptions: [.volatileResults], attributeOptions: [.transcriptionConfidence])
         let status = await AssetInventory.status(forModules: [transcriber])
         guard status == .installed else {
             if status == .supported, beginAssetsInstall(locale.identifier) {
@@ -674,7 +694,7 @@ private final class ChatDictationAnalyzerRecognizer: ChatDictationRecognizer, @u
         return ChatDictationAnalyzerRecognizer(identifier: identifier, transcriber: transcriber, analyzer: analyzer, format: format)
     }
 
-    private init(identifier: String, transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer, format: AVAudioFormat) {
+    private init(identifier: String, transcriber: DictationTranscriber, analyzer: SpeechAnalyzer, format: AVAudioFormat) {
         self.identifier = identifier
         self.transcriber = transcriber
         self.format = format

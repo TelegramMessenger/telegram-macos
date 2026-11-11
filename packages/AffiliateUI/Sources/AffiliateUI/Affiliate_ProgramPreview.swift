@@ -16,6 +16,7 @@ import LocalAnimations
 import SceneEffects
 import ObjcUtils
 import InlineStickerLayer
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     fileprivate let program: AffiliateProgram
@@ -406,6 +407,7 @@ public func Affiliate_ProgramPreview(context: (any AccountContextProtocol), peer
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .affiliateProgram
     
     
     getController = { [weak controller] in

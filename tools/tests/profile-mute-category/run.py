@@ -166,12 +166,12 @@ handler_mutes = 'options.append(ModalOptionSet(title: strings().chatListMuteFore
 
 menu = block(chat, 'fileprivate func buildChatActionsMenu() -> ContextMenu? {')
 menu_start = menu.find('if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings, !self.isAdChat {')
-menu_guard = menu.find('if chatInteraction.peerId != context.peerId {', menu_start)
+menu_guard = menu.find('if chatInteraction.peerId != context.peerId && chatSidebarKind(chatInteraction.presentation) == nil {', menu_start)
 menu_item = menu.find('items.append(ContextMenuItem(', menu_guard)
 if min(menu_start, menu_guard, menu_item) < 0:
     print('the chat header menu item is not found')
     raise SystemExit(2)
-menu_prelude = menu[menu_guard + len('if chatInteraction.peerId != context.peerId {'):menu_item].strip()
+menu_prelude = menu[menu_guard + len('if chatInteraction.peerId != context.peerId && chatSidebarKind(chatInteraction.presentation) == nil {'):menu_item].strip()
 menu_match = re.match(r'items\.append\(ContextMenuItem\((?P<label>.+?), handler: \{ \[weak self\] in\n\s*self\?\.chatInteraction\.toggleNotifications\((?P<argument>[^)\n]*)\)\n', menu[menu_item:])
 if not menu_match:
     print('the chat header menu item has an unexpected shape')

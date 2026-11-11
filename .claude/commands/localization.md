@@ -58,15 +58,17 @@ becomes:
 
 ### 5. Plural/Countable Strings
 
-If the string involves a count (int value), generate ONLY the `_other` variant. The system will automatically select the correct plural form at runtime based on the count and fall back to `_other` if specific forms aren't defined.
+If the string involves a count (int value), ALWAYS generate both the `_one` and `_other` variants, with `_one` placed directly above `_other`. Never write `_other` alone: the translation platform shows a missing `_one` as an empty (one) form and translators skip the key.
 
 ```
+"Key_one" = "%1$d item selected";
 "Key_other" = "%1$d items selected";
 ```
 
-The generated Swift function will always take an `Int` parameter for plural selection. If the string has no `%d` placeholder but still needs plural selection, pass the count anyway - it will be used for form selection but won't appear in the output:
+The generated Swift function will always take an `Int` parameter for plural selection and is named after the `_other` key. If the string has no `%d` placeholder but still needs plural selection, pass the count anyway - it will be used for form selection but won't appear in the output:
 
 ```
+"Key_one" = "Item selected";
 "Key_other" = "Items selected";
 ```
 

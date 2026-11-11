@@ -25,6 +25,7 @@ import TelegramMediaUtils
 import ChatModeTypes
 import InlineStickerLayer
 import InputDataUI
+import AppAnalytics
 
 
 
@@ -580,31 +581,50 @@ public class ShareChatContextResult : ShareObject, ShareDeliveryProviding {
         super.init(context)
     }
     
+    private func supportsPreparedResult(to peerId: PeerId) -> Bool {
+        if peerId.namespace == Namespaces.Peer.SecretChat, case .widget = preparedMessage.result.message {
+            return false
+        }
+        return true
+    }
+
+    public override func possibilityPerformTo(_ peer: Peer) -> Bool {
+        return supportsPreparedResult(to: peer.id) && super.possibilityPerformTo(peer)
+    }
+
     public override var messagesCount: Int { 1 }
 
     func outgoingMessageCount(comment: ChatTextInputState?) -> Int { 1 }
 
-
-    public override func perform(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState? = nil, sendPaidMessageStars:[PeerId: StarsAmount] = [:]) -> Signal<Never, String> {
-        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars) |> ignoreValues
+    func sharingAnalyticsContext(_ inherited: AnalyticsContext?) -> AnalyticsContext {
+        return Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: inherited ?? Analytics.shared.unresolvedContext()).restricting(peerId: preparedMessage.botId)
     }
 
-    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<[ShareRecipientDelivery], String> {
+    public override func perform(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState? = nil, sendPaidMessageStars:[PeerId: StarsAmount] = [:]) -> Signal<Never, String> {
+        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: nil) |> ignoreValues
+    }
+
+    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext?) -> Signal<[ShareRecipientDelivery], String> {
+        var origin = sharingAnalyticsContext(analyticsContext)
         var seen = Set<PeerId>()
         let peerIds = peerIds.filter { seen.insert($0).inserted }
+        for id in peerIds { origin = origin.restricting(peerId: id) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         guard !peerIds.isEmpty else { return .single([]) }
         let threadIds = self.threadIds
         let silent = withoutSound
         let scheduleTime = scheduleDate.map { Int32($0.timeIntervalSince1970) }
         let signals = peerIds.map { peerId -> Signal<ShareRecipientDelivery, NoError> in
             let threadId = threadIds[peerId] ?? threadId
-            guard let message = context.engine.messages.outgoingMessageWithChatContextResult(to: peerId, threadId: threadId, botId: preparedMessage.botId, result: preparedMessage.result, replyToMessageId: nil, replyToStoryId: nil, hideVia: false, silentPosting: silent, scheduleTime: scheduleTime, sendPaidMessageStars: sendPaidMessageStars[peerId], postpone: false, correlationId: nil) else {
+            guard supportsPreparedResult(to: peerId),
+                  let message = context.engine.messages.outgoingMessageWithChatContextResult(to: peerId, threadId: threadId, botId: preparedMessage.botId, result: preparedMessage.result, replyToMessageId: nil, replyToStoryId: nil, hideVia: false, silentPosting: silent, scheduleTime: scheduleTime, sendPaidMessageStars: sendPaidMessageStars[peerId], postpone: false, correlationId: nil) else {
                 return .single(ShareRecipientDelivery(peerId: peerId, comment: nil, content: ShareDeliveryPart(expectedCount: 1, result: [nil])))
             }
             return shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
             |> map { ShareRecipientDelivery(peerId: peerId, comment: nil, content: ShareDeliveryPart(expectedCount: 1, result: $0)) }
         }
-        return (combineLatest(signals) |> take(1) |> castError(String.self))
+        return origin.preservingPresentation(combineLatest(signals) |> take(1) |> afterNext { [context] results in shareObserveDelivery(results, context: context) } |> castError(String.self))
     }
 
     public override var hasCaptionView: Bool {
@@ -620,10 +640,10 @@ public class ShareChatContextResult : ShareObject, ShareDeliveryProviding {
 public class ShareLinkObject : ShareObject, ShareDeliveryProviding {
     public let link:String
     public let text: String?
-    public init(_ context: any AccountContextProtocol, link:String, text: String? = nil) {
+    public init(_ context: any AccountContextProtocol, link:String, text: String? = nil, defaultSelectedIds: Set<PeerId> = []) {
         self.link = link.removingPercentEncoding ?? link
         self.text = text
-        super.init(context)
+        super.init(context, defaultSelectedIds: defaultSelectedIds)
     }
     
     public override var messagesCount: Int {
@@ -639,17 +659,24 @@ public class ShareLinkObject : ShareObject, ShareDeliveryProviding {
     }
     
     public override func perform(to peerIds:[PeerId], threadId: Int64?, comment: ChatTextInputState? = nil, sendPaidMessageStars:[PeerId: StarsAmount] = [:]) -> Signal<Never, String> {
-        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars) |> ignoreValues
+        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: nil) |> ignoreValues
     }
 
     func outgoingMessageCount(comment: ChatTextInputState?) -> Int {
         return 1
     }
 
+    func sharingAnalyticsContext(_ inherited: AnalyticsContext?) -> AnalyticsContext {
+        return Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: inherited ?? Analytics.shared.unresolvedContext())
+    }
 
-    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<[ShareRecipientDelivery], String> {
+    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext?) -> Signal<[ShareRecipientDelivery], String> {
+        var origin = sharingAnalyticsContext(analyticsContext)
         var seen = Set<PeerId>()
         let peerIds = peerIds.filter { seen.insert($0).inserted }
+        for id in peerIds { origin = origin.restricting(peerId: id) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         guard !peerIds.isEmpty else { return .single([]) }
         let threadIds = self.threadIds
         var text = self.link
@@ -661,7 +688,7 @@ public class ShareLinkObject : ShareObject, ShareDeliveryProviding {
             return shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
             |> map { ShareRecipientDelivery(peerId: peerId, comment: nil, content: ShareDeliveryPart(expectedCount: 1, result: $0)) }
         }
-        return (combineLatest(signals) |> take(1) |> castError(String.self))
+        return origin.preservingPresentation(combineLatest(signals) |> take(1) |> afterNext { [context] results in shareObserveDelivery(results, context: context) } |> castError(String.self))
     }
 }
 
@@ -684,13 +711,20 @@ public class ShareContactObject : ShareObject, ShareDeliveryProviding {
     }
     
     public override func perform(to peerIds:[PeerId], threadId: Int64?, comment: ChatTextInputState? = nil, sendPaidMessageStars:[PeerId: StarsAmount] = [:]) -> Signal<Never, String> {
-        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars) |> ignoreValues
+        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: nil) |> ignoreValues
     }
 
+    func sharingAnalyticsContext(_ inherited: AnalyticsContext?) -> AnalyticsContext {
+        return Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: inherited ?? Analytics.shared.unresolvedContext()).restricting(peerId: user.id)
+    }
 
-    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<[ShareRecipientDelivery], String> {
+    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext?) -> Signal<[ShareRecipientDelivery], String> {
+        var origin = sharingAnalyticsContext(analyticsContext)
         var seen = Set<PeerId>()
         let peerIds = peerIds.filter { seen.insert($0).inserted }
+        for id in peerIds { origin = origin.restricting(peerId: id) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         guard !peerIds.isEmpty else { return .single([]) }
         let threadIds = self.threadIds
         let signals = peerIds.map { peerId -> Signal<ShareRecipientDelivery, NoError> in
@@ -710,7 +744,7 @@ public class ShareContactObject : ShareObject, ShareDeliveryProviding {
             |> take(1)
             |> map { ShareRecipientDelivery(peerId: peerId, comment: $0, content: ShareDeliveryPart(expectedCount: 1, result: $1)) }
         }
-        return (combineLatest(signals) |> take(1) |> castError(String.self))
+        return origin.preservingPresentation(combineLatest(signals) |> take(1) |> afterNext { [context] results in shareObserveDelivery(results, context: context) } |> castError(String.self))
     }
 
 }
@@ -841,13 +875,22 @@ public class ShareMessageObject : ShareObject, ShareDeliveryProviding {
     }
 
     public override func perform(to peerIds:[PeerId], threadId: Int64?, comment: ChatTextInputState? = nil, sendPaidMessageStars:[PeerId: StarsAmount] = [:]) -> Signal<Never, String> {
-        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars) |> ignoreValues
+        return performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: nil) |> ignoreValues
     }
 
+    func sharingAnalyticsContext(_ inherited: AnalyticsContext?) -> AnalyticsContext {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: inherited ?? Analytics.shared.unresolvedContext()).restricting(peerId: message.id.peerId)
+        for id in messageIds { origin = origin.restricting(peerId: id.peerId) }
+        return origin
+    }
 
-    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<[ShareRecipientDelivery], String> {
+    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext?) -> Signal<[ShareRecipientDelivery], String> {
+        var origin = sharingAnalyticsContext(analyticsContext)
         var seen = Set<PeerId>()
         let peerIds = peerIds.filter { seen.insert($0).inserted }
+        for id in peerIds { origin = origin.restricting(peerId: id) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         guard !self.messageIds.isEmpty, !peerIds.isEmpty else { return .single([]) }
         
         let context = self.context
@@ -873,6 +916,9 @@ public class ShareMessageObject : ShareObject, ShareDeliveryProviding {
             let expectedCommentCount = comment?.inputText.isEmpty == false ? 1 : 0
             let unknown = ShareRecipientDelivery(peerId: peerId, comment: expectedCommentCount == 0 ? nil : ShareDeliveryPart(expectedCount: 1, result: nil), content: ShareDeliveryPart(expectedCount: messageIds.count, result: nil))
             let delivery = viewSignal |> mapToSignal { (peer, sendAs) -> Signal<ShareRecipientDelivery, NoError> in
+                let origin = origin.restricting(peerId: peer.id)
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
                 let forward: Signal<[MessageId?], NoError> = Sender.forwardMessages(messageIds: messageIds, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: FastSettings.isChannelMessagesMuted(peerId) || withoutSound, atDate: date, sendAsPeerId: sendAs, sendPaidMessageStars: sendPaidMessageStars[peerId])
                 var caption: Signal<[MessageId?], NoError>?
                 if let comment = comment, !comment.inputText.isEmpty, peer.canSendMessage() {
@@ -900,14 +946,14 @@ public class ShareMessageObject : ShareObject, ShareDeliveryProviding {
                 } else {
                     commentResult = .single(nil)
                 }
-                return (commentResult |> mapToSignal { commentResult in
+                return origin.preservingPresentation(commentResult |> mapToSignal { commentResult in
                     shareFirstResult(forward |> map { Optional($0) }, or: nil)
                     |> map { ShareRecipientDelivery(peerId: peerId, comment: commentResult, content: ShareDeliveryPart(expectedCount: messageIds.count, result: $0)) }
                 })
             }
             signals.append(shareFirstResult(delivery, or: unknown))
         }
-        return (combineLatest(signals) |> take(1) |> castError(String.self))
+        return origin.preservingPresentation(combineLatest(signals) |> take(1) |> afterNext { [context] results in shareObserveDelivery(results, context: context) } |> castError(String.self))
     }
     
     public override func possibilityPerformTo(_ peer:Peer) -> Bool {
@@ -1154,6 +1200,7 @@ public enum ForwardMessagesResult {
 
 public final class ForwardMessagesObject : ShareObject {
     fileprivate let messages: [Message]
+    public let forwardingAnalyticsContext: AnalyticsContext
     
     public var messageIds: [MessageId] {
         return messages.map { $0.id }
@@ -1161,9 +1208,17 @@ public final class ForwardMessagesObject : ShareObject {
     private let disposable = MetaDisposable()
     private let album: Bool
     private let getMessages:(([MessageId], Bool)->Signal<[Message], NoError>)?
+    public convenience init(_ context: any AccountContextProtocol, messages: [Message], emptyPerformOnClose: Bool = false, album: Bool = false, getMessages:(([MessageId], Bool)->Signal<[Message], NoError>)? = nil) {
+        self.init(context, messages: messages, emptyPerformOnClose: emptyPerformOnClose, album: album, getMessages: getMessages, analyticsContext: nil)
+    }
 
-    public init(_ context: any AccountContextProtocol, messages: [Message], emptyPerformOnClose: Bool = false, album: Bool = false, getMessages:(([MessageId], Bool)->Signal<[Message], NoError>)? = nil) {
-
+    public init(_ context: any AccountContextProtocol, messages: [Message], emptyPerformOnClose: Bool = false, album: Bool = false, getMessages:(([MessageId], Bool)->Signal<[Message], NoError>)? = nil, analyticsContext: AnalyticsContext?) {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        for message in messages {
+            if message.containsSecretMedia { origin = Analytics.shared.unresolvedContext() }
+            origin = origin.restricting(peerId: message.id.peerId)
+        }
+        self.forwardingAnalyticsContext = origin
         self.messages = messages
         self.album = album
         self.getMessages = getMessages
@@ -1192,7 +1247,11 @@ public final class ForwardMessagesObject : ShareObject {
     
     
     public override func perform(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState? = nil, sendPaidMessageStars:[PeerId: StarsAmount] = [:]) -> Signal<Never, String> {
-        return (performForward(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars))
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: forwardingAnalyticsContext)
+        for peerId in peerIds { origin = origin.restricting(peerId: peerId) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        return origin.preservingPresentation(performForward(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin))
     }
 
     public func performObserved(to peerId: PeerId, threadId: Int64?) -> Signal<ForwardMessagesResult, String> {
@@ -1200,20 +1259,24 @@ public final class ForwardMessagesObject : ShareObject {
     }
 
     public func performObserved(to peerId: PeerId, threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<ForwardMessagesResult, String> {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: forwardingAnalyticsContext)
+        origin = origin.restricting(peerId: peerId)
         return Signal { subscriber in
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             var observed = false
-            let signal = self.performForward(to: [peerId], threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, observedResult: { result in
+            let signal = self.performForward(to: [peerId], threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin, observedResult: { result in
                 observed = true
                 subscriber.putNext(result)
             })
-            return (signal).start(error: { subscriber.putError($0) }, completed: {
+            return origin.preservingPresentation(signal).start(error: { subscriber.putError($0) }, completed: {
                 if !observed { subscriber.putNext(.completionUnknown) }
                 subscriber.putCompletion()
             })
         }
     }
 
-    private func performForward(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], observedResult: ((ForwardMessagesResult) -> Void)? = nil) -> Signal<Never, String> {
+    private func performForward(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext, observedResult: ((ForwardMessagesResult) -> Void)? = nil) -> Signal<Never, String> {
         
         if peerIds.count == 1 {
             let context = self.context
@@ -1251,7 +1314,14 @@ public final class ForwardMessagesObject : ShareObject {
                 |> deliverOnMainQueue
                 |> castError(String.self)
                 |> mapToSignal {  messages, peer in
-
+                    var origin = analyticsContext
+                    for message in messages {
+                        if message.containsSecretMedia { origin = Analytics.shared.unresolvedContext() }
+                        origin = origin.restricting(peerId: message.id.peerId)
+                    }
+                    if let peer { origin = origin.restricting(peerId: peer.id) }
+                    let presentation = origin.beginPresentation()
+                    defer { presentation.end() }
                     let messageIds = messages.map { $0.id }
                     guard !messageIds.isEmpty else { observedResult?(.sourceUnavailable); return .complete() }
                     if peer == nil { observedResult?(.targetUnavailable); return .complete() }
@@ -1292,14 +1362,17 @@ public final class ForwardMessagesObject : ShareObject {
                             if let controller = context.bindings.rootNavigation().controller as? ChatInterfaceController {
                                 controller.chatInteraction.update({$0.withoutSelectionState()})
                             }
-                            return (accepted)
+                            return origin.preservingPresentation(accepted)
                             |> map { commentIds, forwardedIds in
                                 let delivery = ShareRecipientDelivery(peerId: peerId, comment: expectedCommentCount == 0 ? nil : ShareDeliveryPart(expectedCount: expectedCommentCount, result: commentIds), content: ShareDeliveryPart(expectedCount: messageIds.count, result: forwardedIds))
+                                shareObserveDelivery([delivery], context: context)
                                 switch delivery.status {
                                 case .accepted:
                                     observedResult?(.accepted)
                                     delay(0.2, closure: {
-                                        _ = (showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.0)).start()
+                                        let presentation = origin.beginPresentation()
+                                        defer { presentation.end() }
+                                        _ = origin.preservingPresentation(showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.0)).start()
                                     })
                                 case .partial: observedResult?(.partiallyAccepted)
                                 case .rejected: observedResult?(.rejected)
@@ -1313,6 +1386,7 @@ public final class ForwardMessagesObject : ShareObject {
                             let comment = peer.canSendMessage() ? comment : nil
                             
                             if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
+                                controller.inheritAnalyticsContext(origin)
                                 controller.chatInteraction.update({ current in
                                     current.withoutSelectionState().updatedInterfaceState {
                                         $0.withUpdatedForwardMessageIds(messageIds).withUpdatedInputState(comment ?? current.effectiveInput)
@@ -1324,7 +1398,7 @@ public final class ForwardMessagesObject : ShareObject {
                                 let initialAction: ChatInitialAction = .forward(messageIds: messageIds, text: comment, behavior: .automatic)
                                 
                                 if let threadId = threadId {
-                                    return ForumUI.openTopic(threadId, peerId: peerId, context: context, animated: true, addition: true, initialAction: initialAction, isMonoforum: peer.isMonoForum) |> filter {$0}
+                                    return ForumUI.openTopic(threadId, peerId: peerId, context: context, animated: true, addition: true, initialAction: initialAction, isMonoforum: peer.isMonoForum, analyticsContext: origin) |> filter {$0}
                                     |> take(1)
                                     |> beforeNext { _ in observedResult?(.destinationReady) }
                                     |> ignoreValues
@@ -1347,13 +1421,15 @@ public final class ForwardMessagesObject : ShareObject {
                                 } else {
                                     newone = ShareUIHooks.shared.makeChatAdditionController(context, .peer(peerId), initialAction)
                                 }
+                                newone.inheritAnalyticsContext(origin)
                                 navigation.push(newone)
 
-                                return (newone.ready.get() |> filter {$0} |> take(1) |> beforeNext { _ in observedResult?(.destinationReady) } |> ignoreValues |> castError(String.self))
+                                return origin.preservingPresentation(newone.ready.get() |> filter {$0} |> take(1) |> beforeNext { _ in observedResult?(.destinationReady) } |> ignoreValues |> castError(String.self))
                             }
                         }
                     } else {
                         if let controller = navigation.controller as? ChatInterfaceController {
+                            controller.inheritAnalyticsContext(origin)
                             controller.chatInteraction.update({$0.withoutSelectionState().updatedInterfaceState({$0.withUpdatedForwardMessageIds(messageIds)})})
                         }
                     }
@@ -1387,6 +1463,9 @@ public final class ForwardMessagesObject : ShareObject {
                 let threadId = threadIds[peerId] ?? threadId
                 
                 signals.append(viewSignal |> mapToSignal { (peer, sendAs) in
+                    let origin = analyticsContext.restricting(peerId: peer.id)
+                    let presentation = origin.beginPresentation()
+                    defer { presentation.end() }
                     let forward: Signal<[MessageId?], NoError> = Sender.forwardMessages(messageIds: messageIds, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: FastSettings.isChannelMessagesMuted(peerId) || withoutSound, atDate: date, sendAsPeerId: sendAs)
                     var caption: Signal<[MessageId?], NoError>?
                     if let comment = comment, !comment.inputText.isEmpty, peer.canSendMessage() {
@@ -1406,9 +1485,9 @@ public final class ForwardMessagesObject : ShareObject {
                         caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
                     }
                     if let caption = caption {
-                        return (caption |> then(forward))
+                        return origin.preservingPresentation(caption |> then(forward))
                     } else {
-                        return (forward)
+                        return origin.preservingPresentation(forward)
                     }
                 })
             }
@@ -1603,10 +1682,12 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     private let recipientAction = SharePickerAction()
     private let premiumAction = SharePickerAction()
     private var pickerClosed = false
+    private var recipientActivation: AnalyticsForwardPickerJourney.Spec.Activation?
 
     private let share:ShareObject
     private let selectInteractions:SelectPeerInteraction = SelectPeerInteraction()
     private let search:Promise<SearchState> = Promise()
+    private let analyticsSearchDisposable = MetaDisposable()
     private let destinationPeerId:ValuePromise<PeerId?> = ValuePromise(nil, ignoreRepeated: true)
     private var destinationStack: [Destination] = []
     private var communityChildPeerIds: [PeerId: Set<PeerId>] = [:]
@@ -1809,10 +1890,19 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         return nil
     }
     
+    private func withRecipientActivation<Result>(_ activation: AnalyticsForwardPickerJourney.Spec.Activation?, _ action: () -> Result) -> Result {
+        let previous = recipientActivation
+        recipientActivation = activation ?? previous
+        defer { recipientActivation = previous }
+        return action()
+    }
 
+    private func invoke(activation: AnalyticsForwardPickerJourney.Spec.Activation) -> KeyHandlerResult {
+        withRecipientActivation(activation) { invoke() }
+    }
 
-    private func activate(_ item: TableRowItem, in tableView: TableView) {
-        do {
+    private func activate(_ item: TableRowItem, in tableView: TableView, activation: AnalyticsForwardPickerJourney.Spec.Activation? = nil) {
+        withRecipientActivation(activation) {
             _ = tableView.select(item: item)
             if let item = item as? ShortPeerRowItem {
                 switch item.interactionType {
@@ -1830,7 +1920,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     private func invokeShortCut(_ index: Int) {
         let tableView = genericView.activeTableView
         if tableView.count > index {
-            activate(tableView.item(at: index), in: tableView)
+            activate(tableView.item(at: index), in: tableView, activation: .numberShortcut)
         }
     }
     
@@ -1853,7 +1943,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             guard let `self` = self else {return .rejected}
             let tableView = self.genericView.activeTableView
             if let highlighted = tableView.highlightedItem() {
-                self.activate(highlighted, in: tableView)
+                self.activate(highlighted, in: tableView, activation: .returnKey)
             }
             
             return .rejected
@@ -1861,7 +1951,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         
         
         self.window?.set(handler: { [weak self] _ -> KeyHandlerResult in
-            do {
+            self?.withRecipientActivation(.savedMessagesShortcut) {
                 self?.selectInteractions.action(context.peerId, nil)
             }
             return .invoked
@@ -1960,16 +2050,24 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         }
         destinationStack.append(destination)
         destinationPeerId.set(destination.peerId)
+        switch destination {
+        case .forum: analyticsForwardJourney?.navigated(.forum)
+        case .community: analyticsForwardJourney?.navigated(.community)
+        }
     }
 
     private func openForum(_ peerId: PeerId, isMonoforum: Bool, animated: Bool) {
         guard !pickerClosed else { return }
+        recipientActivation = nil
         recipientAction.reset()
         premiumAction.reset()
         let destination: Destination = .forum(peerId, isMonoforum: isMonoforum)
         guard destinationStack.last != destination else {
             return
         }
+        let origin = actionAnalyticsContext(peerId: peerId)
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         pushDestination(destination)
         clearDestinationSearch()
 
@@ -1994,7 +2092,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         } |> deliverOnMainQueue
         
         
-        forumDisposable.set((signal).start(next: { [weak self] items in
+        forumDisposable.set(origin.preservingPresentation(signal).start(next: { [weak self] items in
             self?.genericView.appearForumTopics(items, peerId: peerId, interactions: selectInteractions, delegate: self, context: context, animated: animated)
         }))
 
@@ -2003,12 +2101,16 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
 
     private func openCommunity(_ peerId: PeerId, animated: Bool) {
         guard !pickerClosed else { return }
+        recipientActivation = nil
         recipientAction.reset()
         premiumAction.reset()
         let destination: Destination = .community(peerId)
         guard destinationStack.last != destination else {
             return
         }
+        let origin = actionAnalyticsContext(peerId: peerId)
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         pushDestination(destination)
         clearDestinationSearch()
 
@@ -2066,7 +2168,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             }
         } |> deliverOnMainQueue
 
-        communityDisposable.set((signal).start(next: { [weak self] childPeerIds, peers in
+        communityDisposable.set(origin.preservingPresentation(signal).start(next: { [weak self] childPeerIds, peers in
             guard let self else {
                 return
             }
@@ -2226,7 +2328,9 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
 
         selectInteraction.action = { [weak self] peerId, threadId in
             guard let self else { return }
-            self.selectRecipient(peerId, threadId: threadId)
+            let activation = self.recipientActivation ?? .rowAction
+            self.recipientActivation = nil
+            self.selectRecipient(peerId, threadId: threadId, activation: activation)
         }
 
         selectInteraction.openForum = { [weak self] peerId, isMonoforum in
@@ -2258,14 +2362,14 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         
         genericView.sendButton.set(handler: { [weak self] _ in
             if let strongSelf = self, !selectInteraction.presentation.selected.isEmpty {
-                _ = strongSelf.invoke()
+                _ = strongSelf.invoke(activation: .sendButton)
             }
         }, for: .SingleClick)
         
 
         genericView.sendWithoutSound = { [weak self] in
             self?.share.withoutSound = true
-            _ = self?.invoke()
+            _ = self?.invoke(activation: .sendMenu)
         }
         genericView.scheduleMessage = { [weak self] in
             guard let share = self?.share else {
@@ -2275,7 +2379,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             let peerId = share.context.peerId
             FeatureNavigationHooks.shared.selectDate(context, context.window, nil, nil, .schedule(peerId), { date, _ in
                 self?.share.scheduleDate = date
-                _ = self?.invoke()
+                _ = self?.invoke(activation: .sendMenu)
             })
         }
         
@@ -2286,7 +2390,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             _ = share.context
             _ = share.context.peerId
             self?.share.scheduleDate = scheduleWhenOnlineDate
-            _ = self?.invoke()
+            _ = self?.invoke(activation: .sendMenu)
         }
         
         tokenDisposable.set(genericView.tokenizedView.tokensUpdater.start(next: { tokens in
@@ -2683,47 +2787,76 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         if let event = NSApp.currentEvent, !FastSettings.checkSendingAbility(for: event) {
             return .rejected
         }
-        return invoke()
+        return invoke(activation: .returnKey)
     }
     
-    private func performShare(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<Bool, String> {
+    private func performShare(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext, activation: AnalyticsForwardPickerJourney.Spec.Activation? = nil) -> Signal<Bool, String> {
         let share = self.share
         if let forward = share as? ForwardMessagesObject, peerIds.count == 1, let peerId = peerIds.first {
-            return (forward.performObserved(to: peerId, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars))
+            let origin = analyticsContext.restricting(peerId: peerId)
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
+            let journey = analyticsForwardJourney
+            let submissionEnded = journey?.beginSubmission(topic: threadId != nil, activation: activation)
+            return origin.preservingPresentation(forward.performObserved(to: peerId, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars))
             |> mapToSignal { [weak self] result -> Signal<Bool, String> in
                 guard let self, !self.pickerClosed else { return .complete() }
+                let lifetime = origin.beginPresentation()
+                defer { lifetime.end() }
                 let successful: Bool
                 switch result {
-                case .draftPrepared: self.deliveryResult = .draftPrepared; successful = true
-                case .destinationReady: self.deliveryResult = .destinationReady; successful = true
-                case .accepted: self.deliveryResult = .accepted; successful = true
-                case .partiallyAccepted: self.deliveryResult = .partiallyAccepted; successful = false
-                case .rejected: self.deliveryResult = .rejected; successful = false
-                case .sourceUnavailable: self.deliveryResult = .sourceUnavailable; successful = false
-                case .targetUnavailable: self.deliveryResult = .targetUnavailable; successful = false
-                case .acceptanceUnknown, .completionUnknown: self.deliveryResult = .unknown; successful = false
-                case .restricted: return .complete()
+                case .draftPrepared: journey?.complete(.draftPrepared); self.deliveryResult = .draftPrepared; successful = true
+                case .destinationReady: journey?.complete(.destinationReady); self.deliveryResult = .destinationReady; successful = true
+                case .accepted: journey?.complete(.accepted); self.deliveryResult = .accepted; successful = true
+                case .partiallyAccepted: journey?.complete(.partiallyAccepted); self.deliveryResult = .partiallyAccepted; successful = false
+                case .rejected: journey?.complete(.rejected); self.deliveryResult = .rejected; successful = false
+                case .sourceUnavailable: journey?.complete(.sourceUnavailable); self.deliveryResult = .sourceUnavailable; successful = false
+                case .targetUnavailable: journey?.complete(.targetUnavailable); self.deliveryResult = .targetUnavailable; successful = false
+                case .acceptanceUnknown, .completionUnknown: journey?.complete(.acceptanceUnknown); self.deliveryResult = .unknown; successful = false
+                case .restricted: journey?.blocked(.pollRestriction); return .complete()
                 }
                 if successful { return .single(true) }
+                let alertLifetime = origin.beginPresentation()
                 self.success = false
                 self.close()
                 alert(for: share.context.window, info: strings().shareIncompleteDelivery, onDeinit: {
+                    withExtendedLifetime(alertLifetime) {}
                 })
                 return .single(false)
             }
+            |> mapError { error in journey?.operationFailed(); return error }
+            |> afterDisposed { submissionEnded?() }
         }
         if let deliveryShare = share as? ShareDeliveryProviding {
-            return deliveryShare.performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars)
+            var origin = deliveryShare.sharingAnalyticsContext(analyticsContext)
+            for peerId in peerIds { origin = origin.restricting(peerId: peerId) }
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
+            let journey = analyticsShareJourney
+            journey?.submitted()
+            return deliveryShare.performWithResults(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin)
             |> map { [weak self] results in
                 guard let self, !self.pickerClosed else { return false }
                 let result = SharePickerResult(deliveries: results)
                 self.deliveryResult = result
+                switch result {
+                case .accepted: journey?.complete(.accepted)
+                case .partiallyAccepted: journey?.complete(.partiallyAccepted)
+                case .rejected: journey?.complete(.rejected)
+                case .unknown: journey?.complete(.unknown)
+                case .draftPrepared, .destinationReady, .sourceUnavailable, .targetUnavailable, .cancelled, .dispatched: journey?.discard()
+                }
                 if result == .accepted { return true }
+                let lifetime = origin.beginPresentation()
                 self.success = false
                 self.close()
                 alert(for: share.context.window, info: strings().shareIncompleteDelivery, onDeinit: {
+                    withExtendedLifetime(lifetime) {}
                 })
                 return false
+            }
+            |> afterDisposed {
+                journey?.submissionEnded()
             }
         }
         return Signal { [weak self] subscriber in
@@ -2731,12 +2864,14 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                 subscriber.putCompletion()
                 return EmptyDisposable
             }
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             let signal = share.perform(to: peerIds, threadId: threadId, comment: comment, sendPaidMessageStars: sendPaidMessageStars)
             guard !self.pickerClosed else {
                 subscriber.putCompletion()
                 return EmptyDisposable
             }
-            return (signal).start(error: { error in
+            return analyticsContext.preservingPresentation(signal).start(error: { error in
                 subscriber.putError(error)
             }, completed: {
                 subscriber.putNext(true)
@@ -2745,39 +2880,76 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         }
     }
 
+    private func actionAnalyticsContext(peerId: PeerId) -> AnalyticsContext {
+        return Analytics.shared.captureContext(engine: share.context.engine, peerId: share.context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: peerId)
+    }
 
+    public func setAnalyticsForwardJourney(_ journey: AnalyticsForwardPickerJourney) {
+        guard !pickerClosed, share is ForwardMessagesObject else { journey.discard(); return }
+        journey.restrict(to: analyticsContext ?? Analytics.shared.unresolvedContext())
+        if analyticsForwardJourney === journey { return }
+        let presentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { presentation.end() }
+        analyticsForwardJourney?.discard()
+        analyticsForwardJourney = journey
+        journey.pickerOpened()
+        analyticsSearchDisposable.set(search.get().start(next: { [weak journey] query in
+            journey?.searchUsed(if: !query.request.isEmpty)
+        }))
+    }
 
+    public func setAnalyticsShareJourney(_ journey: AnalyticsShareJourney) {
+        guard !pickerClosed, share is ShareDeliveryProviding else {
+            journey.discard()
+            return
+        }
+        if analyticsShareJourney === journey { return }
+        let presentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { presentation.end() }
+        analyticsShareJourney?.discard()
+        analyticsShareJourney = journey
+        journey.pickerOpened()
+    }
 
     private func showPremiumRequired(_ peerId: PeerId) {
         guard !pickerClosed else { return }
+        recipientActivation = nil
         let context = share.context
-        premiumAction.start(request: { [weak self] in
+        let origin = actionAnalyticsContext(peerId: peerId)
+        premiumAction.start(context: origin, request: { [weak self] in
+            self?.analyticsShareJourney?.blocked(.premiumRequired)
+            self?.analyticsForwardJourney?.blocked(.premiumRequired)
             return context.account.postbox.loadedPeerWithId(peerId)
         }, next: { [weak self] peer in
             guard let self, !self.pickerClosed else { return }
+            let origin = origin.restricting(peerId: peer.id)
+            let lifetime = origin.beginPresentation()
             let consumed = Atomic(value: false)
             showModalText(for: context.window, text: strings().peerForwardPremiumRequired(peer.compactDisplayTitle), button: strings().alertLearnMore, callback: { [weak self] _ in
-                do {
+                withExtendedLifetime(lifetime) {
                     guard let self, !self.pickerClosed, !consumed.swap(true) else { return }
-                    FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, nil, false, nil)
+                    FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, nil, false, nil, analyticsContext: origin)
                 }
             })
         }, error: { _ in }, completed: {})
         genericView.activeTableView.cancelSelection()
     }
 
-    private func selectRecipient(_ peerId: PeerId, threadId: Int64?) {
+    private func selectRecipient(_ peerId: PeerId, threadId: Int64?, activation: AnalyticsForwardPickerJourney.Spec.Activation? = nil) {
         guard !pickerClosed else { return }
         if selectInteractions.presentation.premiumRequired.contains(peerId) {
             selectInteractions.premiumRequiredAction?(peerId)
             return
         }
         let context = share.context
+        let origin = actionAnalyticsContext(peerId: peerId)
         if share.multipleSelection, let threadId {
-            recipientAction.start(request: {
+            recipientAction.start(context: origin, request: {
                 context.account.postbox.loadedPeerWithId(peerId)
             }, next: { [weak self] peer in
                 guard let self, !self.pickerClosed else { return }
+                let presentation = origin.restricting(peerId: peer.id).beginPresentation()
+                defer { presentation.end() }
                 self.share.threadIds[peerId] = threadId
                 self.selectInteractions.toggleSelection(peer)
                 self.popForum(peerId: peerId, animated: true)
@@ -2785,25 +2957,29 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             return
         }
         let comment = contextChatInteraction.presentation.interfaceState.inputState
-        recipientAction.start(request: {
-            self.performShare(to: [peerId], threadId: threadId, comment: comment, sendPaidMessageStars: [:])
+        recipientAction.start(context: origin, request: {
+            self.performShare(to: [peerId], threadId: threadId, comment: comment, sendPaidMessageStars: [:], analyticsContext: origin, activation: activation)
         }, next: { [weak self] performed in
             guard let self, !self.pickerClosed, performed else { return }
             self.success = true
             self.close()
         }, error: { [weak self] error in
             guard let self, !self.pickerClosed else { return }
+            let lifetime = origin.beginPresentation()
             alert(for: context.window, info: error, onDeinit: {
+                withExtendedLifetime(lifetime) {}
             })
         }, completed: {})
     }
 
     private func invoke() -> KeyHandlerResult {
         guard !pickerClosed else { return .rejected }
+        let activation = recipientActivation
+        recipientActivation = nil
         if !genericView.tokenizedView.query.isEmpty {
             let tableView = genericView.activeTableView
             if !tableView.isEmpty {
-                activate(tableView.item(at: 0), in: tableView)
+                activate(tableView.item(at: 0), in: tableView, activation: activation)
             }
             return .invoked
         }
@@ -2814,8 +2990,11 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             let account = share.context.account
             let context = share.context
             let input = self.contextChatInteraction.presentation.interfaceState.inputState
-            recipientAction.start(request: { [weak self] in
+            var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+            for id in ids { origin = origin.restricting(peerId: id) }
+            recipientAction.start(context: origin, request: { [weak self] in
                 guard let self, !self.pickerClosed else { return Signal<Bool, String>.complete() }
+                self.analyticsShareJourney?.retryIfBlocked()
 
                 let peerAndData:Signal<[(TelegramChannel, CachedChannelData?)], NoError> = share.context.account.postbox.transaction { transaction in
                     var result:[(TelegramChannel, CachedChannelData?)] = []
@@ -2840,6 +3019,10 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                     guard let self, !self.pickerClosed else { return .complete() }
                     let (peerAndData, unsentIds) = values.0
                     let starsState = values.1
+                    var origin = origin
+                    for (peer, _) in peerAndData { origin = origin.restricting(peerId: peer.id) }
+                    let delivery = origin.beginPresentation()
+                    defer { delivery.end() }
                     let share = self.share
                     let comment = input.inputText
                     let invoke: ([PeerId: StarsAmount]) -> Signal<Bool, String> = { [weak self] sendPaidMessageStars in
@@ -2848,8 +3031,10 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                                 subscriber.putCompletion()
                                 return EmptyDisposable
                             }
+                            let presentation = origin.beginPresentation()
+                            defer { presentation.end() }
                             self.genericView.tokenizedView.removeAllFailed(animated: true)
-                            return self.performShare(to: Array(ids), threadId: nil, comment: input, sendPaidMessageStars: sendPaidMessageStars).start(next: { result in
+                            return self.performShare(to: Array(ids), threadId: nil, comment: input, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin, activation: activation).start(next: { result in
                                 subscriber.putNext(result)
                             }, error: { error in
                                 subscriber.putError(error)
@@ -2867,6 +3052,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                         let peerId:PeerId
                         let reason: String
                         let target: ShareFailedTarget
+                        let analyticsBlocker: AnalyticsShareJourney.Spec.LastBlocker?
                     }
 
                     var failed:[ShareFailedReason] = []
@@ -2880,19 +3066,19 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                                 if info.flags.contains(.slowModeEnabled) && (peer.adminRights == nil && !peer.flags.contains(.isCreator)) {
                                     if let cachedData = cachedData, let validUntil = cachedData.slowModeValidUntilTimestamp {
                                         if validUntil > share.context.timestamp {
-                                            failed.append(ShareFailedReason(peerId: peer.id, reason: slowModeTooltipText(validUntil - share.context.timestamp), target: .token))
+                                            failed.append(ShareFailedReason(peerId: peer.id, reason: slowModeTooltipText(validUntil - share.context.timestamp), target: .token, analyticsBlocker: .slowModeWait))
                                         }
                                     }
                                     if !comment.isEmpty {
-                                        failed.append(ShareFailedReason(peerId: peer.id, reason: strings().slowModeForwardCommentError, target: .comment))
+                                        failed.append(ShareFailedReason(peerId: peer.id, reason: strings().slowModeForwardCommentError, target: .comment, analyticsBlocker: .slowModeComment))
                                     }
                                     if unsentIds.contains(peer.id) {
-                                        failed.append(ShareFailedReason(peerId: peer.id, reason: strings().slowModeMultipleError, target: .token))
+                                        failed.append(ShareFailedReason(peerId: peer.id, reason: strings().slowModeMultipleError, target: .token, analyticsBlocker: .pendingMessages))
                                     }
                                 }
                                 if (peer.adminRights == nil && !peer.flags.contains(.isCreator)) {
                                     if let stars = peer.sendPaidMessageStars, peer.id != account.peerId {
-                                        failed.append(ShareFailedReason(peerId: peer.id, reason: "", target: .stars(stars)))
+                                        failed.append(ShareFailedReason(peerId: peer.id, reason: "", target: .stars(stars), analyticsBlocker: nil))
                                         sendPaidMessageStars[peer.id] = stars
                                     }
                                 }
@@ -2913,6 +3099,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                         }, animated: true)
 
                         let last = blockingFailures.last!
+                        if let blocker = last.analyticsBlocker { self.analyticsShareJourney?.blocked(blocker) }
 
                         switch last.target {
                         case .comment:
@@ -2933,15 +3120,22 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                     let amount = strings().starListItemCountOther(Int(starsPrice))
                     let messageCountText = strings().chatPayStarsConfirmMessagesOther(messagesCount)
                     let info = strings().sharePayConfirmText(strings().sharePayConfirmUserCountOther(sendPaidMessageStars.count), amount, messageCountText)
-                    return (sharePickerConfirmation(window: context.window, header: strings().chatPayStarsConfirmTitle, information: info, ok: strings().chatPayStarsConfirmPayOther(messagesCount)))
+                    self.analyticsShareJourney?.paymentConfirmationOpened()
+                    return origin.preservingPresentation(sharePickerConfirmation(context: origin, window: context.window, header: strings().chatPayStarsConfirmTitle, information: info, ok: strings().chatPayStarsConfirmPayOther(messagesCount)))
+                    |> afterDisposed { [journey = self.analyticsShareJourney] in journey?.paymentConfirmationEnded() }
                     |> castError(String.self)
                     |> mapToSignal { [weak self] confirmed -> Signal<Bool, String> in
                         guard let self, !self.pickerClosed else { return .single(false) }
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        self.analyticsShareJourney?.paymentConfirmationResolved(confirmed: confirmed)
                         guard confirmed else { return .single(false) }
                         if let starsState, starsState.balance.value >= starsPrice {
                             return invoke(sendPaidMessageStars)
                         }
-                        FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, starsPrice)
+                        self.analyticsShareJourney?.blocked(.insufficientBalance)
+                        self.analyticsShareJourney?.topUpOpened()
+                        FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, context.window, .stars, nil, starsPrice, origin)
                         return .single(false)
                     }
                 }
@@ -2953,7 +3147,9 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                 if !ids.isEmpty { self.showSuccess() }
             }, error: { [weak self] error in
                 guard let self, !self.pickerClosed else { return }
+                let lifetime = origin.beginPresentation()
                 alert(for: context.window, info: error, onDeinit: {
+                    withExtendedLifetime(lifetime) {}
                 })
             }, completed: {})
 
@@ -2963,7 +3159,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             let tableView = genericView.activeTableView
             if tableView.highlightedItem() == nil, !tableView.isEmpty {
                 let item = tableView.item(at: 0)
-                activate(item, in: tableView)
+                activate(item, in: tableView, activation: activation)
                 return .invoked
             }
         }
@@ -2978,6 +3174,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         guard let destination = destinationStack.popLast() else {
             return
         }
+        analyticsForwardJourney?.navigated(.back)
         switch destination {
         case .community:
             communityDisposable.set(nil)
@@ -3022,20 +3219,38 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     
     private var success: Bool = false
     private var deliveryResult: SharePickerResult?
+    private var analyticsShareJourney: AnalyticsShareJourney?
+    private var analyticsForwardJourney: AnalyticsForwardPickerJourney?
     public var resultCompletion: ((SharePickerResult) -> Void)?
     
+    public convenience init(_ share:ShareObject, presentation: TelegramPresentationTheme? = nil, completion:((Bool)->Void)? = nil) {
+        self.init(share, presentation: presentation, completion: completion, analyticsContext: (share as? ForwardMessagesObject)?.forwardingAnalyticsContext)
+    }
 
-    public init(_ share:ShareObject, presentation: TelegramPresentationTheme? = nil, completion:((Bool)->Void)? = nil) {
+    public init(_ share:ShareObject, presentation: TelegramPresentationTheme? = nil, completion:((Bool)->Void)? = nil, analyticsContext: AnalyticsContext?) {
+        var origin = Analytics.shared.captureContext(engine: share.context.engine, peerId: share.context.peerId, inherited: analyticsContext ?? (share as? ForwardMessagesObject)?.forwardingAnalyticsContext ?? Analytics.shared.unresolvedContext())
+        if !origin.isExcluded, origin.scope != nil, let forward = share as? ForwardMessagesObject {
+            origin = Analytics.shared.captureContext(engine: share.context.engine, peerId: share.context.peerId, inherited: forward.forwardingAnalyticsContext)
+        }
+        if let deliveryShare = share as? ShareDeliveryProviding {
+            origin = deliveryShare.sharingAnalyticsContext(origin)
+        }
+        let analyticsPresentation = origin.beginPresentation()
+        defer { analyticsPresentation.end() }
         self.share = share
         self.completion = completion
         self.presentation = presentation
         self.share.presentation = presentation
         emoji = ShareUIHooks.shared.makeEmojies(share.context, presentation)
+        emoji.analyticsContext = origin
         self.contextChatInteraction = ChatInteraction(chatLocation: .peer(PeerId(0)), context: share.context)
+        self.contextChatInteraction.inheritedAnalyticsContext = origin
         inputContextHelper = InputContextHelper(chatInteraction: contextChatInteraction)
         super.init(frame: NSMakeRect(0, 0, 360, 400))
+        self.analyticsContext = origin
         bar = .init(height: 0)
         let isShare = share is ShareLinkObject || share is ShareContactObject || share is ShareMessageObject || share is ShareStoryObject || share is ReplyForwardMessageObject || share is ForwardMessagesObject || share is ShareChatContextResult
+        self.analyticsScreen = isShare ? AnalyticsScreen.sharePeerPicker : AnalyticsScreen.appPeerPicker
     }
 
     public func showEmoji(for control: Control) {
@@ -3069,7 +3284,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     public override var modalInteractions: ModalInteractions? {
         if !share.hasCaptionView, share.hasInteraction {
             return ModalInteractions(acceptTitle: share.interactionOk, accept: { [weak self] in
-                _ = self?.invoke()
+                _ = self?.invoke(activation: .sendButton)
             }, singleButton: true)
         } else {
             return nil
@@ -3097,6 +3312,10 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     public override func close(animationType: ModalAnimationCloseBehaviour = .common) {
         guard !pickerClosed else { return }
         pickerClosed = true
+        analyticsSearchDisposable.set(nil)
+        let presentation = (analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
+        defer { presentation.end() }
+        if deliveryResult == nil { analyticsShareJourney?.cancel(); analyticsForwardJourney?.cancel() }
         recipientAction.close()
         premiumAction.close()
         if self.share.emptyPerformOnClose {
@@ -3113,6 +3332,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         disposable.dispose()
         tokenDisposable.dispose()
         exportLinkDisposable.dispose()
+        analyticsSearchDisposable.dispose()
         communityDisposable.dispose()
         forumDisposable.dispose()
         filterDisposable.dispose()

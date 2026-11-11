@@ -323,6 +323,9 @@ public final class GroupCallSendMessageView : View {
     
     private func sendMessage() {
         let text = textView.inputTextState
+        guard !text.inputText.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
         self.textView.set(.init())
         self.arguments?.message(text)
 

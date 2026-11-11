@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -7,6 +8,8 @@ import TelegramContext
 import TelegramMediaUtils
 
 public struct MediaRecorderHooks {
+    public var setPendingRecording: ((Any, Signal<[MediaSenderContainer], NoError>, AnalyticsContext, AnalyticsRecordingRequest?) -> Void)?
+    public var setPendingMediaWithContext: ((Any, Signal<[MediaSenderContainer], NoError>, AnalyticsContext) -> Void)?
     public let setPendingMedia: (Any, Signal<[MediaSenderContainer], NoError>) -> Void
     public let clearRecordingState: (Any) -> Void
 

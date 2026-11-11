@@ -29,10 +29,11 @@ import TelegramMediaResources
 import InputDataUI
 
 
-private func makePlayer(account: Account, reference: FileMediaReference, fetchAutomatically: Bool = false, isProtected: Bool = false) -> (UniversalVideoContentView & NSView) {
+private func makePlayer(engine: TelegramEngine, reference: FileMediaReference, fetchAutomatically: Bool = false, isProtected: Bool = false) -> (UniversalVideoContentView & NSView) {
+    let account = engine.account
     let player: (UniversalVideoContentView & NSView)
-    if isHLSVideo(file: reference.media) {
-        player = HLSVideoJSNativeContentView(accountId: account.id, postbox: account.postbox, userLocation: reference.userLocation, fileReference: reference, streamVideo: true, loopVideo: false, enableSound: true, baseRate: FastSettings.playingVideoRate, fetchAutomatically: false, volume: FastSettings.volumeRate, initialQuality: FastSettings.videoQuality)
+    if isHLSVideo(file: reference.media), let hlsPlayer = HLSVideoNativeContentView(engine: engine, userLocation: reference.userLocation, fileReference: reference, baseRate: FastSettings.playingVideoRate, volume: FastSettings.volumeRate, initialQuality: FastSettings.videoQuality) {
+        player = hlsPlayer
     } else if shouldUseChunkedVideoPlayer(file: reference.media) {
         player = ChunkedNativeMediaPlayer(postbox: account.postbox, reference: reference, fetchAutomatically: fetchAutomatically, preventsCapture: isProtected)
     } else {
@@ -167,15 +168,16 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     }
     
     public func play(_ startTime: TimeInterval? = nil) {
+        let view = self.genericView
         activateMediaControls()
         if let startTime = startTime, startTime > 0 {
-            mediaPlayer.seek(startTime, play: true)
+            view.mediaPlayer.seek(startTime, play: true)
         } else {
-            mediaPlayer.play()
+            view.mediaPlayer.play()
         }
         self.isPaused = false
         self.frameStepTimestamp = nil
-        self.genericView.hideFrameStepOverlay()
+        view.hideFrameStepOverlay()
     }
     
     public func setBaseRate(_ baseRate: Double) {        
@@ -486,20 +488,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         
         let account = self.account
         
-        if isHLSVideo(file: reference.media) {
-            let fetchSignal = HLSVideoContent.minimizedHLSQualityPreloadData(postbox: account.postbox, file: reference, userLocation: .other, prefixSeconds: 10, autofetchPlaylist: true, initialQuality: FastSettings.videoQuality)
-            |> mapToSignal { fileAndRange -> Signal<Never, NoError> in
-                guard let fileAndRange else {
-                    return .complete()
-                }
-                return freeMediaFileResourceInteractiveFetched(postbox: account.postbox, userLocation: .other, fileReference: fileAndRange.0, resource: fileAndRange.0.media.resource, range: (fileAndRange.1, .default))
-                |> ignoreValues
-                |> `catch` { _ -> Signal<Never, NoError> in
-                    return .complete()
-                }
-            }
-            partDisposable.set(fetchSignal.start())
-        } else {
+        if !(self.mediaPlayer is HLSVideoNativeContentView) {
             let preload = preloadVideoResource(postbox: account.postbox, userLocation: .other, userContentType: .init(file: reference.media), resourceReference: reference.resourceReference(reference.media.resource), duration: 3.0)
             partDisposable.set(preload.start())
         }
@@ -809,7 +798,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
     }
     
     public override func initializer() -> SVideoView {
-        mediaPlayer = makePlayer(account: account, reference: reference, isProtected: isProtected)
+        mediaPlayer = makePlayer(engine: context.engine, reference: reference, isProtected: isProtected)
         return SVideoView(frame: _frameRect, mediaPlayer: self.mediaPlayer)
     }
     

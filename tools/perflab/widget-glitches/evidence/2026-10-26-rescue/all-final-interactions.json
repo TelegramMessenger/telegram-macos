@@ -1,0 +1,434 @@
+{
+  "arguments": {
+    "-PerfLab": "chat-navigation",
+    "-PerfLabLabel": "rescue-complete",
+    "-PerfLabOpenWait": "4",
+    "-PerfLabOutput": "/tmp/widget-rescue/complete",
+    "-PerfLabPeerTitle": "Widget Bot",
+    "-PerfLabScenarios": "widgets",
+    "-PerfLabStartDelay": "2",
+    "-PerfLabWidgetActions": "/tmp/widget-rescue/exact-actions.json",
+    "-PerfLabWidgetActionWait": "0.35",
+    "-PerfLabWidgetHistoryPasses": "4",
+    "-PerfLabWidgetSources": "/tmp/widget-rescue/complete-html",
+    "-PerfLabWidgetWait": "0.5"
+  },
+  "entries": [
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001430.76,
+        "frames": 174,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001427.842,
+        "worstGapMs": 23.226
+      },
+      "notes": {
+        "actions": "0: id=nw found=true height=384 mismatch=false\n0 renderer: detached=true preparing=true held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=55 posted=2 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: id=ck found=true height=384 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=77 posted=2 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: id=nw found=true height=384 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=99 posted=4 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: id=sv found=true height=384 mismatch=false\n3 renderer: detached=true preparing=true held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=121 posted=4 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: id=nw found=true height=384 mismatch=false\n4 renderer: detached=true preparing=true held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=143 posted=6 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: id=ck found=true height=384 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=164 posted=6 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: id=nw found=true height=384 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=186 posted=8 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=ck found=true height=384 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 384.0) scale=2.0 doc=true h=384 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=208 posted=8 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141305",
+        "state": "loaded=true rendered=true dead=- lastError=- height=384 nodes=327 diags=boot:1 errors=",
+        "widget": "sudoku.html"
+      },
+      "run": 0,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001434.25,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001431.327,
+        "worstGapMs": 22.096
+      },
+      "notes": {
+        "actions": "0: data-level=easy found=true height=369 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=10 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-first=pixel found=true height=369 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=10 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-first=you found=true height=369 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=10 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-level=hard found=true height=369 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=10 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-i=4 found=true height=369 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=20 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: id=restart found=true height=369 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=40 posted=3 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-i=0 found=true height=369 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=50 posted=4 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=hintBtn found=true height=369 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 369.0) scale=2.0 doc=true h=369 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=59 posted=5 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141304",
+        "state": "loaded=true rendered=true dead=- lastError=- height=369 nodes=77 diags=boot:1 errors=",
+        "widget": "tic-tac-toe.html"
+      },
+      "run": 1,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001437.766,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 1,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001434.837,
+        "worstGapMs": 28.027
+      },
+      "notes": {
+        "actions": "0: data-action=tab,data-value=1 found=true height=252 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 252.0) scale=2.0 doc=true h=252 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=81 posted=53 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-action=tab,data-value=2 found=true height=282 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=101 posted=55 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-action=tab,data-value=0 found=true height=351 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 351.0) scale=2.0 doc=true h=351 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=121 posted=57 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-action=fam,data-value=1 found=true height=351 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 351.0) scale=2.0 doc=true h=351 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=132 posted=58 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-action=italic found=true height=351 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 351.0) scale=2.0 doc=true h=351 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=132 posted=58 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-action=tab,data-value=1 found=true height=252 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 252.0) scale=2.0 doc=true h=252 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=152 posted=60 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-action=pick,data-value=2 found=true height=351 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 351.0) scale=2.0 doc=true h=351 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=173 posted=80 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-action=tab,data-value=2 found=true height=282 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=195 posted=92 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141303",
+        "state": "loaded=true rendered=true dead=- lastError=- height=282 nodes=188 diags=boot:1 errors=",
+        "widget": "type-specimen.html"
+      },
+      "run": 2,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001441.274,
+        "frames": 174,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001438.352,
+        "worstGapMs": 16.796
+      },
+      "notes": {
+        "actions": "0: data-t=v found=true height=342 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 342.0) scale=2.0 doc=true h=342 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=30 posted=3 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-t=r found=true height=282 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=50 posted=5 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: id=sort found=true height=282 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=71 posted=26 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-t=v found=true height=342 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 342.0) scale=2.0 doc=true h=342 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=93 posted=44 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-t=r found=true height=282 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=113 posted=46 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: id=close found=true height=337 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 337.0) scale=2.0 doc=true h=337 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=133 posted=48 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: id=close found=true height=282 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=144 posted=49 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=reset found=true height=282 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 282.0) scale=2.0 doc=true h=282 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=165 posted=70 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141299",
+        "state": "loaded=true rendered=true dead=- lastError=- height=282 nodes=151 diags=boot:1 errors=",
+        "widget": "live-poll.html"
+      },
+      "run": 3,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 5,
+        "endUnixTime": 1793001443.669,
+        "frames": 107,
+        "heightMismatch": 0,
+        "hitches": 1,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001441.852,
+        "worstGapMs": 33.332
+      },
+      "notes": {
+        "actions": "0: data-level=Easy found=true height=361 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 361.0) scale=2.0 doc=true h=361 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=79 posted=70 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-level=Hard found=true height=361 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 361.0) scale=2.0 doc=true h=361 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=79 posted=70 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-level=Normal found=true height=361 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 361.0) scale=2.0 doc=true h=361 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=79 posted=70 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: id=st found=true height=326 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 326.0) scale=2.0 doc=true h=326 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=100 posted=91 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: id=sp found=true height=326 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 326.0) scale=2.0 doc=true h=326 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=121 posted=112 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141298",
+        "state": "loaded=true rendered=true dead=- lastError=- height=326 nodes=107 diags=boot:1,profile:1 errors=",
+        "widget": "whack-a-mole.html"
+      },
+      "run": 4,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001447.157,
+        "frames": 174,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001444.246,
+        "worstGapMs": 16.797
+      },
+      "notes": {
+        "actions": "0: id=right found=true height=234 mismatch=false\n0 renderer: detached=true preparing=true held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 234.0) scale=2.0 doc=true h=234 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=80 posted=69 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: id=left found=true height=288 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 288.0) scale=2.0 doc=true h=288 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=101 posted=90 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: id=left found=true height=310 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 310.0) scale=2.0 doc=true h=310 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=123 posted=112 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: id=right found=true height=310 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 310.0) scale=2.0 doc=true h=310 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=145 posted=113 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-view=chart found=true height=303 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 303.0) scale=2.0 doc=true h=303 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=154 posted=113 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-view=laps found=true height=310 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 310.0) scale=2.0 doc=true h=310 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=154 posted=113 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-view=chart found=true height=303 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 303.0) scale=2.0 doc=true h=303 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=154 posted=113 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=left found=true height=234 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 234.0) scale=2.0 doc=true h=234 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=174 posted=133 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141297",
+        "state": "loaded=true rendered=true dead=- lastError=- height=234 nodes=38 diags=boot:1 errors=",
+        "widget": "stopwatch-fluid.html"
+      },
+      "run": 5,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001450.595,
+        "frames": 172,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001447.7,
+        "worstGapMs": 16.797
+      },
+      "notes": {
+        "actions": "0: id=right found=true height=244 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 244.0) scale=2.0 doc=true h=244 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=30 posted=21 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: id=left found=true height=303 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 303.0) scale=2.0 doc=true h=303 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=51 posted=42 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: id=left found=true height=328 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 328.0) scale=2.0 doc=true h=328 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=73 posted=64 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: id=right found=true height=328 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 328.0) scale=2.0 doc=true h=328 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=95 posted=65 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-view=chart found=true height=315 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 315.0) scale=2.0 doc=true h=315 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=105 posted=65 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-view=laps found=true height=328 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 328.0) scale=2.0 doc=true h=328 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=105 posted=65 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-view=chart found=true height=315 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 315.0) scale=2.0 doc=true h=315 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=105 posted=65 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=left found=true height=244 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 244.0) scale=2.0 doc=true h=244 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=126 posted=86 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141296",
+        "state": "loaded=true rendered=true dead=- lastError=- height=244 nodes=50 diags=boot:1 errors=",
+        "widget": "stopwatch.html"
+      },
+      "run": 6,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001454.083,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001451.165,
+        "worstGapMs": 16.796
+      },
+      "notes": {
+        "actions": "0: data-action=tab,data-value=1 found=true height=315 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 315.0) scale=2.0 doc=true h=315 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-action=tab,data-value=2 found=true height=315 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 315.0) scale=2.0 doc=true h=315 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-action=tab,data-value=0 found=true height=284 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 284.0) scale=2.0 doc=true h=284 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-action=filter,data-value=⌘ found=true height=191 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 191.0) scale=2.0 doc=true h=191 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-action=tab,data-value=3 found=true height=198 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 198.0) scale=2.0 doc=true h=198 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-action=answer,data-value=0 found=true height=202 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 202.0) scale=2.0 doc=true h=202 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-action=next found=true height=198 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 198.0) scale=2.0 doc=true h=198 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-action=tab,data-value=0 found=true height=191 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 191.0) scale=2.0 doc=true h=191 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=62 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141295",
+        "state": "loaded=true rendered=true dead=- lastError=- height=191 nodes=110 diags=boot:1,profile:1 errors=",
+        "widget": "shortcuts-legacy.html"
+      },
+      "run": 7,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 6,
+        "endUnixTime": 1793001456.86,
+        "frames": 130,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001454.675,
+        "worstGapMs": 23.546
+      },
+      "notes": {
+        "actions": "0: data-a=f,data-v=1 found=true height=328 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 328.0) scale=2.0 doc=true h=328 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-a=f,data-v=2 found=true height=328 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 328.0) scale=2.0 doc=true h=328 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-a=f,data-v=0 found=true height=412 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 412.0) scale=2.0 doc=true h=412 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-a=c,data-v=3 found=true height=412 mismatch=false\n3 renderer: detached=true preparing=true held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 412.0) scale=2.0 doc=true h=412 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=61 posted=23 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-a=f,data-v=1 found=true height=300 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 300.0) scale=2.0 doc=true h=300 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=83 posted=44 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-a=f,data-v=0 found=true height=412 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 412.0) scale=2.0 doc=true h=412 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=91 posted=44 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141294",
+        "state": "loaded=true rendered=true dead=- lastError=- height=412 nodes=138 diags=boot:1 errors=",
+        "widget": "sprint.html"
+      },
+      "run": 8,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 7,
+        "endUnixTime": 1793001460,
+        "frames": 153,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001457.436,
+        "worstGapMs": 16.666
+      },
+      "notes": {
+        "actions": "0: data-action=pay found=true height=354 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 354.0) scale=2.0 doc=true h=354 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=58 posted=49 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-action=pay found=true height=225 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 225.0) scale=2.0 doc=true h=225 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=58 posted=49 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-action=bet,data-value=1 found=true height=225 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 225.0) scale=2.0 doc=true h=225 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=58 posted=49 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-action=bet,data-value=-1 found=true height=225 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 225.0) scale=2.0 doc=true h=225 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=58 posted=49 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-action=spin found=true height=225 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 225.0) scale=2.0 doc=true h=225 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=79 posted=68 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-action=pay found=true height=354 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 354.0) scale=2.0 doc=true h=354 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=101 posted=68 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-action=pay found=true height=225 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 225.0) scale=2.0 doc=true h=225 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=123 posted=68 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141293",
+        "state": "loaded=true rendered=true dead=- lastError=- height=225 nodes=346 diags=boot:1 errors=",
+        "widget": "slots.html"
+      },
+      "run": 9,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001463.466,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001460.547,
+        "worstGapMs": 16.797
+      },
+      "notes": {
+        "actions": "0: data-action=tab,data-value=1 found=true height=293 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 293.0) scale=2.0 doc=true h=293 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=60 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-action=tab,data-value=2 found=true height=293 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 293.0) scale=2.0 doc=true h=293 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=60 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-action=tab,data-value=0 found=true height=262 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 262.0) scale=2.0 doc=true h=262 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=60 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-action=filter,data-value=⌘ found=true height=169 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 169.0) scale=2.0 doc=true h=169 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=60 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-action=tab,data-value=3 found=true height=200 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 200.0) scale=2.0 doc=true h=200 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=60 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-action=answer,data-value=0 found=true height=204 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 204.0) scale=2.0 doc=true h=204 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=81 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-action=next found=true height=200 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 200.0) scale=2.0 doc=true h=200 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=82 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-action=tab,data-value=0 found=true height=169 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 169.0) scale=2.0 doc=true h=169 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=82 posted=1 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141292",
+        "state": "loaded=true rendered=true dead=- lastError=- height=169 nodes=107 diags=boot:1 errors=",
+        "widget": "shortcuts.html"
+      },
+      "run": 10,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001466.96,
+        "frames": 174,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001464.043,
+        "worstGapMs": 22.44
+      },
+      "notes": {
+        "actions": "0: data-a=s,data-v=1 found=true height=360 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 360.0) scale=2.0 doc=true h=360 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-a=s,data-v=2 found=true height=360 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 360.0) scale=2.0 doc=true h=360 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-a=s,data-v=0 found=true height=374 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 374.0) scale=2.0 doc=true h=374 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-a=f,data-v=5 found=true height=374 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 374.0) scale=2.0 doc=true h=374 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-a=f,data-v=5 found=true height=374 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 374.0) scale=2.0 doc=true h=374 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-a=m,data-v=0 found=true height=415 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 415.0) scale=2.0 doc=true h=415 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-a=m,data-v=0 found=true height=374 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 374.0) scale=2.0 doc=true h=374 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-a=p found=true height=555 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=20 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 555.0) scale=2.0 doc=true h=555 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141291",
+        "state": "loaded=true rendered=true dead=- lastError=- height=555 nodes=167 diags=boot:1 errors=",
+        "widget": "reviews.html"
+      },
+      "run": 11,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001470.483,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001467.566,
+        "worstGapMs": 16.797
+      },
+      "notes": {
+        "actions": "0: data-day=3 found=true height=341 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=86 posted=68 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-day=3 found=true height=197 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 197.0) scale=2.0 doc=true h=197 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=86 posted=68 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-day=3 found=true height=341 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=86 posted=68 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-metric=rain found=true height=341 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=107 posted=80 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-metric=wind found=true height=341 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=128 posted=92 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-metric=temp found=true height=341 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=149 posted=104 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-unit=F found=true height=341 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=169 posted=115 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-unit=C found=true height=341 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 341.0) scale=2.0 doc=true h=341 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=189 posted=126 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141290",
+        "state": "loaded=true rendered=true dead=- lastError=- height=341 nodes=184 diags=boot:1 errors=",
+        "widget": "weather.html"
+      },
+      "run": 12,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001474,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001471.067,
+        "worstGapMs": 16.796
+      },
+      "notes": {
+        "actions": "0: data-cat=1 found=true height=199 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-cat=2 found=true height=199 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-cat=3 found=true height=199 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-cat=0 found=true height=394 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 394.0) scale=2.0 doc=true h=394 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-row=0 found=true height=423 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 423.0) scale=2.0 doc=true h=423 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-row=0 found=true height=394 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 394.0) scale=2.0 doc=true h=394 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: id=quiz found=true height=212 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 212.0) scale=2.0 doc=true h=212 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=xx found=true height=394 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 394.0) scale=2.0 doc=true h=394 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141274",
+        "state": "loaded=true rendered=true dead=- lastError=- height=394 nodes=294 diags=boot:1 errors=",
+        "widget": "phrasebook.html"
+      },
+      "run": 13,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 6,
+        "endUnixTime": 1793001476.791,
+        "frames": 131,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001474.595,
+        "worstGapMs": 21.303
+      },
+      "notes": {
+        "actions": "0: data-cat=docs found=true height=206 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 206.0) scale=2.0 doc=true h=206 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-cat=clothes found=true height=206 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 206.0) scale=2.0 doc=true h=206 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-cat=gear found=true height=235 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 235.0) scale=2.0 doc=true h=235 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-cat=all found=true height=409 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-id=1 found=true height=409 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-id=1 found=true height=409 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141273",
+        "state": "loaded=true rendered=true dead=- lastError=- height=409 nodes=133 diags=boot:1 errors=",
+        "widget": "packing.html"
+      },
+      "run": 14,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001480.3,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001477.367,
+        "worstGapMs": 16.797
+      },
+      "notes": {
+        "actions": "0: data-action=queue found=true height=473 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 473.0) scale=2.0 doc=true h=473 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=221 posted=221 canvas: fast=64 gpu-batches=0 cg-batches=220 gpu-buffers=217 gpu-ms=0.169/buffer presented=218 layers=1 skipped=0\n1: data-action=queue found=true height=255 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=243 posted=243 canvas: fast=70 gpu-batches=0 cg-batches=242 gpu-buffers=239 gpu-ms=0.176/buffer presented=240 layers=1 skipped=0\n2: data-action=next found=true height=255 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=265 posted=265 canvas: fast=75 gpu-batches=0 cg-batches=265 gpu-buffers=262 gpu-ms=0.163/buffer presented=263 layers=1 skipped=0\n3: data-action=prev found=true height=255 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=287 posted=287 canvas: fast=81 gpu-batches=0 cg-batches=288 gpu-buffers=285 gpu-ms=0.156/buffer presented=286 layers=1 skipped=0\n4: data-action=play found=true height=255 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=309 posted=309 canvas: fast=103 gpu-batches=0 cg-batches=310 gpu-buffers=307 gpu-ms=0.147/buffer presented=308 layers=1 skipped=0\n5: data-action=play found=true height=255 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=331 posted=331 canvas: fast=110 gpu-batches=0 cg-batches=332 gpu-buffers=329 gpu-ms=0.146/buffer presented=330 layers=1 skipped=0\n6: data-action=shuffle found=true height=255 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=353 posted=353 canvas: fast=115 gpu-batches=0 cg-batches=354 gpu-buffers=351 gpu-ms=0.145/buffer presented=352 layers=1 skipped=0\n7: data-action=repeat found=true height=255 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=375 posted=375 canvas: fast=122 gpu-batches=0 cg-batches=376 gpu-buffers=373 gpu-ms=0.137/buffer presented=374 layers=1 skipped=0",
+        "message": "141272",
+        "state": "loaded=true rendered=true dead=- lastError=- height=255 nodes=125 diags=boot:1,profile:1 errors=",
+        "widget": "music-player.html"
+      },
+      "run": 15,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001486,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001483.074,
+        "worstGapMs": 24.856
+      },
+      "notes": {
+        "actions": "0: id=restart found=true height=308 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 308.0) scale=2.0 doc=true h=308 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=66 posted=2 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-j=1 found=true height=376 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 376.0) scale=2.0 doc=true h=376 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=76 posted=3 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: id=next found=true height=308 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 308.0) scale=2.0 doc=true h=308 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=97 posted=5 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-j=2 found=true height=390 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 390.0) scale=2.0 doc=true h=390 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=107 posted=6 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: id=next found=true height=308 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 308.0) scale=2.0 doc=true h=308 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=128 posted=8 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-j=3 found=true height=390 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 390.0) scale=2.0 doc=true h=390 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=138 posted=9 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: id=next found=true height=349 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 349.0) scale=2.0 doc=true h=349 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=159 posted=30 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: id=restart found=true height=308 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 308.0) scale=2.0 doc=true h=308 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=181 posted=52 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141255",
+        "state": "loaded=true rendered=true dead=- lastError=- height=308 nodes=120 diags=boot:1 errors=",
+        "widget": "rendering-quiz.html"
+      },
+      "run": 20,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001489.483,
+        "frames": 173,
+        "heightMismatch": 0,
+        "hitches": 1,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001486.572,
+        "worstGapMs": 33.332
+      },
+      "notes": {
+        "actions": "0: data-a=expand,data-v=0 found=true height=317 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 317.0) scale=2.0 doc=true h=317 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=84 posted=72 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-a=expand,data-v=1 found=true height=299 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 299.0) scale=2.0 doc=true h=299 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=106 posted=94 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-a=expand,data-v=1 found=true height=222 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 222.0) scale=2.0 doc=true h=222 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=127 posted=115 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-a=sort found=true height=222 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 222.0) scale=2.0 doc=true h=222 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=149 posted=137 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-a=sort found=true height=222 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 222.0) scale=2.0 doc=true h=222 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=171 posted=159 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-a=cell,data-v=0:1 found=true height=222 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 222.0) scale=2.0 doc=true h=222 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=193 posted=181 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-a=clear found=true height=222 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 222.0) scale=2.0 doc=true h=222 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=215 posted=203 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-a=reset found=true height=222 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 222.0) scale=2.0 doc=true h=222 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=235 posted=206 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141254",
+        "state": "loaded=true rendered=true dead=- lastError=- height=222 nodes=106 diags=boot:1 errors=",
+        "widget": "revenue-table.html"
+      },
+      "run": 21,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 8,
+        "endUnixTime": 1793001496.284,
+        "frames": 175,
+        "heightMismatch": 0,
+        "hitches": 0,
+        "longHitches": 0,
+        "missingActions": 0,
+        "startUnixTime": 1793001493.359,
+        "worstGapMs": 23.488
+      },
+      "notes": {
+        "actions": "0: data-act=mode,data-value=1 found=true height=264 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 264.0) scale=2.0 doc=true h=264 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-act=units found=true height=264 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 264.0) scale=2.0 doc=true h=264 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=63 posted=54 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-act=row,data-value=0 found=true height=364 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 364.0) scale=2.0 doc=true h=364 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=84 posted=75 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-act=close found=true height=264 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 264.0) scale=2.0 doc=true h=264 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=106 posted=95 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-act=mode,data-value=0 found=true height=333 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 333.0) scale=2.0 doc=true h=333 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=113 posted=95 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-act=units found=true height=333 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 333.0) scale=2.0 doc=true h=333 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=113 posted=95 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-act=row,data-value=1 found=true height=432 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 432.0) scale=2.0 doc=true h=432 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=134 posted=116 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-act=close found=true height=333 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 333.0) scale=2.0 doc=true h=333 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=156 posted=136 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141238",
+        "state": "loaded=true rendered=true dead=- lastError=- height=333 nodes=308 diags=boot:1 errors=Uncaught TypeError: cannot read property '2' of undefined\n    at G (inline-script-1.js:1:3697)\n    at <anonymous> (inline-script-1.js:1:5807)\n    at o (inline-script-1.js:1:1061)\n    at r (sandbox-bundle.js:70:2374)\n    at E (sandbox-bundle.js:70:52383)\n | Uncaught TypeError: cannot read property '2' of undefined\n    at G (inline-script-1.js:1:3697)\n    at <anonymous> (inline-script-1.js:1:5807)\n    at o (inline-script-1.js:1:1061)\n    at r (sandbox-bundle.js:70:2374)\n    at E (sandbox-bundle.js:70:52383)\n",
+        "widget": "retention-cohorts.html"
+      },
+      "run": 28,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "dead": 0,
+        "errors": 0,
+        "heightMismatch": 0,
+        "unavailable": 0,
+        "widgets": 36
+      },
+      "notes": {
+        "rows": "#0 id=141305 content=450x384 itemHeight=413 viewHeight=413 laid=450x384 unavailable=false loaded=true rendered=true dead=- lastError=- height=384 nodes=327 diags=boot:1 errors=\n#1 id=141304 content=450x369 itemHeight=398 viewHeight=398 laid=450x369 unavailable=false loaded=true rendered=true dead=- lastError=- height=369 nodes=77 diags=boot:1 errors=\n#2 id=141303 content=450x351 itemHeight=380 viewHeight=380 laid=450x351 unavailable=false loaded=true rendered=true dead=- lastError=- height=351 nodes=172 diags=boot:1 errors=\n#3 id=141299 content=450x282 itemHeight=311 viewHeight=311 laid=450x282 unavailable=false loaded=true rendered=true dead=- lastError=- height=282 nodes=81 diags=boot:1 errors=\n#4 id=141298 content=450x361 itemHeight=390 viewHeight=390 laid=450x361 unavailable=false loaded=true rendered=true dead=- lastError=- height=361 nodes=106 diags=boot:1,profile:1 errors=\n#5 id=141297 content=450x234 itemHeight=263 viewHeight=263 laid=450x234 unavailable=false loaded=true rendered=true dead=- lastError=- height=234 nodes=36 diags=boot:1 errors=\n#6 id=141296 content=450x244 itemHeight=273 viewHeight=273 laid=450x244 unavailable=false loaded=true rendered=true dead=- lastError=- height=244 nodes=48 diags=boot:1 errors=\n#7 id=141295 content=450x284 itemHeight=313 viewHeight=313 laid=450x284 unavailable=false loaded=true rendered=true dead=- lastError=- height=284 nodes=106 diags=boot:1,profile:1 errors=\n#8 id=141294 content=450x412 itemHeight=441 viewHeight=441 laid=450x412 unavailable=false loaded=true rendered=true dead=- lastError=- height=412 nodes=138 diags=boot:1 errors=\n#9 id=141293 content=450x225 itemHeight=254 viewHeight=254 laid=450x225 unavailable=false loaded=true rendered=true dead=- lastError=- height=225 nodes=113 diags=boot:1 errors=\n#10 id=141292 content=450x262 itemHeight=291 viewHeight=291 laid=450x262 unavailable=false loaded=true rendered=true dead=- lastError=- height=262 nodes=106 diags=boot:1 errors=\n#11 id=141291 content=450x374 itemHeight=403 viewHeight=403 laid=450x374 unavailable=false loaded=true rendered=true dead=- lastError=- height=374 nodes=125 diags=boot:1 errors=\n#12 id=141290 content=450x341 itemHeight=370 viewHeight=370 laid=450x341 unavailable=false loaded=true rendered=true dead=- lastError=- height=341 nodes=184 diags=boot:1 errors=\n#13 id=141274 content=450x394 itemHeight=423 viewHeight=423 laid=450x394 unavailable=false loaded=true rendered=true dead=- lastError=- height=394 nodes=280 diags=boot:1 errors=\n#14 id=141273 content=450x409 itemHeight=438 viewHeight=438 laid=450x409 unavailable=false loaded=true rendered=true dead=- lastError=- height=409 nodes=133 diags=boot:1 errors=\n#15 id=141272 content=450x255 itemHeight=284 viewHeight=284 laid=450x255 unavailable=false loaded=true rendered=true dead=- lastError=- height=255 nodes=125 diags=boot:1,profile:1 errors=\n#16 id=141265 content=450x273 itemHeight=302 viewHeight=302 laid=450x273 unavailable=false loaded=true rendered=true dead=- lastError=- height=273 nodes=48 diags=boot:1 errors=\n#17 id=141264 content=450x248 itemHeight=277 viewHeight=277 laid=450x248 unavailable=false loaded=true rendered=true dead=- lastError=- height=248 nodes=80 diags=boot:1 errors=\n#18 id=141257 content=450x282 itemHeight=311 viewHeight=311 laid=450x282 unavailable=false loaded=true rendered=true dead=- lastError=- height=282 nodes=81 diags=boot:1 errors=\n#19 id=141256 content=450x369 itemHeight=398 viewHeight=398 laid=450x369 unavailable=false loaded=true rendered=true dead=- lastError=- height=369 nodes=77 diags=boot:1 errors=\n#20 id=141255 content=450x376 itemHeight=405 viewHeight=405 laid=450x376 unavailable=false loaded=true rendered=true dead=- lastError=- height=376 nodes=99 diags=boot:1 errors=\n#21 id=141254 content=450x222 itemHeight=251 viewHeight=251 laid=450x222 unavailable=false loaded=true rendered=true dead=- lastError=- height=222 nodes=106 diags=boot:1 errors=\n#22 id=141252 content=450x409 itemHeight=438 viewHeight=438 laid=450x409 unavailable=false loaded=true rendered=true dead=- lastError=- height=409 nodes=133 diags=boot:1 errors=\n#23 id=141251 content=450x394 itemHeight=423 viewHeight=423 laid=450x394 unavailable=false loaded=true rendered=true dead=- lastError=- height=394 nodes=280 diags=boot:1 errors=\n#24 id=141250 content=450x341 itemHeight=370 viewHeight=370 laid=450x341 unavailable=false loaded=true rendered=true dead=- lastError=- height=341 nodes=184 diags=boot:1 errors=\n#25 id=141241 content=450x261 itemHeight=290 viewHeight=290 laid=450x261 unavailable=false loaded=true rendered=true dead=- lastError=- height=261 nodes=36 diags=boot:1 errors=\n#26 id=141240 content=450x284 itemHeight=313 viewHeight=313 laid=450x284 unavailable=false loaded=true rendered=true dead=- lastError=- height=284 nodes=106 diags=boot:1,profile:1 errors=\n#27 id=141239 content=450x384 itemHeight=413 viewHeight=413 laid=450x384 unavailable=false loaded=true rendered=true dead=- lastError=- height=384 nodes=327 diags=boot:1 errors=\n#28 id=141238 content=450x333 itemHeight=362 viewHeight=362 laid=450x333 unavailable=false loaded=true rendered=true dead=- lastError=- height=333 nodes=282 diags=boot:1 errors=\n#29 id=141237 content=450x262 itemHeight=291 viewHeight=291 laid=450x262 unavailable=false loaded=true rendered=true dead=- lastError=- height=262 nodes=106 diags=boot:1 errors=\n#30 id=141236 content=450x225 itemHeight=254 viewHeight=254 laid=450x225 unavailable=false loaded=true rendered=true dead=- lastError=- height=225 nodes=113 diags=boot:1 errors=\n#31 id=141235 content=450x374 itemHeight=403 viewHeight=403 laid=450x374 unavailable=false loaded=true rendered=true dead=- lastError=- height=374 nodes=125 diags=boot:1 errors=\n#32 id=141234 content=450x378 itemHeight=407 viewHeight=407 laid=450x378 unavailable=false loaded=true rendered=true dead=- lastError=- height=378 nodes=106 diags=boot:1,profile:1 errors=\n#33 id=141233 content=450x282 itemHeight=311 viewHeight=311 laid=450x282 unavailable=false loaded=true rendered=true dead=- lastError=- height=282 nodes=180 diags=boot:1 errors=\n#34 id=141232 content=450x440 itemHeight=469 viewHeight=469 laid=450x440 unavailable=false loaded=true rendered=true dead=- lastError=- height=440 nodes=138 diags=boot:1 errors=\n#35 id=141218 content=450x594 itemHeight=623 viewHeight=623 laid=450x594 unavailable=false loaded=true rendered=true dead=- lastError=- height=594 nodes=44 diags=boot:1 errors="
+      },
+      "run": 0,
+      "scenario": "widgets"
+    }
+  ],
+  "lab": "chat-navigation",
+  "label": "rescue-complete",
+  "startedAt": "2026-10-26T07:57:03Z"
+}

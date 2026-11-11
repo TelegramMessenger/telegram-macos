@@ -181,7 +181,7 @@ private enum MonoforumEntry : Comparable, Identifiable {
         case .toggle:
             return MonoforumToggleItem(initialSize, stableId: stableId, chatInteraction: chatInteraction)
         case let .size(_, stableId):
-            return GeneralRowItem(initialSize, height: 15, stableId: stableId, backgroundColor: .clear)
+            return GeneralRowItem(initialSize, height: 20, stableId: stableId, backgroundColor: .clear)
         }
     }
 }
@@ -623,6 +623,8 @@ public class MonoforumVerticalView : View, TableViewDelegate {
     private var entries: [MonoforumEntry] = []
 
     private let selectionView: View = View()
+    private let contentView = View()
+    private let contentMask = SimpleGradientLayer()
     private let glassBackground: LiquidGlassView
     private let toggleButton = ImageButton()
 
@@ -631,15 +633,21 @@ public class MonoforumVerticalView : View, TableViewDelegate {
         super.init(frame: frameRect)
         self.layer?.masksToBounds = false
         addSubview(glassBackground)
-        addSubview(tableView)
-
-        addSubview(selectionView)
+        contentView.layer?.cornerRadius = 20
+        contentView.layer?.masksToBounds = true
+        contentMask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+        contentMask.startPoint = NSMakePoint(0.5, 0)
+        contentMask.endPoint = NSMakePoint(0.5, 1)
+        contentView.layer?.mask = contentMask
+        addSubview(contentView)
+        contentView.addSubview(tableView)
+        contentView.addSubview(selectionView)
 
         toggleButton.autohighlight = false
         toggleButton.animates = false
         toggleButton.scaleOnClick = true
         toggleButton.setAccessibilityLabel(strings().voiceOverChatSwitchTopicsView)
-        addSubview(toggleButton)
+        contentView.addSubview(toggleButton)
 
 
         selectionView.layer?.cornerRadius = 1.5
@@ -677,7 +685,7 @@ public class MonoforumVerticalView : View, TableViewDelegate {
         
         let height = rect.height - 5
         
-        transition.updateFrame(view: self.selectionView, frame:  NSMakeRect(2, max(tableView.frame.minY + rect.origin.y + 5 - scrollY, toggleButton.frame.maxY), 3, min(height, max(0, rect.maxY - 5 - scrollY))))
+        transition.updateFrame(view: self.selectionView, frame:  NSMakeRect(2, max(tableView.frame.minY + rect.origin.y + 5 - scrollY, toggleButton.isHidden ? 0 : toggleButton.frame.maxY), 3, min(height, max(0, rect.maxY - 5 - scrollY))))
     }
     
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
@@ -694,6 +702,7 @@ public class MonoforumVerticalView : View, TableViewDelegate {
     
     public func set(items: [MonoforumItem], selected: Int64?, chatInteraction: ChatInteraction, animated: Bool) {
 
+        toggleButton.isHidden = (chatInteraction.presentation.mainPeer as? TelegramUser)?.botInfo?.flags.contains(.displayForumAsSidebar) == true
         toggleButton.set(image: TelegramThemeHooks.shared.image(.iconMonoforumToggle).precomposed(theme.colors.text), for: .Normal)
         toggleButton.sizeToFit(.zero, NSMakeSize(frame.width, 40), thatFit: true)
         toggleButton.setSingle(handler: { [weak chatInteraction] _ in
@@ -821,7 +830,8 @@ public class MonoforumVerticalView : View, TableViewDelegate {
         }
         
         self.entries = entries
-        
+
+        self.updateLayout(size: self.frame.size, transition: .immediate)
         self.updateSelectionRect(animated: animated)
     }
     
@@ -838,9 +848,13 @@ public class MonoforumVerticalView : View, TableViewDelegate {
     public func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         transition.updateFrame(view: glassBackground, frame: size.bounds)
         glassBackground.updateLayout(size: size, transition: transition)
+        transition.updateFrame(view: contentView, frame: size.bounds)
+        transition.updateFrame(layer: contentMask, frame: size.bounds)
+        contentMask.locations = [0, NSNumber(value: Double(max(0, 1 - 16 / max(1, size.height)))), 1]
 
         transition.updateFrame(view: toggleButton, frame: NSMakeRect(0, 0, size.width, 40))
-        let tableRect = NSMakeRect(0, 40, size.width, max(0, size.height - 40))
+        let topInset: CGFloat = toggleButton.isHidden ? 0 : 40
+        let tableRect = NSMakeRect(0, topInset, size.width, max(0, size.height - topInset))
         transition.updateFrame(view: tableView, frame: tableRect)
         self.tableView.tile()
         self.updateSelectionRect(animated: transition.isAnimated)

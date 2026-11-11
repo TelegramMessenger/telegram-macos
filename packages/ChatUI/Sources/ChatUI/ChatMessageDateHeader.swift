@@ -66,6 +66,7 @@ public class ChatDateStickItem : TableStickItem {
     fileprivate let chatInteraction:ChatInteraction?
     public let isBubbled: Bool
     public let layout:TextViewLayout
+    public let serviceLayout: TextViewLayout
     public let presentation: TelegramPresentationTheme
     
     public var monoforumState: MonoforumUIState? {
@@ -123,7 +124,8 @@ public class ChatDateStickItem : TableStickItem {
         }
         
         
-        self.layout = TextViewLayout(.initialize(string: text, color: TelegramUtilsHooks.shared.isLite(.blur) ? presentation.chatServiceItemTextColor : presentation.colors.text, font: .medium(presentation.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
+        self.layout = TextViewLayout(.initialize(string: text, color: presentation.colors.text, font: .medium(presentation.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
+        self.serviceLayout = TextViewLayout(.initialize(string: text, color: presentation.chatServiceItemTextColor, font: .medium(presentation.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
 
         
         super.init(initialSize)
@@ -161,7 +163,9 @@ public class ChatDateStickItem : TableStickItem {
         entry = .DateEntry(MessageIndex.absoluteLowerBound(), .list, theme, .init())
         timestamp = 0
         self.isBubbled = false
-        self.layout = TextViewLayout(NSAttributedString())
+        let layout = TextViewLayout(NSAttributedString())
+        self.layout = layout
+        self.serviceLayout = layout
         self.chatInteraction = nil
         self.presentation = theme
         super.init(initialSize)
@@ -170,6 +174,7 @@ public class ChatDateStickItem : TableStickItem {
     public override func makeSize(_ width: CGFloat, oldWidth:CGFloat) -> Bool {
         let success = super.makeSize(width, oldWidth: oldWidth)
         layout.measure(width: width - 40)
+        serviceLayout.measure(width: width - 40)
         return success
     }
     
@@ -201,7 +206,12 @@ public class ChatDateStickView : TableStickView {
     private var scrollVisible = true
     private var dateTrackingArea: NSTrackingArea?
     private var requestId = 0
+    #if DEBUG
+    static var debugForceBlur = false
+    private let glassView = LiquidGlassView(frame: .zero, hasShadow: true, hasBorder: true, forceBlur: ChatDateStickView.debugForceBlur)
+    #else
     private let glassView = LiquidGlassView(frame: .zero, hasShadow: true, hasBorder: true)
+    #endif
     private var appliedColors: (presentation: TelegramPresentationTheme, usesGlass: Bool)?
     public required init(frame frameRect: NSRect) {
         
@@ -275,12 +285,12 @@ public class ChatDateStickView : TableStickView {
             }
             if canOpenCalendar, !interaction.isLogInteraction, !interaction.isGlobalSearchMessage {
                 let chatLocation = interaction.chatLocation
-                if let controller = ChatNavigationHooks.shared.makeCalendarPopover(interaction.interactionContext, interaction.peerId, chatLocation.threadId, Date(timeIntervalSince1970: TimeInterval(item.timestamp)), { [weak interaction] date in
+                if let controller = ChatNavigationHooks.shared.makeCalendarModal(interaction.interactionContext, interaction.peerId, chatLocation.threadId, Date(timeIntervalSince1970: TimeInterval(item.timestamp)), { [weak interaction] date in
                     guard let interaction, interaction.chatLocation == chatLocation else { return }
                     interaction.jumpToDate(date)
                 }) {
                     self.cancelCount()
-                    showPopover(for: self.containerView, with: controller, edge: .maxY)
+                    showModal(with: controller, for: interaction.interactionContext.window)
                     return
                 }
             }
@@ -336,14 +346,26 @@ public class ChatDateStickView : TableStickView {
         }))
     }
 
+    private var usesGlass: Bool {
+        return header && !TelegramUtilsHooks.shared.isLite(.blur)
+    }
+
+    private func textLayout(_ item: ChatDateStickItem) -> TextViewLayout {
+        return usesGlass ? item.layout : item.serviceLayout
+    }
+
+    private func makeCountLayout(_ count: Int, item: ChatDateStickItem) -> TextViewLayout {
+        let text = "(\(strings().statsGroupTopPosterMessagesOther(count)))"
+        let color = usesGlass ? item.presentation.colors.text : item.presentation.chatServiceItemTextColor
+        return TextViewLayout(.initialize(string: text, color: color, font: .medium(item.presentation.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
+    }
+
     private func setExpanded(_ expanded: Bool, animated: Bool) {
         guard self.expanded != expanded, let item = item as? ChatDateStickItem else {
             return
         }
         if expanded, let cachedCount {
-            let text = "(\(strings().statsGroupTopPosterMessagesOther(cachedCount.value)))"
-            let layout = TextViewLayout(.initialize(string: text, color: TelegramUtilsHooks.shared.isLite(.blur) ? item.presentation.chatServiceItemTextColor : item.presentation.colors.text, font: .medium(item.presentation.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
-            countLayout = layout
+            countLayout = makeCountLayout(cachedCount.value, item: item)
             updateLayout(size: frame.size, transition: .immediate)
         }
         self.expanded = expanded
@@ -435,6 +457,7 @@ public class ChatDateStickView : TableStickView {
             pointerNearDate = false
         }
         let visible = scrollVisible || pointerNearDate
+        containerView.isHidden = !header && !visible
         let opacity: Float = visible ? 1 : 0
         if containerView.layer?.opacity != opacity {
             containerView.change(opacity: CGFloat(opacity), animated: animated)
@@ -473,16 +496,46 @@ public class ChatDateStickView : TableStickView {
                     return true
                 })
             }
-            let usesGlass = !TelegramUtilsHooks.shared.isLite(.blur)
+            let usesGlass = self.usesGlass
             if let appliedColors = self.appliedColors, appliedColors.presentation === presentation, appliedColors.usesGlass == usesGlass {
                 return
             }
+            let styleChanged = self.appliedColors.flatMap { $0.usesGlass != usesGlass } ?? false
+            let animated = styleChanged && !TelegramUtilsHooks.shared.isLite(.animations) && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             self.appliedColors = (presentation, usesGlass)
-            glassView.isHidden = !usesGlass
             glassView.updateLocalizationAndTheme(theme: presentation)
+            if animated {
+                glassView.isHidden = false
+                glassView.change(opacity: usesGlass ? 1 : 0, animated: true, completion: { [weak self] _ in
+                    guard let self, self.appliedColors?.usesGlass == false else {
+                        return
+                    }
+                    self.glassView.isHidden = true
+                })
+            } else {
+                glassView.change(opacity: usesGlass ? 1 : 0, animated: false)
+                glassView.isHidden = !usesGlass
+            }
+            let previousBackground = containerView.layer?.presentation()?.backgroundColor ?? containerView.layer?.backgroundColor
             containerView.backgroundColor = usesGlass ? .clear : presentation.chatServiceItemColor
+            if animated, let layer = containerView.layer, let previousBackground, let background = layer.backgroundColor {
+                layer.animate(from: previousBackground, to: background, keyPath: "backgroundColor", timingFunction: .easeOut, duration: 0.2)
+            }
             textView.backgroundColor = .clear
             textView.blurBackground = nil
+            if styleChanged {
+                if animated {
+                    let fade = CATransition()
+                    fade.type = .fade
+                    fade.duration = 0.2
+                    contentView.layer?.add(fade, forKey: "styleFade")
+                }
+                textView.update(textLayout(item))
+                if expanded, let cachedCount {
+                    countLayout = makeCountLayout(cachedCount.value, item: item)
+                    updateLayout(size: frame.size, transition: .immediate)
+                }
+            }
         }
         
     }
@@ -500,15 +553,16 @@ public class ChatDateStickView : TableStickView {
             return
         }
         
+        let layout = textLayout(item)
         let availableWidth = max(0, size.width - (item.monoforumState == .vertical ? 120 : 40))
-        let dateWidth = min(item.layout.layoutSize.width, availableWidth)
+        let dateWidth = min(layout.layoutSize.width, availableWidth)
         countLayout?.measure(width: max(0, availableWidth - dateWidth - 6))
         if let countLayout {
             countView.update(countLayout)
         }
         let countSize = countLayout?.layoutSize ?? .zero
         let countWidth = expanded && countSize.width > 0 ? countSize.width + 6 : 0
-        let pillSize = NSMakeSize(dateWidth + countWidth + 16, item.layout.layoutSize.height + 6)
+        let pillSize = NSMakeSize(dateWidth + countWidth + 16, layout.layoutSize.height + 6)
         let rect = NSRect(x: floor((size.width - pillSize.width) / 2) + (item.monoforumState == .vertical ? 40 : 0), y: floor((size.height - pillSize.height) / 2), width: pillSize.width, height: pillSize.height)
         containerView.layer?.cornerRadius = pillSize.height / 2
         contentView.layer?.cornerRadius = pillSize.height / 2
@@ -517,7 +571,7 @@ public class ChatDateStickView : TableStickView {
         transition.updateFrame(view: glassView, frame: rect.size.bounds)
         glassView.updateLayout(size: rect.size, transition: transition)
         transition.updateFrame(view: contentView, frame: rect.size.bounds)
-        transition.updateFrame(view: textView, frame: NSRect(x: 8, y: 3, width: dateWidth, height: item.layout.layoutSize.height))
+        transition.updateFrame(view: textView, frame: NSRect(x: 8, y: 3, width: dateWidth, height: layout.layoutSize.height))
         transition.updateFrame(view: countView, frame: NSRect(x: 8 + dateWidth + 6, y: expanded ? 3 : 11, width: countSize.width, height: countSize.height))
         transition.updateAlpha(view: countView, alpha: expanded ? 1 : 0)
     }
@@ -532,8 +586,9 @@ public class ChatDateStickView : TableStickView {
                 countLayout = nil
                 countLocation = location
             }
-            textView.update(item.layout)
-            containerView.setAccessibilityLabel(item.layout.attributedString.string)
+            let layout = textLayout(item)
+            textView.update(layout)
+            containerView.setAccessibilityLabel(layout.attributedString.string)
         }
         super.set(item: item, animated: animated)
         self.updateLayout(size: self.frame.size, transition: .immediate)

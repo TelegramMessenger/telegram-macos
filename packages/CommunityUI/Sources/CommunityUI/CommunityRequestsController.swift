@@ -17,6 +17,7 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -231,6 +232,7 @@ public func CommunityRequestsController(_ context: (any AccountContextProtocol),
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().communityRequestsPendingRequests, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .communityRequests
 
     // Page in more pending requests as the list scrolls to the bottom (mirrors iOS).
     controller.didLoad = { controller, _ in

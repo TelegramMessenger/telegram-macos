@@ -195,7 +195,7 @@ final class BrowserEmojiStatusAction {
             let pending = MetaDisposable()
             self.disposable.set(pending)
             guard self.isCurrent(.applying) else { return }
-            pending.set((self.context.engine.accountData.setEmojiStatus(file: file, expirationDate: expirationDate)
+            pending.set((self.context.engine.accountData.setEmojiStatusWithResult(file: file, expirationDate: expirationDate)
             |> deliverOnMainQueue).start(error: { [weak self] _ in
                 guard let self, self.isCurrent(.applying) else { return }
                 self.finish(.serverError)

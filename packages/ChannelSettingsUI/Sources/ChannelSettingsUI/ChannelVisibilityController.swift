@@ -17,6 +17,7 @@ import AlertsUI
 import PremiumUI
 import SelectPeersUI
 import ChatUI
+import AppAnalytics
 
 private enum CurrentChannelType {
     case publicChannel
@@ -761,6 +762,26 @@ private func entries(arguments: Arguments, state: State) -> [ChannelVisibilityEn
 
     return entries
 }
+private func usernameCheckStep(_ status: AddressNameValidationStatus) -> AnalyticsFlows.PeerInfoVisibility.Step? {
+    switch status {
+    case .checking:
+        return nil
+    case .invalidFormat:
+        return .usernameInvalid
+    case let .availability(availability):
+        switch availability {
+        case .available:
+            return .usernameAvailable
+        case .purchaseAvailable:
+            return .usernamePurchaseAvailable
+        case .taken:
+            return .usernameTaken
+        case .invalid:
+            return .usernameInvalid
+        }
+    }
+}
+
 private func effectiveChannelType(state: State, peer: TelegramChannel) -> CurrentChannelType {
     let selectedType: CurrentChannelType
     if let current = state.selectedType {
@@ -846,15 +867,20 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
     let isChannel: Bool
     let linksManager: InviteLinkPeerManager?
     let isNew: Bool
+    private let flow: AnalyticsFlow<AnalyticsFlows.PeerInfoVisibility>
     public init(_ context: Context, peerId:PeerId, isChannel: Bool, onlyUsername: Bool = false, isNew: Bool = false, linksManager: InviteLinkPeerManager? = nil) {
         self.peerId = peerId
         self.onlyUsername = onlyUsername
         self.isChannel = isChannel
         self.isNew = isNew
         self.linksManager = linksManager
+        self.flow = AnalyticsFlow(engine: context.engine)
+        self.flow.set(entry: isNew ? .create : .edit)
         
         super.init(context)
+        self.analyticsScreen = isNew ? AnalyticsScreen.createChannelVisibility : AnalyticsScreen.peerInfoVisibility
         if !isNew {
+            self.analyticsPeer = isChannel ? .channel : .group
         }
     }
     
@@ -919,6 +945,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
         let context = self.context
         let peerId = self.peerId
         let stateValue = self.stateValue
+        let flow = self.flow
         
         let updateState: ((State) -> State) -> Void = { [weak self] f in
             if let strongSelf = self {
@@ -931,6 +958,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
             |> map { Optional($0.map { $0.peer._asPeer() }) })
         
         let arguments = Arguments(context: context, isNew: self.isNew, onlyUsername: self.onlyUsername, updateCurrentType: { type in
+            flow.step(type == .publicChannel ? .selectPublic : .selectPrivate)
             updateState { current in
                 var current = current
                 current.selectedType = type
@@ -954,6 +982,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                     return current
                 }
             } else {
+                flow.step(.editUsername)
                 updateState { current in
                     var current = current
                     current.editingPublicLinkText = text
@@ -962,7 +991,9 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                 
                 self?.checkAddressNameDisposable.set((context.engine.peers.validateAddressNameInteractive(domain: .peer(peerId), name: text)
                     |> deliverOnMainQueue).start(next: { result in
-
+                    if let step = usernameCheckStep(result) {
+                        flow.step(step)
+                    }
                     updateState { current in
                         var current = current
                         current.addressNameValidationStatus = result
@@ -994,6 +1025,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                     return current
                 }
             }, completed: {
+                flow.step(.revokeOtherPublicLink)
                 updateState { current in
                     var current = current
                     current.revokingPeerId = nil
@@ -1002,29 +1034,36 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                 }
             }))
         }, copy: { link in
+            flow.step(.copyLink)
             showModalText(for: context.window, text: strings().shareLinkCopied)
             copyToClipboard(link)
         }, revokeLink: {
             verifyAlert_button(for: context.window, header: strings().channelRevokeLinkConfirmHeader, information: strings().channelRevokeLinkConfirmText, ok: strings().channelRevokeLinkConfirmOK, cancel: strings().modalCancel, successHandler: { _ in
+                flow.step(.revokeLink)
                 _ = showModalProgress(signal: context.engine.peers.revokePersistentPeerExportedInvitation(peerId: peerId), for: context.window).start()
             })
         }, share: { link in
+            flow.step(.shareLink)
             FeatureNavigationHooks.shared.shareLink(context, context.window, link)
         }, manageLinks: { [weak self] in
+            flow.step(.manageLinks)
             self?.navigationController?.push(InviteLinksController(context: context, peerId: peerId, isChannel: self?.isChannel == true, manager: self?.linksManager))
         }, open: { [weak self] invitation in
+            flow.step(.openLink)
             if let manager = self?.linksManager {
                 showModal(with: ExportedInvitationController(invitation: invitation, peerId: peerId, isChannel: self?.isChannel == true, accountContext: context, manager: manager, context: manager.importer(for: invitation)), for: context.window, morphSource: {
                     (self?.genericView.item(stableId: ChannelVisibilityEntryStableId.index(6))?.view as? GeneralContainableRowView)?.containerView
                 })
             }
         }, toggleForwarding: { value in
+            flow.step(.toggleRestrictForwarding)
             updateState { current in
                 var current = current
                 current.forwardingEnabled = value
                 return current
             }
         }, toggleWrite: { value in
+            flow.step(value == .members ? .setWriteMembers : .setWriteEveryone)
             updateState { current in
                 var current = current
                 current.joinToSend = value
@@ -1032,6 +1071,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
             }
         }, toggleApproveNewMembers: { value in
             if stateValue.with({ $0.joinToSend }) != .everyone {
+                flow.step(.toggleApproveMembers)
             }
             updateState { current in
                 var current = current
@@ -1071,6 +1111,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
             
             
             verifyAlert_button(for: context.window, header: title, information: info, ok: ok, successHandler: { _ in
+                flow.step(.toggleExtraUsername)
                 _ = context.engine.peers.toggleAddressNameActive(domain: .peer(peerId), name: username.username, active: value).start()
                 
                 updateState { current in
@@ -1121,6 +1162,8 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                 
                 let peer = peerViewMainPeer(peerView)
                 if let peer = peer {
+                    flow.setIfAbsent(peerType: peer.isChannel ? .channel : .group)
+                    flow.setIfAbsent(initial: peer.addressName?.isEmpty == false ? .public : .private)
                 }
                 let publicChannelsToRevoke = adminedPublicChannels.map { channels -> [Peer] in
                     let limits = context.premiumLimits
@@ -1205,6 +1248,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                         let toValue = to - range.location
                         var names = stateValue.with { $0.usernames }
                         names.move(at: fromValue, to: toValue)
+                        flow.step(.reorderUsernames)
                         updateState { current in
                             var current = current
                             current.usernames = names
@@ -1221,6 +1265,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                 
                 strongSelf.doneButton?.set(handler: { [weak self] _ in
                     if let peer = state.peer?.peer {
+                        flow.step(.save)
                         var updatedAddressNameValue: String?
                         
                         self?.updateState { current in
@@ -1316,12 +1361,16 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                             |> deliverOnMainQueue
                             
                             self?.updateAddressNameDisposable.set(combineLatest(signal, others).start(next: { updatedPeerId, _ in
+                                flow.set(result: updatedAddressNameValue.isEmpty ? .private : .public)
+                                flow.finish(.success)
                                 self?.onComplete.set(.single(updatedPeerId))
                             }, error: { error in
                                 switch error {
                                 case .tooManyChannels:
+                                    flow.step(.saveFailedLimit)
                                     FeatureNavigationHooks.shared.showInactiveChannels(context, .upgrade)
                                 case .generic:
+                                    flow.step(.saveFailed)
                                     alert(for: context.window, info: strings().unknownError)
                                 }
                                 updateState { current in
@@ -1333,6 +1382,8 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                         } else {
                             let others = combineLatest(signals) |> deliverOnMainQueue
                             self?.updateAddressNameDisposable.set(others.start(completed: { [weak self] in
+                                flow.set(result: peer.addressName?.isEmpty == false ? .public : .private)
+                                flow.finish(.success)
                                 self?.onComplete.set(.single(nil))
                             }))
                         }
@@ -1361,6 +1412,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
     }
     
     deinit {
+        flow.finish(.abandoned)
         checkAddressNameDisposable.dispose()
         updateAddressNameDisposable.dispose()
         revokeAddressNameDisposable.dispose()

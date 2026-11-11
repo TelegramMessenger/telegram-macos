@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 14px; background: #fff; color: #222; }
+  .bar { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; } .bar i { display: block; height: 100%; background: #2481cc; width: 0; transition: width .3s; }
+  .steps { display: flex; justify-content: space-between; margin: 8px 0 14px; font-size: 12px; color: #999; } .steps b { color: #2481cc; }
+  .panel { min-height: 60px; padding: 12px; background: #f9fafb; border-radius: 8px; }
+  .nav { display: flex; justify-content: space-between; margin-top: 12px; }
+  button { padding: 8px 14px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; } button:disabled { opacity: .4; cursor: default; } button.primary { background: #2481cc; color: #fff; border-color: #2481cc; }
+</style></head><body>
+<div class="bar"><i id="fill"></i></div>
+<div class="steps" id="steps"></div>
+<div class="panel" id="panel"></div>
+<div class="nav"><button id="back">Back</button><button id="next" class="primary">Next</button></div>
+<script>
+  var steps = [['Account', 'Create your account with an email address.'], ['Profile', 'Tell us a little about yourself.'], ['Preferences', 'Choose notification settings.'], ['Done', 'All set! 🎉']];
+  var i = 0;
+  function render() {
+    document.getElementById('fill').style.width = (i / (steps.length - 1) * 100) + '%';
+    document.getElementById('steps').innerHTML = steps.map(function (s, j) { return j === i ? '<b>' + s[0] + '</b>' : '<span>' + s[0] + '</span>'; }).join('');
+    document.getElementById('panel').innerHTML = '<h3 style="margin:0 0 6px">' + steps[i][0] + '</h3>' + steps[i][1];
+    document.getElementById('back').disabled = i === 0;
+    document.getElementById('next').textContent = i === steps.length - 1 ? 'Finish' : 'Next';
+  }
+  document.getElementById('back').addEventListener('click', function () { if (i > 0) { i--; render(); } });
+  document.getElementById('next').addEventListener('click', function () { if (i < steps.length - 1) { i++; render(); } else if (window.TelegramWidget) TelegramWidget.sendMessage('Onboarding complete'); });
+  render();
+</script>
+</body></html>

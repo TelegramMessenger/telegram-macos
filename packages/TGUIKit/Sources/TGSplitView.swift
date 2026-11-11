@@ -2,6 +2,11 @@ import Foundation
 import SwiftSignalKit
 import AppKit
 
+public protocol TrailingOverlayAdaptable: AnyObject {
+    func setTrailingOverlayMode(_ overlay: Bool)
+    func dismissTrailingOverlay()
+}
+
 fileprivate class SplitMinimisizeView : Control {
 
     private var startPoint:NSPoint = NSZeroPoint
@@ -207,19 +212,68 @@ public class SplitView : View {
     fileprivate var _controllers:[WeakReference<ViewController>] = []
     private var _layoutProportions:[SplitViewState:SplitProportion] = [:]
     private var _fixedControllerIds: Set<Int> = []
-    private weak var trailingController: ViewController?
+    private var trailingController: ViewController?
     private var trailingWidth: CGFloat = 0
     private var trailingMinimumLeadingWidth: CGFloat = 0
-    private weak var trailingHiding: ViewController?
+    private var trailingHiding: ViewController?
     private var lastPaneAvailableWidth: CGFloat = 0
     private var trailingTarget: CGFloat = 0
     private var trailingShown: CGFloat = 0
     private var trailingAnimator: DisplayLinkAnimator?
     private var trailingAnimatesChange = false
+    private var trailingOverlayWhenNarrow = false
+    private let trailingContainer = View(frame: .zero)
+    private let trailingBackdrop = Control(frame: .zero)
+    private var trailingOutgoing: ViewController?
+    private var trailingReplacementIsPop = false
+    private var trailingReplacementProgress: CGFloat = 1
+    private var trailingReplacementAnimator: DisplayLinkAnimator?
+    private struct TrailingRequest {
+        let controller: ViewController?
+        let width: CGFloat
+        let minimumLeadingWidth: CGFloat
+        let animated: Bool
+        let overlayWhenNarrow: Bool
+        let replacementIsPop: Bool
+        let navigationOwner: ViewController?
+    }
+    private var trailingQueuedRequest: TrailingRequest?
+    private weak var trailingNavigationOwner: ViewController?
+    private var trailingSuspended = false
 
-    public func setTrailing(controller: ViewController?, width: CGFloat, minimumLeadingWidth: CGFloat, animated: Bool = false) {
+    public func setTrailing(controller: ViewController?, width: CGFloat, minimumLeadingWidth: CGFloat, animated: Bool = false, overlayWhenNarrow: Bool = false, replacementIsPop: Bool = false, navigationOwner: ViewController? = nil) {
+        if trailingOutgoing != nil {
+            trailingQueuedRequest = TrailingRequest(controller: controller, width: width, minimumLeadingWidth: minimumLeadingWidth, animated: animated, overlayWhenNarrow: overlayWhenNarrow, replacementIsPop: replacementIsPop, navigationOwner: navigationOwner)
+            return
+        }
+        if controller == nil, trailingController != nil, let owner = trailingNavigationOwner, let navigation = owner.navigationController, navigation.controller !== owner, trailingContainer.superview != nil, trailingContainer.superview !== container {
+            if !trailingSuspended {
+                trailingController?.viewWillDisappear(animated)
+                trailingController?.viewDidDisappear(animated)
+            }
+            trailingSuspended = true
+            trailingAnimator?.invalidate()
+            trailingAnimator = nil
+            trailingShown = 0
+            trailingTarget = 0
+            needsLayout = true
+            return
+        }
+        let resuming = trailingSuspended && controller != nil
+        trailingSuspended = false
+        if controller != nil, trailingNavigationOwner !== navigationOwner {
+            if let owner = trailingNavigationOwner {
+                _ = owner.navigationController?.trailingContentHost(for: owner, reservedWidth: nil)
+            }
+            trailingNavigationOwner = navigationOwner
+        }
         if let current = trailingController, current !== controller {
-            if controller == nil, current.isLoaded(), current.view.superview === container {
+            if controller != nil, animated, window != nil, !inLiveResize, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, current.isLoaded(), current.view.superview === trailingContainer, !current.view.visibleRect.isEmpty {
+                trailingOutgoing = current
+                trailingReplacementIsPop = replacementIsPop
+                trailingReplacementProgress = 0
+                current.viewWillDisappear(true)
+            } else if controller == nil, current.isLoaded(), current.view.superview === trailingContainer {
                 if let hiding = trailingHiding, hiding !== current {
                     removeTrailing(hiding)
                 }
@@ -237,11 +291,18 @@ public class SplitView : View {
             removeTrailing(hiding)
         }
         trailingController = controller
+        if resuming, let controller {
+            trailingShown = width
+            trailingTarget = width
+            controller.viewWillAppear(false)
+            controller.viewDidAppear(false)
+        }
         if controller != nil {
             trailingWidth = width
             trailingMinimumLeadingWidth = minimumLeadingWidth
+            trailingOverlayWhenNarrow = overlayWhenNarrow
         }
-        trailingAnimatesChange = animated && window != nil && !inLiveResize
+        trailingAnimatesChange = animated && !resuming && window != nil && !inLiveResize
         needsLayout = true
     }
 
@@ -249,15 +310,57 @@ public class SplitView : View {
         return max(0, width + minimumLeadingWidth - lastPaneAvailableWidth)
     }
 
+    public func completeTrailingDismissal() {
+        if trailingOutgoing != nil, trailingQueuedRequest?.controller == nil {
+            trailingReplacementAnimator?.invalidate()
+            finishTrailingReplacement()
+        }
+        guard trailingController == nil else { return }
+        trailingAnimator?.invalidate()
+        trailingAnimator = nil
+        trailingShown = 0
+        trailingTarget = 0
+        trailingAnimatesChange = false
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
     public func canShowTrailing(width: CGFloat, minimumLeadingWidth: CGFloat) -> Bool {
         return lastPaneAvailableWidth - width >= minimumLeadingWidth
     }
 
     private func trailingReservedWidth(available: CGFloat) -> CGFloat {
+        if trailingController != nil, trailingOverlayWhenNarrow {
+            return trailingContentWidth(available: available, overlay: false)
+        }
         guard trailingController != nil, available - trailingWidth >= trailingMinimumLeadingWidth else {
             return 0
         }
         return trailingWidth
+    }
+
+    private func trailingContentWidth(available: CGFloat, overlay: Bool) -> CGFloat {
+        if overlay {
+            return min(trailingWidth, max(0, available - 56))
+        }
+        return trailingWidth
+    }
+
+    private func layoutTrailingBackdrop(overlay: Bool, shown: CGFloat) {
+        guard overlay, shown > 0 else {
+            trailingBackdrop.removeFromSuperview()
+            return
+        }
+        trailingBackdrop.frame = container.bounds
+        let width = trailingContentWidth(available: lastPaneAvailableWidth, overlay: true)
+        trailingBackdrop.layer?.opacity = Float(min(1, shown / max(1, width)))
+        if trailingBackdrop.superview !== container {
+            if trailingContainer.superview === container {
+                container.addSubview(trailingBackdrop, positioned: .below, relativeTo: trailingContainer)
+            } else {
+                container.addSubview(trailingBackdrop)
+            }
+        }
     }
 
     private func updateTrailingShown(target: CGFloat) {
@@ -268,7 +371,7 @@ public class SplitView : View {
         }
         trailingTarget = target
         if animates {
-            trailingAnimator = DisplayLinkAnimator(duration: 0.3, from: trailingShown, to: target, timingFunction: CAMediaTimingFunction(controlPoints: 0.25, 0.8, 0.25, 1.0), update: { [weak self] value in
+            trailingAnimator = DisplayLinkAnimator(duration: 0.2, from: trailingShown, to: target, timingFunction: CAMediaTimingFunction(name: .easeOut), update: { [weak self] value in
                 guard let self else {
                     return
                 }
@@ -288,47 +391,104 @@ public class SplitView : View {
         }
     }
 
-    private func layoutTrailing(reserved: CGFloat) {
+    private func layoutTrailing(reserved: CGFloat, overlay: Bool) {
+        guard !trailingSuspended else { return }
         guard let controller = trailingController ?? trailingHiding else {
             return
         }
         guard reserved > 0 else {
+            trailingReplacementAnimator?.invalidate()
+            if let outgoing = trailingOutgoing {
+                removeTrailing(outgoing)
+            }
             removeTrailing(controller)
+            finishTrailingReplacement()
             return
         }
+        (controller as? TrailingOverlayAdaptable)?.setTrailingOverlayMode(overlay)
         let insets = controller.insets
-        let rect = NSMakeRect(frame.width - reserved + insets.left, insets.top, max(0, trailingWidth - insets.left - insets.right), max(0, frame.height - insets.top - insets.bottom))
+        let contentWidth = trailingContentWidth(available: lastPaneAvailableWidth, overlay: overlay)
+        let host: NSView
+        if !overlay, let owner = trailingNavigationOwner, let navigation = owner.navigationController {
+            host = navigation.trailingContentHost(for: owner, reservedWidth: reserved)
+        } else {
+            if let owner = trailingNavigationOwner {
+                _ = owner.navigationController?.trailingContentHost(for: owner, reservedWidth: nil)
+            }
+            host = container
+        }
+        let top = host === container ? insets.top : max(0, insets.top - (trailingNavigationOwner?.navigationController?.view.frame.minY ?? 0))
+        let rect = NSMakeRect(host.bounds.width - reserved + insets.left, top, max(0, contentWidth - insets.left - insets.right), max(0, host.bounds.height - top - insets.bottom))
+        trailingContainer.frame = rect
+        trailingContainer.autoresizingMask = [.minXMargin, .height]
+        if trailingContainer.superview !== host {
+            trailingContainer.removeFromSuperview()
+            host.addSubview(trailingContainer)
+        }
         if !controller.isLoaded() {
             controller._frameRect = rect
         }
-        if controller.view.superview !== container {
-            controller.view.frame = rect
+        if controller.view.superview !== trailingContainer {
+            controller.view.frame = trailingContainer.bounds
             controller.viewWillAppear(false)
-            container.addSubview(controller.view)
+            trailingContainer.addSubview(controller.view)
             controller.viewDidAppear(false)
-        } else {
-            if !NSEqualRects(rect, controller.view.frame) {
-                controller.view.frame = rect
-            }
-            if container.subviews.last !== controller.view {
-                container.addSubview(controller.view, positioned: .above, relativeTo: nil)
-            }
+        }
+        layoutTrailingReplacement()
+        if let outgoing = trailingOutgoing, trailingReplacementAnimator == nil {
+            trailingContainer.addSubview(trailingReplacementIsPop ? outgoing.view : controller.view, positioned: .above, relativeTo: nil)
+            controller.view.layoutSubtreeIfNeeded()
+            trailingReplacementAnimator = DisplayLinkAnimator(duration: 0.35, from: 0, to: 1, timingFunction: CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1), update: { [weak self] progress in
+                self?.trailingReplacementProgress = progress
+                self?.layoutTrailingReplacement()
+            }, completion: { [weak self] in
+                guard let self else { return }
+                self.finishTrailingReplacement()
+            })
+        }
+    }
+
+    private func layoutTrailingReplacement() {
+        guard let controller = trailingController ?? trailingHiding else { return }
+        let width = trailingContainer.bounds.width
+        let progress = trailingReplacementProgress
+        controller.view.frame = trailingContainer.bounds.offsetBy(dx: trailingOutgoing == nil ? 0 : (trailingReplacementIsPop ? -0.3 : 1) * (1 - progress) * width, dy: 0)
+        trailingOutgoing?.view.frame = trailingContainer.bounds.offsetBy(dx: (trailingReplacementIsPop ? 1 : -0.3) * progress * width, dy: 0)
+    }
+
+    private func finishTrailingReplacement() {
+        trailingReplacementAnimator = nil
+        trailingReplacementProgress = 1
+        if let outgoing = trailingOutgoing {
+            removeTrailing(outgoing)
+        }
+        layoutTrailingReplacement()
+        if let request = trailingQueuedRequest {
+            trailingQueuedRequest = nil
+            setTrailing(controller: request.controller, width: request.width, minimumLeadingWidth: request.minimumLeadingWidth, animated: request.animated, overlayWhenNarrow: request.overlayWhenNarrow, replacementIsPop: request.replacementIsPop, navigationOwner: request.navigationOwner)
         }
     }
 
     private func removeTrailing(_ controller: ViewController) {
         let wasHiding = trailingHiding === controller
+        let wasOutgoing = trailingOutgoing === controller
+        if wasOutgoing {
+            trailingOutgoing = nil
+        }
         if wasHiding {
             trailingHiding = nil
         }
-        guard controller.isLoaded(), controller.view.superview === container else {
+        guard controller.isLoaded(), controller.view.superview === trailingContainer else {
             return
         }
-        if !wasHiding {
+        if !wasHiding && !wasOutgoing {
             controller.viewWillDisappear(false)
         }
         controller.view.removeFromSuperview()
-        controller.viewDidDisappear(wasHiding)
+        controller.viewDidDisappear(wasHiding || wasOutgoing)
+        if trailingContainer.subviews.isEmpty {
+            trailingContainer.removeFromSuperview()
+        }
     }
 
     public func setFixed(controller: ViewController, fixed: Bool) {
@@ -360,6 +520,12 @@ public class SplitView : View {
         container.autoresizesSubviews = false
         container.autoresizingMask = [.width, .height]
         container.layer?.masksToBounds = false
+        trailingContainer.layer?.cornerRadius = 20
+        trailingContainer.layer?.masksToBounds = true
+        trailingBackdrop.backgroundColor = NSColor.black.withAlphaComponent(0.22)
+        trailingBackdrop.set(handler: { [weak self] _ in
+            (self?.trailingController as? TrailingOverlayAdaptable)?.dismissTrailingOverlay()
+        }, for: .Click)
         addSubview(container)
         minimisizeOverlay.splitView = self
 
@@ -373,8 +539,8 @@ public class SplitView : View {
     }
 
     deinit {
-        var bp:Int = 0
-        bp += 1
+        trailingAnimator?.invalidate()
+        trailingReplacementAnimator?.invalidate()
     }
 
     required public init?(coder: NSCoder) {
@@ -519,7 +685,7 @@ public class SplitView : View {
             self.delegate?.splitViewDidNeedSwapToLayout(state: state)
         }
 
-        let trailingView = [trailingHiding, trailingController].compactMap { $0 }.first(where: { $0.isLoaded() && $0.view.superview === container })?.view
+        let trailingView: NSView? = trailingBackdrop.superview === container ? trailingBackdrop : (trailingContainer.superview === container ? trailingContainer : nil)
         var previousControllerView: NSView? = nil
         for entry in _controllers {
             guard let view = entry.value?.view, view.superview === container else { continue }
@@ -535,6 +701,7 @@ public class SplitView : View {
 
         var x:CGFloat = 0;
         var trailingReserved: CGFloat = 0
+        var trailingOverlayActive = false
 
         for (index, obj) in _controllers.enumerated() {
             if let obj = obj.value {
@@ -558,9 +725,11 @@ public class SplitView : View {
                 }
                 if(index == _controllers.count - 1) {
                     lastPaneAvailableWidth = frame.width - x
-                    updateTrailingShown(target: trailingReservedWidth(available: lastPaneAvailableWidth))
+                    trailingOverlayActive = !trailingSuspended && trailingOverlayWhenNarrow && (trailingController != nil || trailingHiding != nil) && lastPaneAvailableWidth < trailingWidth + trailingMinimumLeadingWidth
+                    let target = trailingController == nil || trailingSuspended ? 0 : (trailingOverlayActive ? trailingContentWidth(available: lastPaneAvailableWidth, overlay: true) : trailingReservedWidth(available: lastPaneAvailableWidth))
+                    updateTrailingShown(target: target)
                     trailingReserved = trailingShown
-                    _min = frame.width - x - trailingReserved;
+                    _min = frame.width - x - (trailingOverlayActive ? 0 : trailingReserved);
                 }
 
                 size = NSMakeSize(x + _min > frame.width ? (frame.width - x) : _min, frame.height);
@@ -570,8 +739,11 @@ public class SplitView : View {
                 let isLast = index == _controllers.count - 1
                 let rect: NSRect
                 if isLast {
+                    if !trailingSuspended, let owner = trailingNavigationOwner {
+                        _ = owner.navigationController?.trailingContentHost(for: owner, reservedWidth: trailingOverlayActive || trailingReserved == 0 ? nil : trailingReserved)
+                    }
                     obj.slotLeadingInset = paneRect.minX
-                    obj.slotTrailingInset = trailingReserved
+                    obj.slotTrailingInset = trailingOverlayActive ? 0 : trailingReserved
                     rect = NSMakeRect(0, paneRect.minY + insets.top, frame.width, max(0, paneRect.height - insets.top - insets.bottom))
                 } else {
                     obj.slotLeadingInset = 0
@@ -587,7 +759,8 @@ public class SplitView : View {
             }
         }
 
-        layoutTrailing(reserved: trailingReserved)
+        layoutTrailingBackdrop(overlay: trailingOverlayActive, shown: trailingReserved)
+        layoutTrailing(reserved: trailingReserved, overlay: trailingOverlayActive)
 
         if state != .none {
             if state == .dual || state == .minimisize {

@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import TelegramCore
 import Localization
@@ -126,12 +127,12 @@ private enum AccountInfoEntryId : Hashable {
 }
 
 private final class AnyUpdateStateEquatable  : Equatable {
-    let any: Any
+    let text: String
     init(any: Any) {
-        self.any = any
+        self.text = SettingsHooks.shared.appUpdateStateText(any)
     }
     static func ==(lhs: AnyUpdateStateEquatable, rhs: AnyUpdateStateEquatable) -> Bool {
-        return lhs === rhs
+        return lhs.text == rhs.text
     }
 }
 
@@ -500,7 +501,7 @@ private enum AccountInfoEntry<Context: AccountContextProtocol> : TableItemListNo
             }, inset:NSEdgeInsets(left: 12, right: 12), customTheme: .initialize(theme, background: .clear))
         case let .update(_, viewType, state):
             
-            let text: String = SettingsHooks.shared.appUpdateStateText(state.any)
+            let text: String = state.text
            
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().accountViewControllerUpdate, icon: theme.icons.settingsUpdate, activeIcon: theme.icons.settingsUpdateActive, type: .nextContext(text), viewType: viewType, action: {
                 arguments.openUpdateApp()
@@ -997,7 +998,8 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
         
         genericView.qrCode.set(handler: { [weak self] control in
             guard let self else { return }
-            SettingsNavigationHooks.shared.openQrStudioObserved(context, { [weak control] in control })
+            let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: self.analyticsContext)
+            SettingsNavigationHooks.shared.openQrStudioObserved(context, { [weak control] in control }, analyticsContext: analyticsContext)
         }, for: .Click)
 
         actionsDisposable.add((chatListFilterPreferences(engine: context.engine) |> map { $0.sidebar && !$0.isEmpty } |> distinctUntilChanged |> deliverOnMainQueue).start(next: { [weak self] hasSidebar in
@@ -1097,10 +1099,12 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
             }))
         }, openStory: { [weak self] initialId in
             guard let self else { return }
-            SettingsHooks.shared.showStoriesObserved(context, false, initialId, true)
+            let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: self.analyticsContext)
+            SettingsHooks.shared.showStoriesObserved(context, false, initialId, true, analyticsContext: analyticsContext)
         }, openWebBot: { [weak self] bot in
             guard let self else { return }
-            SettingsNavigationHooks.shared.openWebBotObserved(context, bot)
+            let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: self.analyticsContext)
+            SettingsNavigationHooks.shared.openWebBotObserved(context, bot, analyticsContext: analyticsContext)
         }, stars: { [weak self] in
             SettingsNavigationHooks.shared.showStarsList(context, .stars, { [weak self] in (self?.tableView.item(stableId: AccountInfoEntryId.index(22))?.view as? GeneralContainableRowView)?.containerView })
         }, ton: { [weak self] in

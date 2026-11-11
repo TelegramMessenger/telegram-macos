@@ -8,6 +8,7 @@ import GiftCraftingUI
 import TelegramMedia
 import InputView
 import InputTextView
+import AppAnalytics
 import WalletUI
 import WalletContext
 
@@ -52,6 +53,7 @@ func installStarsUIHooks() {
     }, showEmojiPicker: { context, control, insertAnimated, insertText in
         guard let context = giftsContext(context) else { return }
         let emojis = EmojiesController(context, ignorePremium: true)
+        emojis.analyticsScreen = .appEmojiPicker
         emojis._frameRect = NSMakeRect(0, 0, 350, 300)
         let interactions = EntertainmentInteractions(.emoji, peerId: context.peerId)
         emojis.update(with: interactions, chatInteraction: ChatInteraction(chatLocation: .peer(context.peerId), context: context))
@@ -104,7 +106,7 @@ func installStarsUIHooks() {
         showModal(with: AddTonBalanceController(context: context, tonAmount: tonAmount ?? 0), for: context.window)
     }, giftTransferBlockchainOption: { context, window, gift, reference, profileGiftsContext in
         guard let context = giftsContext(context) else { return nil }
-        return makeGiftTransferBlockchainOption(context: context, window: window, gift: gift, reference: reference, profileGiftsContext: profileGiftsContext)
+        return makeGiftTransferBlockchainOption(context: context, window: window, gift: gift, reference: reference, profileGiftsContext: profileGiftsContext, analyticsContext: Analytics.shared.unresolvedContext())
     }, giftMoveToGiftsAction: { context, window, gift in
         guard let context = giftsContext(context) else { return nil }
         if #available(macOS 10.15, *), case let .address(address) = gift.owner, let walletContext = context.walletContext, WalletContext.isSelfTransfer(recipient: address, walletAddress: giftWalletAddress(context)) {
@@ -162,9 +164,9 @@ func installStarsUIHooks() {
     }, makeCraftingAreaItem: { initialSize, stableId, data in
         return CraftingAreaItem(initialSize, stableId: stableId, data: data)
     })
-    hooks.giftTransferBlockchainOptionWithContext = { context, window, gift, reference, profileGiftsContext in
+    hooks.giftTransferBlockchainOptionWithContext = { context, window, gift, reference, profileGiftsContext, analyticsContext in
         guard let context = giftsContext(context) else { return nil }
-        return makeGiftTransferBlockchainOption(context: context, window: window, gift: gift, reference: reference, profileGiftsContext: profileGiftsContext)
+        return makeGiftTransferBlockchainOption(context: context, window: window, gift: gift, reference: reference, profileGiftsContext: profileGiftsContext, analyticsContext: analyticsContext)
     }
     installStarsHooks(hooks)
 }
@@ -365,9 +367,10 @@ private final class MoveGiftToWalletRowView: TableRowView {
 }
 
 @available(macOS 10.15, *)
-private func confirmMoveGiftToWallet(context: AccountContext, window: Window, reference: StarGiftReference, giftsContext: ProfileGiftsContext, address: String) {
+private func confirmMoveGiftToWallet(context: AccountContext, window: Window, reference: StarGiftReference, giftsContext: ProfileGiftsContext, address: String, analyticsContext: AnalyticsContext) {
+    let presentation = analyticsContext.beginPresentation()
     guard giftWalletAddress(context) == address else {
-        alert(for: window, header: strings().walletSettingsControllerWalletChanged, info: strings().walletSettingsControllerWalletChangedInfo)
+        alert(for: window, header: strings().walletSettingsControllerWalletChanged, info: strings().walletSettingsControllerWalletChangedInfo, onDeinit: { presentation.end() })
         return
     }
     let data = ModalAlertData(title: strings().giftMoveToWalletTitle, info: "", ok: strings().giftMoveToWalletMove, mode: .confirm(text: strings().modalCancel, isThird: false), footer: .init(id: "content", value: { initialSize, stableId, _, _ in
@@ -402,22 +405,32 @@ private func confirmMoveGiftToWallet(context: AccountContext, window: Window, re
         }
     }
     let moved = {
-        presentGiftMovedToWalletToast(context: context, window: window)
+        let feedbackPresentation = analyticsContext.beginPresentation()
+        closeAllModals(window: window)
+        showModalText(for: window, text: strings().giftMoveToWalletSuccess, button: strings().alertView, callback: { _ in
+            withExtendedLifetime(feedbackPresentation) {
+                showWallet(context: context, for: window, analyticsContext: analyticsContext, opensCollectibles: true)
+            }
+        })
     }
     let requestPassword = {
+        let passwordPresentation = analyticsContext.beginPresentation()
         let controller = InputPasswordController(context: context, title: strings().monetizationWithdrawEnterPasswordTitle, desc: strings().monetizationWithdrawEnterPasswordText, checker: { value in
-            return (withdraw(value)
+            return analyticsContext.preservingPresentation(withdraw(value)
             |> mapError(errorValue)
             |> afterCompleted(moved))
         })
+        controller.analyticsContext = analyticsContext
+        controller.current.analyticsContext = analyticsContext
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            passwordPresentation.end()
         }
         showModal(with: controller, for: window)
     }
     showModalAlert(for: window, data: data, completion: { _ in
-        _ = (withdraw(nil)).start(error: { error in
+        _ = analyticsContext.preservingPresentation(withdraw(nil)).start(error: { error in
             let mapped: RequestStarGiftWithdrawalError
             switch error {
             case .generic:
@@ -438,34 +451,26 @@ private func confirmMoveGiftToWallet(context: AccountContext, window: Window, re
                 mapped = .serverProvided(text: text)
             }
             guard case .requestPassword = mapped else {
-                presentGiftWithdrawalError(context: context, window: window, error: mapped, requestPassword: requestPassword)
+                presentGiftWithdrawalError(context: context, window: window, error: mapped, requestPassword: requestPassword, analyticsContext: analyticsContext)
                 return
             }
-            _ = (context.engine.payments.checkStarGiftWithdrawalAvailability(reference: reference)
+            _ = analyticsContext.preservingPresentation(context.engine.payments.checkStarGiftWithdrawalAvailability(reference: reference)
             |> deliverOnMainQueue).start(error: { error in
-                presentGiftWithdrawalError(context: context, window: window, error: error, requestPassword: requestPassword)
+                presentGiftWithdrawalError(context: context, window: window, error: error, requestPassword: requestPassword, analyticsContext: analyticsContext)
             })
         }, completed: moved)
-    }, presentation: walletAlertPresentation)
+    }, onDeinit: { presentation.end() }, presentation: walletAlertPresentation)
 }
 
-func presentGiftMovedToWalletToast(context: AccountContext, window: Window) {
-    closeAllModals(window: window)
-    showModalText(for: window, text: strings().giftMoveToWalletSuccess, button: strings().alertView, callback: { _ in
-        if #available(macOS 10.15, *) {
-            showWallet(context: context, for: window, opensCollectibles: true)
-        }
-    })
-}
-
-private func makeGiftTransferBlockchainOption(context: AccountContext, window: Window, gift: StarGift.UniqueGift, reference: StarGiftReference, profileGiftsContext: ProfileGiftsContext) -> (title: String, icon: NSImage, action: () -> Void)? {
+private func makeGiftTransferBlockchainOption(context: AccountContext, window: Window, gift: StarGift.UniqueGift, reference: StarGiftReference, profileGiftsContext: ProfileGiftsContext, analyticsContext: AnalyticsContext) -> (title: String, icon: NSImage, action: () -> Void)? {
     if #available(macOS 10.15, *), let walletAddress = giftWalletAddress(context) {
         let icon = WalletUI.walletMoveActionIcon("Icon_MoveToWallet").map { NSImage(cgImage: $0, size: NSMakeSize(40, 40)) } ?? NSImage(resource: .iconMoveToWallet)
         return (title: strings().giftTransferMoveToWallet, icon: icon, action: {
-            confirmMoveGiftToWallet(context: context, window: window, reference: reference, giftsContext: profileGiftsContext, address: walletAddress)
+            confirmMoveGiftToWallet(context: context, window: window, reference: reference, giftsContext: profileGiftsContext, address: walletAddress, analyticsContext: analyticsContext)
         })
     }
     return (title: strings().giftTransferSendViaBlockchain, icon: NSImage(resource: .iconSendViaTon), action: {
+        let presentation = analyticsContext.beginPresentation()
         let data = ModalAlertData(title: nil, info: strings().giftWithdrawText(gift.title + " #\(gift.number)"), description: nil, ok: strings().giftWithdrawProceed, options: [], header: .init(id: "header", value: { initialSize, stableId, _ in
             return TransferUniqueGiftHeaderItem(initialSize, stableId: stableId, gift: gift, toPeer: .init(context.myPeer!), context: context)
         }), footer: ModalAlertData.Footer.init(id: "footer", value: { initialSize, stableId, presentation, action in
@@ -473,8 +478,9 @@ private func makeGiftTransferBlockchainOption(context: AccountContext, window: W
         }), width: 340, showCloseButton: true)
         showModalAlert(for: window, data: data, completion: { _ in
             let requestPassword = {
+                let passwordPresentation = analyticsContext.beginPresentation()
                 let controller = InputPasswordController(context: context, title: strings().giftWithdrawTitle, desc: strings().monetizationWithdrawEnterPasswordText, checker: { value in
-                    return (context.engine.payments.requestStarGiftWithdrawalUrl(reference: reference, password: value)
+                    return analyticsContext.preservingPresentation(context.engine.payments.requestStarGiftWithdrawalUrl(reference: reference, password: value)
                     |> deliverOnMainQueue
                     |> afterNext { url in
                         execute(inapp: .external(link: url, false))
@@ -493,47 +499,55 @@ private func makeGiftTransferBlockchainOption(context: AccountContext, window: W
                         }
                     })
                 })
+                controller.analyticsContext = analyticsContext
+                controller.current.analyticsContext = analyticsContext
                 let onDeinit = controller.onDeinit
                 controller.onDeinit = {
                     onDeinit?()
+                    passwordPresentation.end()
                 }
                 showModal(with: controller, for: context.window)
             }
-            _ = (context.engine.payments.requestStarGiftWithdrawalUrl(reference: reference, password: nil)
+            _ = analyticsContext.preservingPresentation(context.engine.payments.requestStarGiftWithdrawalUrl(reference: reference, password: nil)
             |> deliverOnMainQueue).start(next: { url in
                 execute(inapp: .external(link: url, false))
             }, error: { error in
                 switch error {
                 case .limitExceeded:
-                    showGiftTransferError(window: window, info: strings().loginFloodWait)
+                    showGiftTransferError(window: window, info: strings().loginFloodWait, analyticsContext: analyticsContext)
                 case let .serverProvided(text):
-                    showGiftTransferError(window: window, info: text)
+                    showGiftTransferError(window: window, info: text, analyticsContext: analyticsContext)
                 default:
                     requestPassword()
                 }
             })
-        })
+        }, onDeinit: { presentation.end() })
     })
 }
 
-private func showGiftTransferError(window: Window, info: String) {
-    alert(for: window, info: info)
+private func showGiftTransferError(window: Window, info: String, analyticsContext: AnalyticsContext) {
+    let presentation = analyticsContext.beginPresentation()
+    alert(for: window, info: info, onDeinit: { presentation.end() })
 }
 
-private func presentGiftWithdrawalError(context: AccountContext, window: Window, error: RequestStarGiftWithdrawalError, requestPassword: @escaping () -> Void) {
+private func presentGiftWithdrawalError(context: AccountContext, window: Window, error: RequestStarGiftWithdrawalError, requestPassword: @escaping () -> Void, analyticsContext: AnalyticsContext) {
+    let presentation = analyticsContext.beginPresentation()
     switch error {
     case .requestPassword:
         requestPassword()
     case let .serverProvided(text):
-        alert(for: window, info: text)
+        alert(for: window, info: text, onDeinit: { presentation.end() })
     case .limitExceeded:
-        alert(for: window, info: strings().twoStepAuthFloodError)
+        alert(for: window, info: strings().twoStepAuthFloodError, onDeinit: { presentation.end() })
     case .twoStepAuthTooFresh, .authSessionTooFresh:
-        alert(for: window, header: strings().giftWithdrawSecurityCheck, info: strings().giftWithdrawSecurityRequirements + strings().giftWithdrawComeBackLater)
+        alert(for: window, header: strings().giftWithdrawSecurityCheck, info: strings().giftWithdrawSecurityRequirements + strings().giftWithdrawComeBackLater, onDeinit: { presentation.end() })
     case .twoStepAuthMissing:
         verifyAlert(for: window, header: strings().giftWithdrawSecurityCheck, information: strings().giftWithdrawSecurityRequirements, ok: strings().giftWithdrawSetupTwoStepAuth, cancel: strings().modalCancel, successHandler: { _ in
+            let actionPresentation = analyticsContext.beginPresentation()
+            defer { actionPresentation.end() }
             closeAllModals(window: window)
             let controller = twoStepVerificationUnlockController(context: context, mode: .access(nil), presentController: { controller, _, animated in
+                controller.analyticsContext = analyticsContext
                 let navigation = context.bindings.rootNavigation()
                 if !animated {
                     navigation.stackInsert(controller, at: navigation.stackCount)
@@ -541,9 +555,10 @@ private func presentGiftWithdrawalError(context: AccountContext, window: Window,
                     navigation.push(controller)
                 }
             })
+            controller.analyticsContext = analyticsContext
             context.bindings.rootNavigation().push(controller)
-        })
+        }, onDeinit: { presentation.end() })
     case .generic, .invalidPassword:
-        alert(for: window, info: strings().unknownError)
+        alert(for: window, info: strings().unknownError, onDeinit: { presentation.end() })
     }
 }
