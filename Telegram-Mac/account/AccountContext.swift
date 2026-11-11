@@ -547,7 +547,7 @@ final class AccountContext {
         self.inlinePacksContext = .init(postbox: account.postbox, engine: self.engine)
         self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: DownloadedMediaStoreManagerImpl(postbox: account.postbox, accountManager: sharedContext.accountManager))
         self.cachedGroupCallContexts = AccountGroupCallContextCacheImpl()
-        self.networkStatusManager = NetworkStatusManager(account: account, window: window, sharedContext: sharedContext)
+        self.networkStatusManager = NetworkStatusManager(account: account, window: window, sharedContext: sharedContext, managesWindowTitle: !isExternal)
         self.reactions = Reactions(engine)
         self.dockControl = DockControl(engine, accountManager: sharedContext.accountManager)
         self.starsContext = engine.payments.peerStarsContext()

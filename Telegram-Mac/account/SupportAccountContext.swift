@@ -55,6 +55,7 @@ final class SupportAccountContext {
     private let disposable: DisposableDict<AccountRecordId> = DisposableDict()
     private let chatDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
     private let chatReadyDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
+    private let chatTitleDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
 
     
     private var externalChats: [ExternalChat.Key : ExternalChat] = [:]
@@ -91,6 +92,29 @@ final class SupportAccountContext {
         
         self.chatDisposable.set(out.start(next: { [weak self] value in
             self?.close(peerId: peerId, accountId: accountId)
+        }), forKey: .init(peerId: peerId, accountId: accountId))
+        
+        let isSavedMessages = peerId == context.peerId
+        let titleSignal = context.engine.data.subscribe(
+            TelegramEngine.EngineData.Item.Peer.Peer(id: peerId),
+            TelegramEngine.EngineData.Item.Peer.Peer(id: context.peerId)
+        )
+        |> deliverOnMainQueue
+        
+        self.chatTitleDisposable.set(titleSignal.start(next: { [weak window] peer, accountPeer in
+            let chatTitle: String
+            if isSavedMessages {
+                chatTitle = strings().peerSavedMessages
+            } else if let peer {
+                chatTitle = peer._asPeer().displayTitle
+            } else {
+                chatTitle = appName
+            }
+            if let accountPeer {
+                window?.title = chatTitle + " @ " + accountPeer._asPeer().compactDisplayTitle
+            } else {
+                window?.title = chatTitle
+            }
         }), forKey: .init(peerId: peerId, accountId: accountId))
         
         let chatController = ChatController(context: context, chatLocation: .peer(peerId))
@@ -242,6 +266,7 @@ final class SupportAccountContext {
         let key = ExternalChat.Key(peerId: peerId, accountId: accountId)
         self.chatDisposable.set(nil, forKey: key)
         self.chatReadyDisposable.set(nil, forKey: key)
+        self.chatTitleDisposable.set(nil, forKey: key)
         let external = self.externalChats.removeValue(forKey: key)
         if let external, let window = external.navigation.window {
             window.closeInterceptor = nil
