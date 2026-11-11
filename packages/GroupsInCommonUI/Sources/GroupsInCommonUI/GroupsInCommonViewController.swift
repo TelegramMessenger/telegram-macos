@@ -12,6 +12,7 @@ import TelegramTheme
 import ColorPalette
 import ShortPeerRow
 import InputDataUI
+import AppAnalytics
 
 public final class GroupsInCommonArguments {
     public let context: any AccountContextProtocol
@@ -75,29 +76,43 @@ private func commonGroupsEntries(state: GroupsInCommonState, arguments: GroupsIn
     
 }
 
-public func GroupsInCommonViewController(context: any AccountContextProtocol, peerId: PeerId, standalone: Bool = false) -> ViewController {
+public func GroupsInCommonViewController(context: any AccountContextProtocol, peerId: PeerId, standalone: Bool = false, analyticsContext: AnalyticsContext? = nil) -> ViewController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
     
     let arguments = GroupsInCommonArguments(context: context, open: { peerId in
-        GroupsInCommonHooks.shared.openChatObserved(context, peerId)
+        GroupsInCommonHooks.shared.openChatObserved(context, peerId, analyticsContext: origin)
     })
     
     let contextValue: Promise<GroupsInCommonContext> = Promise()
-    let peer = (getPeerView(peerId: peerId, postbox: context.account.postbox) |> take(1))
+    let peer = origin.preservingPresentation(getPeerView(peerId: peerId, postbox: context.account.postbox) |> take(1))
     contextValue.set(peer |> map { peer in
         let resolvedPeerId = peer?.id ?? peerId
+        let resolvedOrigin = Analytics.shared.captureContext(engine: context.engine, peerId: resolvedPeerId, inherited: origin)
+        if resolvedOrigin.isExcluded { origin.scope?.exclude() }
+        let presentation = resolvedOrigin.beginPresentation()
+        defer { presentation.end() }
         return GroupsInCommonContext(account: context.account, peerId: resolvedPeerId)
     })
-    let state = (contextValue.get()) |> mapToSignal {
-        ($0.state)
+    let state = origin.preservingPresentation(contextValue.get()) |> mapToSignal {
+        origin.preservingPresentation($0.state)
     }
     let dataSignal = state |> map {
         return InputDataSignalValue(entries: commonGroupsEntries(state: $0, arguments: arguments, standalone: standalone))
     }
     
     let controller = InputDataController(dataSignal: dataSignal, title: !standalone ? "" : strings().peerInfoGroupsInCommon, hasDone: false)
+    controller.analyticsContext = origin
     controller.bar = .init(height: standalone ? 50 : 0)
+    if standalone {
+        controller.analyticsScreen = .peerInfoGroupsInCommon
+    } else {
+        controller.analyticsScreen = .peerInfoMediaGroupsInCommon
+    }
+    
     controller.contextObject = contextValue
     
     controller.onDeinit = {
@@ -119,7 +134,7 @@ public func GroupsInCommonViewController(context: any AccountContextProtocol, pe
         controller.tableView.setScrollHandler { position in
             switch position.direction {
             case .bottom:
-                _ = (contextValue.get() |> take(1)).start(next: { ctx in
+                _ = origin.preservingPresentation(contextValue.get() |> take(1)).start(next: { ctx in
                     ctx.loadMore()
                 })
                 //commonContext.loadMore()

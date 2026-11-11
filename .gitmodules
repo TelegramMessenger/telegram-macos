@@ -1,33 +1,32 @@
 [submodule "submodules/libtgvoip"]
 	path = submodules/libtgvoip
-	url = https://github.com/telegramdesktop/libtgvoip
+url=git@github.com:telegramdesktop/libtgvoip
 [submodule "submodules/Sparkle"]
 	path = submodules/Sparkle
-	url = https://github.com/macosswift/sparkle
+	url = git@github.com:macosswift/sparkle.git
+	branch = master
 [submodule "submodules/telegram-ios"]
+	branch = master
 	path = submodules/telegram-ios
 	url = https://github.com/TelegramMessenger/Telegram-iOS
-[submodule "submodules/rlottie"]
-	path = submodules/rlottie
-	url = https://github.com/macosswift/rlottie
 [submodule "submodules/tgcalls"]
 	path = submodules/tgcalls
-	url = https://github.com/TelegramMessenger/tgcalls
+	url = git@github.com:TelegramMessenger/tgcalls.git
 [submodule "submodules/tg_owt"]
 	path = submodules/tg_owt
-	url = https://github.com/macosswift/tg_owt
+	url = git@github.com:macosswift/tg_owt.git
 [submodule "submodules/libprisma"]
 	path = submodules/libprisma
-	url = https://github.com/desktop-app/libprisma
+url=git@github.com:TelegramMessenger/libprisma.git
 [submodule "submodules/regex"]
 	path = submodules/regex
-	url = https://github.com/boostorg/regex
+	url = git@github.com:boostorg/regex.git
 [submodule "third-party/twidget"]
 	path = third-party/twidget
-	url = https://github.com/TelegramMessenger/twidget
+	url = git@github.com:TelegramMessenger/twidget.git
 [submodule "submodules/tlottie"]
 	path = submodules/tlottie
-	url = https://github.com/dkaraush/tlottie
+	url = git@github.com:dkaraush/tlottie.git
 [submodule "third-party/widget-sandbox"]
 	path = third-party/widget-sandbox
-	url = https://github.com/TelegramMessenger/widget-sandbox
+	url = git@github.com:TelegramMessenger/widget-sandbox.git

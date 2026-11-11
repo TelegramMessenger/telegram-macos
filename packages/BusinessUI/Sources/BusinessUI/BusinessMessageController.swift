@@ -21,6 +21,7 @@ import ChatModeTypes
 import MapKit
 import FoundationUtils
 import MessageTextUtils
+import AppAnalytics
 
 private final class MessageRowItem : GeneralRowItem {
     
@@ -959,6 +960,14 @@ public func BusinessMessageController(context: (any AccountContextProtocol), typ
     }
     
     let controller = InputDataController(dataSignal: signal, title: type.title, removeAfterDisappear: false, hasDone: true, identifier: "business_message")
+    switch type {
+    case .greetings:
+        controller.analyticsScreen = .settingsBusinessGreeting
+    case .away:
+        controller.analyticsScreen = .settingsBusinessAway
+    }
+    
+    
     controller.validateData = { _ in
         let state = stateValue.with { $0 }
         

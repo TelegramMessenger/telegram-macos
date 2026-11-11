@@ -12,16 +12,40 @@ func |> <A, B>(value: A, transform: (A) -> B) -> B { transform(value) }
 func map<A, B, E>(_ transform: @escaping (A) -> B) -> (Signal<A, E>) -> Signal<B, E> { { .single(transform($0.value)) } }
 func mapToSignal<A, B, E>(_ transform: @escaping (A) -> Signal<B, E>) -> (Signal<A, E>) -> Signal<B, E> { { transform($0.value) } }
 func distinctUntilChanged<A>(isEqual: @escaping (A, A) -> Bool) -> (Signal<A, NoError>) -> Signal<A, NoError> { { $0 } }
+func distinctUntilChanged<A: Equatable>(_ signal: Signal<A, NoError>) -> Signal<A, NoError> { signal }
+func filter<A>(_ predicate: @escaping (A) -> Bool) -> (Signal<A, NoError>) -> Signal<A, NoError> {
+    return { signal in
+        precondition(predicate(signal.value))
+        return signal
+    }
+}
 func combineLatest<A, B>(_ a: Signal<A, NoError>, _ b: Signal<B, NoError>) -> Signal<(A, B), NoError> { .single((a.value, b.value)) }
 func combineLatest<A, B>(queue: Queue, _ a: Signal<A, NoError>, _ b: Signal<B, NoError>) -> Signal<(A, B), NoError> { combineLatest(a, b) }
 
-typealias PeerId = Int
-typealias ValueBoxKey = Int
-struct PeerGroupId: Hashable {
-    let value: Int
-    static let root = Self(value: 0)
+struct PeerId: Hashable, Comparable, ExpressibleByIntegerLiteral {
+    var namespace = 0
+    let id: Int
+    init(integerLiteral value: Int) { id = value }
+    static func < (lhs: Self, rhs: Self) -> Bool { (lhs.namespace, lhs.id) < (rhs.namespace, rhs.id) }
 }
-enum Namespaces { enum PeerGroup { static let archive = PeerGroupId(value: 1) } }
+enum EnginePeer { typealias Id = PeerId }
+typealias ValueBoxKey = Int
+typealias EnginePeerGroupId = PeerGroupId
+typealias EnginePeerSummaryCounterTags = PeerSummaryCounterTags
+typealias EngineChatListTotalUnreadState = ChatListTotalUnreadState
+typealias EngineRawPostboxViewKey = PostboxViewKey
+typealias EngineRawUnreadMessageCountsItem = UnreadMessageCountsItem
+typealias EngineRawUnreadMessageCountsView = UnreadMessageCountsView
+typealias EngineRawBasicPeerView = BasicPeerView
+typealias ChatListFilterPeerCategories = FilterCategories
+enum PeerGroupId: Hashable {
+    case root
+    case group(Int)
+}
+enum Namespaces {
+    enum Peer { static let CloudUser = 1; static let SecretChat = 2 }
+    enum PeerGroup { static let archive = PeerGroupId.group(1) }
+}
 struct PeerSummaryCounterTags: OptionSet, Hashable {
     let rawValue: Int
     static let contact = Self(rawValue: 1)
@@ -35,7 +59,22 @@ struct ChatListTotalUnreadState: Equatable {
     var absoluteCounters: [PeerSummaryCounterTags: Counter] = [:]
     var filteredCounters: [PeerSummaryCounterTags: Counter] = [:]
 }
-struct PreferencesEntry: Equatable { let value: Int }
+struct PreferencesEntry: Equatable {
+    let value: Int
+    func get<T>(_ type: T.Type) -> T? { nil }
+}
+enum PreferencesKeys { static let globalNotifications: ValueBoxKey = 1 }
+struct EngineRawPreferencesView: PostboxView {
+    let values: [ValueBoxKey: PreferencesEntry] = [:]
+}
+struct EngineRawAssociatedPeerIdsView: PostboxView {
+    let associatedPeerIds: [PeerId: Set<PeerId>] = [:]
+}
+struct GlobalNotificationSettings {
+    static let defaultSettings = Self()
+    var postboxAccessor: Self { self }
+    func defaultIncludePeer(_ peer: Peer) -> Bool { true }
+}
 enum PreferenceOperation { case update(ValueBoxKey, PreferencesEntry?) }
 protocol PostboxView {}
 protocol MutablePostboxView {}
@@ -57,11 +96,21 @@ final class TelegramGroup: TestPeer {
     var membership: Membership = .Member
 }
 enum PeerMuteState { case unmuted, muted(until: Int32), `default` }
-struct TelegramPeerNotificationSettings { var muteState: PeerMuteState }
+struct TelegramPeerNotificationSettings {
+    var muteState: PeerMuteState
+    func isRemovedFromTotalUnreadCount(default isMuted: Bool) -> Bool {
+        switch muteState {
+        case .muted: return true
+        case .unmuted: return false
+        case .default: return isMuted
+        }
+    }
+}
 struct BasicPeerView: PostboxView {
     let peer: Peer?
     let isContact: Bool
     let notificationSettings: Any?
+    let groupId: PeerGroupId?
 }
 enum PeerReadState {
     case idBased(maxIncomingReadId: Int32, maxOutgoingReadId: Int32, maxKnownId: Int32, count: Int32, markedUnread: Bool)
@@ -131,7 +180,10 @@ struct FilterCategories: OptionSet {
     static let bots = Self(rawValue: 8)
     static let channels = Self(rawValue: 16)
 }
-struct IncludePeers: Equatable { var peers: [PeerId] }
+struct IncludePeers: Equatable {
+    var peers: [PeerId]
+    var pinnedPeers: [PeerId] = []
+}
 struct ChatListFilterData: Equatable {
     var categories: FilterCategories = []
     var includePeers = IncludePeers(peers: [])
@@ -153,10 +205,14 @@ struct CombinedView { var views: [PostboxViewKey: PostboxView] }
 enum PostboxViewKey: Hashable {
     case unreadCounts(items: [UnreadMessageCountsItem])
     case basicPeer(PeerId)
+    case associatedPeerIds(peerIds: Set<PeerId>)
+    case preferences(keys: Set<ValueBoxKey>)
     static func == (lhs: Self, rhs: Self) -> Bool {
         switch (lhs, rhs) {
         case let (.unreadCounts(lhs), .unreadCounts(rhs)): return lhs == rhs
         case let (.basicPeer(lhs), .basicPeer(rhs)): return lhs == rhs
+        case let (.associatedPeerIds(lhs), .associatedPeerIds(rhs)): return lhs == rhs
+        case let (.preferences(lhs), .preferences(rhs)): return lhs == rhs
         default: return false
         }
     }
@@ -164,19 +220,31 @@ enum PostboxViewKey: Hashable {
         switch self {
         case .unreadCounts: hasher.combine(0)
         case let .basicPeer(id): hasher.combine(1); hasher.combine(id)
+        case let .associatedPeerIds(ids): hasher.combine(2); hasher.combine(ids)
+        case let .preferences(keys): hasher.combine(3); hasher.combine(keys)
         }
     }
+}
+struct Transaction {
+    let peers: PeerTable
+    func getPeer(_ id: PeerId) -> Peer? { peers.get(id) }
 }
 final class Postbox {
     let impl = PostboxImpl()
     var settings: [PeerId: TelegramPeerNotificationSettings] = [:]
     var seedConfiguration: SeedConfiguration { impl.seedConfiguration }
+    func transaction<T>(_ f: (Transaction) -> T) -> Signal<T, NoError> { .single(f(Transaction(peers: impl.peerTable))) }
     func combinedView(keys: [PostboxViewKey]) -> Signal<CombinedView, NoError> {
         var views: [PostboxViewKey: PostboxView] = [:]
         for key in keys {
             switch key {
             case let .unreadCounts(items): views[key] = MutableUnreadMessageCountsView(postbox: impl, items: items).immutableView()
-            case let .basicPeer(id): views[key] = BasicPeerView(peer: impl.peerTable.get(id), isContact: false, notificationSettings: settings[id])
+            case let .basicPeer(id):
+                let peer = impl.peerTable.get(id)
+                let isMember = (peer as? TelegramChannel)?.participationStatus != .left && (peer as? TelegramGroup)?.membership != .Left
+                views[key] = BasicPeerView(peer: peer, isContact: false, notificationSettings: settings[id], groupId: isMember ? .root : nil)
+            case .associatedPeerIds: views[key] = EngineRawAssociatedPeerIdsView()
+            case .preferences: views[key] = EngineRawPreferencesView()
             }
         }
         return .single(CombinedView(views: views))
@@ -196,6 +264,7 @@ func renderedTotalUnreadCount(accountManager: AccountManager<TelegramAccountMana
 
 __BADGE_MODELS__
 __CALCULATION__
+__BADGE_CALCULATION__
 
 var passed = 0
 var failed = 0
@@ -209,7 +278,7 @@ func state(_ count: Int32) -> CombinedPeerReadState {
 let engine = TelegramEngine()
 let postbox = engine.account.postbox
 let forum = TelegramChannel(forum: true)
-let forumId = 100
+let forumId: PeerId = 100
 postbox.impl.peerTable.values[forumId] = forum
 postbox.settings[forumId] = .init(muteState: .unmuted)
 postbox.impl.peerThreadsSummaryTable.values[forumId] = .init(totalUnreadCount: 1, hasUnmutedUnread: false)
@@ -230,7 +299,7 @@ forum.participationStatus = .left
 postbox.impl.peerThreadsSummaryTable.values[forumId] = .init(totalUnreadCount: 1, hasUnmutedUnread: true)
 check(badge().count == 0, "a left group is not counted")
 forum.participationStatus = .member
-let chatId = 200
+let chatId: PeerId = 200
 postbox.impl.peerTable.values[chatId] = TestPeer()
 postbox.impl.readStateTable.values[chatId] = state(3)
 engine.peers.filters = [.filter(id: 2, title: "People", emoticon: nil, data: .init(includePeers: .init(peers: [chatId])))]
@@ -243,6 +312,14 @@ postbox.impl.peerThreadsSummaryTable.values[forumId] = .init(totalUnreadCount: 1
 check(badge().count == 2 && badge().hasUnmutedUnread, "another unmuted chat keeps a mixed folder active")
 postbox.impl.readStateTable.values[chatId] = state(0)
 check(badge().count == 1 && !badge().hasUnmutedUnread, "reading other chats leaves the muted-only folder inactive")
+
+engine.peers.filters = [.filter(id: 4, title: "Groups", emoticon: nil, data: .init(categories: [.groups], includePeers: .init(peers: [forumId])))]
+check(badge().count == 1 && !badge().hasUnmutedUnread, "explicitly included muted-only forum is missing from category totals")
+engine.peers.filters = [.filter(id: 5, title: "Groups", emoticon: nil, data: .init(categories: [.groups], includePeers: .init(peers: [forumId]), excludeMuted: true))]
+check(badge().count == 1 && !badge().hasUnmutedUnread, "excluding muted keeps an explicitly included forum inactive")
+postbox.impl.messageHistoryMetadataTable.states[.root] = .init(absoluteCounters: [.group: .init(chatCount: 1)], filteredCounters: [.group: .init(chatCount: 1)])
+engine.peers.filters = [.filter(id: 6, title: "Groups", emoticon: nil, data: .init(categories: [.groups], excludePeers: [forumId]))]
+check(badge().count == 1 && badge().hasUnmutedUnread, "excluding a muted-only forum does not subtract another unread group")
 
 let item = UnreadMessageCountsItem.peer(id: forumId, handleThreads: true)
 let mutable = MutableUnreadMessageCountsView(postbox: postbox.impl, items: [item])

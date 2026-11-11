@@ -33,6 +33,7 @@ public struct DataUsageHooks {
     public let openForum: (PeerId, Bool, any AccountContextProtocol, Int64) -> Void
     public let makeChatAdditionController: (any AccountContextProtocol, ChatLocation, MessageId) -> ViewController
     public let showChatGallery: (any AccountContextProtocol, Message, InteractionContentViewProtocol?) -> Void
+    public let clearWidgetStorage: (any AccountContextProtocol, PeerId?) -> Void
 
     public init(makeStorageUsageController: @escaping (any AccountContextProtocol) -> ViewController,
                 shareLink: @escaping (any AccountContextProtocol, String) -> Void,
@@ -42,7 +43,8 @@ public struct DataUsageHooks {
                 showInlineAudioPlayer: @escaping (APController, any AccountContextProtocol, TableView?) -> Void,
                 openForum: @escaping (PeerId, Bool, any AccountContextProtocol, Int64) -> Void,
                 makeChatAdditionController: @escaping (any AccountContextProtocol, ChatLocation, MessageId) -> ViewController,
-                showChatGallery: @escaping (any AccountContextProtocol, Message, InteractionContentViewProtocol?) -> Void) {
+                showChatGallery: @escaping (any AccountContextProtocol, Message, InteractionContentViewProtocol?) -> Void,
+                clearWidgetStorage: @escaping (any AccountContextProtocol, PeerId?) -> Void) {
         self.makeStorageUsageController = makeStorageUsageController
         self.shareLink = shareLink
         self.makeAddExceptionModal = makeAddExceptionModal
@@ -52,6 +54,7 @@ public struct DataUsageHooks {
         self.openForum = openForum
         self.makeChatAdditionController = makeChatAdditionController
         self.showChatGallery = showChatGallery
+        self.clearWidgetStorage = clearWidgetStorage
     }
 
     private static var _shared: DataUsageHooks?
@@ -86,5 +89,6 @@ public struct DataUsageHooks {
     }, makeChatAdditionController: { _, _, _ in
         ViewController()
     }, showChatGallery: { _, _, _ in
+    }, clearWidgetStorage: { _, _ in
     })
 }

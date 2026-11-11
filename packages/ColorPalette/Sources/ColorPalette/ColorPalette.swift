@@ -1580,7 +1580,7 @@ public class ColorPalette : Equatable {
         
         var lightnessColor = color.messages?.first ?? color.accent
         
-        if color.messages == nil {
+        if color.messages?.isEmpty != false {
             switch parent {
             case .dayClassic:
                 let hsb = accentColor.hsb
@@ -1601,7 +1601,7 @@ public class ColorPalette : Equatable {
         if let colors = color.messages, !colors.isEmpty {
             bubbleBackground_outgoing = colors
         } else {
-            bubbleBackground_outgoing = self.bubbleBackground_outgoing
+            bubbleBackground_outgoing = [lightnessColor]
         }
         
         bubbleBackgroundHighlight_outgoing = lightnessColor.darker(amount: 0.1)

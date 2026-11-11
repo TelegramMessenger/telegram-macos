@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import SwiftSignalKit
 import Postbox
@@ -37,6 +38,7 @@ public class ChatInputRecordingView: View {
 
     public var glassInset: NSEdgeInsets = NSEdgeInsetsZero
 
+    private var glassLayoutFrame: NSRect = .zero
     private var glassFrameInLayout: NSRect {
         let bottomY = frame.height - 40
         let minX = glassInset.left
@@ -48,6 +50,7 @@ public class ChatInputRecordingView: View {
     private let lockControl: ChatRecorderLockControl
     private let singleTimeControl: ChatRecorderSingleTimeControl
     private let pauseControl: ChatRecorderPauseControl
+    private let transcribeControl: ChatRecorderTranscribeControl
 
     private let overlaySize: CGFloat = 100
     private let overlayVisibleDiameter: CGFloat = 60
@@ -61,23 +64,23 @@ public class ChatInputRecordingView: View {
     private var sendButtonCenter: NSPoint = .zero
     private var didLayoutOverlay: Bool = false
     private var didUpdateSendButtonCenter: Bool = false
-    private var appliedFloatingVisibility: (ChatRecordingOverlayState, Bool, Bool)?
+    private var appliedFloatingVisibility: (ChatRecordingOverlayState, Bool, Bool, Bool)?
     private var lockness: CGFloat = 0
     private var overlayDragOffset: CGFloat = 0
     private var overlayDragOffsetX: CGFloat = 0
     private var transcribeProgress: CGFloat = 0
     private var isTranscribing: Bool = false
+    private var didPlayStartFeedback = false
     private var descMode: DescriptionMode = .plain
 
     private enum DescriptionMode: Equatable {
         case plain
         case fixed
-        case swipe
         case transcribing
     }
 
     private var canTranscribe: Bool {
-        return !isVideoRecorder && ChatVoiceTranscription.isSupported && chatInteraction.voiceTranscription != nil
+        return !isVideoRecorder && chatInteraction.voiceTranscription != nil && ChatRecordedAudioTranscriptionPolicy.showsRecorderButton(nativeAvailable: ChatVoiceTranscription.isLiveDictationSupported, isPaused: isPaused, isSecretChat: chatInteraction.presentation.peer?.isSecretChat ?? true)
     }
     private var columnAnchor: NSPoint?
 
@@ -128,6 +131,7 @@ public class ChatInputRecordingView: View {
         lockControl = ChatRecorderLockControl(frame: NSMakeRect(0, 0, controlSize, lockHeight))
         singleTimeControl = ChatRecorderSingleTimeControl(frame: NSMakeRect(0, 0, controlSize, controlSize))
         pauseControl = ChatRecorderPauseControl(frame: NSMakeRect(0, 0, controlSize, controlSize))
+        transcribeControl = ChatRecorderTranscribeControl(frame: NSMakeRect(0, 0, controlSize, controlSize))
 
         super.init(frame: frameRect)
 
@@ -155,12 +159,40 @@ public class ChatInputRecordingView: View {
         deleteButton.setAccessibilityLabel(strings().voiceOverCommonDelete)
 
         deleteButton.set(handler: { [weak self] _ in
-            self?.discardRecording()
+            guard let self else {
+                return
+            }
+            if self.isTranscribing {
+                self.chatInteraction.voiceTranscription?.perform(.cancel)
+            } else {
+                self.discardRecording()
+            }
         }, for: .Click)
 
         pauseControl.layer?.opacity = 0
         pauseControl.set(handler: { [weak self] _ in
             self?.togglePause()
+        }, for: .Click)
+
+        transcribeControl.layer?.opacity = 0
+        transcribeControl.isHidden = true
+        transcribeControl.appTooltip = strings().chatInputDictationStart
+        transcribeControl.contextMenu = { [weak self] in
+            self?.chatInteraction.voiceTranscription?.languageMenu()
+        }
+        overlayView.contextMenu = { [weak self] in
+            guard let self, self.canTranscribe else { return nil }
+            return self.chatInteraction.voiceTranscription?.languageMenu()
+        }
+        transcribeControl.set(handler: { [weak self] _ in
+            guard let self, !self.isTranscribing else {
+                return
+            }
+            if self.isPaused {
+                self.transcribeToComposer()
+            } else {
+                self.startTranscribing()
+            }
         }, for: .Click)
 
         scrubber.togglePlay = { [weak self] in
@@ -177,6 +209,7 @@ public class ChatInputRecordingView: View {
         singleTimeControl.layer?.opacity = 0
         singleTimeControl.selectionChanged = { [weak self] value in
             self?.recorder.isOneTime = value
+            self?.recorder.analyticsRecordingJourney?.setOneTime(value)
         }
 
         recView.layer?.cornerRadius = recView.frame.width / 2
@@ -188,12 +221,19 @@ public class ChatInputRecordingView: View {
             switch state {
             case let .recording(duration):
                 if duration > 0, !self.isVideoRecorder {
+                    if !self.didPlayStartFeedback, (self.recorder as? ChatRecordingAudioState)?.startsDictation != true {
+                        self.didPlayStartFeedback = true
+                        ChatDictationFeedback.started()
+                    }
+                    self.recorder.analyticsRecordingJourney?.started()
+                    self.recorder.analyticsRecordingJourney?.resumed()
                 }
                 self.updateDescription(hold)
                 self.timerView.update(duration: duration, running: true)
                 self.updatePaused(false)
             case let .paused(duration):
                 if duration > 0 {
+                    self.recorder.analyticsRecordingJourney?.paused()
                     self.updateDescription(hold)
                     self.timerView.update(duration: duration, running: false)
                     self.updatePaused(true)
@@ -236,7 +276,7 @@ public class ChatInputRecordingView: View {
     }
 
     private var floatingControls: [NSView] {
-        [overlayView, lockControl, pauseControl, singleTimeControl]
+        [overlayView, lockControl, pauseControl, singleTimeControl, transcribeControl]
     }
 
     private var ownedFloatingControls: [NSView] {
@@ -250,10 +290,11 @@ public class ChatInputRecordingView: View {
         if state != .fixed {
             return [(lockControl, lockHeight - (lockHeight - controlSize) * lockness)]
         }
-        if recorder.canPause {
-            return [(pauseControl, controlSize), (singleTimeControl, controlSize)]
+        var stack: [(view: NSView, height: CGFloat)] = recorder.canPause ? [(pauseControl, controlSize), (singleTimeControl, controlSize)] : [(singleTimeControl, controlSize)]
+        if canTranscribe {
+            stack.append((transcribeControl, controlSize))
         }
-        return [(singleTimeControl, controlSize)]
+        return stack
     }
 
     private func layoutFloatingControls(transition: ContainedViewLayoutTransition) {
@@ -299,11 +340,13 @@ public class ChatInputRecordingView: View {
     }
 
     private func updateFloatingVisibility() {
-        let key = (state, recorder.canPause, isTranscribing)
+        let key = (state, recorder.canPause, isTranscribing, canTranscribe)
         if let applied = appliedFloatingVisibility, applied == key {
             return
         }
         appliedFloatingVisibility = key
+        overlayView.isHidden = isTranscribing
+        transcribeControl.isHidden = !canTranscribe || (state != .fixed && !isTranscribing)
         if !overlayHandedOff {
             overlayView.layer?.opacity = 1
         }
@@ -311,6 +354,7 @@ public class ChatInputRecordingView: View {
             lockControl.change(opacity: 0, animated: true)
             pauseControl.change(opacity: 0, animated: true)
             singleTimeControl.change(opacity: 0, animated: true)
+            transcribeControl.change(opacity: 0, animated: true)
         } else if state == .fixed {
             lockControl.change(opacity: 0, animated: true)
             if recorder.canPause {
@@ -323,10 +367,17 @@ public class ChatInputRecordingView: View {
             }
             singleTimeControl.layer?.opacity = 1
             singleTimeControl.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
+            if canTranscribe {
+                transcribeControl.layer?.opacity = 1
+                transcribeControl.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
+            } else {
+                transcribeControl.layer?.opacity = 0
+            }
         } else {
             lockControl.layer?.opacity = 1
             pauseControl.layer?.opacity = 0
             singleTimeControl.layer?.opacity = 0
+            transcribeControl.layer?.opacity = 0
         }
     }
 
@@ -369,12 +420,13 @@ public class ChatInputRecordingView: View {
     }
 
     private func updateDescription(_ hold: Bool) {
-        let width = glassFrameInLayout.width - 50 - 60
+        recView.isHidden = isPaused || isTranscribing
+        timerView.isHidden = isPaused || isTranscribing
+        descView.isHidden = isPaused || isTranscribing
+        let width = glassFrameInLayout.width - 50 - 60 - (isTranscribing ? composerButtonSize + composerGap : 0)
         let mode: DescriptionMode
         if isTranscribing {
             mode = .transcribing
-        } else if transcribeProgress > 0.15 {
-            mode = .swipe
         } else {
             mode = hold ? .fixed : .plain
         }
@@ -389,13 +441,11 @@ public class ChatInputRecordingView: View {
         let text: String
         switch mode {
         case .plain:
-            text = strings().audioRecordHelpPlain
+            text = canTranscribe ? strings().chatRecordingTranscribeSwipe : strings().audioRecordHelpPlain
         case .fixed:
             text = strings().audioRecordHelpFixed
-        case .swipe:
-            text = strings().chatRecordingTranscribeSwipe
         case .transcribing:
-            text = strings().chatRecordingTranscribeActive
+            text = strings().chatInputRecordingViewClickToEdit
         }
         if modeChanged, window != nil {
             descView.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
@@ -426,6 +476,10 @@ public class ChatInputRecordingView: View {
         fatalError("init(frame:) has not been implemented")
     }
 
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        return isTranscribing ? nil : super.hitTest(point)
+    }
+
     public override func layout() {
         super.layout()
         updateLayout(size: frame.size, transition: .immediate)
@@ -439,14 +493,20 @@ public class ChatInputRecordingView: View {
 
         var barMinX = glassMinX
         var barMaxX = glassMaxX
-        if isPaused {
+        if isPaused || isTranscribing {
             let deleteFrame = NSMakeRect(glassMinX, bottomY, composerButtonSize, 40)
             updateFloatingFrame(deleteButton, deleteFrame, transition: transition)
             barMinX = deleteFrame.maxX + composerGap
+        }
+        if isPaused {
             barMaxX = max(barMinX, sendButtonCenter.x - composerButtonSize / 2 - composerGap)
         }
 
-        let glassFrame = NSMakeRect(barMinX, bottomY, max(0, barMaxX - barMinX), 40)
+        let glassHeight = isTranscribing ? max(40, size.height) : 40
+        let glassFrame = NSMakeRect(barMinX, size.height - glassHeight, max(0, barMaxX - barMinX), glassHeight)
+        glassLayoutFrame = glassFrame
+        glassEffect.isHidden = isTranscribing
+        deleteButton.setGlassEffectHidden(isTranscribing)
         transition.updateFrame(view: glassEffect, frame: glassFrame)
         glassEffect.updateLayout(size: glassFrame.size, transition: transition)
 
@@ -459,12 +519,12 @@ public class ChatInputRecordingView: View {
 
         updateDescription(descHold)
 
-        transition.updateFrame(view: recView, frame: NSMakeRect(glassMinX + 20, midY - recView.frame.height / 2, recView.frame.width, recView.frame.height))
+        transition.updateFrame(view: recView, frame: NSMakeRect(barMinX + 20, midY - recView.frame.height / 2, recView.frame.width, recView.frame.height))
         transition.updateFrame(view: timerView, frame: NSMakeRect(recView.frame.maxX + 10, midY - timerView.frame.height / 2, timerView.frame.width, timerView.frame.height))
         transition.updateFrame(view: statusImage, frame: NSMakeRect(glassMaxX - statusImage.frame.width - 20, midY - statusImage.frame.height / 2, statusImage.frame.width, statusImage.frame.height))
 
         let maxDescWidth = glassFrame.width - (statusImage.frame.width + 20 + 50)
-        let descX = glassMinX + 60 + floorToScreenPixels(backingScaleFactor, (maxDescWidth - descView.frame.width) / 2)
+        let descX = barMinX + 60 + floorToScreenPixels(backingScaleFactor, (maxDescWidth - descView.frame.width) / 2)
         transition.updateFrame(view: descView, frame: NSMakeRect(descX, midY - descView.frame.height / 2, descView.frame.width, descView.frame.height))
     }
 
@@ -485,6 +545,7 @@ public class ChatInputRecordingView: View {
             layoutFloatingControls(transition: .immediate)
             updateLayout(size: frame.size, transition: .immediate)
         }
+        overlayView.updateInside()
 
         let isVideoRecorder = self.isVideoRecorder
         micLevelDisposable.set((recorder.micLevel |> deliverOnMainQueue).start(next: { [weak self] value in
@@ -507,6 +568,9 @@ public class ChatInputRecordingView: View {
             if self.draggingPreview {
                 return .rejected
             }
+            if self.isMouseOverTranscription {
+                return .invokeNext
+            }
             if self.state != .fixed {
                 self.handleDrag()
             }
@@ -528,8 +592,12 @@ public class ChatInputRecordingView: View {
         }, with: self, for: .rightMouseUp, priority: .modal)
         overlayWindow.set(mouseHandler: { _ in return .invoked }, with: self, for: .leftMouseDown, priority: .modal)
         overlayWindow.set(mouseHandler: proccessMouseUp, with: self, for: .leftMouseUp, priority: .modal)
-        overlayWindow.set(mouseHandler: { _ in return .invoked }, with: self, for: .rightMouseDown, priority: .modal)
-        overlayWindow.set(mouseHandler: { _ in return .invoked }, with: self, for: .rightMouseUp, priority: .modal)
+        let processRightMouse: (NSEvent) -> KeyHandlerResult = { [weak self] _ in
+            guard let self, self.canTranscribe else { return .invoked }
+            return self.overlayView.isMouseOverButton || self.transcribeControl.mouseInside() ? .invokeNext : .invoked
+        }
+        overlayWindow.set(mouseHandler: processRightMouse, with: self, for: .rightMouseDown, priority: .modal)
+        overlayWindow.set(mouseHandler: processRightMouse, with: self, for: .rightMouseUp, priority: .modal)
 
         if recorder.autohold {
             hold()
@@ -591,7 +659,7 @@ public class ChatInputRecordingView: View {
             overlayLayer.animateAlpha(from: 1, to: 0, duration: fade, timingFunction: .spring, removeOnCompletion: false)
         }
 
-        let fading: [NSView] = [lockControl, pauseControl, singleTimeControl, deleteButton, scrubber]
+        let fading: [NSView] = [lockControl, pauseControl, singleTimeControl, transcribeControl, deleteButton, scrubber]
         for view in fading where view.superview != nil {
             let from = view.layer?.presentation()?.opacity ?? view.layer?.opacity ?? 1
             guard from > 0 else {
@@ -617,9 +685,7 @@ public class ChatInputRecordingView: View {
 
         if canTranscribe {
             let dx = max(0, startMouseLocation.x - location.x)
-            let centerX = convert(NSMakePoint(glassFrameInLayout.midX, 0), to: nil).x
-            let threshold = max(80, startMouseLocation.x - centerX)
-            let progress = dx > dif ? min(1, dx / threshold) : 0
+            let progress = dx > dif ? min(1, dx / lockThreshold) : 0
             if progress >= 1 {
                 beginTranscription()
                 return
@@ -641,9 +707,10 @@ public class ChatInputRecordingView: View {
         lockControl.updateLockness(lockness)
     }
 
-    private func hold() {
+    private func hold(transition: ContainedViewLayoutTransition = .animated(duration: 0.3, curve: .spring)) {
         guard let parent else { return }
         recorder.holdpromise.set(true)
+        recorder.analyticsRecordingJourney?.lock()
 
         overlayView.updateInside()
 
@@ -663,7 +730,10 @@ public class ChatInputRecordingView: View {
             if self.isMouseOverChatNavigation || self.isMouseOverTranscription {
                 return .invokeNext
             }
-            if self.singleTimeControl.mouseInside() || self.pauseControl.mouseInside() {
+            if !self.isTranscribing, self.singleTimeControl.mouseInside() || self.pauseControl.mouseInside() || self.transcribeControl.mouseInside() {
+                return .invokeNext
+            }
+            if self.isTranscribing, self.deleteButton.mouseInside() {
                 return .invokeNext
             }
             if self.isPaused, self.deleteButton.mouseInside() || self.scrubber.mouseInside() {
@@ -676,7 +746,8 @@ public class ChatInputRecordingView: View {
         overlayWindow?.set(mouseHandler: proccessMouseUp, with: self, for: .leftMouseDown, priority: .modal)
 
         let endPreviewDrag: (NSEvent) -> KeyHandlerResult = { [weak self] _ in
-            self?.draggingPreview = false
+            guard let self else { return .rejected }
+            self.draggingPreview = false
             return .rejected
         }
         parent.set(mouseHandler: endPreviewDrag, with: self, for: .leftMouseUp, priority: .modal)
@@ -684,7 +755,7 @@ public class ChatInputRecordingView: View {
 
         overlayDragOffset = 0
 
-        layoutFloatingControls(transition: .animated(duration: 0.3, curve: .spring))
+        layoutFloatingControls(transition: transition)
     }
 
     private func updateTranscribeProgress(_ progress: CGFloat) {
@@ -692,28 +763,128 @@ public class ChatInputRecordingView: View {
         overlayDragOffsetX = progress * 60
         overlayView.updateTranscribeProgress(progress)
         lockControl.layer?.opacity = Float(1 - progress)
-        updateDescription(descHold)
-        descView.layer?.opacity = Float(progress > 0.15 ? min(1, 0.4 + progress) : 1 - progress * 4)
     }
 
     private func beginTranscription() {
-        guard !isTranscribing, let transcription = chatInteraction.voiceTranscription else {
+        guard !isTranscribing else {
             return
         }
-        isTranscribing = true
         transcribeProgress = 0
         overlayDragOffsetX = 0
-        descView.layer?.opacity = 1
-        overlayView.setTranscribing(true, animated: true)
-        hold()
-        updateDescription(true)
-        transcription.start()
+        startTranscribing()
     }
 
-    private func stopTranscribing() {
-        chatInteraction.voiceTranscription?.recordingStopped()
-        resetPreviewState()
-        recorder.discard(from: chatInteraction, closingOtherModals: true)
+    private func transcribeToComposer() {
+        guard let transcription = chatInteraction.voiceTranscription, let audio = recorder as? ChatRecordingAudioState, !isResuming else {
+            return
+        }
+        transcription.transcribeToComposer(recorder: audio, analyticsContext: recorder.analyticsContext ?? Analytics.shared.unresolvedContext(), journey: recorder.analyticsRecordingJourney, closeRecorder: { [weak self] in
+            guard let self, !self.isDismissing, !self.recorder.isCancelled else {
+                return false
+            }
+            self.resetPreviewState()
+            self.recorder.discard(from: self.chatInteraction, closingOtherModals: true)
+            return true
+        })
+    }
+
+    func startDictation() {
+        guard (recorder as? ChatRecordingAudioState)?.startsDictation == true, canTranscribe, window != nil, !isDismissing, !recorder.isCancelled else {
+            return
+        }
+        startTranscribing()
+    }
+
+    private func startTranscribing() {
+        guard ChatVoiceTranscription.isLiveDictationSupported, !isTranscribing, let transcription = chatInteraction.voiceTranscription, let audio = recorder as? ChatRecordingAudioState else {
+            return
+        }
+        let buttonOrigin = audio.startsDictation ? nil : dictationButtonOrigin()
+        isTranscribing = true
+        let transition = ChatVoiceTranscriptionView.composerTransition
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        overlayView.setTranscribing(true, transition: transition)
+        if state != .fixed {
+            hold(transition: transition)
+        } else {
+            layoutFloatingControls(transition: transition)
+        }
+        updateDescription(true)
+        if deleteButton.isHidden {
+            deleteButton.isHidden = false
+            if transition.isAnimated {
+                deleteButton.layer?.animateAlpha(from: 0, to: 1, duration: transition.duration, timingFunction: transition.timingFunction)
+                deleteButton.layer?.animateScaleCenter(from: 0.85, to: 1, duration: transition.duration, timingFunction: transition.timingFunction)
+            }
+        }
+        updateLayout(size: frame.size, transition: .immediate)
+        if buttonOrigin != nil {
+            fadeDictationControls(transition: transition)
+        } else {
+            overlayWindow?.detach()
+        }
+        transcription.start(analyticsContext: recorder.analyticsContext ?? Analytics.shared.unresolvedContext(), journey: recorder.analyticsRecordingJourney, audio: .recording(audio), onEnd: { [weak self] in
+            self?.endTranscribing()
+        })
+        if let buttonOrigin {
+            transcription.animateButton(from: buttonOrigin)
+        }
+        CATransaction.commit()
+        deleteButton.setAccessibilityLabel(strings().chatTranscriptionCancel)
+        deleteButton.appTooltip = strings().chatTranscriptionCancel
+        overlayView.appTooltip = strings().voiceOverCommonDone
+    }
+
+    private func dictationButtonOrigin() -> ChatDictationButtonOrigin? {
+        guard let host = overlayView.superview, let window = host.window,
+              overlayView.bounds.width > 0 else { return nil }
+        let frame = overlayView.layer?.presentation()?.frame ?? overlayView.frame
+        let diameter = overlayView.blobView.centreDiameter * frame.width / overlayView.bounds.width
+        let circle = NSRect(x: frame.midX - diameter / 2, y: frame.midY - diameter / 2, width: diameter, height: diameter)
+        return ChatDictationButtonOrigin(screenFrame: window.convertToScreen(host.convert(circle, to: nil)), icon: overlayView.dictationTransitionIcon)
+    }
+
+    private func fadeDictationControls(transition: ContainedViewLayoutTransition) {
+        guard let overlayWindow else { return }
+        guard transition.isAnimated, !chatInteraction.context.isLite(.animations),
+              let layer = overlayWindow.contentView?.layer else {
+            overlayWindow.detach()
+            return
+        }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = layer.presentation()?.opacity ?? layer.opacity
+        fade.toValue = 0
+        fade.duration = transition.duration
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        fade.completion = { [weak self, weak overlayWindow] completed in
+            guard completed, let self, self.isTranscribing, self.overlayWindow === overlayWindow else { return }
+            overlayWindow?.detach()
+        }
+        layer.opacity = 0
+        layer.add(fade, forKey: "dictationControlsFade")
+    }
+
+    private func endTranscribing() {
+        guard isTranscribing, !isDismissing, !recorder.isCancelled else {
+            return
+        }
+        isTranscribing = false
+        if (recorder as? ChatRecordingAudioState)?.startsDictation == true {
+            recorder.discard(from: chatInteraction)
+            return
+        }
+        deleteButton.setAccessibilityLabel(strings().voiceOverCommonDelete)
+        deleteButton.appTooltip = strings().voiceOverCommonDelete
+        overlayView.appTooltip = nil
+        overlayView.setTranscribing(false)
+        overlayWindow?.attach()
+        overlayView.updateTranscribeProgress(0)
+        deleteButton.isHidden = !isPaused
+        updateDescription(descHold)
+        layoutFloatingControls(transition: .animated(duration: 0.3, curve: .spring))
+        pauseControl.kind = isPaused ? .recordMore : .pause
+        updateLayout(size: frame.size, transition: .animated(duration: 0.3, curve: .spring))
     }
 
     private var isMouseOverTranscription: Bool {
@@ -722,7 +893,7 @@ public class ChatInputRecordingView: View {
         }
         var view = contentView.hitTest(parent.mouseLocationOutsideOfEventStream)
         while let current = view {
-            if current is ChatVoiceTranscriptionView {
+            if current is ChatInputContainerView {
                 return true
             }
             view = current.superview
@@ -768,7 +939,7 @@ public class ChatInputRecordingView: View {
 
     private func proccessMouseUp() -> KeyHandlerResult {
         if isTranscribing {
-            stopTranscribing()
+            chatInteraction.voiceTranscription?.perform(.edit)
             return .invoked
         }
         if self.overlayView.mouseInside() || (self.isPaused && self.overlayView.isMouseInsideCentre) {
@@ -797,9 +968,9 @@ public class ChatInputRecordingView: View {
         }
         isPaused = paused
 
-        recView.isHidden = paused
-        timerView.isHidden = paused
-        descView.isHidden = paused
+        recView.isHidden = paused || isTranscribing
+        timerView.isHidden = paused || isTranscribing
+        descView.isHidden = paused || isTranscribing
         statusImage.isHidden = paused
         deleteButton.isHidden = !paused
         scrubber.isHidden = !paused
@@ -854,6 +1025,7 @@ public class ChatInputRecordingView: View {
             return
         }
         self.preview = preview
+        recorder.analyticsRecordingJourney?.previewReady()
         self.trimRange = RecordingTrimState(duration: preview.duration, range: recorder.trimRange).range
         recorder.updateTrimRange(self.trimRange, duration: preview.duration)
 
@@ -875,6 +1047,7 @@ public class ChatInputRecordingView: View {
         guard !isResuming, !recorder.isPreparingSubmission else { return }
         guard let preview, preview.duration.isFinite, preview.duration > 0 else { return }
         let range = RecordingTrimState(duration: preview.duration, range: range).range
+        recorder.analyticsRecordingJourney?.trimChanged(changed: self.trimRange != range, committed: applied)
         self.trimRange = range
         recorder.updateTrimRange(range)
         recorder.updatePreviewTrim(range, updatedEnd: updatedEnd, applied: applied)
@@ -906,10 +1079,15 @@ public class ChatInputRecordingView: View {
         if recorder.isTrimmed {
             let generation = previewGeneration
             let range = recorder.trimRange
+            recorder.analyticsRecordingJourney?.step(.openConfirmation)
+            let presentation = (recorder.analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
             verifyAlert_button(for: parent, information: strings().chatInputRecordingViewResumeDiscardTrimmed, ok: strings().chatInputRecordingViewResume, cancel: strings().modalCancel, successHandler: { [weak self] _ in
                 guard let self, self.previewGeneration == generation, self.recorder.trimRange == range else { return }
                 self.resumeAfterConfirm()
             }, cancelHandler: { [weak self] in
+                self?.recorder.analyticsRecordingJourney?.step(.cancelConfirmation)
+            }, onDeinit: {
+                presentation.end()
             })
         } else {
             resumeAfterConfirm()
@@ -968,6 +1146,7 @@ public class ChatInputRecordingView: View {
     }
 
     private func discardRecording() {
+        recorder.analyticsRecordingJourney?.cancel()
         resetPreviewState()
         recorder.discard(from: chatInteraction, closingOtherModals: true)
     }
@@ -975,15 +1154,21 @@ public class ChatInputRecordingView: View {
     private func stopAndSend() {
         guard !isResuming, !recorder.isPreparingSubmission else { return }
         recorder.isOneTime = singleTimeControl.isSelected
-        recorder.send(from: chatInteraction, closingOtherModals: true)
+        recorder.analyticsRecordingJourney?.setOneTime(singleTimeControl.isSelected)
+        recorder.send(from: chatInteraction, via: .release, closingOtherModals: true)
     }
 
     private func stopAndCancel() {
         guard let parent else { return }
         if state == .fixed {
+            recorder.analyticsRecordingJourney?.step(.openConfirmation)
+            let presentation = (recorder.analyticsContext ?? Analytics.shared.unresolvedContext()).beginPresentation()
             verifyAlert_button(for: parent, information: strings().chatRecordingCancel, ok: strings().alertDiscard, cancel: strings().alertNO, successHandler: { [weak self] _ in
                 self?.discardRecording()
             }, cancelHandler: { [weak self] in
+                self?.recorder.analyticsRecordingJourney?.step(.cancelConfirmation)
+            }, onDeinit: {
+                presentation.end()
             })
         } else {
             discardRecording()

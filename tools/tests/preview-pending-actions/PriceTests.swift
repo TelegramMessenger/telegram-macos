@@ -32,6 +32,7 @@ struct PriceTheme { struct Icons { let modalClose = 0 }; let icons = Icons() }
 let theme = PriceTheme()
 let _id_input = "input"
 final class PriceInput {
+    var analyticsContext: Context?
     var validateData: (Int) -> PriceValidation = { _ in .fail(.none) }
     var afterDisappear: () -> Void = {}
     var leftModalHeader: ModalHeaderData?
@@ -39,6 +40,7 @@ final class PriceInput {
 final class PriceModal {
     let current = PriceInput()
     let form = PriceFormValue()
+    var analyticsContext: Context?
     var onDeinit: (() -> Void)?
     var priorDeinitCalls = 0
     var closes = 0
@@ -75,10 +77,16 @@ final class PriceTests: XCTestCase {
     override func tearDown() { PriceUI.modals = []; drain() }
     func testConstructionBindingApplyAndRemovalStayInOriginalContext() {
         let owner = Controller()
+        let origin = owner.analyticsContext!
+        owner.context.onPriceConstruction = { XCTAssertEqual(origin.depth, 1) }
         owner.togglePaidContent()
         let modal = PriceUI.modals[0]
+        XCTAssertTrue(modal.analyticsContext === origin)
+        XCTAssertTrue(modal.current.analyticsContext === origin)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice])
         let update = owner.genericView.stateValueInteractiveUpdate
         owner.genericView.stateValueInteractiveUpdate = { state in
+            XCTAssertEqual(origin.depth, 2)
             update?(state)
             modal.deliver(999)
         }
@@ -87,10 +95,13 @@ final class PriceTests: XCTestCase {
         XCTAssertEqual(owner.genericView.state.payAmount, 25)
         XCTAssertFalse(owner.genericView.state.isSpoiler)
         XCTAssertEqual(owner.genericView.writes, 1)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice, .applyPrice])
         drain()
+        XCTAssertEqual(origin.depth, 0)
         owner.genericView.stateValueInteractiveUpdate = update
         owner.togglePaidContent()
         XCTAssertNil(owner.genericView.state.payAmount)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice, .applyPrice, .removePrice])
     }
     func testExplicitCancelWinsOnceAndKeepsParentJourney() {
         let owner = Controller()
@@ -102,7 +113,10 @@ final class PriceTests: XCTestCase {
         modal.cancelled?()
         XCTAssertEqual(modal.closes, 1)
         XCTAssertNil(owner.genericView.state.payAmount)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice, .cancelPrice])
+        XCTAssertEqual(owner.analyticsMediaJourney?.cancelled, 0)
         drain()
+        XCTAssertEqual(owner.analyticsContext?.depth, 0)
     }
     func testUnknownDisappearanceDoesNotInventCancelAndBlocksValidation() {
         let owner = Controller()
@@ -113,6 +127,7 @@ final class PriceTests: XCTestCase {
         drain()
         modal.deliver(30)
         modal.cancelled?()
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice])
         XCTAssertNil(owner.genericView.state.payAmount)
     }
     func testChangedChatPreviewClosedAndCommittedOwnersRejectLateApply() {
@@ -129,6 +144,7 @@ final class PriceTests: XCTestCase {
             modal.deliver(25)
             modal.cancelled?()
             XCTAssertNil(owner.genericView.state.payAmount)
+            XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice])
         }
     }
     func testNewDialogAndPriceRemovalSupersedeOldResult() {
@@ -143,6 +159,7 @@ final class PriceTests: XCTestCase {
         owner.togglePaidContent()
         current.deliver(50)
         XCTAssertNil(owner.genericView.state.payAmount)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice, .openPrice, .removePrice])
     }
     func testMissingStateUpdateDoesNotInventAppliedOrRemovedPrice() {
         let owner = Controller()
@@ -153,6 +170,7 @@ final class PriceTests: XCTestCase {
         owner.genericView.state.payAmount = 30
         owner.togglePaidContent()
         XCTAssertEqual(owner.genericView.state.payAmount, 30)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice])
     }
     func testInvalidAmountsCanBeCorrectedAndSuccessfulValidationIsConsumed() {
         let owner = Controller()
@@ -166,6 +184,7 @@ final class PriceTests: XCTestCase {
         XCTAssertFalse(modal.enter("5").succeeded)
         modal.current.leftModalHeader?.handler()
         XCTAssertEqual(owner.genericView.state.payAmount, 10000)
+        XCTAssertEqual(owner.analyticsMediaJourney?.steps, [.openPrice, .applyPrice])
     }
     func testDestroyedOwnerIsNotRetainedAndDeniedObservationDoesNotDisablePricing() {
         var owner: Controller? = Controller()
@@ -177,6 +196,7 @@ final class PriceTests: XCTestCase {
         modal.deliver(20)
         modal.cancelled?()
         let other = Controller()
+        other.analyticsMediaJourney = nil
         other.togglePaidContent()
         PriceUI.modals[1].enter("20").finish()
         XCTAssertEqual(other.genericView.state.payAmount, 20)
@@ -189,6 +209,7 @@ final class PriceTests: XCTestCase {
             owner.genericView.state.payAmount = 20
             owner.togglePaidContent()
             XCTAssertEqual(owner.genericView.state.payAmount, 20)
+            XCTAssertTrue(owner.analyticsMediaJourney!.steps.isEmpty)
         }
         XCTAssertTrue(PriceUI.modals.isEmpty)
     }

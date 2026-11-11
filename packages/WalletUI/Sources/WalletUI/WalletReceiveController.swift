@@ -14,6 +14,7 @@ import QRCodeUtils
 import SceneEffects
 import Metal
 import MetalEngine
+import AppAnalytics
 
 private let receiveGradientColors: [NSColor] = [NSColor(rgb: 0x0079ff), NSColor(rgb: 0x46b2ff), NSColor(rgb: 0x46b2ff), NSColor(rgb: 0x067eff)]
 private let receiveAccentColor = NSColor(rgb: 0x087cff)
@@ -24,7 +25,8 @@ private enum WalletReceiveOnrampSessionResult {
     case session(String)
 }
 
-private func walletReceiveOnrampSession(context: any AccountContextProtocol, environment: WalletUIEnvironment, address: String) -> Signal<WalletReceiveOnrampSessionResult, NoError> {
+@available(macOS 10.15, *)
+private func walletReceiveOnrampSession(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext?, address: String) -> Signal<WalletReceiveOnrampSessionResult, NoError> {
     return (context.engine.payments.getOnrampProviders(cryptoCurrency: "gram")
     |> map(Optional.init)
     |> `catch` { _ -> Signal<[OnrampProviderInfo]?, NoError> in
@@ -42,6 +44,7 @@ private func walletReceiveOnrampSession(context: any AccountContextProtocol, env
             cryptoCurrency: "gram",
             address: address,
             paymentMethod: nil,
+            baseCurrency: walletContext?.stateValue.fiat.selectedCurrency.code,
             theme: nil,
             successReturnUrl: nil,
             failReturnUrl: nil
@@ -1232,13 +1235,14 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 }
 
 @available(macOS 10.15, *)
-public func WalletReceiveController(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext?, address: String, isOwnWallet: Bool = true, appeared: (() -> Void)? = nil) -> InputDataModalController {
+public func WalletReceiveController(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext?, address: String, isOwnWallet: Bool = true, appeared: (() -> Void)? = nil, closed: (() -> Void)? = nil) -> InputDataModalController {
     var appeared = appeared
     let actionsDisposable = DisposableSet()
     let availabilityDisposable = MetaDisposable()
     actionsDisposable.add(availabilityDisposable)
 
     var close: (() -> Void)? = nil
+    var getAnalyticsContext: () -> AnalyticsContext = { Analytics.shared.unresolvedContext() }
 
     let initialState = State(address: address, isOwnWallet: isOwnWallet)
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
@@ -1263,9 +1267,12 @@ public func WalletReceiveController(context: any AccountContextProtocol, environ
     }, dismiss: {
         close?()
     }, buy: {
-        let signal = showModalProgress(signal: walletReceiveOnrampSession(context: context, environment: environment, address: address), for: context.window)
+        let analyticsContext = getAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
+        let signal = showModalProgress(signal: walletReceiveOnrampSession(context: context, environment: environment, walletContext: walletContext, address: address), for: context.window)
         |> deliverOnMainQueue
-        availabilityDisposable.set((signal).start(next: { result in
+        availabilityDisposable.set(analyticsContext.preservingPresentation(signal).start(next: { result in
             switch result {
             case .unavailable:
                 environment.alert(for: context.window, header: strings().walletReceiveControllerPurchaseUnavailableTitle, info: strings().walletReceiveControllerPurchaseUnavailableInfo)
@@ -1289,6 +1296,10 @@ public func WalletReceiveController(context: any AccountContextProtocol, environ
     }
 
     let controller = InputDataController(dataSignal: signal, title: "", hasDone: false)
+    controller.analyticsScreen = .walletReceive
+    getAnalyticsContext = { [weak controller] in
+        return controller?.analyticsContext ?? Analytics.shared.unresolvedContext()
+    }
 
     controller.getBackgroundColor = {
         return receiveGradientColors[0]
@@ -1296,6 +1307,7 @@ public func WalletReceiveController(context: any AccountContextProtocol, environ
 
     controller.onDeinit = {
         actionsDisposable.dispose()
+        closed?()
     }
 
     controller.didAppear = { _ in

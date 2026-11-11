@@ -13,6 +13,7 @@ import AlertsUI
 import LocalAnimations
 import ChatUI
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -1000,28 +1001,73 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
 
     private func updateCollection(id: Int64, title: String?) {
         guard self.acceptsCollectionMutation, self.collectionMutationOperationId == nil,
-              let peerListContext = self.peerListContext else { return }
-        if let title {
-            self.actionsDisposable.add(peerListContext.renameFolder(id: id, title: title))
-        } else {
-            self.actionsDisposable.add(peerListContext.removeFolder(id: id))
+              let peerListContext = self.peerListContext, let window = self.window else { return }
+        let operationId = UUID()
+        self.collectionMutationOperationId = operationId
+        let requestDisposable = MetaDisposable()
+        self.collectionMutationDisposable.set(requestDisposable)
+        let signal = Signal<Bool, NoError> { subscriber in
+            let completion: (Bool) -> Void = { success in
+                subscriber.putNext(success)
+                subscriber.putCompletion()
+            }
+            if let title {
+                return peerListContext.renameFolder(id: id, title: title, completion: completion)
+            } else {
+                return peerListContext.removeFolder(id: id, completion: completion)
+            }
         }
+        |> deliverOnMainQueue
+        |> afterDisposed { [weak self] in
+            if self?.collectionMutationOperationId == operationId {
+                self?.collectionMutationOperationId = nil
+            }
+        }
+        requestDisposable.set(showModalProgress(signal: signal, for: window).start(next: { [weak self] success in
+            guard let self, self.acceptsCollectionMutation, self.collectionMutationOperationId == operationId else { return }
+            if success {
+                if title != nil {
+                    showModalText(for: window, text: strings().storyMediaAlbumUpdateSuccess)
+                }
+            } else {
+                alert(for: window, info: strings().unknownError)
+            }
+        }))
     }
 
     private func updateCollectionStories(id: Int64, added: [EngineStoryItem], removed: [Int32], successText: String?) {
         guard self.acceptsCollectionMutation, self.collectionMutationOperationId == nil,
-              let folderContext = self.collectionsContexts[id] else { return }
-        if !added.isEmpty {
-            self.actionsDisposable.add(folderContext.addToFolder(id: id, items: added))
+              let folderContext = self.collectionsContexts[id], let window = self.window,
+              !added.isEmpty || !removed.isEmpty else { return }
+        let operationId = UUID()
+        self.collectionMutationOperationId = operationId
+        let requestDisposable = MetaDisposable()
+        self.collectionMutationDisposable.set(requestDisposable)
+        let signal = Signal<Bool, NoError> { subscriber in
+            return folderContext.updateFolderStories(id: id, added: added, removed: removed, completion: { success in
+                subscriber.putNext(success)
+                subscriber.putCompletion()
+            })
         }
-        if !removed.isEmpty {
-            self.actionsDisposable.add(folderContext.removeFromFolder(id: id, itemIds: removed))
+        |> deliverOnMainQueue
+        |> afterDisposed { [weak self] in
+            if self?.collectionMutationOperationId == operationId {
+                self?.collectionMutationOperationId = nil
+            }
         }
+        requestDisposable.set(showModalProgress(signal: signal, for: window).start(next: { [weak self] success in
+            guard let self, self.acceptsCollectionMutation, self.collectionMutationOperationId == operationId else { return }
+            if success {
+                if let successText { showModalText(for: window, text: successText) }
+            } else {
+                alert(for: window, info: strings().unknownError)
+            }
+        }))
     }
 
     private func reorderCollections(from: Int64, to: Int64) {
         guard self.acceptsCollectionMutation, self.collectionMutationOperationId == nil,
-              let peerListContext = self.peerListContext else { return }
+              let peerListContext = self.peerListContext, let window = self.window else { return }
         let state = self.stateValue.with { $0 }
         guard state.access(self.context.peerId), from != to else { return }
         var ids = state.collections.compactMap { collection -> Int64? in
@@ -1030,7 +1076,26 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
         }
         guard let source = ids.firstIndex(of: from), let target = ids.firstIndex(of: to) else { return }
         ids.move(at: source, to: target)
-        self.actionsDisposable.add(peerListContext.reorderFolders(ids: ids))
+        let operationId = UUID()
+        self.collectionMutationOperationId = operationId
+        let requestDisposable = MetaDisposable()
+        self.collectionMutationDisposable.set(requestDisposable)
+        let signal = Signal<Bool, NoError> { subscriber in
+            return peerListContext.reorderFolders(ids: ids, completion: { success in
+                subscriber.putNext(success)
+                subscriber.putCompletion()
+            })
+        }
+        |> deliverOnMainQueue
+        |> afterDisposed { [weak self] in
+            if self?.collectionMutationOperationId == operationId {
+                self?.collectionMutationOperationId = nil
+            }
+        }
+        requestDisposable.set(showModalProgress(signal: signal, for: window).start(next: { [weak self] success in
+            guard let self, self.acceptsCollectionMutation, self.collectionMutationOperationId == operationId else { return }
+            if !success { alert(for: window, info: strings().unknownError) }
+        }))
     }
 
     public override func getRightBarViewOnce() -> BarView {
@@ -1136,7 +1201,7 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
     
     private func openArchive() {
         if let archiveContext = self.archiveContext {
-            self.navigationController?.push(StoryMediaController(context: context, peerId: peerId, listContext: archiveContext, standalone: self.standalone, isArchived: true))
+            self.navigationController?.push(StoryMediaController(context: context, peerId: peerId, listContext: archiveContext, standalone: self.standalone, isArchived: true).analytics(.storiesArchive))
         }
     }
     
@@ -1161,6 +1226,11 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
         }
         super.init(context)
         self.bar = standalone ? .init(height: 50) : .init(height: 0)
+        if isArchived {
+            self.analyticsScreen = standalone ? AnalyticsScreen.storiesArchive : AnalyticsScreen.peerInfoMediaArchivedStories
+        } else {
+            self.analyticsScreen = .peerInfoMediaStories
+        }
     }
     
     
@@ -1450,7 +1520,8 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
         let arguments = Arguments(context: context, standalone: standalone, isArchive: isArchived, isMy: peerId == context.peerId || isArchived, openStory: { [weak self] initialId in
             if let self {
                 let list = self.currentContext
-                StoriesHooks.shared.showListStoryObserved(context, list, peerId, initialId)
+                let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: self.analyticsContext ?? Analytics.shared.unresolvedContext())
+                StoriesHooks.shared.showListStoryObserved(context, list, peerId, initialId, analyticsContext: origin)
             }
         }, toggleSelected: { [weak self] storyId in
             

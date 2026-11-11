@@ -341,10 +341,13 @@ public class ChatMessageView: ChatRowView, ModalPreviewRowViewProtocol {
             return
         }
         if let text = text, !text.isEmpty {
+            let layoutString = item.textLayout.attributedString
+            let layoutRange = chatQuoteTextRange(in: layoutString, text: text, offset: range?.location)
+            let layoutText = layoutRange.map { (layoutString.string as NSString).substring(with: $0) } ?? text
             if let layerText {
-                layerText.body.highlight(text: text, color: item.presentation.colors.focusAnimationColor, range: range, in: item.textLayout)
+                layerText.body.highlight(text: layoutText, color: item.presentation.colors.focusAnimationColor, range: layoutRange, in: item.textLayout)
             } else {
-                self.text?.highlight(text: text, color: item.presentation.colors.focusAnimationColor, range: range)
+                self.text?.highlight(text: layoutText, color: item.presentation.colors.focusAnimationColor, range: layoutRange)
             }
         }
     }
@@ -469,7 +472,7 @@ public class ChatMessageView: ChatRowView, ModalPreviewRowViewProtocol {
 
         if let item = item as? ChatMessageItem {
 
-            updateText(for: item, previous: previous, animated: animated)
+            bindStep("messageText") { updateText(for: item, previous: previous, animated: animated) }
             guard textBindingVersion == version else { return }
 
             if let webpageLayout = item.webpageLayout {
@@ -491,7 +494,7 @@ public class ChatMessageView: ChatRowView, ModalPreviewRowViewProtocol {
                     }
                 }
                 
-                current.update(with: webpageLayout, animated: animated)
+                bindStep("webpage") { current.update(with: webpageLayout, animated: animated) }
             } else if let view = webpageContent {
                 performSubviewRemoval(view, animated: animated)
                 webpageContent = nil

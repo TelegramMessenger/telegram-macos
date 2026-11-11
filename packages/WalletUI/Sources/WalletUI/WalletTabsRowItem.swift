@@ -98,6 +98,8 @@ private final class WalletTabsView: View {
     private var titles: [String] = []
     private var selectedIndex: Int?
     private var selectionPosition: CGFloat?
+    private lazy var lens = GlassSelectionLens(host: self, selectionView: selectionView)
+    private var lifted = false
 
     var didSelect: ((Int) -> Void)?
 
@@ -124,7 +126,7 @@ private final class WalletTabsView: View {
                 let label = TextView()
                 label.userInteractionEnabled = false
                 label.isSelectable = false
-                addSubview(label)
+                (lens.contentView ?? self).addSubview(label)
                 labels.append(label)
             }
             updateTheme()
@@ -189,6 +191,9 @@ private final class WalletTabsView: View {
     }
 
     private func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        if lens.updateMode(content: labels) {
+            lifted = false
+        }
         transition.updateFrame(view: glass, frame: size.bounds)
         glass.updateLayout(size: size, transition: transition)
 
@@ -197,13 +202,17 @@ private final class WalletTabsView: View {
             label.setFrameOrigin(NSMakePoint(slot.minX + floorToScreenPixels(backingScaleFactor, (slot.width - label.frame.width) / 2), floorToScreenPixels(backingScaleFactor, (size.height - label.frame.height) / 2)))
         }
 
+        var selection: NSRect?
         if let selectionPosition, !slots.isEmpty {
+            let frame = selectionFrame(at: selectionPosition, slots: slots)
             let selectionTransition: ContainedViewLayoutTransition = selectionView.isHidden ? .immediate : transition
             selectionView.isHidden = false
-            selectionTransition.updateFrame(view: selectionView, frame: selectionFrame(at: selectionPosition, slots: slots))
+            selectionTransition.updateFrame(view: selectionView, frame: frame)
+            selection = frame
         } else {
             selectionView.isHidden = true
         }
+        lens.update(selection: selection, lifted: lifted, sources: labels, appearance: theme.appearance, transition: transition)
     }
 
     override func layout() {
@@ -228,12 +237,15 @@ private final class WalletTabsView: View {
         let pressedIndex = slots.firstIndex(where: { start.x < $0.maxX }) ?? slots.count - 1
         var position = CGFloat(pressedIndex)
         var moved = false
-        if pressedIndex != selectedIndex {
+        lens.updateMode(content: labels)
+        lifted = lens.liftsOnPress
+        if pressedIndex != selectedIndex || lifted {
             setSelection(position: position, animated: true)
         }
         while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp, .pressure]) {
             if next.type == .leftMouseUp {
                 let index = Int(position.rounded())
+                lifted = false
                 if moved || bounds.contains(convert(next.locationInWindow, from: nil)) {
                     setSelection(position: CGFloat(index), animated: true)
                     if index != selectedIndex {
@@ -242,6 +254,8 @@ private final class WalletTabsView: View {
                     }
                 } else if let selectedIndex {
                     setSelection(position: CGFloat(selectedIndex), animated: true)
+                } else {
+                    updateLayout(size: frame.size, transition: .animated(duration: 0.4, curve: .spring))
                 }
                 break
             }

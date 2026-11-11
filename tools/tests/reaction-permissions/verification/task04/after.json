@@ -1,0 +1,242 @@
+{
+  "label": "final",
+  "startedAt": "2026-10-28T07:44:11Z",
+  "entries": [
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "allowed"
+      },
+      "run": 0,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "default-ban"
+      },
+      "run": 1,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "boost-threshold"
+      },
+      "run": 2,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "boost-above"
+      },
+      "run": 3,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "boost-below"
+      },
+      "run": 4,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "boost-missing"
+      },
+      "run": 5,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "boost-zero"
+      },
+      "run": 6,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "boost-negative"
+      },
+      "run": 7,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "personal-ban-boosted"
+      },
+      "run": 8,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "administrator"
+      },
+      "run": 9,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "creator"
+      },
+      "run": 10,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "anonymous-restricted"
+      },
+      "run": 11,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "anonymous-boosted"
+      },
+      "run": 12,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "broadcast-restricted"
+      },
+      "run": 13,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "broadcast-allowed"
+      },
+      "run": 14,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 0,
+        "expected": 0,
+        "passed": 1
+      },
+      "notes": {
+        "case": "legacy-member"
+      },
+      "run": 15,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "legacy-admin"
+      },
+      "run": 16,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "actual": 1,
+        "expected": 1,
+        "passed": 1
+      },
+      "notes": {
+        "case": "legacy-creator"
+      },
+      "run": 17,
+      "scenario": "reaction-permission-model"
+    },
+    {
+      "metrics": {
+        "administrator": 0,
+        "boostsApplied": 1,
+        "boostsRequired": 1,
+        "canReact": 1,
+        "defaultReactionBan": 1,
+        "personalReactionBan": 0,
+        "pickerWindow": 1,
+        "rawPermission": 0,
+        "sendAsChat": 0,
+        "sendAsOther": 1
+      },
+      "notes": {
+        "chat": "Telegram macOS",
+        "messageId": "114419"
+      },
+      "run": 0,
+      "scenario": "reaction-picker"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import AppAnalytics
 import TelegramContext
 import Cocoa
 import TGUIKit
@@ -103,22 +104,25 @@ func installFeatureNavigationHooks() {
     hooks.showPremiumBoarding = { context, window, source, openFeatures, presentation in
         prem(with: PremiumBoardingController(context: context, source: (source ?? .settings).logSource, openFeatures: openFeatures, presentation: presentation ?? theme), for: window)
     }
-    hooks.showPremiumBoardingWithContext = { context, window, source, openFeatures, presentation in
-        prem(with: PremiumBoardingController(context: context, source: (source ?? .settings).logSource, openFeatures: openFeatures, presentation: presentation ?? theme), for: window)
+    hooks.showPremiumBoardingWithContext = { context, window, source, openFeatures, presentation, analyticsContext in
+        prem(with: PremiumBoardingController(context: context, source: (source ?? .settings).logSource, openFeatures: openFeatures, presentation: presentation ?? theme, analyticsContext: analyticsContext), for: window)
     }
     hooks.showPremiumLimit = { context, kind in
         showPremiumLimit(context: context, type: kind.limitType)
     }
-    hooks.showPremiumLimitWithContext = { context, kind in
+    hooks.showPremiumLimitWithContext = { context, kind, analyticsContext in
+        let presentation = analyticsContext.beginPresentation()
         if context.isPremium {
-            do {
+            withExtendedLifetime(presentation) {
                 showPremiumLimit(context: context, type: kind.limitType)
             }
         } else {
             let controller = PremiumLimitController(context: context, type: kind.limitType)
+            controller.analyticsContext = analyticsContext
             let onDeinit = controller.onDeinit
             controller.onDeinit = {
                 onDeinit?()
+                presentation.end()
             }
             showModal(with: controller, for: context.window)
         }
@@ -129,11 +133,33 @@ func installFeatureNavigationHooks() {
     hooks.showStarsPurchase = { context, window, currency, suffix, amount in
         showModal(with: Star_ListScreen(context: context, currency: currency, source: .buy(suffix: suffix, amount: amount)), for: window)
     }
-    hooks.showStarsPurchaseWithContext = { context, window, currency, suffix, amount in
+    hooks.showStarsPurchaseWithContext = { context, window, currency, suffix, amount, analyticsContext in
+        let presentation = analyticsContext.beginPresentation()
         let controller = Star_ListScreen(context: context, currency: currency, source: .buy(suffix: suffix, amount: amount))
+        controller.analyticsContext = analyticsContext
+        controller.current.analyticsContext = analyticsContext
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            presentation.end()
+        }
+        showModal(with: controller, for: window)
+    }
+    hooks.showStarsPurchaseForStoryReply = { context, window, amount, analyticsContext, completed in
+        let presentation = analyticsContext.beginPresentation()
+        var purchased = false
+        let controller = Star_ListScreen(context: context, currency: .stars, source: .buy(suffix: nil, amount: amount), analyticsContext: analyticsContext, onPurchased: {
+            guard !purchased else { return }
+            purchased = true
+            completed(true)
+        })
+        controller.analyticsContext = analyticsContext
+        controller.current.analyticsContext = analyticsContext
+        let onDeinit = controller.onDeinit
+        controller.onDeinit = {
+            onDeinit?()
+            if !purchased { completed(false) }
+            presentation.end()
         }
         showModal(with: controller, for: window)
     }
@@ -141,22 +167,28 @@ func installFeatureNavigationHooks() {
         let controller = makeFeatureDateSelector(context: context, defaultDate: defaultDate, repeatPeriod: repeatPeriod, request: request, selectedAt: selectedAt)
         showModal(with: controller, for: window)
     }
-    hooks.selectDateWithContext = { context, window, defaultDate, repeatPeriod, request, selectedAt, cancelled in
+    hooks.selectDateWithContext = { context, window, defaultDate, repeatPeriod, request, analyticsContext, selectedAt, cancelled in
+        let presentation = analyticsContext.beginPresentation()
         let controller = makeFeatureDateSelector(context: context, defaultDate: defaultDate, repeatPeriod: repeatPeriod, request: request, selectedAt: selectedAt)
+        controller.analyticsContext = analyticsContext
         controller.onCancelled = cancelled
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            presentation.end()
         }
         showModal(with: controller, for: window)
     }
-    hooks.selectDateWithDismissal = { context, window, defaultDate, repeatPeriod, request, selectedAt, cancelled, dismissed in
+    hooks.selectDateWithDismissal = { context, window, defaultDate, repeatPeriod, request, analyticsContext, selectedAt, cancelled, dismissed in
+        let presentation = analyticsContext.beginPresentation()
         let controller = makeFeatureDateSelector(context: context, defaultDate: defaultDate, repeatPeriod: repeatPeriod, request: request, selectedAt: selectedAt)
+        controller.analyticsContext = analyticsContext
         controller.onCancelled = cancelled
         controller.onDismissed = dismissed
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            presentation.end()
         }
         showModal(with: controller, for: window)
     }
@@ -172,14 +204,14 @@ func installFeatureNavigationHooks() {
         }
         showInactiveChannels(context: context, source: source)
     }
-    hooks.showInactiveChannelsWithContext = { context, reason in
+    hooks.showInactiveChannelsWithContext = { context, reason, analyticsContext in
         let source: InactiveSource
         switch reason {
         case .join: source = .join
         case .create: source = .create
         case .upgrade: source = .upgrade
         }
-        showInactiveChannels(context: context, source: source)
+        showInactiveChannels(context: context, source: source, analyticsContext: analyticsContext)
     }
     hooks.reportContent = { context, subject, title in
         reportComplicated(context: context, subject: subject, title: title)
@@ -207,8 +239,8 @@ func installFeatureNavigationHooks() {
     hooks.openStoryStats = { context, item, peer in
         context.bindings.rootNavigation().push(MessageStatsController(context, subject: .story(item, peer)))
     }
-    hooks.openStoryStatsWithContext = { context, item, peer in
-        context.bindings.rootNavigation().push(MessageStatsController(context, subject: .story(item, peer)))
+    hooks.openStoryStatsWithContext = { context, item, peer, analyticsContext in
+        context.bindings.rootNavigation().push(MessageStatsController(context, subject: .story(item, peer), analyticsContext: analyticsContext))
     }
     hooks.showBoostInfo = { context, window, peer, boosts, myStatus, source, presentation in
         let boostSource: BoostChannelSource
@@ -246,8 +278,8 @@ func installFeatureNavigationHooks() {
             }
         })
     }
-    hooks.makePaymentsCheckoutControllerWithContext = { context, source, invoice, completion in
-        return PaymentsCheckoutController(context: context, source: source, invoice: invoice, completion: completion.map { completion in
+    hooks.makePaymentsCheckoutControllerWithContext = { context, source, invoice, analyticsContext, completion in
+        return PaymentsCheckoutController(context: context, source: source, invoice: invoice, analyticsContext: analyticsContext, completion: completion.map { completion in
             return { status in
                 switch status {
                 case .paid: completion(.paid)
@@ -297,8 +329,8 @@ func installFeatureNavigationHooks() {
     hooks.openJoinChatBotWebView = { context, botId, url, queryId, joinedPeerId in
         openJoinChatBotWebView(context: context, botId: botId, url: url, queryId: queryId, joinedPeerId: joinedPeerId)
     }
-    hooks.openJoinChatBotWebViewWithContext = { context, botId, url, queryId, joinedPeerId in
-        openJoinChatBotWebView(context: context, botId: botId, url: url, queryId: queryId, joinedPeerId: joinedPeerId)
+    hooks.openJoinChatBotWebViewWithContext = { context, botId, url, queryId, joinedPeerId, analyticsContext in
+        openJoinChatBotWebView(context: context, botId: botId, url: url, queryId: queryId, joinedPeerId: joinedPeerId, analyticsContext: analyticsContext)
     }
     hooks.makeGroupCallAvatarMenuItem = { peer, context in
         return GroupCallAvatarMenuItem(peer, context: context)
@@ -323,8 +355,8 @@ func installFeatureNavigationHooks() {
     hooks.makeChannelAdminController = { context, peerId, adminId, initialParticipant, updated, upgradedToSupergroup in
         return ChannelAdminModalController(context as! AccountContext, peerId: peerId, adminId: adminId, initialParticipant: initialParticipant, updated: updated, upgradedToSupergroup: upgradedToSupergroup)
     }
-    hooks.makeChannelAdminControllerWithContext = { context, peerId, adminId, initialParticipant, updated, upgradedToSupergroup in
-        return ChannelAdminModalController(context as! AccountContext, peerId: peerId, adminId: adminId, initialParticipant: initialParticipant, updated: updated, upgradedToSupergroup: upgradedToSupergroup)
+    hooks.makeChannelAdminControllerWithContext = { context, peerId, adminId, initialParticipant, updated, upgradedToSupergroup, analyticsContext in
+        return ChannelAdminModalController(context as! AccountContext, peerId: peerId, adminId: adminId, initialParticipant: initialParticipant, updated: updated, upgradedToSupergroup: upgradedToSupergroup, analyticsContext: analyticsContext)
     }
     hooks.applyGroupCallResult = { sharedContext, callContext in
         GroupCallUIHooks.shared.applyGroupCallResult(sharedContext, callContext as! (any GroupCallContextProtocol))
@@ -339,9 +371,9 @@ func installFeatureNavigationHooks() {
         guard let interaction = interaction as? ChatInteraction else { return nil }
         return PreviewSenderController(urls: urls, chatInteraction: interaction, asMedia: asMedia, attributedString: attributedString, presentation: presentation)
     }
-    hooks.makePreviewSenderWithContext = { urls, interaction, asMedia, attributedString, presentation in
+    hooks.makePreviewSenderWithContext = { urls, interaction, asMedia, attributedString, presentation, analyticsContext in
         guard let interaction = interaction as? ChatInteraction else { return nil }
-        return PreviewSenderController(urls: urls, chatInteraction: interaction, asMedia: asMedia, attributedString: attributedString, presentation: presentation)
+        return PreviewSenderController(urls: urls, chatInteraction: interaction, asMedia: asMedia, attributedString: attributedString, presentation: presentation, analyticsContext: analyticsContext)
     }
     FeatureNavigationHooks.install(hooks)
 }

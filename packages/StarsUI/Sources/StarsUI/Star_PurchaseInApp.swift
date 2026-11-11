@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class HeaderItem : GeneralRowItem {
@@ -703,15 +704,24 @@ public enum StarPurchaseCompletionStatus : Equatable {
     }
 }
 
+public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: TelegramMediaInvoice?, source: BotPaymentInvoiceSource, type: StarPurchaseType = .bot, completion:@escaping(StarPurchaseCompletionStatus)->Void = { _ in }) -> InputDataModalController {
+    return Star_PurschaseInApp(context: context, invoice: invoice, source: source, type: type, analyticsContext: nil, completion: completion)
+}
 
-public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: TelegramMediaInvoice?, source: BotPaymentInvoiceSource, type: StarPurchaseType = .bot, completion: @escaping (StarPurchaseCompletionStatus) -> Void = { _ in }) -> InputDataModalController {
+public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: TelegramMediaInvoice?, source: BotPaymentInvoiceSource, type: StarPurchaseType = .bot, analyticsContext: AnalyticsContext?, completion: @escaping (StarPurchaseCompletionStatus) -> Void = { _ in }) -> InputDataModalController {
+    var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
     if case let .message(messageId) = source {
+        origin = origin.restricting(peerId: messageId.peerId)
     }
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let session = StarPurchaseSession()
     let actionsDisposable = DisposableSet()
     let paymentDisposable = MetaDisposable()
     actionsDisposable.add(paymentDisposable)
     let dismiss = {
+        let delivery = origin.beginPresentation()
+        defer { delivery.end() }
         let cancelled = session.close()
         actionsDisposable.dispose()
         if cancelled { completion(.cancelled) }
@@ -740,7 +750,7 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
     
     starsContext.load(force: true)
     
-    actionsDisposable.add((starsContext.state |> deliverOnMainQueue).start(next: { starsState in
+    actionsDisposable.add(origin.preservingPresentation(starsContext.state |> deliverOnMainQueue).start(next: { starsState in
         guard session.isOpen else { return }
         updateState { current in
             var current = current
@@ -762,7 +772,7 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
     default:
         let formAndMaybeValidatedInfo = context.engine.payments.fetchBotPaymentForm(source: source, themeParams: nil)
         
-        actionsDisposable.add((formAndMaybeValidatedInfo |> take(1) |> deliverOnMainQueue).start(next: { [weak actionsDisposable] form in
+        actionsDisposable.add(origin.preservingPresentation(formAndMaybeValidatedInfo |> take(1) |> deliverOnMainQueue).start(next: { [weak actionsDisposable] form in
             guard session.isOpen else { return }
             updateState { current in
                 var current = current
@@ -770,7 +780,10 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
                 return current
             }
             if let paymentBotId = form.paymentBotId {
-                actionsDisposable?.add((context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: paymentBotId)) |> deliverOnMainQueue).start(next: { peer in
+                let peerOrigin = origin.restricting(peerId: paymentBotId)
+                let delivery = peerOrigin.beginPresentation()
+                defer { delivery.end() }
+                actionsDisposable?.add(peerOrigin.preservingPresentation(context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: paymentBotId)) |> deliverOnMainQueue).start(next: { peer in
                     guard session.isOpen else { return }
                     updateState { current in
                         var current = current
@@ -801,6 +814,14 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
     }, buy: {
         let state = stateValue.with { $0 }
         guard let myBalance = state.myBalance, let peer = state.peer, let attempt = session.begin() else { return }
+        let actionOrigin: AnalyticsContext
+        if case .subscription = type {
+            actionOrigin = origin
+        } else {
+            actionOrigin = origin.restricting(peerId: peer.id)
+        }
+        let delivery = actionOrigin.beginPresentation()
+        defer { delivery.end() }
         if state.request.count > myBalance.value {
             let sourceValue: Star_ListScreenSource
             if case .starsChatSubscription = source {
@@ -808,9 +829,14 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
             } else {
                 sourceValue = .purchase(peer, state.request.count)
             }
-            let controller = Star_ListScreen(context: context, source: sourceValue)
+            let topUpPresentation = actionOrigin.beginPresentation()
+            let controller = Star_ListScreen(context: context, source: sourceValue, analyticsContext: actionOrigin)
+            controller.analyticsContext = actionOrigin
+            controller.current.analyticsContext = actionOrigin
             let onDeinit = controller.onDeinit
             controller.onDeinit = {
+                let delivery = actionOrigin.beginPresentation()
+                defer { delivery.end(); topUpPresentation.end() }
                 onDeinit?()
                 session.finish(attempt)
             }
@@ -822,10 +848,15 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
                 paymentDisposable.set(request)
                 let signal = showModalProgress(signal: context.engine.payments.sendStarsPaymentForm(formId: formId, source: source) |> take(1) |> deliverOnMainQueue, for: window)
                 guard session.isCurrent(attempt) else { return }
-                request.set((signal).start(next: { result in
+                request.set(actionOrigin.preservingPresentation(signal).start(next: { result in
                     switch result {
                     case let .done(receiptMessageId, subscriptionPeerId, _):
                         guard session.finish(attempt, paid: true) else { return }
+                        var resultOrigin = actionOrigin
+                        if let receiptMessageId { resultOrigin = resultOrigin.restricting(peerId: receiptMessageId.peerId) }
+                        if let subscriptionPeerId { resultOrigin = resultOrigin.restricting(peerId: subscriptionPeerId) }
+                        let delivery = resultOrigin.beginPresentation()
+                        defer { delivery.end() }
                         let text: String
                         switch type {
                         case .bot:
@@ -883,11 +914,13 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
         }
     })
     
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = origin.preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .starsPayment
     
     getController = { [weak controller] in
         return controller
@@ -901,6 +934,7 @@ public func Star_PurschaseInApp(context: (any AccountContextProtocol), invoice: 
         dismiss()
         close()
     })
+    modalController.analyticsContext = origin
     
     close = { [weak modalController] in
         dismiss()

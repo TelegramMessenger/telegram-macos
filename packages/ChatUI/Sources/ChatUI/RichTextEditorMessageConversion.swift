@@ -11,7 +11,7 @@ import InstantPageUI
 
 /// The ONE place `ReplyMarkupButtonAction` and `RichTextEditorCore.ButtonAction` are translated.
 /// Both directions live here so they cannot drift. `RichTextEditorCore` is Telegram-free, so it can
-/// name only the actions the editor can author or meaningfully describe (`url`, `copyText`,
+/// name only the actions the editor can author or meaningfully describe (`url`, `copyText`, `userProfile`,
 /// `disabled`); everything else is preserved verbatim as `.unsupported(kind:payload:)`, whose
 /// `payload` is the base64 of the action's own Postbox blob. Nothing outside this section may read
 /// or construct those two fields.
@@ -29,7 +29,9 @@ public func buttonAction(from action: ReplyMarkupButtonAction) -> ButtonAction {
         return .copyText(payload)
     case .disabled:
         return .disabled
-    case .callback, .urlAuth, .openWebView, .switchInline, .openUserProfile, .openWebApp, .payment,
+    case let .openUserProfile(peerId):
+        return .userProfile(peerId: peerId.toInt64())
+    case .callback, .urlAuth, .openWebView, .switchInline, .openWebApp, .payment,
          .text, .requestPhone, .requestMap, .setupPoll, .requestPeer:
         let encoder = PostboxEncoder()
         action.encode(encoder)
@@ -43,6 +45,12 @@ public func replyMarkupButtonAction(from action: ButtonAction) -> ReplyMarkupBut
         return .url(url)
     case let .copyText(payload):
         return .copyText(payload: payload)
+    case let .userProfile(peerId):
+        let peerId = PeerId(peerId)
+        guard peerId.namespace == Namespaces.Peer.CloudUser else {
+            return .disabled
+        }
+        return .openUserProfile(peerId: peerId)
     case .disabled:
         return .disabled
     case let .unsupported(kind, payload):
@@ -189,7 +197,9 @@ private func richTextParagraphBlocks(text: String, entities: [MessageTextEntity]
             case .Code, .Pre: a.inlineCode = true
             case .Spoiler: a.spoiler = true
             case let .TextUrl(url): a.link = url
-            case let .TextMention(peerId): a.link = "tg://user?id=\(peerId.id._internalGetInt64Value())"
+            case let .TextMention(peerId):
+                if peerId.namespace == Namespaces.Peer.CloudUser { a.link = "tg://user?id=\(peerId.id._internalGetInt64Value())" }
+            case let .FormattedDate(_, date): a.link = "tg://timestamp?t=\(date)"
             case .CustomEmoji: a.emoji = entityEmoji
             default: break
             }
@@ -275,7 +285,7 @@ private func runs(from richText: RichText, _ attrs: CharacterAttributes = .plain
     case let .textBotCommand(t): return runs(from: t, attrs)
     case let .textCashtag(t): return runs(from: t, attrs)
     case let .textHashtag(t): return runs(from: t, attrs)
-    case let .textDate(t, _, _): return runs(from: t, attrs)
+    case let .textDate(t, date, _): var a = attrs; a.link = "tg://timestamp?t=\(date)"; return runs(from: t, a)
     case .image:
         return []
     case let .textButton(button):
@@ -753,6 +763,7 @@ private func richText(from run: TextRun) -> RichText? {
             if attributes.underline { flattened = .underline(flattened) }
             if attributes.italic { flattened = .italic(flattened) }
             if attributes.bold { flattened = .bold(flattened) }
+            if attributes.spoiler { flattened = .textSpoiler(text: flattened) }
             return flattened
         }
         var result: RichText = .textButton(InstantPageButton(
@@ -767,7 +778,8 @@ private func richText(from run: TextRun) -> RichText? {
         if attributes.italic { result = .italic(result) }
         if attributes.bold { result = .bold(result) }
         if attributes.highlight != nil { result = .marked(result) }
-        if let link = attributes.link { result = .url(text: result, url: link, webpageId: nil) }
+        if let link = attributes.link { result = chatRichTextEditorLink(link).richText(result) }
+        if attributes.spoiler { result = .textSpoiler(text: result) }
         return result
     }
     if let latex = attributes.formula, !latex.isEmpty {
@@ -790,7 +802,8 @@ private func richText(from run: TextRun) -> RichText? {
     if attributes.italic { result = .italic(result) }
     if attributes.bold { result = .bold(result) }
     if attributes.highlight != nil { result = .marked(result) }
-    if let link = attributes.link { result = .url(text: result, url: link, webpageId: nil) }
+    if let link = attributes.link { result = chatRichTextEditorLink(link).richText(result) }
+    if attributes.spoiler { result = .textSpoiler(text: result) }
     return result
 }
 
@@ -1061,7 +1074,13 @@ private func buildEntityMessage(from blocks: [RichTextOutgoingBlock]) -> (text: 
             if attrs.strikethrough { attributes.append(.strikethrough(range)) }
             if attrs.underline { attributes.append(.underline(range)) }
             if attrs.spoiler { attributes.append(.spoiler(range)) }
-            if let link = attrs.link { attributes.append(.url(range, link)) }
+            if let link = attrs.link {
+                switch chatRichTextEditorLink(link) {
+                case let .mention(peerId): attributes.append(.uid(range, peerId.id._internalGetInt64Value()))
+                case let .date(date): attributes.append(.date(range, date))
+                case let .url(url): attributes.append(.url(range, url))
+                }
+            }
         }
     }
 

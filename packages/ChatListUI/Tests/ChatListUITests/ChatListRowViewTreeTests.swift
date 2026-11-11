@@ -65,14 +65,20 @@ final class ChatListRowViewTreeTests: XCTestCase {
 
     func testSwipeWithoutActionsKeepsRevealContainersDetached() {
         let row = makeRow()
-        row.moveReveal(delta: -40)
-        row.moveReveal(delta: 40)
+        let controller = ViewController()
+        XCTAssertFalse(row.handleRevealSwipe(.right(.start(controller: controller)), cancelled: false))
+        _ = row.handleRevealSwipe(.right(.swiping(delta: 40, controller: controller)), cancelled: false)
+        _ = row.handleRevealSwipe(.left(.swiping(delta: 40, controller: controller)), cancelled: false)
+        XCTAssertFalse(row.isRevealActive)
         XCTAssertEqual(viewClassNames(row.subviews), ["ChatListDraggingContainerView"])
     }
 
     func testRevealCompletionWithoutActionsKeepsRevealContainersDetached() {
         let row = makeRow()
-        row.completeReveal(direction: .none)
+        let controller = ViewController()
+        _ = row.handleRevealSwipe(.right(.success(delta: 120, controller: controller)), cancelled: false)
+        _ = row.handleRevealSwipe(.none, cancelled: false)
+        row.closeReveal()
         XCTAssertEqual(viewClassNames(row.subviews), ["ChatListDraggingContainerView"])
     }
 }

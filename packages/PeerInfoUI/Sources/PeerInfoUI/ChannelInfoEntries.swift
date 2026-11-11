@@ -25,6 +25,7 @@ import TelegramMediaUtils
 import TelegramTheme
 import TelegramUtils
 import InlineStickerLayer
+import AppAnalytics
 
 struct ChannelInfoEditingState: Equatable {
     let editingName: String?
@@ -240,6 +241,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func visibilitySetup() {
+        manageStep?(.changeType)
         let setup = PeerInfoNavigationHooks.shared.makeChannelVisibilityController(context, peerId, true, nil)
         visibilitySetupDisposable.set((setup.onComplete |> deliverOnMainQueue).start(next: { [weak self] _ in
             self?.pullNavigation()?.back()
@@ -247,6 +249,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
         pushViewController(setup.controller)
     }
     func openInviteLinks() {
+        manageStep?(.openInviteLinks)
         pushViewController(InviteLinksController(context: context, peerId: peerId, isChannel: true, manager: linksManager))
     }
     func openPostSuggestions() {
@@ -284,16 +287,19 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
         }))
     }
     func openReactions(allowedReactions: PeerAllowedReactions?, availableReactions: AvailableReactions?, reactionsCount: Int32?, starsAllowed: Bool?) {
+        manageStep?(.openReactions)
         if let availableReactions = availableReactions {
             PeerInfoNavigationHooks.shared.showChannelReactions(context, peerId, allowedReactions, availableReactions, reactionsCount, starsAllowed)
         }
     }
 
     func members() -> Void {
+        manageStep?(.openMembers)
         pushViewController(PeerInfoNavigationHooks.shared.makeChannelMembersController(context, peerId))
     }
     
     func admins() -> Void {
+        manageStep?(.openAdmins)
         pushViewController(ChannelAdminsViewController(context, peerId: peerId))
     }
     func updateChannelPhoto(_ custom: NSImage?, control: Control?) {
@@ -367,6 +373,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updateVideo(_ signal:Signal<VideoAvatarGeneratorState, NoError>) -> Void {
+        manageStep?(.changePhoto)
         
         let updateState:((ChannelInfoState)->ChannelInfoState)->Void = { [weak self] f in
             self?.updateState(f)
@@ -440,6 +447,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updatePhoto(_ path:String) -> Void {
+        manageStep?(.changePhoto)
         
         let updateState:((ChannelInfoState)->ChannelInfoState)->Void = { [weak self] f in
             self?.updateState(f)
@@ -497,11 +505,19 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func stats(_ datacenterId: Int32, monetization: Bool, stars: Bool) {
+        let origin = captureAnalyticsContext()
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         if datacenterId == 0 {
             let controller = ChannelBoostStatsController(context: context, peerId: peerId)
+            if let current = controller.analyticsContext, current.isExcluded || current.scope?.isValid != true {
+                controller.analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: current)
+            } else {
+                controller.analyticsContext = origin
+            }
             self.pushViewController(controller)
         } else {
-            self.pushViewController(ChannelStatsSegmentController(context, peerId: peerId, isChannel: true, monetization: monetization, stars: stars && !monetization))
+            self.pushViewController(ChannelStatsSegmentController(context, peerId: peerId, isChannel: true, monetization: monetization, stars: stars && !monetization, analyticsContext: origin))
         }
     }
     
@@ -570,6 +586,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updateEditingDescriptionText(_ text:String) -> Void {
+        manageStep?(.changeDescription)
         updateState { state in
             if let editingState = state.editingState {
                 return state.withUpdatedEditingState(editingState.withUpdatedEditingDescriptionText(text))
@@ -579,6 +596,7 @@ class ChannelInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<
     }
     
     func updateEditingName(_ name:String) -> Void {
+        manageStep?(.changeTitle)
         updateState { state in
             if let editingState = state.editingState {
                 return state.withUpdatedEditingState(ChannelInfoEditingState(editingName: name, editingDescriptionText: editingState.editingDescriptionText))

@@ -11,11 +11,14 @@ import SidebarUI
 public struct ForumSettingsHooks {
     public let makeStickerHeaderItem: (NSSize, AnyHashable, any AccountContextProtocol, LocalAnimatedSticker?, NSAttributedString, NSSize, NSColor?, CGImage?) -> TableRowItem
     public let sidebarImage: (SidebarImage) -> NSImage
+    public let sidebarPreviewImage: () -> NSImage
 
     public init(makeStickerHeaderItem: @escaping (NSSize, AnyHashable, any AccountContextProtocol, LocalAnimatedSticker?, NSAttributedString, NSSize, NSColor?, CGImage?) -> TableRowItem,
-                sidebarImage: @escaping (SidebarImage) -> NSImage) {
+                sidebarImage: @escaping (SidebarImage) -> NSImage,
+                sidebarPreviewImage: @escaping () -> NSImage) {
         self.makeStickerHeaderItem = makeStickerHeaderItem
         self.sidebarImage = sidebarImage
+        self.sidebarPreviewImage = sidebarPreviewImage
     }
 
     private static var _shared: ForumSettingsHooks?
@@ -40,6 +43,7 @@ public struct ForumSettingsHooks {
     public static let placeholder = ForumSettingsHooks(
         makeStickerHeaderItem: { initialSize, stableId, _, _, _, _, _, _ in
             GeneralRowItem(initialSize, stableId: stableId) },
-        sidebarImage: { _ in NSImage() }
+        sidebarImage: { _ in NSImage() },
+        sidebarPreviewImage: { NSImage() }
     )
 }

@@ -22,6 +22,8 @@ import ChatUI
 import ChatModeTypes
 import InlineStickerLayer
 import InputDataUI
+import HTMLBubbles
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -78,6 +80,7 @@ public enum UIChatListEntryId : Hashable {
     case grace
     case custom
     case auction
+    case htmlDemo(String)
 }
 
 
@@ -331,6 +334,7 @@ public enum UIChatListEntry : Identifiable, Comparable {
     case grace(Bool)
     case space
     case loading(ChatListFilter)
+    case htmlDemo(Int, String)
     public static func == (lhs: UIChatListEntry, rhs: UIChatListEntry) -> Bool {
         switch lhs {
         case let .chat(entry, activity, additionItem, filter, generalStatus, selectedForum, appearMode, hideContent, folders, communityCategories, canPreviewChat):
@@ -411,6 +415,12 @@ public enum UIChatListEntry : Identifiable, Comparable {
             } else {
                 return false
             }
+        case let .htmlDemo(index, id):
+            if case .htmlDemo(index, id) = rhs {
+                return true
+            } else {
+                return false
+            }
         }
     }
 
@@ -471,6 +481,12 @@ public enum UIChatListEntry : Identifiable, Comparable {
             return ChatListIndex(pinningIndex: 0, messageIndex: MessageIndex.absoluteUpperBound().globalPredecessor())
         case .auction:
             return ChatListIndex(pinningIndex: 0, messageIndex: MessageIndex.absoluteUpperBound().globalPredecessor())
+        case let .htmlDemo(index, _):
+            var messageIndex = MessageIndex.absoluteUpperBound().globalPredecessor().globalPredecessor().globalPredecessor()
+            for _ in 0 ..< index {
+                messageIndex = messageIndex.globalPredecessor()
+            }
+            return ChatListIndex(pinningIndex: 0, messageIndex: messageIndex)
         }
     }
 
@@ -510,6 +526,8 @@ public enum UIChatListEntry : Identifiable, Comparable {
             return .grace
         case .space:
             return .space
+        case let .htmlDemo(_, id):
+            return .htmlDemo(id)
         }
     }
 
@@ -580,6 +598,8 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<UIChatListEntry>]?,
                 return ChatListTextActionRowItem(initialSize, stableId: entry.stableId, context: arguments.context, title: action.text, info: action.info, icon: action.icon, canDismiss: action.canDismiss, action: action.action, dismiss: action.dismiss)
             case let .auction(info):
                 return ChatListAuctionInfoItem(initialSize, stableId: entry.stableId, context: arguments.context, info: info)
+            case let .htmlDemo(_, id):
+                return HTMLDemoChatListRowItem(initialSize, context: arguments.context, stableId: entry.stableId, chat: HTMLDemoCatalog.chat(id)!)
             }
         }
         
@@ -848,7 +868,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         }, switchOffForum: {
             switch mode {
             case let .forum(peerId, _, _):
-                _ = context.engine.peers.setChannelForumMode(id: peerId, isForum: false, displayForumAsTabs: true).start()
+                _ = context.engine.peers.setChannelForumMode(id: peerId, isForum: false, displayForumAsTabs: true, displayForumAsSidebar: false).start()
             default:
                 break
             }
@@ -1045,6 +1065,11 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
                             mapped.append(.group(0, .init(id: .archive, topMessage: nil, items: [], unreadCount: 0), animateGroupNextTransition.swap(nil) == .archive, hideStatus, state.controllerAppear, state.appear == .short, storyState))
                         }
                     }
+                }
+            }
+            if state.mode == .plain, state.forumPeer == nil, appConfiguration.getGeneralValue("dev", orElse: 0) == 1 {
+                for (index, chat) in HTMLDemoCatalog.chats.enumerated() {
+                    mapped.append(.htmlDemo(index, chat.id))
                 }
             }
             
@@ -1453,7 +1478,6 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
             return item.isFixedItem || item.groupId != .root
         }
         
-        self.updatePinnedItems(self.collectPinnedItems)
         self.genericView.tableView.resortController?.resortRange = pinnedRange
         
         
@@ -1552,25 +1576,6 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         
     }
     
-    public override var collectPinnedItems:[PinnedItemId] {
-        var items:[PinnedItemId] = []
-        
-        
-        self.genericView.tableView.enumerateItems { item -> Bool in
-            guard let item = item as? ChatListRowItem else {return false}
-            if let location = item.chatLocation {
-                switch item.pinnedType {
-                case .some, .last:
-                    items.append(location.pinnedItemId)
-                default:
-                    break
-                }
-            }
-            return item.isFixedItem || item.groupId != .root
-        }
-        return items
-    }
-
     
     public override func scrollup(force: Bool = false) {
         
@@ -1703,132 +1708,48 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         }, with: self, for: .leftMouseDown, priority: .high)
         
         
-        context.window.add(swipe: { [weak self] direction, _ -> SwipeHandlerResult in
+        context.window.add(swipe: { [weak self] direction, isActive -> SwipeHandlerResult in
             guard let `self` = self, let window = self.window else {return .failed}
-            let swipeState: SwipeState?
-            
-            
-            let hitTestView = self.genericView.hitTest(self.genericView.convert(window.mouseLocationOutsideOfEventStream, from: nil))
-            if let view = hitTestView, view.isInSuperclassView(ChatListRevealView.self) {
+            let swipeState: SwipeState
+            switch direction {
+            case let .left(state), let .right(state):
+                swipeState = state
+            case .none:
                 return .failed
-            } else if let view = hitTestView, view.isInSuperclassView(ChatListUIHooks.shared.storyListViewClass()) {
-                if self.getStoryInterfaceState() == .revealed {
-                    return .failed
-                }
             }
 
-            var checkFolder: Bool = true
-            let row = self.genericView.tableView.row(at: self.genericView.tableView.clipView.convert(window.mouseLocationOutsideOfEventStream, from: nil))
-            if row != -1 {
-                let item = self.genericView.tableView.item(at: row) as? ChatListRowItem
-                if let item = item {
-                    let view = item.view as? ChatListRowView
-                    if view?.endRevealState != nil {
-                        checkFolder = false
-                    }
-                    if !item.hasRevealState {
+            switch swipeState {
+            case .start:
+                guard self.context.layout != .minimisize else {
+                    return .failed
+                }
+                let hitTestView = self.genericView.hitTest(self.genericView.convert(window.mouseLocationOutsideOfEventStream, from: nil))
+                if let view = hitTestView, view.isInSuperclassView(ChatListRevealView.self) {
+                    return .failed
+                } else if let view = hitTestView, view.isInSuperclassView(ChatListUIHooks.shared.storyListViewClass()) {
+                    if self.getStoryInterfaceState() == .revealed {
                         return .failed
                     }
-                } else {
-                    return .failed
                 }
-
-            }
-
-            
-            switch direction {
-            case let .left(_state):
-                if (!self.mode.isPlain || self.mode.groupId == .archive || self.mode.isForum) && checkFolder  {
-                    swipeState = nil
-                } else {
-                    swipeState = _state
-                }
-                
-            case let .right(_state):
-                swipeState = _state
-            case .none:
-                swipeState = nil
-            }
-            
-            
-            guard let state = swipeState, self.context.layout != .minimisize else {return .failed}
-            
-            switch state {
-            case .start:
                 let row = self.genericView.tableView.row(at: self.genericView.tableView.clipView.convert(window.mouseLocationOutsideOfEventStream, from: nil))
-                if row != -1 {
-                    let item = self.genericView.tableView.item(at: row) as! ChatListRowItem
-                    guard !item.isAd else {return .failed}
-                    self.removeRevealStateIfNeeded(item.peerId)
-                    (item.view as? RevealTableView)?.initRevealState()
-                    return .success(RevealTableItemController(item: item))
-                } else {
+                guard row != -1, let item = self.genericView.tableView.item(at: row) as? ChatListRowItem, item.hasRevealState, !item.isAd, let view = item.view as? ChatListRowView else {
                     return .failed
                 }
-               
-            case let .swiping(_delta, controller):
-                let controller = controller as! RevealTableItemController
-
-                guard let view = controller.item.view as? RevealTableView else {return .nothing}
-                
-                var delta:CGFloat
-                switch direction {
-                case .left:
-                    delta = _delta//max(0, _delta)
-                case .right:
-                    delta = -_delta//min(-_delta, 0)
-                default:
-                    delta = _delta
+                if case .left = direction, !view.isRevealActive, !self.mode.isPlain || self.mode.groupId == .archive || self.mode.isForum {
+                    return .failed
                 }
-                
-                
-                delta -= view.additionalRevealDelta
-                
-                let newDelta = min(view.width * log2(abs(delta) + 1) * log2(delta < 0 ? view.width * 8 : view.width) / 100.0, abs(delta))
-
-                if delta < 0 {
-                    delta = -newDelta
-                } else {
-                    delta = newDelta
+                self.removeRevealStateIfNeeded(item.peerId)
+                guard view.handleRevealSwipe(direction, cancelled: false) else {
+                    return .failed
                 }
-
-                
-
-                view.moveReveal(delta: delta)
-            case let .success(_, controller), let .failed(_, controller):
-                let controller = controller as! RevealTableItemController
-                guard let view = (controller.item.view as? RevealTableView) else {return .nothing}
-                
-                var direction = direction
-                
-                switch direction {
-                case let .left(state):
-                  
-                    if view.containerX < 0 && abs(view.containerX) > view.rightRevealWidth / 2 {
-                        direction = .right(state.withAlwaysSuccess())
-                    } else if abs(view.containerX) < view.rightRevealWidth / 2 && view.containerX < view.leftRevealWidth / 2 {
-                       direction = .left(state.withAlwaysFailed())
-                    } else {
-                        direction = .left(state.withAlwaysSuccess())
-                    }
-                case .right:
-                    if view.containerX > 0 && view.containerX > view.leftRevealWidth / 2 {
-                        direction = .left(state.withAlwaysSuccess())
-                    } else if abs(view.containerX) < view.rightRevealWidth / 2 && view.containerX < view.leftRevealWidth / 2 {
-                        direction = .right(state.withAlwaysFailed())
-                    } else {
-                        direction = .right(state.withAlwaysSuccess())
-                    }
-                default:
-                    break
+                return .success(RevealTableItemController(item: item))
+            case let .swiping(_, controller), let .success(_, controller), let .failed(_, controller):
+                guard let controller = controller as? RevealTableItemController, let view = controller.item.view as? ChatListRowView else {
+                    return .nothing
                 }
-                
-                view.completeReveal(direction: direction)
+                _ = view.handleRevealSwipe(direction, cancelled: !isActive)
+                return .nothing
             }
-            
-          //  return .success()
-            
-            return .nothing
         }, with: self.genericView.tableView, identifier: "chat-list", priority: .high)
         
       
@@ -1872,7 +1793,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
     private func removeRevealStateIfNeeded(_ ignoreId: PeerId?) {
         genericView.tableView.enumerateExistingItemViews { item, view in
             if let item = item as? ChatListRowItem, item.peerId != ignoreId {
-                (view as? ChatListRowView)?.endRevealState = nil
+                (view as? ChatListRowView)?.closeReveal()
             }
         }
     }
@@ -1915,6 +1836,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
                     self?._openChat(index)
                 } else if filters.list.count > index {
                     if self?.filterValue.filter != filters.list[index] {
+                        Analytics.shared.send(AnalyticsEvents.chatListFolderSelect(folderKind: filters.list[index] == .allChats ? .allChats : .custom, via: .shortcut))
                     }
                     self?.updateFilter {
                         $0.withUpdatedFilter(filters.list[index])
@@ -1997,6 +1919,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
             return .invoked
         }
         if !self.filterValue.isFirst {
+            Analytics.shared.send(AnalyticsEvents.chatListFolderSelect(folderKind: (self.filterValue.tabs.first ?? .allChats) == .allChats ? .allChats : .custom, via: .shortcut))
             updateFilter {
                 $0.withUpdatedFilter(nil)
             }
@@ -2024,12 +1947,33 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         }
         super.init(context, followGlobal: !modal, mode: mode, searchOptions: searchOptions)
         
+        switch mode {
+        case .plain, .filter:
+            self.analyticsScreen = .chatList
+        case let .folder(groupId):
+            if groupId == .archive {
+                self.analyticsScreen = .chatListArchive
+            } else {
+                self.analyticsScreen = .chatList
+            }
+        case .forum:
+            self.analyticsScreen = .chatForumTopics
+        case .savedMessagesChats:
+            self.analyticsScreen = .chatSavedChats
+        case .community:
+            break
+        }
+        
         if mode.filterId != nil {
             context.closeFolderFirst = true
         }
     }
 
     public override func selectionWillChange(row:Int, item:TableRowItem, byClick: Bool) -> Bool {
+        if byClick, let view = item.view as? ChatListRowView, view.isRevealActive {
+            view.closeReveal()
+            return false
+        }
         if item is ChatListRowItem, let chat = context.bindings.rootNavigation().controller as? ChatController<Context> {
             let stableId = item.stableId
             let reselect: () -> Void = { [weak self] in

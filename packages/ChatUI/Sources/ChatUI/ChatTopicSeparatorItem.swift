@@ -33,6 +33,7 @@ extension ChatHistoryEntry.TopicType {
 public class ChatTopicSeparatorItem : TableStickItem {
     
     public let layout:TextViewLayout
+    public let glassLayout: TextViewLayout
     public let color: NSColor
     public let entry: ChatHistoryEntry
     public let interaction: ChatInteraction?
@@ -41,9 +42,13 @@ public class ChatTopicSeparatorItem : TableStickItem {
     public var context: (any AccountContextProtocol)? {
         return interaction?.interactionContext
     }
+
     
-    public init(_ initialSize:NSSize, _ entry:ChatHistoryEntry, interaction: ChatInteraction, theme: TelegramPresentationTheme) {
-        
+    public convenience init(_ initialSize:NSSize, _ entry:ChatHistoryEntry, interaction: ChatInteraction, theme: TelegramPresentationTheme) {
+        self.init(initialSize, entry: entry, interaction: interaction, theme: theme)
+    }
+
+    init(_ initialSize: NSSize, entry: ChatHistoryEntry, interaction: ChatInteraction? = nil, theme: TelegramPresentationTheme) {
         self.entry = entry
         self.interaction = interaction
         self.presentation = theme
@@ -56,8 +61,9 @@ public class ChatTopicSeparatorItem : TableStickItem {
         self.color = color
         
         self.layout = TextViewLayout(.initialize(string: type.title, color: color, font: .medium(theme.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
+        self.glassLayout = TextViewLayout(.initialize(string: type.title, color: theme.colors.text, font: .medium(theme.fontSize)), maximumNumberOfLines: 1, truncationType: .end, alignment: .center)
 
-        
+
         super.init(initialSize)
     }
     
@@ -65,12 +71,13 @@ public class ChatTopicSeparatorItem : TableStickItem {
         if TelegramUtilsHooks.shared.isLite(.blur) {
             return false
         }
-        return presentation.shouldBlurService
+        return presentation.shouldBlurService || presentation.bubbled && presentation.backgroundMode.hasWallpaper
     }
     
     public required init(_ initialSize: NSSize) {
         self.entry = .empty(MessageIndex.absoluteLowerBound(), theme)
         self.layout = TextViewLayout(NSAttributedString())
+        self.glassLayout = TextViewLayout(NSAttributedString())
         self.interaction = nil
         self.presentation = theme
         self.color = .random
@@ -84,6 +91,7 @@ public class ChatTopicSeparatorItem : TableStickItem {
     public override func makeSize(_ width: CGFloat, oldWidth:CGFloat) -> Bool {
         let success = super.makeSize(width, oldWidth: oldWidth)
         layout.measure(width: width - 100)
+        glassLayout.measure(width: width - 100)
         return success
     }
     
@@ -110,14 +118,21 @@ private class ChatTopicSeparatorItemView : TableStickView {
                 needsDisplay = true
             }
         }
-        
+
+        override func setFrameSize(_ newSize: NSSize) {
+            if newSize != frame.size {
+                needsDisplay = true
+            }
+            super.setFrameSize(newSize)
+        }
+
         override func draw(_ layer: CALayer, in ctx: CGContext) {
             super.draw(layer, in: ctx)
-            
+
             guard let item else {
                 return
             }
-            
+
             let bounds = layer.bounds
             let lineWidth: CGFloat = 1.0
             let dashLength: CGFloat = 4.0
@@ -125,28 +140,15 @@ private class ChatTopicSeparatorItemView : TableStickView {
             let centerY = bounds.midY
 
             ctx.saveGState()
-
-            // Set stroke color (you can customize this)
             ctx.setStrokeColor(item.presentation.chatServiceItemColor.cgColor)
-
-            // Set line width
             ctx.setLineWidth(lineWidth)
-
-            // Set line cap to round
             ctx.setLineCap(.round)
-
-            // Set line dash pattern
             ctx.setLineDash(phase: 0, lengths: [dashLength, dashGap])
-
-            // Move to start point and add line to end point
             ctx.move(to: CGPoint(x: bounds.minX, y: centerY))
             ctx.addLine(to: CGPoint(x: bounds.maxX, y: centerY))
-
-            // Stroke the path
             ctx.strokePath()
-
             ctx.restoreGState()
-            
+
         }
     }
     
@@ -156,18 +158,25 @@ private class ChatTopicSeparatorItemView : TableStickView {
     private var topicIconIdentity: ChatTopicIconIdentity?
     private let containerView: View = View()
     private let backgroundView = View()
+    private let serviceView = View()
+    private let glassView = LiquidGlassView(frame: .zero, hasShadow: true, hasBorder: true)
+    private var appliedGlass: Bool?
     private let overlay = Control()
     private let chevron = ImageView()
     private let lineView = LineView()
     private var visualEffect: VisualEffect?
     required init(frame frameRect: NSRect) {
-        
+
         self.textView.isSelectable = false
         self.textView.userInteractionEnabled = false
         self.containerView.wantsLayer = true
+        self.glassView.isEventLess = true
         super.init(frame: frameRect)
         addSubview(lineView)
         addSubview(backgroundView)
+        backgroundView.addSubview(serviceView)
+        backgroundView.addSubview(glassView)
+        serviceView.layer?.masksToBounds = true
         containerView.addSubview(textView)
         containerView.addSubview(chevron)
         textView.isAccessibilityDecorative = true
@@ -191,24 +200,104 @@ private class ChatTopicSeparatorItemView : TableStickView {
     }
     
     override func updateIsVisible(_ visible: Bool, animated: Bool) {
+        if visible || !animated {
+            backgroundView.isHidden = !visible
+            containerView.isHidden = !visible
+        }
         backgroundView.change(opacity: visible ? 1 : 0, animated: animated)
         containerView.change(opacity: visible ? 1 : 0, animated: animated)
+        overlay.isHidden = !visible
     }
     
     override var header: Bool {
         didSet {
-            lineView.change(opacity: header ? 0 : 1, animated: true)
-            
+            lineView.change(opacity: header ? 0 : 1, animated: false)
+            if header != oldValue {
+                updateStyle(animated: true)
+            }
         }
     }
-    
-    override func updateColors() {
-        super.updateColors()
-        
+
+    private var usesGlass: Bool {
+        return header && !TelegramUtilsHooks.shared.isLite(.blur)
+    }
+
+    private func updateStyle(animated: Bool) {
         guard let item = item as? ChatTopicSeparatorItem else {
             return
         }
-        backgroundView.backgroundColor = item.presentation.chatServiceItemColor
+        let usesGlass = self.usesGlass
+        let styleChanged = appliedGlass.flatMap { $0 != usesGlass } ?? false
+        let animated = animated && styleChanged && !TelegramUtilsHooks.shared.isLite(.animations) && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        appliedGlass = usesGlass
+        if animated {
+            glassView.isHidden = false
+            glassView.change(opacity: usesGlass ? 1 : 0, animated: true, completion: { [weak self] _ in
+                guard let self, self.appliedGlass == false else {
+                    return
+                }
+                self.glassView.isHidden = true
+            })
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.2
+            textView.layer?.add(fade, forKey: "styleFade")
+            chevron.layer?.add(fade, forKey: "styleFade")
+        } else {
+            glassView.change(opacity: usesGlass ? 1 : 0, animated: false)
+            glassView.isHidden = !usesGlass
+        }
+        serviceView.change(opacity: usesGlass ? 0 : 1, animated: animated)
+        let textColor = usesGlass ? item.presentation.colors.text : item.color
+        chevron.image = TelegramThemeHooks.shared.image(.iconAffiliateChevron).precomposed(textColor.withAlphaComponent(0.6), zoom: 0.8)
+        chevron.sizeToFit()
+        textView.update(usesGlass ? item.glassLayout : item.layout)
+        if case let .topicSeparator(_, .topic(threadId, info), _, _) = item.entry {
+            updateTopicIcon(threadId: threadId, info: info, item: item)
+        }
+    }
+
+    private func updateTopicIcon(threadId: Int64, info: Message.AssociatedThreadInfo, item: ChatTopicSeparatorItem) {
+        guard let context = item.context else { return }
+        let fileId = info.icon ?? 0
+        let iconColor = usesGlass ? item.presentation.colors.text : item.color
+        let identity = ChatTopicIconIdentity(account: context.account, fileId: fileId, title: info.title, iconColor: info.iconColor, isGeneral: threadId == 1, generalColor: theme.chatList.badgeMutedBackgroundColor, customColor: iconColor)
+        if self.iconView == nil || topicIconIdentity != identity {
+            let origin = self.iconView?.frame.origin ?? .zero
+            topicIconIdentity = identity
+            if let iconView {
+                iconView.removeFromSuperview()
+                self.iconView = nil
+            }
+
+            let file: TelegramMediaFile?
+            if fileId == 0 {
+                file = ChatInterfaceHooks.shared.makeTopicIconFile(info.title, info.iconColor, threadId == 1)
+            } else {
+                file = nil
+            }
+
+            let animatedView = InlineStickerView(account: context.account, inlinePacksContext: context.inlinePacksContext, emoji: .init(fileId: fileId == 0 ? threadId : fileId, file: file, emoji: ""), size: NSMakeSize(18, 18), getColors: { file in
+                file.isCustomTemplateEmoji ? [.init(keyPath: "", color: iconColor)] : []
+            }, playPolicy: .framesCount(1))
+
+            animatedView.setFrameOrigin(origin)
+            self.iconView = animatedView
+            containerView.addSubview(animatedView)
+        }
+    }
+
+
+    override func updateColors() {
+        super.updateColors()
+
+        guard let item = item as? ChatTopicSeparatorItem else {
+            return
+        }
+        serviceView.backgroundColor = visualEffect == nil ? item.presentation.chatServiceItemColor : .clear
+        visualEffect?.bgColor = item.presentation.chatServiceItemColor
+        visualEffect?.material = topicSeparatorMaterial(dark: item.presentation.colors.isDark)
+        glassView.updateLocalizationAndTheme(theme: item.presentation)
     }
     
 
@@ -236,12 +325,16 @@ private class ChatTopicSeparatorItemView : TableStickView {
         transition.updateFrame(view: overlay, frame: size.bounds)
         
         
-        transition.updateFrame(view: backgroundView, frame: NSMakeRect(containerView.frame.minX - 3, 2, containerView.frame.width + 3, size.height - 4))
-        
+        let backgroundFrame = NSMakeRect(containerView.frame.minX - 3, 2, containerView.frame.width + 3, size.height - 4)
+        transition.updateFrame(view: backgroundView, frame: backgroundFrame)
+        transition.updateFrame(view: serviceView, frame: backgroundFrame.size.bounds)
+        transition.updateFrame(view: glassView, frame: backgroundFrame.size.bounds)
+        glassView.updateLayout(size: backgroundFrame.size, transition: transition)
+
         transition.updateFrame(view: lineView, frame: size.bounds)
-        
+
         if let visualEffect {
-            transition.updateFrame(view: visualEffect, frame: backgroundView.bounds)
+            transition.updateFrame(view: visualEffect, frame: backgroundFrame.size.bounds)
         }
 
     }
@@ -259,30 +352,29 @@ private class ChatTopicSeparatorItemView : TableStickView {
         }
         
         if item.shouldBlurService {
-            let blurBackground = item.presentation.blurServiceColor
+            let blurBackground = item.presentation.chatServiceItemColor
             
             if self.visualEffect == nil {
                 self.visualEffect = VisualEffect(frame: self.bounds)
-                self.backgroundView.addSubview(self.visualEffect!, positioned: .below, relativeTo: nil)
+                self.serviceView.addSubview(self.visualEffect!, positioned: .below, relativeTo: nil)
             }
             self.visualEffect?.bgColor = blurBackground
-            self.backgroundView.backgroundColor = .clear
+            self.visualEffect?.material = topicSeparatorMaterial(dark: item.presentation.colors.isDark)
+            self.serviceView.backgroundColor = .clear
         } else {
             if let visualEffect {
                 performSubviewRemoval(visualEffect, animated: animated)
                 self.visualEffect = nil
             }
-            self.backgroundView.backgroundColor = item.presentation.chatServiceItemColor
+            self.serviceView.backgroundColor = item.presentation.chatServiceItemColor
         }
-        
+
         lineView.item = item
-        
-        backgroundView.layer?.cornerRadius = (item.height - 4) / 2
-        
-        chevron.image = TelegramThemeHooks.shared.image(.iconAffiliateChevron).precomposed(item.color.withAlphaComponent(0.6), zoom: 0.8)
-        chevron.sizeToFit()
-        
-        self.textView.update(item.layout)
+
+        serviceView.layer?.cornerRadius = (item.height - 4) / 2
+        glassView.cornerRadius = (item.height - 4) / 2
+
+        updateStyle(animated: false)
         
         if let context = item.context {
             
@@ -311,27 +403,7 @@ private class ChatTopicSeparatorItemView : TableStickView {
                     self.avatarView = nil
                 }
                 
-                let fileId = info.icon ?? 0
-                let identity = ChatTopicIconIdentity(account: context.account, fileId: fileId, title: info.title, iconColor: info.iconColor, isGeneral: threadId == 1, generalColor: theme.chatList.badgeMutedBackgroundColor, customColor: theme.colors.accent)
-                if self.iconView == nil || topicIconIdentity != identity {
-                    topicIconIdentity = identity
-                    if let iconView {
-                        iconView.removeFromSuperview()
-                        self.iconView = nil
-                    }
-                    
-                    let file: TelegramMediaFile?
-                    if fileId == 0 {
-                        file = ChatInterfaceHooks.shared.makeTopicIconFile(info.title, info.iconColor, threadId == 1)
-                    } else {
-                        file = nil
-                    }
-                    
-                    let animatedView = InlineStickerView(account: context.account, inlinePacksContext: context.inlinePacksContext, emoji: .init(fileId: fileId == 0 ? threadId : fileId, file: file, emoji: ""), size: NSMakeSize(18, 18))
-                    
-                    self.iconView = animatedView
-                    containerView.addSubview(animatedView)
-                }
+                updateTopicIcon(threadId: threadId, info: info, item: item)
 
             }
             
@@ -346,4 +418,11 @@ private class ChatTopicSeparatorItemView : TableStickView {
 
     }
     
+}
+
+private func topicSeparatorMaterial(dark: Bool) -> NSVisualEffectView.Material {
+    if #available(macOS 10.14, *) {
+        return dark ? .hudWindow : .titlebar
+    }
+    return .appearanceBased
 }

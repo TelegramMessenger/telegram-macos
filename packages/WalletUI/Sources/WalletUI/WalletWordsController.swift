@@ -11,6 +11,7 @@ import TGUIKit
 import SwiftSignalKit
 import WalletContext
 import IOKit.pwr_mgt
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -92,6 +93,7 @@ private func makeWordsController(context: any AccountContextProtocol, environmen
     let controller = InputDataController(dataSignal: signal, title: strings().walletWordsControllerTitle, hasDone: false, getBackgroundColor: {
         theme.colors.background
     })
+    controller.analyticsScreen = .walletRecoveryPhrase
 
     var displaySleepAssertionID: IOPMAssertionID = 0
     var holdsDisplaySleepAssertion = false
