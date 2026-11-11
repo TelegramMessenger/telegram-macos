@@ -4,6 +4,7 @@ import TelegramCore
 import Postbox
 import SwiftSignalKit
 import DataUsageUI
+import HTMLBubbles
 
 extension ChatInteraction: @retroactive StorageUsageChatInteraction {
 
@@ -114,5 +115,7 @@ func installDataUsageUIHooks() {
         return ChatAdditionController(context: context as! AccountContext, chatLocation: chatLocation, focusTarget: .init(messageId: messageId))
     }, showChatGallery: { context, message, delegate in
         showChatGallery(context: context, message: message, delegate, nil, type: .alone, chatMode: nil, chatLocation: nil)
+    }, clearWidgetStorage: { context, peerId in
+        HTMLWidgetStorage.shared.removeAll(basePath: context.account.basePath, peerId: peerId)
     }))
 }

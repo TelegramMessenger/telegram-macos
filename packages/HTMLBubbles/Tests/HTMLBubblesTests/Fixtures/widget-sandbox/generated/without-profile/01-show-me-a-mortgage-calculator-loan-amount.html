@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mortgage Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; margin: 0; padding: 16px; background: #f5f7fa; color: #1f2937; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  h2 { margin: 0 0 16px; font-size: 18px; }
+  label { display: block; font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+  input[type=number] { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; margin-bottom: 14px; }
+  input[type=range] { width: 100%; margin-bottom: 14px; }
+  .result { background: #eef2ff; border-radius: 10px; padding: 16px; margin-top: 8px; }
+  .big { font-size: 28px; font-weight: 600; color: #4338ca; }
+  .row { display: flex; justify-content: space-between; font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>🏠 Mortgage Calculator</h2>
+  <label for="amount">Loan amount ($)</label>
+  <input type="number" id="amount" value="300000" min="1000" step="1000">
+  <label for="rate">Interest rate (%): <span id="rateVal">6.5</span></label>
+  <input type="range" id="rate" min="0.5" max="15" step="0.1" value="6.5">
+  <label for="years">Term (years): <span id="yearsVal">30</span></label>
+  <input type="range" id="years" min="1" max="40" step="1" value="30">
+  <div class="result">
+    <div style="font-size:13px;color:#6b7280">Monthly payment</div>
+    <div class="big" id="monthly">$0</div>
+    <div class="row"><span>Total paid</span><strong id="total">$0</strong></div>
+    <div class="row"><span>Total interest</span><strong id="interest">$0</strong></div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  function calc() {
+    const P = parseFloat($('amount').value) || 0;
+    const r = parseFloat($('rate').value) / 100 / 12;
+    const n = parseInt($('years').value) * 12;
+    $('rateVal').textContent = $('rate').value;
+    $('yearsVal').textContent = $('years').value;
+    const m = r === 0 ? P / n : P * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+    $('monthly').textContent = fmt.format(m);
+    $('total').textContent = fmt.format(m * n);
+    $('interest').textContent = fmt.format(m * n - P);
+  }
+  ['amount', 'rate', 'years'].forEach(id => $(id).addEventListener('input', calc));
+  calc();
+</script>
+</body>
+</html>

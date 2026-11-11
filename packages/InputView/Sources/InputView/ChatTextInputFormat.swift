@@ -92,6 +92,7 @@ public func chatTextInputClearFormattingAttributes(_ state: Updated_ChatTextInpu
         
         state.inputText.enumerateAttributes(in: NSMakeRange(0, state.inputText.length), options: []) { attributes, range, stop in
             for (key, _) in attributes {
+                guard key != chatInputAnalyticsExcludedAttribute else { continue }
                 if range.intersection(nsRange) != nil {
                     if let targetKey = targetKey {
                         if targetKey == key {
@@ -116,15 +117,18 @@ public func chatTextInputClearFormattingAttributes(_ state: Updated_ChatTextInpu
     }
 }
 
-public func chatTextInputAddLinkAttribute(_ state: Updated_ChatTextInputState, selectionRange: Range<Int>, url: String, text: String) -> Updated_ChatTextInputState {
+public func chatTextInputAddLinkAttribute(_ state: Updated_ChatTextInputState, selectionRange: Range<Int>, url: String, text: String, inheritedAnalyticsExclusion: Bool = false) -> Updated_ChatTextInputState {
     guard selectionRange.lowerBound >= 0, selectionRange.upperBound <= state.inputText.length else { return state }
     if !selectionRange.isEmpty {
         let nsRange = NSRange(location: selectionRange.lowerBound, length: selectionRange.count)
         var linkRange = nsRange
         var attributesToRemove: [(NSAttributedString.Key, NSRange)] = []
+        var hasExcludedAnalytics = inheritedAnalyticsExclusion
         state.inputText.enumerateAttributes(in: nsRange, options: .longestEffectiveRangeNotRequired) { attributes, range, stop in
             for (key, _) in attributes {
-                if key == TextInputAttributes.textUrl {
+                if key == chatInputAnalyticsExcludedAttribute {
+                    hasExcludedAnalytics = true
+                } else if key == TextInputAttributes.textUrl {
                     attributesToRemove.append((key, range))
                     linkRange = linkRange.union(range)
                 } else {
@@ -145,6 +149,9 @@ public func chatTextInputAddLinkAttribute(_ state: Updated_ChatTextInputState, s
             length = max(nsRange.length, text.length)
         }
         let updatedRange = NSMakeRange(nsRange.location, length)
+        if hasExcludedAnalytics && updatedRange.length > 0 {
+            result.addAttribute(chatInputAnalyticsExcludedAttribute, value: true as NSNumber, range: updatedRange)
+        }
         result.addAttribute(TextInputAttributes.textUrl, value: TextInputTextUrlAttribute(url: url), range: updatedRange)
         return Updated_ChatTextInputState(inputText: result, selectionRange: updatedRange.lowerBound ..< updatedRange.upperBound)
     } else {
@@ -206,12 +213,15 @@ public func chatTextInputAddQuoteAttribute(_ state: Updated_ChatTextInputState, 
     return Updated_ChatTextInputState(inputText: result, selectionRange: doNotUpdateSelection ? state.selectionRange : selectionRange)
 }
 
-public func chatTextInputReplaceSelectedText(_ state: Updated_ChatTextInputState, selectionRange: Range<Int>, text: NSAttributedString) -> Updated_ChatTextInputState {
+public func chatTextInputReplaceSelectedText(_ state: Updated_ChatTextInputState, selectionRange: Range<Int>, text: NSAttributedString, inheritedAnalyticsExclusion: Bool = false) -> Updated_ChatTextInputState {
     guard selectionRange.lowerBound >= 0, selectionRange.upperBound <= state.inputText.length else { return state }
     let range = NSRange(location: selectionRange.lowerBound, length: selectionRange.count)
+    let selected = state.inputText.attributedSubstring(from: range)
+    let hasExcludedAnalytics = inheritedAnalyticsExclusion || ChatTextInputState(attributedText: selected, selectionRange: 0..<0).hasExcludedAnalytics
+    let replacement = hasExcludedAnalytics ? chatInputTextExcludingAnalytics(text) : text
     let result = NSMutableAttributedString(attributedString: state.inputText)
-    result.replaceCharacters(in: range, with: text)
-    let cursor = range.location + text.length
+    result.replaceCharacters(in: range, with: replacement)
+    let cursor = range.location + replacement.length
     return Updated_ChatTextInputState(inputText: result, selectionRange: cursor..<cursor)
 }
 

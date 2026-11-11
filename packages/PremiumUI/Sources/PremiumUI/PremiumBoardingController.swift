@@ -22,6 +22,7 @@ import InAppPurchaseManager
 import InlineStickers
 import ObjcUtils
 import ChatModeTypes
+import AppAnalytics
 
 public struct PremiumEmojiStatusInfo : Equatable {
     public let status: PeerEmojiStatus
@@ -287,6 +288,7 @@ public enum PremiumLogEvents  {
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
+    public let analyticsContext: AnalyticsContext
     public let presentation: TelegramPresentationTheme
     public let showTerms:()->Void
     public let showPrivacy:()->Void
@@ -296,8 +298,9 @@ private final class Arguments {
     public let execute:(String)->Void
     public let copyLink:(String)->Void
     public let toggleAds:(Bool)->Void
-    public init(context: (any AccountContextProtocol), presentation: TelegramPresentationTheme, showTerms: @escaping()->Void, showPrivacy:@escaping()->Void, openInfo:@escaping(PeerId, Bool, MessageId?, ChatInitialAction?)->Void, openFeature:@escaping(PremiumValue, Bool)->Void, togglePeriod:@escaping(PremiumPeriod)->Void, execute:@escaping(String)->Void, copyLink:@escaping(String)->Void, toggleAds:@escaping(Bool)->Void) {
+    public init(context: (any AccountContextProtocol), analyticsContext: AnalyticsContext, presentation: TelegramPresentationTheme, showTerms: @escaping()->Void, showPrivacy:@escaping()->Void, openInfo:@escaping(PeerId, Bool, MessageId?, ChatInitialAction?)->Void, openFeature:@escaping(PremiumValue, Bool)->Void, togglePeriod:@escaping(PremiumPeriod)->Void, execute:@escaping(String)->Void, copyLink:@escaping(String)->Void, toggleAds:@escaping(Bool)->Void) {
         self.context = context
+        self.analyticsContext = analyticsContext
         self.presentation = presentation
         self.showPrivacy = showPrivacy
         self.showTerms = showTerms
@@ -682,7 +685,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         let status: NSAttributedString
         status = PremiumHooks.shared.applyMessageEntities(state.premiumConfiguration.statusEntities, state.premiumConfiguration.status, arguments.context, 13, arguments.openInfo, nil, theme.colors.isDark, theme.bubbled)
 
-        return PremiumBoardingHeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: arguments.presentation, isPremium: state.isPremium, peer: state.peer?.peer, emojiStatus: state.status, source: state.source, premiumText: status, viewType: .legacy, sceneType: scene)
+        return PremiumBoardingHeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: arguments.presentation, isPremium: state.isPremium, peer: state.peer?.peer, emojiStatus: state.status, source: state.source, premiumText: status, viewType: .legacy, sceneType: scene, analyticsContext: arguments.analyticsContext)
     }))
     index += 1
     
@@ -1223,16 +1226,29 @@ public final class PremiumBoardingController : ModalViewController {
     private let openFeatures: Bool
     private let presentation: TelegramPresentationTheme
     private var focusOnItemTag: PremiumBoardingEntryTag?
+    private let analyticsPresentation: AnalyticsPresentation?
 
+    public convenience init(context: (any AccountContextProtocol), source: PremiumLogEventsSource = .settings, openFeatures: Bool = false, presentation: TelegramPresentationTheme = theme, focusOnItemTag: PremiumBoardingEntryTag? = nil) {
+        self.init(context: context, source: source, openFeatures: openFeatures, presentation: presentation, focusOnItemTag: focusOnItemTag, analyticsContext: nil)
+    }
 
-
-    public init(context: (any AccountContextProtocol), source: PremiumLogEventsSource = .settings, openFeatures: Bool = false, presentation: TelegramPresentationTheme = theme, focusOnItemTag: PremiumBoardingEntryTag? = nil) {
+    public init(context: (any AccountContextProtocol), source: PremiumLogEventsSource = .settings, openFeatures: Bool = false, presentation: TelegramPresentationTheme = theme, focusOnItemTag: PremiumBoardingEntryTag? = nil, analyticsContext: AnalyticsContext?) {
+        self.analyticsPresentation = analyticsContext?.beginPresentation()
         self.context = context
         self.source = source
         self.openFeatures = openFeatures
         self.presentation = presentation
         self.focusOnItemTag = focusOnItemTag
         super.init(frame: NSMakeRect(0, 0, 380, 530))
+        self.analyticsContext = analyticsContext
+        switch source {
+        case .business_standalone:
+            self.analyticsScreen = AnalyticsScreen.settingsBusiness
+        case .business:
+            self.analyticsScreen = AnalyticsScreen.premiumBusiness
+        default:
+            self.analyticsScreen = AnalyticsScreen.premiumPromo
+        }
     }
     
     public override var hasBorder: Bool {
@@ -1320,6 +1336,7 @@ public final class PremiumBoardingController : ModalViewController {
     
     public override func viewDidLoad() {
         super.viewDidLoad()
+        let analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         
         if source == .business_standalone {
             self.genericView.tableView.contentInsets = NavigationBarView.contentTopInset
@@ -1376,7 +1393,7 @@ public final class PremiumBoardingController : ModalViewController {
             }
         }))
         
-        let arguments = Arguments(context: context, presentation: presentation, showTerms: {
+        let arguments = Arguments(context: context, analyticsContext: analyticsContext, presentation: presentation, showTerms: {
             
         }, showPrivacy: {
             
@@ -1388,7 +1405,7 @@ public final class PremiumBoardingController : ModalViewController {
             default:
                 break
             }
-            PremiumHooks.shared.openChatObserved(context, peerId, updated)
+            PremiumHooks.shared.openChatObserved(context, peerId, updated, analyticsContext: analyticsContext)
             
             close()
         }, openFeature: { [weak self] value, animated in
@@ -1400,14 +1417,17 @@ public final class PremiumBoardingController : ModalViewController {
             FastSettings.dismissPremiumPerk(value.rawValue)
             
             if strongSelf.source == .business_standalone {
-                PremiumHooks.shared.openBusinessFeatureObserved(context, value)
+                PremiumHooks.shared.openBusinessFeatureObserved(context, value, analyticsContext: analyticsContext)
                 return
             }
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             let controller = PremiumBoardingFeaturesController(context, presentation: strongSelf.presentation, value: value, stickers: stateValue.with { $0.stickers }, configuration: stateValue.with { $0.premiumConfiguration }, back: { [weak strongSelf] in
                 _ = strongSelf?.escapeKeyAction()
             }, makeAcceptView: { [weak strongSelf] in
                 return strongSelf?.genericView.makeAcceptView()
             })
+            controller.analyticsContext = analyticsContext
             strongSelf.genericView.append(controller, animated: animated)
             
             updateState { current in
@@ -1618,15 +1638,15 @@ public final class PremiumBoardingController : ModalViewController {
             
             let url = context.appConfiguration.getStringValue("premium_manage_subscription_url", orElse: "https://t.me/premiumbot?start=status")
             if source == .grace_period {
-                PremiumHooks.shared.openLinkObserved(context, url, arguments.openInfo)
+                PremiumHooks.shared.openLinkObserved(context, url, arguments.openInfo, analyticsContext: analyticsContext)
                 close()
                 return
             }
             
             if let slug = PremiumBuyConfig(appConfiguration: context.appConfiguration).invoiceSlug {
-                premiumInvoiceCheckout(context: context, slug: slug, paid: close)
+                premiumInvoiceCheckout(context: context, slug: slug, analyticsContext: analyticsContext, paid: close)
             } else if let url = stateValue.with ({ $0.period?.option.botUrl }) {
-                PremiumHooks.shared.openLinkObserved(context, url, arguments.openInfo)
+                PremiumHooks.shared.openLinkObserved(context, url, arguments.openInfo, analyticsContext: analyticsContext)
                 close()
             }
         }
@@ -1636,7 +1656,7 @@ public final class PremiumBoardingController : ModalViewController {
             
             let url = context.appConfiguration.getStringValue("premium_manage_subscription_url", orElse: "https://apps.apple.com/account/subscriptions")
             if source == .grace_period {
-                PremiumHooks.shared.openLinkObserved(context, url, arguments.openInfo)
+                PremiumHooks.shared.openLinkObserved(context, url, arguments.openInfo, analyticsContext: analyticsContext)
                 close()
                 return
             }
@@ -1648,7 +1668,7 @@ public final class PremiumBoardingController : ModalViewController {
                 return
             }
             
-            premiumStorePurchase(context: context, product: premiumProduct, paid: close)
+            premiumStorePurchase(context: context, product: premiumProduct, analyticsContext: analyticsContext, paid: close)
         }
         
       
@@ -1702,7 +1722,7 @@ public final class PremiumBoardingController : ModalViewController {
     }
     
     public func restore() {
-        premiumStoreRestore(context: context)
+        premiumStoreRestore(context: context, analyticsContext: analyticsContext ?? Analytics.shared.unresolvedContext())
     }
     
     public override func escapeKeyAction() -> KeyHandlerResult {

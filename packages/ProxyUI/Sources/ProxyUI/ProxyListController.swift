@@ -12,6 +12,7 @@ import GeneralRows
 import InputDataUI
 import AlertsUI
 import ProxyUtils
+import AppAnalytics
 
 private let _p_id_enable: InputDataIdentifier = InputDataIdentifier("_p_id_enable")
 private let _p_id_add: InputDataIdentifier = InputDataIdentifier("_p_id_add")
@@ -258,6 +259,7 @@ public func proxyListController(accountManager: AccountManager<TelegramAccountMa
     }, removeAfterDisappear: false, hasDone: false, identifier: "proxy", afterTransaction: { controller in
         controller.rightBarView.isHidden = stateValue.with { $0.settings.servers.isEmpty }
     })
+    controller.analyticsScreen = .settingsProxy
     
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -418,6 +420,7 @@ public func addProxyController(accountManager: AccountManager<TelegramAccountMan
     }, afterDisappear: {
         actionsDisposable.dispose()
     }, identifier: "proxy")
+    controller.analyticsScreen = .settingsProxyServer
     
     return (controller)
 }

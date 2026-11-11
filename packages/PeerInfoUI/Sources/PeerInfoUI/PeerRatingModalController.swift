@@ -17,6 +17,7 @@ import LocalAnimations
 import TelegramMedia
 import PremiumUI
 import SceneEffects
+import AppAnalytics
 
 
 private final class LevelRowItem : GeneralRowItem {
@@ -629,6 +630,7 @@ public func PeerRatingModalController(context: any AccountContextProtocol, peer:
         dataSignal: signal,
         title: strings().peerRatingPreviewTitle
     )
+    controller.analyticsScreen = .peerInfoRating
     getController = { [weak controller] in
         return controller
     }

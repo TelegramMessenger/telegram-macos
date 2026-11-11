@@ -21,6 +21,7 @@ import InputTextView
 import SwiftSignalKit
 import Postbox
 import TelegramCore
+import AppAnalytics
 
 public struct _ExportedInvitation : Equatable {
     public var link: String
@@ -778,6 +779,7 @@ public func InviteLinksController(context: any AccountContextProtocol, peerId: P
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().manageLinksTitleNew, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .peerInfoInviteLinks
         
     controller.onDeinit = {
         actionsDisposable.dispose()

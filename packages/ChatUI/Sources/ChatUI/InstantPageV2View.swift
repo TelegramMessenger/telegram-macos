@@ -195,7 +195,7 @@ private final class InstantPageV2RevealSnippetLayer: CALayer {
             x: -textItem.frame.minX - self.sourceRect.minX,
             y: -textItem.frame.minY - self.sourceRect.minY
         )
-        textItem.drawInTile(context: ctx)
+        textItem.drawInTile(context: ctx, backingScaleFactor: self.contentsScale)
         ctx.restoreGState()
     }
 
@@ -214,6 +214,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
     private enum InteractiveTarget {
         case button(InstantPageInlineButtonAttachment)
         case link(InstantPageUrlItem)
+        case unsupported(InstantPageV2UnsupportedItem)
     }
 
     public func consumesHorizontalScroll(atWindowPoint windowPoint: NSPoint) -> Bool {
@@ -807,7 +808,9 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                 return
             }
         }
-        if self.interactiveTarget(at: local) != nil || self.isPointOverUnrevealedSpoiler(local) {
+        if case let .button(attachment)? = self.interactiveTarget(at: local), !attachment.isEnabled {
+            NSCursor.arrow.set()
+        } else if self.interactiveTarget(at: local) != nil || self.isPointOverUnrevealedSpoiler(local) {
             NSCursor.pointingHand.set()
         } else if self.isPointOverText(local) {
             NSCursor.iBeam.set()
@@ -819,14 +822,8 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
     /// The torn band whose "Update" pill is under `point`, if any. Only that pill is the hit area, exactly
     /// like the row in a plain unsupported message — the rest of the band falls through to text handling.
     private func unsupportedItem(at point: NSPoint) -> InstantPageV2UnsupportedItem? {
-        guard let layout = self.currentLayout else { return nil }
-        for (index, item) in layout.items.enumerated() {
-            if let reveals = self.itemReveals, index < reveals.count, self.isHiddenReveal(reveals[index]) {
-                continue
-            }
-            if case let .unsupported(unsupported) = item, unsupported.layout.pillRect(in: unsupported.frame).contains(point) {
-                return unsupported
-            }
+        if case let .unsupported(item)? = self.interactiveTarget(at: point) {
+            return item
         }
         return nil
     }
@@ -857,6 +854,11 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                 continue
             }
             switch item {
+            case let .unsupported(item):
+                let frame = item.layout.pillRect(in: item.frame).offsetBy(dx: originInView.x, dy: originInView.y)
+                if (clipRect.map { $0.contains(point) } ?? true), frame.contains(point) {
+                    return .unsupported(item)
+                }
             case let .buttonRow(row):
                 for entry in row.buttons {
                     let frame = entry.frame.offsetBy(
@@ -1679,17 +1681,17 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
 
     /// The hosted media view for a given `InstantPageMedia.index`, searched top-level → details bodies
     /// → slideshows. Used as the gallery's open/close zoom source.
-    public func mediaContentView(forMediaIndex index: Int) -> NSView? {
+    public func mediaContentView(forMediaIndex index: Int, selectSlideshowPage: Bool = false) -> NSView? {
         if let view = self.mediaViews[index] {
             return view
         }
         for body in self.detailsBodies.values {
-            if let view = body.mediaContentView(forMediaIndex: index) {
+            if let view = body.mediaContentView(forMediaIndex: index, selectSlideshowPage: selectSlideshowPage) {
                 return view
             }
         }
         for slideshow in self.slideshowViews.values {
-            if let view = slideshow.mediaContentView(forMediaIndex: index) {
+            if let view = slideshow.mediaContentView(forMediaIndex: index, selectPage: selectSlideshowPage) {
                 return view
             }
         }
@@ -1982,6 +1984,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                     body.mediaContentConfig = self.mediaContentConfig
                     body.context = self.context
                     body.buttonTapped = { [weak self] button in self?.buttonTapped?(button) }
+                    body.unsupportedTapped = { [weak self] in self?.unsupportedTapped?() }
                     body.frame = CGRect(
                         x: d.frame.minX,
                         y: d.frame.minY + d.titleFrame.maxY,
@@ -2980,7 +2983,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                 x: textItem.frame.minX - textItem.textItem.frame.minX,
                 y: textItem.frame.minY - textItem.textItem.frame.minY
             )
-            textItem.textItem.drawInTile(context: ctx)
+            textItem.textItem.drawInTile(context: ctx, backingScaleFactor: self.backingScaleFactor)
             ctx.restoreGState()
 
         case let .unsupported(unsupported):
@@ -3063,7 +3066,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                     ctx.clip(to: rects)
                 }
             }
-            block.textItem.drawInTile(context: ctx)
+            block.textItem.drawInTile(context: ctx, backingScaleFactor: self.backingScaleFactor)
             ctx.restoreGState()
 
         case let .divider(div):
@@ -3235,7 +3238,7 @@ public final class InstantPageV2View: View, NSViewToolTipOwner, HorizontalScroll
                     ctx.clip(to: rects)
                 }
             }
-            d.titleTextItem.drawInTile(context: ctx)
+            d.titleTextItem.drawInTile(context: ctx, backingScaleFactor: self.backingScaleFactor)
             ctx.restoreGState()
 
         case let .table(table):
@@ -3941,11 +3944,23 @@ public final class InstantPageV2SlideshowView: View, HorizontalScrollConsuming {
         return self.slideViews.count > 1
     }
 
-    public func mediaContentView(forMediaIndex index: Int) -> NSView? {
-        guard self.currentKey.firstIndex(of: index) == self.currentPage, self.currentPage < self.slideViews.count else {
+    public func mediaContentView(forMediaIndex index: Int, selectPage: Bool = false) -> NSView? {
+        guard let page = self.currentKey.firstIndex(of: index), page < self.slideViews.count else {
             return nil
         }
-        return self.slideViews[self.currentPage].mediaView
+        if selectPage {
+            self.endDrag()
+            self.pagesView.layer?.removeAllAnimations()
+            self.currentPage = page
+            self.updatePagesLayout()
+            self.dotsView.update(count: self.slideViews.count, page: page)
+            self.updateSlidesPlayback()
+            self.layoutSubtreeIfNeeded()
+        }
+        guard page == self.currentPage else {
+            return nil
+        }
+        return self.slideViews[page].mediaView
     }
 
     public override func viewWillMove(toWindow newWindow: NSWindow?) {

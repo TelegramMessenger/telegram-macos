@@ -15,6 +15,7 @@ import AlertsUI
 import LocalAnimations
 import TelegramIconsTheme
 import FilePanels
+import AppAnalytics
 
 public final class ThemeGridControllerInteraction {
     public let openWallpaper: (Wallpaper, TelegramWallpaper?) -> Void
@@ -357,6 +358,12 @@ public func ChatWallpaperModalController(_ context: any AccountContextProtocol, 
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().chatWPBackgroundTitle)
+    if case .chat = source {
+        controller.analyticsScreen = .chatWallpaper
+    } else {
+        controller.analyticsScreen = .settingsAppearanceWallpaper
+    }
+
     controller.onDeinit = {
         actionsDisposable.dispose()
     }

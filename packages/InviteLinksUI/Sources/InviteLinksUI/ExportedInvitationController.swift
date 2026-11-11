@@ -22,6 +22,7 @@ import SwiftSignalKit
 import Postbox
 import TelegramCore
 import InlineStickerLayer
+import AppAnalytics
 
 private final class SubscriptionFeeRowItem: GeneralRowItem {
     private let pricing: StarsSubscriptionPricing
@@ -410,6 +411,7 @@ public func ExportedInvitationController(invitation: _ExportedInvitation, peerId
 
     
     let controller = InputDataController(dataSignal: dataSignal, title: invitation.title ?? strings().exportedInvitationTitle)
+    controller.analyticsScreen = .peerInfoInviteLinksLink
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: {
         getModalController?()?.close()

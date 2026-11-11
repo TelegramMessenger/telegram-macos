@@ -47,6 +47,10 @@ public final class CallControl : Control {
 
     private var progressView: RadialProgressView?
 
+    public var modalMorphSource: NSView {
+        return imageBackgroundView ?? self
+    }
+
     private var isLoading: Bool = false
     
     public required init(frame frameRect: NSRect) {

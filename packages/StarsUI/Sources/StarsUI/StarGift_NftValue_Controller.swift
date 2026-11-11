@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     fileprivate let gift: StarGift.Gift
@@ -386,6 +387,7 @@ public func StarGift_NftValue_Controller(context: (any AccountContextProtocol), 
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsValue
     
     getController = { [weak controller] in
         return controller

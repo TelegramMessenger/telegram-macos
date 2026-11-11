@@ -1,3 +1,4 @@
+import AppAnalytics
 import InputDataUI
 import Cocoa
 import TGUIKit
@@ -56,34 +57,35 @@ func installPremiumUIHooks() {
         }
         execute(inapp: inApp(for: url.nsstring, context: context, openInfo: openInfo))
     })
-    hooks.openLinkWithContext = { context, url, openInfo in
+    hooks.openLinkWithContext = { context, url, openInfo, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        execute(inapp: inApp(for: url.nsstring, context: context, openInfo: openInfo))
+        execute(inapp: inApp(for: url.nsstring, context: context, openInfo: openInfo), analyticsContext: analyticsContext)
     }
-    hooks.openChatWithContext = { context, peerId, action in
+    hooks.openChatWithContext = { context, peerId, action, analyticsContext in
         guard let context = context as? AccountContext else { return }
         let navigation = context.bindings.rootNavigation()
         let chat = navigation.first { $0 is ChatController } as? ChatController
         if let chat, chat.chatInteraction.peerId == peerId {
+            chat.inheritAnalyticsContext(analyticsContext)
             navigation.back()
             if let action {
                 chat.chatInteraction.invokeInitialAction(action: action)
             }
         } else {
-            navigateToChat(navigation: navigation, context: context, chatLocation: .peer(peerId), initialAction: action)
+            navigateToChat(navigation: navigation, context: context, chatLocation: .peer(peerId), initialAction: action, analyticsContext: analyticsContext)
         }
     }
-    hooks.showStickerPackPreviewWithContext = { context, shortName in
+    hooks.showStickerPackPreviewWithContext = { context, shortName, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        if let controller = premiumNavigationChild( create: {
-            StickerPackPreviewModalController(context, peerId: nil, references: [.emoji(.name(shortName))])
+        if let controller = premiumNavigationChild(analyticsContext: analyticsContext, create: {
+            StickerPackPreviewModalController(context, peerId: nil, references: [.emoji(.name(shortName))], analyticsContext: analyticsContext)
         }) {
             showModal(with: controller, for: context.window)
         }
     }
-    hooks.openBusinessFeatureWithContext = { context, value in
+    hooks.openBusinessFeatureWithContext = { context, value, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        if let controller = premiumNavigationChild( create: {
+        if let controller = premiumNavigationChild(analyticsContext: analyticsContext, create: {
             makePremiumBusinessController(context: context, value: value)
         }) {
             context.bindings.rootNavigation().push(controller)
@@ -92,13 +94,18 @@ func installPremiumUIHooks() {
     installPremiumHooks(hooks)
 }
 
-private func premiumNavigationChild<T: ViewController>( create: () -> T?) -> T? {
+private func premiumNavigationChild<T: ViewController>(analyticsContext: AnalyticsContext, create: () -> T?) -> T? {
+    let presentation = analyticsContext.beginPresentation()
     guard let controller = create() else {
+        presentation.end()
         return nil
     }
+    controller.analyticsContext = analyticsContext
+    (controller as? InputDataModalController)?.current.analyticsContext = analyticsContext
     let onDeinit = controller.onDeinit
     controller.onDeinit = {
         onDeinit?()
+        presentation.end()
     }
     return controller
 }

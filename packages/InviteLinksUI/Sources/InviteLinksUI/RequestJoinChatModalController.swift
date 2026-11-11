@@ -21,6 +21,7 @@ import InputTextView
 import SwiftSignalKit
 import Postbox
 import TelegramCore
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -70,8 +71,14 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
+public func RequestJoinChatModalController(context: any AccountContextProtocol, joinhash: String, invite: ExternalJoiningChatState, interaction:@escaping(Peer)->Void) -> InputDataModalController {
+    return RequestJoinChatModalController(context: context, joinhash: joinhash, invite: invite, analyticsContext: nil, interaction: interaction)
+}
 
-public func RequestJoinChatModalController(context: any AccountContextProtocol, joinhash: String, invite: ExternalJoiningChatState, interaction: @escaping (Peer) -> Void) -> InputDataModalController {
+public func RequestJoinChatModalController(context: any AccountContextProtocol, joinhash: String, invite: ExternalJoiningChatState, analyticsContext: AnalyticsContext?, interaction: @escaping (Peer) -> Void) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let action = InviteJoinAction()
 
 
@@ -97,6 +104,8 @@ public func RequestJoinChatModalController(context: any AccountContextProtocol, 
         }
         
         let controller = InputDataController(dataSignal: signal, title: state.title)
+        controller.analyticsScreen = .linkJoinRequest
+        controller.analyticsContext = origin
         
         controller.onDeinit = {
             action.close()
@@ -110,6 +119,7 @@ public func RequestJoinChatModalController(context: any AccountContextProtocol, 
             action.close()
             finish()
         })
+        modalController.analyticsContext = origin
         
         controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
             modalController?.close()
@@ -126,8 +136,10 @@ public func RequestJoinChatModalController(context: any AccountContextProtocol, 
         
         controller.returnKeyInvocation = { _, _ in
             guard let attempt = action.begin(), let takeResult = action.detach(attempt) else { return .default }
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             close?()
-            _ = performInviteJoin(context: context, hash: joinhash, window: context.window, requestSentAsSuccess: true, takeResult: takeResult, close: {}, interaction: interaction)
+            _ = performInviteJoin(context: context, hash: joinhash, window: context.window, analyticsContext: origin, requestSentAsSuccess: true, takeResult: takeResult, close: {}, interaction: interaction)
             return .default
         }
 

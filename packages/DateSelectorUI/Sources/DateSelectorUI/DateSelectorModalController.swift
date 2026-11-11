@@ -13,6 +13,7 @@ import TelegramCore
 import SwiftSignalKit
 import CalendarUtils
 import Postbox
+import AppAnalytics
 
 private let periods: [(Int32?, String)] = [
     (nil, strings().dateSelectorScheduleRepeatNever),
@@ -412,6 +413,11 @@ public class DateSelectorModalController: ModalViewController {
             super.init(frame: NSMakeRect(0, 0, 330, 70 + add_Height))
         }
         self.bar = .init(height: 0)
+        if case .schedule = mode {
+            self.analyticsScreen = .chatScheduleMessage
+        } else {
+            self.analyticsScreen = .appDatePicker
+        }
     }
     
     public override func viewClass() -> AnyClass {
@@ -716,6 +722,7 @@ public class DateSelectorModalController: ModalViewController {
                 let calendar = CalendarController(NSMakeRect(0, 0, 300, 300), window, current: control.selected.value, onlyFuture: true, selectHandler: { [weak self] date in
                     self?.applyDay(date)
                 })
+                calendar.analyticsContext = self?.analyticsContext ?? Analytics.shared.unresolvedContext()
                 showPopover(for: control, with: calendar, edge: .maxY, inset: NSMakePoint(-8, -60))
             }
         }, for: .Down)

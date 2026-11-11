@@ -314,7 +314,7 @@ final class ManagedAdapter: FeedAdapter, WidgetFeedSpace {
             let html = corpus[index].1, name = corpus[index].0, width = self.width, options = self.options, wait = headlessWait
             let theme = self.theme
             prepareEntries.async { [weak self] in
-                guard let p = WidgetPreparer.prepare(html: html, theme: theme, width: width, options: options) else {
+                guard let p = WidgetPreparer.prepare(html: html, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else {
                     DispatchQueue.main.async { self?.requested.remove(index); self?.shellMisses += 1 }
                     return
                 }

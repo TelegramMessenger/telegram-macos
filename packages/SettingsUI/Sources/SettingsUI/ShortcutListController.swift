@@ -11,6 +11,7 @@ import ColorPalette
 import FoundationUtils
 import TelegramCore
 import Postbox
+import AppAnalytics
 
 private func shortcutEntires() -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
@@ -163,6 +164,7 @@ public func ShortcutListController(context: any AccountContextProtocol) -> ViewC
     let controller = InputDataController(dataSignal: .single(InputDataSignalValue(entries: shortcutEntires())), title: strings().shortcutsControllerTitle, validateData: { data in
         return .fail(.none)
     }, removeAfterDisappear: true, hasDone: false, identifier: "shortcuts")
+    controller.analyticsScreen = .settingsShortcuts
     
     controller._abolishWhenNavigationSame = true
     

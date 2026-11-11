@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+body{margin:12px;font:15px system-ui;color:var(--tg-theme-text-color,#17212b);background:var(--tg-theme-bg-color,#fff)}
+h3{margin:12px 0 6px;font-size:16px}
+.box{border:2px solid #3390ec;border-radius:10px;background:var(--tg-theme-secondary-bg-color,#f1f5f9)}
+#vertical{height:170px;overflow-y:auto;overflow-x:hidden}
+.row{height:40px;padding:10px 12px;border-bottom:1px solid #b8cde0}
+#horizontal{height:105px;overflow-x:auto;overflow-y:hidden;white-space:nowrap}
+.card{display:inline-block;width:160px;height:85px;margin:6px;padding:28px 12px;border-radius:8px;background:#3390ec;color:white;text-align:center}
+p{margin:5px 0 10px;font-size:12px;color:var(--tg-theme-hint-color,#64748b)}
+</style>
+<h3>Vertical swipe ↕</h3>
+<div id="vertical" class="box">
+<div class="row">1 · Swipe up / down</div>
+<div class="row">2</div><div class="row">3</div><div class="row">4</div>
+<div class="row">5</div><div class="row">6</div><div class="row">7</div>
+<div class="row">8</div><div class="row">9</div><div class="row">10 · Bottom</div>
+</div>
+<p id="v">Vertical offset: 0</p>
+<h3>Horizontal swipe ↔</h3>
+<div id="horizontal" class="box">
+<div class="card">1 · Swipe left / right</div><div class="card">2</div><div class="card">3</div><div class="card">4</div><div class="card">5 · End</div>
+</div>
+<p id="h">Horizontal offset: 0</p>
+<script>
+const vertical=document.getElementById('vertical');
+const horizontal=document.getElementById('horizontal');
+vertical.addEventListener('scroll',()=>{document.getElementById('v').textContent='Vertical offset: '+Math.round(vertical.scrollTop)});
+horizontal.addEventListener('scroll',()=>{document.getElementById('h').textContent='Horizontal offset: '+Math.round(horizontal.scrollLeft)});
+</script>
+</html>

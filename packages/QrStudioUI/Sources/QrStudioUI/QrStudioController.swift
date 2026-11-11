@@ -1,5 +1,6 @@
 import Foundation
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import SwiftSignalKit
 import TelegramCore
@@ -115,6 +116,7 @@ final class QrStudioView: View {
     private var giftsTab: QrStudioGiftsTabView?
 
     private var context: (any AccountContextProtocol)?
+    var analyticsContext: AnalyticsContext = Analytics.shared.unresolvedContext()
     private var peer: EnginePeer?
     private var temporary = false
     var dismiss: (() -> Void)?
@@ -711,11 +713,17 @@ final class QrStudioView: View {
             guard let gift = self.look.gifts.first(where: { $0.id == giftId }) else {
                 return
             }
-            update = .gift(gift.reference ?? .slug(slug: gift.gift.slug))
+            update = .gift(gift: gift.gift, reference: gift.reference ?? .slug(slug: gift.gift.slug))
         }
         self.syncedServerLook = local
         self.pendingServerLook = nil
-        let _ = context.engine.peers.setShareTheme(peerId: peer.id, theme: update).start()
+        let _ = (context.engine.peers.setShareTheme(peerId: peer.id, theme: update)
+        |> deliverOnMainQueue).start(error: { [weak self] _ in
+            guard let self, self.syncedServerLook == local else {
+                return
+            }
+            self.syncedServerLook = nil
+        })
         self.flushSave()
     }
 
@@ -1126,8 +1134,7 @@ final class QrStudioView: View {
         menu.addItem(ContextMenuItem(strings().qrStudioControllerMenuSaveImage, handler: { [weak self] in
             self?.saveImage()
         }, itemImage: MenuAnimation.menu_save_as.value))
-        //TODOLANG
-        menu.addItem(ContextMenuItem("Copy Image", handler: { [weak self] in
+        menu.addItem(ContextMenuItem(strings().qrStudioControllerCopyImage, handler: { [weak self] in
             self?.copyImage()
         }, itemImage: MenuAnimation.menu_copy_media.value))
         AppMenu.show(menu: menu, event: event, for: sourceView)
@@ -1240,9 +1247,10 @@ final class QrStudioView: View {
     }
 
     private func renderExportImage(canvas: QrStudioExportCanvas, completion: @escaping (CGImage?) -> Void) {
+        let presentation = analyticsContext.beginPresentation()
         self.exportDisposable.set(self.makeExportScene(canvas: canvas, completion: { scene in
             guard let scene else {
-                do {
+                withExtendedLifetime(presentation) {
                     completion(nil)
                 }
                 return
@@ -1255,7 +1263,7 @@ final class QrStudioView: View {
             |> runOn(.concurrentDefaultQueue())
             |> deliverOnMainQueue
             let _ = signal.start(next: { image in
-                do {
+                withExtendedLifetime(presentation) {
                     completion(image)
                 }
             })
@@ -1284,6 +1292,7 @@ final class QrStudioView: View {
         guard let window = self.window else {
             return
         }
+        let analyticsContext = self.analyticsContext
         self.renderExportImage(canvas: .story, completion: { [weak self] image in
             guard let self else {
                 return
@@ -1292,7 +1301,7 @@ final class QrStudioView: View {
                 self.showToast("info", strings().qrStudioControllerSomethingWentWrong)
                 return
             }
-            qrStudioSaveImage(image, window: window, suggestedName: "qr-code", completion: { [weak self] success in
+            qrStudioSaveImage(image, window: window, suggestedName: "qr-code", analyticsContext: analyticsContext, completion: { [weak self] success in
                 if !success {
                     self?.showToast("info", strings().qrStudioControllerSomethingWentWrong)
                 }
@@ -1312,8 +1321,7 @@ final class QrStudioView: View {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.writeObjects([NSImage(cgImage: image, size: NSMakeSize(CGFloat(image.width), CGFloat(image.height)))])
-            //TODOLANG
-            self.showToast("image", "Image copied to clipboard.")
+            self.showToast("image", strings().qrStudioControllerImageCopied)
         })
     }
 
@@ -1814,13 +1822,27 @@ public final class QrStudioController: ModalViewController {
     private let context: any AccountContextProtocol
     private let peer: EnginePeer
     private let temporary: Bool
+    private var hasAnalyticsPresentationContext = false
 
     public init(context: any AccountContextProtocol, peer: EnginePeer, temporary: Bool) {
         self.context = context
         self.peer = peer
         self.temporary = temporary
         super.init(frame: NSMakeRect(0, 0, 400, 740))
+        self.analyticsContext = Analytics.shared.unresolvedContext()
         self.bar = .init(height: 0)
+    }
+
+    fileprivate func bindAnalyticsContext(_ context: AnalyticsContext) {
+        if !hasAnalyticsPresentationContext {
+            hasAnalyticsPresentationContext = true
+            analyticsContext = context
+        } else if context.isExcluded || analyticsContext?.scope !== context.scope {
+            analyticsContext = Analytics.shared.unresolvedContext()
+        }
+        if isLoaded() {
+            genericView.analyticsContext = analyticsContext ?? Analytics.shared.unresolvedContext()
+        }
     }
 
     private var genericView: QrStudioView {
@@ -1858,6 +1880,7 @@ public final class QrStudioController: ModalViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
+        self.genericView.analyticsContext = self.analyticsContext ?? Analytics.shared.unresolvedContext()
         self.genericView.dismiss = { [weak self] in
             self?.close()
         }
@@ -1894,18 +1917,27 @@ public final class QrStudioController: ModalViewController {
 }
 
 public func showQrStudio(context: any AccountContextProtocol, peerId: PeerId, morphSource: (() -> NSView?)? = nil) {
+    showQrStudio(context: context, peerId: peerId, morphSource: morphSource, analyticsContext: Analytics.shared.unresolvedContext())
+}
+
+public func showQrStudio(context: any AccountContextProtocol, peerId: PeerId, morphSource: (() -> NSView?)?, analyticsContext: AnalyticsContext) {
     let window = context.window
     guard findModal(QrStudioController.self)?.modal?.window !== window else {
         return
     }
+    let analyticsContext = analyticsContext.restricting(peerId: peerId)
+    let presentation = analyticsContext.beginPresentation()
     let _ = (QrStudioPrefetch.shared.makeController(context: context, peerId: peerId)
     |> deliverOnMainQueue).start(next: { controller in
+        defer { withExtendedLifetime(presentation) {} }
         guard let controller, findModal(QrStudioController.self)?.modal?.window !== window else {
             return
         }
+        controller.bindAnalyticsContext(analyticsContext)
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            presentation.end()
         }
         showModal(with: controller, for: window, morphSource: morphSource)
     })

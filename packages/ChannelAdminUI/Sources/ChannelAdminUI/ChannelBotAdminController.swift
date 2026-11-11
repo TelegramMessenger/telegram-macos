@@ -13,6 +13,7 @@ import GeneralRows
 import InputDataUI
 import ShortPeerRow
 import AlertsUI
+import AppAnalytics
 
 public func addBotAsMember(context: any AccountContextProtocol, peer: Peer, to: Peer, completion:@escaping(PeerId)->Void, error: @escaping(String)->Void) -> Void {
     if to.isGroup {
@@ -452,6 +453,7 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().channelAddBotTitle)
+    controller.analyticsScreen = .peerInfoAdminsBot
     
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -502,21 +504,20 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
             
             verifyAlert_button(for: context.window, header: title, information: info, ok: ok, cancel: cancel, successHandler: { _ in
                 
-                var signal: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)>
+                var signal: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)>
                 
                 if isAdmin {
-                    let add:(PeerId)->Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)> = { peerId in
+                    let add:(PeerId)->Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)> = { peerId in
                         return context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: admin.id, adminRights: .init(rights: rights), rank: rank)
                         |> map { _ in
                             return peerId
                         }
-                        |> castError(AddChannelMemberError.self)
-                        |> mapError { (nil, $0, nil) }
+                        |> mapError { (nil, nil, nil, $0) }
                     }
                     
                     if peer.id.namespace == Namespaces.Peer.CloudGroup {
-                        let convert: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)> = context.engine.peers.convertGroupToSupergroup(peerId: peer.id)
-                        |> mapError { (nil, nil, $0) }
+                        let convert: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)> = context.engine.peers.convertGroupToSupergroup(peerId: peer.id)
+                        |> mapError { (nil, nil, $0, nil) }
                         signal = convert |> mapToSignal {
                             add($0)
                         }
@@ -526,11 +527,11 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                 } else {
                     if peer.id.namespace == Namespaces.Peer.CloudGroup {
                         signal = context.engine.peers.addGroupMember(peerId: peer.id, memberId: admin.id)
-                        |> mapError { ($0, nil, nil) }
+                        |> mapError { ($0, nil, nil, nil) }
                         |> map { peer.id }
                     } else {
                         signal = .single(peer.id)
-                        |> mapError { (nil, $0, nil) }
+                        |> mapError { (nil, $0, nil, nil) }
                     }
                 }
                 _ = showModalProgress(signal: signal, for: context.window).start(next: { peerId in
@@ -571,6 +572,8 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                         case .tooManyChannels:
                             FeatureNavigationHooks.shared.showInactiveChannels(context, .upgrade)
                         }
+                    } else if let error = error.3 {
+                        alert(for: context.window, info: channelAdminRightsErrorText(error, isGroup: peer.isGroup || peer.isSupergroup))
                     }
                 })
             })

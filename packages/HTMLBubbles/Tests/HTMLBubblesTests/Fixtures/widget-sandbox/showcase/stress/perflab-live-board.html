@@ -1,0 +1,16 @@
+<style>
+body{margin:0;background:#101722;color:#e7edf6;font:12px -apple-system,sans-serif}header{padding:16px;display:flex;align-items:center;justify-content:space-between}h2{margin:0;font-size:21px}button{background:#24344c;color:#fff;border:0;border-radius:8px;padding:8px 14px}.board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:0 12px 12px}.cell{border:1px solid #34435b;background:#1a2638;border-radius:7px;padding:6px;overflow:hidden}.name{font-size:10px;color:#9aaec7}.value{font:bold 15px monospace;margin:3px 0}.track{height:3px;background:#34435b;overflow:hidden}.fill{height:3px;width:100%;background:#28d8b0;transform-origin:0 50%}.foot{font-size:9px;margin-top:4px;color:#e9bf67}.overlay{position:fixed;inset:0;background:#101722bb;display:flex;align-items:flex-start;justify-content:center;padding-top:120px;box-sizing:border-box}.sheet{width:300px;padding:20px;border-radius:18px;background:#24344c;box-shadow:0 10px 40px #0008}.sheet p{line-height:1.5}[hidden]{display:none}
+</style>
+<header><h2>Incident control</h2><button id="pause">Pause</button><button id="details">Details</button></header><div id="board" class="board"></div>
+<div id="modal" class="overlay" hidden><div class="sheet"><h2>Cluster health</h2><p>192 services across four regions. Live updates continue behind this sheet.</p><button id="close">Close</button></div></div>
+<script>
+const board=document.getElementById('board'),values=[],fills=[];
+for(let i=0;i<192;i++){const cell=document.createElement('div');cell.className='cell';cell.innerHTML='<div class="name">SVC '+String(i+1).padStart(3,'0')+'</div><div class="value">0.0%</div><div class="track"><div class="fill"></div></div><div class="foot">'+['AMS','LHR','DXB','SFO'][i%4]+' · healthy</div>';board.appendChild(cell);values.push(cell.querySelector('.value').firstChild);fills.push(cell.querySelector('.fill'));}
+let running=true,origin=0,last=-1;
+function draw(t,all){const step=Math.floor(t*10);for(let i=0;i<192;i++){if(!all&&i%8!==step%8)continue;const value=50+Math.sin(t+i*.31)*45;values[i].data=value.toFixed(1)+'%';fills[i].style.transform='scaleX('+(value/100).toFixed(4)+')';}}
+function frame(ms){if(!origin)origin=ms;const t=(ms-origin)/1000;if(running&&Math.floor(t*10)!==last){last=Math.floor(t*10);draw(t,false);}requestAnimationFrame(frame);}
+const button=document.getElementById('pause');button.onclick=function(){running=!running;button.textContent=running?'Pause':'Resume';};
+document.getElementById('details').onclick=function(){document.getElementById('modal').hidden=false;};document.getElementById('close').onclick=function(){document.getElementById('modal').hidden=true;};
+window.stress={freeze:function(){running=false;draw(1.25,true);button.textContent='Resume';},resume:function(){running=true;button.textContent='Pause';}};
+draw(0,true);requestAnimationFrame(frame);
+</script>
