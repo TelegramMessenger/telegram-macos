@@ -44,7 +44,7 @@ parts = {
     '__SENDING_STATE__': require(between(preview, 'fileprivate struct PreviewSendingState', 'private final class PreviewContextState'), 'var sortValue: Sort'),
     '__SPLIT__': require(between(preview, 'var input:ChatTextInputState = inputState.textInputState()', 'if additionalMessage != nil, let text = permissionText('), 'var additionalMessage: ChatTextInputState? = nil'),
     '__MAKE_MEDIA__': require(between(preview, 'let amount = state.payAmount', 'let effect = self.contextChatInteraction.presentation.messageEffect'), 'let makeMedia:'),
-    '__SEND__': require(between(preview, 'if state.isCollage && medias.count > 1 {', 'self.emoji.popover?.hide()'), 'chunks(', 'self.chatInteraction.sendMedias('),
+    '__SEND__': require(between(preview, 'if state.isCollage && medias.count > 1 {', 'self.emoji.popover?.hide()'), 'chunks(', 'self.chatInteraction.sendMediasObserved('),
     '__ENQUEUE__': require(between(sender, 'let parsingUrlType: ParsingType', 'let expectedCount = messages.count', after='public static func enqueue(media:[Media], caption: ChatTextInputState'), 'let localGroupingKey = isCollage', 'caption.swap(', 'if let input = additionText {'),
     '__IS_INTERACTIVE__': require(member(predicates, 'var isInteractiveMedia: Bool {'), 'TelegramMediaPaidContent'),
     '__CAN_HAVE_CAPTION__': require(member(resources, 'var canHaveCaption: Bool {'), 'isInstantVideo'),

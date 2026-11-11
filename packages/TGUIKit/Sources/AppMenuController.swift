@@ -895,7 +895,12 @@ final class AppMenuController : NSObject  {
         view.makeKeyAndOrderFront(nil)
         view.view.announceForAccessibility()
 
-        view.view.animateBubbleAppearance(anchor: NSMakePoint(20, max(0, view.frame.height - 20)), fromScale: 0.55)
+        let itemRect = parentView.convertToScreen(parentItemView.convert(parentItemView.bounds, to: nil))
+        let itemCenter = view.convertPoint(fromScreen: NSMakePoint(itemRect.midX, itemRect.midY))
+        let menuFrame = view.view.frame
+        let anchorX: CGFloat = rect.midX >= itemRect.midX ? 0 : menuFrame.width
+        let anchorY = min(max(itemCenter.y - menuFrame.minY, 0), menuFrame.height)
+        view.view.animateBubbleAppearance(anchor: NSMakePoint(anchorX, anchorY), fromScale: 0.55)
     }
     
     

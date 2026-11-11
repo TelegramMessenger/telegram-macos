@@ -11,6 +11,7 @@ import Postbox
 import TelegramCore
 import WalletContext
 import PasscodeCore
+import AppAnalytics
 
 struct WalletParsedRecipient {
     let address: String
@@ -820,16 +821,25 @@ public func walletPeerSendAddress(context: any AccountContextProtocol, environme
 }
 
 @available(macOS 10.15, *)
+public func showWalletSendMoney(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, peer: Peer) {
+    showWalletSendMoney(context: context, environment: environment, walletContext: walletContext, peer: peer, analyticsContext: Analytics.shared.unresolvedContext())
+}
 
 @available(macOS 10.15, *)
-public func showWalletSendMoney(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, peer: Peer) {
+public func showWalletSendMoney(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, peer: Peer, analyticsContext: AnalyticsContext) {
+    let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: peer.id, inherited: analyticsContext)
+    let presentation = analyticsContext.beginPresentation()
     let completed = walletOpenRecipientChat(environment: environment, window: context.window, peerId: peer.id)
     let controller = WalletSendController(context: context, environment: environment, walletContext: walletContext, peer: peer, completed: {
-        completed()
+        let presentation = analyticsContext.beginPresentation()
+        withExtendedLifetime(presentation) { completed() }
     })
+    controller.analyticsContext = analyticsContext
+    controller.current.analyticsContext = analyticsContext
     let onDeinit = controller.onDeinit
     controller.onDeinit = {
         onDeinit?()
+        presentation.end()
     }
     showModal(with: controller, for: context.window)
 }
@@ -848,10 +858,16 @@ func walletTransferSuccessText(isCollectible: Bool, recipient: String) -> String
 private var walletDetachedSubmissions: [String: Disposable] = [:]
 
 @available(macOS 10.15, *)
+public func submitWalletTransferDetached(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, prepared: WalletContext.PreparedTransfer, window: Window, recipientName: String?, recipientPeerId: PeerId? = nil, session: PasscodeSession? = nil, submitted: @escaping () -> Void = {}, failed: @escaping () -> Void = {}) {
+    submitWalletTransferDetached(context: context, environment: environment, walletContext: walletContext, prepared: prepared, window: window, recipientName: recipientName, recipientPeerId: recipientPeerId, session: session, submitted: submitted, failed: failed, analyticsContext: Analytics.shared.unresolvedContext())
+}
 
 @available(macOS 10.15, *)
-public func submitWalletTransferDetached(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, prepared: WalletContext.PreparedTransfer, window: Window, recipientName: String?, recipientPeerId: PeerId? = nil, session: PasscodeSession? = nil, submitted: @escaping () -> Void = {}, failed: @escaping () -> Void = {}) {
-    runWalletTransferDetached(environment: environment, walletContext: walletContext, transferId: prepared.id, recipientAddress: prepared.recipient, isCollectible: prepared.collectible != nil, window: window, recipientName: recipientName, recipientPeerId: recipientPeerId, hasObservedTransfer: false, submission: walletContext.submitTransfer(prepared, recipientPeerId: recipientPeerId, session: session), submitted: submitted, failed: { error in
+public func submitWalletTransferDetached(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, prepared: WalletContext.PreparedTransfer, window: Window, recipientName: String?, recipientPeerId: PeerId? = nil, session: PasscodeSession? = nil, submitted: @escaping () -> Void = {}, failed: @escaping () -> Void = {}, analyticsContext: AnalyticsContext) {
+    let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: recipientPeerId ?? context.peerId, inherited: analyticsContext)
+    let presentation = analyticsContext.beginPresentation()
+    defer { withExtendedLifetime(presentation) {} }
+    runWalletTransferDetached(environment: environment, analyticsContext: analyticsContext, walletContext: walletContext, transferId: prepared.id, recipientAddress: prepared.recipient, isCollectible: prepared.collectible != nil, window: window, recipientName: recipientName, recipientPeerId: recipientPeerId, hasObservedTransfer: false, submission: walletContext.submitTransfer(prepared, recipientPeerId: recipientPeerId, session: session), submitted: submitted, failed: { error in
         session?.invalidate()
         presentWalletAuthorizationError(environment: environment, error, window: window, fallbackTitle: strings().walletSendControllerTransferFailedTitle, fallbackText: strings().walletSendControllerSendFailedInfo)
         failed()
@@ -874,7 +890,7 @@ struct WalletPeerTransferRequest {
 }
 
 @available(macOS 10.15, *)
-func submitWalletPeerTransferDetached(environment: WalletUIEnvironment, walletContext: WalletContext, request: WalletPeerTransferRequest, registration: WalletContext.PendingTransferRegistration, session: PasscodeSession, window: Window, recipientName: String?, recipientPeerId: PeerId) {
+func submitWalletPeerTransferDetached(environment: WalletUIEnvironment, walletContext: WalletContext, request: WalletPeerTransferRequest, registration: WalletContext.PendingTransferRegistration, session: PasscodeSession, window: Window, recipientName: String?, recipientPeerId: PeerId, analyticsContext: AnalyticsContext) {
     var preparedTransfer: WalletContext.PreparedTransfer?
     let submission: Signal<WalletContext.PendingTransfer, WalletContext.WalletError> = walletContext.state
     |> filter { $0.activeOperation == nil }
@@ -901,7 +917,7 @@ func submitWalletPeerTransferDetached(environment: WalletUIEnvironment, walletCo
             }
         })
     }
-    runWalletTransferDetached(environment: environment, walletContext: walletContext, transferId: registration.id, recipientAddress: request.address, isCollectible: false, window: window, recipientName: recipientName, recipientPeerId: recipientPeerId, hasObservedTransfer: true, submission: submission, submitted: {}, failed: { error in
+    runWalletTransferDetached(environment: environment, analyticsContext: analyticsContext, walletContext: walletContext, transferId: registration.id, recipientAddress: request.address, isCollectible: false, window: window, recipientName: recipientName, recipientPeerId: recipientPeerId, hasObservedTransfer: true, submission: submission, submitted: {}, failed: { error in
         session.invalidate()
         _ = walletContext.discardPendingTransferRegistration(registration).startStandalone()
         if let preparedTransfer {
@@ -914,7 +930,9 @@ func submitWalletPeerTransferDetached(environment: WalletUIEnvironment, walletCo
 }
 
 @available(macOS 10.15, *)
-private func runWalletTransferDetached(environment: WalletUIEnvironment, walletContext: WalletContext, transferId: String, recipientAddress: String, isCollectible: Bool, window: Window, recipientName: String?, recipientPeerId: PeerId?, hasObservedTransfer: Bool, submission submissionSignal: Signal<WalletContext.PendingTransfer, WalletContext.WalletError>, submitted: @escaping () -> Void, failed: @escaping (WalletContext.WalletError) -> Void, completed: @escaping () -> Void) {
+private func runWalletTransferDetached(environment: WalletUIEnvironment, analyticsContext: AnalyticsContext, walletContext: WalletContext, transferId: String, recipientAddress: String, isCollectible: Bool, window: Window, recipientName: String?, recipientPeerId: PeerId?, hasObservedTransfer: Bool, submission submissionSignal: Signal<WalletContext.PendingTransfer, WalletContext.WalletError>, submitted: @escaping () -> Void, failed: @escaping (WalletContext.WalletError) -> Void, completed: @escaping () -> Void) {
+    let presentation = analyticsContext.beginPresentation()
+    defer { withExtendedLifetime(presentation) {} }
     let key = transferId
     let disposables = DisposableSet()
     let observationDisposable = MetaDisposable()
@@ -955,8 +973,9 @@ private func runWalletTransferDetached(environment: WalletUIEnvironment, walletC
             return
         }
         if let recipientPeerId {
+            let feedbackPresentation = analyticsContext.beginPresentation()
             environment.showModalText(for: window, text: text, button: strings().walletSendControllerOpenChat, callback: { _ in
-                do {
+                withExtendedLifetime(feedbackPresentation) {
                     closeAllModals(window: window)
                     environment.openChat(recipientPeerId)
                 }
@@ -966,7 +985,7 @@ private func runWalletTransferDetached(environment: WalletUIEnvironment, walletC
         }
     }
     let presentationId = "pending:\(transferId)"
-    observationDisposable.set((walletContext.state
+    observationDisposable.set(analyticsContext.preservingPresentation(walletContext.state
     |> deliverOnMainQueue).start(next: { state in
         guard !submission.observationStopped else {
             return
@@ -993,7 +1012,7 @@ private func runWalletTransferDetached(environment: WalletUIEnvironment, walletC
         }
     }))
     var didReportSubmission = false
-    disposables.add((submissionSignal
+    disposables.add(analyticsContext.preservingPresentation(submissionSignal
     |> deliverOnMainQueue).start(next: { pendingTransfer in
         if !didReportSubmission {
             didReportSubmission = true
@@ -1072,11 +1091,18 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
     }
 
     var getController: (() -> InputDataController?)? = nil
-    let presentChild: (() -> InputDataModalController, Window, (() -> NSView?)?) -> Void = { makeController, window, morphSource in
+    let getAnalyticsContext: () -> AnalyticsContext = {
+        return getController?()?.analyticsContext ?? Analytics.shared.unresolvedContext()
+    }
+    let presentChild: (AnalyticsContext, () -> InputDataModalController, Window, (() -> NSView?)?) -> Void = { analyticsContext, makeController, window, morphSource in
+        let presentation = analyticsContext.beginPresentation()
         let controller = makeController()
+        controller.analyticsContext = analyticsContext
+        controller.current.analyticsContext = analyticsContext
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            presentation.end()
         }
         showModal(with: controller, for: window, morphSource: morphSource)
     }
@@ -1122,7 +1148,7 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
 
     let editComment: () -> Void = {
         let current = stateValue.with { $0 }
-        presentChild({ walletCommentInputController(comment: walletTransactionComment(current.comment), isPublic: current.isCommentPublic, completion: { comment, isPublic in
+        presentChild(getAnalyticsContext(), { walletCommentInputController(comment: walletTransactionComment(current.comment), isPublic: current.isCommentPublic, completion: { comment, isPublic in
             updateState { current in
                 var current = current
                 current.comment = comment
@@ -1136,7 +1162,7 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
         guard case let .wallet(info) = walletContext.stateValue.phase else {
             return
         }
-        presentChild({ WalletReceiveController(context: context, environment: environment, walletContext: walletContext, address: info.address) }, window, morphSource)
+        presentChild(getAnalyticsContext(), { WalletReceiveController(context: context, environment: environment, walletContext: walletContext, address: info.address) }, window, morphSource)
     }, editComment: editComment, updateAmount: { amount in
         let resolved = clampedTransferAmount(amount)
         updateState { current in
@@ -1432,6 +1458,9 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
     let sendDisposable = MetaDisposable()
     actionsDisposable.add(sendDisposable)
     let sendDirectly: (WalletContext.ResolvedTransferRecipient) -> Void = { resolved in
+        let analyticsContext = getController?()?.analyticsContext ?? Analytics.shared.unresolvedContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         let targetWindow = window
         let state = stateValue.with { $0 }
         let comment = walletTransactionComment(state.comment)
@@ -1458,7 +1487,7 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
             current.isSending = true
             return current
         }
-        sendDisposable.set((statePromise.get()
+        sendDisposable.set(analyticsContext.preservingPresentation(statePromise.get()
         |> map { walletSendFeeReadiness($0, request: feeRequest) }
         |> filter { $0 != .estimating }
         |> take(1)
@@ -1502,7 +1531,7 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
         }
         |> deliverOnMainQueue).start(next: { request, registration, session in
             let recipientName = walletContext.walletPeerDisplayName(forAddress: resolved.address, environment: environment) ?? resolved.displayName
-            submitWalletPeerTransferDetached(environment: environment, walletContext: walletContext, request: request, registration: registration, session: session, window: targetWindow, recipientName: recipientName, recipientPeerId: recipientPeerId)
+            submitWalletPeerTransferDetached(environment: environment, walletContext: walletContext, request: request, registration: registration, session: session, window: targetWindow, recipientName: recipientName, recipientPeerId: recipientPeerId, analyticsContext: analyticsContext.restricting(peerId: recipientPeerId))
             closeAfterTransferRegistration(registration.id)
         }, error: { error in
             finish(error)
@@ -1520,6 +1549,9 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
     }
 
     submitImpl = {
+        let analyticsContext = getAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         let state = stateValue.with { $0 }
         guard !state.isResolvingSigningAccess else {
             return
@@ -1544,13 +1576,15 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
         }
         let targetWindow = window
         let openPreview: () -> Void = {
+            let presentation = analyticsContext.beginPresentation()
+            defer { withExtendedLifetime(presentation) {} }
             let current = stateValue.with { $0 }
             guard !current.isPeerMode else {
                 sendDirectly(resolved)
                 return
             }
             close?()
-            presentChild({ WalletTransactionController(context: context, environment: environment, walletContext: walletContext, subject: .preview(address: resolved.address, amount: current.amount, sendAll: walletShouldSendAll(current), comment: current.comment, initialFee: walletSendInitialFee(current)), transferAnimation: transferAnimation) }, targetWindow, nil)
+            presentChild(analyticsContext, { WalletTransactionController(context: context, environment: environment, walletContext: walletContext, subject: .preview(address: resolved.address, amount: current.amount, sendAll: walletShouldSendAll(current), comment: current.comment, initialFee: walletSendInitialFee(current)), transferAnimation: transferAnimation) }, targetWindow, nil)
         }
         let setResolvingSigningAccess: (Bool) -> Void = { value in
             updateState { current in
@@ -1565,21 +1599,26 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
             openPreview()
         case let .wallet(info) where info.canExportPhrase:
             setResolvingSigningAccess(true)
+            let restorationPresentation = analyticsContext.beginPresentation()
             let restoration = walletRestoreSigningAccess(context: context, environment: environment, window: targetWindow, walletContext: walletContext, authorization: restoreAuthorization, retry: {
-                submitImpl?()
+                let delivery = analyticsContext.beginPresentation()
+                withExtendedLifetime(delivery) { submitImpl?() }
             }, next: {
-                do {
+                let delivery = analyticsContext.beginPresentation()
+                withExtendedLifetime(delivery) {
                     setResolvingSigningAccess(false)
                     openPreview()
                 }
             }, failed: {
-                setResolvingSigningAccess(false)
+                let delivery = analyticsContext.beginPresentation()
+                withExtendedLifetime(delivery) { setResolvingSigningAccess(false) }
             })
             signingAccessDisposable.set(ActionDisposable {
                 restoration.dispose()
+                restorationPresentation.end()
             })
         case .wallet:
-            presentChild({ WalletImportController(context: context, environment: environment, walletContext: walletContext, mode: .enterRecoveryPhrase, onImported: {
+            presentChild(analyticsContext, { WalletImportController(context: context, environment: environment, walletContext: walletContext, mode: .enterRecoveryPhrase, onImported: {
                 openPreview()
             }) }, targetWindow, nil)
         default:
@@ -1602,6 +1641,7 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
     let controller = InputDataController(dataSignal: signal, title: titleForState(), hasDone: false, identifier: "wallet-send", getBackgroundColor: {
         theme.colors.background
     })
+    controller.analyticsScreen = .walletTransfer
     controller.getTitle = titleForState
     controller.centerModalHeader = recipientModalHeader()
 
@@ -1715,7 +1755,7 @@ func makeWalletSendController(context: any AccountContextProtocol, environment: 
         var items: [ContextMenuItem] = []
         if case let .wallet(info) = walletContext.stateValue.phase {
             items.append(ContextMenuItem(strings().walletSendControllerDepositFunds, handler: {
-                presentChild({ WalletReceiveController(context: context, environment: environment, walletContext: walletContext, address: info.address) }, targetWindow, nil)
+                presentChild(getAnalyticsContext(), { WalletReceiveController(context: context, environment: environment, walletContext: walletContext, address: info.address) }, targetWindow, nil)
             }, itemImage: environment.menuImage(.menu_plus)))
         }
         if state.isPeerMode {
@@ -1826,6 +1866,7 @@ private func walletCommentInputController(comment: String?, isPublic: Bool, comp
         }
         return .fail(.none)
     }, hasDone: false)
+    controller.analyticsScreen = .walletTransferComment
     controller.autoInputAction = true
 
     let interactions = ModalInteractions(acceptTitle: isEditing ? strings().walletSendControllerSave : strings().walletSendControllerAdd, accept: { [weak controller] in

@@ -1197,6 +1197,34 @@ public final class TextViewLayout : Equatable {
                     rightOffset = ceil(secondaryRightOffset)
                 }
                 
+                var glyphExtent: (minX: CGFloat, maxX: CGFloat)?
+                for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                    let runRange = CTRunGetStringRange(run)
+                    let glyphCount = CTRunGetGlyphCount(run)
+                    guard glyphCount > 0, runRange.location < endIndex, runRange.location + runRange.length > startIndex else {
+                        continue
+                    }
+                    var indices = [CFIndex](repeating: 0, count: glyphCount)
+                    var positions = [CGPoint](repeating: .zero, count: glyphCount)
+                    var advances = [CGSize](repeating: .zero, count: glyphCount)
+                    CTRunGetStringIndices(run, CFRange(location: 0, length: glyphCount), &indices)
+                    CTRunGetPositions(run, CFRange(location: 0, length: glyphCount), &positions)
+                    CTRunGetAdvances(run, CFRange(location: 0, length: glyphCount), &advances)
+                    for index in 0 ..< glyphCount where indices[index] >= startIndex && indices[index] < endIndex {
+                        let minX = positions[index].x
+                        let maxX = positions[index].x + advances[index].width
+                        if let current = glyphExtent {
+                            glyphExtent = (min(current.minX, minX), max(current.maxX, maxX))
+                        } else {
+                            glyphExtent = (minX, maxX)
+                        }
+                    }
+                }
+                if let glyphExtent = glyphExtent {
+                    leftOffset = floor(glyphExtent.minX)
+                    rightOffset = ceil(glyphExtent.maxX)
+                }
+
                 let lineRange = NSMakeRange(CTLineGetStringRange(line).location, CTLineGetStringRange(line).length)
                 let range = NSMakeRange(startIndex, endIndex - startIndex)
                                 

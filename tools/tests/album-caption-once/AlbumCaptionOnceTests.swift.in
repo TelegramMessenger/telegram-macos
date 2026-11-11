@@ -284,8 +284,26 @@ struct Schedule {
     var repeatPeriod: Int32?
 }
 
+final class AnalyticsMediaSubmission {
+    func discard() {}
+}
+
+enum AnalyticsMediaJourney {
+    enum Spec {
+        enum MediaMode {
+            case media
+            case file
+            case archive
+        }
+    }
+}
+
 final class ChatInteraction {
     var sendMedias: ([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool) -> Void = { _, _, _, _, _, _, _, _, _ in }
+
+    func sendMediasObserved(_ medias: [Media], _ caption: ChatTextInputState, _ collage: Bool, _ additionalText: ChatTextInputState?, _ silent: Bool, _ schedule: Schedule?, _ spoiler: Bool, _ effect: AvailableMessageEffects.MessageEffect?, _ leadingText: Bool, submission: AnalyticsMediaSubmission?, part: Int) {
+        sendMedias(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText)
+    }
 }
 
 struct TextPresentation {
@@ -343,6 +361,7 @@ final class Preview {
 
         __MAKE_MEDIA__
 
+        let submission: AnalyticsMediaSubmission? = nil
         let invoke: () -> Void = {
             __SEND__
         }

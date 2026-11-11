@@ -23,6 +23,7 @@ import CallsUI
 import GroupCallScreenUI
 import WebAppUI
 import InlineStickerLayer
+import AppAnalytics
 
 struct UserInfoPersonalChannel : Equatable {
     let peer: EnginePeer
@@ -78,9 +79,15 @@ class PeerInfoArguments<Context: AccountContextProtocol> {
     
     let toggleNotificationsDisposable = MetaDisposable()
     private let deleteDisposable = MetaDisposable()
+    var manageStep: ((AnalyticsFlows.PeerInfoManage.Step) -> Void)?
+    var getAnalyticsContext: () -> AnalyticsContext = { Analytics.shared.unresolvedContext() }
+
+    func captureAnalyticsContext() -> AnalyticsContext {
+        return Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: getAnalyticsContext())
+    }
 
     func openQrStudio(from control: NSView) {
-        PeerInfoNavigationHooks.shared.openQrStudioObserved(context, peerId, { [weak control] in control })
+        PeerInfoNavigationHooks.shared.openQrStudioObserved(context, peerId, { [weak control] in control }, analyticsContext: captureAnalyticsContext())
     }
     private let _statePromise = Promise<PeerInfoState>()
     
@@ -178,11 +185,12 @@ class PeerInfoArguments<Context: AccountContextProtocol> {
     }
     
     func openNameColor(peer: Peer) {
+        manageStep?(.openColor)
         pushViewController(PeerInfoNavigationHooks.shared.makeSelectColorController(context, peer))
     }
     
     func openStats(canSeeTon: Bool, canSeeStars: Bool) {
-        self.pushViewController(ChannelStatsSegmentController(context, peerId: peerId, isChannel: true, monetization: canSeeTon, stars: canSeeStars && !canSeeTon, onlyMonetization: true))
+        self.pushViewController(ChannelStatsSegmentController(context, peerId: peerId, isChannel: true, monetization: canSeeTon, stars: canSeeStars && !canSeeTon, onlyMonetization: true, analyticsContext: captureAnalyticsContext()))
     }
     
     func openWelcomeMessages() {
@@ -190,6 +198,7 @@ class PeerInfoArguments<Context: AccountContextProtocol> {
     }
     
     func setupDiscussion() {
+        manageStep?(.openLinkedChat)
         _ = (self.context.account.postbox.loadedPeerWithId(self.peerId) |> deliverOnMainQueue).start(next: { [weak self] peer in
             if let `self` = self {
                 self.pushViewController(PeerInfoNavigationHooks.shared.makeChannelDiscussionSetupController(self.context, peer))
@@ -216,7 +225,7 @@ class PeerInfoArguments<Context: AccountContextProtocol> {
     }
     
     func openStory(_ initialId: StoryInitialIndex?) {
-        StoryModalController<Context>.ShowStories(context: context, isHidden: false, initialId: initialId, singlePeer: true)
+        StoryModalController<Context>.ShowStories(context: context, isHidden: false, initialId: initialId, singlePeer: true, analyticsContext: captureAnalyticsContext())
     }
     
     func openFragment(_ subject: PeerInfoFragmentSubject) {
@@ -248,6 +257,7 @@ class PeerInfoArguments<Context: AccountContextProtocol> {
         
         deleteDisposable.set(signal.start(next: { [weak self] result in
             if result {
+                self?.manageStep?(.delete)
                 self?.pullNavigation()?.close()
             }
         }))
@@ -604,7 +614,10 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
         }
     }
     
-    public static func push(navigation: NavigationViewController, context: Context, peerId: PeerId, threadInfo: ThreadInfo? = nil, stories: PeerExpiringStoryListContext? = nil, isAd: Bool = false, source: Source = .none, animated: Bool = true, mediaMode: PeerMediaCollectionMode? = nil, shake: Bool = true, starGiftsProfile: ProfileGiftsContext? = nil, albumId: Int32? = nil, initialState: ViewControllerState = .Normal) {
+    public static func push(navigation: NavigationViewController, context: Context, peerId: PeerId, threadInfo: ThreadInfo? = nil, stories: PeerExpiringStoryListContext? = nil, isAd: Bool = false, source: Source = .none, animated: Bool = true, mediaMode: PeerMediaCollectionMode? = nil, shake: Bool = true, starGiftsProfile: ProfileGiftsContext? = nil, albumId: Int32? = nil, initialState: ViewControllerState = .Normal, analyticsContext: AnalyticsContext? = nil) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
 
 
         guard !context.isFrozen else {
@@ -613,6 +626,7 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
         }
 
         if let controller = navigation.controller as? PeerInfoController, controller.peerId == peerId {
+            controller.inheritAnalyticsContext(origin)
             if shake {
                 controller.view.shake(beep: true)
             }
@@ -625,7 +639,7 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             return
         }
         let signal = context.account.postbox.peerView(id:peerId) |> take(1) |> deliverOnMainQueue
-        _ = (signal).start(next: { view in
+        _ = origin.preservingPresentation(signal).start(next: { view in
             let mainPeer = peerViewMainPeer(view)
             let monoforumPeer = peerViewMonoforumMainPeer(view)
 
@@ -640,19 +654,70 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
 
             if let peer = effectivePeer {
                 if peer.restrictionText(context.contentSettings) == nil {
-                    let controller = PeerInfoController(context: context, peer: peer, threadInfo: threadInfo, stories: stories, isAd: isAd, source: source, mediaMode: mediaMode, starGiftsProfile: starGiftsProfile, albumId: albumId, initialState: initialState)
+                    let resolvedOrigin = origin.restricting(peerId: peer.id)
+                    let lifetime = resolvedOrigin.beginPresentation()
+                    defer { lifetime.end() }
+                    let controller = PeerInfoController(context: context, peer: peer, threadInfo: threadInfo, stories: stories, isAd: isAd, source: source, mediaMode: mediaMode, starGiftsProfile: starGiftsProfile, albumId: albumId, initialState: initialState, analyticsContext: resolvedOrigin)
+                    controller.inheritAnalyticsContext(resolvedOrigin)
                     navigation.push(controller, animated, style: animated ? .push : Optional.none)
                 }
             }
         })
     }
+    
+    private func inheritAnalyticsContext(_ inherited: AnalyticsContext) {
+        let source: AnalyticsContext
+        if let current = self.analyticsContext, current.isExcluded || !inherited.isExcluded {
+            source = current
+        } else {
+            source = inherited
+        }
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: source)
+        if origin.isExcluded { self.analyticsContext?.scope?.exclude() }
+        self.analyticsContext = origin
+        self.mediaController.inheritAnalyticsContext(origin)
+    }
 
     private let mediaMode: PeerMediaCollectionMode?
     private let albumId: Int32?
     private let initialState: ViewControllerState
+    private var manageFlow: AnalyticsFlow<AnalyticsFlows.PeerInfoManage>?
+    private var isAnalyticsVisible = false
 
-    public init(context: Context, peer:Peer, threadInfo: ThreadInfo? = nil, stories: PeerExpiringStoryListContext? = nil, isAd: Bool = false, source: Source = .none, mediaMode: PeerMediaCollectionMode? = nil, starGiftsProfile: ProfileGiftsContext? = nil, albumId: Int32? = nil, linkedBotChannelId: PeerId? = nil, initialState: ViewControllerState = .Normal) {
+    public override var state: ViewControllerState {
+        didSet {
+            if state != oldValue {
+                updateAnalyticsState(from: oldValue)
+            }
+        }
+    }
+
+    private func updateAnalyticsState(from oldValue: ViewControllerState) {
+        guard threadInfo == nil else {
+            return
+        }
+        if state == .Edit {
+            analyticsScreen = .peerInfoManage
+            if peer.isGroup || peer.isSupergroup || peer.isChannel {
+                manageFlow = AnalyticsFlow(engine: context.engine)
+            }
+        } else {
+            analyticsScreen = .peerInfo
+            if oldValue == .Edit {
+                manageFlow?.finish(.success)
+                manageFlow = nil
+            }
+        }
+        if isAnalyticsVisible, let screen = analyticsScreen {
+            Analytics.shared.screens.show(ObjectIdentifier(self), screen: screen, peerType: analyticsPeer)
+        }
+    }
+    
+    public init(context: Context, peer:Peer, threadInfo: ThreadInfo? = nil, stories: PeerExpiringStoryListContext? = nil, isAd: Bool = false, source: Source = .none, mediaMode: PeerMediaCollectionMode? = nil, starGiftsProfile: ProfileGiftsContext? = nil, albumId: Int32? = nil, linkedBotChannelId: PeerId? = nil, initialState: ViewControllerState = .Normal, analyticsContext: AnalyticsContext? = nil) {
         let peerId = peer.id
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: linkedBotChannelId ?? peerId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         self.peerId = peer.id
         self.albumId = albumId
         self.peer = peer
@@ -700,15 +765,20 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
         }
         
         
-        self.mediaController = PeerMediaController(context: context, peerId: linkedBotChannelId ?? peerId, threadInfo: threadInfo, isProfileIntended: true, isBot: peer.isBot, mode: mediaMode, starGiftsProfile: self.starGiftsProfile)
+        self.mediaController = PeerMediaController(context: context, peerId: linkedBotChannelId ?? peerId, threadInfo: threadInfo, isProfileIntended: true, isBot: peer.isBot, mode: mediaMode, starGiftsProfile: self.starGiftsProfile, analyticsContext: origin)
         super.init(context)
+        self.analyticsContext = origin
         
         bar = .init(height: 0, enableBorder: false)
         
         if threadInfo != nil {
+            analyticsScreen = .peerInfoTopic
         } else if initialState == .Edit {
+            analyticsScreen = .peerInfoManage
         } else {
+            analyticsScreen = .peerInfo
         }
+        analyticsPeer = AnalyticsValues.PeerType(peer: peer, accountPeerId: context.peerId)
         
         let pushViewController:(ViewController) -> Void = { [weak self] controller in
             self?.navigationController?.push(controller)
@@ -743,6 +813,17 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
         }, getStarGiftsContext: { [weak self] in
             return self?.starGiftsProfile
         })
+        let manageStep: (AnalyticsFlows.PeerInfoManage.Step) -> Void = { [weak self] step in
+            self?.manageFlow?.step(step)
+        }
+        _groupArguments.manageStep = manageStep
+        _channelArguments.manageStep = manageStep
+        let getAnalyticsContext: () -> AnalyticsContext = { [weak self] in
+            return self?.analyticsContext ?? Analytics.shared.unresolvedContext()
+        }
+        _groupArguments.getAnalyticsContext = getAnalyticsContext
+        _channelArguments.getAnalyticsContext = getAnalyticsContext
+        _userArguments.getAnalyticsContext = getAnalyticsContext
         if let threadInfo = threadInfo {
             _topicArguments = TopicInfoArguments(context: context, peerId: peerId, state: TopicInfoState(threadId: threadInfo.message.threadId), isAd: isAd, pushViewController: pushViewController, pullNavigation:{ [weak self] () -> NavigationViewController? in
                 return self?.navigationController
@@ -772,6 +853,7 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        isAnalyticsVisible = true
         window?.set(handler: { [weak self] _ -> KeyHandlerResult in
             if let strongSelf = self {
                 return strongSelf.returnKeyAction()
@@ -910,6 +992,7 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     
     public override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        isAnalyticsVisible = false
     }
     
     public override func viewWillAppear(_ animated: Bool) {
@@ -1386,6 +1469,7 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             updateArguments({ arguments in
                 arguments.dismissEdition()
             })
+            manageFlow?.finish(.cancelled)
             state = .Normal
             return .invoked
         }

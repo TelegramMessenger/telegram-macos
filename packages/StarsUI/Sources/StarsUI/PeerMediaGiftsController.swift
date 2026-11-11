@@ -14,6 +14,7 @@ import GeneralRows
 import AlertsUI
 import SelectPeersUI
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -276,7 +277,7 @@ private struct State : Equatable {
         return gift.collectionIds?.contains(collectionId) == true
     }
     
-    var perRowCount: Int = 4
+    var perRowCount: Int = 3
     var peer: EnginePeer?
     var starsState: StarsContext.State?
     var collectionsState:[Int32: ProfileGiftsContext.State] = [:]
@@ -295,6 +296,11 @@ private struct State : Equatable {
     var selectedCollection: Int32 = Collection.all.stableId
     
     var onStage: Bool = false
+}
+
+private struct GiftRowState: Equatable {
+    let options: [GiftOptionsRowItem.Option]
+    let perRowCount: Int
 }
 
 private func _id_stars_gifts(_ index: Int) -> InputDataIdentifier {
@@ -349,7 +355,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     
     if !chunks.isEmpty {
         for (i, chunk) in chunks.enumerated() {
-            entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_stars_gifts(i), equatable: .init(chunk), comparable: nil, item: { initialSize, stableId in
+            entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_stars_gifts(i), equatable: .init(GiftRowState(options: chunk, perRowCount: state.perRowCount)), comparable: nil, item: { initialSize, stableId in
                 return GiftOptionsRowItem(initialSize, stableId: stableId, context: arguments.context, options: chunk, perRowCount: state.perRowCount, fitToSize: list.count == 1, insets: NSEdgeInsets(left: 5, right: 5), callback: { option, morphSource in
                     if let value = option.nativeProfileGift {
                         arguments.open(value, morphSource)
@@ -808,22 +814,28 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
             context.reactions.setStatus(file, peer: peer, timestamp: context.timestamp, timeout: nil, fromRect: nil, starGift: unique)
         }
     }, transfer: { option in
+        let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: getController?()?.analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         let state = stateValue.with { $0 }
         let canExportDate: Int32? = option.canExportDate
         let transferStars: Int64? = option.transferStars
         guard let reference = option.reference, let unique = option.gift.unique else {
             return
         }
-        showGiftTransfer(context: context, window: window, gift: unique, reference: reference, giftsContext: takeContext() ?? giftsContext, canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
+        showGiftTransfer(context: context, window: window, analyticsContext: analyticsContext, gift: unique, reference: reference, giftsContext: takeContext() ?? giftsContext, canExportDate: canExportDate, transferStars: transferStars, transfer: { peer, dismiss in
+            let transferContext = analyticsContext.restricting(peerId: peer.id)
+            let presentation = transferContext.beginPresentation()
+            defer { withExtendedLifetime(presentation) {} }
             if let transferStars, let starsState = state.starsState, starsState.balance.value < transferStars {
-                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, window, .stars, nil, transferStars)
+                FeatureNavigationHooks.shared.showStarsPurchaseWithContext(context, window, .stars, nil, transferStars, transferContext)
                 return
             }
             dismiss()
             if let giftsContext = takeContext() {
-                _ = (giftsContext.transferStarGift(prepaid: transferStars == nil, reference: reference, peerId: peer.id)).startStandalone()
+                _ = transferContext.preservingPresentation(giftsContext.transferStarGift(prepaid: transferStars == nil, reference: reference, peerId: peer.id)).startStandalone()
             }
-            _ = (showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
+            _ = transferContext.preservingPresentation(showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 1.5)).start()
         })
     }, toggleVisibility: { option in
         if let reference = option.reference {
@@ -980,6 +992,7 @@ public func PeerMediaGiftsController(context: any AccountContextProtocol, peerId
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .peerInfoMediaGifts
     controller.bar = .init(height: 0)
     
     controller._menuItems = {

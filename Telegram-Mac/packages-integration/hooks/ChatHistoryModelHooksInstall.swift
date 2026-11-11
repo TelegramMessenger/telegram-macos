@@ -5,6 +5,7 @@ import TelegramCore
 import SwiftSignalKit
 import InAppSettings
 import ChatHistoryModel
+import AppAnalytics
 
 func installChatHistoryModelHooks() {
     ChatHistoryModelHooks.install(ChatHistoryModelHooks(applyMessageEntities: { attributes, text, message, context, fontSize, openInfo, textColor, linkColor, monospacedPre, monospacedCode, isDark, bubbled in
@@ -34,6 +35,7 @@ func installChatHistoryModelHooks() {
             return ViewController()
         }
         let emojis = EmojiesController(context, ignorePremium: true)
+        emojis.analyticsScreen = .appEmojiPicker
         emojis._frameRect = NSMakeRect(0, 0, 350, 300)
         let interactions = EntertainmentInteractions(.emoji, peerId: context.peerId)
         emojis.update(with: interactions, chatInteraction: ChatInteraction(chatLocation: .peer(context.peerId), context: context))

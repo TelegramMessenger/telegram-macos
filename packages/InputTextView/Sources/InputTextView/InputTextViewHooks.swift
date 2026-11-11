@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import InputView
 import TGUIKit
 import TelegramContext
@@ -15,23 +16,32 @@ public struct InputTextViewHooks {
     public let showURLFormatter: (Window, String, String?, [String], @escaping (String, String?) -> Void) -> Void
     public let makeInlineAvatarLayer: (any AccountContextProtocol, NSRect, EnginePeer) -> any InputInlineAvatarLayer
 
-    public var showTranslateWithContext: ((any AccountContextProtocol, Window, String?, ChatTextInputState, @escaping (NSAttributedString) -> Void) -> Void)?
-    public var showPremiumBoardingWithContext: ((any AccountContextProtocol, Window) -> Void)?
+    public var showTranslateWithContext: ((any AccountContextProtocol, Window, String?, ChatTextInputState, AnalyticsContext, @escaping (NSAttributedString) -> Void) -> Void)?
+    public var showPremiumBoardingWithContext: ((any AccountContextProtocol, Window, AnalyticsContext) -> Void)?
 
-    public func showTranslateObserved(_ context: any AccountContextProtocol, _ window: Window, _ from: String?, _ draft: ChatTextInputState, onUse: @escaping (NSAttributedString) -> Void) {
+    public func showTranslateObserved(_ context: any AccountContextProtocol, _ window: Window, _ from: String?, _ draft: ChatTextInputState, analyticsContext: AnalyticsContext, onUse: @escaping (NSAttributedString) -> Void) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let completion: (NSAttributedString) -> Void = { translated in
-            onUse(translated)
+            let currentOrigin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+            let presentation = currentOrigin.beginPresentation()
+            defer { presentation.end() }
+            onUse(currentOrigin.isExcluded || currentOrigin.scope?.isValid != true ? chatInputTextExcludingAnalytics(translated) : translated)
         }
         if let showTranslateWithContext {
-            showTranslateWithContext(context, window, from, draft, completion)
+            showTranslateWithContext(context, window, from, draft, origin, completion)
         } else {
             showTranslate(context, window, from, draft, completion)
         }
     }
 
-    public func showPremiumBoardingObserved(_ context: any AccountContextProtocol, _ window: Window) {
+    public func showPremiumBoardingObserved(_ context: any AccountContextProtocol, _ window: Window, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showPremiumBoardingWithContext {
-            showPremiumBoardingWithContext(context, window)
+            showPremiumBoardingWithContext(context, window, origin)
         } else {
             showPremiumBoarding(context, window)
         }

@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -23,11 +24,15 @@ public struct GalleryHooks {
     public let executeLink: (Any, @escaping (Bool) -> Void) -> Void
     public let openInfo: (any AccountContextProtocol, PeerId, Bool, MessageId?, ChatInitialAction?) -> Void
     public let showShare: (any AccountContextProtocol, Message, [Message]?, Window) -> Void
-    public var showShareWithContext: ((any AccountContextProtocol, Message, [Message]?, Window) -> Void)?
+    public var showShareWithContext: ((any AccountContextProtocol, Message, [Message]?, Window, AnalyticsContext) -> Void)?
 
-    public func showShareObserved(_ context: any AccountContextProtocol, _ message: Message, _ messages: [Message]?, _ window: Window) {
+    public func showShareObserved(_ context: any AccountContextProtocol, _ message: Message, _ messages: [Message]?, _ window: Window, analyticsContext: AnalyticsContext) {
+        let origin = GalleryAnalyticsContext(accountContext: context, inherited: analyticsContext)
+        origin.restrict(messages: [message] + (messages ?? []))
+        let presentation = origin.context.beginPresentation()
+        defer { presentation.end() }
         if let showShareWithContext {
-            showShareWithContext(context, message, messages, window)
+            showShareWithContext(context, message, messages, window, origin.context)
         } else {
             showShare(context, message, messages, window)
         }

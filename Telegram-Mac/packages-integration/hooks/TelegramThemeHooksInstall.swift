@@ -3,7 +3,6 @@ import TGUIKit
 import ColorPalette
 import TelegramIconsTheme
 import InAppSettings
-import RLottie
 
 private func themeHookImage(_ image: TelegramThemeImage) -> NSImage {
         switch image {
@@ -923,8 +922,6 @@ func installTelegramThemeHooks() {
         }
         #endif
         return .standart
-    }, purgeLottieCache: {
-        RLottieBridge.purgeModelCache()
     }, darkAppearance: {
         #if !SHARE
         return darkAppearance

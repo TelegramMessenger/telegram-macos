@@ -16,6 +16,7 @@ import MessageTextUtils
 import GeneralRows
 import AlertsUI
 import ChatModeTypes
+import AppAnalytics
 
 private struct State : Equatable {
     var searchCategories: EmojiSearchCategories?
@@ -1171,16 +1172,31 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
     public var makeSearchCommand:((ESearchCommand)->Void)?
     
     
-    public var mode: EntertainmentViewController.Mode = .common
+    public var mode: EntertainmentViewController.Mode = .common {
+        didSet {
+            updateAnalyticsScreen()
+        }
+    }
     private var presentation: TelegramPresentationTheme?
     
     public init(_ context: Context, presentation: TelegramPresentationTheme? = nil) {
         self.presentation = presentation
         super.init(context)
+        updateAnalyticsScreen()
         bar = .init(height: 0)
         _frameRect = NSMakeRect(0, 0, 350, 350)
     }
     
+    private func updateAnalyticsScreen() {
+        switch mode {
+        case .common, .stories:
+            analyticsScreen = .chatInputStickers
+        case .intro:
+            analyticsScreen = .appStickerPicker
+        case .selectAvatar:
+            analyticsScreen = nil
+        }
+    }
     
     private func updateSearchState(_ state: SearchState) {
         self.position.set(.initial)
@@ -1474,7 +1490,8 @@ public class NStickersViewController<Context: AccountContextProtocol>: TelegramG
         if #available(macOS 14.0, *), mode == .common {
             arguments.createSticker = { [weak self] _ in
                 guard let self else { return }
-                presentCreateSticker(context: context, chatInteraction: self.chatInteraction)
+                let analyticsContext = self.chatInteraction.map { Analytics.shared.captureContext(engine: context.engine, peerId: $0.peerId, inherited: self.analyticsContext) } ?? Analytics.shared.unresolvedContext()
+                presentCreateSticker(context: context, chatInteraction: self.chatInteraction, analyticsContext: analyticsContext)
             }
         }
         

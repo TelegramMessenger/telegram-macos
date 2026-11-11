@@ -12,6 +12,15 @@ public final class DataItem : TGDataItem {
         super.init()
         super.appendData(initialData)
     }
+    public override func replaceData(_ data: Data!) -> Bool {
+        guard let data else { return false }
+        do {
+            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        } catch {
+            return false
+        }
+        return super.replaceData(data)
+    }
     public override func appendData(_ data: Data!) {
         if !FileManager.default.fileExists(atPath: self.path) {
             FileManager.default.createFile(atPath: self.path, contents: self.data(), attributes: nil)

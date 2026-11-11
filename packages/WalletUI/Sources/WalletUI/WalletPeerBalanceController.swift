@@ -7,6 +7,7 @@ import SwiftSignalKit
 import Postbox
 import TelegramCore
 import WalletContext
+import AppAnalytics
 
 private let walletPeerBalanceInset: CGFloat = 20
 private let walletPeerBalanceCardWidth: CGFloat = 360
@@ -552,6 +553,10 @@ private final class WalletPeerBalanceController: ModalViewController {
 
     private func performAction() {
         if isOwnWallet {
+            guard WalletConfiguration.with(appConfiguration: context.appConfiguration).isAvailable else {
+                environment.showModalText(for: context.window, text: strings().accountViewControllerWalletUnavailable)
+                return
+            }
             showWallet(context: context, environment: environment, walletContext: walletContext, for: context.window)
         } else if showsWalletInfo {
             showModal(with: WalletInfoController(context: context, environment: environment, walletContext: walletContext, mode: .wallet), for: context.window)
@@ -608,7 +613,7 @@ private final class WalletPeerBalanceController: ModalViewController {
         guard !address.isEmpty else {
             return
         }
-        showModal(with: WalletReceiveController(context: context, environment: environment, walletContext: walletContext, address: address, isOwnWallet: false), for: context.window)
+        showModal(with: WalletReceiveController(context: context, environment: environment, walletContext: walletContext, address: address, isOwnWallet: isOwnWallet), for: context.window)
     }
 
     private func updateWalletCard(_ card: WalletCard?) {
@@ -655,10 +660,19 @@ private final class WalletPeerBalanceController: ModalViewController {
 
 @available(macOS 10.15, *)
 public func showWalletPeerBalance(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, peer: Peer, morphSource: (() -> NSView?)? = nil) {
+    showWalletPeerBalance(context: context, environment: environment, walletContext: walletContext, peer: peer, morphSource: morphSource, analyticsContext: Analytics.shared.unresolvedContext())
+}
+
+@available(macOS 10.15, *)
+public func showWalletPeerBalance(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, peer: Peer, morphSource: (() -> NSView?)? = nil, analyticsContext: AnalyticsContext) {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peer.id, inherited: analyticsContext)
+    let presentation = origin.beginPresentation()
     let controller = WalletPeerBalanceController(context: context, environment: environment, walletContext: walletContext, peer: peer, source: morphSource?())
+    controller.analyticsContext = origin
     let onDeinit = controller.onDeinit
     controller.onDeinit = {
         onDeinit?()
+        presentation.end()
     }
     showModal(with: controller, for: context.window, animated: false, animationType: .none, morphSource: { nil })
 }

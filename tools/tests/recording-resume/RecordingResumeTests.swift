@@ -17,19 +17,33 @@ final class Probe<T> {
     func send(_ value: T) { for subscriber in subscribers { subscriber.putNext(value) } }
     func complete() { for subscriber in subscribers { subscriber.putCompletion() } }
 }
+final class Presentation { func end() {} }
+final class AnalyticsContext { func beginPresentation() -> Presentation { Presentation() } }
+final class Analytics { static let shared = Analytics(); func unresolvedContext() -> AnalyticsContext { AnalyticsContext() } }
+enum Step { case openConfirmation, cancelConfirmation }
+final class Journey {
+    func previewReady() {}
+    func trimChanged(changed: Bool, committed: Bool) {}
+    func step(_ value: Step) {}
+    func cancel() {}
+    func setOneTime(_ value: Bool) {}
+}
 struct ChatRecordingPreviewData { var path: String = "/tmp/source.m4a"; var duration: Double; var waveform: Int? = nil; var thumb: CGImage? = nil }
+enum Via { case release }
 final class Recorder {
     var trimRange: Range<Double>? = 2..<8
     var trimSourceDuration: Double? = 10
     var isCancelled = false, isOneTime = false, isPreparingSubmission = false, hasSubmitted = false
     var trimOperationId: UUID?
     var resumes = 0, sends = 0, trimCalls: [Range<Double>] = []
+    var analyticsContext: AnalyticsContext? = AnalyticsContext()
+    var analyticsRecordingJourney: Journey? = Journey()
     let operation = Probe<Bool>(), previews = Probe<ChatRecordingPreviewData?>()
     var previewData: Signal<ChatRecordingPreviewData?, NoError> { previews.signal }
     func performTrim(_ range: Range<Double>) -> Signal<Bool, NoError> { trimCalls.append(range); return operation.signal }
     func resume() { resumes += 1 }
     func updatePreviewTrim(_ range: Range<Double>, updatedEnd: Bool, applied: Bool) {}
-    func send(from: Interaction, closingOtherModals: Bool) { sends += 1 }
+    func send(from: Interaction, via: Via, closingOtherModals: Bool) { sends += 1 }
     func discard(from: Interaction, closingOtherModals: Bool) { isCancelled = true }
     __CORE__
     var result: Signal<Bool, NoError> { __RESULT__ }
@@ -61,7 +75,7 @@ func strings() -> LocalStrings { LocalStrings() }
 var alerts = 0
 var confirmations: [(Int) -> Void] = []
 func alert(for window: Window, info: String) { alerts += 1 }
-func verifyAlert_button(for window: Window, information: String, ok: String, cancel: String, successHandler: @escaping (Int) -> Void, cancelHandler: @escaping () -> Void, onDeinit: @escaping () -> Void = {}) { confirmations.append(successHandler) }
+func verifyAlert_button(for window: Window, information: String, ok: String, cancel: String, successHandler: @escaping (Int) -> Void, cancelHandler: @escaping () -> Void, onDeinit: @escaping () -> Void) { confirmations.append(successHandler) }
 final class Input: View {
     let recorder: Recorder
     let scrubber = Scrubber(), pauseControl = View(), singleTimeControl = View(), recView = View(), timerView = Timer()

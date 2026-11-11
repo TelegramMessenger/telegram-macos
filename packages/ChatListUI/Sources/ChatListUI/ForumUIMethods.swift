@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import TelegramCore
 import Postbox
 import TGUIKit
@@ -56,24 +57,30 @@ public struct ForumUI {
     }
     
     
-
     public static func open(_ peerId: PeerId, addition: Bool, context: any AccountContextProtocol, threadId: Int64? = nil, fullWidth: Bool = false, initialAction: ChatInitialAction? = nil) {
+        open(peerId, addition: addition, context: context, threadId: threadId, fullWidth: fullWidth, initialAction: initialAction, analyticsContext: nil)
+    }
+
+    public static func open(_ peerId: PeerId, addition: Bool, context: any AccountContextProtocol, threadId: Int64? = nil, fullWidth: Bool = false, initialAction: ChatInitialAction? = nil, analyticsContext: AnalyticsContext?) {
+        let origin = ForumNavigationOrigin(context: context, peerId: peerId, inherited: analyticsContext)
+        let presentation = origin.context?.beginPresentation()
+        defer { presentation?.end() }
 
 
         let signal: Signal<Bool, NoError>
         
         if let threadId = threadId {
-            signal = openTopic(threadId, peerId: peerId, context: context) |> map { _ in context.layout == .dual }
+            signal = openTopic(threadId, peerId: peerId, context: context, analyticsContext: origin.context) |> map { _ in context.layout == .dual }
         } else {
             let viewAsMessages: Signal<(Bool?, Bool?), NoError> = combineLatest(getCachedDataView(peerId: peerId, postbox: context.account.postbox) |> map { $0 as? CachedChannelData }, context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId)))
             |> map { ($0?.viewForumAsMessages.knownValue, $1?._asPeer().displayForumAsTabs) }
             |> deliverOnMainQueue
             |> take(1)
             
-            signal = (viewAsMessages) |> mapToSignal { value, displayAsTabs in
+            signal = origin.preserving(viewAsMessages) |> mapToSignal { value, displayAsTabs in
                 let insertChat:(Bool)->Signal<Bool, NoError> = { displayAsTabs in
                     let ready = Promise<Bool>()
-                    ChatListUIHooks.shared.navigateToChatObserved(context.bindings.rootNavigation(), context, .peer(peerId), .history, nil, initialAction, nil, addition, nil, callback: { controller in
+                    ChatListUIHooks.shared.navigateToChatObserved(context.bindings.rootNavigation(), context, .peer(peerId), .history, nil, initialAction, nil, addition, nil, analyticsContext: origin.context, callback: { controller in
                         ready.set(controller.ready.get() |> map { displayAsTabs ? false : context.layout == .single ? false : $0 })
                     })
                     return ready.get() |> take(1)
@@ -93,12 +100,13 @@ public struct ForumUI {
             }
         }
         
-        _ = (signal |> filter { $0 } |> take(1)).start(next: { value in
+        _ = origin.preserving(signal |> filter { $0 } |> take(1)).start(next: { value in
             if value {
                 var parentIsArchive = false
                 let navigation = ChatListUIHooks.shared.mainEffectiveNavigation(context)
                 if let controller = navigation.controller as? ChatListControllerKind {
                     if controller.mode.isForumLike {
+                        origin.bind(controller)
                         if context.layout == .single {
                             context.bindings.rootNavigation().gotoEmpty()
                         } else {
@@ -112,7 +120,10 @@ public struct ForumUI {
                 }
                 
                 let mode: PeerListMode = peerId == context.peerId ? .savedMessagesChats(peerId: peerId) : .forum(peerId, fullWidth || context.layout == .minimisize, parentIsArchive)
-                let controller = ChatListUIHooks.shared.makeChatListController(context, false, mode)
+                let controller = origin.perform {
+                    ChatListUIHooks.shared.makeChatListController(context, false, mode)
+                }
+                origin.bind(controller)
                 navigation.push(controller)
                 if context.layout == .single {
                     context.bindings.rootNavigation().gotoEmpty()
@@ -121,13 +132,20 @@ public struct ForumUI {
         })
        
     }
-
     public static func openTopic(_ threadId: Int64, peerId: PeerId, context: any AccountContextProtocol, messageId: MessageId? = nil, animated: Bool = false, addition: Bool = false, initialAction: ChatInitialAction? = nil, isMonoforum: Bool = false) -> Signal<Bool, NoError> {
+        return openTopic(threadId, peerId: peerId, context: context, messageId: messageId, animated: animated, addition: addition, initialAction: initialAction, isMonoforum: isMonoforum, analyticsContext: nil)
+    }
+
+    public static func openTopic(_ threadId: Int64, peerId: PeerId, context: any AccountContextProtocol, messageId: MessageId? = nil, animated: Bool = false, addition: Bool = false, initialAction: ChatInitialAction? = nil, isMonoforum: Bool = false, analyticsContext: AnalyticsContext?) -> Signal<Bool, NoError> {
+        let origin = ForumNavigationOrigin(context: context, peerId: peerId, inherited: analyticsContext)
+        let presentation = origin.context?.beginPresentation()
+        defer { presentation?.end() }
 
         
         let controller = context.bindings.rootNavigation().controller as? ChatListChatController
         
         if let controller = controller, controller.chatLocation.peerId == peerId, controller.chatLocation.threadId == threadId {
+            origin.bind(controller)
             if let messageId = messageId {
                 controller.chatInteraction.focusMessageId(nil, .init(messageId: messageId, string: nil), .CenterEmpty)
             } else {
@@ -136,7 +154,7 @@ public struct ForumUI {
             if let initialAction = initialAction {
                 controller.chatInteraction.invokeInitialAction(animated: true,action: initialAction)
             }
-            return (controller.ready.get())
+            return origin.preserving(controller.ready.get())
         }
         
         let threadMessageId = makeThreadIdMessageId(peerId: peerId, threadId: threadId)
@@ -156,7 +174,7 @@ public struct ForumUI {
         let ready: Promise<Bool> = Promise()
         
         var receivedResult = false
-        _ = (signal |> take(1)).start(next: { result in
+        _ = origin.preserving(signal |> take(1)).start(next: { result in
             receivedResult = true
             
             let updatedMode: ChatMode
@@ -174,7 +192,7 @@ public struct ForumUI {
                 chatLocation = .makeSaved(peerId, peerId: PeerId(threadId), isMonoforum: true)
                 updatedMode = .history
             }
-            ChatListUIHooks.shared.navigateToChatObserved(context.bindings.rootNavigation(), context, chatLocation, updatedMode, .init(messageId: messageId), initialAction, chatLocationContextHolder, addition, animated ? .push : nil, callback: { controller in
+            ChatListUIHooks.shared.navigateToChatObserved(context.bindings.rootNavigation(), context, chatLocation, updatedMode, .init(messageId: messageId), initialAction, chatLocationContextHolder, addition, animated ? .push : nil, analyticsContext: origin.context, callback: { controller in
                 ready.set(controller.ready.get())
             })
             
@@ -186,7 +204,7 @@ public struct ForumUI {
             }
         })
         
-        return (ready.get())
+        return origin.preserving(ready.get())
     }
     
     public static func openSavedMessages(_ threadId: Int64, context: any AccountContextProtocol, messageId: MessageId? = nil, animated: Bool = false, addition: Bool = false, initialAction: ChatInitialAction? = nil) -> Signal<Bool, NoError> {

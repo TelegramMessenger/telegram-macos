@@ -158,7 +158,7 @@ public final class LocalFileVideoMediaResource: TelegramMediaResource {
         }
     }
     public var headerSize: Int32 {
-        return 32 * 1024
+        return streamingVideoHeaderSize(path: path)
     }
 
     public var size: Int64? {

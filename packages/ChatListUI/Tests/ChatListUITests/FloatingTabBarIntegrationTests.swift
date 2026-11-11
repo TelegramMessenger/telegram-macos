@@ -14,7 +14,7 @@ private final class FloatingTabBarTestRow: TableRowItem {
     }
 }
 
-private final class TabAnimationTestRenderer: TLottieBridge, R_LottieBridge {
+private final class TabAnimationTestRenderer: TLottieBridge, LottieRendererBridge {
 }
 
 private final class LensTestAnimatedItem: TabAnimatedItem {
@@ -102,13 +102,13 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
     func testSelectedTabPreviewStartsPlayingWithoutChangingColors() throws {
         let resource = TestImages.catalog.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/tgs/tab_chats.tgs")
         let data = try Data(contentsOf: resource)
-        let previousRenderer = makeRLottie
-        makeRLottie = { json, _ in TabAnimationTestRenderer(json: json) }
+        let previousRenderer = makeLottieRenderer
+        makeLottieRenderer = { json in TabAnimationTestRenderer(json: json) }
         let icon = TabAnimatedIconView(sticker: .tab_chats, animationData: data)
         let player: LottiePlayerView = icon
         defer {
             player.set(nil)
-            makeRLottie = previousRenderer
+            makeLottieRenderer = previousRenderer
         }
         icon.setSelected(true, animated: false)
         XCTAssertTrue(waitUntil { player.currentState == .finished })
@@ -134,15 +134,15 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
         for palette in [dayClassicPalette, darkPalette] {
             let currentTheme = generateTheme(palette: palette, cloudTheme: nil, bubbled: false, fontSize: 13, wallpaper: previousTheme.wallpaper, liquidGlass: true)
             telegramUpdateTheme(currentTheme, window: nil, animated: false)
-            try assertLottieKeepsPlayingThroughTintedPortals(outsideColor: palette.isDark ? .white : palette.grayIcon, accentColor: palette.accentIcon)
+            try assertLottieKeepsPlayingThroughTintedPortals(outsideColor: palette.text, accentColor: palette.accentIcon)
         }
     }
 
     private func assertLottieKeepsPlayingThroughTintedPortals(outsideColor: NSColor, accentColor: NSColor) throws {
         let resource = TestImages.catalog.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/tgs/tab_chats.tgs")
         let data = try Data(contentsOf: resource)
-        let previousRenderer = makeRLottie
-        makeRLottie = { json, _ in TabAnimationTestRenderer(json: json) }
+        let previousRenderer = makeLottieRenderer
+        makeLottieRenderer = { json in TabAnimationTestRenderer(json: json) }
         System.liquidGlass = true
         let bar = TabBarView(frame: NSRect(x: 0, y: 0, width: 333, height: 48))
         bar.reduceMotion = { false }
@@ -161,7 +161,7 @@ final class FloatingTabBarIntegrationTests: XCTestCase {
                 item.icon.set(nil)
             }
             System.liquidGlass = false
-            makeRLottie = previousRenderer
+            makeLottieRenderer = previousRenderer
         }
         for item in items {
             bar.addTab(item)
