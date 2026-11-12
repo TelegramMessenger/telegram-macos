@@ -52,7 +52,12 @@ class SharedAccountContext {
     }
     
     let inputSource: InputSources = InputSources()
-    let devicesContext: DevicesContext
+    private let devicesContextValue = Atomic<DevicesContext?>(value: nil)
+    var devicesContext: DevicesContext {
+        return devicesContextValue.modify { current in
+            current ?? DevicesContext(accountManager)
+        }!
+    }
     private let _baseSettings: Atomic<BaseApplicationSettings> = Atomic(value: BaseApplicationSettings.defaultSettings)
     
     var baseSettings: BaseApplicationSettings {
@@ -251,7 +256,6 @@ class SharedAccountContext {
         self.displayUpgradeProgress = displayUpgradeProgress
         self.appEncryption = Atomic(value: appEncryption)
         #if !SHARE
-        self.devicesContext = DevicesContext(accountManager)
         self.accountManager.mediaBox.fetchCachedResourceRepresentation = { (resource, representation) -> Signal<CachedMediaResourceRepresentationResult, NoError> in
             return fetchCachedSharedResourceRepresentation(accountManager: accountManager, resource: resource, representation: representation)
         }
