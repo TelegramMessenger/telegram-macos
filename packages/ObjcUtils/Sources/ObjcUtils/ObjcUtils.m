@@ -207,6 +207,13 @@ void TGDisableLayerActions(CALayer *layer) {
                 [domainRegex enumerateMatchesInString:text options:0 range:NSMakeRange(0, text.length) usingBlock:^(NSTextCheckingResult *match, __unused NSMatchingFlags flags, __unused BOOL *stop) {
                     @try {
                         NSRange range = match.range;
+                        // A domain inside a URL with a scheme (slack://open?x&foo.dev, slack://open#foo.dev) is part of that URL:
+                        // supported schemes are already linked whole by NSDataDetector, unsupported ones stay plain text.
+                        NSRange tokenStart = [text rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet] options:NSBackwardsSearch range:NSMakeRange(0, range.location)];
+                        NSUInteger tokenFrom = tokenStart.location == NSNotFound ? 0 : NSMaxRange(tokenStart);
+                        if ([text rangeOfString:@"://" options:0 range:NSMakeRange(tokenFrom, range.location - tokenFrom)].location != NSNotFound) {
+                            return;
+                        }
                         NSIndexSet *covered = [results indexesOfObjectsPassingTest:^BOOL(NSValue *value, __unused NSUInteger index, __unused BOOL *innerStop) {
                             NSRange existing = value.rangeValue;
                             return existing.location >= range.location && NSMaxRange(existing) <= NSMaxRange(range);
