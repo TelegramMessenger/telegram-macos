@@ -191,7 +191,7 @@ public final class StoryContentItem: Equatable {
     }
     
     public var sharable: Bool {
-        return storyItem.isPublic
+        return storyItem.isPublic && !storyItem.isForwardingDisabled
     }
     public var canCopyLink: Bool {
         if peer?.addressName != nil {
