@@ -1,0 +1,276 @@
+import Cocoa
+import XCTest
+
+final class Window: NSObject {
+    enum ChromeMode {
+        case compact
+        case standard
+    }
+
+    var isFullScreen = false
+    var supportsCornerRadius = true
+    var radii: [Double] = []
+    var chromeModes: [ChromeMode] = []
+    var clampCount = 0
+
+    override func responds(to selector: Selector!) -> Bool {
+        if selector == NSSelectorFromString("_setCornerRadius:") && !supportsCornerRadius {
+            return false
+        }
+        return super.responds(to: selector)
+    }
+
+    @objc(_setCornerRadius:) private func recordCornerRadius(_ radius: Double) {
+        radii.append(radius)
+    }
+
+    func applyChrome(_ mode: ChromeMode) {
+        chromeModes.append(mode)
+    }
+
+    func clampToScreen() {
+        clampCount += 1
+    }
+
+    func resetCalls() {
+        radii.removeAll()
+        chromeModes.removeAll()
+        clampCount = 0
+    }
+}
+
+__RADIUS__
+
+enum SplitViewState {
+    case single
+    case dual
+    case minimisize
+}
+
+struct Folders {
+    var isEmpty: Bool
+    var sidebar: Bool
+}
+
+final class SplitView {
+    var state: SplitViewState = .dual
+}
+
+final class ContextView {
+    let splitView = SplitView()
+}
+
+final class LeftView {
+    var compactCorners = false
+}
+
+final class LeftController {
+    let genericView = LeftView()
+}
+
+final class ApplicationContextFixture: NSObject {
+    let window: Window
+    let view = ContextView()
+    let leftController = LeftController()
+    var folders: Folders?
+__STATE__
+    init(window: Window = Window(), state: SplitViewState = .dual, folders: Folders? = nil) {
+        self.window = window
+        self.view.splitView.state = state
+        self.folders = folders
+        super.init()
+__OBSERVERS__
+        applyWindowChrome(forState: state)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    func layout(_ state: SplitViewState) {
+        view.splitView.state = state
+        applyWindowChrome(forState: state)
+    }
+
+    func post(_ name: Notification.Name, object: Window? = nil) {
+        NotificationCenter.default.post(name: name, object: object ?? window)
+    }
+
+    func enterFullScreen() {
+        post(NSWindow.willEnterFullScreenNotification)
+        window.isFullScreen = true
+        post(NSWindow.didEnterFullScreenNotification)
+    }
+
+    func exitFullScreen() {
+        post(NSWindow.willExitFullScreenNotification)
+        window.isFullScreen = false
+        post(NSWindow.didExitFullScreenNotification)
+    }
+__METHODS__
+}
+
+final class FullscreenWindowCornersTests: XCTestCase {
+    override func setUpWithError() throws {
+        guard #available(macOS 27.0, *) else {
+            throw XCTSkip("The existing window radius override is enabled on macOS 27 and later")
+        }
+    }
+
+    func testWindowedStandardRadiusRemains28() {
+        let window = Window()
+        window.applyCornerRadius(for: .standard)
+        XCTAssertEqual(window.radii, [28])
+    }
+
+    func testWindowedCompactRadiusRemainsZero() {
+        let window = Window()
+        window.applyCornerRadius(for: .compact)
+        XCTAssertEqual(window.radii, [0])
+    }
+
+    func testFullscreenStandardRadiusIsZero() {
+        let window = Window()
+        window.isFullScreen = true
+        window.applyCornerRadius(for: .standard)
+        XCTAssertEqual(window.radii, [0])
+    }
+
+    func testFullscreenCompactRadiusRemainsZero() {
+        let window = Window()
+        window.isFullScreen = true
+        window.applyCornerRadius(for: .compact)
+        XCTAssertEqual(window.radii, [0])
+    }
+
+    func testMissingPrivateSelectorIsIgnored() {
+        let window = Window()
+        window.supportsCornerRadius = false
+        window.applyCornerRadius(for: .standard)
+        window.isFullScreen = true
+        window.applyCornerRadius(for: .standard)
+        XCTAssertTrue(window.radii.isEmpty)
+    }
+
+    func testEnterWithoutLayoutChangeRefreshesRadiusOnly() {
+        let context = ApplicationContextFixture()
+        context.window.resetCalls()
+        context.enterFullScreen()
+        XCTAssertEqual(context.window.radii, [0])
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+        XCTAssertEqual(context.window.clampCount, 0)
+        XCTAssertFalse(context.leftController.genericView.compactCorners)
+    }
+
+    func testExitWithoutLayoutChangeRestoresRadiusOnly() {
+        let context = ApplicationContextFixture()
+        context.enterFullScreen()
+        context.window.resetCalls()
+        context.exitFullScreen()
+        XCTAssertEqual(context.window.radii, [28])
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+        XCTAssertEqual(context.window.clampCount, 0)
+    }
+
+    func testDeferredUnchangedModeStillRefreshesRadius() {
+        let context = ApplicationContextFixture()
+        context.window.resetCalls()
+        context.post(NSWindow.willEnterFullScreenNotification)
+        context.layout(.dual)
+        XCTAssertTrue(context.window.radii.isEmpty)
+        context.window.isFullScreen = true
+        context.post(NSWindow.didEnterFullScreenNotification)
+        XCTAssertEqual(context.window.radii, [0])
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+        XCTAssertEqual(context.window.clampCount, 0)
+    }
+
+    func testDeferredCompactToStandardUsesFullscreenRadius() {
+        let context = ApplicationContextFixture(state: .single)
+        context.window.resetCalls()
+        context.post(NSWindow.willEnterFullScreenNotification)
+        context.layout(.dual)
+        XCTAssertTrue(context.window.radii.isEmpty)
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+        context.window.isFullScreen = true
+        context.post(NSWindow.didEnterFullScreenNotification)
+        XCTAssertEqual(context.window.radii.last, 0)
+        XCTAssertTrue(context.window.radii.allSatisfy { $0 == 0 })
+        XCTAssertEqual(context.window.chromeModes, [.standard])
+        XCTAssertFalse(context.leftController.genericView.compactCorners)
+    }
+
+    func testDeferredExitToCompactRestoresCompactRadius() {
+        let context = ApplicationContextFixture()
+        context.enterFullScreen()
+        context.window.resetCalls()
+        context.post(NSWindow.willExitFullScreenNotification)
+        context.layout(.single)
+        XCTAssertTrue(context.window.radii.isEmpty)
+        context.window.isFullScreen = false
+        context.post(NSWindow.didExitFullScreenNotification)
+        XCTAssertEqual(context.window.radii.last, 0)
+        XCTAssertEqual(context.window.chromeModes, [.compact])
+        XCTAssertTrue(context.leftController.genericView.compactCorners)
+    }
+
+    func testCompactModeSurvivesRepeatedFullscreenTransitions() {
+        let context = ApplicationContextFixture(state: .single)
+        context.window.resetCalls()
+        for _ in 0..<3 {
+            context.enterFullScreen()
+            context.exitFullScreen()
+        }
+        XCTAssertEqual(context.window.radii, Array(repeating: 0, count: 6))
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+    }
+
+    func testStandardModeSurvivesRepeatedFullscreenTransitions() {
+        let context = ApplicationContextFixture()
+        context.window.resetCalls()
+        for _ in 0..<3 {
+            context.enterFullScreen()
+            context.exitFullScreen()
+        }
+        XCTAssertEqual(context.window.radii, [0, 28, 0, 28, 0, 28])
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+    }
+
+    func testSidebarKeepsStandardRadiusAfterFullscreen() {
+        let context = ApplicationContextFixture(state: .single, folders: Folders(isEmpty: false, sidebar: true))
+        XCTAssertEqual(context.window.radii, [28])
+        context.window.resetCalls()
+        context.enterFullScreen()
+        context.exitFullScreen()
+        XCTAssertEqual(context.window.radii, [0, 28])
+        XCTAssertFalse(context.leftController.genericView.compactCorners)
+    }
+
+    func testOtherWindowNotificationsDoNotChangeRadius() {
+        let context = ApplicationContextFixture()
+        let other = Window()
+        context.window.resetCalls()
+        for name in [NSWindow.willEnterFullScreenNotification, NSWindow.didEnterFullScreenNotification, NSWindow.willExitFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+            context.post(name, object: other)
+        }
+        XCTAssertTrue(context.window.radii.isEmpty)
+        XCTAssertTrue(context.window.chromeModes.isEmpty)
+    }
+
+    func testInitializingAlreadyFullscreenUsesZeroRadius() {
+        let window = Window()
+        window.isFullScreen = true
+        let context = ApplicationContextFixture(window: window)
+        XCTAssertEqual(window.radii, [0])
+        withExtendedLifetime(context) {}
+    }
+
+    func testChangingToStandardWhileFullscreenKeepsSquareCorners() {
+        let context = ApplicationContextFixture(state: .single)
+        context.enterFullScreen()
+        context.window.resetCalls()
+        context.layout(.dual)
+        XCTAssertEqual(context.window.radii, [0])
+        XCTAssertEqual(context.window.chromeModes, [.standard])
+    }
+}
