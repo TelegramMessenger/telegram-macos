@@ -12,6 +12,20 @@ final class ChatBubbleWallpaperMaterial {
 
     static let blurDownsample: CGFloat = 0.25
     static let blurRadius: CGFloat = 12
+    #if APP_STORE
+    static let isSupported = false
+    #else
+    static let isSupported = System.liquidGlassAvailable
+    #endif
+
+    #if APP_STORE
+    static func makeGlassLayer() -> CALayer? {
+        return nil
+    }
+
+    static func applyGlassMatrix(_ values: [CGFloat], to layer: CALayer) {
+    }
+    #else
     private static let glassGroupName = "chat-bubble-glass"
     private static let backdropLayerClass = NSClassFromString("CABackdropLayer") as? CALayer.Type
     private static let filterClass = NSClassFromString("CAFilter") as? NSObject.Type
@@ -51,6 +65,7 @@ final class ChatBubbleWallpaperMaterial {
         layer.setValue(value, forKeyPath: "filters.color.inputColorMatrix")
         CATransaction.commit()
     }
+    #endif
 
     static let incomingGlassReference = NSColor(0x3B3B3D)
     static let incomingTintOpacity: CGFloat = 0.3
@@ -91,7 +106,7 @@ final class ChatBubbleWallpaperMaterial {
     }
 
     static func isActive(_ presentation: TelegramPresentationTheme, hasBubble: Bool, liteBlur: Bool) -> Bool {
-        return hasBubble && presentation.bubbled && presentation.liquidGlass && !liteBlur && presentation.hasWallpaper
+        return isSupported && hasBubble && presentation.bubbled && presentation.liquidGlass && !liteBlur && presentation.hasWallpaper
     }
 
 

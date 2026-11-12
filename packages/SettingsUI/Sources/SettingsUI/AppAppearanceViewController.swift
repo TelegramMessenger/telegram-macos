@@ -506,7 +506,12 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
     })))
     index += 1
 
-    if appearance.presentation.bubbled {
+    #if APP_STORE
+    let glassBubblesSupported = false
+    #else
+    let glassBubblesSupported = System.liquidGlassAvailable
+    #endif
+    if appearance.presentation.bubbled, glassBubblesSupported {
         let liteMode = appearance.presentation.liteMode
         let glassAvailable = !liteMode.enabled && liteMode.liquidGlassEnabled
         entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_theme_glass_bubbles, data: InputDataGeneralData(name: _NSLocalizedString("Appearance.Settings.GlassBubbles"), color: appearance.presentation.colors.text, type: .switchable(glassAvailable && liteMode.glassBubblesEnabled), viewType: .innerItem, enabled: glassAvailable, action: arguments.toggleGlassBubbles, disabledAction: arguments.alertGlassBubbles)))
