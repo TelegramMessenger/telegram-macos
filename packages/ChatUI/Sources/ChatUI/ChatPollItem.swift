@@ -272,11 +272,12 @@ public class ChatPollItem: ChatRowItem {
 
     fileprivate let poll: TelegramMediaPoll
     fileprivate var canAddOption: Bool {
-        return Self.canAddOption(poll: poll, isClosed: isClosed)
+        return Self.canAddOption(poll: poll, isClosed: isClosed, appConfiguration: context.appConfiguration)
     }
 
-    static func canAddOption(poll: TelegramMediaPoll, isClosed: Bool) -> Bool {
-        return poll.openAnswers && !isClosed
+    static func canAddOption(poll: TelegramMediaPoll, isClosed: Bool, appConfiguration: AppConfiguration) -> Bool {
+        let optionsLimit = Int(appConfiguration.getGeneralValue("poll_answers_max", orElse: 10))
+        return poll.openAnswers && !isClosed && poll.options.count < optionsLimit
     }
     
     public var actionButtonText: String? {
@@ -2025,7 +2026,7 @@ private final class PollView : Control {
             if let addOptionButton = self.addOptionButton {
                 addOptionButton.removeAllHandlers()
                 addOptionButton.set(handler: { [weak item] _ in
-                    guard let item = item, let message = item.message else { return }
+                    guard let item = item, item.canAddOption, let message = item.message else { return }
                     if message.flags.contains(.Failed) || message.flags.contains(.Unsent) || message.flags.contains(.Sending) {
                         return
                     }
