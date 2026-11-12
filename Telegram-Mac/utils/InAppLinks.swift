@@ -12,6 +12,7 @@ import InputView
 import TelegramMedia
 import InAppSettings
 import WalletContext
+import AppAnalytics
 
 
 
@@ -425,6 +426,38 @@ private func detectIDNHomograph(_ host: String) -> (isHomograph: Bool, asciiHost
     return (false, asciiHost ?? host)
 }
 
+private func analyticsLinkKind(_ inapp: inAppLink) -> AnalyticsEvents.LinkOpenLinkKind? {
+    if inapp.link.isEmpty {
+        return nil
+    }
+    switch inapp {
+    case let .followResolvedName(_, _, postId, _, _, action, _):
+        switch action {
+        case .some(.makeWebview), .some(.openWebview):
+            return .miniApp
+        default:
+            return postId != nil ? .message : .peer
+        }
+    case .peerInfo, .inviteBotToGroup:
+        return .peer
+    case .comments, .topic:
+        return .message
+    case .joinchat:
+        return .invite
+    case .stickerPack:
+        return .stickers
+    case .theme:
+        return .theme
+    case .socks:
+        return .proxy
+    case .external:
+        return .external
+    case .botCommand, .callback, .code, .hashtag, .logout, .nothing, .urlAuth, .oauth:
+        return nil
+    default:
+        return .other
+    }
+}
 
 private func openNoPaidMessagesPeer(_ peer: EnginePeer, token: String, context: AccountContext, window: Window, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
     guard case let .user(user) = peer, user.botInfo == nil, peer.id != context.peerId else {
@@ -441,11 +474,8 @@ private func openNoPaidMessagesPeer(_ peer: EnginePeer, token: String, context: 
         return .fail(error)
     }
     let _ = showModalProgress(signal: importSignal |> deliverOnMainQueue, for: window).start(next: { updatedPeer in
-        let title = (updatedPeer ?? peer)._asPeer().compactDisplayTitle
         callback(peer.id, true, nil, nil)
-        if updatedPeer != nil {
-            showModalText(for: window, text: strings().inAppLinksFreeMessageLinkApplied(title))
-        } else {
+        if updatedPeer == nil {
             showModalText(for: window, text: strings().inAppLinksFreeMessageLinkInvalid)
         }
     }, error: { _ in
@@ -454,9 +484,35 @@ private func openNoPaidMessagesPeer(_ peer: EnginePeer, token: String, context: 
     })
 }
 
+private final class InAppLinkOrigin {
+    let context: AnalyticsContext?
+    private let presentation: AnalyticsPresentation?
 
-private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: ChatInitialAction?, forceProfile: Bool, context: AccountContext, window: Window, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
-    do {
+    init(_ context: AnalyticsContext?) {
+        self.context = context
+        self.presentation = context?.beginPresentation()
+    }
+
+    func restricting(context: AccountContext, peerId: PeerId) -> InAppLinkOrigin {
+        return InAppLinkOrigin(self.context.map {
+            Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: $0)
+        })
+    }
+
+    func perform<T>(_ action: () -> T) -> T {
+        let delivery = context?.beginPresentation()
+        defer { delivery?.end() }
+        return action()
+    }
+
+    func preserving<Value, Failure>(_ signal: Signal<Value, Failure>) -> Signal<Value, Failure> {
+        return context?.preservingPresentation(signal) ?? signal
+    }
+}
+
+private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: ChatInitialAction?, forceProfile: Bool, context: AccountContext, window: Window, origin inheritedOrigin: InAppLinkOrigin, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
+    let origin = inheritedOrigin.restricting(context: context, peerId: peer.id)
+    origin.perform {
         var joinVoiceChatAction: ChatInitialAction?
         if case .joinVoiceChat = action {
             joinVoiceChatAction = action
@@ -478,20 +534,20 @@ private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: C
                 }
                 |> take(1)
                 |> deliverOnMainQueue
-                _ = (signal).start(next: { result in
+                _ = origin.preserving(signal).start(next: { result in
                     if case let .result(messages) = result, let threadId = messages.first?.threadId {
                         let focusMessageId = threadId == Int64(messageId.id) ? nil : messageId
-                        let ready = ForumUI.openTopic(threadId, peerId: peer.id, context: context, messageId: focusMessageId, animated: true, addition: true)
-                        _ = (ready |> take(1)).start(next: { opened in
+                        let ready = ForumUI.openTopic(threadId, peerId: peer.id, context: context, messageId: focusMessageId, animated: true, addition: true, analyticsContext: origin.context)
+                        _ = origin.preserving(ready |> take(1)).start(next: { opened in
                             if !opened {
-                                ForumUI.open(peer.id, addition: true, context: context)
+                                ForumUI.open(peer.id, addition: true, context: context, analyticsContext: origin.context)
                             }
                         })
                     }
                 })
             } else {
                 let reusesCurrentView = current?.chatLocation == ChatLocation.peer(peer.id)
-                ForumUI.open(peer.id, addition: true, context: context, initialAction: reusesCurrentView ? nil : joinVoiceChatAction)
+                ForumUI.open(peer.id, addition: true, context: context, initialAction: reusesCurrentView ? nil : joinVoiceChatAction, analyticsContext: origin.context)
             }
         } else {
             let openChat: Bool
@@ -504,15 +560,17 @@ private func openResolvedLinkPeer(_ peer: Peer, messageId: MessageId?, action: C
             if case .direct = action, let linkedMonoforumId = (peer as? TelegramChannel)?.linkedMonoforumId {
                 peerId = linkedMonoforumId
             }
-            do {
+            let destination = origin.restricting(context: context, peerId: peerId)
+            destination.perform {
                 callback(peerId, (peer.isChannel || peer.isSupergroup || peer.isBot || openChat) && !forceProfile, messageId, forceProfile ? nil : action)
             }
         }
     }
 }
 
-private func openResolvedCommentLink(_ result: ThreadInfo, peer: Peer, threadId: Int32, commentId: Int32?, context: AccountContext) {
-    do {
+private func openResolvedCommentLink(_ result: ThreadInfo, peer: Peer, threadId: Int32, commentId: Int32?, context: AccountContext, origin inheritedOrigin: InAppLinkOrigin) {
+    let origin = inheritedOrigin.restricting(context: context, peerId: peer.id).restricting(context: context, peerId: result.message.peerId)
+    origin.perform {
         let threadMessageId = MessageId(peerId: peer.id, namespace: Namespaces.Message.Cloud, id: threadId)
         let navigation = context.bindings.rootNavigation()
         let current = navigation.controller as? ChatController
@@ -521,6 +579,7 @@ private func openResolvedCommentLink(_ result: ThreadInfo, peer: Peer, threadId:
             commentMessageId = MessageId(peerId: result.message.peerId, namespace: Namespaces.Message.Cloud, id: commentId)
         }
         if let current, current.chatLocation.peerId == result.message.peerId, current.chatLocation.threadId == result.message.threadId {
+            if let analyticsContext = origin.context { current.inheritAnalyticsContext(analyticsContext) }
             if let commentMessageId {
                 current.chatInteraction.focusMessageId(nil, .init(messageId: commentMessageId, string: nil), .CenterEmpty)
             }
@@ -534,25 +593,29 @@ private func openResolvedCommentLink(_ result: ThreadInfo, peer: Peer, threadId:
                 mode = .replies(origin: threadMessageId)
             }
             let controller = ChatAdditionController(context: context, chatLocation: .thread(result.message), mode: .thread(mode: mode), focusTarget: .init(messageId: commentMessageId), initialAction: nil, chatLocationContextHolder: result.contextHolder)
+            if let analyticsContext = origin.context { controller.inheritAnalyticsContext(analyticsContext) }
             navigation.push(controller)
         }
     }
 }
 
-private func openResolvedTopicLink(_ peer: Peer, threadId: Int32, commentId: Int32?, context: AccountContext) {
-    do {
+private func openResolvedTopicLink(_ peer: Peer, threadId: Int32, commentId: Int32?, context: AccountContext, origin inheritedOrigin: InAppLinkOrigin) {
+    let origin = inheritedOrigin.restricting(context: context, peerId: peer.id)
+    origin.perform {
         var messageId: MessageId?
         if let commentId {
             messageId = MessageId(peerId: peer.id, namespace: Namespaces.Message.Cloud, id: commentId)
         }
-        let ready = ForumUI.openTopic(Int64(threadId), peerId: peer.id, context: context, messageId: messageId, animated: true, addition: true)
-        _ = (ready |> take(1)).start()
+        let ready = ForumUI.openTopic(Int64(threadId), peerId: peer.id, context: context, messageId: messageId, animated: true, addition: true, analyticsContext: origin.context)
+        _ = origin.preserving(ready |> take(1)).start()
     }
 }
 
-private func executeAttachBotLink(_ bot: Peer, botname: String, choose: [String]?, action: ChatInitialAction, messageId: MessageId?, context: AccountContext, window: Window, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
+private func executeAttachBotLink(_ bot: Peer, botname: String, choose: [String]?, action: ChatInitialAction, messageId: MessageId?, context: AccountContext, window: Window, origin inheritedOrigin: InAppLinkOrigin, callback: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
+    let origin = inheritedOrigin.restricting(context: context, peerId: bot.id)
     let openTarget: (Peer) -> Void = { peer in
-        do {
+        let target = origin.restricting(context: context, peerId: peer.id)
+        target.perform {
             callback(peer.id, true, messageId?.peerId == peer.id ? messageId : nil, action)
         }
     }
@@ -562,7 +625,7 @@ private func executeAttachBotLink(_ bot: Peer, botname: String, choose: [String]
         |> filter { $0 != .progress }
         |> take(1)
         |> deliverOnMainQueue
-        _ = (signal).start(next: { peer in
+        _ = origin.preserving(signal).start(next: { peer in
             if let peer = peer.result { openTarget(peer._asPeer()) }
         })
     } else if let choose, !choose.isEmpty {
@@ -574,12 +637,15 @@ private func executeAttachBotLink(_ bot: Peer, botname: String, choose: [String]
         if choose.contains("bots") { settings.insert(.bots) }
         if choose.contains("groups") { settings.insert(.groups) }
         if choose.contains("channels") { settings.insert(.channels) }
-        let selection = selectModalPeers(window: window, context: context, title: strings().selectPeersTitleSelectChat, limit: 1, behavior: SelectChatsBehavior(settings: settings, excludePeerIds: [], limit: 1))
-        _ = (selection |> take(1)).start(next: { peerIds in
+        let selection = origin.perform {
+            selectModalPeers(window: window, context: context, title: strings().selectPeersTitleSelectChat, limit: 1, behavior: SelectChatsBehavior(settings: settings, excludePeerIds: [], limit: 1))
+        }
+        _ = origin.preserving(selection |> take(1)).start(next: { peerIds in
             guard let peerId = peerIds.first else { return }
-            do {
+            let target = origin.restricting(context: context, peerId: peerId)
+            target.perform {
                 let signal = context.account.postbox.loadedPeerWithId(peerId) |> take(1) |> deliverOnMainQueue
-                _ = (signal).start(next: { peer in
+                _ = target.preserving(signal).start(next: { peer in
                     guard peer.id == peerId else { return }
                     openTarget(peer)
                 })
@@ -591,24 +657,26 @@ private func executeAttachBotLink(_ bot: Peer, botname: String, choose: [String]
         let hadController = initialController != nil
         let initialChat = initialController as? ChatController
         let location = initialChat?.chatLocation
+        let target = origin.restricting(context: context, peerId: location?.peerId ?? bot.id)
         let deliver: (Bool) -> Void = { [weak initialController] forceBotChat in
             if hadController {
                 guard let initialController, navigation.controller === initialController else { return }
             } else {
                 guard navigation.controller == nil else { return }
             }
-            do {
+            target.perform {
                 if let chat = initialController as? ChatController, !forceBotChat {
                     guard chat.chatLocation == location else { return }
+                    if let analyticsContext = target.context { chat.inheritAnalyticsContext(analyticsContext) }
                     chat.chatInteraction.invokeInitialAction(action: action)
                 } else {
                     openTarget(bot)
                 }
             }
         }
-        do {
+        target.perform {
             let signal = context.engine.messages.getAttachMenuBot(botId: bot.id) |> take(1)
-            _ = (showModalProgress(signal: signal, for: window)).start(next: { _ in
+            _ = target.preserving(showModalProgress(signal: signal, for: window)).start(next: { _ in
                 deliver(false)
             }, error: { _ in
                 deliver(bot.username != botname)
@@ -617,10 +685,11 @@ private func executeAttachBotLink(_ bot: Peer, botname: String, choose: [String]
     }
 }
 
-private func executeWebAppLink(_ bot: Peer, appname: String, command: String?, messageId: MessageId?, context: AccountContext, window: Window, callback: @escaping (Peer, MessageId?, ChatInitialAction?) -> Void) {
+private func executeWebAppLink(_ bot: Peer, appname: String, command: String?, messageId: MessageId?, context: AccountContext, window: Window, origin inheritedOrigin: InAppLinkOrigin, callback: @escaping (Peer, MessageId?, ChatInitialAction?) -> Void) {
+    let botOrigin = InAppLinkOrigin(inheritedOrigin.context ?? Analytics.shared.unresolvedContext()).restricting(context: context, peerId: bot.id)
     if appname.isEmpty {
-        do {
-            BrowserStateContext.get(context).open(tab: .mainapp(bot: .init(bot), source: .inline(startParam: command ?? "")))
+        botOrigin.perform {
+            BrowserStateContext.get(context).open(tab: .mainapp(bot: .init(bot), source: .inline(startParam: command ?? "")), analyticsContext: botOrigin.context)
         }
         return
     }
@@ -630,6 +699,7 @@ private func executeWebAppLink(_ bot: Peer, appname: String, command: String?, m
     let location = initialChat?.chatLocation
     let hadChat = initialChat != nil
     let peerId = location?.peerId ?? bot.id
+    let origin = botOrigin.restricting(context: context, peerId: peerId)
     let isCurrent: () -> Bool = { [weak initialChat] in
         let current = navigation.first { $0 is ChatController } as? ChatController
         if hadChat {
@@ -643,40 +713,41 @@ private func executeWebAppLink(_ bot: Peer, appname: String, command: String?, m
         guard !finished else { return }
         finished = true
         guard isCurrent() else { return }
-        callback(bot, messageId, nil)
+        origin.perform { callback(bot, messageId, nil) }
     }
     let open: (BotApp, RequestWebViewResult) -> Void = { [weak initialChat] botApp, result in
         guard !finished else { return }
         finished = true
         guard isCurrent() else { return }
-        do {
+        origin.perform {
             if let initialChat {
+                if let analyticsContext = origin.context { initialChat.inheritAnalyticsContext(analyticsContext) }
                 initialChat.chatInteraction.invokeInitialAction(action: .openWebview(botPeer: .init(bot), botApp: botApp, result: result))
             } else {
-                BrowserStateContext.get(context).open(tab: .straight(bot: .init(bot), peerId: peerId, title: botApp.title, result: result))
+                BrowserStateContext.get(context).open(tab: .straight(bot: .init(bot), peerId: peerId, title: botApp.title, result: result), analyticsContext: origin.context)
             }
         }
     }
     let request: (BotApp, Bool) -> Void = { botApp, allowWrite in
         guard !finished, isCurrent() else { return }
-        do {
+        origin.perform {
             let signal = context.engine.messages.requestAppWebView(peerId: peerId, appReference: .id(id: botApp.id, accessHash: botApp.accessHash), payload: command, themeParams: generateWebAppThemeParams(theme), compact: false, fullscreen: false, allowWrite: allowWrite) |> take(1) |> deliverOnMainQueue
-            _ = (showModalProgress(signal: signal, for: window)).start(next: { result in
+            _ = origin.preserving(showModalProgress(signal: signal, for: window)).start(next: { result in
                 open(botApp, result)
             }, error: { _ in
                 fallback(messageId)
             })
         }
     }
-    do {
+    origin.perform {
         let signal = context.engine.messages.getBotApp(botId: bot.id, shortName: appname) |> take(1) |> deliverOnMainQueue
-        _ = (showModalProgress(signal: signal, for: window)).start(next: { botApp in
+        _ = origin.preserving(showModalProgress(signal: signal, for: window)).start(next: { botApp in
             guard !finished, isCurrent() else { return }
             if !botApp.flags.contains(.notActivated) {
                 request(botApp, false)
                 return
             }
-            let decision = InAppLinkDecision()
+            let decision = InAppLinkDecision(origin: origin)
             var options: [ModalAlertData.Option] = []
             if botApp.flags.contains(.requiresWriteAccess) {
                 options.append(.init(string: strings().botAllowSendMessages(bot.displayTitle), isSelected: true, mandatory: true))
@@ -708,14 +779,19 @@ private func executeWebAppLink(_ bot: Peer, appname: String, command: String?, m
 }
 
 private final class InAppLinkDecision {
+    private var origin: InAppLinkOrigin?
     private var resolved = false
     private var dismissalScheduled = false
 
+    init(origin: InAppLinkOrigin) {
+        self.origin = origin
+    }
 
     func resolve(_ action: () -> Void) {
-        guard !resolved else { return }
+        guard !resolved, let origin else { return }
         resolved = true
-        action()
+        defer { self.origin = nil }
+        origin.perform(action)
     }
 
     func dismissed() {
@@ -723,13 +799,14 @@ private final class InAppLinkDecision {
         dismissalScheduled = true
         DispatchQueue.main.async {
             self.resolved = true
+            self.origin = nil
         }
     }
 }
 
-private func confirmExternalLink(window: Window, information: String, success: @escaping () -> Void, cancel: @escaping () -> Void) {
-    let decision = InAppLinkDecision()
-    do {
+private func confirmExternalLink(window: Window, information: String, origin: InAppLinkOrigin, success: @escaping () -> Void, cancel: @escaping () -> Void) {
+    let decision = InAppLinkDecision(origin: origin)
+    origin.perform {
         verifyAlert_button(for: window, header: strings().inAppLinksConfirmOpenExternalHeader, information: information, ok: strings().inAppLinksConfirmOpenExternalOK, successHandler: { _ in
             decision.resolve(success)
         }, cancelHandler: {
@@ -740,36 +817,38 @@ private func confirmExternalLink(window: Window, information: String, success: @
     }
 }
 
-private func executeInviteLink(hash: String, context: AccountContext, window: Window, interaction: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
+private func executeInviteLink(hash: String, context: AccountContext, window: Window, origin inheritedOrigin: InAppLinkOrigin, interaction: @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) {
+    let origin = InAppLinkOrigin(inheritedOrigin.context ?? Analytics.shared.unresolvedContext()).restricting(context: context, peerId: context.peerId)
     let openPeer: (Peer, ChatInitialAction?) -> Void = { peer, action in
-        do {
+        let destination = origin.restricting(context: context, peerId: peer.id)
+        destination.perform {
             if peer.isForum {
-                ForumUI.open(peer.id, addition: true, context: context)
+                ForumUI.open(peer.id, addition: true, context: context, analyticsContext: destination.context)
             } else {
                 interaction(peer.id, true, nil, action)
             }
         }
     }
-    do {
+    origin.perform {
         let signal = context.engine.peers.joinLinkInformation(hash) |> take(1) |> deliverOnMainQueue
-        _ = (showModalProgress(signal: signal, for: window)).start(next: { result in
+        _ = origin.preserving(showModalProgress(signal: signal, for: window)).start(next: { result in
             switch result {
             case let .alreadyJoined(peer):
                 openPeer(peer._asPeer(), nil)
             case let .invite(state):
                 if state.flags.canRefulfillSubscription {
                     let signal = context.engine.peers.joinChatInteractively(with: hash) |> take(1) |> deliverOnMainQueue
-                    _ = (showModalProgress(signal: signal, for: window)).start(next: { outcome in
+                    _ = origin.preserving(showModalProgress(signal: signal, for: window)).start(next: { outcome in
                         switch outcome {
                         case let .joined(peer):
                             if let peer { openPeer(peer._asPeer(), nil) }
                         case let .webView(webView):
-                            openJoinChatBotWebView(context: context, botId: webView.botPeer.id, url: webView.url, queryId: webView.queryId, joinedPeerId: webView.peerId)
+                            openJoinChatBotWebView(context: context, botId: webView.botPeer.id, url: webView.url, queryId: webView.queryId, joinedPeerId: webView.peerId, analyticsContext: origin.context)
                         }
                     }, error: { error in
                         switch error {
                         case .tooMuchJoined:
-                            FeatureNavigationHooks.shared.showInactiveChannelsObserved(context, .join)
+                            FeatureNavigationHooks.shared.showInactiveChannelsObserved(context, .join, analyticsContext: origin.context ?? Analytics.shared.unresolvedContext())
                         case .requestSent:
                             showModalText(for: window, text: strings().requestJoinSent)
                         case .tooMuchUsers:
@@ -782,23 +861,26 @@ private func executeInviteLink(hash: String, context: AccountContext, window: Wi
                     })
                 } else if state.subscriptionPricing != nil {
                     let paid = Atomic(value: false)
-                    let controller = Star_PurschaseInApp(context: context, invoice: nil, source: .starsChatSubscription(hash: hash), type: .subscription(state), completion: { status in
-                        do {
+                    let controller = Star_PurschaseInApp(context: context, invoice: nil, source: .starsChatSubscription(hash: hash), type: .subscription(state), analyticsContext: origin.context, completion: { status in
+                        origin.perform {
                             guard case let .paid(_, peerId) = status, !paid.swap(true) else { return }
                             guard let peerId else { return }
+                            let destination = origin.restricting(context: context, peerId: peerId)
                             delay(1.0, closure: {
-                                interaction(peerId, true, nil, nil)
+                                destination.perform { interaction(peerId, true, nil, nil) }
                             })
                         }
                     })
+                    controller.analyticsContext = origin.context
+                    controller.current.analyticsContext = origin.context
                     showModal(with: controller, for: window)
                 } else if state.flags.requestNeeded {
-                    let controller = RequestJoinChatModalController(context: context, joinhash: hash, invite: result, interaction: { peer in
+                    let controller = RequestJoinChatModalController(context: context, joinhash: hash, invite: result, analyticsContext: origin.context, interaction: { peer in
                         openPeer(peer, nil)
                     })
                     showModal(with: controller, for: window)
                 } else {
-                    let controller = JoinLinkPreviewModalController(context, hash: hash, join: result, interaction: { peer in
+                    let controller = JoinLinkPreviewModalController(context, hash: hash, join: result, analyticsContext: origin.context, interaction: { peer in
                         openPeer(peer, nil)
                     })
                     showModal(with: controller, for: window)
@@ -819,15 +901,71 @@ private func executeInviteLink(hash: String, context: AccountContext, window: Wi
     }
 }
 
+private func analyticsLinkContext(_ inapp: inAppLink, inherited: AnalyticsContext?) -> AnalyticsContext {
+    let origin = inherited ?? Analytics.shared.unresolvedContext()
+    func validated(_ context: AccountContext, peerId: PeerId? = nil) -> AnalyticsContext {
+        return Analytics.shared.captureContext(engine: context.engine, peerId: peerId ?? context.peerId, inherited: origin)
+    }
+    switch inapp {
+    case let .peerInfo(_, peerId, _, _, _, _):
+        return origin.restricting(peerId: peerId)
+    case let .stickerPack(_, _, context, peerId):
+        return validated(context, peerId: peerId)
+    case let .joinGroupCall(_, context, peerId, _):
+        return validated(context, peerId: peerId)
+    case let .story(_, _, _, messageId, context):
+        return validated(context, peerId: messageId?.peerId)
+    case let .tonsite(_, context),
+         let .followResolvedName(_, _, _, _, context, _, _),
+         let .noPaidMessagesToken(_, _, _, context, _),
+         let .contactToken(_, _, _, context, _),
+         let .comments(_, _, context, _, _),
+         let .topic(_, _, context, _, _),
+         let .inviteBotToGroup(_, _, context, _, _, _, _),
+         let .shareUrl(_, context, _, _),
+         let .joinchat(_, _, context, _),
+         let .confirmPhone(_, context, _, _),
+         let .socks(_, _, context, _),
+         let .requestSecureId(_, context, _),
+         let .unsupportedScheme(_, context, _),
+         let .applyLocalization(_, context, _),
+         let .wallpaper(_, context, _),
+         let .theme(_, context, _),
+         let .tonTransfer(_, context, _),
+         let .sendGrams(_, context, _),
+         let .settings(_, context, _),
+         let .invoice(_, context, _),
+         let .premiumOffer(_, _, context),
+         let .restorePurchase(_, context),
+         let .urlAuth(_, context),
+         let .folder(_, _, context),
+         let .boost(_, _, context),
+         let .gift(_, _, context),
+         let .businessLink(_, _, context),
+         let .starsTopup(_, _, _, context),
+         let .multigift(_, context),
+         let .nft(_, _, context),
+         let .joinCall(_, _, context),
+         let .starsInfo(_, context, _),
+         let .auction(_, _, context),
+         let .oauth(_, _, context),
+         let .createBot(_, context, _, _, _),
+         let .addStyle(_, _, context):
+        return validated(context)
+    case .external, .botCommand, .callback, .code, .hashtag, .logout, .nothing, .instantView, .loginCode:
+        return origin
+    }
+}
 
-private func executeInvoiceLink(slug: String, context: AccountContext, window: Window) {
-    do {
+private func executeInvoiceLink(slug: String, context: AccountContext, window: Window, origin inheritedOrigin: InAppLinkOrigin) {
+    let origin = InAppLinkOrigin(inheritedOrigin.context ?? Analytics.shared.unresolvedContext()).restricting(context: context, peerId: context.peerId)
+    origin.perform {
         let signal = showModalProgress(signal: context.engine.payments.fetchBotPaymentInvoice(source: .slug(slug)) |> take(1) |> deliverOnMainQueue, for: window)
-        _ = (signal).start(next: { invoice in
+        _ = origin.preserving(signal).start(next: { invoice in
             if invoice.currency == XTR {
-                showModal(with: Star_PurschaseInApp(context: context, invoice: invoice, source: .slug(slug), type: invoice.subscriptionPeriod != nil ? .botSubscription(invoice) : .bot), for: window)
+                showModal(with: Star_PurschaseInApp(context: context, invoice: invoice, source: .slug(slug), type: invoice.subscriptionPeriod != nil ? .botSubscription(invoice) : .bot, analyticsContext: origin.context), for: window)
             } else {
-                showModal(with: PaymentsCheckoutController(context: context, source: .slug(slug), invoice: invoice), for: window)
+                showModal(with: PaymentsCheckoutController(context: context, source: .slug(slug), invoice: invoice, analyticsContext: origin.context ?? Analytics.shared.unresolvedContext()), for: window)
             }
         }, error: { error in
             let text: String
@@ -867,14 +1005,25 @@ private func notificationCategoryEntryTag(_ section: InAppSettingsSection.Notifi
 }
 
 func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, afterComplete: @escaping(Bool)->Void = { _ in }) {
+    execute(inapp: inapp, window: window, isExternal: isExternal, afterComplete: afterComplete, analyticsContext: nil)
+}
+
+func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, afterComplete: @escaping(Bool)->Void = { _ in }, analyticsContext: AnalyticsContext?) {
+    let analyticsContext: AnalyticsContext? = analyticsLinkContext(inapp, inherited: analyticsContext)
+    let presentation = analyticsContext?.beginPresentation()
+    defer { presentation?.end() }
 
     let getWindow:(AccountContext)->Window = { context in
         return window ?? context.window
     }
     
+    if let linkKind = analyticsLinkKind(inapp) {
+        Analytics.shared.send(AnalyticsEvents.linkOpen(linkKind: linkKind), scope: analyticsContext?.scope)
+    }
 
     switch inapp {
     case let .external(link, needConfirm):
+        let origin = InAppLinkOrigin(analyticsContext)
         
         if link.isEmpty {
             return
@@ -939,6 +1088,8 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
 
                 let removePecentEncoding = url.host == URL(string: urlValue)?.host
                 let success:()->Void = {
+                    let delivery = analyticsContext?.beginPresentation()
+                    defer { delivery?.end() }
 
                     var path = url.absoluteString
                     let supportSchemes:[String] = ["itunes.apple.com"]
@@ -968,7 +1119,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                     if let idnWarning = idnWarning {
                         information += "\n\n" + idnWarning
                     }
-                    confirmExternalLink(window: mainWindow, information: information, success: success, cancel: { afterComplete(false) })
+                    confirmExternalLink(window: mainWindow, information: information, origin: origin, success: success, cancel: { afterComplete(false) })
                 } else {
                     success()
                 }
@@ -986,6 +1137,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         afterComplete(true)
     case let .comments(_, username, context, threadId, commentId):
         
+        let origin = InAppLinkOrigin(analyticsContext).restricting(context: context, peerId: context.peerId)
 
         enum Error {
             case doesntExists
@@ -1027,7 +1179,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
             }
         }
         
-        let signal:Signal<(ThreadInfo, Peer), Error> = (peerSignal |> take(1)) |> mapToSignal { peer in
+        let signal:Signal<(ThreadInfo, Peer), Error> = origin.preserving(peerSignal |> take(1)) |> mapToSignal { peer in
             let messageId: MessageId = MessageId(peerId: peer.id, namespace: Namespaces.Message.Cloud, id: threadId)
             return fetchAndPreloadReplyThreadInfo(context: context, subject: peer.isChannel ? .channelPost(messageId) : .groupMessage(messageId))
                 |> map {
@@ -1041,9 +1193,9 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         } |> deliverOnMainQueue
 
         
-        _ = (showModalProgress(signal: signal |> take(1), for: getWindow(context))).start(next: { values in
+        _ = origin.preserving(showModalProgress(signal: signal |> take(1), for: getWindow(context))).start(next: { values in
             let (result, peer) = values
-            openResolvedCommentLink(result, peer: peer, threadId: threadId, commentId: commentId, context: context)
+            openResolvedCommentLink(result, peer: peer, threadId: threadId, commentId: commentId, context: context, origin: origin)
         }, error: { error in
             switch error {
             case .doesntExists:
@@ -1058,6 +1210,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         afterComplete(true)
     case let .topic(_, username, context, threadId, commentId):
         
+        let origin = InAppLinkOrigin(analyticsContext).restricting(context: context, peerId: context.peerId)
 
         enum Error {
             case doesntExists
@@ -1098,8 +1251,8 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                 return .doesntExists
             }
         }
-        _ = (peerSignal |> take(1) |> deliverOnMainQueue).start(next: { peer in
-            openResolvedTopicLink(peer, threadId: threadId, commentId: commentId, context: context)
+        _ = origin.preserving(peerSignal |> take(1) |> deliverOnMainQueue).start(next: { peer in
+            openResolvedTopicLink(peer, threadId: threadId, commentId: commentId, context: context, origin: origin)
         }, error: { error in
             switch error {
             case .doesntExists:
@@ -1114,8 +1267,9 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         afterComplete(true)
     case let .followResolvedName(_, username, postId, forceProfile, context, action, callback):
         
+        let origin = InAppLinkOrigin(analyticsContext).restricting(context: context, peerId: context.peerId)
         let invokeCallback:(Peer, MessageId?, ChatInitialAction?) -> Void = { peer, messageId, action in
-            openResolvedLinkPeer(peer, messageId: messageId, action: action, forceProfile: forceProfile, context: context, window: getWindow(context), callback: callback)
+            openResolvedLinkPeer(peer, messageId: messageId, action: action, forceProfile: forceProfile, context: context, window: getWindow(context), origin: origin, callback: callback)
         }
 
         if username.hasPrefix(privateTelegramPeerPrefix), let range = username.range(of: privateTelegramPeerPrefix) {
@@ -1132,7 +1286,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                         }
                 }
                 
-                _ = (showModalProgress(signal: peerSignal |> take(1) |> deliverOnMainQueue, for: getWindow(context))).start(next: { peer in
+                _ = origin.preserving(showModalProgress(signal: peerSignal |> take(1) |> deliverOnMainQueue, for: getWindow(context))).start(next: { peer in
                     if let peer = peer {
                         let messageId:MessageId?
                         if let postId = postId {
@@ -1179,7 +1333,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                 signal = context.engine.peers.resolvePeerByName(name: username, referrer: referrer) |> filter { $0 != .progress } |> map { $0.result }
             }
                 
-            let _ = (showModalProgress(signal: signal |> take(1) |> mapToSignal { result -> Signal<Peer?, NoError> in
+            let _ = origin.preserving(showModalProgress(signal: signal |> take(1) |> mapToSignal { result -> Signal<Peer?, NoError> in
                 return .single(result?._asPeer())
             } |> deliverOnMainQueue, for: getWindow(context))).start(next: { peer in
                 if let peer = peer {
@@ -1194,10 +1348,10 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
                         if let action = action {
                             switch action {
                             case let .attachBot(botname, _, choose):
-                                executeAttachBotLink(peer, botname: botname, choose: choose, action: action, messageId: messageId, context: context, window: getWindow(context), callback: callback)
+                                executeAttachBotLink(peer, botname: botname, choose: choose, action: action, messageId: messageId, context: context, window: getWindow(context), origin: origin, callback: callback)
 
                             case let .makeWebview(appname, command):
-                                executeWebAppLink(peer, appname: appname, command: command, messageId: messageId, context: context, window: getWindow(context), callback: invokeCallback)
+                                executeWebAppLink(peer, appname: appname, command: command, messageId: messageId, context: context, window: getWindow(context), origin: origin, callback: invokeCallback)
 
                             default:
                                 invokeCallback(peer, messageId, action)
@@ -1347,7 +1501,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         interaction(hashtag)
         afterComplete(true)
     case let .joinchat(_, hash, context, interaction):
-        executeInviteLink(hash: hash, context: context, window: getWindow(context), interaction: interaction)
+        executeInviteLink(hash: hash, context: context, window: getWindow(context), origin: InAppLinkOrigin(analyticsContext), interaction: interaction)
         afterComplete(true)
     case let .callback(param, interaction):
         interaction(param)
@@ -1471,16 +1625,17 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         })
         afterComplete(true)
     case let .story(_, username, storyId, messageId, context):
+        let origin = InAppLinkOrigin(analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(context: context, peerId: messageId?.peerId ?? context.peerId)
         let signal = showModalProgress(signal: context.engine.peers.resolvePeerByName(name: username, referrer: nil) |> filter { $0 != .progress } |> map { $0.result?._asPeer() }, for: getWindow(context))
-        _ = (signal).start(next: { peer in
+        _ = origin.preserving(signal).start(next: { peer in
             if let peer = peer {
                 let controller = context.bindings.rootNavigation().controller as? ChatController
                 if let messageId = messageId, controller?.chatLocation.peerId == messageId.peerId {
-                    controller?.chatInteraction.openStoryObserved(messageId, .init(peerId: peer.id, id: storyId))
+                    controller?.chatInteraction.openStoryObserved(messageId, .init(peerId: peer.id, id: storyId), analyticsContext: origin.context ?? Analytics.shared.unresolvedContext())
                 } else {
                     StoryModalController.ShowSingleStory(context: context, storyId: .init(peerId: peer.id, id: storyId), initialId: nil, emptyCallback: {
                         showModalText(for: getWindow(context), text: strings().storyErrorNotExist)
-                    })
+                    }, analyticsContext: origin.context)
                 }
             } else {
                 showModalText(for: getWindow(context), text: strings().alertUserDoesntExists)
@@ -1943,7 +2098,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
        
         afterComplete(true)
     case let .invoice(_, context, slug):
-        executeInvoiceLink(slug: slug, context: context, window: getWindow(context))
+        executeInvoiceLink(slug: slug, context: context, window: getWindow(context), origin: InAppLinkOrigin(analyticsContext))
         afterComplete(true)
     case let .premiumOffer(_, ref, context):
         if !context.premiumIsBlocked {
@@ -2057,7 +2212,7 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         })
         afterComplete(true)
     case let .tonsite(link, context):
-        BrowserStateContext.get(context).open(tab: .tonsite(url: link))
+        BrowserStateContext.get(context).open(tab: .tonsite(url: link), analyticsContext: analyticsContext)
         afterComplete(true)
     case let .starsTopup(_, amount, purpose, context):
         let balance = context.starsContext.state |> map { $0?.balance } |> take(1) |> deliverOnMainQueue
@@ -2086,10 +2241,11 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
         })
         afterComplete(true)
     case let .joinCall(_, slug, context):
-                
+        let morphSource = ModalMorphContextSource.current
+        let morphSnapshot = ModalMorphContextSource.captureSnapshot()
         _ = showModalProgress(signal: context.engine.calls.getCurrentGroupCall(reference: .link(slug: slug)), for: getWindow(context)).start(next: { summary in
             if let summary {
-                showModal(with: JoinGroupCallController(context: context, summary: summary, reference: .link(slug: slug)), for: getWindow(context))
+                showModal(with: JoinGroupCallController(context: context, summary: summary, reference: .link(slug: slug)), for: getWindow(context), morphSource: morphSource, morphSnapshot: morphSnapshot)
             }
         }, error: { error in
             switch error {
@@ -2167,17 +2323,20 @@ func execute(inapp:inAppLink, window: Window? = nil, isExternal: Bool = false, a
             return .single(result)
         } |> deliverOnMainQueue).start(next: { peer in
             if let peer = peer, let user = peer._asPeer() as? TelegramUser, let botInfo = user.botInfo, botInfo.flags.contains(.canManageBots) {
-                showModal(with: CreateBotModalController(context: context, managerUsername: managerUsername, botUsername: botUsername, botTitle: title), for: getWindow(context))
+                showModal(with: CreateBotModalController(context: context, managerUsername: managerUsername, botUsername: botUsername, botTitle: title, viaDeeplink: true), for: getWindow(context))
             } else {
                 showModalText(for: getWindow(context), text: strings().inAppLinksBotManagementDisabled(managerUsername))
             }
         })
         afterComplete(true)
     case let .addStyle(_, slug, context):
-        let signal = fetchAiStylePreviewInfo(context: context, slug: slug) |> deliverOnMainQueue
-        _ = (showModalProgress(signal: signal, for: getWindow(context))).start(next: { info in
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        let signal = fetchAiStylePreviewInfo(context: context, slug: slug, analyticsContext: origin) |> deliverOnMainQueue
+        _ = origin.preservingPresentation(showModalProgress(signal: signal, for: getWindow(context))).start(next: { info in
             if let info {
-                showModal(with: AiStylePreviewModalController(context: context, slug: slug, info: info), for: getWindow(context))
+                showModal(with: AiStylePreviewModalController(context: context, slug: slug, info: info, analyticsContext: origin), for: getWindow(context))
             } else {
                 showModalText(for: getWindow(context), text: strings().inAppLinksStyleNotFound)
             }
@@ -2365,7 +2524,7 @@ func inApp(for url:NSString, context: AccountContext? = nil, peerId:PeerId? = ni
                 showModalText(for: context.window, text: strings().inAppLinksWalletUnavailable)
             })
         }
-        return .callback(source, { walletContext.processTonConnectUrl($0) })
+        return .callback(source, { walletProcessTonConnectUrl($0, context: context, walletContext: walletContext, window: context.window) })
     }
 
     let options = InAppLinkParsingOptions(

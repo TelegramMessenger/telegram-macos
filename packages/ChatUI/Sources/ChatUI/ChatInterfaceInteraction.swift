@@ -22,10 +22,26 @@ import StarsUI
 import BoostUI
 import AudioPlayerCore
 import ShortPeerRow
+import AppAnalytics
+
+private final class ComposerAnalyticsScopeReference {
+    weak var scope: AnalyticsScope?
+
+    init(_ scope: AnalyticsScope) {
+        self.scope = scope
+    }
+}
+
+private struct ComposerAnalyticsScopeState {
+    var revision: UInt64 = 0
+    var scopes: [ComposerAnalyticsScopeReference] = []
+}
 
 struct ChatMediaReplacementRequest {
     fileprivate let id: UUID
     fileprivate let messageId: MessageId
+    fileprivate let journey: AnalyticsMediaEditJourney?
+    fileprivate let token: Int?
 }
 
 public final class ReplyMarkupInteractions {
@@ -89,16 +105,19 @@ public final class ChatInteraction : InterfaceObserver  {
     public let isGlobalSearchMessage: Bool
     public let isPeerSavedMessages: Bool
     public let bottomInset: Atomic<CGFloat> = Atomic(value: ChatHistoryBottomRowItem.bottomInset(showsInput: true, inputOverlayHeight: 0))
+    public var inheritedAnalyticsContext: AnalyticsContext?
+    private var mediaEditJourney: AnalyticsMediaEditJourney?
     private var mediaReplacementId: UUID?
     private var mediaEditSessionId = UUID()
     private var mediaEditSubmissionId: UUID?
     private var deferredSendRevision = UUID()
+    private let composerAnalyticsScopes = Atomic(value: ComposerAnalyticsScopeState())
     private let forwardSelection = ChatForwardSelection()
     private let composerForwardPreparation = ChatForwardSendPreparation()
     private let quickForwardAction = ChatQuickForwardAction()
 
-    func quickForward(_ object: ChatHistoryForwardMessagesObject, peerId: PeerId, threadId: Int64?, action: ChatDeferredSendAction) {
-        quickForwardAction.start(context: context, peerId: peerId, threadId: threadId, isCurrent: { action.takeIfCurrent() }, request: {
+    func quickForward(_ object: ChatHistoryForwardMessagesObject, peerId: PeerId, threadId: Int64?, analyticsContext: AnalyticsContext, action: ChatDeferredSendAction) {
+        quickForwardAction.start(context: context, peerId: peerId, threadId: threadId, analyticsContext: analyticsContext, isCurrent: { action.takeIfCurrent() }, request: {
             object.chatHistoryPerformObserved(to: peerId, threadId: threadId)
         })
     }
@@ -124,29 +143,52 @@ public final class ChatInteraction : InterfaceObserver  {
         return composerForwardPreparation.prepare(isCurrent: { action.isAvailable }, invalidated: onInvalidated, request: request)
     }
 
-    func beginMediaReplacement() -> ChatMediaReplacementRequest? {
+    func beginMediaReplacement(entry: AnalyticsMediaEditJourney.Spec.EntryPoint, mode: AnalyticsMediaEditJourney.Spec.MediaMode, context: AnalyticsContext? = nil) -> ChatMediaReplacementRequest? {
         guard let state = presentation.interfaceState.editState else { return nil }
         let id = UUID()
         mediaReplacementId = id
+        let journey = mediaEditAnalyticsJourney(entry: entry, mode: mode, context: context)
+        let token = journey?.beginReplacement(entry: entry, mode: mode)
         if mediaEditSubmissionId != nil {
             mediaEditSubmissionId = nil
             editDisposable.set(nil)
             update { $0.updatedInterfaceState { $0.updatedEditState { $0?.withUpdatedLoadingState(.none) } } }
         }
-        return ChatMediaReplacementRequest(id: id, messageId: state.message.id)
+        return ChatMediaReplacementRequest(id: id, messageId: state.message.id, journey: journey, token: token)
     }
 
+    private func mediaEditAnalyticsJourney(entry: AnalyticsMediaEditJourney.Spec.EntryPoint, mode: AnalyticsMediaEditJourney.Spec.MediaMode, context: AnalyticsContext?) -> AnalyticsMediaEditJourney? {
+        guard let state = presentation.interfaceState.editState else { return nil }
+        let context = Analytics.shared.captureContext(engine: interactionContext.engine, peerId: peerId, inherited: context ?? captureAnalyticsContext()).restricting(peerId: state.message.id.peerId)
+        if context.isExcluded || context.scope?.isValid != true {
+            mediaEditJourney?.discard()
+        }
+        if mediaEditJourney == nil {
+            switch self.mode {
+            case .history, .thread, .scheduled:
+                mediaEditJourney = AnalyticsMediaEditJourney(context: context, entry: entry, mode: mode)
+            default:
+                break
+            }
+        }
+        return mediaEditJourney
+    }
 
+    func rejectMediaReplacement(entry: AnalyticsMediaEditJourney.Spec.EntryPoint, mode: AnalyticsMediaEditJourney.Spec.MediaMode, context: AnalyticsContext, reason: AnalyticsMediaEditJourney.Spec.LastBlocker) {
+        mediaEditAnalyticsJourney(entry: entry, mode: mode, context: context)?.rejectedReplacement(entry: entry, reason: reason)
+    }
 
-    func failMediaReplacement(_ request: ChatMediaReplacementRequest?) {
+    func failMediaReplacement(_ request: ChatMediaReplacementRequest?, reason: AnalyticsMediaEditJourney.Spec.LastBlocker) {
         guard let request, isCurrentMediaReplacement(request) else { return }
         mediaReplacementId = nil
+        if let token = request.token { request.journey?.failedReplacement(token, reason: reason) }
     }
 
     func applyMediaReplacement(_ media: Media, request: ChatMediaReplacementRequest?) {
         guard let request, isCurrentMediaReplacement(request) else { return }
         mediaReplacementId = nil
         update { $0.updatedInterfaceState { $0.updatedEditState { $0?.withUpdatedMedia(media) } } }
+        if let token = request.token { request.journey?.appliedReplacement(token) }
     }
 
     func isCurrentMediaReplacement(_ request: ChatMediaReplacementRequest?) -> Bool {
@@ -157,33 +199,128 @@ public final class ChatInteraction : InterfaceObserver  {
     func cancelMediaReplacement(_ request: ChatMediaReplacementRequest?) {
         guard let request, request.id == mediaReplacementId else { return }
         mediaReplacementId = nil
+        if let token = request.token { request.journey?.cancelledSelection(token) }
     }
 
     func discardMediaReplacement(_ request: ChatMediaReplacementRequest?) {
         guard let request, request.id == mediaReplacementId else { return }
         mediaReplacementId = nil
+        request.journey?.discard()
     }
 
-    func beginMediaEditSubmission() -> UUID {
+    func beginMediaEditSubmission(context: AnalyticsContext, scheduled: Bool, keepsEditingOnFailure: Bool, media: RequestEditMessageMedia) -> (UUID, AnalyticsMediaEditSubmission?) {
         let id = UUID()
         mediaEditSubmissionId = id
+        let journey = mediaEditJourney
+        if !keepsEditingOnFailure { mediaEditJourney = nil }
         mediaReplacementId = nil
-        return id
+        guard context.scope?.isValid == true, !context.isExcluded, media != .keep, media == presentation.interfaceState.editState?.editMedia else {
+            journey?.discard()
+            return (id, nil)
+        }
+        return (id, journey?.beginSubmission(scheduled: scheduled, allowsRetry: keepsEditingOnFailure))
     }
 
     func isCurrentMediaEditSubmission(_ id: UUID) -> Bool {
         return mediaEditSubmissionId == id
     }
 
+    func blockMediaEdit(_ reason: AnalyticsMediaEditJourney.Spec.LastBlocker) {
+        mediaEditJourney?.blocked(reason)
+    }
 
+    public func captureAnalyticsContext(sourcePeerId: PeerId? = nil) -> AnalyticsContext {
+        let revision = composerAnalyticsScopes.with { $0.revision }
+        let context = Analytics.shared.captureContext(engine: interactionContext.engine, peerId: peerId, inherited: inheritedAnalyticsContext)
+        let restricted = restrictComposerAnalyticsContext(context)
+        return rememberComposerAnalyticsContext(sourcePeerId.map { restricted.restricting(peerId: $0) } ?? restricted, revision: revision)
+    }
 
+    public func captureAnalyticsContext(inherited: AnalyticsContext) -> AnalyticsContext {
+        let revision = composerAnalyticsScopes.with { $0.revision }
+        let current = captureAnalyticsContext()
+        guard !current.isExcluded, current.scope?.isValid == true else { return current }
+        return rememberComposerAnalyticsContext(Analytics.shared.captureContext(engine: interactionContext.engine, peerId: peerId, inherited: inherited), revision: revision)
+    }
 
+    private func restrictComposerAnalyticsContext(_ context: AnalyticsContext) -> AnalyticsContext {
+        guard !presentation.effectiveInput.hasExcludedAnalytics else { return Analytics.shared.unresolvedContext() }
+        var context = context
+        context = restrictRichTextDraftAnalyticsContext(context)
+        if let peer = peer {
+            context = context.restricting(peerId: peer.id)
+        }
+        let interfaceState = presentation.interfaceState
+        if let reply = interfaceState.replyMessageId {
+            context = context.restricting(peerId: reply.messageId.peerId)
+            guard let message = interfaceState.replyMessage, message.id == reply.messageId, !message.containsSecretMedia else {
+                return Analytics.shared.unresolvedContext()
+            }
+            context = context.restricting(peerId: message.id.peerId)
+        }
+        let forwardIds = Set(interfaceState.forwardMessageIds)
+        for messageId in forwardIds {
+            context = context.restricting(peerId: messageId.peerId)
+        }
+        if !forwardIds.isEmpty {
+            var resolvedIds = Set<MessageId>()
+            for message in interfaceState.forwardMessages {
+                guard !message.containsSecretMedia else { return Analytics.shared.unresolvedContext() }
+                context = context.restricting(peerId: message.id.peerId)
+                resolvedIds.insert(message.id)
+            }
+            guard resolvedIds == forwardIds else { return Analytics.shared.unresolvedContext() }
+        }
+        if let message = interfaceState.editState?.message {
+            guard !message.containsSecretMedia else { return Analytics.shared.unresolvedContext() }
+            context = context.restricting(peerId: message.id.peerId)
+        }
+        return context
+    }
 
+    private func rememberComposerAnalyticsContext(_ context: AnalyticsContext, revision: UInt64) -> AnalyticsContext {
+        let current = composerAnalyticsScopes.modify { state in
+            var state = state
+            state.scopes.removeAll { $0.scope == nil }
+            if state.revision == revision, let scope = context.scope, !state.scopes.contains(where: { $0.scope === scope }) {
+                state.scopes.append(ComposerAnalyticsScopeReference(scope))
+            }
+            return state
+        }
+        if current.revision != revision { context.scope?.exclude() }
+        return context
+    }
 
+    private func revokePrivateComposerAnalytics() {
+        guard restrictComposerAnalyticsContext(Analytics.shared.privacyContext(peerId: peerId)).isExcluded else { return }
+        var scopes: [AnalyticsScope] = []
+        _ = composerAnalyticsScopes.modify { state in
+            var state = state
+            state.revision &+= 1
+            scopes = state.scopes.compactMap { $0.scope }
+            state.scopes.removeAll()
+            return state
+        }
+        for scope in scopes { scope.exclude() }
+    }
 
+    public func makeMediaAnalyticsJourney(context: AnalyticsContext?, entry: AnalyticsMediaJourney.Spec.EntryPoint, mode: AnalyticsMediaJourney.Spec.MediaMode, via: AnalyticsValues.Via? = nil, source: AnalyticsScreen? = nil) -> AnalyticsMediaJourney? {
+        guard let context = context, presentation.interfaceState.editState == nil else { return nil }
+        let origin = captureAnalyticsContext(inherited: context)
+        guard origin.scope?.isValid == true else { return nil }
+        switch self.mode {
+        case .history, .thread, .scheduled:
+            return AnalyticsMediaJourney(context: origin, entry: entry, mode: mode, via: via, source: source)
+        default:
+            return nil
+        }
+    }
     private let modifyDisposable:MetaDisposable = MetaDisposable()
     private let mediaDisposable:MetaDisposable = MetaDisposable()
+    private let recordingMediaDisposable = MetaDisposable()
+    private let recordingSubmissionDisposable = MetaDisposable()
     private let startBotDisposable:MetaDisposable = MetaDisposable()
+    private var isStartingBot = false
     private let addContactDisposable:MetaDisposable = MetaDisposable()
     private let requestSessionId:MetaDisposable = MetaDisposable()
     public let editDisposable = MetaDisposable()
@@ -207,7 +344,19 @@ public final class ChatInteraction : InterfaceObserver  {
             return .single(Void())
         }
         mediaDisposable.set(signal.start())
-
+        let recordingSignal = recordingMediaPromise.get() |> deliverOnMainQueue |> mapToQueue { [weak self] media, analyticsContext -> Signal<Void, NoError> in
+            self?.sendMediaObserved(media, journey: nil, analyticsContext: analyticsContext)
+            return .single(Void())
+        }
+        recordingMediaDisposable.set(recordingSignal.start())
+        let submissionSignal = recordingSubmissionPromise.get() |> deliverOnMainQueue
+        recordingSubmissionDisposable.set(submissionSignal.start(next: { [weak self] media, analyticsContext, request in
+            guard let self else {
+                request?.end()
+                return
+            }
+            self.sendRecordingMediaObserved(media, analyticsContext: analyticsContext, request: request)
+        }))
     }
     
     private let _presentation: Atomic<ChatPresentationInterfaceState>
@@ -222,7 +371,15 @@ public final class ChatInteraction : InterfaceObserver  {
             let alwaysPaidMessage = newValue.sendPaidMessageStars.flatMap { FastSettings.needConfirmPaid(newValue.peer?.id ?? peerId, price: Int($0.value)) } ?? false
             newValue = newValue.withUpdatedAlwaysPaidMessage(alwaysPaidMessage)
         }
+        if let appliedAIEditorDraft {
+            let input = newValue.effectiveInput
+            if input.inputText != appliedAIEditorDraft.inputText || input.attributes != appliedAIEditorDraft.attributes ||
+                newValue.interfaceState.editState != nil || newValue.chatLocation != oldValue.chatLocation || newValue.chatMode != oldValue.chatMode {
+                self.appliedAIEditorDraft = nil
+            }
+        }
         _ = _presentation.swap(newValue)
+        revokePrivateComposerAnalytics()
         if !chatHasSameDeferredSendState(oldValue, presentation) {
             invalidateDeferredSendActions()
         }
@@ -233,12 +390,14 @@ public final class ChatInteraction : InterfaceObserver  {
             mediaEditSessionId = UUID()
             mediaEditSubmissionId = nil
             mediaReplacementId = nil
+            mediaEditJourney?.endEditing()
+            mediaEditJourney = nil
         }
         if oldValue.chatLocation != presentation.chatLocation || oldValue.chatMode != presentation.chatMode {
             dateHeaderActions.reset()
         }
         if oldValue != presentation {
-            notifyObservers(value: presentation, oldValue:oldValue, animated:animated)
+            notifyObservers(value: presentation, oldValue:oldValue, animated:animated && canAnimateUpdates())
         }
     }
     
@@ -261,25 +420,163 @@ public final class ChatInteraction : InterfaceObserver  {
     public var beginMessageSelection: (MessageId?) -> Void = {_ in}
     public var deleteMessages: ([MessageId], (() -> NSView?)?) -> Void = {_, _ in }
     public var forwardMessages: ([Message]) -> Void = {_ in}
+    public var forwardMessagesWithContext: (([Message], AnalyticsContext) -> Void)?
+    public var forwardMessagesWithSource: (([Message], AnalyticsContext, AnalyticsFlows.ChatForwardPicker.EntryPoint) -> Void)?
+    public var forwardMessagesWithJourney: (([Message], AnalyticsContext, AnalyticsFlows.ChatForwardPicker.EntryPoint, AnalyticsForwardPickerJourney) -> Void)?
+    public func forwardMessagesObserved(_ messages: [Message], analyticsContext: AnalyticsContext) {
+        forwardMessagesObserved(messages, analyticsContext: analyticsContext, entry: nil)
+    }
+    public func forwardMessagesObserved(_ messages: [Message], analyticsContext: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint?) {
+        forwardMessagesObserved(messages, analyticsContext: analyticsContext, entry: entry, journey: nil)
+    }
+    public func forwardMessagesObserved(_ messages: [Message], analyticsContext: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint?, journey: AnalyticsForwardPickerJourney?) {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        for message in messages {
+            if message.containsSecretMedia { origin = Analytics.shared.unresolvedContext() }
+            origin = origin.restricting(peerId: message.id.peerId)
+        }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let journey, let entry, let forwardMessagesWithJourney {
+            journey.restrict(to: origin)
+            forwardMessagesWithJourney(messages, origin, entry, journey)
+            return
+        }
+        journey?.discard()
+        if let entry, let forwardMessagesWithSource {
+            forwardMessagesWithSource(messages, origin, entry)
+        } else if let forwardMessagesWithContext {
+            forwardMessagesWithContext(messages, origin)
+        } else {
+            forwardMessages(messages)
+        }
+    }
     public var reportMessages:(ReportReasonValue, [MessageId]) -> Void = { _, _ in }
     public var sendMessage: (Bool, Schedule?, AvailableMessageEffects.MessageEffect?) -> Void = { _, _, _ in }
+    var sendAIEditorResult: (() -> Void)?
+    private(set) var appliedAIEditorDraft: ChatTextInputState?
+
+    func applyAIEditorDraft(_ draft: ChatTextInputState) {
+        if alwaysUseAIEditorPeerId != nil, presentation.interfaceState.editState == nil {
+            appliedAIEditorDraft = draft
+        }
+        update { $0.withUpdatedEffectiveInputState(draft) }
+    }
+
+    var alwaysUseAIEditorPeerId: PeerId? {
+        switch mode {
+        case .history, .thread, .scheduled:
+            return peerId.namespace == Namespaces.Peer.SecretChat ? nil : peerId
+        default:
+            return nil
+        }
+    }
+    public var sendMessageWithAnalytics: ((Bool, Schedule?, AvailableMessageEffects.MessageEffect?, AnalyticsMediaSubmission?, Int) -> Void)?
+    public func sendMessageObserved(_ silent: Bool, _ schedule: Schedule?, _ effect: AvailableMessageEffects.MessageEffect?, submission: AnalyticsMediaSubmission?, part: Int) {
+        let origin = captureAnalyticsContext(inherited: submission?.context ?? Analytics.shared.unresolvedContext())
+        submission?.restrict(to: origin)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let sendMessageWithAnalytics = sendMessageWithAnalytics {
+            sendMessageWithAnalytics(silent, schedule, effect, submission, part)
+        } else {
+            submission?.discard()
+            sendMessage(silent, schedule, effect)
+        }
+    }
     public var sendPlainText: (String) -> Void = {_ in}
+    public var sendPlainTextWithAnalytics: ((String, AnalyticsContext, AnalyticsRecordingRequest?) -> Void)?
+    public func sendPlainTextObserved(_ text: String, analyticsContext: AnalyticsContext, request: AnalyticsRecordingRequest?) {
+        if let sendPlainTextWithAnalytics {
+            sendPlainTextWithAnalytics(text, analyticsContext, request)
+        } else {
+            request?.end()
+            sendPlainText(text)
+        }
+    }
     
     public var focusMessageId: (MessageId?, ChatFocusTarget, TableScrollState) -> Void = { _, _, _  in}
     public var focusPinnedMessageId: (MessageId) -> Void = { _ in}
     public var sendMedia:([MediaSenderContainer]) -> Void = {_ in}
+    public var sendMediaWithJourney: (([MediaSenderContainer], AnalyticsMediaJourney?, AnalyticsContext?) -> Void)?
+    public var sendRecordingMediaWithAnalytics: (([MediaSenderContainer], AnalyticsContext, AnalyticsRecordingRequest?) -> Void)?
+    public func sendRecordingMediaObserved(_ media: [MediaSenderContainer], analyticsContext: AnalyticsContext, request: AnalyticsRecordingRequest?) {
+        let origin = captureAnalyticsContext(inherited: analyticsContext)
+        request?.restrict(to: origin)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let sendRecordingMediaWithAnalytics {
+            sendRecordingMediaWithAnalytics(media, origin, request)
+        } else {
+            request?.end()
+            sendMediaObserved(media, journey: nil, analyticsContext: origin)
+        }
+    }
+    public func sendMediaObserved(_ media: [MediaSenderContainer], journey: AnalyticsMediaJourney?) {
+        sendMediaObserved(media, journey: journey, analyticsContext: nil)
+    }
+    public func sendMediaObserved(_ media: [MediaSenderContainer], journey: AnalyticsMediaJourney?, analyticsContext: AnalyticsContext?) {
+        let origin = captureAnalyticsContext(inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        journey?.restrict(to: origin)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let sendMediaWithJourney = sendMediaWithJourney {
+            sendMediaWithJourney(media, journey, origin)
+        } else {
+            journey?.discard()
+            sendMedia(media)
+        }
+    }
+    public var sendCreatedStickerWithAnalytics: ((TelegramMediaFile, AnalyticsContext, AnalyticsStickerSendRequest?) -> Void)?
     public var sendAppFile:(TelegramMediaFile, Bool, String?, Bool, ItemCollectionId?, ChatTextInputState?, ChatInteraction.Schedule?) -> Void = { _,_, _, _, _, _, _ in}
-    public func sendAppFileObserved(_ file: TelegramMediaFile, _ silent: Bool, _ query: String?, _ scheduled: Bool, _ collectionId: ItemCollectionId?, _ caption: ChatTextInputState?, _ schedule: Schedule?) {
-        sendAppFile(file, silent, query, scheduled, collectionId, caption, schedule)
+    public var sendAppFileWithContext: ((TelegramMediaFile, Bool, String?, Bool, ItemCollectionId?, ChatTextInputState?, Schedule?, AnalyticsContext) -> Void)?
+    public func sendAppFileObserved(_ file: TelegramMediaFile, _ silent: Bool, _ query: String?, _ scheduled: Bool, _ collectionId: ItemCollectionId?, _ caption: ChatTextInputState?, _ schedule: Schedule?, analyticsContext: AnalyticsContext) {
+        let origin = captureAnalyticsContext(inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let sendAppFileWithContext {
+            sendAppFileWithContext(file, silent, query, scheduled, collectionId, caption, schedule, origin)
+        } else {
+            sendAppFile(file, silent, query, scheduled, collectionId, caption, schedule)
+        }
     }
     public var sendMedias:([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool) -> Void = {_,_,_,_,_,_,_,_, _ in}
+    public var sendMediasWithAnalytics: (([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool, AnalyticsMediaSubmission?, Int) -> Void)?
+    public func sendMediasObserved(_ medias: [Media], _ caption: ChatTextInputState, _ collage: Bool, _ additionalText: ChatTextInputState?, _ silent: Bool, _ schedule: Schedule?, _ spoiler: Bool, _ effect: AvailableMessageEffects.MessageEffect?, _ leadingText: Bool, submission: AnalyticsMediaSubmission?, part: Int) {
+        let origin = captureAnalyticsContext(inherited: submission?.context ?? Analytics.shared.unresolvedContext())
+        submission?.restrict(to: origin)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let sendMediasWithAnalytics = sendMediasWithAnalytics {
+            sendMediasWithAnalytics(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText, submission, part)
+        } else {
+            submission?.discard()
+            sendMedias(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText)
+        }
+    }
     public var focusInputField:()->Void = {}
     public var openInfo:(PeerId, Bool, MessageId?, ChatInitialAction?) -> Void = {_,_,_,_  in}
-    public func openInfoObserved(_ peerId: PeerId, _ toChat: Bool, _ postId: MessageId?, _ action: ChatInitialAction?) {
-        openInfo(peerId, toChat, postId, action)
+    public var openInfoWithAnalytics: ((PeerId, Bool, MessageId?, ChatInitialAction?, AnalyticsContext) -> Void)?
+    public func openInfoObserved(_ peerId: PeerId, _ toChat: Bool, _ postId: MessageId?, _ action: ChatInitialAction?, analyticsContext: AnalyticsContext) {
+        let inherited = Analytics.shared.captureContext(engine: interactionContext.engine, peerId: peerId, inherited: analyticsContext)
+        let current = captureAnalyticsContext(inherited: inherited)
+        let origin = inherited.isExcluded ? inherited : current
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let openInfoWithAnalytics {
+            openInfoWithAnalytics(peerId, toChat, postId, action, origin)
+        } else {
+            openInfo(peerId, toChat, postId, action)
+        }
     }
     public func openInfoFromMessage(_ peerId: PeerId, _ toChat: Bool, _ postId: MessageId?, _ action: ChatInitialAction?, message: Message?) {
-        openInfoObserved(peerId, toChat, postId, action)
+        let origin: AnalyticsContext
+        if let message, !message.containsSecretMedia {
+            origin = captureAnalyticsContext(sourcePeerId: message.id.peerId)
+        } else {
+            origin = Analytics.shared.unresolvedContext()
+        }
+        openInfoObserved(peerId, toChat, postId, action, analyticsContext: origin)
     }
     public var beginEditingMessage:(Message?) -> Void = {_ in}
     public var requestMessageActionCallback:(MessageId, Bool, (requiresPassword: Bool, data: MemoryBuffer)?) -> Void = {_,_,_  in}
@@ -293,9 +590,25 @@ public final class ChatInteraction : InterfaceObserver  {
     public var sendCommand:(ChatInputCommand)->Void = {_ in }
     public var setNavigationAction:(NavigationModalAction)->Void = {_ in}
     public var switchInlinePeer:(PeerId, ChatInitialAction)->Void = {_,_  in}
-    public var presentPreviewSender:([URL], Bool, NSAttributedString?)->Void = {_,_,_ in}
-    public func showPreviewSender(_ urls: [URL], _ asMedia: Bool, _ attributedString: NSAttributedString?) {
-        presentPreviewSender(urls, asMedia, attributedString)
+    public var presentPreviewSender:([URL], Bool, NSAttributedString?, AnalyticsContext)->Void = {_,_,_,_ in}
+    public var presentPreviewSenderWithJourney: (([URL], Bool, NSAttributedString?, AnalyticsContext, AnalyticsMediaJourney?) -> Void)?
+    public func showPreviewSender(_ urls: [URL], _ asMedia: Bool, _ attributedString: NSAttributedString?, analyticsContext: AnalyticsContext? = nil) {
+        let origin = captureAnalyticsContext(inherited: analyticsContext ?? captureAnalyticsContext())
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        presentPreviewSender(urls, asMedia, attributedString, origin)
+    }
+    public func showPreviewSender(_ urls: [URL], _ asMedia: Bool, _ attributedString: NSAttributedString?, analyticsContext: AnalyticsContext?, journey: AnalyticsMediaJourney?) {
+        let origin = captureAnalyticsContext(inherited: analyticsContext ?? captureAnalyticsContext())
+        journey?.restrict(to: origin)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let presentPreviewSenderWithJourney = presentPreviewSenderWithJourney {
+            presentPreviewSenderWithJourney(urls, asMedia, attributedString, origin, journey)
+        } else {
+            journey?.discard()
+            presentPreviewSender(urls, asMedia, attributedString, origin)
+        }
     }
     public var setChatMessageAutoremoveTimeout:(Int32?)->Void = {_ in}
     public var toggleNotifications:(Bool?)->Void = { _ in }
@@ -314,13 +627,22 @@ public final class ChatInteraction : InterfaceObserver  {
     public var jumpToDate:(Date)->Void = {_ in}
     public var showNextPost:()->Void = {}
     public var startRecording:(Bool, NSView?)->Void = {_,_ in}
+    public var startDictation:()->Void = {}
+    public var startRecordingWithAnalytics: ((Bool, NSView?, AnalyticsValues.Via?) -> Void)?
+    public func startRecordingObserved(_ hold: Bool, _ view: NSView?, via: AnalyticsValues.Via?) {
+        if let startRecordingWithAnalytics {
+            startRecordingWithAnalytics(hold, view, via)
+        } else {
+            startRecording(hold, view)
+        }
+    }
     public var openProxySettings: ()->Void = {}
     public var sendLocation: (CLLocationCoordinate2D, MapVenue?) -> Void = {_, _ in}
     public var clearMentions:()->Void = {}
     public var reactionPressed:()->Void = {}
     public var showToaster:(NSAttributedString)->Void = { _ in }
     public var previewTopic:(Int64)->Void = { _ in }
-    public var showAnimatedToaster:(LocalAnimatedSticker, String)->Void = { _, _ in }
+    public var showRestrictionToast:(String)->Void = { _ in }
     public var removeToaster:()->Void = {}
     public var clearReactions:()->Void = {}
     public var attachFile:(Bool)->Void = { _ in }
@@ -416,14 +738,26 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public var removeAd:(Data)->Void = { _ in }
     
+    public var canAnimateUpdates:()->Bool = { true }
+    
     public var boostToUnrestrict:(BoostChannelSource)->Void = { _ in }
     
     public var executeReplymarkup:(MessageId)->Void = { _ in }
     public var toggleUnderMouseMessage:()->Void = { }
     
     public var openStory:(MessageId, StoryId)->Void = { _, _ in }
-    public func openStoryObserved(_ messageId: MessageId, _ storyId: StoryId) {
-        openStory(messageId, storyId)
+    public var openStoryWithAnalytics: ((MessageId, StoryId, AnalyticsContext) -> Void)?
+    public func openStoryObserved(_ messageId: MessageId, _ storyId: StoryId, analyticsContext: AnalyticsContext) {
+        let inherited = Analytics.shared.captureContext(engine: interactionContext.engine, peerId: messageId.peerId, inherited: analyticsContext).restricting(peerId: storyId.peerId)
+        let current = captureAnalyticsContext(inherited: inherited)
+        let origin = inherited.isExcluded ? inherited : current
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        if let openStoryWithAnalytics {
+            openStoryWithAnalytics(messageId, storyId, origin)
+        } else {
+            openStory(messageId, storyId)
+        }
     }
     
     public var sendMessageShortcut:(ShortcutMessageList.Item)->Void = { _ in }
@@ -492,15 +826,16 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public let loadingMessage: Promise<Bool> = Promise()
     public let mediaPromise:Promise<[MediaSenderContainer]> = Promise()
+    public let recordingMediaPromise = Promise<([MediaSenderContainer], AnalyticsContext)>()
+    public let recordingSubmissionPromise = Promise<([MediaSenderContainer], AnalyticsContext, AnalyticsRecordingRequest?)>()
 
     // A structural rich-text draft (composed in the rich editor) that the plain `ChatTextInputState` can't
     // represent (lists/tables/media). Stored as its compiled `InstantPage` so it renders read-only in the
     // composer (InstantPageV2) and sends as a `RichTextMessageAttribute`. nil when there is no rich draft.
     //
     // Backed by a process-global per-chat store so the draft survives the chat controller being torn down
-    // and reopened (the `ChatInteraction` is recreated each time), and kept in the item cache like iOS so it
-    // survives a relaunch. (Cross-device sync is a follow-up.)
-    private static let globalRichTextDrafts = ChatRichTextDraftStore<InstantPage>()
+    // and reopened, with its contents stored in the item cache across launches.
+    private static let globalRichTextDrafts = ChatRichTextDraftStore<InstantPage, AnalyticsContext>()
     private var richTextDraftKey: ChatRichTextDraftKey {
         return richTextDraftKey(threadId: chatLocation.threadId)
     }
@@ -532,10 +867,22 @@ public final class ChatInteraction : InterfaceObserver  {
     public var storePendingRichTextDraft: (() -> Void)?
     public var storePendingRichTextEditorDraft: (() -> Void)?
     private var unshownPersistentRichTextDraftKey: ChatRichTextDraftKey?
-    public func setRichTextDraft(_ page: InstantPage?, persist: Bool = true) {
-        if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey) {
+    private func restrictRichTextDraftAnalyticsContext(_ context: AnalyticsContext) -> AnalyticsContext {
+        guard let draft = ChatInteraction.globalRichTextDrafts.entry(for: richTextDraftKey) else { return context }
+        guard let origin = draft.origin, !origin.isExcluded, origin.scope?.isValid == true else {
+            return Analytics.shared.unresolvedContext()
+        }
+        guard !context.isExcluded else { return context }
+        guard let scope = context.scope else { return context }
+        guard scope.isValid else { return Analytics.shared.unresolvedContext() }
+        return Analytics.shared.captureContext(engine: interactionContext.engine, peerId: peerId, inherited: origin)
+    }
+    public func setRichTextDraft(_ page: InstantPage?, analyticsContext: AnalyticsContext? = nil, persist: Bool = true) {
+        let origin = page == nil ? nil : captureAnalyticsContext(inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        if ChatInteraction.globalRichTextDrafts.set(page, for: richTextDraftKey, origin: origin) {
             invalidateDeferredSendActions()
         }
+        revokePrivateComposerAnalytics()
         richTextDraftPromise.set(page)
         if persist, page != nil || unshownPersistentRichTextDraftKey != richTextDraftKey {
             unshownPersistentRichTextDraftKey = nil
@@ -544,7 +891,7 @@ public final class ChatInteraction : InterfaceObserver  {
     }
     public func storeRichTextDraftSnapshot(_ page: InstantPage, threadId: Int64?) {
         let key = richTextDraftKey(threadId: threadId)
-        guard ChatInteraction.globalRichTextDrafts.value(for: key) != nil, ChatInteraction.globalRichTextDrafts.set(page, for: key) else {
+        guard let existing = ChatInteraction.globalRichTextDrafts.entry(for: key), ChatInteraction.globalRichTextDrafts.set(page, for: key, origin: existing.origin) else {
             return
         }
         invalidateDeferredSendActions()
@@ -594,6 +941,14 @@ public final class ChatInteraction : InterfaceObserver  {
         }
     }
 
+    func excludeRichTextDraftAnalytics() {
+        guard let draft = ChatInteraction.globalRichTextDrafts.entry(for: richTextDraftKey) else { return }
+        draft.origin?.scope?.exclude()
+        if ChatInteraction.globalRichTextDrafts.set(draft.value, for: richTextDraftKey, origin: Analytics.shared.unresolvedContext()) {
+            invalidateDeferredSendActions()
+        }
+        revokePrivateComposerAnalytics()
+    }
     
     public var hasSetDestructiveTimer: Bool {
         return presentation.hasSetDestructiveTimer
@@ -659,9 +1014,29 @@ public final class ChatInteraction : InterfaceObserver  {
     }
     
     public func startBot(_ payload:String? = nil) {
-        startBotDisposable.set((context.engine.messages.requestStartBot(botPeerId: self.peerId, payload: payload) |> deliverOnMainQueue).start(completed: { [weak self] in
-            self?.update({$0.updatedInitialAction(nil)})
-        }))
+        guard !isStartingBot else {
+            return
+        }
+        isStartingBot = true
+
+        let start = context.engine.messages.requestStartBot(botPeerId: self.peerId, payload: payload)
+        if presentation.isBlocked == true {
+            let request = (context.blockedPeersContext.remove(peerId: self.peerId)
+            |> map { _ -> Void in () })
+            |> then(start |> castError(BlockedPeersContextRemoveError.self))
+            |> deliverOnMainQueue
+            startBotDisposable.set(request.start(error: { [weak self] _ in
+                self?.isStartingBot = false
+            }, completed: { [weak self] in
+                self?.isStartingBot = false
+                self?.update({$0.updatedInitialAction(nil)})
+            }))
+        } else {
+            startBotDisposable.set((start |> deliverOnMainQueue).start(completed: { [weak self] in
+                self?.isStartingBot = false
+                self?.update({$0.updatedInitialAction(nil)})
+            }))
+        }
     }
     
     public func clearInput() {
@@ -677,11 +1052,13 @@ public final class ChatInteraction : InterfaceObserver  {
     
     public func forwardSelectedMessages() {
         guard let ids = presentation.selectionState?.selectedIds, !ids.isEmpty else { return }
-        forwardSelection.load(ids: ids, request: {
+        var origin = captureAnalyticsContext()
+        for id in ids { origin = origin.restricting(peerId: id.peerId) }
+        forwardSelection.load(ids: ids, analyticsContext: origin, trackForwarding: presentation.reportMode == nil, request: {
             context.account.postbox.messagesAtIds(Array(ids))
-        }, completion: { [weak self] messages in
-            guard let self, self.presentation.selectionState?.selectedIds == ids else { return }
-            self.forwardMessages(messages)
+        }, completion: { [weak self] messages, journey in
+            guard let self, self.presentation.selectionState?.selectedIds == ids else { journey?.discard(); return }
+            self.forwardMessagesObserved(messages, analyticsContext: origin, entry: .messageSelection, journey: journey)
         })
     }
     
@@ -703,8 +1080,12 @@ public final class ChatInteraction : InterfaceObserver  {
             self.update({$0.updatedInterfaceState({$0.withUpdatedInputState(state)})})
         }
     }
-    @discardableResult public func appendTextObserved(_ text: NSAttributedString, selectedRange: Range<Int>? = nil) -> Range<Int> {
-        return appendText(text, selectedRange: selectedRange)
+    @discardableResult public func appendTextObserved(_ text: NSAttributedString, selectedRange: Range<Int>? = nil, analyticsContext: AnalyticsContext) -> Range<Int> {
+        let origin = captureAnalyticsContext(inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        let input = origin.isExcluded || origin.scope?.isValid != true ? chatInputTextExcludingAnalytics(text) : text
+        return appendText(input, selectedRange: selectedRange)
     }
 
     @discardableResult public func appendText(_ text: NSAttributedString, selectedRange:Range<Int>? = nil) -> Range<Int> {
@@ -769,6 +1150,13 @@ public final class ChatInteraction : InterfaceObserver  {
     }
     
     public func cancelEditing(_ force: Bool = false) {
+        cancelEditing(force, userInitiated: false)
+    }
+
+    func cancelEditing(_ force: Bool = false, userInitiated: Bool) {
+        let analyticsContext = captureAnalyticsContext()
+        let analyticsPresentation = analyticsContext.beginPresentation()
+        defer { analyticsPresentation.end() }
         let sessionId = mediaEditSessionId
         if let editState = self.presentation.interfaceState.editState {
             let oldState = ChatEditState(message: editState.message)
@@ -777,6 +1165,7 @@ public final class ChatInteraction : InterfaceObserver  {
             } else {
                 switch editState.loadingState {
                 case .loading, .progress:
+                    if userInitiated { mediaEditJourney?.cancelSubmission() }
                     mediaEditSubmissionId = nil
                     editDisposable.set(nil)
                     self.update({$0.updatedInterfaceState({$0.updatedEditState({$0?.withUpdatedLoadingState(.none)})})})
@@ -784,10 +1173,14 @@ public final class ChatInteraction : InterfaceObserver  {
                 default:
                     if oldState.inputState.inputText != editState.inputState.inputText, !editState.inputState.inputText.isEmpty {
                         verifyAlert_button(for: context.window, information: strings().chatEditCancelText, ok: strings().alertDiscard, cancel: strings().alertNO, successHandler: { [weak self] _ in
+                            let presentation = analyticsContext.beginPresentation()
+                            defer { presentation.end() }
                             guard let self, self.mediaEditSessionId == sessionId else { return }
+                            if userInitiated { self.mediaEditJourney?.cancel() }
                             self.update({$0.withoutEditMessage().updatedUrlPreview(nil)})
                         })
                     } else {
+                        if userInitiated { mediaEditJourney?.cancel() }
                         self.update({$0.withoutEditMessage().updatedUrlPreview(nil)})
                     }
                 }
@@ -877,19 +1270,25 @@ public final class ChatInteraction : InterfaceObserver  {
                     $0.withSelectionState().withoutInitialAction().withUpdatedRepotMode(reason)
                 })
             case let .attachBot(botname, payload, _):
+                let analyticsContext = captureAnalyticsContext()
                 let context = self.context
                 let peerId = self.peerId
+                let analyticsPresentation = analyticsContext.beginPresentation()
+                defer { analyticsPresentation.end() }
                 let replyId = presentation.interfaceState.replyMessageId?.messageId
                 let threadId = presentation.chatLocation.threadId
                 update({ $0.withoutInitialAction() })
-                chatOpenAttachBot(context: context, peerId: peerId, threadId: threadId, replyId: replyId, botname: botname, payload: payload)
+                chatOpenAttachBot(context: context, peerId: peerId, threadId: threadId, replyId: replyId, botname: botname, payload: payload, analyticsContext: analyticsContext)
             case let .openWebview(botPeer, botApp, result):
+                let analyticsContext = captureAnalyticsContext().restricting(peerId: botPeer.id)
                 let context = self.context
                 let peerId = self.peerId
+                let analyticsPresentation = analyticsContext.beginPresentation()
+                defer { analyticsPresentation.end() }
                 update(animated: animated, {
                     $0.withoutInitialAction()
                 })
-                ChatNavigationHooks.shared.openBrowserTabObserved(context, .straight(bot: .init(botPeer.peer), peerId: peerId, title: botApp.title, result: result))
+                ChatNavigationHooks.shared.openBrowserTabObserved(context, .straight(bot: .init(botPeer.peer), peerId: peerId, title: botApp.title, result: result), analyticsContext: analyticsContext)
             case .makeWebview:
                 update(animated: animated, {
                     $0.withoutInitialAction()
@@ -991,6 +1390,13 @@ public final class ChatInteraction : InterfaceObserver  {
         ChatNavigationHooks.shared.openBrowserTab(context, tab)
     }
     
+    func allowMessageButtonAction(_ message: Message) -> Bool {
+        if message.flags.contains(.Incoming), presentation.peer?.isUser == true, presentation.peerStatus?.peerStatusSettings?.flags.isDisjoint(with: .suspiciousPeer) == false {
+            return false
+        }
+        return true
+    }
+
     public func processBotKeyboard(with keyboardMessage:Message) ->ReplyMarkupInteractions {
         if let attribute = keyboardMessage.replyMarkup, !isLogInteraction {
             
@@ -1001,6 +1407,9 @@ public final class ChatInteraction : InterfaceObserver  {
             
             return ReplyMarkupInteractions(context: context, proccess: { [weak self] (button, progress) in
                 if let strongSelf = self {
+                    if attribute.flags.contains(.inline), !strongSelf.allowMessageButtonAction(keyboardMessage) {
+                        return
+                    }
                     switch button.action {
                     case let .url(url):
                         
@@ -1035,7 +1444,8 @@ public final class ChatInteraction : InterfaceObserver  {
                         }
                     case .payment:
                         if let invoice = keyboardMessage.anyMedia as? TelegramMediaInvoice {
-                            openChatMessagePayment(context: context, messageId: keyboardMessage.id, invoice: invoice)
+                            let origin = strongSelf.captureAnalyticsContext(sourcePeerId: keyboardMessage.id.peerId)
+                            openChatMessagePayment(context: context, messageId: keyboardMessage.id, invoice: invoice, analyticsContext: origin)
                         }
                     case let .urlAuth(url, buttonId):
                         let context = strongSelf.context
@@ -1083,6 +1493,7 @@ public final class ChatInteraction : InterfaceObserver  {
                 }
             })
         } else if let attribute = keyboardMessage.suggestPostAttribute, !isLogInteraction {
+            let schedulingAnalyticsContext = captureAnalyticsContext().restricting(peerId: keyboardMessage.id.peerId)
             
             let context = self.context
             let peer = presentation.peer
@@ -1147,6 +1558,7 @@ public final class ChatInteraction : InterfaceObserver  {
                                                 }
                                             )
                                         ),
+                                        analyticsContext: schedulingAnalyticsContext,
                                         selectedAt: { date, _ in
                                             _ = context.engine.messages.monoforumPerformSuggestedPostAction(
                                                 id: keyboardMessage.id,
@@ -1258,12 +1670,16 @@ public final class ChatInteraction : InterfaceObserver  {
 
         addContactDisposable.dispose()
         mediaDisposable.dispose()
+        recordingMediaDisposable.dispose()
+        recordingSubmissionDisposable.dispose()
         startBotDisposable.dispose()
         requestSessionId.dispose()
         disableProxyDisposable.dispose()
         enableProxyDisposable.dispose()
         editDisposable.dispose()
         mediaPromise.set(.complete())
+        recordingMediaPromise.set(.complete())
+        recordingSubmissionPromise.set(.complete())
         update({ _ in
             return ChatPresentationInterfaceState(chatLocation: self.chatLocation, chatMode: self.mode)
         })
@@ -1278,16 +1694,28 @@ public final class ChatInteraction : InterfaceObserver  {
         self.beginMessageSelection = { _ in }
         self.deleteMessages = { _, _ in }
         self.forwardMessages = { _ in }
+        self.forwardMessagesWithContext = nil
+        self.forwardMessagesWithSource = nil
+        self.forwardMessagesWithJourney = nil
         self.reportMessages = { _, _ in }
         self.sendMessage = { _, _, _ in }
+        self.sendAIEditorResult = nil
+        self.sendMessageWithAnalytics = nil
         self.sendPlainText = { _ in }
+        self.sendPlainTextWithAnalytics = nil
         self.focusMessageId = { _, _, _ in }
         self.focusPinnedMessageId = { _ in }
         self.sendMedia = { _ in }
+        self.sendMediaWithJourney = nil
+        self.sendRecordingMediaWithAnalytics = nil
+        self.sendCreatedStickerWithAnalytics = nil
+        self.sendAppFileWithContext = nil
         self.sendAppFile = { _, _, _, _, _, _, _ in }
         self.sendMedias = { _, _, _, _, _, _, _, _, _ in }
+        self.sendMediasWithAnalytics = nil
         self.focusInputField = { }
         self.openInfo = { _, _, _, _ in }
+        self.openInfoWithAnalytics = nil
         self.beginEditingMessage = { _ in }
         self.requestMessageActionCallback = { _, _, _ in }
         self.inlineAudioPlayer = { _ in }
@@ -1300,7 +1728,8 @@ public final class ChatInteraction : InterfaceObserver  {
         self.sendCommand = { _ in }
         self.setNavigationAction = { _ in }
         self.switchInlinePeer = { _, _ in }
-        self.presentPreviewSender = { _, _, _ in }
+        self.presentPreviewSender = { _, _, _, _ in }
+        self.presentPreviewSenderWithJourney = nil
         self.setChatMessageAutoremoveTimeout = { _ in }
         self.toggleNotifications = { _ in }
         self.removeAndCloseChat = { }
@@ -1317,13 +1746,14 @@ public final class ChatInteraction : InterfaceObserver  {
         self.jumpToDate = { _ in }
         self.showNextPost = { }
         self.startRecording = { _, _ in }
+        self.startRecordingWithAnalytics = nil
         self.openProxySettings = { }
         self.sendLocation = { _, _ in }
         self.clearMentions = { }
         self.reactionPressed = { }
         self.showToaster = { _ in }
         self.previewTopic = { _ in }
-        self.showAnimatedToaster = { _, _ in }
+        self.showRestrictionToast = { _ in }
         self.removeToaster = { }
         self.clearReactions = { }
         self.attachFile = { _ in }
@@ -1392,6 +1822,7 @@ public final class ChatInteraction : InterfaceObserver  {
         self.hashtag = { _ in }
         self.sendMessageMenu = { _ in .single(nil) }
         self.removeAd = { _ in }
+        self.canAnimateUpdates = { true }
         self.boostToUnrestrict = { _ in }
         self.executeReplymarkup = { _ in }
         self.toggleUnderMouseMessage = { }
@@ -1451,8 +1882,18 @@ public final class ChatInteraction : InterfaceObserver  {
     
 }
 
-
 public func sendMessageMenuItems(chatInteraction: ChatInteraction, send: @escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]? {
+    return sendMessageMenuItems(chatInteraction: chatInteraction, analyticsContext: chatInteraction.captureAnalyticsContext(), send: send)
+}
+
+public func sendMessageMenuItems(chatInteraction: ChatInteraction, analyticsContext: AnalyticsContext, send: @escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]? {
+    let schedulingAnalyticsContext = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
+    let getAnalyticsContext = { [weak chatInteraction] in
+        guard let chatInteraction else { return Analytics.shared.unresolvedContext() }
+        return chatInteraction.captureAnalyticsContext(inherited: schedulingAnalyticsContext)
+    }
+    let analyticsPresentation = getAnalyticsContext().beginPresentation()
+    defer { analyticsPresentation.end() }
     let deferredSendAction = chatInteraction.captureDeferredSendAction()
     let presentation = chatInteraction.presentation
     let context = chatInteraction.context
@@ -1472,6 +1913,8 @@ public func sendMessageMenuItems(chatInteraction: ChatInteraction, send: @escapi
     if peer.id != context.account.peerId {
         items.append(ContextMenuItem(strings().chatSendWithoutSound, handler: {
             guard deferredSendAction.takeIfCurrent() else { return }
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             send(true, nil)
         }, itemImage: MenuAnimation.menu_mute.value))
     }
@@ -1482,6 +1925,8 @@ public func sendMessageMenuItems(chatInteraction: ChatInteraction, send: @escapi
             if peer.id != context.peerId, presentation.canScheduleWhenOnline, presentation.sendPaidMessageStars == nil {
                 items.append(ContextMenuItem(strings().chatSendSendWhenOnline, handler: {
                     guard deferredSendAction.takeIfCurrent() else { return }
+                    let presentation = getAnalyticsContext().beginPresentation()
+                    defer { presentation.end() }
                     send(false, .init(date: scheduleWhenOnlineDate))
                 }, itemImage: MenuAnimation.menu_online.value))
             }
@@ -1490,8 +1935,12 @@ public func sendMessageMenuItems(chatInteraction: ChatInteraction, send: @escapi
                 let text = peer.id == context.peerId ? strings().chatSendSetReminder : strings().chatSendScheduledMessage
                 items.append(ContextMenuItem(text, handler: {
                     guard deferredSendAction.isAvailable else { return }
-                    showModal(with: chatDateSelector(context: context, mode: .schedule(peer.id), selectedAt: { date, repeatPeriod in
+                    let presentation = getAnalyticsContext().beginPresentation()
+                    defer { presentation.end() }
+                    showModal(with: chatDateSelector(context: context, mode: .schedule(peer.id), analyticsContext: schedulingAnalyticsContext, selectedAt: { date, repeatPeriod in
                         guard deferredSendAction.takeIfCurrent() else { return }
+                        let presentation = getAnalyticsContext().beginPresentation()
+                        defer { presentation.end() }
                         send(false, .init(date: date, repeatPeriod: repeatPeriod))
                     }), for: context.window)
                 }, itemImage: MenuAnimation.menu_schedule_message.value))

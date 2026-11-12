@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -388,6 +389,7 @@ public func Star_SubscriptionScreen(context: (any AccountContextProtocol), subsc
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .starsSubscription
     
     getController = { [weak controller] in
         return controller

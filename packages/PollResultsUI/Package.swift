@@ -25,7 +25,7 @@ let deps: [(String, String)] = [
     ("LocationUI", "../LocationUI"),
     ("GraphCore", "../../submodules/telegram-ios/submodules/GraphCore"),
     ("InlineStickerLayer", "../InlineStickerLayer"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

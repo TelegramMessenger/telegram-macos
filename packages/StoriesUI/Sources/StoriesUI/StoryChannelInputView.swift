@@ -60,6 +60,8 @@ final class StoryChannelInputView : Control, StoryInput {
         addSubview(likeAction)
         addSubview(repost)
         addSubview(share)
+        repost.isHidden = true
+        share.isHidden = true
         addSubview(views)
         views.addSubview(viewsImage)
         views.addSubview(viewsText)
@@ -91,13 +93,13 @@ final class StoryChannelInputView : Control, StoryInput {
         repost.setAccessibilityLabel(strings().voiceOverCommonRepost)
 
         repost.set(handler: { [weak self] _ in
-            if let story = self?.story {
+            if let story = self?.story, story.sharable {
                 self?.arguments?.repost(story)
             }
         }, for: .Click)
         
         share.set(handler: { [weak self] _ in
-            if let story = self?.story {
+            if let story = self?.story, story.sharable {
                 self?.arguments?.share(story)
             }
         }, for: .Click)
@@ -139,7 +141,10 @@ final class StoryChannelInputView : Control, StoryInput {
     
     func update(_ story: StoryContentItem, animated: Bool) {
         self.story = story
-        
+        self.share.isHidden = !story.sharable
+        self.repost.isHidden = !story.sharable
+        self.shareCount?.isHidden = !story.sharable
+
         guard let arguments = self.arguments else {
             return
         }
@@ -189,7 +194,7 @@ final class StoryChannelInputView : Control, StoryInput {
                 self.likeCount = nil
             }
             
-            if forwardedCount > 0 {
+            if story.sharable, forwardedCount > 0 {
                 let current: DynamicCounterTextView
                 var isNew = false
                 if let view = self.shareCount {

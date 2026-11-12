@@ -8,6 +8,45 @@ import TelegramCore
 import Postbox
 
 
+private final class AvatarClipImageEntry {
+    let source: CGImage
+    let clip: CGImage
+    init(source: CGImage, clip: CGImage) {
+        self.source = source
+        self.clip = clip
+    }
+}
+
+private let avatarClipImageCache: NSCache<NSString, AvatarClipImageEntry> = {
+    let cache = NSCache<NSString, AvatarClipImageEntry>()
+    cache.countLimit = 200
+    return cache
+}()
+
+private func avatarClipImage(_ image: CGImage, frameSize: NSSize, inset: CGFloat) -> CGImage {
+    let scale = System.backingScale
+    let key = "\(UInt(bitPattern: ObjectIdentifier(image).hashValue))_\(frameSize.width)_\(frameSize.height)_\(inset)_\(scale)" as NSString
+    if let entry = avatarClipImageCache.object(forKey: key), entry.source === image {
+        return entry.clip
+    }
+    let clip = generateImage(frameSize, scale: scale, rotatedContext: { size, context in
+        context.clear(CGRect(origin: CGPoint(), size: size))
+        context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
+        context.scaleBy(x: 1.0, y: -1.0)
+        context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
+        context.draw(image, in: CGRect(origin: CGPoint(), size: size))
+        context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
+        context.scaleBy(x: 1.0, y: -1.0)
+        context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
+
+        context.setBlendMode(.copy)
+        context.setFillColor(NSColor.clear.cgColor)
+        context.fillEllipse(in: CGRect(origin: CGPoint(), size: size).insetBy(dx: -(inset / 2), dy: -(inset / 2)).offsetBy(dx: -(frameSize.width - inset), dy: 0.0))
+    })!
+    avatarClipImageCache.setObject(AvatarClipImageEntry(source: image, clip: clip), forKey: key)
+    return clip
+}
+
 public final class AvatarContentView: View {
     private let unclippedView: ImageView
     private let clippedView: ImageView
@@ -41,20 +80,7 @@ public final class AvatarContentView: View {
         
         let signal: Signal<(CGImage, CGImage)?, NoError> = peerAvatarImage(account: account, photo: .peer(peer, peer.smallProfileImage, peer.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer), nil, nil), displayDimensions: size, scale: System.backingScale, font: .avatar(size.height / 3 + 3), genCap: true, synchronousLoad: synchronousLoad) |> runOn(.mainQueue()) |> map { image in
             if let image = image.0 {
-                let clipImage = generateImage(frameSize, rotatedContext: { size, context in
-                    context.clear(CGRect(origin: CGPoint(), size: size))
-                    context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
-                    context.scaleBy(x: 1.0, y: -1.0)
-                    context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
-                    context.draw(image, in: CGRect(origin: CGPoint(), size: size))
-                    context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
-                    context.scaleBy(x: 1.0, y: -1.0)
-                    context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
-                    
-                    context.setBlendMode(.copy)
-                    context.setFillColor(NSColor.clear.cgColor)
-                    context.fillEllipse(in: CGRect(origin: CGPoint(), size: size).insetBy(dx: -(inset / 2), dy: -(inset / 2)).offsetBy(dx: -(frameSize.width - inset), dy: 0.0))
-                })!
+                let clipImage = avatarClipImage(image, frameSize: frameSize, inset: inset)
                 return (image, clipImage)
             }
             return nil
@@ -187,20 +213,7 @@ public final class AvatarContentLayer: SimpleLayer {
         
         let signal: Signal<(CGImage, CGImage)?, NoError> = peerAvatarImage(account: context.account, photo: .peer(peer, peer.smallProfileImage, peer.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer), nil, nil), displayDimensions: size, scale: System.backingScale, font: .avatar(size.height / 3 + 3), genCap: true, synchronousLoad: synchronousLoad) |> map { image in
             if let image = image.0 {
-                let clipImage = generateImage(frameSize, rotatedContext: { size, context in
-                    context.clear(CGRect(origin: CGPoint(), size: size))
-                    context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
-                    context.scaleBy(x: 1.0, y: -1.0)
-                    context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
-                    context.draw(image, in: CGRect(origin: CGPoint(), size: size))
-                    context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
-                    context.scaleBy(x: 1.0, y: -1.0)
-                    context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
-                    
-                    context.setBlendMode(.copy)
-                    context.setFillColor(NSColor.clear.cgColor)
-                    context.fillEllipse(in: CGRect(origin: CGPoint(), size: size).insetBy(dx: -(inset / 2), dy: -(inset / 2)).offsetBy(dx: -(frameSize.width - inset), dy: 0.0))
-                })!
+                let clipImage = avatarClipImage(image, frameSize: frameSize, inset: inset)
                 return (image, clipImage)
             }
             return nil

@@ -40,6 +40,38 @@ public final class AdaptiveGlassEffectView: NSGlassEffectView {
         onAppearanceChange?(self.effectiveAppearance)
     }
 
+    private var deferredLayout = false
+
+    public override func layout() {
+        if isHiddenOrHasHiddenAncestor {
+            deferredLayout = true
+            return
+        }
+        deferredLayout = false
+        super.layout()
+    }
+
+    public override func viewDidUnhide() {
+        super.viewDidUnhide()
+        if deferredLayout {
+            needsLayout = true
+        }
+    }
+
+    public override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if deferredLayout {
+            needsLayout = true
+        }
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if deferredLayout {
+            needsLayout = true
+        }
+    }
+
     private static let adaptiveSelector = Selector(("set_adaptiveAppearance:"))
 
 #if compiler(>=6.4)

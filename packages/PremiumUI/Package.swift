@@ -10,6 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
         .package(name: "TGUIKit", path: "../TGUIKit"),
@@ -38,6 +39,7 @@ let package = Package(
             name: "PremiumUI",
             dependencies: [
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
                 .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "Postbox", package: "Postbox", condition: nil),

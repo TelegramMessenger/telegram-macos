@@ -6,6 +6,21 @@ __ACTIONS__
 __ATTACHMENT_EDITS__
 __DEFERRED__
 
+final class Lease {
+    private var finish: (() -> Void)?
+    init(_ finish: @escaping () -> Void) { self.finish = finish }
+    func end() { let callback = finish; finish = nil; callback?() }
+    deinit { end() }
+}
+final class Context {
+    var depth = 0
+    func beginPresentation() -> Lease { depth += 1; return Lease { self.depth -= 1 } }
+__SIGNAL_CONTEXT__
+}
+final class Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> Context { Context() }
+}
 final class ChatInteraction {
     var revision = 0
     func captureDeferredSendAction() -> ChatDeferredSendAction {
@@ -23,8 +38,9 @@ final class NSPasteboard {
 struct DragItem { let title: String; let desc: String; let handler: () -> Void }
 struct Labels { func previewDraggingAddItemsOther(_ count: Int) -> String { "add" } }
 func strings() -> Labels { Labels() }
+enum Route { case addDrop }
 final class Controller {
-    var insertAdditionUrls: (([URL]) -> Void)?
+    var insertAdditionUrls: (([URL], Route) -> Void)?
 __DROP__
     let pendingActions = PreviewSenderPendingActions()
     let pasteActions = PreviewSenderPendingActions()
@@ -32,6 +48,7 @@ __DROP__
     let editorDisposable = MetaDisposable()
     let pasteDisposable = MetaDisposable()
     let chatInteraction = ChatInteraction()
+    var analyticsContext: Context? = Context()
     var sent = false
 __RECEIVE__
     func close() {
@@ -107,13 +124,17 @@ final class PasteSubscriptionTests: XCTestCase {
     }
     func testChangedChatSuppressesDeliveryWithoutRebindingContext() {
         let controller = Controller()
+        let origin = controller.analyticsContext!
         let source = Source()
         var count = 0
         controller.receivePasteURLs(source.signal()) { _ in count += 1 }
         controller.chatInteraction.revision += 1
+        controller.analyticsContext = Context()
         source.send("/stale")
         XCTAssertEqual(count, 0)
+        XCTAssertEqual(origin.depth, 1)
         controller.close()
+        XCTAssertEqual(origin.depth, 0)
     }
     func testCommitAndCloseSuppressPendingAndNewRequests() {
         for closed in [false, true] {
@@ -132,14 +153,19 @@ final class PasteSubscriptionTests: XCTestCase {
     }
     func testDeliveryLeaseSurvivesReentrantClosure() {
         let controller = Controller()
+        let context = controller.analyticsContext!
         let source = Source()
         controller.receivePasteURLs(source.signal()) { _ in
+            XCTAssertEqual(context.depth, 2)
             controller.close()
+            XCTAssertEqual(context.depth, 1)
         }
         source.send("/result")
+        XCTAssertEqual(context.depth, 0)
     }
     func testDestructionDisposesWithoutKeepingControllerAlive() {
         var controller: Controller? = Controller()
+        let context = controller!.analyticsContext!
         let source = Source()
         var count = 0
         controller?.receivePasteURLs(source.signal()) { _ in count += 1 }
@@ -147,6 +173,7 @@ final class PasteSubscriptionTests: XCTestCase {
         controller = nil
         XCTAssertNil(weakController)
         XCTAssertTrue(source.disposed)
+        XCTAssertEqual(context.depth, 0)
         source.send("/late")
         XCTAssertEqual(count, 0)
     }
@@ -170,7 +197,7 @@ final class PasteSubscriptionTests: XCTestCase {
     func testPreviewDropStartsOnlyOnOneAcceptedTargetInvocation() {
         let controller = Controller()
         var paths: [String] = []
-        controller.insertAdditionUrls = { urls in paths += urls.map(\.path) }
+        controller.insertAdditionUrls = { urls, _ in paths += urls.map(\.path) }
         let targets = controller.draggingItems(for: NSPasteboard(files: ["/drop"]))
         XCTAssertTrue(paths.isEmpty)
         targets[0].handler(); targets[0].handler()
@@ -180,7 +207,7 @@ final class PasteSubscriptionTests: XCTestCase {
         for state in 0..<3 {
             let controller = Controller()
             var calls = 0
-            controller.insertAdditionUrls = { _ in calls += 1 }
+            controller.insertAdditionUrls = { _, _ in calls += 1 }
             let target = controller.draggingItems(for: NSPasteboard(files: ["/drop"]))[0]
             if state == 0 { controller.chatInteraction.revision += 1 }
             if state == 1 { controller.close() }
@@ -193,7 +220,7 @@ final class PasteSubscriptionTests: XCTestCase {
     func testCapturedDropDoesNotRetainPreview() {
         var controller: Controller? = Controller()
         var calls = 0
-        controller?.insertAdditionUrls = { _ in calls += 1 }
+        controller?.insertAdditionUrls = { _, _ in calls += 1 }
         let target = controller!.draggingItems(for: NSPasteboard(files: ["/drop"]))[0]
         weak var weakController = controller
         controller = nil
@@ -216,6 +243,7 @@ final class PasteSubscriptionTests: XCTestCase {
         superseded.send("/stale"); newest.send("/newest")
         XCTAssertEqual(paths, ["/newest"])
         controller.close()
+        XCTAssertEqual(controller.analyticsContext?.depth, 0)
     }
     func testDisposalClosingCommittingOrChangingChatPreventsNextSubscription() {
         for state in 0..<3 {
@@ -231,6 +259,7 @@ final class PasteSubscriptionTests: XCTestCase {
             controller.receivePasteURLs(next.signal()) { _ in XCTFail("Invalidated request must not deliver") }
             XCTAssertFalse(next.started)
             controller.close()
+            XCTAssertEqual(controller.analyticsContext?.depth, 0)
         }
     }
 

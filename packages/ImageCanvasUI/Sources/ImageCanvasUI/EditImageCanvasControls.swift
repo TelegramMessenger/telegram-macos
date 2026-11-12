@@ -288,11 +288,11 @@ final class EditImageCanvasTopBar: View {
             let label: String
             switch type.next {
             case .oneSidedArrow:
-                label = "Switch to One-Sided Arrow" //TODOLANG
+                label = strings().editImageCanvasControlsSwitchToOneSidedArrow
             case .twoSidedArrow:
-                label = "Switch to Two-Sided Arrow" //TODOLANG
+                label = strings().editImageCanvasControlsSwitchToTwoSidedArrow
             case .line:
-                label = "Switch to Line" //TODOLANG
+                label = strings().editImageCanvasControlsSwitchToLine
             }
             let button = makeGlassIconButton(EditImageCanvasGlyph.vector(type), label: label)
             button.set(handler: { [weak self] _ in
@@ -316,7 +316,7 @@ final class EditImageCanvasTopBar: View {
 
     private func drawTypeButton(_ drawType: EditImageCanvasEntity.DrawType) -> Control {
         let image = drawType == .fill ? NSImage(resource: .iconEditImageShapeFill) : NSImage(resource: .iconEditImageShapeStroke)
-        let label = drawType == .fill ? "Switch to Outline" : "Switch to Fill" //TODOLANG
+        let label = drawType == .fill ? strings().editImageCanvasControlsSwitchToOutline : strings().editImageCanvasControlsSwitchToFill
         let button = makeGlassIconButton(image.precomposed(.white), label: label)
         button.set(handler: { [weak self] _ in
             self?.arguments?.toggleDrawType()
@@ -662,8 +662,8 @@ final class EditImageCanvasTextSettingsRow: View {
             button.scaleOnClick = true
             addSubview(button)
         }
-        style.setAccessibilityLabel("Text Style") //TODOLANG
-        alignment.setAccessibilityLabel("Text Alignment") //TODOLANG
+        style.setAccessibilityLabel(strings().editImageCanvasControlsTextStyle)
+        alignment.setAccessibilityLabel(strings().editImageCanvasControlsTextAlignment)
         font.autohighlight = false
         font.scaleOnClick = true
         font.set(color: .white, for: .Normal)

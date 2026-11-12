@@ -9,6 +9,7 @@ import TelegramMedia
 import ObjcUtils
 import TGVideoCameraMovie
 import AVFoundation
+import Localization
 
 public enum ChatRecordingOverlayState: Equatable {
     case voice
@@ -42,6 +43,8 @@ final class ChatRecorderOverlayWindow: Window {
         guard let parent = self.parentHost else {
             return
         }
+        contentView?.layer?.removeAnimation(forKey: "dictationControlsFade")
+        contentView?.layer?.opacity = 1
         self.updateFrame()
         if self.parent !== parent {
             parent.addChildWindow(self, ordered: .above)
@@ -281,13 +284,31 @@ public final class ChatRecorderPauseControl : ChatRecorderRoundButton {
     }
 }
 
+public final class ChatRecorderTranscribeControl : ChatRecorderRoundButton {
+    public required init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setAccessibilityLabel(strings().chatRecorderOverlayWindowConvertToText)
+    }
+
+    public override func icon(_ theme: TelegramPresentationTheme) -> CGImage? {
+        return NSImage(named: "Icon_ChannelFeature_VoiceToText")?.precomposed(theme.colors.text)
+    }
+
+    public required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 public class ChatRecorderOverlayView : Control {
     private let stateView: ImageView = ImageView()
     private var isPaused: Bool = false
     private let transcribeLines = ImageView()
-    private let transcribeStop = ImageView()
     private var transcribeProgress: CGFloat = 0
     private(set) var isTranscribing: Bool = false
+    private var recordingIsFlat = false
+    var dictationTransitionIcon: CGImage? {
+        return transcribeProgress > 0.5 ? transcribeLines.image : stateView.image
+    }
     let blobView: ChatRecordingBlobView
     private let recordingCentreDiameter: CGFloat
     private let pausedCentreDiameter: CGFloat = 40
@@ -307,16 +328,13 @@ public class ChatRecorderOverlayView : Control {
         blobView.setColor(theme.colors.accent, animated: false)
         addSubview(stateView)
         stateView.isAccessibilityDecorative = true
+        stateView.isEventLess = true
 
-        for glyph in [transcribeLines, transcribeStop] {
-            glyph.isEventLess = true
-            glyph.layer?.opacity = 0
-            addSubview(glyph)
-        }
         transcribeLines.isAccessibilityDecorative = true
-        transcribeStop.isAccessibilityDecorative = true
+        transcribeLines.isEventLess = true
+        transcribeLines.layer?.opacity = 0
+        addSubview(transcribeLines)
         transcribeLines.image = ChatRecorderOverlayView.linesGlyph
-        transcribeStop.image = ChatRecorderOverlayView.stopGlyph
         layoutTranscribeGlyphs()
 
         blobView.startAnimating()
@@ -339,20 +357,10 @@ public class ChatRecorderOverlayView : Control {
         context.strokePath()
     })!
 
-    private static let stopGlyph: CGImage = generateImage(glyphSize, rotatedContext: { size, context in
-        context.clear(size.bounds)
-        context.setFillColor(NSColor.white.cgColor)
-        let side: CGFloat = 20
-        let rect = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
-        context.addPath(CGPath(roundedRect: rect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil))
-        context.fillPath()
-    })!
-
     private func layoutTranscribeGlyphs() {
         let size = ChatRecorderOverlayView.glyphSize
         let frame = NSMakeRect(floorToScreenPixels(System.backingScale, (self.frame.width - size.width) / 2), floorToScreenPixels(System.backingScale, (self.frame.height - size.height) / 2), size.width, size.height)
         transcribeLines.frame = frame
-        transcribeStop.frame = frame
     }
 
     public override func layout() {
@@ -379,41 +387,37 @@ public class ChatRecorderOverlayView : Control {
         }
     }
 
-    func setTranscribing(_ transcribing: Bool, animated: Bool) {
-        guard transcribing != isTranscribing else {
+    func setTranscribing(_ transcribing: Bool, transition: ContainedViewLayoutTransition = .immediate) {
+        guard transcribing != isTranscribing,
+              let linesLayer = transcribeLines.layer, let sendLayer = stateView.layer else {
             return
         }
+        let previousLinesOpacity = linesLayer.presentation()?.opacity ?? linesLayer.opacity
+        let previousLinesTransform = linesLayer.presentation()?.transform ?? linesLayer.transform
+        let previousSendOpacity = sendLayer.presentation()?.opacity ?? sendLayer.opacity
         isTranscribing = transcribing
+        blobView.isFlat = transcribing || recordingIsFlat
+        blobView.updateLevel(0)
+        if transcribing {
+            blobView.stopAnimating()
+        } else if !isPaused {
+            blobView.startAnimating()
+        }
+        linesLayer.removeAllAnimations()
+        sendLayer.removeAllAnimations()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        transcribeLines.layer?.transform = CATransform3DIdentity
-        transcribeLines.layer?.opacity = transcribing ? 1 : 0
-        transcribeStop.layer?.opacity = 0
-        stateView.layer?.opacity = transcribing ? 0 : 1
+        linesLayer.transform = CATransform3DIdentity
+        linesLayer.opacity = transcribing ? 1 : 0
+        sendLayer.transform = CATransform3DIdentity
+        sendLayer.opacity = transcribing ? 0 : 1
+        if transcribing, transition.isAnimated {
+            linesLayer.animateAlpha(from: CGFloat(previousLinesOpacity), to: 1, duration: transition.duration, timingFunction: transition.timingFunction)
+            linesLayer.animate(from: NSValue(caTransform3D: previousLinesTransform), to: NSValue(caTransform3D: CATransform3DIdentity), keyPath: "transform", timingFunction: transition.timingFunction, duration: transition.duration)
+            sendLayer.animateAlpha(from: CGFloat(previousSendOpacity), to: 0, duration: transition.duration, timingFunction: transition.timingFunction)
+        }
         CATransaction.commit()
-        if transcribing, animated {
-            layer?.animateScaleSpring(from: 0.8, to: 1, duration: 0.45, bounce: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: { [weak self] in
-                self?.morphToStop()
-            })
-        } else if transcribing {
-            morphToStop()
-        }
         updateInside()
-    }
-
-    private func morphToStop() {
-        guard isTranscribing else {
-            return
-        }
-        guard let linesLayer = transcribeLines.layer, let stopLayer = transcribeStop.layer else {
-            return
-        }
-        linesLayer.opacity = 0
-        stopLayer.opacity = 1
-        linesLayer.animateAlpha(from: 1, to: 0, duration: 0.2)
-        stopLayer.animateAlpha(from: 0, to: 1, duration: 0.2)
-        stopLayer.animateScaleSpring(from: 0.4, to: 1, duration: 0.35, bounce: true)
     }
 
     private static func centeredScale(_ scale: CGFloat, size: NSSize) -> CATransform3D {
@@ -427,7 +431,8 @@ public class ChatRecorderOverlayView : Control {
             return blobView.isFlat
         }
         set {
-            blobView.isFlat = newValue
+            recordingIsFlat = newValue
+            blobView.isFlat = isTranscribing || newValue
         }
     }
 
@@ -447,7 +452,24 @@ public class ChatRecorderOverlayView : Control {
     }
 
     func updateLevel(_ level: CGFloat) {
-        blobView.updateLevel(level)
+        if !isTranscribing {
+            blobView.updateLevel(level)
+        }
+    }
+
+    var isMouseOverButton: Bool {
+        guard let window else {
+            return false
+        }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        return hypot(point.x - bounds.midX, point.y - bounds.midY) <= blobView.centreDiameter / 2 + 4
+    }
+
+    var waveReach: CGFloat {
+        if isPaused || isTranscribing {
+            return blobView.centreDiameter / 2
+        }
+        return blobView.bounds.width * ChatRecordingBlobAppearance.outerWaveScales.upperBound / 2
     }
 
     public func updatePaused(_ paused: Bool) {
@@ -477,6 +499,9 @@ public class ChatRecorderOverlayView : Control {
     }
 
     public func updateInside() {
+        guard window != nil else {
+            return
+        }
         let color = (isPaused || isTranscribing || transcribeProgress > 0.25 || mouseInside()) ? theme.colors.accent : theme.colors.redUI
         blobView.setColor(color, animated: true)
     }

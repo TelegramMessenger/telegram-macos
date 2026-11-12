@@ -23,12 +23,13 @@ public struct InstantPageButtonUIModel {
     public let isEnabled: Bool
     public let icon: InstantPageButtonUIIcon?
 
-    public init(button: InstantPageButton) {
+    public init(button: InstantPageButton, isEnabled: Bool = true) {
         self.button = button
-        self.isEnabled = button.action != .disabled && !instantPageButtonHasDisabledMarker(button.text)
+        let actionEnabled = button.action != .disabled && !instantPageButtonHasDisabledMarker(button.text)
+        self.isEnabled = isEnabled && actionEnabled
         if let icon = instantPageButtonIcon(button.action) {
             self.icon = icon
-        } else if !self.isEnabled {
+        } else if !actionEnabled {
             switch button.text.plainText {
             case "Open":
                 self.icon = .url
@@ -126,8 +127,8 @@ public final class InstantPageInlineButtonAttachment: NSObject {
     /// see `instantPageBlockButtonMeasureV2`.
     public let isTruncated: Bool
 
-    public init(button: InstantPageButton, presentation: InstantPageInlineButtonPresentation, labelString: NSAttributedString, size: CGSize, ascent: CGFloat, descent: CGFloat, labelEmojiItems: [InstantPageInlineButtonEmojiItem], isEmojiOnly: Bool, horizontalPadding: CGFloat, verticalPadding: CGFloat, isTruncated: Bool = false) {
-        self.model = InstantPageButtonUIModel(button: button)
+    public init(button: InstantPageButton, presentation: InstantPageInlineButtonPresentation, labelString: NSAttributedString, size: CGSize, ascent: CGFloat, descent: CGFloat, labelEmojiItems: [InstantPageInlineButtonEmojiItem], isEmojiOnly: Bool, horizontalPadding: CGFloat, verticalPadding: CGFloat, isTruncated: Bool = false, isEnabled: Bool = true) {
+        self.model = InstantPageButtonUIModel(button: button, isEnabled: isEnabled)
         self.presentation = presentation
         self.labelString = labelString
         self.size = size
@@ -273,7 +274,7 @@ private func instantPageButtonTruncatedLabel(_ labelString: NSAttributedString, 
 /// here rather than at draw time because it also removes the chip's padding, which is measurement.
 /// `horizontalPadding` overrides the presentation's own value — the row layout passes it per button
 /// (zero for a link-styled pill, the tight fallback for one whose label truncates).
-public func instantPageInlineButtonAttachment(button: InstantPageButton, presentation: InstantPageInlineButtonPresentation, labelString: NSAttributedString, maxWidth: CGFloat? = nil, allowBareEmoji: Bool = false, horizontalPadding: CGFloat? = nil) -> InstantPageInlineButtonAttachment {
+public func instantPageInlineButtonAttachment(button: InstantPageButton, presentation: InstantPageInlineButtonPresentation, labelString: NSAttributedString, maxWidth: CGFloat? = nil, allowBareEmoji: Bool = false, horizontalPadding: CGFloat? = nil, isEnabled: Bool = true) -> InstantPageInlineButtonAttachment {
     let hPad = horizontalPadding ?? presentation.horizontalPadding
     let vPad = presentation.verticalPadding
 
@@ -364,7 +365,8 @@ public func instantPageInlineButtonAttachment(button: InstantPageButton, present
         isEmojiOnly: isEmojiOnly,
         horizontalPadding: pillHPad,
         verticalPadding: pillVPad,
-        isTruncated: isTruncated
+        isTruncated: isTruncated,
+        isEnabled: isEnabled
     )
 }
 
@@ -606,6 +608,9 @@ public func instantPageDrawButton(
         context.translateBy(x: iconRect.minX, y: iconRect.maxY)
         context.scaleBy(x: 1.0, y: -1.0)
         context.clip(to: CGRect(origin: .zero, size: iconSize), mask: icon)
+        if isDisabled {
+            context.setAlpha(0.0)
+        }
         context.setFillColor(colors.label.cgColor)
         context.fill(CGRect(origin: .zero, size: iconSize))
         context.restoreGState()

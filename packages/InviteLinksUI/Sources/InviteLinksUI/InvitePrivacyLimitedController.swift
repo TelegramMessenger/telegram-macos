@@ -15,6 +15,7 @@ import AlertsUI
 import InAppSettings
 import AvatarUI
 import ShortPeerRow
+import AppAnalytics
 
 private final class UpgradeToPremiumRowItem : GeneralRowItem {
     public let headerLayout: TextViewLayout
@@ -443,6 +444,7 @@ public func InvitePrivacyLimitedController(context: any AccountContextProtocol, 
     
    
     let controller = InputDataController(dataSignal: signal, title: strings().inviteFailedTitle)
+    controller.analyticsScreen = .peerInfoInviteRestricted
     
     controller.onDeinit = {
         actionsDisposable.dispose()

@@ -22,11 +22,11 @@ final class LensRestingBackdrop {
         layer.addSublayer(tint)
     }
 
-    func update(frame: CGRect, progress: CGFloat, blurRadius: CGFloat, tintColor: NSColor?, scale: CGFloat, animation: LiquidGlassLensAnimation) {
+    func update(frame: CGRect, opacity: CGFloat, blurRadius: CGFloat, tintColor: NSColor?, scale: CGFloat, animation: LiquidGlassLensAnimation) {
         let bounds = CGRect(origin: .zero, size: frame.size)
         animation.frame(layer, frame)
         animation.update(layer, key: "cornerRadius", value: frame.height / 2)
-        animation.update(layer, key: "opacity", value: Float(1 - progress))
+        animation.update(layer, key: "opacity", value: Float(opacity))
         for child in [backdrop, tint] {
             animation.frame(child, bounds)
             child.contentsScale = scale

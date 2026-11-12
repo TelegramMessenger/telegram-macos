@@ -21,6 +21,7 @@ import FilePanels
 import LocalAnimations
 import LocationUI
 import AlertsUI
+import AppAnalytics
 
 private let maxTextLength:Int32 = 255
 private let maxOptionLength: Int32 = 100
@@ -1778,6 +1779,13 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
         
         return .default
     })
+    if isAddOption {
+        controller.analyticsScreen = .chatPollAddOption
+    } else {
+        controller.analyticsScreen = .chatPollCreate
+    }
+    
+    
     let modalController = InputDataModalController(controller, modalInteractions: interactions, closeHandler: { f in
         let state = stateValue.with { $0 }
         

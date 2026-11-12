@@ -16,6 +16,7 @@ import CurrencyFormat
 import InAppSettings
 import TelegramMediaUtils
 import AlertsUI
+import AppAnalytics
 
 
 private final class Arguments {
@@ -110,6 +111,7 @@ public func PamentsSelectMethodController(context: (any AccountContextProtocol),
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().checkoutPaymentMethodTitle)
+    controller.analyticsScreen = .paymentsMethod
     
     controller.onDeinit = {
         actionsDisposable.dispose()

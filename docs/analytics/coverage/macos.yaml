@@ -1,0 +1,501 @@
+platform: macos
+
+ignore_reasons:
+  base: "Abstract or generic base class; the concrete screens are mapped"
+  container: "Hosts other screens and has no content of its own"
+  embedded: "Part of another screen, never shown on its own"
+  placeholder: "Stub used until the real implementation is installed"
+  lab: "Developer lab or debug-only screen"
+  transient: "Toast, progress indicator, tooltip, menu, or a quick bar or overlay attached to an item; a picker the user opens on purpose is a screen"
+  helper: "Window or object that only supports another screen (animation, overlay host)"
+  dead_code: "Not used"
+
+items:
+  "class:AudioPlayerUI/AudioPlayerUIPlaceholderInstantVideoPIP": {ignore: placeholder}
+  "class:AudioPlayerUI/PlayerListController": media_player.playlist
+  "class:AuthUI/AuthController": {ignore: container, note: "hosts the auth.* steps"}
+  "class:AuthUI/AuthPlaceholderUpdateTabController": {ignore: placeholder}
+  "class:AuthUI/Auth_AwaitingResetController": auth.reset_wait
+  "class:AuthUI/Auth_CodeEntryController": auth.code
+  "class:AuthUI/Auth_EmailController": auth.email_code
+  "class:AuthUI/Auth_EmailSetupController": auth.email_setup
+  "class:AuthUI/Auth_Loading": {ignore: embedded, note: "loading state of the login flow"}
+  "class:AuthUI/Auth_PasswordEntryController": auth.password
+  "class:AuthUI/Auth_PhoneNumberController": auth.phone
+  "class:AuthUI/Auth_SignupController": auth.signup
+  "class:AuthUI/Auth_TokenController": auth.qr
+  "class:AuthUI/Auth_WordController": auth.word
+  "class:AuthUI/TermsModalController": app.terms_of_service
+  "class:AvatarEditorUI/AvatarConstructorController": media_editor.avatar_constructor
+  "class:AvatarEditorUI/EditImageModalController": media_editor.image
+  "class:AvatarEditorUI/VideoAvatarModalController": media_editor.video_avatar
+  "class:CalendarUI/CalendarController": {screens: [app.calendar], note: "not counted when hosted by chat.birthday_suggestion (ChatUI/Wrap)"}
+  "class:CalendarUI/CalendarMonthController": {ignore: embedded, note: "month page of app.calendar"}
+  "class:CalendarUI/CalendarNavigation": {ignore: container}
+  "class:CallVideoLayer/CallTransitionWindow": {ignore: helper, note: "animates the call window"}
+  "class:CallsUI/CallRatingModalViewController": call.rating
+  "class:CallsUI/DesktopCaptureListUI": {ignore: embedded, note: "list inside call.share_screen"}
+  "class:CallsUI/DesktopCapturerWindow": call.share_screen
+  "class:CallsUI/RecentCallsViewController": call.history
+  "class:ChangePhoneNumberUI/PhoneNumberCodeConfirmController": {ignore: dead_code, note: "never created; changing the number moved to mobile"}
+  "class:ChangePhoneNumberUI/PhoneNumberConfirmController": {ignore: dead_code, note: "creation is commented out"}
+  "class:ChangePhoneNumberUI/PhoneNumberIntroController": settings.account.phone_number
+  "class:ChannelAdminUI/ChannelAdminsViewController": peer_info.admins
+  "class:ChannelAdminUI/ChannelEventLogController": peer_info.recent_actions
+  "class:ChannelSettingsUI/ChannelVisibilityController": [peer_info.visibility, create.channel.visibility]
+  "class:ChannelSettingsUI/DiscussionSetModalController": peer_info.discussion.confirmation
+  "class:ChannelSettingsUI/GroupStickerSetController": peer_info.sticker_set
+  "class:ChatListUI/ChatListController": [chat_list, chat_list.archive, chat.forum_topics, chat.saved_chats]
+  "class:ChatListUI/CommunityListController": community.chats
+  "class:ChatListUI/ContactsController": contacts
+  "class:ChatListUI/PeersListController": {ignore: base}
+  "class:ChatListUI/SearchController": {screens: [search, search.hashtag], note: "search.hashtag when opened for a hashtag from a message or chat; search otherwise"}
+  "class:ChatListUI/SearchTabsController": {ignore: container, note: "Hosts SearchController instances in SectionViewController; the selected child owns search visibility."}
+  "class:ChatUI/ChatAdditionController":
+    screens: [chat.pinned, chat, chat.thread, settings.business.greeting.messages, settings.business.away.messages, settings.business.quick_replies.messages, settings.business.links.message, peer_info.welcome_messages, search.hashtag, chat.saved_chat]
+    tags_from: "class:ChatUI/ChatController"
+    note: "Initializer delegates to ChatController; inherited updateAnalyticsScreen supplies mode tags."
+  "class:ChatUI/ChatController": [chat, chat.thread, chat.pinned, settings.business.greeting.messages, settings.business.away.messages, settings.business.quick_replies.messages, settings.business.links.message, peer_info.welcome_messages, search.hashtag, chat.preview, chat.saved_chat]
+  "class:ChatUI/ChatRecorderOverlayWindow": {ignore: helper, note: "overlay for voice/video message recording"}
+  "class:ChatUI/ChatScheduleController": chat.scheduled
+  "class:ChatUI/ChatSwitchInlineController": chat
+  "class:ChatUI/ChatThemeSelectorController": chat.theme
+  "class:ChatUI/InputContextViewController": {ignore: transient, note: "autocomplete above the input"}
+  "class:ChatUI/InstantVideoPIP": {ignore: transient, note: "floating round video while scrolling"}
+  "class:ChatUI/RichEditorModalController": {ignore: container, note: "sizes the modal around chat.rich_editor"}
+  "class:ChatUI/SingleTimeMediaViewer": chat.view_once
+  "class:ChatUI/Wrap": chat.birthday_suggestion
+  "class:ComposeUI/ChannelIntroViewController": create.channel.intro
+  "class:ComposeUI/ComposePlaceholderChannelVisibilityController": {ignore: placeholder}
+  "class:ComposeUI/CreateGroupViewController": create.group
+  "class:DataUsageUI/DataAndStorageViewController": settings.data_storage
+  "class:DataUsageUI/DownloadSettingsViewController": settings.data_storage.auto_download
+  "class:DataUsageUI/StorageUsageBlockController": {ignore: embedded, note: "lists inside settings.storage_usage"}
+  "class:DataUsageUI/StorageUsageController": [settings.storage_usage, settings.storage_usage.chat]
+  "class:DateSelectorUI/DateSelectorModalController": [app.date_picker, chat.schedule_message]
+  "class:EntertainmentUI/EmojiToleranceController": {ignore: dead_code}
+  "class:EntertainmentUI/EmojiesController": {screens: [chat.input.emoji, premium.emoji_status, app.emoji_picker], note: "chat.input.emoji inside the input panel (EntertainmentViewController, including story replies) and as the input emoji button popover while editing a message or in a business chat-link chat; premium.emoji_status as the .channelStatus popover; app.emoji_picker as any standalone picker popover (.backgroundIcon, AI style icon, emoji insert in the rich editor, text fields and gift messages); every other mode is embedded in its host screen"}
+  "class:EntertainmentUI/EntertainmentViewController": {ignore: container, note: "hosts chat.input.emoji, .stickers, .gifs"}
+  "class:EntertainmentUI/EntertainmentSidebarController": {ignore: container, note: "Attaches the existing entertainment controller and forwards its lifecycle; the child owns the picker screens."}
+  "class:EntertainmentUI/GifKeyboardController": chat.input.gifs
+  "class:EntertainmentUI/NStickersViewController": {screens: [chat.input.stickers, app.sticker_picker], note: "chat.input.stickers in .common and .stories modes (the input panel, including story replies), app.sticker_picker in .intro mode; .selectAvatar is embedded in media_editor.avatar_constructor"}
+  "class:EntertainmentUI/PremiumStatusController": premium.emoji_status
+  "class:EntertainmentUI/SetupQuickReactionController": settings.quick_reaction
+  "class:GalleryUI/GalleryModernControls": {ignore: embedded, note: "controls of media_viewer"}
+  "class:GalleryUI/GalleryThumbsControl": {ignore: embedded, note: "thumbnails of media_viewer"}
+  "class:GalleryUI/ModernPictureInPictureVideoWindow": media_viewer.pip
+  "class:GalleryUI/SVideoController": {ignore: embedded, note: "video player inside media_viewer"}
+  "class:GalleryUI/SaveModalController": {ignore: transient}
+  "class:GroupCallScreenUI/GroupCallSettingsController": group_call.settings
+  "class:GroupCallScreenUI/GroupCallUIController": group_call.active
+  "class:ImageCanvasUI/EditImageCanvasController": media_editor.drawing
+  "class:ImageCanvasUI/EditImageCutoutController": media_editor.image.cutout
+  "class:ImageCanvasUI/EditVideoController": media_editor.video
+  "class:ImageCanvasUI/EditVideoCropController": media_editor.video.crop
+  "class:ImageCanvasUI/EditVideoToolsController": media_editor.video.tools
+  "class:ImageCanvasUI/EditImageControls": {ignore: embedded, note: "toolbar of media_editor.image"}
+  "class:NewsUI/NewsController": news
+  "class:NewsUI/NewsListController": {ignore: embedded, note: "Table content hosted by NewsController for its recommended and added feeds."}
+  "class:InputDataUI/InputDataController": {ignore: base}
+  "class:InputDataUI/InputDataModalController": {ignore: base}
+  "class:InputDataUI/ValuesSelectorModalController": app.value_picker
+  "class:InstantPageUI/InstantPageViewController": {ignore: embedded, note: "article content of instant_view"}
+  "class:InstantPageUI/InstantViewController": {ignore: dead_code, note: "both callers are commented out; Instant View opens in the in-app browser"}
+  "class:InviteLinksUI/LinkInvationController": {ignore: dead_code, note: "its members-list row is never created"}
+  "class:LocationUI/LocationModalController": [chat.attach.location, app.location_picker]
+  "class:MediaRecorderUI/VideoRecorderModalController": chat.video_message_recorder
+  "class:PasscodeUI/ColdStartPasslockController": passcode.lock
+  "class:PasscodeUI/PasscodeLockController": passcode.lock
+  "class:PasscodeUI/PasscodeSettingsViewController": settings.privacy.passcode
+  "class:PassportUI/PassportController": [passport, passport.settings]
+  "class:PaymentsUI/PaymentWebInteractionController": [payments.card, payments.verification]
+  "class:PeerInfoUI/PeerInfoController": {screens: [peer_info, peer_info.manage, peer_info.topic], note: "peer_info.topic when opened with threadInfo (a forum topic); peer_info.manage in edit mode; peer_info otherwise"}
+  "class:PeerInfoUI/PeerMediaController": {ignore: container, note: "hosts peer_info and the peer_info.media.* lists"}
+  "class:PeerInfoUI/SecretChatKeyViewController": peer_info.encryption_key
+  "class:PeerMediaUI/PeerMediaGifsController": {ignore: dead_code, note: "GIFs use PeerMediaPhotosController"}
+  "class:PeerMediaUI/PeerMediaListController": [peer_info.media.files, peer_info.media.links, peer_info.media.music, peer_info.media.voice]
+  "class:PeerMediaUI/PeerMediaPhotosController": [peer_info.media.photos, peer_info.media.gifs]
+  "class:PeerModerationUI/ChannelBlacklistViewController": [peer_info.removed_users, community.removed_users]
+  "class:PeerModerationUI/ChannelMembersViewController": peer_info.members
+  "class:PeerModerationUI/ChannelPermissionsController": peer_info.permissions
+  "class:PremiumUI/PremiumBoardingController": [premium.promo, premium.business, settings.business]
+  "class:PremiumUI/PremiumBoardingFeaturesController": premium.feature
+  "class:PremiumUI/PremiumLimitController": premium.limit
+  "class:PremiumUI/PremiumLockModalController": {ignore: transient, note: "lock overlay during a purchase"}
+  "class:PreviewSenderUI/PreviewSenderController": chat.media_composer
+  "class:PreviewSenderUI/PreviewSenderPlaceholderEmojiesController": {ignore: placeholder}
+  "class:PrivateCallScreen/PeerCallScreen": [call.active, call.conference_incoming]
+  "class:QrStudioUI/QrStudioController": app.qr_studio
+  "class:QuickSwitcher/AltTabSwitcherController": macos.chat_switcher
+  "class:QuickSwitcher/QuickSwitcherModalController": [macos.quick_switcher, macos.account_switcher]
+  "class:SelectColorUI/SelectColorParentController": {ignore: container, note: "hosts the settings.account.color profile and name tabs"}
+  "class:SelectPeersUI/ComposeViewController": {ignore: base}
+  "class:SelectPeersUI/EmptyComposeController": {ignore: base}
+  "class:SelectPeersUI/SelectPeersController": create.group.members
+  "class:SelectPeersUI/SelectPeersMainController": {ignore: base}
+  "class:SelectPeersUI/SelectPeersModalController": app.peer_picker
+  "class:SessionsUI/RecentSessionsController": settings.devices
+  "class:SessionsUI/WebSessionsController": settings.devices.websites
+  "class:SettingsUI/AboutModalController": app.about
+  "class:SettingsUI/AccountViewController": settings
+  "class:SettingsUI/BlockedPeersViewController": settings.privacy.blocked
+  "class:SettingsUI/CustomAccentColorModalController": settings.appearance.accent_color
+  "class:SettingsUI/GeneralSettingsViewController": settings.general
+  "class:SettingsUI/PrivacyAndSecurityViewController": settings.privacy
+  "class:SettingsUI/SelectColorPlaceholderEmojisController": {ignore: placeholder}
+  "class:SettingsUI/SelectivePrivacySettingsController": [settings.privacy.last_seen, settings.privacy.phone_number, settings.privacy.profile_photo, settings.privacy.forwards, settings.privacy.calls, settings.privacy.groups, settings.privacy.voice_messages, settings.privacy.bio, settings.privacy.birthday, settings.privacy.gifts, settings.privacy.saved_music]
+  "class:SettingsUI/SelectivePrivacySettingsPeersController": [settings.privacy.exceptions, settings.privacy.messages.fee_exceptions]
+  "class:SettingsUI/SuggestionLocalizationViewController": app.language_suggestion
+  "class:ShareUI/ShareModalController": [share.peer_picker, app.peer_picker]
+  "class:SidebarUI/ChatListFilterFolderIconController": settings.folders.icon
+  "class:SidebarUI/LeftSidebarController": {ignore: embedded, note: "folder list beside the chat list"}
+  "class:SidebarUI/SidebarViewController": {ignore: base}
+  "class:StarsUI/GridController": {ignore: embedded, note: "grid inside gifts.attributes"}
+  "class:StatisticsUI/ChannelStatisticsController": {ignore: dead_code, note: "only a typealias refers to it"}
+  "class:StatisticsUI/ChannelStatsSegmentController": {ignore: container, note: "hosts peer_info.stats, .boosts, .monetization, .stars_balance"}
+  "class:StickerSettingsUI/ArchivedStickerPacksController": settings.stickers_emoji.archived
+  "class:StickerSettingsUI/FeaturedStickerPacksController": settings.stickers_emoji.trending
+  "class:StickerSettingsUI/InstalledStickerPacksController": settings.stickers_emoji
+  "class:StoriesUI/StoryMediaController": {screens: [peer_info.media.stories, peer_info.media.archived_stories, stories.archive], note: "peer_info.media.stories and peer_info.media.archived_stories as profile tabs; stories.archive when pushed on its own"}
+  "class:StoriesUI/StoryModalController": [stories.viewer, stories.live]
+  "class:StoriesUI/StoryStealthModeController": stories.stealth_mode
+  "class:TGUIKit/AppWindow": {ignore: base}
+  "class:TGUIKit/CatalinaStyledSegmentController": {ignore: embedded, note: "segmented control"}
+  "class:TGUIKit/GenericViewController": {ignore: base}
+  "class:TGUIKit/MajorNavigationController": {ignore: container}
+  "class:TGUIKit/ModalController": {ignore: container}
+  "class:TGUIKit/ModalViewController": {ignore: base}
+  "class:TGUIKit/NavigationViewController": {ignore: container}
+  "class:TGUIKit/ProgressModalController": {ignore: transient}
+  "class:TGUIKit/RevealTableItemController": {ignore: helper, note: "swipe actions of table rows"}
+  "class:TGUIKit/SPopoverViewController": {ignore: transient}
+  "class:TGUIKit/SectionViewController": {ignore: container}
+  "class:TGUIKit/SuccessModalController": {ignore: transient}
+  "class:TGUIKit/TabBarController": {ignore: container}
+  "class:TGUIKit/TextAndLabelModalController": {ignore: transient}
+  "class:TGUIKit/TooltipController": {ignore: dead_code, note: "never created; tooltip() uses TooltipView directly"}
+  "class:TGUIKit/ViewController": {ignore: base}
+  "class:TGUIKit/VolumeControllerPopover": {ignore: transient}
+  "class:TGUIKit/Window": {ignore: base}
+  "class:Telegram-Mac/AuthModalController": {ignore: container, note: "modal that hosts the auth.* steps"}
+  "class:Telegram-Mac/MainViewController": {ignore: container}
+  "class:Telegram-Mac/UpdateTabController": {ignore: embedded, note: "update bar under the chat list and on the login screen"}
+  "class:TelegramMediaUtils/PreviewModalController": {ignore: transient, note: "long-press sticker or GIF preview"}
+  "class:TelegramShare/SEPasslockController": passcode.lock
+  "class:TelegramShare/SESelectController": share.extension
+  "class:TelegramShare/SEUnauthorizedViewController": share.extension_logged_out
+  "class:TelegramShare/ShareViewController": {ignore: container}
+  "class:TelegramUtils/EditableViewController": {ignore: base}
+  "class:TelegramUtils/TableViewController": {ignore: base}
+  "class:TelegramUtils/TelegramGenericViewController": {ignore: base}
+  "class:TelegramUtils/TelegramViewController": {ignore: base}
+  "class:WalletUI/WalletAuthorizeController": wallet.authorize
+  "class:WalletUI/WalletModalController": {ignore: base}
+  "class:WalletUI/WalletPeerBalanceController": wallet.peer_balance
+  "class:WallpaperUI/WallpaperPatternPreviewController": {ignore: embedded, note: "pattern picker strip with intensity slider in wallpaper previews"}
+  "class:WebAppUI/InstantViewInBrowser": instant_view
+  "class:WebAppUI/TabsController": {ignore: embedded, note: "tab strip of the in-app browser"}
+  "class:WebAppUI/WebGameViewController": bot.game
+  "class:WebAppUI/Webapp": {ignore: dead_code}
+  "class:WebAppUI/WebappBrowser": {ignore: container}
+  "class:WebAppUI/WebappBrowserController": {ignore: container}
+  "class:WebAppUI/WebpageContainerController": {ignore: container}
+  "class:WebAppUI/WebpageModalController": bot.mini_app
+  "class:WebAppUI/WebsiteController": browser.tonsite
+  "class:WidgetUI/EmptyChatViewController": app.no_chat_selected
+  "class:WidgetUI/WidgetAppIconController": {ignore: embedded, note: "card in app.no_chat_selected"}
+  "class:WidgetUI/WidgetAppearanceController": {ignore: embedded, note: "card in app.no_chat_selected"}
+  "class:WidgetUI/WidgetController": {ignore: container}
+  "class:WidgetUI/WidgetRecentPeersController": {ignore: embedded, note: "card in app.no_chat_selected"}
+  "class:WidgetUI/WidgetStickersController": {ignore: embedded, note: "card in app.no_chat_selected"}
+  "inputdata:AboutFeatureUI/AboutFeatureModalController": app.feature_info
+  "inputdata:AddTonBalanceUI/AddTonBalanceController": ton.add_funds
+  "inputdata:AffiliateUI/Affiliate_LinkPreview": affiliate.link
+  "inputdata:AffiliateUI/Affiliate_PeerController": [affiliate.programs, affiliate.programs.existing]
+  "inputdata:AffiliateUI/Affiliate_ProgramPreview": affiliate.program
+  "inputdata:AffiliateUI/Affiliate_StartController": peer_info.affiliate_program
+  "inputdata:AlertsUI/ModalAlertController": app.alert
+  "inputdata:AuthUI/LoginWidgetConfirmationController": [auth.website_login, auth.website_login.match_code]
+  "inputdata:BoostUI/BoostChannelModalController": [boosts.overview, boosts.features]
+  "inputdata:BoostUI/BoostReassignController": boosts.reassign
+  "inputdata:BoostUI/GiftLinkModalController": boosts.gift_link
+  "inputdata:BoostUI/GiveawayModalController": boosts.giveaway_create
+  "inputdata:BusinessUI/BusinessAddQuickReply": settings.business.quick_replies.name
+  "inputdata:BusinessUI/BusinessChatbotController": settings.business.chatbots
+  "inputdata:BusinessUI/BusinessHoursController": settings.business.hours
+  "inputdata:BusinessUI/BusinessIntroController": settings.business.intro
+  "inputdata:BusinessUI/BusinessLinkRenameController": settings.business.links.name
+  "inputdata:BusinessUI/BusinessLinksController": settings.business.links
+  "inputdata:BusinessUI/BusinessLocationController": settings.business.location
+  "inputdata:BusinessUI/BusinessMessageController": [settings.business.greeting, settings.business.away]
+  "inputdata:BusinessUI/BusinessQuickReplyController": settings.business.quick_replies
+  "inputdata:BusinessUI/BusinessTimezonesController": settings.business.timezone
+  "inputdata:BusinessUI/BusinessdayHoursController": settings.business.hours.day
+  "inputdata:CallsUI/CallFeedbackController": call.feedback
+  "inputdata:CallsUI/CallSettingsController": settings.calls
+  "inputdata:CallsUI/GroupCallDisplayAsController": group_call.display_as
+  "inputdata:CallsUI/GroupCallInviteLinkController": [group_call.invite_link, group_call.share_link]
+  "inputdata:CallsUI/JoinGroupCallController": group_call.conference_invitation
+  "inputdata:CallsUI/JoinVoiceChatAlertController": group_call.invitation
+  "inputdata:ChannelAdminUI/ChannelAdminModalController": peer_info.admins.rights
+  "inputdata:ChannelAdminUI/ChannelBotAdminController": peer_info.admins.bot
+  "inputdata:ChannelAdminUI/ChannelEventFilterModalController": peer_info.recent_actions.event_types
+  "inputdata:ChannelSettingsUI/ChannelDiscussionSetupController": peer_info.discussion
+  "inputdata:ChannelSettingsUI/ChannelReactionsController": peer_info.reactions
+  "inputdata:ChannelSettingsUI/GroupEmojiPackController": peer_info.emoji_pack
+  "inputdata:ChannelSettingsUI/ReactionsSettingsController": peer_info.reactions
+  "inputdata:ChannelSettingsUI/SuggestPostController": peer_info.direct_messages
+  "inputdata:ChatExportUI/ChatExportController": export.chat
+  "inputdata:ChatExportUI/FullExportController": export.account
+  "inputdata:ChatExportUI/chatExportProgressModal": export.chat.progress
+  "inputdata:ChatExportUI/fullExportProgressModal": export.account.progress
+  "inputdata:ChatListUI/AddContactModalController": contacts.add
+  "inputdata:ChatListUI/DownloadsController": chat_list.downloads
+  "inputdata:ChatListUI/SavedPeersController": peer_info.media.saved_chats
+  "inputdata:ChatUI/DeclineSuggestPostModalController": chat.suggested_post.rejection
+  "inputdata:ChatUI/DeleteGroupMessagesController": chat.delete_options
+  "inputdata:ChatUI/DiceRollController": chat.dice_stake
+  "inputdata:ChatUI/EditPostSuggestionController": chat.suggested_post.editor
+  "inputdata:ChatUI/FactCheckController": chat.fact_check
+  "inputdata:ChatUI/NewContactController": contacts.add_known_user
+  "inputdata:ChatUI/RichTextAiComposeController": chat.rich_editor.ai_compose
+  "inputdata:ChatUI/RichTextEditorController": chat.rich_editor
+  "inputdata:ChatUI/RichTextEditorCoordinator.presentButtonEditor": chat.rich_editor.inline_button
+  "inputdata:ChatUI/RichTextEditorCoordinator.presentCodeLanguagePrompt": chat.rich_editor.code_language
+  "inputdata:ChatUI/RichTextLatexModalController": chat.rich_editor.formula
+  "inputdata:ChatUI/VCardModalController": chat.contact_card
+  "inputdata:CommunityUI/CommunitiesController": community.intro
+  "inputdata:CommunityUI/CommunityAddController": community.add_chat
+  "inputdata:CommunityUI/CommunityAdminController": community.admins.rights
+  "inputdata:CommunityUI/CommunityAdminsController": community.admins
+  "inputdata:CommunityUI/CommunityCreateController": community.creation
+  "inputdata:CommunityUI/CommunityEditController": community.settings
+  "inputdata:CommunityUI/CommunityPrivateChatController": community.private_chat
+  "inputdata:CommunityUI/CommunityRequestsController": community.requests
+  "inputdata:CommunityUI/CommunityViewController": community
+  "inputdata:ComposeUI/CreateBotModalController": create.bot
+  "inputdata:ComposeUI/CreateChannelController": create.channel
+  "inputdata:DataUsageUI/DataStorageExceptions": settings.storage_usage.exceptions
+  "inputdata:DataUsageUI/StorageUsage_Block_Chats": {ignore: embedded, note: "chat list inside settings.storage_usage"}
+  "inputdata:DataUsageUI/StorageUsage_Block_MediaList": {ignore: embedded, note: "media list inside settings.storage_usage"}
+  "inputdata:DataUsageUI/networkUsageStatsController": settings.network_usage
+  "inputdata:DateSelectorUI/TimeRangeSelectorController": app.time_range_picker
+  "inputdata:EditTagLabelUI/EditTagLabelController": chat.saved_tag_name
+  "inputdata:EditTagLabelUI/UserTagInfoModalController": chat.member_tag_info
+  "inputdata:EntertainmentUI/StickerPackPreviewModalController": stickers.set
+  "inputdata:EntertainmentUI/StickerPackTitleController": stickers.set.title
+  "inputdata:FolderSharingUI/ShareCloudFolderController": settings.folders.sharing
+  "inputdata:FolderSharingUI/SharedFolderClosureController": [chat_list.shared_folder_invite, settings.folders.sharing.links]
+  "inputdata:ForumSettingsUI/ForumSettingsController": peer_info.topics
+  "inputdata:ForumSettingsUI/ForumTopicInfoController": chat.forum_topic_editor
+  "inputdata:GigagroupUI/GigagroupLandingController": peer_info.broadcast_group_intro
+  "inputdata:GroupCallScreenUI/RTMPStartController": group_call.stream_setup
+  "inputdata:GroupsInCommonUI/GroupsInCommonViewController": {screens: [peer_info.media.groups_in_common, peer_info.groups_in_common], note: "peer_info.media.groups_in_common as a profile tab; peer_info.groups_in_common when pushed on its own from a chat (standalone: true)"}
+  "inputdata:InactiveChannelsUI/InactiveChannelsController": app.too_many_chats
+  "inputdata:InputDataUI/InputPasswordController": app.password_prompt
+  "inputdata:InputDataUI/InputURLFormatterModalController": app.link_input
+  "inputdata:InputDataUI/ModalOptionSetController": app.option_picker
+  "inputdata:InputDataUI/NumberSelectorController": app.number_input
+  "inputdata:InputDataUI/TextInputController": app.text_input
+  "inputdata:InviteLinksUI/ClosureInviteLinkController": peer_info.invite_links.editor
+  "inputdata:InviteLinksUI/ExportedInvitationController": peer_info.invite_links.link
+  "inputdata:InviteLinksUI/InviteLinksController": peer_info.invite_links
+  "inputdata:InviteLinksUI/InvitePrivacyLimitedController": peer_info.invite_restricted
+  "inputdata:InviteLinksUI/JoinLinkPreviewModalController": link.invite_preview
+  "inputdata:InviteLinksUI/RequestJoinChatModalController": link.join_request
+  "inputdata:InviteLinksUI/RequestJoinMemberListController": peer_info.join_requests
+  "inputdata:LocationUI/LocationModalPreview@LiveLocationViewController.swift": chat.location_preview
+  "inputdata:LocationUI/LocationModalPreview@LocationPreviewController.swift": {ignore: dead_code, note: "overload without callers"}
+  "inputdata:MonetizationUI/FragmentMonetizationController": {screens: [peer_info.monetization], note: "includes the TON-only mode opened from a bot profile (onlyTonContext)"}
+  "inputdata:MonetizationUI/FragmentMonetizationPromoController": peer_info.monetization.about
+  "inputdata:MonetizationUI/FragmentStarMonetizationController": peer_info.stars_balance
+  "inputdata:MonetizationUI/FragmentUsernameController": peer_info.collectible
+  "inputdata:MonetizationUI/adsInfoController": [chat.sponsored_info, search.ad_info]
+  "inputdata:MonetizationUI/withdraw": peer_info.stars_balance.withdraw
+  "inputdata:MonetizationUI/withdrawStarBalance": peer_info.stars_balance.withdraw
+  "inputdata:PasscodeUI/PasscodeController": [settings.privacy.passcode.setup, wallet.protection]
+  "inputdata:PasskeysUI/FrozenAccountController": app.frozen_account
+  "inputdata:PasskeysUI/PasskeysController": settings.privacy.passkeys
+  "inputdata:PasskeysUI/SetupEmailController": [settings.privacy.login_email, settings.privacy.login_email.code]
+  "inputdata:PasskeysUI/SuspiciousRevokeModal": app.login_prevented
+  "inputdata:PassportUI/PassportController.viewDidLoad#1": passport.address
+  "inputdata:PassportUI/PassportController.viewDidLoad#2": passport.identity
+  "inputdata:PassportUI/PassportController.viewDidLoad#3": passport.email
+  "inputdata:PassportUI/PassportController.viewDidLoad#4": passport.phone_code
+  "inputdata:PassportUI/PassportController.viewDidLoad#5": passport.phone
+  "inputdata:PassportUI/PassportController.viewDidLoad#6": passport.password_setup
+  "inputdata:PassportUI/PassportController.viewDidLoad#7": passport.password_recovery
+  "inputdata:PaymentsUI/PamentsSelectMethodController": payments.method
+  "inputdata:PaymentsUI/PaymentsCheckoutController": payments.checkout
+  "inputdata:PaymentsUI/PaymentsPaymentMethodController": payments.card
+  "inputdata:PaymentsUI/PaymentsReceiptController": payments.receipt
+  "inputdata:PaymentsUI/PaymentsShippingInfoController": payments.shipping_info
+  "inputdata:PaymentsUI/PaymentsShippingMethodController": payments.shipping_method
+  "inputdata:PeerInfoUI/EditBotUsernameController": peer_info.bot_usernames
+  "inputdata:PeerInfoUI/PeerMediaGroupMembersController": peer_info.media.members
+  "inputdata:PeerInfoUI/PeerRatingModalController": peer_info.rating
+  "inputdata:PeerInfoUI/PreHistorySettingsController": peer_info.history_visibility
+  "inputdata:PeerInfoUI/SimilarBotsController": peer_info.media.similar_bots
+  "inputdata:PeerInfoUI/SimilarChannelsController": peer_info.media.similar_channels
+  "inputdata:PeerInfoUI/UserInfoPhotoConfirmController": peer_info.photo_suggestion
+  "inputdata:PeerMediaUI/PeerMediaPollsController": peer_info.media.polls
+  "inputdata:PeerMediaUI/PeerMediaSavedMessagesController": peer_info.media.saved
+  "inputdata:PeerMediaUI/SendAudioModalController": chat.attach.audio
+  "inputdata:PeerModerationUI/ChannelParticipantController": peer_info.member
+  "inputdata:PeerModerationUI/RestrictedModalController": peer_info.permissions.exception
+  "inputdata:PollResultsUI/MessagePollStatsController": chat.poll_stats
+  "inputdata:PollResultsUI/NewPollController": [chat.poll_create, chat.poll_add_option]
+  "inputdata:PollResultsUI/NewTodoController": [chat.checklist_create, chat.checklist_add_task]
+  "inputdata:PollResultsUI/PollResultController": chat.poll_results
+  "inputdata:PremiumUI/PremiumShowStatusController": premium.privacy_upsell
+  "inputdata:PreviewSenderUI/MediaPaidSetterController": chat.media_composer.price
+  "inputdata:ProxyUI/addProxyController": settings.proxy.server
+  "inputdata:ProxyUI/proxyListController": settings.proxy
+  "inputdata:ReportUI/ReportController#1": report.reason
+  "inputdata:ReportUI/ReportController#2": report.option
+  "inputdata:ReportUI/ReportDetailsController@ComplicatedReportController.swift": report.details
+  "inputdata:ReportUI/ReportDetailsController@ReportDetailsController.swift": report.details
+  "inputdata:ReportUI/ReportReasonController": report.reason
+  "inputdata:SelectColorUI/SelectColorController": [settings.account.color, peer_info.color]
+  "inputdata:SelectCountryUI/SelectCountries": app.country_picker
+  "inputdata:SessionsUI/SessionModalController": settings.devices.session
+  "inputdata:SettingsUI/AppAppearanceViewController": settings.appearance
+  "inputdata:SettingsUI/ArchiveSettingsController": settings.privacy.archive
+  "inputdata:SettingsUI/AutoNightSettingsController": settings.appearance.auto_night
+  "inputdata:SettingsUI/AutoremoveMessagesController": chat.auto_delete
+  "inputdata:SettingsUI/DeveloperViewController": {ignore: lab, note: "developer settings"}
+  "inputdata:SettingsUI/EditAccountInfoController": settings.account
+  "inputdata:SettingsUI/EditThemeController": settings.appearance.theme_editor
+  "inputdata:SettingsUI/GlobalAutoremoveMessagesController": settings.privacy.auto_delete
+  "inputdata:SettingsUI/LanguageController": settings.language
+  "inputdata:SettingsUI/LiteModeController": settings.power_saving
+  "inputdata:SettingsUI/LocalizationPreviewModalController": settings.language.preview
+  "inputdata:SettingsUI/LogoutViewController": settings.logout
+  "inputdata:SettingsUI/MessagesPrivacyController": settings.privacy.messages
+  "inputdata:SettingsUI/NewThemeController": settings.appearance.theme_creation
+  "inputdata:SettingsUI/NotificationPreferencesController": settings.notifications
+  "inputdata:SettingsUI/NotificationSoundController": settings.notifications.sound
+  "inputdata:SettingsUI/PersonalChannelController": settings.account.personal_channel
+  "inputdata:SettingsUI/SearchSettingsController": settings.search
+  "inputdata:SettingsUI/ShortcutListController": settings.shortcuts
+  "inputdata:SettingsUI/ThemePreviewModalController": settings.appearance.theme_preview
+  "inputdata:SettingsUI/UsernameController": settings.account.username
+  "inputdata:SettingsUI/cancelResetAccountController": settings.account.reset_cancellation
+  "inputdata:SettingsUI/twoStepVerificationPasswordEntryController": settings.privacy.two_step.setup
+  "inputdata:SettingsUI/twoStepVerificationResetPasswordController": settings.privacy.two_step.reset
+  "inputdata:SettingsUI/twoStepVerificationUnlockController": {screens: [settings.privacy.two_step, settings.privacy.two_step.password, settings.privacy.two_step.setup], note: "settings.privacy.two_step.password in .access(.set); settings.privacy.two_step.setup in .access(.notSet) with a pending recovery email (the email code step); settings.privacy.two_step otherwise"}
+  "inputdata:SidebarUI/ChatListFilterController": settings.folders.folder
+  "inputdata:SidebarUI/ChatListFiltersListController": settings.folders
+  "inputdata:StarsUI/GiftingController": gifts.catalog
+  "inputdata:StarsUI/InputCustomController": gifts.auction.custom_bid
+  "inputdata:StarsUI/PeerMediaGiftsController": peer_info.media.gifts
+  "inputdata:StarsUI/PremiumGiftingController": premium.gift
+  "inputdata:StarsUI/PreviewStarGiftController": gifts.preview
+  "inputdata:StarsUI/SelectGiftsModalController": gifts.collection_picker
+  "inputdata:StarsUI/StarGift_AddMessage_Controller": gifts.purchase_message
+  "inputdata:StarsUI/StarGift_LearnAboutGifts": gifts.about
+  "inputdata:StarsUI/StarGift_MarketplaceController": [gifts.marketplace, gifts.craft.picker]
+  "inputdata:StarsUI/StarGift_ModelBuilderController": gifts.attributes
+  "inputdata:StarsUI/StarGift_NftValue_Controller": gifts.value
+  "inputdata:StarsUI/StarGift_Nft_Controller": {screens: [gifts.unique, gifts.upgrade, gifts.craft, gifts.craft.about, gifts.wear_preview], note: ".quickLook and .craftSuccess -> gifts.unique; .preview, .upgrade and .giftUpgrade -> gifts.upgrade; .crafting -> gifts.craft; .aboutCraft -> gifts.craft.about; .previewWear -> gifts.wear_preview"}
+  "inputdata:StarsUI/StarGift_SelfAuction_Controller": gifts.auction.self_bid
+  "inputdata:StarsUI/StarNftOfferController": gifts.offer
+  "inputdata:StarsUI/StarUsePromoController": stars.about
+  "inputdata:StarsUI/Star_AppExamples": stars.app_examples
+  "inputdata:StarsUI/Star_AuctionAcquiredController": gifts.auction.acquired
+  "inputdata:StarsUI/Star_AuctionBidController": gifts.auction.bid
+  "inputdata:StarsUI/Star_AuctionInfoController": gifts.auction.about
+  "inputdata:StarsUI/Star_AuctionListController": gifts.auction.list
+  "inputdata:StarsUI/Star_AuctionPreviewController": gifts.auction
+  "inputdata:StarsUI/Star_ListScreen": [stars.balance, stars.purchase, ton.balance, stars.gift]
+  "inputdata:StarsUI/Star_PurschaseInApp": stars.payment
+  "inputdata:StarsUI/Star_ReactionsController": [stars.reaction, stories.live.stars]
+  "inputdata:StarsUI/Star_SubscriptionScreen": stars.subscription
+  "inputdata:StarsUI/Star_TransactionScreen": [stars.transaction, gifts.gift, gifts.sold_out]
+  "inputdata:StarsUI/sellNft": gifts.sale
+  "inputdata:StarsUI/giftTransferConfirmController": gifts.transfer.confirmation
+  "inputdata:StarsUI/showGiftTransfer": gifts.transfer.recipient
+  "inputdata:StatisticsUI/ChannelBoostStatsController": peer_info.boosts
+  "inputdata:StatisticsUI/ChannelStatsViewController": peer_info.stats
+  "inputdata:StatisticsUI/GroupStatsViewController": peer_info.stats
+  "inputdata:StatisticsUI/MessageStatsController": [chat.message_stats, stories.stats]
+  "inputdata:StickerSettingsUI/CustomEmojiController": settings.stickers_emoji.custom_emoji
+  "inputdata:StoriesUI/SelectStoryModalController": stories.album_picker
+  "inputdata:StoriesUI/StoryFoundListController": stories.search_results
+  "inputdata:StoriesUI/StoryPrivacyModalController": [stories.privacy, stories.post]
+  "inputdata:StoriesUI/StoryStreamStarMessageController": stories.live.star_message
+  "inputdata:StoriesUI/StoryViewersModalController": stories.viewers
+  "inputdata:Telegram-Mac/AppUpdateViewController": settings.app_update
+  "inputdata:TranslateUI/AIStyleModalController": chat.ai_editor.style
+  "inputdata:TranslateUI/AiStylePreviewModalController": chat.ai_editor.style_preview
+  "inputdata:TranslateUI/TranslateModalController": [chat.translation, chat.ai_editor]
+  "inputdata:VerifyAgeUI/VerifyAgeAlertController": app.age_verification
+  "inputdata:WalletUI/WalletCollectibleDetailsController": wallet.collectible
+  "inputdata:WalletUI/WalletConnectLinkController": {ignore: dead_code, note: "no callers"}
+  "inputdata:WalletUI/WalletConnectedAppInfoController": wallet.connected_app
+  "inputdata:WalletUI/WalletConnectedAppsController": wallet.connected_apps
+  "inputdata:WalletUI/WalletController": wallet
+  "inputdata:WalletUI/WalletImportPage": [wallet.recovery_phrase.entry, wallet.recovery_phrase.verify, wallet.backup]
+  "inputdata:WalletUI/WalletInfoController": [wallet.info, wallet.recovery_phrase.warning]
+  "inputdata:WalletUI/WalletReceiveController": wallet.receive
+  "inputdata:WalletUI/WalletReplaceController": wallet.replace
+  "inputdata:WalletUI/WalletSettingsController": wallet.settings
+  "inputdata:WalletUI/WalletTonConnectController#1": [wallet.ton_connect.connect, wallet.ton_connect.operation, wallet.ton_connect.sign_data]
+  "inputdata:WalletUI/WalletTonConnectController#2": wallet.ton_connect.confirmation
+  "inputdata:WalletUI/WalletTransactionController": [wallet.transaction, wallet.transfer.confirmation, wallet.collectible.confirmation]
+  "inputdata:WalletUI/makeWalletRecipientController": [wallet.transfer.recipient, wallet.collectible.recipient]
+  "inputdata:WalletUI/makeWalletSendController": wallet.transfer
+  "inputdata:WalletUI/makeWordsController": wallet.recovery_phrase
+  "inputdata:WalletUI/walletCommentInputController": wallet.transfer.comment
+  "inputdata:WalletUI/walletPasswordPromptController": wallet.password
+  "inputdata:WallpaperUI/ChannelWallpapersController": peer_info.wallpaper
+  "inputdata:WallpaperUI/ChatWallpaperModalController": [chat.wallpaper, settings.appearance.wallpaper]
+  "inputdata:WallpaperUI/WallpaperPreviewController": app.wallpaper_preview
+  "inputdata:WebAppUI/WebappTransferDataController": bot.mini_app.data_transfer
+  "inputdata:WebAppUI/WebbotEmojisetModal": bot.mini_app.emoji_status_request
+  "inputdata:WebAppUI/WebbotShareMessageModal": bot.mini_app.share_message
+  "system_alert:CrashRecoveryUI/CrashRecoveryWindowController.confirmReset": app.crash_recovery.reset_confirmation
+  "system_alert:DataUsageUI/showOutOfMemoryWarning": app.low_disk_space
+  "system_alert:Telegram-Mac/AuthorizedApplicationContext.init": app.server_notice
+  "system_alert:WebAppUI/WebpageModalController.handleScriptMessage": bot.mini_app.popup
+  "system_panel:ChatUI/RichTextEditorCoordinator.presentAddToGroupPicker": system.file_picker
+  "system_panel:ChatUI/RichTextEditorCoordinator.presentFilePicker": system.file_picker
+  "system_panel:ChatUI/RichTextEditorCoordinator.presentImagePicker": system.file_picker
+  "system_panel:ChatUI/RichTextEditorCoordinator.presentReplacePicker": system.file_picker
+  "system_panel:FilePanels/presentFilePanel": system.file_picker
+  "system_panel:FilePanels/pickImage": system.photo_picker
+  "system_panel:FilePanels/savePanel#1": system.file_save
+  "system_panel:FilePanels/savePanel#2": system.file_save
+  "system_panel:FilePanels/selectFolder": system.folder_picker
+  "window_site:CallsUI/CallVideoLabSession.present": {ignore: lab}
+  "window_site:CallsUI/ScreenCaptureLabSession.runScenario": {ignore: lab}
+  "window_site:ChatListUI/StatusView.playAnimation": {ignore: transient, note: "emoji status animation overlay"}
+  "window_site:ChatUI/ChatController.viewDidLoad": {ignore: transient, note: "message effect picker on the send button"}
+  "window_site:ChatUI/ChatRowItem": {ignore: transient, note: "reaction picker over a message"}
+  "window_site:CrashRecoveryUI/CrashRecoveryWindowController.init": app.crash_recovery
+  "window_site:EntertainmentUI/EmojiPanelLabSession.openPanel": {ignore: lab}
+  "window_site:EntertainmentUI/GifPanelLabSession.openPanel": {ignore: lab}
+  "window_site:EntertainmentUI/ReactionsWindowController.makeView": {screens: [chat.reaction_picker, chat.message_effect_picker], note: "chat.reaction_picker in .reactions and .defaultTags modes; chat.message_effect_picker in .messageEffects mode"}
+  "window_site:ForumSettingsUI/ForumNameRowItemView.set": {ignore: transient, note: "topic icon animation overlay"}
+  "window_site:GalleryUI/GalleryViewer.init": media_viewer
+  "window_site:GalleryUI/ModernPictureInPictureVideoWindow.init": {ignore: helper, note: "off-screen frame saver of media_viewer.pip"}
+  "window_site:GalleryUI/SVideoController.toggleFullScreen": {ignore: embedded, note: "full-screen mode of a video in media_viewer"}
+  "window_site:GalleryUI/VideoPlayerLabSession.presentLegacyWindow": {ignore: lab}
+  "window_site:GalleryUI/VideoPlayerLabSession.runLegacyAutoplay": {ignore: lab}
+  "window_site:GalleryUI/VideoPlayerLabSession.runLegacyStorm": {ignore: lab}
+  "window_site:GalleryUI/VideoPlayerLabSession.runVideo": {ignore: lab}
+  "window_site:GroupCallScreenUI/makeGroupWindow": {ignore: container, note: "hosts group_call.active"}
+  "window_site:GroupCallScreenUI/reactionsValues": {ignore: transient, note: "reaction picker in a group call"}
+  "window_site:InstantPageUI/InstantViewController.init": {ignore: dead_code, note: "window of the unused InstantViewController"}
+  "window_site:PassportUI/PassportWindowController.init": {ignore: container, note: "hosts passport"}
+  "window_site:PreviewSenderUI/PreviewSenderController.viewDidLoad": {ignore: transient, note: "message effect picker"}
+  "window_site:PrivateCallScreen/PeerCallScreen.init": {ignore: container, note: "window of call.active"}
+  "window_site:StarsUI/UniqueGiftLabSession.openWindow": {ignore: lab}
+  "window_site:StoriesUI/StoryRecorderOverlayWindowController.init#1": {ignore: transient, note: "story reply recording overlay"}
+  "window_site:StoriesUI/StoryRecorderOverlayWindowController.init#2": {ignore: transient, note: "story reply recording lock overlay"}
+  "window_site:StoriesUI/storyReactionsValues": {ignore: transient, note: "reaction picker in the story viewer"}
+  "window_site:TGUIKit/AppMenuController.getView": {ignore: transient, note: "context menus; tracked with menu.* events"}
+  "window_site:Telegram-Mac/SupportAccountContext.open": {ignore: container, note: "another account in its own window"}
+  "window_site:Telegram-Mac/SupportAccountContext.openChat": {ignore: container, note: "a chat in its own window"}
+  "window_site:TelegramShare/ShareViewController.launchExtension": {ignore: helper, note: "hidden window backing the share extension"}
+  "xib_window:Telegram-Mac/MainMenu.xib": {ignore: container, note: "the main app window; hosts chat_list, chat and the other screens"}

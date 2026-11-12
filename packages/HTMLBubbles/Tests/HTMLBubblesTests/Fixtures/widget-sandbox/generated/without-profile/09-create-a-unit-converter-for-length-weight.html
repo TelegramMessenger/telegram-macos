@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unit Converter</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 16px; background: #f3f4f6; }
+  .card { background: #fff; border-radius: 12px; padding: 18px; max-width: 400px; margin: 0 auto; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  h2 { margin: 0 0 14px; font-size: 18px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .tabs button { flex: 1; padding: 8px; border: 1px solid #d1d5db; background: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .tabs button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
+  input, select { padding: 10px; font-size: 16px; border: 1px solid #d1d5db; border-radius: 8px; }
+  input { width: 100%; box-sizing: border-box; }
+  .swap { text-align: center; margin: 4px 0 10px; }
+  .swap button { background: none; border: none; font-size: 22px; cursor: pointer; }
+  .out { font-size: 14px; color: #6b7280; text-align: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>🔄 Unit Converter</h2>
+  <div class="tabs"><button class="active" data-c="length">Length</button><button data-c="weight">Weight</button><button data-c="temperature">Temperature</button></div>
+  <div class="row"><input type="number" id="from" value="1"><select id="fromU"></select></div>
+  <div class="swap"><button id="swap" title="Swap">⇅</button></div>
+  <div class="row"><input type="number" id="to" readonly><select id="toU"></select></div>
+  <div class="out" id="formula"></div>
+</div>
+<script>
+  const units = {
+    length: { m: 1, km: 1000, cm: 0.01, mm: 0.001, mi: 1609.344, yd: 0.9144, ft: 0.3048, in: 0.0254 },
+    weight: { kg: 1, g: 0.001, mg: 1e-6, t: 1000, lb: 0.45359237, oz: 0.028349523 },
+    temperature: { '°C': 1, '°F': 1, K: 1 },
+  };
+  let cat = 'length';
+  const $ = id => document.getElementById(id);
+  function fill() {
+    const keys = Object.keys(units[cat]);
+    [$('fromU'), $('toU')].forEach((s, i) => { s.innerHTML = keys.map(k => `<option>${k}</option>`).join(''); s.selectedIndex = i === 0 ? 0 : 1; });
+    convert();
+  }
+  function toC(v, u) { return u === '°C' ? v : u === '°F' ? (v - 32) * 5 / 9 : v - 273.15; }
+  function fromC(v, u) { return u === '°C' ? v : u === '°F' ? v * 9 / 5 + 32 : v + 273.15; }
+  function convert() {
+    const v = parseFloat($('from').value), a = $('fromU').value, b = $('toU').value;
+    if (isNaN(v)) { $('to').value = ''; return; }
+    let r = cat === 'temperature' ? fromC(toC(v, a), b) : v * units[cat][a] / units[cat][b];
+    $('to').value = +r.toPrecision(8);
+    $('formula').textContent = `${v} ${a} = ${+r.toPrecision(6)} ${b}`;
+  }
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { cat = b.dataset.c; document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b)); fill(); });
+  ['from', 'fromU', 'toU'].forEach(id => $(id).addEventListener('input', convert));
+  $('swap').onclick = () => { const i = $('fromU').selectedIndex; $('fromU').selectedIndex = $('toU').selectedIndex; $('toU').selectedIndex = i; convert(); };
+  fill();
+</script>
+</body>
+</html>

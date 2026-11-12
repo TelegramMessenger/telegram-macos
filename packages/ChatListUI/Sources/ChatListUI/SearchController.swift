@@ -18,6 +18,7 @@ import StoriesUI
 import ChatHistoryModel
 import ChatUI
 import ChatModeTypes
+import AppAnalytics
 
 extension SearchMessagesLocation {
     public func withUpdatedSouce(_ source: SearchController.MessaagesSourceValue) -> SearchMessagesLocation {
@@ -385,22 +386,19 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             let mode: ChatListRowItem.Mode
             let titleMode: ChatListRowItem.TitleMode
             let id: EngineChatList.Item.Id
-            if let data = threadInfo, let threadId = message.replyAttribute?.threadMessageId {
+            if case .savedMessages = target {
+                let sourcePeerId = message.threadId.map(PeerId.init) ?? message.sourceReference?.messageId.peerId ?? message.forwardInfo?.source?.id ?? message.forwardInfo?.author?.id ?? (message.forwardInfo == nil ? arguments.context.peerId : PeerId(anonymousSavedMessagesId))
+                id = .chatList(sourcePeerId)
+                mode = .savedMessages(sourcePeerId.toInt64())
+                if let sourcePeer = message.peers[sourcePeerId] {
+                    peer = RenderedPeer(peer: sourcePeer)
+                } else if sourcePeerId.isAnonymousSavedMessages {
+                    peer = RenderedPeer(peer: TelegramUser(id: sourcePeerId, accessHash: nil, firstName: nil, lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, subscriberCount: nil, verificationIconFileId: nil))
+                }
+            } else if let data = threadInfo, let threadId = message.replyAttribute?.threadMessageId {
                 let threadId = Int64(threadId.id)
                 mode = .topic(threadId, data)
                 id = .forum(threadId)
-            } else if case .savedMessages = target {
-                if let sourceReference = message.sourceReference {
-                    id = .chatList(sourceReference.messageId.peerId)
-                    mode = .savedMessages(sourceReference.messageId.peerId.toInt64())
-                    if let value = message.peers[sourceReference.messageId.peerId] {
-                        peer = RenderedPeer(peer: value)
-                    }
-                } else {
-                    id = .chatList(.init(anonymousSavedMessagesId))
-                    mode = .savedMessages(anonymousSavedMessagesId)
-                    peer = RenderedPeer(peer: TelegramUser(id: .init(anonymousSavedMessagesId), accessHash: nil, firstName: nil, lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, subscriberCount: nil, verificationIconFileId: nil))
-                }
             } else {
                 id = .chatList(message.id.peerId)
                 mode = .chat
@@ -797,6 +795,13 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         self._messagesValue.set(.single((ExternalSearchMessages(), false)))
         self.globalTagsValue.set(globalTags)
         self.searchTags = globalTags
+        let screen = globalTags.text != nil ? AnalyticsScreen.searchHashtag : AnalyticsScreen.search
+        if self.analyticsScreen != screen {
+            self.analyticsScreen = screen
+            if isLoaded(), view.window != nil {
+                Analytics.shared.screens.show(ObjectIdentifier(self), screen: screen)
+            }
+        }
     }
     
     public func setCachedMessages(_ cached: CachedSearchMessages) {
@@ -1068,20 +1073,23 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
                             foundRemotePeers = .single(([], [], false))
                         }
                     }
-                case .savedMessages:
-                    foundRemotePeers = context.engine.messages.searchLocalSavedMessagesPeers(query: query, indexNameMapping: [:]) |> map { peers in
-                        var local: [ChatListSearchEntry] = []
-                        var index = 1000
-                        for item in peers {
-                            
-                            local.append(.localPeer(.init(peer: item._asPeer()), index, nil, .none, false, false, nil))
-                            index += 1
+                case let .savedMessages(parentPeerId):
+                    let sourcePeers: Signal<[EnginePeer], NoError>
+                    if parentPeerId == context.peerId {
+                        sourcePeers = context.engine.messages.searchLocalSavedMessagesPeers(peerId: parentPeerId, query: query, indexNameMapping: [:])
+                    } else {
+                        sourcePeers = chatListViewForLocation(chatListLocation: .savedMessagesChats(peerId: parentPeerId), location: .Initial(0, nil), filter: nil, account: context.account) |> take(1) |> map { view in
+                            view.list.items.compactMap { $0.renderedPeer.peer }.filter { $0._asPeer().displayTitle.lowercased().contains(query.lowercased()) }
                         }
-                        return ([], local, false)
+                    }
+                    foundRemotePeers = sourcePeers |> map { peers in
+                        let local: [ChatListSearchEntry] = peers.enumerated().map { index, item in
+                            .localPeer(.init(peer: item._asPeer()), 1000 + index, nil, .none, false, false, nil)
+                        }
+                        return (local, [], false)
                     }
                     foundLocalPeers = .single([])
-//                    location = .general(tags: nil, minDate: nil, maxDate: nil)
-                    location = .peer(peerId: context.peerId, fromId: nil, tags: globalTags.messageTags, reactions: nil, threadId: nil, minDate: nil, maxDate: nil)
+                    location = .peer(peerId: parentPeerId, fromId: nil, tags: globalTags.messageTags, reactions: nil, threadId: nil, minDate: nil, maxDate: nil)
                 case let .forum(peerId):
                     location = .peer(peerId: peerId, fromId: nil, tags: globalTags.messageTags, reactions: nil, threadId: nil, minDate: nil, maxDate: nil)
                     foundRemotePeers = .single(([], [], false))
@@ -1963,6 +1971,7 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         
         super.init(frame:frame)
         self.bar = .init(height: 0)
+        self.analyticsScreen = tags.text != nil ? AnalyticsScreen.searchHashtag : AnalyticsScreen.search
         
         var setPeerAsTag:((Peer?)->Void)? = nil
 
@@ -1989,9 +1998,11 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         }, openTopPeer: { type in
             switch type {
             case let .peer(peer, _, _):
+                Analytics.shared.send(AnalyticsEvents.searchResultSelect(resultKind: .recent))
                 open(.chatId(.chatList(peer.id), peer.id, -1), nil, false)
                 _ = context.engine.peers.addRecentlySearchedPeer(peerId: peer.id).start()
             case let .savedMessages(peer):
+                Analytics.shared.send(AnalyticsEvents.searchResultSelect(resultKind: .recent))
                 open(.chatId(.chatList(peer.id), peer.id, -1), nil, false)
             case .articles:
                 break
@@ -2092,6 +2103,25 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
     
     private var closeNext: Bool = false
     
+    private var analyticsMessageResultKind: AnalyticsEvents.SearchResultSelectResultKind {
+        if self.searchTags?.listType == .globalPosts {
+            return .globalPost
+        }
+        guard let tags = self.searchTags?.messageTags else {
+            return .message
+        }
+        if tags == .webPage {
+            return .link
+        } else if tags == .file {
+            return .file
+        } else if tags == .music {
+            return .music
+        } else if tags == .voiceOrInstantVideo {
+            return .voice
+        } else {
+            return .media
+        }
+    }
     
     public func selectionDidChange(row:Int, item:TableRowItem, byClick:Bool, isNew:Bool) -> Void {
         var peer:Peer?
@@ -2101,10 +2131,13 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         var isGlobal = false
         let context = self.context
         var id: UIChatListEntryId?
+        var resultKind: AnalyticsEvents.SearchResultSelectResultKind?
         
         if let item = item as? SearchTopicRowItem {
             id = .chatId(item.item.id, item.item.renderedPeer.peerId, -1)
+            resultKind = .chat
         } else if let item = item as? ChatListMessageRowItem {
+            resultKind = self.analyticsMessageResultKind
             peer = item.peer
             messageId = item.message?.id
             message = item.message
@@ -2119,13 +2152,17 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
                 switch stableId {
                 case let .localPeerId(pId), let .secretChat(pId):
                     peerId = pId
+                    resultKind = .chat
                 case let .recentSearchPeerId(pId):
                     peerId = pId
+                    resultKind = .recent
                 case let .globalPeerId(pId):
                     isGlobal = true
                     peerId = pId
+                    resultKind = .globalPeer
                 case .savedMessages:
                     peerId = context.peerId
+                    resultKind = .chat
                 default:
                     break
                 }
@@ -2133,7 +2170,9 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
             peer = item.peer
             
             if let peer = peer {
-                if TelegramUtilsHooks.shared.peerIsForum(peer) {
+                if case .savedMessages = target {
+                    id = .chatId(.chatList(peer.id), peer.id, -1)
+                } else if TelegramUtilsHooks.shared.peerIsForum(peer) {
                     id = .forum(peer.id)
                 } else if let peerId = peerId {
                     id = .chatId(.chatList(peerId), peerId, -1)
@@ -2211,8 +2250,12 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
         } else if item is PopularPeersRowItem {
             peerId = context.peerId
             id = .chatId(.chatList(context.peerId), context.peerId, -1)
+            resultKind = .recent
         }
         
+        if let resultKind {
+            Analytics.shared.send(AnalyticsEvents.searchResultSelect(resultKind: resultKind))
+        }
         
         var storedPeer: Signal<PeerId, NoError>
         if let peer = peer {

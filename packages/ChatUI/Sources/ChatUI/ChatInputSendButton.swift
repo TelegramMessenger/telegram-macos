@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import TelegramCore
 import SwiftSignalKit
@@ -101,6 +102,21 @@ public final class ChatInputSendButton: View {
     public let send: ImageButton = ChatAccessibleImageButton()
     public let voice: ImageButton = ChatAccessibleImageButton()
     private let voiceIcon = ChatInputRecordModeIcon(frame: NSMakeRect(5, 5, ChatInputRecordModeIcon.canvasSize.width, ChatInputRecordModeIcon.canvasSize.height))
+    private let dictationWaveform = ChatDictationWaveformView(frame: NSMakeRect(7, 5, 26, 22))
+    private var isDictating = false {
+        didSet {
+            if oldValue != isDictating {
+                updateDictationBubble()
+            }
+        }
+    }
+    private var dictationBubble: ChatDictationBubble?
+    private var dictationTransitionIcon: CALayer?
+    private var outgoingDictationWaveform: CALayer?
+    private var aiRewriteAvailable = false
+    private var aiRewriteInProgress = false
+    private var aiRewriteSparkles: CALayer?
+    private var shouldFinishDictationTransition = false
     public let stop: ImageButton = ImageButton()
     public let slowModeTimeout: TextButton = TextButton()
     public let inlineCancel: ImageButton = ImageButton()
@@ -153,6 +169,9 @@ public final class ChatInputSendButton: View {
 
         voiceIcon.isEventLess = true
         voice.addSubview(voiceIcon)
+        send.addSubview(dictationWaveform)
+        dictationWaveform.isHidden = true
+        dictationWaveform.animationsEnabled = !chatInteraction.context.isLite(.animations)
 
         stop.isHidden = true
         inlineCancel.isHidden = true
@@ -170,15 +189,21 @@ public final class ChatInputSendButton: View {
         stop.setAccessibilityLabel(strings().voiceOverChatStop)
         inlineCancel.setAccessibilityLabel(strings().voiceOverCommonCancel)
         (send as? ChatAccessibleImageButton)?.accessibilityLabelProvider = { [weak self] in
+            if self?.isDictating == true {
+                return strings().voiceOverCommonDone
+            }
             return self?.state.isEditing == true ? strings().voiceOverCommonDone : strings().voiceOverMessageContextSend
         }
         (voice as? ChatAccessibleImageButton)?.accessibilityLabelProvider = {
             return FastSettings.recordingState == .voice ? strings().voiceOverChatRecordModeVoiceMessage : strings().voiceOverChatRecordModeVideoMessage
         }
         voice.setAccessibilityHelp(strings().voiceOverChatRecordModeHint)
+        voice.contextMenu = { [weak self] in
+            self?.chatInteraction.voiceTranscription?.languageMenu()
+        }
         let recordActionName = strings().voiceOverChatRecord
         voice.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: recordActionName, handler: { [weak self] in
-            self?.chatInteraction.startRecording(true, nil)
+            self?.chatInteraction.startRecordingObserved(true, nil, via: nil)
             return true
         })])
 
@@ -192,7 +217,7 @@ public final class ChatInputSendButton: View {
         }, for: .Click)
 
         voice.set(handler: { [weak self] control in
-            self?.chatInteraction.startRecording(false, control)
+            self?.chatInteraction.startRecordingObserved(false, control, via: .longPress)
         }, for: .LongMouseDown)
 
         inlineCancel.set(handler: { [weak self] _ in
@@ -222,8 +247,14 @@ public final class ChatInputSendButton: View {
 
         let icon = chatInteraction.presentation.state == .editing ? theme.icons.chat_header_done : theme.icons.send_message_large
         send.set(image: icon, for: .Normal)
-        send.set(background: theme.colors.accent, for: .Normal)
-        send.set(background: theme.colors.accent.withAlphaComponent(0.8), for: .Highlight)
+        if let dictationBubble {
+            dictationBubble.setColor(theme.colors.accent)
+            send.set(background: .clear, for: .Normal)
+            send.set(background: .clear, for: .Highlight)
+        } else {
+            send.set(background: theme.colors.accent, for: .Normal)
+            send.set(background: theme.colors.accent.withAlphaComponent(0.8), for: .Highlight)
+        }
         send.sizeToFit(.zero, ChatInputSendButton.fieldSize, thatFit: true)
         send.layer?.cornerRadius = ChatInputSendButton.fieldSize.height / 2
         send.layer?.masksToBounds = false
@@ -245,17 +276,258 @@ public final class ChatInputSendButton: View {
 
         inlineCancel.set(image: theme.icons.chatInlineDismiss, for: .Normal)
         _ = inlineCancel.sizeToFit()
+        updateDictationAppearance()
+    }
+
+    func setDictating(_ value: Bool, animated: Bool = false) {
+        guard isDictating != value else { return }
+        let outgoing = !value && animated && window != nil && !chatInteraction.context.isLite(.animations)
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? dictationWaveform.transitionLayer() : nil
+        cancelDictationTransition()
+        isDictating = value
+        dictationWaveform.reset()
+        if value {
+            send.layer?.removeAllAnimations()
+            send.layer?.filters = nil
+            update(state: State(kind: .send, isEditing: false, isSendEnabled: true, isInlineLoading: false), animated: false)
+        }
+        updateDictationAppearance()
+        if let outgoing, let layer = send.layer {
+            outgoingDictationWaveform = outgoing
+            shouldFinishDictationTransition = true
+            layer.addSublayer(outgoing)
+        }
+    }
+
+    func setAIRewriteAvailable(_ available: Bool) {
+        aiRewriteAvailable = available
+        updateAIRewriteSparkles()
+    }
+
+    func setAIRewriteInProgress(_ inProgress: Bool) {
+        aiRewriteInProgress = inProgress
+        updateAIRewriteSparkles()
+    }
+
+    private func updateAIRewriteSparkles() {
+        guard aiRewriteAvailable, !aiRewriteInProgress, !isDictating, !state.isEditing,
+              activeView === send, let buttonLayer = send.layer else {
+            aiRewriteSparkles?.removeFromSuperlayer()
+            aiRewriteSparkles = nil
+            return
+        }
+        guard aiRewriteSparkles == nil else { return }
+        let group = CALayer()
+        let points: [(CGFloat, CGFloat, CGFloat)] = [(-10, -5, 1.7), (9, 7, 1.5), (10, -7, 1.0), (-7, 8, 1.0)]
+        for (index, point) in points.enumerated() {
+            let (x, y, size) = point
+            let shape = CAShapeLayer()
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: 0, y: -size))
+            path.addQuadCurve(to: CGPoint(x: size, y: 0), control: .zero)
+            path.addQuadCurve(to: CGPoint(x: 0, y: size), control: .zero)
+            path.addQuadCurve(to: CGPoint(x: -size, y: 0), control: .zero)
+            path.addQuadCurve(to: CGPoint(x: 0, y: -size), control: .zero)
+            shape.path = path
+            shape.fillColor = NSColor.white.cgColor
+            shape.position = CGPoint(x: x, y: y)
+            shape.opacity = 0.72
+            group.addSublayer(shape)
+            if !chatInteraction.context.isLite(.animations), !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let twinkle = CAKeyframeAnimation(keyPath: "opacity")
+                twinkle.values = [0.22, 1, 0.22]
+                twinkle.duration = 1.4
+                twinkle.timeOffset = Double(index) * 0.27
+                twinkle.repeatCount = .infinity
+                shape.add(twinkle, forKey: "twinkle")
+            }
+        }
+        group.position = CGPoint(x: send.bounds.midX, y: send.bounds.midY)
+        buttonLayer.addSublayer(group)
+        aiRewriteSparkles = group
+    }
+
+    private func finishDictationTransition() {
+        guard shouldFinishDictationTransition, let outgoing = outgoingDictationWaveform else { return }
+        shouldFinishDictationTransition = false
+        guard activeView === send else {
+            outgoing.removeFromSuperlayer()
+            outgoingDictationWaveform = nil
+            return
+        }
+        outgoing.opacity = 0
+        let shrink = CABasicAnimation(keyPath: "transform.scale")
+        shrink.fromValue = 1
+        shrink.toValue = 0.4
+        shrink.duration = 0.16
+        shrink.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        outgoing.add(shrink, forKey: "dictationWavesShrink")
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = 0.16
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        fade.completion = { [weak self, weak outgoing] _ in
+            outgoing?.removeFromSuperlayer()
+            if self?.outgoingDictationWaveform === outgoing {
+                self?.outgoingDictationWaveform = nil
+            }
+        }
+        outgoing.add(fade, forKey: "dictationWavesFade")
+        if let iconLayer = send.imageView.layer {
+            let reveal = CABasicAnimation(keyPath: "opacity")
+            reveal.fromValue = 0
+            reveal.toValue = 1
+            reveal.duration = 0.2
+            reveal.beginTime = iconLayer.convertTime(CACurrentMediaTime(), from: nil) + 0.04
+            reveal.fillMode = .backwards
+            reveal.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            iconLayer.add(reveal, forKey: "dictationPlaneReveal")
+        }
+        if !state.isEditing {
+            animatePlaneFlight()
+        }
+    }
+
+    func animateDictationTransition(from origin: ChatDictationButtonOrigin) {
+        cancelDictationTransition()
+        guard isDictating, !chatInteraction.context.isLite(.animations),
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let window, let host = send.superview, let buttonLayer = send.layer,
+              let waveLayer = dictationWaveform.layer else { return }
+        layoutSubtreeIfNeeded()
+        let source = host.convert(window.convertFromScreen(origin.screenFrame), from: nil)
+        guard source.width > 0, source.height > 0,
+              source.minX.isFinite, source.minY.isFinite, source.width.isFinite, source.height.isFinite else { return }
+        let bounds = buttonLayer.bounds
+        let sourceBounds = CGRect(origin: bounds.origin, size: source.size)
+        let sourcePosition = CGPoint(x: source.minX + source.width * buttonLayer.anchorPoint.x,
+                                     y: source.minY + source.height * buttonLayer.anchorPoint.y)
+        func spring(_ keyPath: String, from: Any, to: Any) -> CASpringAnimation {
+            let animation = CASpringAnimation(keyPath: keyPath)
+            animation.mass = 1
+            animation.stiffness = ChatInputSendButton.fieldSpringStiffness
+            animation.damping = ChatInputSendButton.fieldSpringDamping
+            animation.fromValue = from
+            animation.toValue = to
+            animation.duration = animation.settlingDuration
+            return animation
+        }
+        let distance = CGPoint(x: sourcePosition.x - buttonLayer.position.x, y: sourcePosition.y - buttonLayer.position.y)
+        let position = spring("position", from: NSValue(point: distance), to: NSValue(point: .zero))
+        position.isAdditive = true
+        let size = spring("bounds", from: NSValue(rect: sourceBounds), to: NSValue(rect: bounds))
+        let radius = spring("cornerRadius", from: min(source.width, source.height) / 2, to: buttonLayer.cornerRadius)
+        let flight = CAAnimationGroup()
+        flight.animations = [position, size, radius]
+        flight.duration = position.duration
+        buttonLayer.add(flight, forKey: "dictationFlight")
+
+        let offset = CGPoint(x: sourceBounds.midX - bounds.midX, y: sourceBounds.midY - bounds.midY)
+        let wavePosition = spring("position", from: NSValue(point: offset), to: NSValue(point: .zero))
+        wavePosition.isAdditive = true
+        waveLayer.add(wavePosition, forKey: "dictationFlight")
+        let reveal = CABasicAnimation(keyPath: "opacity")
+        reveal.fromValue = 0
+        reveal.toValue = 1
+        reveal.duration = 0.2
+        reveal.beginTime = waveLayer.convertTime(CACurrentMediaTime(), from: nil) + 0.06
+        reveal.fillMode = .backwards
+        reveal.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        waveLayer.add(reveal, forKey: "dictationReveal")
+
+        if let icon = origin.icon {
+            let outgoing = CALayer()
+            outgoing.contents = icon
+            outgoing.contentsGravity = .resizeAspect
+            outgoing.contentsScale = window.backingScaleFactor
+            outgoing.bounds = CGRect(x: 0, y: 0, width: 30, height: 30)
+            outgoing.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            outgoing.opacity = 0
+            buttonLayer.addSublayer(outgoing)
+            dictationTransitionIcon = outgoing
+            outgoing.add(spring("position", from: NSValue(point: CGPoint(x: sourceBounds.midX, y: sourceBounds.midY)), to: NSValue(point: outgoing.position)), forKey: "dictationFlight")
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            fade.duration = 0.2
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            fade.completion = { [weak self, weak outgoing] _ in
+                outgoing?.removeFromSuperlayer()
+                if self?.dictationTransitionIcon === outgoing {
+                    self?.dictationTransitionIcon = nil
+                }
+            }
+            outgoing.add(fade, forKey: "dictationFade")
+        }
+    }
+
+    private func cancelDictationTransition() {
+        send.layer?.removeAnimation(forKey: "dictationFlight")
+        dictationWaveform.layer?.removeAnimation(forKey: "dictationFlight")
+        dictationWaveform.layer?.removeAnimation(forKey: "dictationReveal")
+        dictationTransitionIcon?.removeFromSuperlayer()
+        dictationTransitionIcon = nil
+        outgoingDictationWaveform?.removeFromSuperlayer()
+        outgoingDictationWaveform = nil
+        shouldFinishDictationTransition = false
+        send.imageView.layer?.removeAnimation(forKey: "dictationPlaneReveal")
+        send.imageView.layer?.removeAnimation(forKey: "planeFlight")
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            cancelDictationTransition()
+        }
+    }
+
+    func updateDictationLevel(_ level: CGFloat) {
+        guard isDictating else { return }
+        dictationWaveform.updateLevel(level)
+        dictationBubble?.update(level: level)
+    }
+
+    private func updateDictationBubble() {
+        let animated = !chatInteraction.context.isLite(.animations) && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if isDictating, animated {
+            let bubble = dictationBubble ?? ChatDictationBubble(host: send)
+            dictationBubble = bubble
+            bubble.start(color: theme.colors.accent)
+            send.set(background: .clear, for: .Normal)
+            send.set(background: .clear, for: .Highlight)
+        } else if let bubble = dictationBubble {
+            dictationBubble = nil
+            bubble.stop { [weak self] in
+                guard let self, self.dictationBubble == nil else { return }
+                self.send.set(background: theme.colors.accent, for: .Normal)
+                self.send.set(background: theme.colors.accent.withAlphaComponent(0.8), for: .Highlight)
+            }
+        }
+    }
+
+    private func updateDictationAppearance() {
+        send.imageView.isHidden = isDictating
+        dictationWaveform.isHidden = !isDictating
+        send.appTooltip = isDictating ? strings().voiceOverCommonDone : nil
     }
 
     private func updateVoiceIcon(animated: Bool) {
+        voice.appTooltip = FastSettings.recordingState == .voice ? strings().appTooltipVoiceRecord : strings().appTooltipVideoRecord
         voice.removeImage(for: .Normal)
         voiceIcon.isHidden = false
         voiceIcon.update(state: FastSettings.recordingState, color: theme.colors.text, animated: animated)
     }
 
     public func prepare(with chatInteraction: ChatInteraction) {
-        let showMenu: (Control) -> Void = { control in
+        let showMenu: (Control) -> Void = { [weak self] control in
             if let event = NSApp.currentEvent {
+                if self?.isDictating == true {
+                    if let menu = chatInteraction.voiceTranscription?.languageMenu() {
+                        AppMenu.show(menu: menu, event: event, for: control)
+                    }
+                    return
+                }
                 let sendMenu = chatInteraction.sendMessageMenu(false) |> deliverOnMainQueue
                 _ = sendMenu.startStandalone(next: { menu in
                     if let menu {
@@ -274,8 +546,7 @@ public final class ChatInputSendButton: View {
         }, for: .LongMouseDown)
 
         send.set(handler: { [weak self] control in
-            guard let interaction = self?.chatInteraction else { return }
-            interaction.sendMessage(false, nil, interaction.presentation.messageEffect)
+            self?.activateSend()
         }, for: .Click)
 
         stop.set(handler: { [weak chatInteraction] _ in
@@ -318,6 +589,14 @@ public final class ChatInputSendButton: View {
             return slowModeTimeout
         } else {
             return self
+        }
+    }
+
+    private func activateSend() {
+        if isDictating {
+            chatInteraction.voiceTranscription?.perform(.edit)
+        } else {
+            chatInteraction.sendMessage(false, nil, chatInteraction.presentation.messageEffect)
         }
     }
 
@@ -469,6 +748,9 @@ public final class ChatInputSendButton: View {
         }
 
         needsLayout = true
+        updateDictationAppearance()
+        finishDictationTransition()
+        updateAIRewriteSparkles()
         return desiredSize != oldDesired
     }
 

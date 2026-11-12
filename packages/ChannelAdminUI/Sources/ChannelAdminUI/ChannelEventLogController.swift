@@ -218,7 +218,7 @@ public class ChannelEventLogView : View {
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         let theme = theme as! TelegramPresentationTheme
-        settings.set(text: strings().channelEventFilterFilters, for: .Normal) //TODOLANG
+        settings.set(text: strings().channelEventFilterFilters, for: .Normal)
         settings.set(color: theme.colors.text, for: .Normal)
         settings.set(background: .clear, for: .Highlight)
         settings.set(background: .clear, for: .Normal)
@@ -631,7 +631,7 @@ open class ChannelEventLogController<Context: AccountContextProtocol>: TelegramG
                     return current
                 }
             }
-            if message.isSensitiveContent(platform: "ios"), !context.contentConfig.sensitiveContentEnabled {
+            if message.isSensitiveContent(platform: "ios", contentSettings: context.contentSettings), !context.contentConfig.sensitiveContentEnabled {
                 if context.contentConfig.canAdjustSensitiveContent, context.appConfiguration.getBoolValue("need_age_video_verification", orElse: false) {
                     ChatNavigationHooks.shared.showVerifyAgeAlert(context, context.window)
                     return

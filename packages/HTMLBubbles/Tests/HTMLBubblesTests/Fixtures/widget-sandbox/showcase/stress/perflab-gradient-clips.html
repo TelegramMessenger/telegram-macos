@@ -1,0 +1,98 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:16px 16px 10px}h2{font-size:20px;margin:0 0 10px}.controls{display:flex;gap:8px;flex-wrap:wrap}
+button{background:#293d58;color:white;border:0;border-radius:8px;padding:8px 10px}
+.summary{margin:0 16px 12px;color:#a6b8cf;line-height:1.4}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 12px;box-sizing:border-box}
+.card{min-width:0;padding:7px;background:#1c2c40;border:1px solid #39516e;border-radius:10px}
+.label{display:flex;justify-content:space-between;gap:4px;margin-bottom:6px;font:10px Menlo,monospace}.reading{color:#a6b8cf;flex-shrink:0;white-space:nowrap}
+.outer{position:relative;height:66px;overflow:hidden;border-radius:12px;background:#101d2c}
+.stage{position:absolute;left:4px;top:5px;width:94%;height:56px;overflow:hidden;border-radius:10px;background:#35516a}
+.window{position:absolute;left:4px;top:4px;width:92%;height:48px;overflow:hidden;border-radius:7px;background:#182c3e}
+.track{position:absolute;left:0;top:0;display:flex;width:288px;height:24px;align-items:stretch;white-space:nowrap}
+.track.second{top:24px}.segment{width:72px;flex-shrink:0;box-sizing:border-box;padding:5px 6px;color:#d9fff2;font:10px Menlo,monospace;line-height:14px;background:linear-gradient(90deg,#146956,#234776,#44346f)}
+.segment:nth-child(even){color:#fff1c8;background:linear-gradient(90deg,#775121,#6c3556,#313d76)}
+.second .segment{color:#d2edff;background:linear-gradient(180deg,#1d6974,#334575,#563265)}
+.second .segment:nth-child(even){color:#ffe0ed;background:linear-gradient(180deg,#803d58,#58386f,#284d68)}
+.reverse .segment{background:linear-gradient(270deg,#146956,#234776,#44346f)}
+.reverse .second .segment{background:linear-gradient(0deg,#803d58,#58386f,#284d68)}
+.alpha .segment{background:linear-gradient(90deg,rgba(38,210,166,0.18),rgba(59,91,214,0.8),rgba(196,70,157,0.35))}
+.alpha .second .segment{background:linear-gradient(180deg,rgba(245,157,67,0.75),rgba(183,69,146,0.3),rgba(47,151,191,0.65))}
+.diagonal .segment{background:linear-gradient(125deg,#14735c,#354978,#743a70)}
+.diagonal .second .segment{background:linear-gradient(35deg,#a16a28,#683d70,#265e78)}
+</style>
+<header><h2>Gradient clip wall</h2><div class="controls"><button id="pause">Pause</button><button id="resize">Lock width</button><button id="count">96 cards</button><button id="freeze">Freeze</button></div></header>
+<p class="summary" id="summary">96 cards · 288 rounded clips · 768 gradient segments</p>
+<div class="grid" id="grid"></div>
+<script>
+const grid=document.getElementById('grid'),pause=document.getElementById('pause'),resize=document.getElementById('resize'),countButton=document.getElementById('count'),summary=document.getElementById('summary');
+let stages=[],windows=[],tracks=[],readings=[];
+let count=96,running=true,resizing=true,time=0,previous=null,frameID=0,frames=0;
+function variant(index){
+  const slot=index%12;
+  return slot===9?'reverse':slot===10?'alpha':slot===11?'diagonal':'axis';
+}
+function build(next){
+  count=next;
+  let html='';
+  for(let i=0;i<count;i++){
+    const kind=variant(i);
+    let first='',second='';
+    for(let j=0;j<4;j++){
+      first+='<span class="segment">Flow '+(i*4+j)+'</span>';
+      second+='<span class="segment">Band '+((i+j)%19)+'</span>';
+    }
+    html+='<div class="card '+kind+'"><div class="label"><span>G'+String(i+1).padStart(3,'0')+' '+kind+'</span><span class="reading">0.00</span></div><div class="outer"><div class="stage"><div class="window"><div class="track">'+first+'</div><div class="track second">'+second+'</div></div></div></div></div>';
+  }
+  grid.innerHTML=html;
+  stages=grid.querySelectorAll('.stage');windows=grid.querySelectorAll('.window');tracks=grid.querySelectorAll('.track');
+  readings=Array.from(grid.querySelectorAll('.reading'),function(item){return item.firstChild;});
+  countButton.textContent=count+' cards';
+  summary.textContent=count+' cards · '+count*3+' rounded clips · '+count*8+' gradient segments · 75% ordinary axes, 25% reversed, alpha or diagonal';
+  draw(time,true,true);
+}
+function draw(t,all,initializeWidths){
+  if(resizing||initializeWidths)grid.style.width=(96+4*Math.sin(t*.61)).toFixed(3)+'%';
+  for(let i=0;i<count;i++){
+    const phase=i*.27;
+    if(resizing||initializeWidths){
+      stages[i].style.width=(88+8*Math.sin(t*.79+phase)).toFixed(3)+'%';
+      windows[i].style.width=(86+10*Math.sin(t*.53+phase*.7)).toFixed(3)+'%';
+    }
+    stages[i].style.transform='translateX('+(5*Math.sin(t*.73+phase)).toFixed(3)+'px)';
+    windows[i].style.transform='translateX('+(3*Math.sin(t*.89+phase+.4)).toFixed(3)+'px)';
+    for(let j=0;j<2;j++){
+      const x=-88-82*Math.sin(t*.83+phase+j*.9),y=1.125*Math.sin(t*.67+phase+j*.6);
+      tracks[i*2+j].style.transform='translate('+x.toFixed(3)+'px,'+y.toFixed(3)+'px)';
+    }
+    if(all||i%4===frames%4)readings[i].data=(50+49*Math.sin(t+phase)).toFixed(2);
+  }
+}
+function frame(ms){
+  frameID=0;
+  if(!running)return;
+  if(previous!==null)time+=(ms-previous)/1000;
+  previous=ms;draw(time,false,false);frames++;
+  frameID=requestAnimationFrame(frame);
+}
+function setRunning(value){
+  running=value;previous=null;
+  if(frameID){cancelAnimationFrame(frameID);frameID=0;}
+  pause.textContent=running?'Pause':'Resume';
+  if(running)frameID=requestAnimationFrame(frame);
+}
+function freeze(){
+  setRunning(false);resizing=true;time=1.25;frames=0;
+  resize.textContent='Lock width';draw(time,true,true);
+}
+pause.onclick=function(){setRunning(!running);};
+resize.onclick=function(){resizing=!resizing;resize.textContent=resizing?'Lock width':'Unlock width';};
+countButton.onclick=function(){build(count===24?48:count===48?96:24);};
+document.getElementById('freeze').onclick=freeze;
+window.stress={
+  freeze:freeze,
+  resume:function(){setRunning(true);},
+  setCount:function(value){const next=Number(value);build(next<=24?24:next<=48?48:96);},
+  describe:function(){return {cards:count,clips:count*3,tracks:count*2,segments:count*8,ordinaryCards:count*3/4,reversedCards:count/12,alphaCards:count/12,diagonalCards:count/12,readingsPerFrame:count/4,time:time,running:running,resizing:resizing};}
+};
+build(count);frameID=requestAnimationFrame(frame);
+</script>

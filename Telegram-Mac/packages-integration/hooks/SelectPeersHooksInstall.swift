@@ -20,7 +20,7 @@ func installSelectPeersUIHooks() {
     }, stringForRight: { right, isGroup, defaultBannedRights in
         return stringForRight(right: right, isGroup: isGroup, defaultBannedRights: defaultBannedRights)
     }, makeCreateBotModalController: { context, managerUsername, botUsername, botTitle, completion in
-        return CreateBotModalController(context: context as! AccountContext, managerUsername: managerUsername, botUsername: botUsername, botTitle: botTitle, openAutomatically: false, completion: completion)
+        return CreateBotModalController(context: context as! AccountContext, managerUsername: managerUsername, botUsername: botUsername, botTitle: botTitle, openAutomatically: false, viaDeeplink: false, completion: completion)
     }, createGroupDirectly: { context, selectedPeers, requires, onCreate in
         createGroupDirectly(with: context as! AccountContext, selectedPeers: selectedPeers, requires: requires, onCreate: onCreate)
     }, makeCreateChannelController: { context, requires, onComplete in

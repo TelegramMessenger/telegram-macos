@@ -4,6 +4,15 @@ import TelegramCore
 import Postbox
 import SwiftSignalKit
 
+public let chatInputAnalyticsExcludedAttribute = NSAttributedString.Key(rawValue: "TelegramLocalInputAnalyticsExcluded")
+
+public func chatInputTextExcludingAnalytics(_ text: NSAttributedString) -> NSAttributedString {
+    guard text.length > 0 else { return text }
+    let result = NSMutableAttributedString(attributedString: text)
+    result.addAttribute(chatInputAnalyticsExcludedAttribute, value: true as NSNumber, range: NSRange(location: 0, length: result.length))
+    return result
+}
+
 private func concatAttributes(_ attributes: [ChatTextInputAttribute]) -> [ChatTextInputAttribute] {
     guard !attributes.isEmpty else { return [] }
 
@@ -44,6 +53,7 @@ public enum ChatTextInputAttribute : Equatable, Comparable, Codable {
     case animated(Range<Int>, String, Int64, TelegramMediaFile?, ItemCollectionId?)
     case quote(Range<Int>, Bool)
     case date(Range<Int>, Int32)
+    case analyticsExcluded(Range<Int>)
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StringCodingKey.self)
 
@@ -78,7 +88,7 @@ public enum ChatTextInputAttribute : Equatable, Comparable, Codable {
         case 11:
             self = .date(range, try container.decode(Int32.self, forKey: "date"))
         case 12:
-            self = .bold(0..<0)
+            self = .analyticsExcluded(range)
         default:
             self = .bold(range)
             //fatalError("input attribute not supported")
@@ -110,6 +120,8 @@ public enum ChatTextInputAttribute : Equatable, Comparable, Codable {
             return 11
         case .date:
             return 10
+        case .analyticsExcluded:
+            return 12
         }
     }
 
@@ -164,6 +176,8 @@ public enum ChatTextInputAttribute : Equatable, Comparable, Codable {
         case let .date(_, date):
             try container.encode(Int32(11), forKey: "_rawValue")
             try container.encode(date, forKey: "date")
+        case .analyticsExcluded:
+            try container.encode(Int32(12), forKey: "_rawValue")
         }
     }
 
@@ -209,7 +223,7 @@ public extension ChatTextInputAttribute {
             }
         case .animated:
             return false
-        case .date:
+        case .date, .analyticsExcluded:
             return self.weight == rhs.weight
         }
     }
@@ -237,7 +251,7 @@ public extension ChatTextInputAttribute {
             return range
         case let .quote(range, _):
             return range
-        case let .date(range, _):
+        case let .date(range, _), let .analyticsExcluded(range):
             return range
         }
     }
@@ -268,6 +282,8 @@ public extension ChatTextInputAttribute {
             return .quote(range, collapsed)
         case let .date(_, date):
             return .date(range, date)
+        case .analyticsExcluded:
+            return .analyticsExcluded(range)
         }
     }
 }
@@ -314,7 +330,9 @@ public func chatTextAttributes(from attributedText: NSAttributedString) -> [Chat
     attributedText.enumerateAttributes(in: NSRange(location: 0, length: attributedText.length), options: [], using: { attributes, range, _ in
         for (key, value) in attributes {
             let range = range.location ..< (range.location + range.length)
-            if key == TextInputAttributes.bold {
+            if key == chatInputAnalyticsExcludedAttribute {
+                parsedAttributes.append(.analyticsExcluded(range))
+            } else if key == TextInputAttributes.bold {
                 parsedAttributes.append(.bold(range))
             } else if key == TextInputAttributes.italic {
                 parsedAttributes.append(.italic(range))
@@ -362,6 +380,12 @@ public final class ChatTextInputState: Codable, Equatable {
 
 
     public let attributes:[ChatTextInputAttribute]
+    public var hasExcludedAnalytics: Bool {
+        return attributes.contains { attribute in
+            if case let .analyticsExcluded(range) = attribute { return !range.isEmpty }
+            return false
+        }
+    }
     public let selectionRange: Range<Int>
 
 
@@ -484,7 +508,23 @@ public final class ChatTextInputState: Codable, Equatable {
         let upperBound = try container.decode(Int32.self, forKey: "s1")
 
         self.selectionRange = Int(lowerBound) ..< Int(upperBound)
-        self.attributes = try container.decode([ChatTextInputAttribute].self, forKey: "t.a").filter { !$0.range.isEmpty }
+        var attributes = try container.decode([ChatTextInputAttribute].self, forKey: "t.a")
+        let count = self.inputText.utf16.count
+        let bounds = (try? container.decodeIfPresent([Int32].self, forKey: "t.ae")) ?? [0, Int32(clamping: count)]
+        if bounds.count % 2 != 0 {
+            attributes.append(.analyticsExcluded(0 ..< count))
+        } else {
+            for index in stride(from: 0, to: bounds.count, by: 2) {
+                let lower = Int(bounds[index])
+                let upper = Int(bounds[index + 1])
+                guard lower >= 0, upper >= lower, upper <= count else {
+                    attributes.append(.analyticsExcluded(0 ..< count))
+                    continue
+                }
+                if lower < upper { attributes.append(.analyticsExcluded(lower ..< upper)) }
+            }
+        }
+        self.attributes = attributes.sorted(by: <)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -492,7 +532,20 @@ public final class ChatTextInputState: Codable, Equatable {
         try container.encode(self.inputText, forKey: "t")
         try container.encode(Int32(self.selectionRange.lowerBound), forKey: "s0")
         try container.encode(Int32(self.selectionRange.upperBound), forKey: "s1")
-        try container.encode(self.attributes, forKey: "t.a")
+        try container.encode(self.attributes.filter { attribute in
+            if case .analyticsExcluded = attribute { return false }
+            return true
+        }, forKey: "t.a")
+        let exclusions = self.attributes.flatMap { attribute -> [Int32] in
+            if case let .analyticsExcluded(range) = attribute, !range.isEmpty {
+                guard let lower = Int32(exactly: range.lowerBound), let upper = Int32(exactly: range.upperBound) else {
+                    return [0, Int32(clamping: self.inputText.utf16.count)]
+                }
+                return [lower, upper]
+            }
+            return []
+        }
+        try container.encode(exclusions, forKey: "t.ae")
     }
 
     public func unique(isPremium: Bool) -> ChatTextInputState {
@@ -539,6 +592,8 @@ public final class ChatTextInputState: Codable, Equatable {
                 result.addAttribute(TextInputAttributes.quote, value: TextInputTextQuoteAttribute(collapsed: collapsed), range: range)
             case let .date(_, date):
                 result.addAttribute(TextInputAttributes.formattedDate, value: TextInputTextDateAttribute(date: date), range: range)
+            case .analyticsExcluded:
+                result.addAttribute(chatInputAnalyticsExcludedAttribute, value: true as NSNumber, range: range)
             }
         }
         return .init(inputText: result, selectionRange: self.selectionRange)
@@ -598,7 +653,15 @@ public final class ChatTextInputState: Codable, Equatable {
 
         let subText = attributedString().attributedSubstring(from: range).trimmed
 
-        let localAttributes = chatTextAttributes(from: subText)
+        let parsedAttributes = chatTextAttributes(from: subText)
+        let hasExcludedAnalytics = parsedAttributes.contains { attribute in
+            if case .analyticsExcluded = attribute { return true }
+            return false
+        }
+        let localAttributes = parsedAttributes.filter { attribute in
+            if case .analyticsExcluded = attribute { return false }
+            return true
+        }
 
 
         var raw:String = subText.string
@@ -767,6 +830,8 @@ public final class ChatTextInputState: Codable, Equatable {
                     attributes.append(.animated(newRange.min ..< newRange.max, id, fileId, file, itemId))
                 case let .date(_, date):
                     attributes.append(.date(newRange.min ..< newRange.max, date))
+                case .analyticsExcluded:
+                    break
                 }
           //  }
         }
@@ -811,6 +876,9 @@ public final class ChatTextInputState: Codable, Equatable {
             }
         }
 
+        if hasExcludedAnalytics && !appliedText.isEmpty {
+            attributes.append(.analyticsExcluded(0 ..< appliedText.utf16.count))
+        }
         attributes = concatAttributes(attributes).sorted(by: { $0.range.lowerBound < $1.range.lowerBound })
 
         return ChatTextInputState(inputText: appliedText, selectionRange: 0 ..< 0, attributes: attributes)
@@ -846,6 +914,8 @@ public final class ChatTextInputState: Codable, Equatable {
                 entities.append(.init(range: range, type: .BlockQuote(isCollapsed: collapsed)))
             case let .date(range, date):
                 entities.append(.init(range: range, type: .FormattedDate(format: .full(timeFormat: .short, dateFormat: .short, dayOfWeek: false), date: date)))
+            case .analyticsExcluded:
+                break
             }
         }
 

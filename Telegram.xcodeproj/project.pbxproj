@@ -31,7 +31,6 @@
 		270375EE2C9CCEF3003EC235 /* SEFoldersRowItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270375ED2C9CCEF3003EC235 /* SEFoldersRowItem.swift */; };
 		270375F12C9CDF20003EC235 /* duck_passcode.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 270375F02C9CDF20003EC235 /* duck_passcode.tgs */; };
 		270375F22C9CDF20003EC235 /* duck_passcode.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 270375F02C9CDF20003EC235 /* duck_passcode.tgs */; };
-		270375F72C9DB4BF003EC235 /* RLottie.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A7ED5DAE236C7CE100040372 /* RLottie.framework */; };
 		270375FB2C9DB505003EC235 /* SELottiePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270375FA2C9DB505003EC235 /* SELottiePlayer.swift */; };
 		270375FD2C9DBC13003EC235 /* InputView in Frameworks */ = {isa = PBXBuildFile; productRef = 270375FC2C9DBC13003EC235 /* InputView */; };
 		270376002C9DBCFE003EC235 /* SEUIInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270375FF2C9DBCFE003EC235 /* SEUIInputView.swift */; };
@@ -156,10 +155,6 @@
 		273367452762584F0027441E /* menu_view_sticker_set.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 273367442762584E0027441E /* menu_view_sticker_set.tgs */; };
 		2733674727625A270027441E /* menu_show_message.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 2733674627625A270027441E /* menu_show_message.tgs */; };
 		2733674927625BD80027441E /* menu_promote.tgs in Resources */ = {isa = PBXBuildFile; fileRef = 2733674827625BD80027441E /* menu_promote.tgs */; };
-		27352DE52CE479A200220A87 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = 27352DE12CE479A200220A87 /* index.html */; };
-		27352DE62CE479A200220A87 /* index.bundle.js in Resources */ = {isa = PBXBuildFile; fileRef = 27352DE22CE479A200220A87 /* index.bundle.js */; };
-		27352DE72CE479A200220A87 /* index.bundle.js.LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 27352DE32CE479A200220A87 /* index.bundle.js.LICENSE.txt */; };
-		27352DE82CE479A200220A87 /* headless_prologue.js in Resources */ = {isa = PBXBuildFile; fileRef = 27352DE02CE479A200220A87 /* headless_prologue.js */; };
 		2738A2D4289C41CE00EC1010 /* CurrencyFormat in Frameworks */ = {isa = PBXBuildFile; productRef = 2738A2D3289C41CE00EC1010 /* CurrencyFormat */; };
 		2738A2E228A124F700EC1010 /* gift.scn in Resources */ = {isa = PBXBuildFile; fileRef = 2738A2E128A124F700EC1010 /* gift.scn */; };
 		2739A4B02CABC52A0065186B /* libopenh264.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2739A4AF2CABC4260065186B /* libopenh264.a */; };
@@ -741,7 +736,6 @@
 		A7B6DDD723ED935100B8E01C /* think_spectacular.tgs in Resources */ = {isa = PBXBuildFile; fileRef = A7B6DDD623ED8FDF00B8E01C /* think_spectacular.tgs */; };
 		A7C7215923FD473E00CE3F75 /* success_saved.tgs in Resources */ = {isa = PBXBuildFile; fileRef = A7C7215823FD473D00CE3F75 /* success_saved.tgs */; };
 		A7D08F48236AC9B6002DC240 /* Sparkle.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F0BCD9E2087BABC001D8D8A /* Sparkle.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
-		A7ED5DAF236C7CE100040372 /* RLottie.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A7ED5DAE236C7CE100040372 /* RLottie.framework */; };
 		A9C15C11EF1D92CB50C3C49E /* AvatarUI in Frameworks */ = {isa = PBXBuildFile; productRef = F4B0D49190392E25D95F356C /* AvatarUI */; };
 		AAFDB93441D554F4DDDD2A3C /* MMMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18524B4FE5ADD178018D610 /* MMMenuItem.swift */; };
 		AD222865622A8F09AF07440F /* TelegramCallsCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E5BFC7C71CF642C3D445C46 /* TelegramCallsCore */; };
@@ -919,8 +913,11 @@
 		1ADD8BCCDC6049B68CE86BFE /* SimilarPeersHooksInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4793112A0E44048B603D019 /* SimilarPeersHooksInstall.swift */; };
 		53C2655B791449A18A453BBD /* GroupsInCommonUI in Frameworks */ = {isa = PBXBuildFile; productRef = 8C849FFE3CF443CEAAFD9A65 /* GroupsInCommonUI */; };
 		5105D43394A54BCB8773E53C /* QrStudioUI in Frameworks */ = {isa = PBXBuildFile; productRef = 019B2BAFB79C48F1A4A5666E /* QrStudioUI */; };
+		A1A11A1A0000000000000001 /* AppAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = A1A11A1A0000000000000003 /* AppAnalytics */; };
 		7110771E0000000000000004 /* TLottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7110771E0000000000000002 /* TLottie */; };
 		7110771E0000000000000005 /* TLottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7110771E0000000000000003 /* TLottie */; };
+		30DECBEE8AA74A1A56AEF60F /* HTMLBubbles in Frameworks */ = {isa = PBXBuildFile; productRef = 589657F73B10CCEC8FF11AAC /* HTMLBubbles */; };
+		907E872C253EDB264A46DE05 /* LiteHTML in Frameworks */ = {isa = PBXBuildFile; productRef = 4C4E0EA991C8F1F2A5CD008A /* LiteHTML */; };
 		B2011E3EB7D84C48A0B9509D /* CrashRecoveryUI in Frameworks */ = {isa = PBXBuildFile; productRef = A49FDE6EE2CE45CC94854F90 /* CrashRecoveryUI */; };
 		E9E2F04E0D564351A4C88842 /* CrashReports in Frameworks */ = {isa = PBXBuildFile; productRef = 4E0F0513AE01455B9C8A6FD8 /* CrashReports */; };
 		341A9B85F159A5C4199FEC2E /* UniqueGiftBackground in Frameworks */ = {isa = PBXBuildFile; productRef = B761798CA4CFE188189A6AB9 /* UniqueGiftBackground */; };
@@ -973,8 +970,6 @@
 		BD2936A2750E3FE6BCE9E2B3 /* DeclareEncodables.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE86FB0F59E064B14FB93C24 /* DeclareEncodables.swift */; };
 		F2C41EF6164C145291D636CC /* UpgradedAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03869200580769C2116707A9 /* UpgradedAccount.swift */; };
 		0D5921F9B5563A1D0CEC7240 /* MemoryPressureMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0C8FD904616523A51200FD /* MemoryPressureMonitor.swift */; };
-		7110771E0000000000000007 /* LottieBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7110771E0000000000000006 /* LottieBackend.swift */; };
-		7110771E0000000000000008 /* LottieBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7110771E0000000000000006 /* LottieBackend.swift */; };
 		C46301E31B6C3C75DDBE3B40 /* TransformOutgoingMessageMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A42B732BAF4538657345EDA /* TransformOutgoingMessageMedia.swift */; };
 		A4DD29EBDF4B061DC097DF07 /* SelectColorUI in Frameworks */ = {isa = PBXBuildFile; productRef = 98C169B320DF068A3C81E7FC /* SelectColorUI */; };
 		A624E60A4F34F0CDF90B607B /* GiftCraftingUI in Frameworks */ = {isa = PBXBuildFile; productRef = F685D321C7FA76A9B76D43C9 /* GiftCraftingUI */; };
@@ -987,6 +982,11 @@
 		BE3536CA4246405D5520629A /* WalletUIHooksInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A5FA781BD7994857138FCB /* WalletUIHooksInstall.swift */; };
 		C0DEBACC1000000000000001 /* AccountResetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEBACC1000000000000003 /* AccountResetSupport */; };
 		C0DEBACC1000000000000002 /* AccountResetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEBACC1000000000000004 /* AccountResetSupport */; };
+		CC1B7A5AF14F2E01D7424FED /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6E4B215D30D2FBCF08F22B /* main.swift */; };
+		6E872F6E478097CC10F446F9 /* WidgetEngineServer in Frameworks */ = {isa = PBXBuildFile; productRef = BA5A16EBE637500C87D3F0E6 /* WidgetEngineServer */; };
+		D1367CE64D2304C396B8D067 /* WidgetEngineService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A4413997759AB0FBF49F01F4 /* WidgetEngineService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AB43812C4595323370148413 /* WidgetEngineXPC in Frameworks */ = {isa = PBXBuildFile; productRef = 44ADA01DFCFE7374EA00FD45 /* WidgetEngineXPC */; };
+		4E29D9BCA23EC764A8C52357 /* WidgetEngineInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899E2E79C1BCA9EB1310CC2E /* WidgetEngineInstall.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -996,6 +996,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = C232EA901E1D07E700C4D38C;
 			remoteInfo = TelegramShare;
+		};
+		D827F2DD47CE9F74A24B8BD8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D098C70D1D7E175A007784E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 685F0F9AA720136F75F49A14;
+			remoteInfo = WidgetEngineService;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -1029,6 +1036,17 @@
 			files = (
 				C23D0D7D1F1A692100AF5151 /* SFCompactRounded-Semibold.otf in CopyFiles */,
 			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C283C17922F10230C5D04880 /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				D1367CE64D2304C396B8D067 /* WidgetEngineService.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -1182,10 +1200,6 @@
 		273367442762584E0027441E /* menu_view_sticker_set.tgs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = menu_view_sticker_set.tgs; sourceTree = "<group>"; };
 		2733674627625A270027441E /* menu_show_message.tgs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = menu_show_message.tgs; sourceTree = "<group>"; };
 		2733674827625BD80027441E /* menu_promote.tgs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = menu_promote.tgs; sourceTree = "<group>"; };
-		27352DE02CE479A200220A87 /* headless_prologue.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = headless_prologue.js; sourceTree = "<group>"; };
-		27352DE12CE479A200220A87 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
-		27352DE22CE479A200220A87 /* index.bundle.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = index.bundle.js; sourceTree = "<group>"; };
-		27352DE32CE479A200220A87 /* index.bundle.js.LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = index.bundle.js.LICENSE.txt; sourceTree = "<group>"; };
 		2738A2D2289C416D00EC1010 /* CurrencyFormat */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = CurrencyFormat; path = packages/CurrencyFormat; sourceTree = "<group>"; };
 		2738A2E128A124F700EC1010 /* gift.scn */ = {isa = PBXFileReference; lastKnownFileType = file.bplist; path = gift.scn; sourceTree = "<group>"; };
 		2739A4AF2CABC4260065186B /* libopenh264.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libopenh264.a; path = "core-xprojects/OpenH264/build/output/lib/libopenh264.a"; sourceTree = "<group>"; };
@@ -1745,7 +1759,6 @@
 		A778DC3223C8988300DD307B /* quiz-correct.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "quiz-correct.mp3"; sourceTree = "<group>"; };
 		A7B6DDD623ED8FDF00B8E01C /* think_spectacular.tgs */ = {isa = PBXFileReference; lastKnownFileType = file; path = think_spectacular.tgs; sourceTree = "<group>"; };
 		A7C7215823FD473D00CE3F75 /* success_saved.tgs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = success_saved.tgs; sourceTree = "<group>"; };
-		A7ED5DAE236C7CE100040372 /* RLottie.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = RLottie.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A8A54700244F738A12C45A9D /* ComponentsUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ComponentsUI; path = packages/ComponentsUI; sourceTree = "<group>"; };
 		B0D5D3584C170AB1B6762876 /* ExternalVideoUtils */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ExternalVideoUtils; path = packages/ExternalVideoUtils; sourceTree = "<group>"; };
 		B2D5F3A17C8E5B7F92640D22 /* ImageCanvasUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ImageCanvasUI; path = packages/ImageCanvasUI; sourceTree = "<group>"; };
@@ -1915,7 +1928,6 @@
 		D1EFE4428B52C940362DA386 /* TelegramTheme */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TelegramTheme; path = packages/TelegramTheme; sourceTree = "<group>"; };
 		D5B08F4979BCB167ED5B75E4 /* BusinessUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BusinessUI; path = packages/BusinessUI; sourceTree = "<group>"; };
 		AC0C8FD904616523A51200FD /* MemoryPressureMonitor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MemoryPressureMonitor.swift; sourceTree = "<group>"; };
-		7110771E0000000000000006 /* LottieBackend.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LottieBackend.swift; sourceTree = "<group>"; };
 		1A42B732BAF4538657345EDA /* TransformOutgoingMessageMedia.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TransformOutgoingMessageMedia.swift; sourceTree = "<group>"; };
 		D69B3CC3FD251983FEBC2884 /* LiteModeGlobal.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LiteModeGlobal.swift; sourceTree = "<group>"; };
 		D9BD3E9B50A62750EDEF6E9D /* EmojiReplacements */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EmojiReplacements; path = packages/EmojiReplacements; sourceTree = "<group>"; };
@@ -1956,7 +1968,10 @@
 		C4793112A0E44048B603D019 /* SimilarPeersHooksInstall.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SimilarPeersHooksInstall.swift; sourceTree = "<group>"; };
 		2382F66FCB03472CB031B1D7 /* GroupsInCommonUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GroupsInCommonUI; path = packages/GroupsInCommonUI; sourceTree = "<group>"; };
 		3735CDD1DC42418CBDF358F5 /* QrStudioUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = QrStudioUI; path = packages/QrStudioUI; sourceTree = "<group>"; };
+		A1A11A1A0000000000000002 /* AppAnalytics */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AppAnalytics; path = packages/AppAnalytics; sourceTree = "<group>"; };
 		7110771E0000000000000001 /* TLottie */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TLottie; path = packages/TLottie; sourceTree = "<group>"; };
+		5C94B84ADCF6712D513310F8 /* HTMLBubbles */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HTMLBubbles; path = packages/HTMLBubbles; sourceTree = "<group>"; };
+		CDDA54A8CE97AA908186682D /* twidget */ = {isa = PBXFileReference; lastKnownFileType = folder; name = twidget; path = "third-party/twidget"; sourceTree = "<group>"; };
 		2314496AC5714CD1BDBAF6C8 /* CrashRecoveryUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CrashRecoveryUI; path = packages/CrashRecoveryUI; sourceTree = "<group>"; };
 		DFD6737EF55F4DC5A158E555 /* CrashReports */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CrashReports; path = packages/CrashReports; sourceTree = "<group>"; };
 		04850EEC74576A5B5C55CF1F /* UniqueGiftBackground */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UniqueGiftBackground; path = packages/UniqueGiftBackground; sourceTree = "<group>"; };
@@ -2005,6 +2020,12 @@
 		345CA31BC0A2A11FA5B91D15 /* SelectColorUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SelectColorUI; path = packages/SelectColorUI; sourceTree = "<group>"; };
 		DC03D85B85DFD13971D4E5B3 /* GiftCraftingUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GiftCraftingUI; path = packages/GiftCraftingUI; sourceTree = "<group>"; };
 		7EFAFFDDB86A365C817F7F0A /* PasscodeCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PasscodeCore; path = "submodules/telegram-ios/submodules/PasscodeCore"; sourceTree = "<group>"; };
+		A4413997759AB0FBF49F01F4 /* WidgetEngineService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = WidgetEngineService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		5F6E4B215D30D2FBCF08F22B /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		ABF66411700BA1DDFC88C019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		528B2F559B52BB3D94E4DFF5 /* WidgetEngineService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WidgetEngineService.entitlements; sourceTree = "<group>"; };
+		4DC0434B47892A4E54633FA7 /* WidgetEngineXPC */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WidgetEngineXPC; path = packages/WidgetEngineXPC; sourceTree = "<group>"; };
+		899E2E79C1BCA9EB1310CC2E /* WidgetEngineInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetEngineInstall.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2045,7 +2066,6 @@
 				2745FECF274F94F200546B05 /* GZIP in Frameworks */,
 				270376272CA1FD70003EC235 /* libwebp.a in Frameworks */,
 				278926C327550BB200923087 /* ColorPalette in Frameworks */,
-				270375F72C9DB4BF003EC235 /* RLottie.framework in Frameworks */,
 				27D43DCA279191F7006968A6 /* libjpeg.a in Frameworks */,
 				2745FED5274F952600546B05 /* Localization in Frameworks */,
 				277C209527A2F5940070B3BF /* ManagedFile in Frameworks */,
@@ -2069,6 +2089,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB43812C4595323370148413 /* WidgetEngineXPC in Frameworks */,
 				179E9277EEDF6EE57D278A28 /* MTProtoRustEngine in Frameworks */,
 				26F8A3445EB870ACB07A9BAA /* PasscodeCore in Frameworks */,
 				A624E60A4F34F0CDF90B607B /* GiftCraftingUI in Frameworks */,
@@ -2088,6 +2109,9 @@
 				7BE4259A2C3D4D73BBBC2302 /* SelectCountryUI in Frameworks */,
 				53C2655B791449A18A453BBD /* GroupsInCommonUI in Frameworks */,
 				5105D43394A54BCB8773E53C /* QrStudioUI in Frameworks */,
+				A1A11A1A0000000000000001 /* AppAnalytics in Frameworks */,
+				30DECBEE8AA74A1A56AEF60F /* HTMLBubbles in Frameworks */,
+				907E872C253EDB264A46DE05 /* LiteHTML in Frameworks */,
 				B2011E3EB7D84C48A0B9509D /* CrashRecoveryUI in Frameworks */,
 				E9E2F04E0D564351A4C88842 /* CrashReports in Frameworks */,
 				341A9B85F159A5C4199FEC2E /* UniqueGiftBackground in Frameworks */,
@@ -2225,7 +2249,6 @@
 				279FD2AD273C1291004F08A1 /* TgVoipWebrtc in Frameworks */,
 				A71DC82B23858312000EEDE2 /* CoreSpotlight.framework in Frameworks */,
 				2738A2D4289C41CE00EC1010 /* CurrencyFormat in Frameworks */,
-				A7ED5DAF236C7CE100040372 /* RLottie.framework in Frameworks */,
 				27B6D05727393A3D00C785C7 /* GraphUI in Frameworks */,
 				27A69796273D253B00B33415 /* rnoise in Frameworks */,
 				277C209827A2F6160070B3BF /* YuvConversion in Frameworks */,
@@ -2307,6 +2330,14 @@
 				27D696FA274F8462008A723E /* InAppSettings in Frameworks */,
 				2796FF042742462400DA653C /* Svg in Frameworks */,
 				7110771E0000000000000004 /* TLottie in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		73F6812026D24777E226F3B4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E872F6E478097CC10F446F9 /* WidgetEngineServer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2437,16 +2468,6 @@
 			path = levels;
 			sourceTree = "<group>";
 		};
-		27352DE42CE479A200220A87 /* index */ = {
-			isa = PBXGroup;
-			children = (
-				27352DE12CE479A200220A87 /* index.html */,
-				27352DE22CE479A200220A87 /* index.bundle.js */,
-				27352DE32CE479A200220A87 /* index.bundle.js.LICENSE.txt */,
-			);
-			path = index;
-			sourceTree = "<group>";
-		};
 		2761432B2BD7EEB80034338C /* chatlist */ = {
 			isa = PBXGroup;
 			children = (
@@ -2514,15 +2535,6 @@
 				27916F21287D77600046DB44 /* symbols.tgs */,
 			);
 			path = emojies;
-			sourceTree = "<group>";
-		};
-		279FA4292CBE9A4500E4F64C /* hls */ = {
-			isa = PBXGroup;
-			children = (
-				27352DE02CE479A200220A87 /* headless_prologue.js */,
-				27352DE42CE479A200220A87 /* index */,
-			);
-			path = hls;
 			sourceTree = "<group>";
 		};
 		27ABFD212858C219006C3301 /* matrix */ = {
@@ -2748,6 +2760,7 @@
 		27F3B7592739300C00B81F10 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				4DC0434B47892A4E54633FA7 /* WidgetEngineXPC */,
 				FD784E303A88B94212763B13 /* MTProtoRustEngine */,
 				7EFAFFDDB86A365C817F7F0A /* PasscodeCore */,
 				DC03D85B85DFD13971D4E5B3 /* GiftCraftingUI */,
@@ -2767,7 +2780,10 @@
 				447E693028674930A9722A3F /* SelectCountryUI */,
 				2382F66FCB03472CB031B1D7 /* GroupsInCommonUI */,
 				3735CDD1DC42418CBDF358F5 /* QrStudioUI */,
+				A1A11A1A0000000000000002 /* AppAnalytics */,
 				7110771E0000000000000001 /* TLottie */,
+				5C94B84ADCF6712D513310F8 /* HTMLBubbles */,
+				CDDA54A8CE97AA908186682D /* twidget */,
 				2314496AC5714CD1BDBAF6C8 /* CrashRecoveryUI */,
 				DFD6737EF55F4DC5A158E555 /* CrashReports */,
 				04850EEC74576A5B5C55CF1F /* UniqueGiftBackground */,
@@ -3083,7 +3099,6 @@
 				A65E34E2CEB962279BC862DB /* keys */,
 				9307BA574F76E961D54A1049 /* config */,
 				270FECB22E38DD19006F6468 /* levels */,
-				279FA4292CBE9A4500E4F64C /* hls */,
 				27B836172B5FC11F00E82683 /* emoji */,
 				2703407B282CFC0900D0156C /* premium */,
 				27672EC426F8D7A900297DB4 /* notifies */,
@@ -3113,7 +3128,6 @@
 				D69B3CC3FD251983FEBC2884 /* LiteModeGlobal.swift */,
 				1A42B732BAF4538657345EDA /* TransformOutgoingMessageMedia.swift */,
 				AC0C8FD904616523A51200FD /* MemoryPressureMonitor.swift */,
-				7110771E0000000000000006 /* LottieBackend.swift */,
 				2728991826CBC0D100F4D288 /* UNUserNotifications.swift */,
 				B6D631D58182DCD43C3A20FF /* ChatInteractionPermissions.swift */,
 			);
@@ -3365,6 +3379,7 @@
 				27F3B7592739300C00B81F10 /* Packages */,
 				D098C7171D7E175A007784E4 /* Telegram-Mac */,
 				C232EA921E1D07E700C4D38C /* TelegramShare */,
+				43BAAD307E34D5A7D9B68645 /* WidgetEngineService */,
 				D098C7161D7E175A007784E4 /* Products */,
 				D098C7311D7E18CB007784E4 /* Frameworks */,
 				F050574E30202ABC006E48EA /* Recovered References */,
@@ -3374,6 +3389,7 @@
 		D098C7161D7E175A007784E4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				A4413997759AB0FBF49F01F4 /* WidgetEngineService.xpc */,
 				D098C7151D7E175A007784E4 /* Telegram.app */,
 				C232EA911E1D07E700C4D38C /* TelegramShare.appex */,
 			);
@@ -3432,6 +3448,7 @@
 				554B601E15396C04F91A9E21 /* ChatInterfaceHooksInstall.swift */,
 				01456D5203088EC1D3D48E9E /* ChatListUIHooksInstall.swift */,
 				085C235EF244A96985919765 /* ChatMediaUIHooksInstall.swift */,
+				899E2E79C1BCA9EB1310CC2E /* WidgetEngineInstall.swift */,
 				C46867846617ED724AC19C18 /* ChatPanelsHooksInstall.swift */,
 				B9015F12CCB6A7B8ABB58C3B /* ChatUIHooksInstall.swift */,
 				7CDCF724D46ECA49786B658C /* CollageHooksInstall.swift */,
@@ -3574,7 +3591,6 @@
 				A71DC82A23858311000EEDE2 /* CoreSpotlight.framework */,
 				A74EB06F237961A1005F55AE /* AppCenter.framework */,
 				A74EB070237961A1005F55AE /* AppCenterCrashes.framework */,
-				A7ED5DAE236C7CE100040372 /* RLottie.framework */,
 				9F6FF3212248E298004364FE /* UserNotifications.framework */,
 				9F4EEF8321D4F59C002C3B33 /* Accelerate.framework */,
 				9F13EE182100B6DA00562E53 /* Contacts.framework */,
@@ -3616,6 +3632,17 @@
 				C2D70AF11F2BFB3700AE768E /* Telegram.xcodeproj */,
 			);
 			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		43BAAD307E34D5A7D9B68645 /* WidgetEngineService */ = {
+			isa = PBXGroup;
+			children = (
+				5F6E4B215D30D2FBCF08F22B /* main.swift */,
+				ABF66411700BA1DDFC88C019 /* Info.plist */,
+				528B2F559B52BB3D94E4DFF5 /* WidgetEngineService.entitlements */,
+			);
+			name = WidgetEngineService;
+			path = "Telegram-Mac/WidgetEngineService";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -3683,6 +3710,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = D098C7221D7E175A007784E4 /* Build configuration list for PBXNativeTarget "Telegram" */;
 			buildPhases = (
+				C283C17922F10230C5D04880 /* Embed XPC Services */,
 				CE4D72C9B2A34D84A52D6A02 /* Check TelegramApi Sources */,
 				161B8B778DC5A90FA234F9E6 /* Check Wallet Engine Bindings */,
 				C20D5AB61DAA94500042616A /* Copy Files */,
@@ -3694,10 +3722,12 @@
 			buildRules = (
 			);
 			dependencies = (
+				4F3B0F64E65A2AC4EEC0B039 /* PBXTargetDependency */,
 				275E4B3F2EEC24B700BC1A68 /* PBXTargetDependency */,
 			);
 			name = Telegram;
 			packageProductDependencies = (
+				44ADA01DFCFE7374EA00FD45 /* WidgetEngineXPC */,
 				65444FEC9F6C1C634AC14116 /* MTProtoRustEngine */,
 				C0C39F69D94F71B3D37CE102 /* PasscodeCore */,
 				F685D321C7FA76A9B76D43C9 /* GiftCraftingUI */,
@@ -3717,7 +3747,10 @@
 				857E4375FE0F41E9A737B925 /* SelectCountryUI */,
 				8C849FFE3CF443CEAAFD9A65 /* GroupsInCommonUI */,
 				019B2BAFB79C48F1A4A5666E /* QrStudioUI */,
+				A1A11A1A0000000000000003 /* AppAnalytics */,
 				7110771E0000000000000002 /* TLottie */,
+				589657F73B10CCEC8FF11AAC /* HTMLBubbles */,
+				4C4E0EA991C8F1F2A5CD008A /* LiteHTML */,
 				A49FDE6EE2CE45CC94854F90 /* CrashRecoveryUI */,
 				4E0F0513AE01455B9C8A6FD8 /* CrashReports */,
 				B761798CA4CFE188189A6AB9 /* UniqueGiftBackground */,
@@ -3887,6 +3920,26 @@
 			productReference = D098C7151D7E175A007784E4 /* Telegram.app */;
 			productType = "com.apple.product-type.application";
 		};
+		685F0F9AA720136F75F49A14 /* WidgetEngineService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ADF7D22D8049146525BACA5D /* Build configuration list for PBXNativeTarget "WidgetEngineService" */;
+			buildPhases = (
+				5B87F39F24B3419A73BC1CE9 /* Sources */,
+				73F6812026D24777E226F3B4 /* Frameworks */,
+				0101530326B1AC6C817A54D2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WidgetEngineService;
+			packageProductDependencies = (
+				BA5A16EBE637500C87D3F0E6 /* WidgetEngineServer */,
+			);
+			productName = WidgetEngineService;
+			productReference = A4413997759AB0FBF49F01F4 /* WidgetEngineService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -3968,6 +4021,7 @@
 			);
 			projectRoot = "";
 			targets = (
+				685F0F9AA720136F75F49A14 /* WidgetEngineService */,
 				D098C7141D7E175A007784E4 /* Telegram */,
 				C232EA901E1D07E700C4D38C /* TelegramShare */,
 			);
@@ -4304,10 +4358,6 @@
 				A7C7215923FD473E00CE3F75 /* success_saved.tgs in Resources */,
 				27336743276247820027441E /* menu_copyright.tgs in Resources */,
 				C27AAFE61DE9D2EE009B9629 /* PhoneCountries.txt in Resources */,
-				27352DE52CE479A200220A87 /* index.html in Resources */,
-				27352DE62CE479A200220A87 /* index.bundle.js in Resources */,
-				27352DE72CE479A200220A87 /* index.bundle.js.LICENSE.txt in Resources */,
-				27352DE82CE479A200220A87 /* headless_prologue.js in Resources */,
 				277C208927A2858D0070B3BF /* menu_speaker.tgs in Resources */,
 				27D91314283646CA007CF40F /* text_to_voice.tgs in Resources */,
 				2773A54425FA324B00AB45E9 /* voice_chat_unmute.tgs in Resources */,
@@ -4538,6 +4588,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0101530326B1AC6C817A54D2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 
@@ -4611,7 +4668,6 @@
 				C232EA981E1D07E700C4D38C /* ShareViewController.swift in Sources */,
 				C23BC36E1E9ACCD100D79F92 /* SEUnauthorizedViewController.swift in Sources */,
 				C232EAB01E1D110500C4D38C /* SESelectController.swift in Sources */,
-				7110771E0000000000000008 /* LottieBackend.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4619,6 +4675,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4E29D9BCA23EC764A8C52357 /* WidgetEngineInstall.swift in Sources */,
 				BE3536CA4246405D5520629A /* WalletUIHooksInstall.swift in Sources */,
 				4B9679F90FE2EF0F0FD21C7A /* PasscodeUIHooksInstall.swift in Sources */,
 				E568F0911A11424B5B985A64 /* AccountManagerSetup.swift in Sources */,
@@ -4738,7 +4795,14 @@
 				9F7B740F2229618E006610E4 /* SharedWakeupManager.swift in Sources */,
 				9F3D5F6322044D8700CB0CAA /* AppUpdateViewController.swift in Sources */,
 				C2303E8A1D9A76D800098E12 /* MainViewController.swift in Sources */,
-				7110771E0000000000000007 /* LottieBackend.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B87F39F24B3419A73BC1CE9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC1B7A5AF14F2E01D7424FED /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4749,6 +4813,11 @@
 			isa = PBXTargetDependency;
 			target = C232EA901E1D07E700C4D38C /* TelegramShare */;
 			targetProxy = 275E4B3E2EEC24B700BC1A68 /* PBXContainerItemProxy */;
+		};
+		4F3B0F64E65A2AC4EEC0B039 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 685F0F9AA720136F75F49A14 /* WidgetEngineService */;
+			targetProxy = D827F2DD47CE9F74A24B8BD8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -4908,7 +4977,7 @@
 					"$(PROJECT_DIR)/core-xprojects/tde2e/build/tde2e/lib",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 13.1.0;
+				MARKETING_VERSION = 13.2.0;
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "-ObjC";
@@ -4961,7 +5030,7 @@
 					"$(PROJECT_DIR)/core-xprojects/dav1d/build/dav1d/lib",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 13.1.0;
+				MARKETING_VERSION = 13.2.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -5013,7 +5082,7 @@
 					"$(PROJECT_DIR)/core-xprojects/dav1d/build/dav1d/lib",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 13.1.0;
+				MARKETING_VERSION = 13.2.0;
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "";
@@ -5134,7 +5203,7 @@
 					"$(PROJECT_DIR)/core-xprojects/tde2e/build/tde2e/lib",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 13.1.0;
+				MARKETING_VERSION = 13.2.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_LDFLAGS = "-ObjC";
@@ -5151,6 +5220,68 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
+		};
+		9472475D95A60FFE6EA72B20 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Telegram-Mac/WidgetEngineService/WidgetEngineService.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 6N38VWS5BX;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				INFOPLIST_FILE = "Telegram-Mac/WidgetEngineService/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.keepcoder.Telegram.WidgetEngine;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				VALID_ARCHS = "arm64 x86_64";
+			};
+			name = Debug;
+		};
+		372C029CB572B0DF7815324F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Telegram-Mac/WidgetEngineService/WidgetEngineService.entitlements";
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 6N38VWS5BX;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				INFOPLIST_FILE = "Telegram-Mac/WidgetEngineService/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.keepcoder.Telegram.WidgetEngine;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALID_ARCHS = "arm64 x86_64";
+			};
+			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
@@ -5178,6 +5309,15 @@
 			buildConfigurations = (
 				D098C7241D7E175A007784E4 /* Debug */,
 				C232EA261E1BC1A100C4D38C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		ADF7D22D8049146525BACA5D /* Build configuration list for PBXNativeTarget "WidgetEngineService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9472475D95A60FFE6EA72B20 /* Debug */,
+				372C029CB572B0DF7815324F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -5946,6 +6086,10 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = InactiveChannelsUI;
 		};
+		A1A11A1A0000000000000003 /* AppAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AppAnalytics;
+		};
 		7110771E0000000000000002 /* TLottie */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TLottie;
@@ -5961,6 +6105,14 @@
 		019B2BAFB79C48F1A4A5666E /* QrStudioUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = QrStudioUI;
+		};
+		589657F73B10CCEC8FF11AAC /* HTMLBubbles */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HTMLBubbles;
+		};
+		4C4E0EA991C8F1F2A5CD008A /* LiteHTML */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LiteHTML;
 		};
 		A49FDE6EE2CE45CC94854F90 /* CrashRecoveryUI */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -6081,6 +6233,14 @@
 		C0DEBACC1000000000000004 /* AccountResetSupport */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AccountResetSupport;
+		};
+		BA5A16EBE637500C87D3F0E6 /* WidgetEngineServer */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WidgetEngineServer;
+		};
+		44ADA01DFCFE7374EA00FD45 /* WidgetEngineXPC */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WidgetEngineXPC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
