@@ -316,7 +316,9 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 }
                 
                 entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_admin_right(rights), data: .init(name: text, color: theme.colors.text, type: .switchable(state.rights.contains(right)), viewType: bestGeneralViewType(rightsOrder, for: i), enabled: enabled, action: {
-                    // arguments.toggleAdminRight(right)
+                    arguments.toggleRight(rights, !state.rights.contains(right))
+                }, switchAction: {
+                    arguments.toggleRight(rights, !state.rights.contains(right))
                 })))
             case let .sub(type, subRights):
                 
