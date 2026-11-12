@@ -1,0 +1,279 @@
+import Cocoa
+import XCTest
+
+public enum System {
+    public static var backingScale: CGFloat = 2
+}
+
+final class Atomic<Value> {
+    private var value: Value
+    private let lock = NSLock()
+
+    init(value: Value) {
+        self.value = value
+    }
+
+    func with<Result>(_ body: (Value) -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(value)
+    }
+
+    func swap(_ next: Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        let old = value
+        value = next
+        return old
+    }
+}
+
+func convertPixelsToDisplayColorSpace(source: UnsafeRawPointer, destination: UnsafeMutableRawPointer, width: Int, height: Int, bytesPerRow: Int) -> CGColorSpace? {
+    return nil
+}
+
+extension NSColor {
+    convenience init(_ pixel: UInt32) {
+        self.init(calibratedRed: CGFloat((pixel >> 16) & 255) / 255, green: CGFloat((pixel >> 8) & 255) / 255, blue: CGFloat(pixel & 255) / 255, alpha: CGFloat((pixel >> 24) & 255) / 255)
+    }
+}
+
+extension CGSize {
+__ASPECT__
+}
+
+public class Media {}
+
+struct Dimensions {
+    let size: CGSize
+}
+
+struct Representation {
+    let dimensions: Dimensions
+}
+
+final class TelegramMediaImage: Media {
+    let representations: [Representation]
+
+    init(_ size: CGSize?) {
+        representations = size.map { [Representation(dimensions: Dimensions(size: $0))] } ?? []
+    }
+}
+
+final class TelegramMediaFile: Media {
+    let dimensions: Dimensions?
+    let previewRepresentations: [Representation]
+    var isVideo = true
+    var isInstantVideo = false
+    var isSticker = false
+    var isGraphicFile = false
+    var isAnimatedSticker = false
+    var isVideoSticker = false
+
+    init(round: Bool = false, size: CGSize? = CGSize(width: 240, height: 240), preview: CGSize? = nil) {
+        isInstantVideo = round
+        dimensions = size.map(Dimensions.init)
+        previewRepresentations = preview.map { [Representation(dimensions: Dimensions(size: $0))] } ?? []
+    }
+}
+
+func largestImageRepresentation(_ values: [Representation]) -> Representation? {
+    return values.max { $0.dimensions.size.width * $0.dimensions.size.height < $1.dimensions.size.width * $1.dimensions.size.height }
+}
+
+func largestRepresentationForPhoto(_ image: TelegramMediaImage) -> Representation? {
+    return largestImageRepresentation(image.representations)
+}
+
+struct Message {
+    let anyMedia: Media?
+    var containsSecretMedia = false
+}
+
+struct Quote {
+    let media: Media?
+}
+
+class ChatAccessoryModel {
+    var updatedMedia: Media? { nil }
+}
+
+final class ReplyFixture: ChatAccessoryModel {
+    var replyMessage: Message?
+    var quote: Quote?
+
+    init(media: Media?, quote: Media? = nil, secret: Bool = false) {
+        replyMessage = Message(anyMedia: media, containsSecretMedia: secret)
+        self.quote = quote.map { Quote(media: $0) }
+    }
+
+__SELECTION__
+    func arguments() -> TransformImageArguments? {
+        guard let updatedMedia else {
+            return nil
+        }
+__GEOMETRY__
+                return arguments
+            }
+        return nil
+    }
+}
+
+final class RoundVideoReplyThumbnailTests: XCTestCase {
+    private func arguments(_ media: Media?, quote: Media? = nil) throws -> TransformImageArguments {
+        return try XCTUnwrap(ReplyFixture(media: media, quote: quote).arguments())
+    }
+
+    private func assertRadius(_ arguments: TransformImageArguments, _ radius: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(arguments.corners, ImageCorners(radius: radius), file: file, line: line)
+        XCTAssertEqual(arguments.boundingSize, CGSize(width: 30, height: 30), file: file, line: line)
+    }
+
+    private func raster(_ arguments: TransformImageArguments, scale: CGFloat, white: Bool = false) -> DrawingContext {
+        let context = DrawingContext(size: arguments.drawingSize, scale: scale, clear: true)
+        context.withContext { cg in
+            cg.setFillColor(CGColor(red: 1, green: white ? 1 : 0.25, blue: white ? 1 : 0.5, alpha: 1))
+            cg.fill(arguments.drawingRect)
+        }
+        addCorners(context, arguments: arguments, scale: scale)
+        return context
+    }
+
+    private func alpha(_ context: DrawingContext, x: Int, y: Int) -> UInt32 {
+        return context.bytes.advanced(by: y * context.bytesPerRow).assumingMemoryBound(to: UInt32.self)[x] >> 24
+    }
+
+    private func assertCircle(_ context: DrawingContext, file: StaticString = #filePath, line: UInt = #line) {
+        let width = Int(context.scaledSize.width)
+        let height = Int(context.scaledSize.height)
+        var wrongInside = 0
+        var wrongOutside = 0
+        var alphaSum = 0.0
+        for y in 0..<height {
+            for x in 0..<width {
+                let dx = (CGFloat(x) + 0.5) / context.scale - 15
+                let dy = (CGFloat(y) + 0.5) / context.scale - 15
+                let distance = sqrt(dx * dx + dy * dy)
+                let value = alpha(context, x: x, y: y)
+                if distance < 13.5 && value != 255 { wrongInside += 1 }
+                if distance > 16.5 && value != 0 { wrongOutside += 1 }
+                alphaSum += Double(value) / 255
+            }
+        }
+        XCTAssertEqual(wrongInside, 0, file: file, line: line)
+        XCTAssertEqual(wrongOutside, 0, file: file, line: line)
+        XCTAssertGreaterThan(alphaSum / Double(width * height), 0.76, file: file, line: line)
+        XCTAssertLessThan(alphaSum / Double(width * height), 0.81, file: file, line: line)
+    }
+
+    func testRoundVideoUsesHalfThumbnailRadius() throws {
+        assertRadius(try arguments(TelegramMediaFile(round: true)), 15)
+    }
+
+    func testOrdinaryVideoKeepsSmallCorners() throws {
+        assertRadius(try arguments(TelegramMediaFile()), 2)
+    }
+
+    func testPhotoKeepsSmallCorners() throws {
+        assertRadius(try arguments(TelegramMediaImage(CGSize(width: 400, height: 300))), 2)
+    }
+
+    func testRoundVideoUsesPreviewDimensionsWhenNeeded() throws {
+        assertRadius(try arguments(TelegramMediaFile(round: true, size: nil, preview: CGSize(width: 160, height: 160))), 15)
+    }
+
+    func testQuotedRoundVideoUsesRoundCorners() throws {
+        assertRadius(try arguments(TelegramMediaFile(), quote: TelegramMediaFile(round: true)), 15)
+    }
+
+    func testQuotedOrdinaryVideoDoesNotInheritRoundCorners() throws {
+        assertRadius(try arguments(TelegramMediaFile(round: true), quote: TelegramMediaFile()), 2)
+    }
+
+    func testQuotedPhotoDoesNotInheritRoundCorners() throws {
+        assertRadius(try arguments(TelegramMediaFile(round: true), quote: TelegramMediaImage(CGSize(width: 100, height: 100))), 2)
+    }
+
+    func testSecretMediaThumbnailRemainsSuppressed() {
+        XCTAssertNil(ReplyFixture(media: TelegramMediaFile(round: true), secret: true).arguments())
+    }
+
+    func testMissingDimensionsDoNotCreateThumbnail() {
+        XCTAssertNil(ReplyFixture(media: TelegramMediaFile(round: true, size: nil)).arguments())
+    }
+
+    func testVideoStickerRemainsExcluded() {
+        let file = TelegramMediaFile(round: true)
+        file.isVideoSticker = true
+        XCTAssertNil(ReplyFixture(media: file).arguments())
+    }
+
+    func testAnimatedStickerKeepsFallbackSizeAndCorners() throws {
+        let file = TelegramMediaFile(size: nil)
+        file.isVideo = false
+        file.isSticker = true
+        file.isAnimatedSticker = true
+        assertRadius(try arguments(file), 2)
+    }
+
+    func testGraphicFileKeepsSmallCorners() throws {
+        let file = TelegramMediaFile()
+        file.isVideo = false
+        file.isGraphicFile = true
+        assertRadius(try arguments(file), 2)
+    }
+
+    func testReusingReplySwitchesRoundAndOrdinaryGeometry() throws {
+        let fixture = ReplyFixture(media: TelegramMediaFile(round: true))
+        assertRadius(try XCTUnwrap(fixture.arguments()), 15)
+        fixture.replyMessage = Message(anyMedia: TelegramMediaFile())
+        assertRadius(try XCTUnwrap(fixture.arguments()), 2)
+        fixture.replyMessage = Message(anyMedia: TelegramMediaFile(round: true))
+        assertRadius(try XCTUnwrap(fixture.arguments()), 15)
+    }
+
+    func testRoundCacheArgumentsDifferFromOldSquareEntry() throws {
+        let current = try arguments(TelegramMediaFile(round: true))
+        let old = TransformImageArguments(corners: ImageCorners(radius: 2), imageSize: current.imageSize, boundingSize: current.boundingSize, intrinsicInsets: current.intrinsicInsets)
+        XCTAssertNotEqual(current, old)
+        XCTAssertEqual(Set([current, old]).count, 2)
+        XCTAssertNil([old: "old square thumbnail"][current])
+    }
+
+    func testOrdinaryCacheArgumentsRemainUnchanged() throws {
+        let current = try arguments(TelegramMediaFile())
+        let old = TransformImageArguments(corners: ImageCorners(radius: 2), imageSize: current.imageSize, boundingSize: current.boundingSize, intrinsicInsets: current.intrinsicInsets)
+        XCTAssertEqual(current, old)
+        XCTAssertEqual(Set([current, old]).count, 1)
+    }
+
+    func testCirclePixelsAtOneTimesScale() throws {
+        assertCircle(raster(try arguments(TelegramMediaFile(round: true)), scale: 1))
+    }
+
+    func testCirclePixelsAtRetinaScale() throws {
+        assertCircle(raster(try arguments(TelegramMediaFile(round: true)), scale: 2))
+    }
+
+    func testWhiteSourceCornersBecomeTransparent() throws {
+        let image = raster(try arguments(TelegramMediaFile(round: true)), scale: 2, white: true)
+        for (x, y) in [(6, 6), (53, 6), (6, 53), (53, 53)] {
+            XCTAssertEqual(alpha(image, x: x, y: y), 0)
+        }
+        XCTAssertEqual(alpha(image, x: 30, y: 30), 255)
+    }
+
+    func testOrdinaryVideoKeepsPixelsOutsideCircle() throws {
+        let image = raster(try arguments(TelegramMediaFile()), scale: 2)
+        for (x, y) in [(6, 6), (53, 6), (6, 53), (53, 53)] {
+            XCTAssertEqual(alpha(image, x: x, y: y), 255)
+        }
+    }
+
+    func testRectangularVideoSourceStillUsesSquareBoundsAndCircle() throws {
+        let value = try arguments(TelegramMediaFile(round: true, size: CGSize(width: 640, height: 360)))
+        assertRadius(value, 15)
+        XCTAssertEqual(value.imageSize, CGSize(width: 54, height: 30))
+        assertCircle(raster(value, scale: 2))
+    }
+}
