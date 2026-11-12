@@ -15,26 +15,29 @@ def verify_entitlements(share_extension, entitlements):
         )
 
 
-def verify(app, codesign="codesign"):
-    share_extension = app / "Contents" / "PlugIns" / "TelegramShare.appex"
-    if not share_extension.is_dir():
-        return
-
-    executable = share_extension / "Contents" / "MacOS" / "TelegramShare"
+def read_entitlements(executable, codesign):
     result = subprocess.run(
         [codesign, "--display", "--entitlements", ":-", str(executable)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
     )
-    output = result.stdout + result.stderr
-    plist_start = output.find(b"<?xml")
+    plist_start = result.stdout.find(b"<?xml")
     if plist_start < 0:
         raise ValueError(f"could not read signed entitlements from {executable}")
     try:
-        entitlements = plistlib.loads(output[plist_start:])
-    except plistlib.InvalidFileException as error:
+        return plistlib.loads(result.stdout[plist_start:])
+    except Exception as error:
         raise ValueError(f"could not parse signed entitlements from {executable}") from error
+
+
+def verify(app, codesign="codesign"):
+    share_extension = app / "Contents" / "PlugIns" / "TelegramShare.appex"
+    if not share_extension.is_dir():
+        return
+
+    executable = share_extension / "Contents" / "MacOS" / "TelegramShare"
+    entitlements = read_entitlements(executable, codesign)
     verify_entitlements(share_extension, entitlements)
 
 
