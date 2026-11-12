@@ -250,7 +250,15 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
     private static let menuModeTransition: ContainedViewLayoutTransition = .animated(duration: ChatInputSendButton.fieldMotionDuration, curve: .easeOut)
 
-    var leftSideInset: CGFloat = sideInset
+    var leftSideInset: CGFloat {
+        let reserved = DetachedWindowControls.reservedWidth(in: window)
+        return reserved > 0 ? reserved : Self.sideInset
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        needsLayout = true
+    }
 
     var hasInlinePinnedMessage = false
     var compactTitle = false
@@ -307,14 +315,6 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
     private let glassWrapper: GlassContainerView
     private let backGhost: LiquidGlassView
-    private let windowControlsGhost: LiquidGlassView
-    private let windowControls = DetachedWindowControlsView(frame: .zero)
-    private let windowControlsDivider = View()
-    private var detachedWindowControlsVisible = false
-    private var compactDetachedHeader: Bool {
-        return chatInteraction.interactionContext.isExternal && windowControls.showsControls
-    }
-
     private let centerGhost: LiquidGlassView
     private let rightGhost: LiquidGlassView
 
@@ -521,7 +521,6 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         let cornerRadius = ChatHeaderBubblesView.bubbleHeight / 2
         
-        self.windowControlsGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: false, hasBorder: false, tintAlpha: 0.4)
         self.backGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
         self.centerGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
         self.rightGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
@@ -538,15 +537,6 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         glassWrapper.addGhost(rightGhost)
         glassWrapper.addGhost(centerGhost)
         glassWrapper.addGhost(backGhost)
-        glassWrapper.addGhost(windowControlsGhost)
-        windowControlsGhost.isHidden = true
-        addSubview(windowControls)
-        addSubview(windowControlsDivider)
-        windowControlsDivider.isHidden = true
-        windowControls.restoresTitlebarWhenWide = false
-        windowControls.visibilityChanged = { [weak self] in
-            self?.needsLayout = true
-        }
 
         rightCluster.additionalGlassEffectView = rightGhost
 
@@ -653,10 +643,6 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         updateBackButtonIcon()
         backButton.setGlassEffect(size: buttonSize)
-        backButton.setGlassEffectHidden(compactDetachedHeader)
-        if chatInteraction.interactionContext.isExternal {
-            backButton.interactiveGlassView = windowControls.showsControls ? nil : backButton
-        }
         backButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
         searchButton.set(image: theme.icons.chat_header_search, for: .Normal)
@@ -670,14 +656,11 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         applyCallButtonImage()
         callButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
-        windowControlsGhost.updateLocalizationAndTheme(theme: theme)
-        windowControlsDivider.backgroundColor = theme.colors.grayIcon.withAlphaComponent(0.3)
         backGhost.updateLocalizationAndTheme(theme: theme)
         centerGhost.updateLocalizationAndTheme(theme: theme)
         rightGhost.updateLocalizationAndTheme(theme: theme)
 
         let chatGlassTint = theme.colors.background.withAlphaComponent(0.4)
-        windowControlsGhost.customTint = chatGlassTint
         backGhost.customTint = chatGlassTint
         centerGhost.customTint = chatGlassTint
         rightGhost.customTint = chatGlassTint
@@ -1091,25 +1074,6 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         return presentation.isTopicMode || (chatInteraction.mode == .preview && presentation.chatLocation.threadId != nil)
     }
 
-    func setDetachedWindowControlsVisible(_ visible: Bool) {
-        detachedWindowControlsVisible = visible && chatInteraction.interactionContext.isExternal
-        updateDetachedWindowControls()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        updateDetachedWindowControls()
-    }
-
-    private func updateDetachedWindowControls() {
-        if detachedWindowControlsVisible, let window {
-            windowControls.attach(to: window)
-        } else {
-            windowControls.detach()
-        }
-        needsLayout = true
-    }
-
     private func sideInsetForCenterContent() -> CGFloat {
         if chatInteraction.mode == .preview {
             return Self.sideInset * 2 + Self.bubbleHeight + Self.interBubbleSpacing + 32 + 24
@@ -1148,12 +1112,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             + (searchHidden || inDoneMode ? 0 : 1)
             + (chatInteraction.mode == .preview || hidesForumMenuButton ? 0 : 1)
         let clusterWidth = RightActionsCluster.desiredWidth(buttonSize: Self.bubbleHeight, count: count)
-        let left: CGFloat
-        if windowControls.showsControls {
-            left = DetachedWindowHeaderLayout(origin: NSPoint(x: leftSideInset, y: Self.topInset), showsControls: true, hasBackButton: hasBackButton).contentMinX
-        } else {
-            left = leftSideInset + (hasBackButton ? Self.bubbleHeight + Self.interBubbleSpacing : 0)
-        }
+        let left = leftSideInset + (hasBackButton ? Self.bubbleHeight + Self.interBubbleSpacing : 0)
         let right = width - Self.sideInset - clusterWidth - (count > 0 ? Self.interBubbleSpacing : 0)
         var titleWidth: CGFloat = titleView.textLayout?.attributedString.size().width ?? 0
         titleWidth += statusControl?.frame.width ?? 0
@@ -1174,15 +1133,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         let bubbleHeight = Self.bubbleHeight
         let bubbleY = Self.topInset
-        let compactHeader = compactDetachedHeader
-        let spacing = compactHeader ? DetachedWindowHeaderLayout.spacing : Self.interBubbleSpacing
-        if chatInteraction.interactionContext.isExternal {
-            for ghost in [backGhost, centerGhost, rightGhost] {
-                ghost.hasBorder = !compactHeader
-                ghost.hasShadow = !compactHeader
-            }
-            backButton.setGlassEffectHidden(compactHeader)
-        }
+        let spacing = Self.interBubbleSpacing
         let inlineFrame = inlineHeaderFrame(for: size.width)
         if previousInlineHeaderFrame != inlineFrame {
             previousInlineHeaderFrame = inlineFrame
@@ -1195,35 +1146,17 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         glassWrapper.updateLayout(size: wrapperFrame.size, transition: transition)
 
         var leftX: CGFloat = leftSideInset
-        let showsWindowControls = windowControls.showsControls
-        windowControls.isHidden = !showsWindowControls
-        let leadingLayout = DetachedWindowHeaderLayout(origin: NSPoint(x: leftX, y: bubbleY), showsControls: showsWindowControls, hasBackButton: hasBackButton)
-        transition.updateFrame(view: windowControls, frame: leadingLayout.controlsFrame)
-        windowControls.layout()
-        syncGhost(windowControlsGhost, frame: leadingLayout.leadingPillFrame, hidden: !showsWindowControls, transition: transition)
-        if let dividerFrame = leadingLayout.dividerFrame {
-            transition.updateFrame(view: windowControlsDivider, frame: dividerFrame)
-        }
-        windowControlsDivider.isHidden = leadingLayout.dividerFrame == nil
-        if chatInteraction.interactionContext.isExternal {
-            backButton.interactiveGlassView = showsWindowControls ? nil : backButton
-            backButton.additionalGlassEffectView = showsWindowControls ? windowControlsGhost : backGhost
-        }
         if hasBackButton {
-            let backFrame = showsWindowControls ? leadingLayout.backButtonFrame : NSRect(x: leftX, y: bubbleY, width: bubbleHeight, height: bubbleHeight)
+            let backFrame = NSRect(x: leftX, y: bubbleY, width: bubbleHeight, height: bubbleHeight)
             transition.updateFrame(view: backButton, frame: backFrame)
-            syncGhost(backGhost, frame: backFrame, hidden: showsWindowControls, transition: transition)
+            syncGhost(backGhost, frame: backFrame, hidden: false, transition: transition)
             leftX += bubbleHeight + spacing
             leftEdgeHandle.isHidden = true
         } else {
             backGhost.isHidden = true
             let handleFrame = NSRect(x: 0, y: bubbleY, width: leftSideInset, height: bubbleHeight)
             transition.updateFrame(view: leftEdgeHandle, frame: handleFrame)
-            leftEdgeHandle.isHidden = showsWindowControls
-        }
-
-        if showsWindowControls {
-            leftX = leadingLayout.contentMinX
+            leftEdgeHandle.isHidden = false
         }
 
         let inDoneMode = (menuMode == .done)

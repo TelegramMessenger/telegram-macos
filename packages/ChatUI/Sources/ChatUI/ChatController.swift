@@ -11591,7 +11591,6 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         cancelAlwaysUseAIRequest()
         chatInteraction.invalidateDeferredSendActions()
         super.viewWillDisappear(animated)
-        genericView.bubblesView.setDetachedWindowControlsVisible(false)
         self.cancelMessageFocus()
         chatInteraction.dateHeaderActions.reset()
         chatInteraction.voiceTranscription?.stopForNavigation()
@@ -12279,7 +12278,6 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        genericView.bubblesView.setDetachedWindowControlsVisible(true)
         removeOffscreenAppearAnimationsBeforeCommit()
         
 

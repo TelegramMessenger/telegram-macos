@@ -23,8 +23,8 @@ import CallsUI
 import GroupCallScreenUI
 import WebAppUI
 import InlineStickerLayer
-import ComponentsUI
 import AppAnalytics
+import ComponentsUI
 
 struct UserInfoPersonalChannel : Equatable {
     let peer: EnginePeer
@@ -410,32 +410,13 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     let tableView: TableView
     let navigationBarView = NavigationBarView(frame: .zero)
     private let navBgView = View()
-    private let windowControls = DetachedWindowControlsView(frame: .zero)
-    private let windowControlsDivider = View()
-    private weak var backInteractiveGlass: NSView?
-    private let windowControlsGlass = GlassContainerView(frame: .zero, flipped: true, spacing: 5)
-    private let windowControlsGhost = LiquidGlassView(frame: .zero, cornerRadius: DetachedWindowHeaderLayout.height / 2, hasShadow: false, hasBorder: false, tintAlpha: 0.4)
-    private var detachedWindowControlsVisible = false
-    private weak var leftBar: BarView?
-    private var detachedWindowControlsTint: NSColor?
     private var navigationOverflow: CGFloat = 0
     public required init(frame frameRect: NSRect) {
         tableView = .init(frame: frameRect.size.bounds)
         super.init(frame: frameRect)
         addSubview(tableView)
         addSubview(navBgView)
-        addSubview(windowControlsGlass)
         addSubview(navigationBarView)
-        addSubview(windowControls)
-        addSubview(windowControlsDivider)
-        windowControlsDivider.isHidden = true
-        windowControls.restoresTitlebarWhenWide = false
-        windowControlsGlass.addGhost(windowControlsGhost)
-        windowControlsGlass.isHidden = true
-        windowControls.isHidden = true
-        windowControls.visibilityChanged = { [weak self] in
-            self?.needsLayout = true
-        }
         updateEdgeShadowOpacity(0)
                 
     }
@@ -467,32 +448,6 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
-        windowControlsGhost.customTint = detachedWindowControlsTint ?? theme.colors.background.withAlphaComponent(0.4)
-        windowControlsDivider.backgroundColor = theme.colors.grayIcon.withAlphaComponent(0.3)
-    }
-
-    func setDetachedWindowControlsVisible(_ visible: Bool) {
-        detachedWindowControlsVisible = visible
-        updateDetachedWindowControls()
-    }
-
-    public override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        updateDetachedWindowControls()
-    }
-
-    private func updateDetachedWindowControls() {
-        if detachedWindowControlsVisible, let window {
-            windowControls.attach(to: window)
-        } else {
-            windowControls.detach()
-        }
-        needsLayout = true
-    }
-
-    func updateDetachedWindowControlsTint(_ color: NSColor?) {
-        detachedWindowControlsTint = color
-        windowControlsGhost.customTint = color ?? theme.colors.background.withAlphaComponent(0.4)
     }
     
     
@@ -510,36 +465,16 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         super.setFrameSize(newSize)
     }
     
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateLayout(size: frame.size, transition: .immediate)
+    }
+
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        let showsControls = windowControls.showsControls
-        let hasBackButton = leftBar is BackNavigationBar
-        let leadingLayout = DetachedWindowHeaderLayout(origin: NSPoint(x: DetachedWindowHeaderLayout.sideInset, y: 12), showsControls: showsControls, hasBackButton: hasBackButton)
-        let backButtonWidth = (leftBar as? BackNavigationBar)?.button.frame.width ?? DetachedWindowHeaderLayout.height
-        let backButtonShift = showsControls && hasBackButton ? leadingLayout.backButtonFrame.midX - leadingLayout.controlsFrame.maxX - floor(backButtonWidth / 2) : 0
-        let controlsInset = (showsControls ? DetachedWindowHeaderLayout.controlsWidth : 0) + backButtonShift
-        transition.updateFrame(view: navigationBarView, frame: NSMakeRect(controlsInset, navigationOverflow, max(0, size.width - controlsInset), 64))
+        let reserved = DetachedWindowControls.reservedWidth(in: window)
+        let leading = reserved > 0 ? reserved - DetachedWindowHeaderLayout.sideInset : 0
+        transition.updateFrame(view: navigationBarView, frame: NSMakeRect(leading, navigationOverflow, max(0, size.width - leading), 64))
         transition.updateFrame(view: navBgView, frame: NSMakeRect(0, navigationOverflow, size.width, 64))
-        transition.updateFrame(view: windowControlsGlass, frame: navBgView.frame)
-        windowControlsGlass.updateLayout(size: navBgView.frame.size, transition: transition)
-        windowControlsGlass.setGhostFrame(windowControlsGhost, frame: leadingLayout.leadingPillFrame, transition: transition)
-        transition.updateFrame(view: windowControls, frame: leadingLayout.controlsFrame.offsetBy(dx: 0, dy: navigationOverflow))
-        windowControls.layout()
-        windowControlsGlass.isHidden = !showsControls
-        windowControlsGhost.isHidden = !showsControls
-        windowControls.isHidden = !showsControls
-        if let dividerFrame = leadingLayout.dividerFrame {
-            transition.updateFrame(view: windowControlsDivider, frame: dividerFrame.offsetBy(dx: 0, dy: navigationOverflow))
-        }
-        windowControlsDivider.isHidden = leadingLayout.dividerFrame == nil
-        if let backButton = (leftBar as? BackNavigationBar)?.button {
-            if showsControls, let glass = backButton.interactiveGlassView {
-                backInteractiveGlass = glass
-                backButton.interactiveGlassView = nil
-            } else if !showsControls, backButton.interactiveGlassView == nil, let glass = backInteractiveGlass {
-                backButton.interactiveGlassView = glass
-            }
-            backButton.setGlassEffectHidden(showsControls)
-        }
         transition.updateFrame(view: tableView, frame: NSMakeRect(0, 0, size.width, size.height))
     }
 
@@ -554,7 +489,6 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
     func set(leftBar: BarView, centerView: BarView, rightView: BarView, controller: ViewController, animated: Bool) {
         
         let transition: ContainedViewLayoutTransition = .immediate
-        self.leftBar = leftBar
         navigationBarView.switchLeftView(leftBar, animation: animated ? .crossfade : .none)
         navigationBarView.switchCenterView(centerView, animation: animated ? .crossfade : .none)
         navigationBarView.switchRightView(rightView, animation: animated ? .crossfade : .none)
@@ -1065,7 +999,6 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     public override func viewWillDisappear(_ animated: Bool) {
         _userArguments?.setEmojiPermissionRequestsActive(false)
         super.viewWillDisappear(animated)
-        genericView.setDetachedWindowControlsVisible(false)
         window?.removeAllHandlers(for: self)
     }
     
@@ -1077,7 +1010,6 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     public override func viewWillAppear(_ animated: Bool) {
         _userArguments?.setEmojiPermissionRequestsActive(true)
         super.viewWillAppear(animated)
-        genericView.setDetachedWindowControlsVisible(context.isExternal)
         PeerInfoNavigationHooks.shared.prefetchQrStudio(context, peer)
         if initialState == .Edit {
             update(with: initialState)
@@ -1127,7 +1059,6 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             return
         }
         navigationGlassTint = tint
-        genericView.updateDetachedWindowControlsTint(tint)
         back?.glassTintColor = tint
         for button in stackedBar.buttons {
             button.glassTintColor = tint
