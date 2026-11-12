@@ -41,6 +41,9 @@ private final class CodeEntryRowView : GeneralContainableRowView {
     fileprivate let input: CodeEntryControl = CodeEntryControl(frame: .zero)
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        input.accessibilityElementLabel = { index, count in
+            strings().voiceOverLoginCodeDigit(index, count)
+        }
         addSubview(input)
     }
     
