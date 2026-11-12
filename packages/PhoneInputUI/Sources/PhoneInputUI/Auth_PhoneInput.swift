@@ -56,13 +56,53 @@ private func formatNumber(_ number: String, country: Country) -> String {
 
 public final class Auth_CountryManager {
     public let list: [Country]
+    private let byPrefix: [String: (Country, Country.CountryCode)]
     public init(_ countries:[Country]) {
         self.list = (countries).sorted(by: { lhs, rhs in
             return lhs.name < rhs.name
         })
+        var byPrefix: [String: (Country, Country.CountryCode)] = [:]
+        for country in countries {
+            for code in country.countryCodes {
+                if !code.prefixes.isEmpty {
+                    for prefix in code.prefixes {
+                        byPrefix[code.code + prefix] = (country, code)
+                    }
+                } else {
+                    byPrefix[code.code] = (country, code)
+                }
+            }
+        }
+        if let code = Auth_CountryManager.globalCountry.countryCodes.first {
+            byPrefix[code.code] = (Auth_CountryManager.globalCountry, code)
+        }
+        self.byPrefix = byPrefix
     }
     
-    private let global: Country = .init(id: "TG", name: "Test", localizedName: "Test", countryCodes: [.init(code: "999", prefixes: [], patterns: ["XXXX X XX"])], hidden: false)
+    private static let globalCountry: Country = .init(id: "TG", name: "Test", localizedName: "Test", countryCodes: [.init(code: "999", prefixes: [], patterns: ["XXXX X XX"])], hidden: false)
+    private var global: Country {
+        return Auth_CountryManager.globalCountry
+    }
+    
+    public func item(byNumber number: String, code: String? = nil, preferred: [String: String] = [:]) -> (Country, Country.CountryCode)? {
+        var results: [(String, Country, Country.CountryCode)] = []
+        for i in 0 ..< number.count {
+            let prefix = String(number.prefix(number.count - i))
+            if let (country, countryCode) = byPrefix[prefix], code == nil || countryCode.code == code {
+                if let first = results.first, first.2.code.count > countryCode.code.count {
+                    break
+                }
+                results.append((prefix, country, countryCode))
+            }
+        }
+        guard let (key, country, countryCode) = results.first else {
+            return nil
+        }
+        if key == countryCode.code, let preferredId = preferred[countryCode.code], let preferredCountry = self.list.first(where: { $0.id == preferredId }), let preferredCode = preferredCountry.countryCodes.first(where: { $0.code == countryCode.code }) {
+            return (preferredCountry, preferredCode)
+        }
+        return (country, countryCode)
+    }
     
 
     
@@ -142,6 +182,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     private let country: TextButton = TextButton()
     
     private let country_overlay: Control = Control()
+    private var preferredCountryIdForCode: [String: String] = [:]
     private let nextView = ImageView()
     
     private let codeText:TextField = TextField()
@@ -231,6 +272,9 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             var items:[ContextMenuItem] = []
             for country in manager.list where !country.hidden {
                 let item = ContextMenuItem(country.fullName, handler: { [weak self] in
+                    if let code = country.countryCodes.first?.code {
+                        self?.preferredCountryIdForCode[code] = country.id
+                    }
                     self?.update(selected: country, update: true)
                 })
                 items.append(item)
@@ -349,38 +393,23 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             let dec = code.prefix(4)
             if field == codeText {
                 if code.length > 4 {
-                    let list = code.map {String($0)}
-                    let reduced = list.reduce([], { current, value -> [String] in
-                        var current = current
-                        current.append((current.last ?? "") + value)
-                        return current
-                    })
-                    
-                    var found: Bool = false
-                    for _code in reduced {
-                        let rest = String(code[String(_code).endIndex...])
-                        if let item = manager.item(byCodeNumber: _code, prefix: rest.prefix(1)) {
-                            codeText.stringValue = "+" + String(_code)
-                            update(selected: item, update: true, updateCode: false)
-                            
-                           
-                            let text = rest + numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-                            let formated = formatNumber(text, country: item).prefix(17)
-                            numberText.stringValue = formated
-                            window?.makeFirstResponder(numberText)
-                            numberText.setCursorToEnd()
-                            found = true
-                            self.updatePhoneNumber?(formated)
-                            break
-                        }
-                    }
-                    
-                    if !found {
+                    if let (item, itemCode) = manager.item(byNumber: code, preferred: preferredCountryIdForCode) {
+                        let rest = String(code.dropFirst(itemCode.code.count))
+                        codeText.stringValue = "+" + itemCode.code
+                        update(selected: item, update: true, updateCode: false)
+                        
+                        let text = rest + numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                        let formated = formatNumber(text, country: item).prefix(17)
+                        numberText.stringValue = formated
+                        window?.makeFirstResponder(numberText)
+                        numberText.setCursorToEnd()
+                        self.updatePhoneNumber?(formated)
+                    } else {
                         update(selected: nil, update: true, updateCode: false)
                     }
                 } else {
                     codeText.stringValue = "+" + dec
-                    let item:Country? = manager.item(byCodeNumber: dec, prefix: nil)
+                    let item:Country? = manager.item(byNumber: String(dec), code: String(dec), preferred: preferredCountryIdForCode)?.0 ?? manager.item(byCodeNumber: String(dec), prefix: nil)
                     
                     let shouldSwitch = manager.items(byCodeNumber: dec, checkAll: true).count == 1
                     update(selected: item, update: true, updateCode:false)
@@ -393,11 +422,12 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             } else if field == numberText, let item = self.selected {
                 let current = numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
 
-                let updated:Country? = manager.item(byCodeNumber: dec, prefix: current.prefix(1))
+                let updated:Country? = manager.item(byNumber: String(dec) + current, preferred: preferredCountryIdForCode)?.0 ?? manager.item(byCodeNumber: String(dec), prefix: nil)
                 if item != updated {
-                    self.update(selected: updated, update: true)
+                    self.update(selected: updated, update: true, updateCode: false)
                 }
-                let formated = formatNumber(current, country: updated ?? item).prefix(17)
+                let formatCountry: Country? = updated.flatMap { value in value.countryCodes.contains(where: { $0.code == String(dec) }) ? value : nil } ?? manager.item(byNumber: String(dec), code: String(dec))?.0
+                let formated = formatNumber(current, country: formatCountry ?? updated ?? item).prefix(17)
                 numberText.stringValue = formated
                 self.updatePhoneNumber?(formated)
             } else if field == numberText {
