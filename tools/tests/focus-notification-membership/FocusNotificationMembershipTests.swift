@@ -133,6 +133,8 @@ final class Transaction {
     var peer: Peer?
     var groupId: PeerGroupId? = .root
     var isUnread = false
+    var forumUnreadCount: Int32?
+    var displayForumAsRegularChat = false
     var contactPeerIds: Set<PeerId> = []
     var mutedPeers: [PeerId: Bool] = [:]
     var globallyMuted = false
@@ -161,6 +163,13 @@ final class Transaction {
             guard included else { return [] }
         }
         return additionalFilter?(peer) == false ? [] : [peer]
+    }
+
+    func isChatListPeerUnread(_ peer: Peer) -> Bool {
+        if let forumUnreadCount, !displayForumAsRegularChat {
+            return forumUnreadCount > 0
+        }
+        return isUnread
     }
 
     func getCombinedPeerReadState(_ peerId: PeerId) -> CombinedPeerReadState? {
@@ -314,6 +323,18 @@ private enum Tests {
         let transaction = Transaction(peer: peer)
         var unreadFolder = ChatListFilterData()
         unreadFolder.excludeRead = true
+        transaction.forumUnreadCount = 1
+        transaction.isUnread = false
+        assertMembership(true, transaction: transaction, data: unreadFolder)
+        transaction.forumUnreadCount = 0
+        transaction.isUnread = true
+        assertMembership(false, transaction: transaction, data: unreadFolder)
+        transaction.displayForumAsRegularChat = true
+        assertMembership(true, transaction: transaction, data: unreadFolder)
+        transaction.forumUnreadCount = nil
+        transaction.displayForumAsRegularChat = false
+        transaction.isUnread = false
+        print("PASS forum topic counts drive catalog and delivery, with regular-chat fallback")
         for mode in [FocusFilterMode.allowSelected, .excludeSelected] {
             let configuration = FocusFilterConfiguration(accountIds: [account], folderIds: [folder], mode: mode, effect: .both)
             let staleReadCatalog = FocusFilterCatalog(folders: [.init(id: folder, title: "Projects", peerIds: [])])

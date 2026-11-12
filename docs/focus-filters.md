@@ -267,3 +267,15 @@ System Settings discovery, activation/deactivation, real notification delivery,
 signing and interaction with a user's existing accounts require a separately
 authorized device test. Automated compilation and policy checks do not establish
 those results.
+
+## Review follow-up: 12 November 2026
+
+Forum folder membership now obtains unread state from the same Postbox helper used by the folder view. It respects effective unread topic counts and the display-as-regular-chat fallback. The helper is exposed through the existing macOS Telegram-iOS preparation patch; the submodule revision remains unchanged. Regression cases cover disagreement between peer and topic read states, both selection modes, published chat-list membership and live notification membership.
+
+Validation in the Linux maintenance environment: the preparation patch applied, reapplied idempotently, reversed, and applied again successfully. Native regression execution stopped because `xcrun` is unavailable; neither these Swift tests nor the macOS application build have been reported as passing.
+
+The remaining requests in review comment https://github.com/TelegramMessenger/telegram-macos/pull/128#issuecomment-6819660757 are not resolved by this change:
+
+- The picker still needs passcode-aware access control, including identifier resolution without breaking background activation of saved rules. A native test must cover locking while System Settings already holds entity names; hiding only subsequent query results cannot establish that cached names are cleared.
+- Actual CPU, memory and update latency of catalog scanning must be measured against a large signed-in account. This environment has neither a running macOS Telegram instance nor such an account, so no performance measurements have been claimed.
+- Configuration read failure deliberately retains the user-selected behavior: use ordinary Telegram/macOS notification settings with a visible warning until the filter can be restored. This behavior was not changed to match the reviewer's alternative suggestion.

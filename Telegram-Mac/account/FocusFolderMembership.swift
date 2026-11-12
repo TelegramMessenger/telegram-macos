@@ -12,7 +12,7 @@ struct FocusFolderChatState {
         self.peer = peer
         self.groupId = groupId
         let notificationSettingsPeerId = peer.notificationSettingsPeerId ?? peer.id
-        isUnread = transaction.getCombinedPeerReadState(peer.id)?.isUnread ?? false
+        isUnread = transaction.isChatListPeerUnread(peer)
         isContact = transaction.isPeerContact(peerId: notificationSettingsPeerId)
         isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalSettings, peer: peer, peerSettings: transaction.getPeerNotificationSettings(id: notificationSettingsPeerId))
     }
