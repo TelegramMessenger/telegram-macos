@@ -95,13 +95,19 @@ final class SupportAccountContext {
         }), forKey: .init(peerId: peerId, accountId: accountId))
         
         let isSavedMessages = peerId == context.peerId
-        let titleSignal = context.engine.data.subscribe(
-            TelegramEngine.EngineData.Item.Peer.Peer(id: peerId),
+        let titlePeers = context.engine.data.subscribe(
+            TelegramEngine.EngineData.Item.Peer.MainPeer(id: peerId),
             TelegramEngine.EngineData.Item.Peer.Peer(id: context.peerId)
         )
-        |> deliverOnMainQueue
+        let isPasscodeLocked: Signal<Bool, NoError> = appDelegate?.isPasscodeLocked ?? .single(false)
+        let titleSignal = combineLatest(queue: .mainQueue(), titlePeers, isPasscodeLocked)
         
-        self.chatTitleDisposable.set(titleSignal.start(next: { [weak window] peer, accountPeer in
+        self.chatTitleDisposable.set(titleSignal.start(next: { [weak window] peers, isLocked in
+            if isLocked {
+                window?.title = appName
+                return
+            }
+            let (peer, accountPeer) = peers
             let chatTitle: String
             if isSavedMessages {
                 chatTitle = strings().peerSavedMessages
