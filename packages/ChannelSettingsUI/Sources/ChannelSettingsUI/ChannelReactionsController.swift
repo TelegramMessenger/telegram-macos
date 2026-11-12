@@ -18,6 +18,7 @@ import AlertsUI
 import EntertainmentUI
 import ChatUI
 import InlineStickerLayer
+import AppAnalytics
 
 private final class ReactionsRowItem : GeneralRowItem {
     fileprivate let context: any AccountContextProtocol
@@ -638,6 +639,7 @@ public func ChannelReactionsController<Context: AccountContextProtocol>(context:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().channelReactionsTitle, removeAfterDisappear: false)
+    controller.analyticsScreen = .peerInfoReactions
     
     controller.contextObject = emojis
     

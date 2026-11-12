@@ -923,13 +923,20 @@ public extension NSView {
             if animated {
                 var presentBounds:NSRect = layer.bounds
                 let presentation = layer.presentation()
-                if let presentation = presentation, layer.animation(forKey:"bounds") != nil {
+                if let presentation = presentation, layer.animation(forKey:"bounds") != nil || layer.animation(forKey: "bounds.size.height") != nil {
                     presentBounds.size.width = NSWidth(presentation.bounds)
                     presentBounds.size.height = NSHeight(presentation.bounds)
                 }
-                layer.animateBounds(from: presentBounds, to: NSMakeRect(0, 0, size.width, size.height), duration: duration, timingFunction: timingFunction, removeOnCompletion: removeOnCompletion, completion: main ? completion : nil)
+                if presentBounds.width == size.width {
+                    layer.removeAnimation(forKey: "bounds")
+                    layer.animate(from: NSNumber(value: Double(presentBounds.height)), to: NSNumber(value: Double(size.height)), keyPath: "bounds.size.height", timingFunction: timingFunction, duration: duration, removeOnCompletion: removeOnCompletion, completion: main ? completion : nil)
+                } else {
+                    layer.removeAnimation(forKey: "bounds.size.height")
+                    layer.animateBounds(from: presentBounds, to: NSMakeRect(0, 0, size.width, size.height), duration: duration, timingFunction: timingFunction, removeOnCompletion: removeOnCompletion, completion: main ? completion : nil)
+                }
             } else {
                 layer.removeAnimation(forKey: "bounds")
+                layer.removeAnimation(forKey: "bounds.size.height")
             }
         }
         

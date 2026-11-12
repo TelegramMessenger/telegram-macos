@@ -10,6 +10,7 @@ import Localization
 import TelegramContext
 import TelegramTheme
 import ColorPalette
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -45,7 +46,10 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func EditTagLabelController(context: any AccountContextProtocol, reaction: MessageReaction.Reaction, label: String?) -> InputDataModalController {
+public func EditTagLabelController(context: any AccountContextProtocol, reaction: MessageReaction.Reaction, label: String?, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
 
@@ -61,13 +65,17 @@ public func EditTagLabelController(context: any AccountContextProtocol, reaction
     
     let arguments = Arguments(context: context)
     
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = origin.preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().chatReactionContextEditTag)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .chatSavedTagName
     
     controller.updateDatas = { data in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         updateState { current in
             var current = current
             current.value = data[_id_input]?.stringValue
@@ -77,10 +85,12 @@ public func EditTagLabelController(context: any AccountContextProtocol, reaction
     }
     
     controller.validateData = { _ in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let signal = context.engine.stickers.setSavedMessageTagTitle(reaction: reaction, title: stateValue.with { $0.value })
-        _ = (signal).start()
+        _ = origin.preservingPresentation(signal).start()
         close?()
-        _ = (showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 0.5)).start()
+        _ = origin.preservingPresentation(showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 0.5)).start()
         return .none
     }
     
@@ -94,8 +104,11 @@ public func EditTagLabelController(context: any AccountContextProtocol, reaction
     
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
     
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     })
     

@@ -1,0 +1,97 @@
+[
+  {
+    "file": "sudoku.html",
+    "originalSHA256": "c9347227c3fcdbef7a9f1c216a1b9e8cc63d405036fb96650e49b7666622b5df",
+    "repairedSHA256": "196bd45e9354d03739180aec6cd342c9ccf423a5854dbfdba14957727fad6d74"
+  },
+  {
+    "file": "tic-tac-toe.html",
+    "originalSHA256": "27715ed08ac449ce0062d822ca0476dc8f5e04b5c4e6f97031af46930f399e04",
+    "repairedSHA256": "bca52c6f921ac71efaa1d2bdcc7f54bd90b350590f0d70018084c5a56c3210f0"
+  },
+  {
+    "file": "type-specimen.html",
+    "originalSHA256": "261e5073aa81881bb252a8b8ee37ce70c71aaaf5c08975959dc24675bbfd3365",
+    "repairedSHA256": "64359fb93af040a49ac47bf92017646b747b878d566194b9e835d69aaa982f3d"
+  },
+  {
+    "file": "live-poll.html",
+    "originalSHA256": "99efeac02186d33ca0f326045cf5cf624d0929bdab96350a9533cfc1bc9c807d",
+    "repairedSHA256": "523e4620f69bff9a036997eb61d51153cfbe7090b3fe1c12da6ce377535d9604"
+  },
+  {
+    "file": "whack-a-mole.html",
+    "originalSHA256": "3ee379b1580235977a52d95fc804fd97638a4de2309ddca6f8e8d9c14d6e61c2",
+    "repairedSHA256": "fcf6022e02b41f3085ae50c08cfb0b3dfaa4ee1699e02944d05f6edfb8868332"
+  },
+  {
+    "file": "stopwatch-fluid.html",
+    "originalSHA256": "1724c1f5776e819d3d1ba056ee574825fda53ad580874e77d3871077e4dab59c",
+    "repairedSHA256": "850cd5c42921fd21a56654ab744b43248f13b5d48b1dce1db11fd7d1e8444c9c"
+  },
+  {
+    "file": "retention-cohorts.html",
+    "originalSHA256": "d4e5864fb9bc36bcd33f8de988b1a049281b32c8a0b53af6861807742fad47b3",
+    "repairedSHA256": "0b07141c13445c8bb5ae0b69674430a2b63fe455beb67360ce8adb9b7c5e932f"
+  },
+  {
+    "file": "stopwatch.html",
+    "originalSHA256": "60f51f027f4a8429f7954549ce0082678d6c7349f43605fe049e62dce931bcb7",
+    "repairedSHA256": "a3acb05645e1c6480d650d3ee2579693ecdd094cfd174fc4e4bcdc12e4179e69"
+  },
+  {
+    "file": "shortcuts-legacy.html",
+    "originalSHA256": "051f164a06a4f2a0f026aa742488199ccfbe86598763173c489cc7e8e5aac565",
+    "repairedSHA256": "a51d5f9112d41ada4cb476f04802249363fd7af8c0aca8d31ea71f6f85c28468"
+  },
+  {
+    "file": "phrasebook.html",
+    "originalSHA256": "c89ddcf00997e4cb3f9c3f5f4b862ed015c721e58a8d4a143ed4d91177724345",
+    "repairedSHA256": "5cb31419d1d445032f61ca4512ac037ac7effb0e2f3047372f2308bec33a6cb1"
+  },
+  {
+    "file": "packing.html",
+    "originalSHA256": "7fa75bc59959c90d8f9b8deafaf0d6d07b9ba1b754392322bf98308179bc04f3",
+    "repairedSHA256": "a22cdb42b7945e5253d8a8aa377bccabf80f834803f3b88ef15b4a2f7c8a922f"
+  },
+  {
+    "file": "music-player.html",
+    "originalSHA256": "c60bfd36e34af01423d7e256ee2585baa1fdd79919a05ad8ae0c04c8fa93b9fe",
+    "repairedSHA256": "61b57531a087f33eeba15636d042088eba769400e81bfcebb61966fa8e2a9b9d"
+  },
+  {
+    "file": "sprint.html",
+    "originalSHA256": "7c3fff393fb1e96145fa88dd3c7b782197374be5f67b8668c8330e7453a64881",
+    "repairedSHA256": "fb3bcebb2ba2aedad96bfe667a1f5301be6cd15cdb29b7b5481f84f1562069d4"
+  },
+  {
+    "file": "slots.html",
+    "originalSHA256": "a99d061f93f97cffca920542d9e1cc5de51e5882fea698bbc1617c00bf9de110",
+    "repairedSHA256": "d021e7b55e0137e1036ff1225054e5264e29787845c05b0fd2f22ed540101a01"
+  },
+  {
+    "file": "shortcuts.html",
+    "originalSHA256": "b65929e671be31239a971b6f9025f06b6c9a75c4d92d558393e59285066cfef4",
+    "repairedSHA256": "f00836b520219ec282f74cbd3ac20d28a69697273d75f1f24aa9a024302748b1"
+  },
+  {
+    "file": "reviews.html",
+    "originalSHA256": "02a18beb63d927ee074b1cd26b94dafde592d3f98ba4209595cfe59249ad7a54",
+    "repairedSHA256": "3bccf088b90a870b9f60867adb4758bb8193d8d27e5628018154fa118b717962"
+  },
+  {
+    "file": "weather.html",
+    "originalSHA256": "ceb000a53f485a50be0609cccd960cde150e114f9b5e8da998ede5a28738393f",
+    "repairedSHA256": "0ff5b410e575572ba6a9568326d9bf6c86bb4f1c92450e812747abccd62b6612"
+  },
+  {
+    "file": "revenue-table.html",
+    "originalSHA256": "d3f328dd0d7c05280c731bc5d9e8bba96370ce2d79c5f5267fb355c997d40a7a",
+    "repairedSHA256": "178e1ea0da0d8df2709245085dd62d597b28e94281e39582d6f12df0ccd7a50a"
+  },
+  {
+    "file": "rendering-quiz.html",
+    "originalSHA256": "803fe5b6b1e38978b023c18ddb0568132fe50ba61ff529f6c14b7ec09115a43b",
+    "repairedSHA256": "c42c3ba4ea8c91ff9662671e48ab52cf5f07648986a3c21826b815d01369ddc7"
+  }
+]

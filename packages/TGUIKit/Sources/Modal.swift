@@ -44,6 +44,87 @@ private class ModalBackground : Control {
     }
 }
 
+final class ModalOverlayPresentation {
+    private final class OverlayWindow: Window {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { false }
+    }
+
+    static func resolve(for requestedWindow: Window) -> ModalOverlayPresentation? {
+        if let existing = requestedWindow.modalOverlayPresentation {
+            return existing
+        }
+        let sourceWindow: Window?
+        let mainWindow: Window
+        if let parent = requestedWindow.modalPresentationParent {
+            sourceWindow = requestedWindow
+            mainWindow = parent
+        } else {
+            mainWindow = requestedWindow
+            let keyWindow = NSApp.keyWindow as? Window
+            sourceWindow = keyWindow?.modalPresentationParent === requestedWindow ? keyWindow : nil
+        }
+        if let existing = mainWindow.modalOverlayPresentation,
+           sourceWindow == nil || existing.sourceWindow === sourceWindow {
+            return existing
+        }
+        guard let sourceWindow, sourceWindow.isVisible else { return nil }
+        return ModalOverlayPresentation(mainWindow: mainWindow, sourceWindow: sourceWindow)
+    }
+
+    let window: Window
+    fileprivate weak var sourceWindow: Window?
+    private weak var mainWindow: Window?
+    private var observers: [NSObjectProtocol] = []
+
+    init(mainWindow: Window, sourceWindow: Window) {
+        self.mainWindow = mainWindow
+        self.sourceWindow = sourceWindow
+        self.window = OverlayWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.isReleasedWhenClosed = false
+        window.isMovableByWindowBackground = false
+        window.level = sourceWindow.level
+        window.collectionBehavior = [.fullScreenAuxiliary]
+        window.appearance = mainWindow.appearance
+        window.contentView?.wantsLayer = true
+        updateFrame()
+        sourceWindow.addChildWindow(window, ordered: .above)
+        mainWindow.modalOverlayPresentation = self
+        window.modalOverlayPresentation = self
+        for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: mainWindow, queue: .main) { [weak self] _ in
+                self?.updateFrame()
+            })
+        }
+    }
+
+    func contains(_ window: Window) -> Bool {
+        return self.window === window || mainWindow === window || sourceWindow === window
+    }
+
+    private func updateFrame() {
+        guard let mainWindow, let view = mainWindow.contentView else { return }
+        window.setFrame(mainWindow.convertToScreen(view.convert(view.bounds, to: nil)), display: true)
+    }
+
+    deinit {
+        let wasKey = window.isKeyWindow
+        window.parent?.removeChildWindow(window)
+        window.orderOut(nil)
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers.removeAll()
+        if wasKey, let sourceWindow, sourceWindow.isVisible {
+            sourceWindow.makeKey()
+        }
+    }
+
+}
+
 private var activeModals:[WeakReference<Modal>] = []
 
 public enum ModalCancelButtonStyle {
@@ -593,19 +674,20 @@ private final class ModalHeaderView: View {
             current?.removeFromSuperview()
             return nil
         }
+        let isText = data.image == nil && data.title != nil && !(side == .left && data.isCloseButton)
         let button: ImageButton
-        if let current, (current.contextMenu != nil) == (data.contextMenu != nil) {
+        if let current, (current.contextMenu != nil) == (data.contextMenu != nil), (current is TextButton) == isText {
             button = current
         } else {
             current?.removeFromSuperview()
-            button = makeButton(hasContextMenu: data.contextMenu != nil, side: side)
+            button = makeButton(hasContextMenu: data.contextMenu != nil, isText: isText, side: side)
         }
         applyImage(data, to: button, side: side)
         return button
     }
 
-    private func makeButton(hasContextMenu: Bool, side: Side) -> ImageButton {
-        let button = ImageButton()
+    private func makeButton(hasContextMenu: Bool, isText: Bool, side: Side) -> ImageButton {
+        let button: ImageButton = isText ? TextButton() : ImageButton()
         if hasContextMenu {
             button.contextMenu = { [weak self] in
                 guard let items = self?.headerData(side)?.contextMenu?() else {
@@ -632,6 +714,10 @@ private final class ModalHeaderView: View {
 
     private func applyImage(_ data: ModalHeaderData, to button: ImageButton, side: Side) {
         let pres = customTheme()
+        if let button = button as? TextButton, let title = data.title {
+            applyTitle(title, to: button)
+            return
+        }
         switch (side, data.isCloseButton, data.image) {
         case (.left, true, _):
             applyChrome(NSImage(named: "Icon_Pip_Close")!.precomposed(pres.text), to: button)
@@ -643,6 +729,18 @@ private final class ModalHeaderView: View {
         default:
             button.sizeToFit()
         }
+    }
+
+    private func applyTitle(_ title: String, to button: TextButton) {
+        let glassAppearance: LiquidGlassAppearance = customTheme().listBackground.lightness < 0.5 ? .forceDark : .forceLight
+        button.set(font: .medium(.text), for: .Normal)
+        button.set(color: customTheme().text, for: .Normal)
+        button.set(text: title, for: .Normal)
+        button.setGlassEffect(forceAppearance: glassAppearance)
+        button.sizeToFit()
+        button.setFrameSize(NSMakeSize(button.frame.width + 28, 36))
+        button.layer?.masksToBounds = false
+        button.setAccessibilityLabel(title)
     }
 
     private func applyChrome(_ image: CGImage, to button: ImageButton) {
@@ -917,6 +1015,11 @@ func morphControlShape(_ view: NSView) -> (radius: CGFloat, corners: CACornerMas
 // clicked item's on-screen snapshot + rect just before running its action; a modal opened right after (no
 // explicit morphSource) consumes it for an OPEN-ONLY morph, then closes normally (nothing to morph back to).
 public enum ModalMorphContextSource {
+    public struct Snapshot {
+        let image: CGImage
+        let screenRect: CGRect
+    }
+
     public private(set) static var current: (() -> NSView?)?
 
     public static func withSource<Result>(_ source: (() -> NSView?)?, perform action: () throws -> Result) rethrows -> Result {
@@ -950,6 +1053,14 @@ public enum ModalMorphContextSource {
     public static func clear() {
         pendingImage = nil
     }
+
+    public static func captureSnapshot() -> Snapshot? {
+        guard let pending = consume() else {
+            return nil
+        }
+        return Snapshot(image: pending.image, screenRect: pending.screenRect)
+    }
+
     static func consume() -> (image: CGImage, screenRect: CGRect)? {
         defer { pendingImage = nil }
         guard let image = pendingImage, CFAbsoluteTimeGetCurrent() - pendingTime < maxAge, pendingScreenRect.width >= 1, pendingScreenRect.height >= 1 else {
@@ -1003,7 +1114,18 @@ public enum ModalMorphContextSource {
 public class Modal: NSObject {
     private let visualEffectView: NSVisualEffectView?
     fileprivate let background:ModalBackground
-    fileprivate var controller:ModalViewController?
+    fileprivate func isPresented(in window: Window) -> Bool {
+        return self.window === window || overlayPresentation?.contains(window) == true
+    }
+
+    fileprivate var overlayPresentation: ModalOverlayPresentation?
+    fileprivate var controller:ModalViewController? {
+        didSet {
+            if controller == nil {
+                overlayPresentation = nil
+            }
+        }
+    }
     private var container:ModalContainerView!
     public let window:Window
     private let disposable:MetaDisposable = MetaDisposable()
@@ -1023,6 +1145,7 @@ public class Modal: NSObject {
     private let animationType: ModalAnimationType
     private let parentView: NSView?
     private let morphSource: (() -> NSView?)?
+    private let morphSnapshot: ModalMorphContextSource.Snapshot?
     private var morph: ModalMorphTransition?
     private weak var heldSource: NSView?
     private var heldSourceWasHidden: Bool = false
@@ -1078,10 +1201,11 @@ public class Modal: NSObject {
         (view as? MorphHoldObserving)?.morphHoldDidChange(false)
     }
 
-    public init(controller:ModalViewController, for window:Window, animated: Bool = true, isOverlay: Bool, animationType: ModalAnimationType, parentView: NSView? = nil, morphSource: (() -> NSView?)? = nil) {
+    public init(controller:ModalViewController, for window:Window, animated: Bool = true, isOverlay: Bool, animationType: ModalAnimationType, parentView: NSView? = nil, morphSource: (() -> NSView?)? = nil, morphSnapshot: ModalMorphContextSource.Snapshot? = nil) {
         self.parentView = parentView
         self.animationType = animationType
         self.morphSource = morphSource
+        self.morphSnapshot = morphSnapshot
         self.controller = controller
         self.window = window
         self.animated = animated
@@ -1693,11 +1817,14 @@ public class Modal: NSObject {
                 if let strongSelf = self, let controller = controller {
                     let view = strongSelf.topView
                     if controller.contentBelowBackground, !strongSelf.isOverlay {
-                        view.addSubview(controller.view)
-                        controller.view.center()
+                        let revealContent = prepareLayerAnimation([controller.view]) {
+                            view.addSubview(controller.view)
+                            controller.view.center()
+                        }
                         if strongSelf.animated {
                             controller.view.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.4, timingFunction: .spring)
                         }
+                        revealContent()
                     }
                     let bounds = view.bounds.insetBy(dx: strongSelf.window.modalInset, dy: strongSelf.window.modalInset)
 
@@ -1717,8 +1844,51 @@ public class Modal: NSObject {
                     // Context-menu morph: no explicit source was given, but a menu item was just clicked — morph
                     // the modal out of that item's snapshot (open only; the menu is gone, so the close is normal).
                     var morphStaticSource: (image: CGImage, rect: CGRect)? = nil
-                    if morphSourceView == nil, strongSelf.morphSource == nil, strongSelf.animated, case .bottomToCenter = strongSelf.animationType, !controller.isFullScreen, !controller.contentBelowBackground, !ModalMorphTransition.reduceMotion(), let pending = ModalMorphContextSource.consume() {
+                    if morphSourceView == nil, strongSelf.morphSource == nil, strongSelf.animated, case .bottomToCenter = strongSelf.animationType, !controller.isFullScreen, !controller.contentBelowBackground, !ModalMorphTransition.reduceMotion(), let pending = strongSelf.morphSnapshot ?? ModalMorphContextSource.captureSnapshot() {
                         morphStaticSource = (pending.image, pending.screenRect)
+                    }
+                    strongSelf.visualEffectView?.autoresizingMask = [.width,.height]
+                    strongSelf.background.autoresizingMask = [.width,.height]
+                    strongSelf.background.customHandler.layout = { [weak strongSelf] view in
+                        strongSelf?.container.center()
+                    }
+                    
+                    if controller.isFullScreen {
+                        
+                        strongSelf.background.customHandler.size = { [weak strongSelf] size in
+                            strongSelf?.resize(with: size, animated: false)
+                        }
+                    }
+                    
+                    var belowView: NSView?
+                    
+                    if !strongSelf.isOverlay {
+                        for subview in view.subviews.reversed() {
+                            if let subview = subview as? ModalBackground {
+                                if subview.isOverlay {
+                                    belowView = subview
+                                }
+                            }
+                        }
+                    }
+                    
+                    let background: NSView
+                    if let visualEffectView = strongSelf.visualEffectView {
+                        background = visualEffectView
+                        visualEffectView.addSubview(strongSelf.background)
+                    } else {
+                        background = strongSelf.background
+                    }
+                    
+                    let revealBackground = prepareLayerAnimation([background]) {
+                        if let belowView = belowView {
+                            view.addSubview(background, positioned: .below, relativeTo: belowView)
+                        } else {
+                            view.addSubview(background)
+                        }
+                    }
+                    if controller.isFullScreen, case .animateBackground = strongSelf.animationType {
+                        strongSelf.visualEffectView?.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
                     }
                     if strongSelf.animated, morphSourceView == nil, morphStaticSource == nil {
                         if case .alpha = strongSelf.animationType {
@@ -1749,48 +1919,6 @@ public class Modal: NSObject {
                             }
                         }
                     }
-                    strongSelf.visualEffectView?.autoresizingMask = [.width,.height]
-                    strongSelf.background.autoresizingMask = [.width,.height]
-                    strongSelf.background.customHandler.layout = { [weak strongSelf] view in
-                        strongSelf?.container.center()
-                    }
-                    
-                    if controller.isFullScreen {
-                        
-                        if case .animateBackground = strongSelf.animationType {
-                            strongSelf.visualEffectView?.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
-                        }
-                        
-                        strongSelf.background.customHandler.size = { [weak strongSelf] size in
-                            strongSelf?.resize(with: size, animated: false)
-                        }
-                    }
-                    
-                    var belowView: NSView?
-                    
-                    if !strongSelf.isOverlay {
-                        for subview in view.subviews.reversed() {
-                            if let subview = subview as? ModalBackground {
-                                if subview.isOverlay {
-                                    belowView = subview
-                                }
-                            }
-                        }
-                    }
-                    
-                    let background: NSView
-                    if let visualEffectView = strongSelf.visualEffectView {
-                        background = visualEffectView
-                        visualEffectView.addSubview(strongSelf.background)
-                    } else {
-                        background = strongSelf.background
-                    }
-                    
-                    if let belowView = belowView {
-                        view.addSubview(background, positioned: .below, relativeTo: belowView)
-                    } else {
-                        view.addSubview(background)
-                    }
                     if let morphSourceView = morphSourceView {
                         let sourceRect = strongSelf.background.convert(morphSourceView.bounds, from: morphSourceView)
                         let displayedRect = strongSelf.background.convert(ModalMorphTransition.displayedBounds(morphSourceView), from: morphSourceView)
@@ -1804,7 +1932,6 @@ public class Modal: NSObject {
                         strongSelf.closeMorphRect = sourceRect
                         strongSelf.closeMorphCorner = controlCornerRadius
                         strongSelf.closeMorphCorners = shape.corners
-                        strongSelf.holdSource(morphSourceView)
                         let contentHolder = strongSelf.container.container
                         strongSelf.morph = ModalMorphTransition.open(host: strongSelf.background, realView: strongSelf.container, liveContent: contentHolder, restoreLiveContent: { [weak strongSelf] view in strongSelf?.container.reattachContent(view) }, controlImage: strongSelf.sourceImage, modalImage: nil, backgroundColor: morphBackground, borderWidth: morphBorderWidth, borderColor: morphBorderColor, cornerRadius: controller.cornerRadius, controlCornerRadius: controlCornerRadius, controlCorners: shape.corners, from: displayedRect, to: strongSelf.container.frame, completion: { [weak strongSelf] in
                             strongSelf?.morph = nil
@@ -1823,11 +1950,14 @@ public class Modal: NSObject {
                         })
                     }
                     if controller.contentBelowBackground, strongSelf.isOverlay {
-                        view.addSubview(controller.view)
-                        controller.view.center()
+                        let revealContent = prepareLayerAnimation([controller.view]) {
+                            view.addSubview(controller.view)
+                            controller.view.center()
+                        }
                         if strongSelf.animated {
                             controller.view.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.4, timingFunction: .spring)
                         }
+                        revealContent()
                     }
                     if let value = strongSelf.controller?.becomeFirstResponder() {
                         if value {
@@ -1847,6 +1977,10 @@ public class Modal: NSObject {
                         })
                     } else {
                         strongSelf.controller?.viewDidAppear(false)
+                    }
+                    revealBackground()
+                    if strongSelf.morph != nil, let morphSourceView {
+                        strongSelf.holdSource(morphSourceView)
                     }
                 }
             }))
@@ -1876,14 +2010,14 @@ public func hasModals(_ window: Window) -> Bool {
         }
     }
     
-    return !activeModals.filter { $0.value?.window === window}.isEmpty
+    return activeModals.contains { $0.value?.isPresented(in: window) == true }
 }
 
 
 public func closeAllModals(window: Window? = nil) {
     for modal in activeModals {
         if let controller = modal.value?.controller, controller.closable {
-            if let window = window, window == modal.value?.window {
+            if let window = window, modal.value?.isPresented(in: window) == true {
                 modal.value?.close()
             } else if window == nil {
                 modal.value?.close()
@@ -1927,21 +2061,24 @@ public enum ModalAnimationCloseBehaviour : Equatable {
     case scaleToRect(NSRect, NSView)
 }
 
-public func showModal(with controller:ModalViewController, for window:Window, isOverlay: Bool = false, animated: Bool = true, animationType: ModalAnimationType = .bottomToCenter, morphSource: (() -> NSView?)? = nil) -> Void {
+public func showModal(with controller:ModalViewController, for window:Window, isOverlay: Bool = false, animated: Bool = true, animationType: ModalAnimationType = .bottomToCenter, morphSource: (() -> NSView?)? = nil, morphSnapshot: ModalMorphContextSource.Snapshot? = nil) -> Void {
     assert(controller.modal == nil)
-    var morphSource = morphSource ?? ModalMorphContextSource.current
+    var morphSource = morphSource ?? (morphSnapshot == nil ? ModalMorphContextSource.current : nil)
     // A modal opened straight from a button's context menu (no explicit morphSource) morphs from that
     // owning button and back, like the attach menu — see ModalMorphContextSource.consumeOwner.
-    if morphSource == nil, let owner = ModalMorphContextSource.consumeOwner() {
+    if morphSource == nil, morphSnapshot == nil, let owner = ModalMorphContextSource.consumeOwner() {
         morphSource = { [weak owner] in owner }
     }
+    let overlayPresentation = ModalOverlayPresentation.resolve(for: window)
+    let window = overlayPresentation?.window ?? window
     for weakModal in activeModals {
-        if weakModal.value?.controller?.className == controller.className, weakModal.value?.controller?.shouldCloseAllTheSameModals == true {
+        if overlayPresentation == nil, weakModal.value?.overlayPresentation == nil, weakModal.value?.controller?.className == controller.className, weakModal.value?.controller?.shouldCloseAllTheSameModals == true {
             weakModal.value?.close()
         }
     }
 
-    controller.modal = Modal(controller: controller, for: window, animated: animated, isOverlay: isOverlay, animationType: animationType, morphSource: morphSource)
+    controller.modal = Modal(controller: controller, for: window, animated: animated, isOverlay: isOverlay, animationType: animationType, morphSource: morphSource, morphSnapshot: morphSnapshot)
+    controller.modal?.overlayPresentation = overlayPresentation
     window.makeKeyAndOrderFront(nil)
     controller.modal?.show()
 }
@@ -1961,13 +2098,19 @@ public func showModal(with controller: NavigationViewController, for window:Wind
     if morphSource == nil, let owner = ModalMorphContextSource.consumeOwner() {
         morphSource = { [weak owner] in owner }
     }
+    let overlayPresentation = ModalOverlayPresentation.resolve(for: window)
+    let window = overlayPresentation?.window ?? window
     for weakModal in activeModals {
-        if weakModal.value?.controller?.className == controller.className {
+        if overlayPresentation == nil, weakModal.value?.overlayPresentation == nil, weakModal.value?.controller?.className == controller.className {
             weakModal.value?.close()
         }
     }
 
     controller.modal = Modal(controller: ModalController(controller), for: window, animated: animated, isOverlay: isOverlay, animationType: animationType, morphSource: morphSource)
+    controller.modal?.overlayPresentation = overlayPresentation
+    if overlayPresentation != nil {
+        window.makeKeyAndOrderFront(nil)
+    }
     controller.modal?.show()
 
 }

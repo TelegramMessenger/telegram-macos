@@ -15,6 +15,7 @@ import AlertsUI
 import InAppSettings
 import LocalAnimations
 import AvatarUI
+import AppAnalytics
 
 
 
@@ -188,6 +189,7 @@ public func GlobalAutoremoveMessagesController(context: any AccountContextProtoc
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().globalTimerTitle, hasDone: false)
+    controller.analyticsScreen = .settingsPrivacyAutoDelete
     
     let updateValue:(Bool)->Void = { save in
         let value = stateValue.with { $0.current }

@@ -18,6 +18,7 @@ import TelegramUtils
 import TelegramMediaUtils
 import ChatUI
 import InputDataUI
+import AppAnalytics
 
 enum PeerMediaMonthEntry : TableItemListNodeEntry {
     case line(index: MessageIndex, stableId: MessageIndex, items: [Message], galleryType: GalleryAppearType, viewType: GeneralViewType, gap: Int)
@@ -400,6 +401,11 @@ open class PeerMediaPhotosController<Context: AccountContextProtocol>: TableView
         self.tags = tags
         super.init(context)
         bar = .init(height: 0)
+        if tags.contains(.gif) {
+            analyticsScreen = .peerInfoMediaGifs
+        } else {
+            analyticsScreen = .peerInfoMediaPhotos
+        }
     }
     
     private var perRowCount: Int {
@@ -497,7 +503,7 @@ open class PeerMediaPhotosController<Context: AccountContextProtocol>: TableView
                 showChatGallery(context: context, message: message, supplyment, parameters, type: galleryType, reversed: true, chatMode: mode, chatLocation: chatLocation, contextHolder: contextHolder, cachedPeerData: self?.chatInteraction.presentation.cachedData)
             }
             
-            if message.isSensitiveContent(platform: "ios") {
+            if message.isSensitiveContent(platform: "ios", contentSettings: context.contentSettings) {
                 
                 if !context.contentConfig.sensitiveContentEnabled, context.contentConfig.canAdjustSensitiveContent {
                     let need_verification = context.appConfiguration.getBoolValue("need_age_video_verification", orElse: false)

@@ -17,6 +17,7 @@ import LocalAnimations
 import ShortPeerRow
 import FoundationUtils
 import SystemPermissions
+import AppAnalytics
 
 final class StorageUsageArguments<Context: AccountContextProtocol> {
     let context: Context
@@ -614,13 +615,13 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
                 if let _ = state.peer {
                     usageText = strings().storageUsageTelegramUsageEmptyPeer("1%")
                 } else {
-                    usageText = "Telegram uses less than 0.01% of your device storage." //TODOLANG
+                    usageText = strings().storageUsageControllerUsageLessThan("0.01%")
                 }
             } else {
                 if let _ = state.peer {
                     usageText = strings().storageUsageTelegramUsageTextPeer(String(format: "%.02f%%", usageProgress))
                 } else {
-                    usageText = "Telegram uses **\(String(format: "%.02f%%", usageProgress))** of your device storage." //TODOLANG
+                    usageText = strings().storageUsageControllerUsageText(String(format: "%.02f%%", usageProgress))
                 }
             }
         } else {
@@ -1065,6 +1066,7 @@ open class StorageUsageController<Context: AccountContextProtocol>: EditableView
         self.updateMainState = updateMainState
         self.peerId = peerId
         super.init(context)
+        self.analyticsScreen = peerId != nil ? AnalyticsScreen.settingsStorageUsageChat : AnalyticsScreen.settingsStorageUsage
     }
 
     var canEdit: Bool {
@@ -1211,6 +1213,9 @@ open class StorageUsageController<Context: AccountContextProtocol>: EditableView
             
             verifyAlert_button(for: context.window, information: strings().storageUsageClearConfirmInfo, ok: cleared ? strings().storageUsageClearConfirmOKAll : strings().storageUsageClearConfirmOKPart, successHandler: { _ in
                 _ = context.engine.resources.clearStorage(peerId: stateValue.with { $0.peerId }, categories: categories, includeMessages: [], excludeMessages: []).start(completed: updateStats)
+                if cleared {
+                    DataUsageHooks.shared.clearWidgetStorage(context, stateValue.with { $0.peerId })
+                }
                 
                 _ = updateState { current in
                     var current = current
@@ -1543,7 +1548,9 @@ public func showOutOfMemoryWarning<Context: AccountContextProtocol>(_ window: Wi
     alert.informativeText = strings().systemMemoryWarningText(freeSpace == 0 ? strings().systemMemoryWarningLessThen1GB : strings().systemMemoryWarningFreeSpace(Int(freeSpace)))
     alert.alertStyle = .critical
     
+    Analytics.shared.screens.showStandalone(.appLowDiskSpace, owner: alert)
     alert.beginSheetModal(for: window, completionHandler: { response in
+        Analytics.shared.screens.hideStandalone(owner: alert)
         switch response.rawValue {
         case 1000:
             break

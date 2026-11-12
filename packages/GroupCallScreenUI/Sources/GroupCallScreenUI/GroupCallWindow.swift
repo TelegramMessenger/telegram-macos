@@ -8,6 +8,7 @@ import TelegramCallsCore
 import TelegramContext
 import TelegramTheme
 import CallVideoLayer
+import AppAnalytics
 
 
 public func makeGroupWindow(isStream: Bool) -> Window {
@@ -79,7 +80,10 @@ public final class GroupCallContext {
     private let removeDisposable = MetaDisposable()
     private var source: CallWindowSource?
     private var presentTransition: CallWindowTransition?
+    private let analyticsJoinTime: TimeInterval = Analytics.shared.now
+    private var analyticsLeft: Bool = false
     public init(call: PresentationGroupCall, peerMemberContextsManager: PeerChannelMemberCategoriesContextsManager, window: Window) {
+        Analytics.shared.send(AnalyticsEvents.groupCallJoin(kind: call.isConference ? .conference : call.isStream ? .liveStream : .voiceChat))
         self.call = call
         self.peerMemberContextsManager = peerMemberContextsManager
         self.window = .init(window: window)
@@ -100,6 +104,10 @@ public final class GroupCallContext {
         self.navigation.viewDidAppear(false)
         removeDisposable.set((self.call.canBeRemoved |> deliverOnMainQueue).start(next: { [weak self] value in
             if value {
+                if let self, !self.analyticsLeft {
+                    self.analyticsLeft = true
+                    Analytics.shared.send(AnalyticsEvents.groupCallLeave(duration: AnalyticsValues.CallDuration(bucketing: Int(Analytics.shared.now - self.analyticsJoinTime))))
+                }
                 self?.readyClose(last: value)
             }
         }))

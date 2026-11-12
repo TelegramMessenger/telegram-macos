@@ -17,10 +17,12 @@ import InlineStickerLayer
 private final class RightActionsCluster: Control {
     let doneFill: View = View()
     let callButton: ChatAccessibleImageButton = ChatAccessibleImageButton()
+    let forumSidebarButton: ChatAccessibleImageButton = ChatAccessibleImageButton()
     let searchButton: ChatAccessibleImageButton = ChatAccessibleImageButton()
     let menuButton: ChatAccessibleImageButton = ChatAccessibleImageButton()
 
     var onCallClick: (() -> Void)?
+    var onForumSidebarClick: (() -> Void)?
     var onSearchClick: (() -> Void)?
     var onMenuClick: (() -> Void)?
 
@@ -34,7 +36,7 @@ private final class RightActionsCluster: Control {
         doneFill.isEventLess = true
         doneFill.layer?.opacity = 0
         addSubview(doneFill)
-        for btn in [callButton, searchButton, menuButton] {
+        for btn in [callButton, forumSidebarButton, searchButton, menuButton] {
             btn.userInteractionEnabled = false
             btn.autohighlight = false
             btn.layer?.masksToBounds = false
@@ -47,6 +49,8 @@ private final class RightActionsCluster: Control {
         }, for: .Click)
 
         callButton.accessibilityPress = { [weak self] in self?.onCallClick?() }
+        forumSidebarButton.accessibilityPress = { [weak self] in self?.onForumSidebarClick?() }
+        forumSidebarButton.setAccessibilityLabel(strings().chatListTopicsTag)
         searchButton.accessibilityPress = { [weak self] in self?.onSearchClick?() }
         searchButton.setAccessibilityLabel(strings().voiceOverCommonSearch)
     }
@@ -73,12 +77,13 @@ private final class RightActionsCluster: Control {
         let idx = max(0, min(visible.count - 1, Int(point.x / segWidth)))
         let target = visible[idx]
         if target === callButton { onCallClick?() }
+        else if target === forumSidebarButton { onForumSidebarClick?() }
         else if target === searchButton { onSearchClick?() }
         else if target === menuButton { onMenuClick?() }
     }
 
     var visibleButtons: [ImageButton] {
-        return [callButton, searchButton, menuButton].filter { !$0.isHidden }
+        return [callButton, forumSidebarButton, searchButton, menuButton].filter { !$0.isHidden }
     }
 
     var visibleButtonCount: Int { return visibleButtons.count }
@@ -246,6 +251,45 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
     var leftSideInset: CGFloat = sideInset
 
+    var hasInlinePinnedMessage = false
+    var compactTitle = false
+    var updateHeaderLayout: ((ContainedViewLayoutTransition) -> Void)?
+    private var previousInlinePinnedFrame: NSRect?
+
+    func inlinePinnedMessageFrame(for width: CGFloat) -> NSRect? {
+        guard hasInlinePinnedMessage else { return nil }
+        let left = leftSideInset + (hasBackButton ? Self.bubbleHeight + Self.interBubbleSpacing : 0)
+        let right = width - Self.sideInset - rightCluster.desiredWidth(buttonSize: Self.bubbleHeight) - Self.interBubbleSpacing
+        let availableWidth = right - left
+        let minPinnedWidth: CGFloat = 280
+        guard availableWidth >= 260 + Self.interBubbleSpacing + minPinnedWidth else { return nil }
+        let maxCenterWidth = availableWidth - Self.interBubbleSpacing - minPinnedWidth
+        let centerWidth = titleView.textLayout == nil ? maxCenterWidth : min(maxCenterWidth, centerContentWidth)
+        let pinnedWidth = availableWidth - Self.interBubbleSpacing - centerWidth
+        return NSRect(x: right - pinnedWidth, y: Self.topInset, width: pinnedWidth, height: Self.bubbleHeight)
+    }
+
+    private static let centerContentPadding: CGFloat = 4
+    private static let avatarTextSpacing: CGFloat = 8
+    private static let textRightPadding: CGFloat = 14
+    private static let minimumSecondLineWidth: CGFloat = 160
+
+    private var titleNaturalWidth: CGFloat = 0
+    private var statusNaturalWidth: CGFloat = 0
+
+    private var centerAvatarSize: CGFloat {
+        return max(32, avatarControl.frame.width)
+    }
+
+    private var centerContentWidth: CGFloat {
+        let leftStatusInset: CGFloat = (leftStatusControl?.frame.width ?? 0) + (leftStatusControl != nil ? 4 : 0)
+        let titleImageInset: CGFloat = titleImageView != nil ? ((titleImageView?.image?.backingSize.width ?? 0) + 4) : 0
+        let statusControlWidth = (statusControl?.frame.width ?? 0) + (statusControl != nil ? 4 : 0)
+        let titleLineWidth = leftStatusInset + titleImageInset + titleNaturalWidth + statusControlWidth
+        let textWidth = max(titleLineWidth, statusNaturalWidth, Self.minimumSecondLineWidth)
+        return ceil(Self.centerContentPadding + centerAvatarSize + Self.avatarTextSpacing + textWidth + Self.textRightPadding)
+    }
+
     static var totalHeight: CGFloat {
         return bubbleHeight + topInset + bottomInset
     }
@@ -258,6 +302,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     private let backButton: ImageButton
     private let leftEdgeHandle: Control = Control()
     private let rightCluster: RightActionsCluster
+    private var forumSidebarButton: ChatAccessibleImageButton { rightCluster.forumSidebarButton }
 
     private let glassWrapper: GlassContainerView
     private let backGhost: LiquidGlassView
@@ -421,6 +466,22 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     var avatarAccessibilityActionName: (() -> String?)?
     var titleHandler: (() -> Void)?
     var searchHandler: (() -> Void)?
+    var isForumSidebarOpen = false {
+        didSet {
+            if oldValue != isForumSidebarOpen {
+                updateForumSidebarButtonImage()
+            }
+        }
+    }
+    var forumSidebarHandler: (() -> Void)?
+    var showsForumSidebarButton = false {
+        didSet {
+            if oldValue != showsForumSidebarButton {
+                forumSidebarButton.isHidden = !showsForumSidebarButton
+                needsLayout = true
+            }
+        }
+    }
     var callHandler: (() -> Void)?
     var doneHandler: (() -> Void)?
     var menuContextMenu: (() -> ContextMenu?)?
@@ -474,6 +535,9 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         addSubview(backButton)
         addSubview(leftEdgeHandle)
         addSubview(rightCluster)
+
+        forumSidebarButton.isHidden = true
+        rightCluster.onForumSidebarClick = { [weak self] in self?.forumSidebarHandler?() }
 
         leftEdgeHandle.set(handler: { [weak self] _ in
             self?.backHandler?()
@@ -575,6 +639,9 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         searchButton.set(image: theme.icons.chat_header_search, for: .Normal)
         searchButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
+        updateForumSidebarButtonImage()
+        forumSidebarButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
+
         menuButton.sizeToFit(NSZeroSize, buttonSize, thatFit: true)
 
         applyCallButtonImage()
@@ -592,6 +659,13 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         updateStatusText(presentation: chatInteraction.presentation)
         needsLayout = true
+    }
+
+    private func updateForumSidebarButtonImage() {
+        let palette = (currentChatTheme ?? theme).colors
+        let image = ChatUIHooks.shared.forumSidebarToggleImage?(isForumSidebarOpen) ?? TelegramThemeHooks.shared.image(.iconMonoforumToggle)
+        forumSidebarButton.set(image: image.precomposed(palette.text, flipHorizontal: true), for: .Normal)
+        forumSidebarButton.setAccessibilityValue(isForumSidebarOpen ? strings().voiceOverCommonSelected : strings().voiceOverCommonNotSelected)
     }
 
     private func applyCallButtonImage() {
@@ -617,6 +691,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     }
 
     func updatePresentation(_ presentation: ChatPresentationInterfaceState, force: Bool = false) {
+        forumSidebarButton.setAccessibilityLabel(presentation.chatLocation.peerId == chatInteraction.interactionContext.peerId || presentation.isMonoforum ? localizedString("Chat.Sidebar.ShowChats") : strings().chatListTopicsTag)
         updateStatusText(presentation: presentation, force: force)
         updatePeerExtras(presentation: presentation, animated: false)
         applyCallButtonImage()
@@ -641,7 +716,11 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             let visibleButtons = rightCluster.visibleButtons
             let menuIcon = menuButton.imageView.image
             self.applyMenuMode(animated: true)
-            self.updateLayout(size: self.frame.size, transition: Self.menuModeTransition)
+            if let updateHeaderLayout {
+                updateHeaderLayout(Self.menuModeTransition)
+            } else {
+                self.updateLayout(size: self.frame.size, transition: Self.menuModeTransition)
+            }
             rightCluster.animateVisibilityChange(from: visibleButtons)
             if let menuIcon, menuIcon != menuButton.imageView.image {
                 rightCluster.animateMenuIconChange(from: menuIcon)
@@ -879,7 +958,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         } else if let customLinkContents = chatInteraction.mode.customChatLink {
             result = result.withUpdatedTitle(customLinkContents.name.isEmpty ? customLinkContents.link : customLinkContents.name).withUpdatedStatus(customLinkContents.name.isEmpty ? "" : customLinkContents.link)
         } else if let customChatContents = chatInteraction.mode.customChatContents {
-            result = result.withUpdatedTitle(customChatContents.kind.text).withUpdatedStatus("")
+            result = result.withUpdatedTitle(customChatContents.kind.text).withUpdatedStatus(customChatContents.kind.status)
         } else if chatInteraction.mode == .pinned {
             result = result.withUpdatedTitle(strings().chatTitlePinnedMessagesOther(presentation.pinnedMessageId?.totalCount ?? 0)).withUpdatedStatus("")
         } else if chatInteraction.mode == .scheduled {
@@ -959,15 +1038,20 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         statusString.addAttribute(.font, value: NSFont.normal(.small), range: statusString.range)
 
         let titleLayout = TextViewLayout(titleString, maximumNumberOfLines: 1, truncationType: .end, alignment: .left)
+        titleLayout.measure(width: .greatestFiniteMagnitude)
+        titleNaturalWidth = titleLayout.layoutSize.width
         titleLayout.measure(width: max(60, frame.width - sideInsetForCenterContent()))
         titleView.update(titleLayout)
 
         if statusString.length > 0 {
             let statusLayout = TextViewLayout(statusString, maximumNumberOfLines: 1, truncationType: .end, alignment: .left)
+            statusLayout.measure(width: .greatestFiniteMagnitude)
+            statusNaturalWidth = statusLayout.layoutSize.width
             statusLayout.measure(width: max(60, frame.width - sideInsetForCenterContent()))
             statusView.update(statusLayout)
             statusView.isHidden = showActivities
         } else {
+            statusNaturalWidth = 0
             statusView.update(nil)
             statusView.isHidden = true
         }
@@ -988,6 +1072,24 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         return Self.sideInset * 2 + Self.bubbleHeight * 4 + Self.interBubbleSpacing * 4 + 32 + 24
     }
 
+    private var hidesForumMenuButton: Bool {
+        guard menuMode == .menu else {
+            return false
+        }
+        let presentation = chatInteraction.presentation
+        let hasForum = (presentation.mainPeer as? TelegramUser)?.botInfo?.flags.contains(.hasForum) == true
+        if let action = ChatBotForumControls.navigationAction(
+            hasForum: hasForum,
+            isPreview: chatInteraction.mode == .preview,
+            isPinned: chatInteraction.mode == .pinned,
+            historyCount: presentation.historyCount,
+            threadId: presentation.chatLocation.threadId
+        ) {
+            return action != .more
+        }
+        return false
+    }
+
     private func syncGhost(_ ghost: LiquidGlassView?, frame: NSRect, hidden: Bool, transition: ContainedViewLayoutTransition) {
         guard let ghost = ghost else { return }
         ghost.isHidden = hidden
@@ -997,14 +1099,16 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     func inlineHeaderFrame(for width: CGFloat) -> NSRect? {
         let inDoneMode = menuMode == .done
         let count = (callHidden || inDoneMode ? 0 : 1)
+            + (!showsForumSidebarButton || inDoneMode ? 0 : 1)
             + (searchHidden || inDoneMode ? 0 : 1)
-            + (chatInteraction.mode == .preview ? 0 : 1)
+            + (chatInteraction.mode == .preview || hidesForumMenuButton ? 0 : 1)
         let clusterWidth = RightActionsCluster.desiredWidth(buttonSize: Self.bubbleHeight, count: count)
         let left = leftSideInset + (hasBackButton ? Self.bubbleHeight + Self.interBubbleSpacing : 0)
         let right = width - Self.sideInset - clusterWidth - (count > 0 ? Self.interBubbleSpacing : 0)
-        let titleWidth = (titleView.textLayout?.attributedString.size().width ?? 0)
-            + (statusControl?.frame.width ?? 0) + (leftStatusControl?.frame.width ?? 0)
-            + (titleImageView?.image?.backingSize.width ?? 0)
+        var titleWidth: CGFloat = titleView.textLayout?.attributedString.size().width ?? 0
+        titleWidth += statusControl?.frame.width ?? 0
+        titleWidth += leftStatusControl?.frame.width ?? 0
+        titleWidth += titleImageView?.image?.backingSize.width ?? 0
         let statusWidth = statusView.textLayout?.attributedString.size().width ?? 0
         let preferredWidth = max(titleWidth, statusWidth) + max(32, avatarControl.frame.width) + 30
         let available = NSMakeRect(left, Self.topInset, max(0, right - left), Self.bubbleHeight)
@@ -1048,8 +1152,9 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         let inDoneMode = (menuMode == .done)
         callButton.isHidden = callHidden || inDoneMode
+        forumSidebarButton.isHidden = !showsForumSidebarButton || inDoneMode
         searchButton.isHidden = searchHidden || inDoneMode
-        menuButton.isHidden = chatInteraction.mode == .preview
+        menuButton.isHidden = chatInteraction.mode == .preview || hidesForumMenuButton
 
         let clusterCount = rightCluster.visibleButtonCount
         let clusterWidth = rightCluster.desiredWidth(buttonSize: bubbleHeight)
@@ -1061,14 +1166,20 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         syncGhost(rightGhost, frame: clusterFrame, hidden: clusterCount == 0, transition: transition)
         let rightX: CGFloat = clusterX - (clusterCount > 0 ? spacing : 0)
 
+        let inlinePinnedFrame = inlinePinnedMessageFrame(for: size.width)
+        if previousInlinePinnedFrame != inlinePinnedFrame {
+            previousInlinePinnedFrame = inlinePinnedFrame
+            superview?.needsLayout = true
+        }
         let centerAvailableMinX = leftX
-        let centerAvailableMaxX = rightX
-        let centerWidth = max(0, centerAvailableMaxX - centerAvailableMinX)
+        let centerAvailableMaxX = inlinePinnedFrame.map { $0.minX - spacing } ?? rightX
+        let maxCenterWidth = max(0, centerAvailableMaxX - centerAvailableMinX)
+        let centerWidth = compactTitle && inlinePinnedFrame == nil && titleView.textLayout != nil ? min(maxCenterWidth, centerContentWidth) : maxCenterWidth
 
-        let avatarSize: CGFloat = max(32, avatarControl.frame.width)
-        let horizontalContentPadding: CGFloat = 4
-        let avatarTextSpacing: CGFloat = 8
-        let textRightPadding: CGFloat = 14
+        let avatarSize: CGFloat = centerAvatarSize
+        let horizontalContentPadding: CGFloat = Self.centerContentPadding
+        let avatarTextSpacing: CGFloat = Self.avatarTextSpacing
+        let textRightPadding: CGFloat = Self.textRightPadding
 
         var centerRect = NSRect(x: centerAvailableMinX, y: bubbleY, width: centerWidth, height: bubbleHeight)
         if displaysInlineHeader, let inlineFrame {

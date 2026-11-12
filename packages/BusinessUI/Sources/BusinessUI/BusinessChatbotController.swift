@@ -21,6 +21,7 @@ import ChatModeTypes
 import MapKit
 import FoundationUtils
 import MessageTextUtils
+import AppAnalytics
 
 private final class BusinessBotRowItem : GeneralRowItem {
     let bot: EnginePeer
@@ -968,6 +969,7 @@ public func BusinessChatbotController(context: (any AccountContextProtocol)) -> 
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessChatbotsTitle, removeAfterDisappear: false, hasDone: true, identifier: "business_chatbot")
+    controller.analyticsScreen = .settingsBusinessChatbots
     
     
     controller.updateDatas = { datas in

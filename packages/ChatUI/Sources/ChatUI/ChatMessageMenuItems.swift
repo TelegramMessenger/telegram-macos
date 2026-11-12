@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import Cocoa
 import TGUIKit
 import TelegramCore
@@ -334,6 +335,15 @@ private func copyRichTextMessage(_ message: Message, text: String, page: Instant
     }
 }
 
+private func messageTranslationAnalyticsContext(_ message: Message, chatInteraction: ChatInteraction, inherited: AnalyticsContext? = nil) -> AnalyticsContext {
+    let origin = inherited.map { chatInteraction.captureAnalyticsContext(inherited: $0) } ?? chatInteraction.captureAnalyticsContext(sourcePeerId: message.id.peerId)
+    let restricted = origin.restricting(peerId: message.id.peerId)
+    if message.containsSecretMedia || restricted.isExcluded {
+        origin.scope?.exclude()
+        return Analytics.shared.unresolvedContext()
+    }
+    return restricted
+}
 
 public func messageFileSaveMenuItem(file: TelegramMediaFile, context: any AccountContextProtocol, message: Message, title: String, keyEquivalent: ContextMenuItem.KeyEquiavalent = .none) -> ContextMenuItem {
     if isHLSVideo(file: file), let quality = HLSQualitySet(baseFile: .message(message: MessageReference(message), media: file)) {
@@ -392,6 +402,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         return .complete()
     }
 
+    let translationOrigin = messageTranslationAnalyticsContext(message, chatInteraction: chatInteraction)
     let selectedIds = chatInteraction.presentation.selectionState?.selectedIds ?? []
     let selectedMessages: Signal<[Message], NoError>
     if selectedIds.count > 1, selectedIds.contains(message.id) {
@@ -469,7 +480,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             if canForwardMessage(replacementMessage, chatInteraction: data.chatInteraction) {
                 let forwardingAction = ChatForwardMenuAction(chatInteraction: data.chatInteraction, sources: [data.message, replacementMessage])
                 items.append(ContextMenuItem(strings().messageContextForward, handler: {
-                    forwardingAction.openPicker(messages: [replacementMessage])
+                    forwardingAction.openPicker(messages: [replacementMessage], entry: .replacementMenu)
                 }, itemImage: MenuAnimation.menu_forward.value))
             }
 
@@ -810,9 +821,9 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }, itemImage: MenuAnimation.menu_gift.value))
         }
 
-        if #available(macOS 10.15, *), let action = data.message.media.first as? TelegramMediaAction, case .gramTransfer = action.action, context.appConfiguration.getBoolValue("wallet_available", orElse: false), let user = message.peers[message.id.peerId] as? TelegramUser {
+        if #available(macOS 10.15, *), let action = data.message.media.first as? TelegramMediaAction, case let .gramTransfer(_, peerAddress, _, _, _) = action.action, context.appConfiguration.getBoolValue("wallet_available", orElse: false), let recipient = chatWalletTransferRecipient(chatPeer: message.peers[message.id.peerId], accountPeerId: context.peerId, peerAddress: peerAddress, normalizeAddress: ChatInputUIHooks.shared.walletHooks.normalizeTransferAddress) {
             firstBlock.append(ContextMenuItem(strings().chatMessageMenuItemsSendMoney, handler: {
-                showWalletSendMoney(chatInteraction: data.chatInteraction, user: user, flyIntoChat: false)
+                showWalletSendMoney(chatInteraction: data.chatInteraction, recipient: recipient, flyIntoChat: false)
             }, itemImage: MenuAnimation.menu_gram.value))
         }
         
@@ -898,7 +909,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             let toLang = context.sharedContext.baseSettings.doNotTranslate.union([appAppearance.languageCode])
             if !text.isEmpty, language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                 thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .richMessage(message.id, richAttribute.instantPage), onToneChanged: { tone in
+                    let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                    let presentation = translationContext.beginPresentation()
+                    defer { presentation.end() }
+                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .richMessage(message.id, richAttribute.instantPage), analyticsContext: translationContext, onToneChanged: { tone in
                         data.chatInteraction.setTranslateTone(tone)
                     }, translateEntireChat: {
                         data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -928,7 +942,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             if language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                 _ = peer?.canSendMessage(data.chatMode.isThreadMode) == true
                 thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .poll(message.id), onToneChanged: { tone in
+                    let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                    let presentation = translationContext.beginPresentation()
+                    defer { presentation.end() }
+                    showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .poll(message.id), analyticsContext: translationContext, onToneChanged: { tone in
                         data.chatInteraction.setTranslateTone(tone)
                     }, translateEntireChat: {
                         data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -952,7 +969,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 let isRichMessage = message.attributes.contains(where: { $0 is RichTextMessageAttribute })
                 if !isRichMessage, !(message.media.first is TelegramMediaPoll), language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                     thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .message(messageId), onToneChanged: { tone in
+                        let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                        let presentation = translationContext.beginPresentation()
+                        defer { presentation.end() }
+                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .message(messageId), analyticsContext: translationContext, onToneChanged: { tone in
                             data.chatInteraction.setTranslateTone(tone)
                         }, translateEntireChat: {
                             data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -1054,7 +1074,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                         if language == nil || !toLang.contains(language!), !muteTranslate, !isService, translateConfig.canTranslate {
                             _ = peer?.canSendMessage(data.chatMode.isThreadMode) == true
                             thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                                showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .selectedText, onToneChanged: { tone in
+                                let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                                let presentation = translationContext.beginPresentation()
+                                defer { presentation.end() }
+                                showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, entities, source: .selectedText, analyticsContext: translationContext, onToneChanged: { tone in
                                     data.chatInteraction.setTranslateTone(tone)
                                 }, translateEntireChat: {
                                     data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -1094,7 +1117,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 if language == nil || !toLang.contains(language!), !isService, translateConfig.canTranslate {
                     _ = peer?.canSendMessage(data.chatMode.isThreadMode) == true
                     thirdBlock.append(ContextMenuItem(strings().chatContextTranslate, handler: {
-                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, [], source: .transcription(messageId), onToneChanged: { tone in
+                        let translationContext = messageTranslationAnalyticsContext(data.message, chatInteraction: data.chatInteraction, inherited: translationOrigin)
+                        let presentation = translationContext.beginPresentation()
+                        defer { presentation.end() }
+                        showModal(with: ChatHistoryUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, [], source: .transcription(messageId), analyticsContext: translationContext, onToneChanged: { tone in
                             data.chatInteraction.setTranslateTone(tone)
                         }, translateEntireChat: {
                             data.chatInteraction.translateTo(appAppearance.languageCode)
@@ -1105,21 +1131,25 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }
         }
 
-        if let peer = peer as? TelegramChannel, !isService {
-            if isNotFailed, !message.isScheduledMessage {
-                thirdBlock.append(ContextMenuItem(strings().messageContextCopyMessageLink1, handler: {
-                    _ = showModalProgress(signal: context.engine.messages.exportMessageLink(peerId: peer.id, messageId: messageId, isThread: data.chatLocation.threadMsgId != nil), for: context.window).start(next: { link in
-                        if var link = link {
-                            if case let .pollOption(opaqueIdentifier) = source {
-                                let optionBase64 = opaqueIdentifier.base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
-                                link += link.contains("?") ? "&option=\(optionBase64)" : "?option=\(optionBase64)"
-                            }
-                            copyToClipboard(link)
-                        }
+        if let copyLinkKind = chatMessageCopyLinkKind(messageId: messageId, peer: peer, getPeer: { message.peers[$0] }, isService: isService), isNotFailed, !message.isScheduledMessage {
+            thirdBlock.append(ContextMenuItem(strings().messageContextCopyMessageLink1, handler: {
+                let isThread = copyLinkKind != .directMessages && data.chatLocation.threadMsgId != nil
+                _ = showModalProgress(signal: context.engine.messages.exportMessageLink(peerId: messageId.peerId, messageId: messageId, isThread: isThread), for: context.window).start(next: { exportedLink in
+                    guard var link = chatMessageCopyLink(exportedLink: exportedLink, messageId: messageId, kind: copyLinkKind) else {
+                        return
+                    }
+                    if case let .pollOption(opaqueIdentifier) = source {
+                        let optionBase64 = opaqueIdentifier.base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
+                        link += link.contains("?") ? "&option=\(optionBase64)" : "?option=\(optionBase64)"
+                    }
+                    copyToClipboard(link)
+                    if copyLinkKind == .directMessages {
+                        showModalText(for: context.window, text: strings().contextAlertCopyPrivate)
+                    } else {
                         showSuccess(window: context.window)
-                    })
-                }, itemImage: MenuAnimation.menu_copy_link.value))
-            }
+                    }
+                })
+            }, itemImage: MenuAnimation.menu_copy_link.value))
         }
         
         if canEditMessage(data.message, chatInteraction: data.chatInteraction, context: context), !isService {
@@ -1217,10 +1247,10 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             let msgs = useGroupIfNeeded ? (data.groupped ?? [data.message]) : [data.message]
             let forwardingAction = ChatForwardMenuAction(chatInteraction: chatInteraction, sources: [data.message] + msgs)
             let forwardItem = ContextMenuItem(strings().messageContextForward, handler: {
-                forwardingAction.openPicker(messages: msgs)
+                forwardingAction.openPicker(messages: msgs, entry: .messageMenu)
             }, itemImage: MenuAnimation.menu_forward.value)
             let forwardMenu = ContextMenu()
-            let forwardObject = ChatHistoryUIHooks.shared.makeForwardMessagesObjectObserved(context, [data.message], useGroupIfNeeded, chatInteraction.getMessages)
+            let forwardObject = ChatHistoryUIHooks.shared.makeForwardMessagesObjectObserved(context, [data.message], useGroupIfNeeded, chatInteraction.getMessages, analyticsContext: forwardingAction.analyticsContext)
 
             let recent = data.recentUsedPeers.filter {
                 $0.id != context.peerId && $0.canSendMessage(media: message.media.first) && !$0.isDeleted
@@ -1310,7 +1340,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
                 }
                 
                 let more = ContextMenuItem(strings().chatContextForwardMore, handler: {
-                    forwardingAction.openPicker(messages: [message])
+                    forwardingAction.openPicker(messages: [message], entry: .moreMenu)
                 }, itemImage: MenuAnimation.menu_more.value)
                 items.append(more)
             }
@@ -1352,7 +1382,8 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             if let cachedData = data.cachedData as? CachedChannelData, views >= 100 {
                 if cachedData.flags.contains(.canViewStats) {
                     thirdBlock.append(ContextMenuItem.init(strings().chatContextViewStatistics, handler: {
-                        ChatNavigationHooks.shared.pushMessageStatsObserved(context, data.message)
+                        let origin = chatInteraction.captureAnalyticsContext(sourcePeerId: messageId.peerId)
+                        ChatNavigationHooks.shared.pushMessageStatsObserved(context, data.message, analyticsContext: origin)
                     }, itemImage: MenuAnimation.menu_statistics.value))
                 }
             }

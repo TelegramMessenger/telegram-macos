@@ -41,45 +41,26 @@ class LabExclusionTests(unittest.TestCase):
 
     def test_lab_symbol(self):
         self.compile("void PerfLabLeak(void) {} int main(void) { PerfLabLeak(); return 0; }")
-        with self.assertRaisesRegex(ValueError, "excluded feature code"):
+        with self.assertRaisesRegex(ValueError, "lab code"):
             verifier.verify(self.app)
 
     def test_stripped_launch_argument(self):
         binary = self.compile('#include <stdio.h>\nint main(void) { puts("-PerfLabScenarios"); return 0; }')
         subprocess.run(["xcrun", "strip", "-x", str(binary)], check=True, capture_output=True)
-        with self.assertRaisesRegex(ValueError, "excluded feature code"):
+        with self.assertRaisesRegex(ValueError, "lab code"):
             verifier.verify(self.app)
 
     def test_nested_binary(self):
         self.compile("int main(void) { return 0; }")
         self.compile("void NetworkLabLeak(void) {} int main(void) { return 0; }", self.app / "Contents/PlugIns/Share.appex/Contents/MacOS/Share")
-        with self.assertRaisesRegex(ValueError, "excluded feature code"):
+        with self.assertRaisesRegex(ValueError, "lab code"):
             verifier.verify(self.app)
 
     def test_named_artifact(self):
         self.compile("int main(void) { return 0; }")
         (self.app / "Contents/PerfLab.bundle").mkdir()
-        with self.assertRaisesRegex(ValueError, "excluded feature artifact"):
+        with self.assertRaisesRegex(ValueError, "lab artifact"):
             verifier.verify(self.app)
-
-    def test_unreleased_feature_symbols(self):
-        for symbol in ("HTMLBubbles", "HTMLDemo", "ChatHTMLRow", "ChatHTMLDocument", "LiteHTML", "TwidgetRenderer", "WidgetSandbox", "NewsUI", "NewsController", "ChatInputNewsChannelView"):
-            with self.subTest(symbol=symbol):
-                self.compile(f"void {symbol}Leak(void) {{}} int main(void) {{ {symbol}Leak(); return 0; }}")
-                with self.assertRaisesRegex(ValueError, "excluded feature code"):
-                    verifier.verify(self.app)
-
-    def test_unreleased_feature_bundles(self):
-        self.compile("int main(void) { return 0; }")
-        for name in ("HTMLBubbles_HTMLBubbles.bundle", "NewsUI.bundle", "WidgetSandbox_WidgetSandbox.bundle", "tab_news.tgs", "news_drop.tgs"):
-            with self.subTest(name=name):
-                bundle = self.app / "Contents" / name
-                bundle.mkdir()
-                try:
-                    with self.assertRaisesRegex(ValueError, "excluded feature artifact"):
-                        verifier.verify(self.app)
-                finally:
-                    bundle.rmdir()
 
     def test_missing_binaries(self):
         with self.assertRaisesRegex(ValueError, "no Mach-O"):

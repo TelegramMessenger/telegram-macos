@@ -1,0 +1,16 @@
+First-frame and hidden-element native widget verification
+
+Commit: third-party/twidget ff399de
+No production renderer changes.
+
+Result: 6 tests, 0 failures, 28.121 seconds. Four tests are WidgetInFlightPresentationTests; two are the additional ScopedWidgetMotionTests navigation checks.
+Log: /private/tmp/widget-rescue/inflight-verified.log
+
+Three payloads: packing, phrasebook, music-player. Widths: 320 and440 points. Real pointer-down/up events. Production background WidgetExecutor, binaryOps/canvasWords/webAnimations/morphUpdates, async/shared validator, early startup and renderer pools.
+
+52 actions, 364 sampled states. Each state records a fresh document/compositor bitmap and a bitmap composed from the actual prepared native tile/canvas IOSurface contents: 728 PNGs under /private/tmp/widget-rescue/inflight.
+Target times: 0,8,16,33,66,120,220 ms. Captures keep the main loop alive; pixel analysis and PNG encoding happen after the timed sampling sequence. Every actual sample met its25 ms lateness bound; maximum observed lateness17.5 ms. Actual timestamps are in the log for every action.
+
+Assertions: fixed header/control geometry, nonblank header paint, full checkbox ink extent, unchanged phrasebook row insets, content within horizontal bounds, music artwork/waveform/controls still painted. Every sampled bitmap was checked. These are document/compositor and prepared-surface tests, not render-server screen screenshots.
+
+All19 repaired startup payloads were also checked. Their33 hidden elements occupy zero native layout bounds. Excluding all hidden elements from each native raster produces byte-identical pixels, proving they contribute no paint.

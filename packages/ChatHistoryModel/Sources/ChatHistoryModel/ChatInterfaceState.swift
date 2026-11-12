@@ -428,7 +428,7 @@ public struct ChatInterfaceState: Codable, Equatable {
                 inputState = self.inputState.withUpdatedRange(selectRange)
             } else {
                 let restored = ChatTextInputState(inputText: state.text, selectionRange: selectRange, attributes: chatTextAttributes(from: TextEntitiesMessageAttribute(entities: state.entities)))
-                inputState = ChatTextInputState(attributedText: restored.attributedString(), selectionRange: selectRange)
+                inputState = ChatTextInputState(attributedText: chatInputTextExcludingAnalytics(restored.attributedString()), selectionRange: selectRange)
             }
             result = result.withUpdatedInputState(inputState)
                 .withUpdatedReplyMessageId(state.replySubject)

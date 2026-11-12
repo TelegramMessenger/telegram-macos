@@ -12,6 +12,7 @@ import TelegramUtils
 import GeneralRows
 import InputDataUI
 import Localization
+import AppAnalytics
 
 
 private final class Arguments {
@@ -76,6 +77,7 @@ public func PaymentsShippingMethodController(context: any AccountContextProtocol
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().checkoutShippingMethod)
+    controller.analyticsScreen = .paymentsShippingMethod
     
     controller.onDeinit = {
         actionsDisposable.dispose()

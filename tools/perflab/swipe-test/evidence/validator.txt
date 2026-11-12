@@ -1,0 +1,68 @@
+▶ url policy
+  ✔ allows only data: images / fonts, host blobs and fragments (0.967083ms)
+✔ url policy (1.733958ms)
+▶ css sanitizer
+  ✔ drops url() that is not data:, keeps data: and fragments (3.143708ms)
+  ✔ drops @import, every @font-face (system fonts only), @namespace and unknown at-rules (1.157ms)
+  ✔ handles image-set, strings in url functions, var() inside url functions, escapes and nesting (6.4575ms)
+  ✔ style attributes and single properties (1.715625ms)
+✔ css sanitizer (12.793416ms)
+▶ css sanitizer: host-owned colour scheme
+  ✔ evaluates prefers-color-scheme, color-scheme and light-dark() against the host theme (0.915125ms)
+  ✔ re-emits stylesheets when the validator theme changes (0.558ms)
+✔ css sanitizer: host-owned colour scheme (1.56025ms)
+▶ validator: elements and attributes
+  ✔ drops script/iframe/object/embed/link/meta/base and their subtrees, keeps the model consistent (0.342375ms)
+  ✔ strips on* handlers, srcset, ping, formaction, background; rewrites external hrefs and img src (0.203125ms)
+  ✔ attribute updates: rejected values clear the attribute (0.185166ms)
+  ✔ SVG: href only as fragment, fill url() checked; image, feImage and SMIL are outside the profile (1.331042ms)
+  ✔ style elements: text is sanitized as a stylesheet and re-emitted on change (0.617792ms)
+  ✔ unknown elements become inert spans; html/head/body are adopted once (0.290292ms)
+✔ validator: elements and attributes (3.255041ms)
+▶ validator: protocol strictness
+  ✔ rejects malformed ops, cycles, unknown ids and bad props/calls (0.673291ms)
+  ✔ queries are validated against rendered elements and an allowlist (0.900208ms)
+  ✔ canvas commands: allowlisted methods, props and object refs only; filter, shadows, compositing and conic gradients are outside the profile (0.679458ms)
+✔ validator: protocol strictness (2.43375ms)
+▶ css sanitizer: shadow scope (ShadowDomRenderer prototype)
+  ✔ drops selectors that could reach the host page, keeps the rest of the list (3.6135ms)
+  ✔ :root becomes the renderer root attribute with the same specificity; :is(:root) too (4.123792ms)
+  ✔ width media queries become container queries on the bubble; queries outside the profile are dropped (8.055917ms)
+  ✔ viewport units become container units (stylesheets, style attributes, properties) (0.481875ms)
+  ✔ document scope (default) keeps :root, media queries and viewport units (0.155375ms)
+✔ css sanitizer: shadow scope (ShadowDomRenderer prototype) (18.074875ms)
+▶ validator: 64 KB text budget
+  ✔ caps text nodes, text data, string properties and canvas strings at 64 KB (5.008709ms)
+  ✔ keeps the 2 MB text and 4 MB canvas string limits under the default compat policy (21.074667ms)
+✔ validator: 64 KB text budget (26.172166ms)
+▶ validator: complex-script text budget
+  ✔ a document holds at most 8192 complex-script units in text nodes, counted on create, data and remove (4.320292ms)
+  ✔ does not budget complex-script text under the default compat policy (0.162792ms)
+✔ validator: complex-script text budget (4.54ms)
+▶ validator: visible attribute text budgets
+  ✔ rejects oversized visible text attributes on creation and mutation (0.19775ms)
+  ✔ shares the document budget with visible attributes and refunds removals (3.907708ms)
+  ✔ shares complex text budgets across attributes and text nodes (0.295083ms)
+  ✔ rate limits repeated attribute changes (0.592375ms)
+  ✔ preserves compatibility policy limits for visible attributes and their churn (0.107709ms)
+✔ validator: visible attribute text budgets (5.212792ms)
+▶ validator: strict budgets for text reached through attributes and CSS
+  ✔ data-* and aria-* values count like visible text, other attributes do not (4.573084ms)
+  ✔ the 60 000-ideograph data attribute from the branch review is rejected (6.019125ms)
+  ✔ attr() may only read budgeted attributes under strict (0.90725ms)
+  ✔ strings in style properties and style attributes are charged (13.7235ms)
+  ✔ stylesheet strings are charged decoded, so escapes do not hide ideographs (6.2475ms)
+  ✔ compat leaves attributes and CSS strings unbudgeted (27.799625ms)
+✔ validator: strict budgets for text reached through attributes and CSS (59.681667ms)
+▶ validator: canvas text churn
+  ✔ limits repeated canvas text while preserving other drawing commands (8.447541ms)
+  ✔ shares canvas churn with document text and keeps compatibility unrestricted (0.374667ms)
+✔ validator: canvas text churn (8.953542ms)
+ℹ tests 38
+ℹ suites 11
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1142.178125

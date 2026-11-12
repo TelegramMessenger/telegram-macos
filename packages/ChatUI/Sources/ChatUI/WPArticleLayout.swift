@@ -1,4 +1,5 @@
 import Cocoa
+import ChatHistoryModel
 import TelegramCore
 import InAppVideoServices
 import Postbox
@@ -16,6 +17,11 @@ import TelegramTheme
 public class WPArticleLayout: WPLayout {
     
     
+    public var isLoadingStory: Bool {
+        guard let story = content.story, content.image == nil, content.file == nil else { return false }
+        return ChatReferenceAvailability.resolve(hasContent: parent.associatedStories[story.storyId] != nil, referencesPending: context.account.viewTracker.pendingMessageReferences.hasLoadingReferences(messageId: parent.id)) == .loading
+    }
+
     public var imageSize:NSSize?
     public var contrainedImageSize:NSSize = NSMakeSize(54, 54)
     public var smallThumb:Bool = true
@@ -170,6 +176,8 @@ public class WPArticleLayout: WPLayout {
             }
         }
        
+        if isLoadingStory { imageSize = NSMakeSize(9, 16) }
+
         if ExternalVideoLoader.isPlayable(content) {
             _ = sharedVideoLoader.fetch(for: content).start()
         }
@@ -187,6 +195,7 @@ public class WPArticleLayout: WPLayout {
     private let fullSizeSites:[String] = ["instagram","twitter"]
     
     public var isFullImageSize: Bool {
+        if isLoadingStory { return true }
         
         
         for attr in content.attributes {

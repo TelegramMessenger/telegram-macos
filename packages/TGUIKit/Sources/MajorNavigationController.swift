@@ -97,14 +97,16 @@ open class MajorNavigationController: NavigationViewController {
                             let staleControllers = strongSelf.stack.filter { !keepSet.contains(ObjectIdentifier($0)) }
                             strongSelf.stack = [empty, controller]
                             for stale in staleControllers {
-                                strongSelf.discardContainer(for: stale)
+                                if stale === strongSelf.controller, newStyle == .none {
+                                    strongSelf.discardContainerAfterCommit(for: stale)
+                                } else {
+                                    strongSelf.discardContainer(for: stale)
+                                }
                                 stale.didRemovedFromStack()
                             }
                         }
                         
-                        CATransaction.begin()
                         strongSelf.show(controller, newStyle)
-                        CATransaction.commit()
                     }
                 }))
             }

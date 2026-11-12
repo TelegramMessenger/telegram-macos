@@ -394,9 +394,9 @@ func installSettingsUIHooks() {
     }, authorizationStatus: { context in
         return UNUserNotifications.recurrentAuthorizationStatus(context as! AccountContext) |> map { NotificationAuthorizationStatus(rawValue: $0.rawValue) ?? .notDetermined }
     }, wallet: makeSettingsWalletHooks())
-    hooks.showStoriesWithContext = { context, isHidden, initialId, singlePeer in
+    hooks.showStoriesWithContext = { context, isHidden, initialId, singlePeer, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        StoryModalController.ShowStories(context: context, isHidden: isHidden, initialId: initialId, singlePeer: singlePeer)
+        StoryModalController.ShowStories(context: context, isHidden: isHidden, initialId: initialId, singlePeer: singlePeer, analyticsContext: analyticsContext)
     }
     SettingsHooks.install(hooks)
 }
@@ -444,8 +444,8 @@ private func makeSettingsNavigationHooks() -> SettingsNavigationHooks {
     hooks.openQrStudio = { context, morphSource in
         showQrStudio(context: context, peerId: context.peerId, morphSource: morphSource)
     }
-    hooks.openQrStudioWithContext = { context, morphSource in
-        showQrStudio(context: context, peerId: context.peerId, morphSource: morphSource)
+    hooks.openQrStudioWithContext = { context, morphSource, analyticsContext in
+        showQrStudio(context: context, peerId: context.peerId, morphSource: morphSource, analyticsContext: analyticsContext)
     }
     hooks.prefetchQrStudio = { context in
         prefetchQrStudio(context: context)
@@ -573,8 +573,8 @@ private func makeSettingsNavigationHooks() -> SettingsNavigationHooks {
     hooks.openWebBot = { context, bot in
         openWebBot(bot, context: context)
     }
-    hooks.openWebBotWithContext = { context, bot in
-        openWebBot(bot, context: context)
+    hooks.openWebBotWithContext = { context, bot, analyticsContext in
+        openWebBot(bot, context: context, analyticsContext: analyticsContext)
     }
     hooks.openInstantView = { context, url, webPage, anchor in
         BrowserStateContext.get(context).open(tab: .instantView(url: url, webPage: webPage, anchor: anchor))

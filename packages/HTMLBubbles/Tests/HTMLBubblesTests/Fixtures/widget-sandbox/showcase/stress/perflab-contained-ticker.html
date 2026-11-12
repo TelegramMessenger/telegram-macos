@@ -1,0 +1,36 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:16px;display:flex;align-items:center;gap:8px}h2{font-size:19px;margin:0;flex:1}
+button{background:#293d58;color:white;border:0;border-radius:8px;padding:8px}
+.summary{margin:0 16px 12px;color:#a6b8cf}.rows{padding:0 12px 12px;box-sizing:border-box}
+.row{display:flex;gap:8px;align-items:center;height:32px;padding:4px 8px;margin-bottom:6px;background:#1c2c40;border-radius:8px}
+.label{width:32px;flex-shrink:0;font:10px Menlo,monospace}.clip{position:relative;height:28px;flex:1;min-width:0;overflow:hidden;background:#101923;border-radius:4px}
+.track{display:flex;width:192px;height:28px;align-items:center}.segment{width:64px;flex-shrink:0;box-sizing:border-box;padding:6px;color:#92e5c4;font-size:11px;background:linear-gradient(90deg,#163c42,#263858)}
+.segment:nth-child(2){color:#ffd08e;background:linear-gradient(90deg,#634c2b,#3d3357)}.segment:nth-child(3){color:#8bc5ff;background:linear-gradient(90deg,#213d67,#193e47)}
+.reading{width:32px;flex-shrink:0;text-align:right;font:10px Menlo,monospace}
+</style>
+<header><h2>Contained tickers</h2><button id="pause">Pause</button><button id="resize">Lock width</button></header>
+<p class="summary">96 translated tracks · resizing ancestors · 24 changing readings per frame</p>
+<div class="rows" id="rows"></div>
+<script>
+const rows=document.getElementById('rows'),tracks=[],readings=[];
+for(let i=0;i<96;i++){
+  const row=document.createElement('div');row.className='row';
+  row.innerHTML='<span class="label">R'+String(i+1).padStart(2,'0')+'</span><div class="clip"><div class="track"><span class="segment">Active</span><span class="segment">Queue '+i%9+'</span><span class="segment">Ready '+i%7+'</span></div></div><span class="reading">0.0</span>';
+  rows.appendChild(row);tracks.push(row.querySelector('.track'));readings.push(row.querySelector('.reading').firstChild);
+}
+let running=true,resizing=true,start=0,frames=0;
+function draw(t,all){
+  rows.style.width=(resizing?96+4*Math.sin(t*.7):100).toFixed(3)+'%';
+  for(let i=0;i<tracks.length;i++){
+    tracks[i].style.transform='translateX('+(10+8*Math.sin(t*.9+i*.31)).toFixed(3)+'px)';
+    if(all||i%4===frames%4)readings[i].data=(50+49*Math.sin(t+i*.1)).toFixed(1);
+  }
+}
+function frame(ms){if(!start)start=ms;if(running){draw((ms-start)/1000,false);frames++;}requestAnimationFrame(frame);}
+const pause=document.getElementById('pause'),resize=document.getElementById('resize');
+pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};
+resize.onclick=function(){resizing=!resizing;resize.textContent=resizing?'Lock width':'Resize';draw(1.25,true);};
+window.stress={freeze:function(){running=false;resizing=true;draw(1.25,true);pause.textContent='Resume';resize.textContent='Lock width';},resume:function(){running=true;pause.textContent='Pause';}};
+draw(0,true);requestAnimationFrame(frame);
+</script>

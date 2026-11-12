@@ -375,7 +375,7 @@ final class ChatListGramTransferSubmoduleCompatibilityTests: XCTestCase {
 
     func testBotOpenButtonGivesWayToTheGramBadgeLikeSubmodule() throws {
         let item = collapsed(try source("submodules/telegram-ios/submodules/ChatListUI/Sources/Node/ChatListItem.swift"))
-        XCTAssertTrue(item.contains(collapsed("if !item.editing, case .none = badgeContent, case .none = mentionBadgeContent, case let .chat(itemPeer) = contentPeer, case let .user(user) = itemPeer.chatMainPeer, let botInfo = user.botInfo, botInfo.flags.contains(.hasWebApp) {")))
+        XCTAssertTrue(item.contains(collapsed("if !item.editing, !item.interaction.isSideListMode, case .none = badgeContent, case .none = mentionBadgeContent, case let .chat(itemPeer) = contentPeer, case let .user(user) = itemPeer.chatMainPeer, let botInfo = user.botInfo, botInfo.flags.contains(.hasWebApp) {")))
 
         let row = try source("packages/ChatListUI/Sources/ChatListUI/ChatListRowItem.swift")
         XCTAssertTrue(collapsed(row).contains(collapsed("""
