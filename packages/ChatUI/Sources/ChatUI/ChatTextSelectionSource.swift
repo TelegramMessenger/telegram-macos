@@ -42,7 +42,7 @@ enum ChatTextSelectionSource {
 
     var textLayout: TextViewLayout? {
         switch self {
-        case let .view(view): return view.textLayout
+        case let .view(view): return view.textLayout?.mayItems == true ? view.textLayout : nil
         case let .layer(node, scene):
             guard node.scene === scene, node.isSelectable, node.isVisible, node.isEffectivelyEnabled,
                   !scene.isHiddenOrHasHiddenAncestor, node.textLayout?.mayItems == true else { return nil }
