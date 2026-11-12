@@ -1243,6 +1243,139 @@ public class ColorPalette : Equatable {
         self.colorSignature = ColorPalette._computeColorSignature(self)
     }
     
+    private init(copying palette: ColorPalette, name: String) {
+        self.isNative = palette.isNative
+        self.isDark = palette.isDark
+        self.tinted = palette.tinted
+        self.name = name
+        self.parent = palette.parent
+        self.wallpaper = palette.wallpaper
+        self.copyright = palette.copyright
+        self.accentList = palette.accentList
+        self._basicAccent = palette.basicAccent
+        self._background = palette.background
+        self._text = palette.text
+        self._grayText = palette.grayText
+        self._link = palette.link
+        self._accent = palette.accent
+        self._redUI = palette.redUI
+        self._greenUI = palette.greenUI
+        self._blackTransparent = palette.blackTransparent
+        self._grayTransparent = palette.grayTransparent
+        self._grayUI = palette.grayUI
+        self._darkGrayText = palette.darkGrayText
+        self._accentSelect = palette.accentSelect
+        self._selectText = palette.selectText
+        self._border = palette.border
+        self._grayBackground = palette.grayBackground
+        self._grayForeground = palette.grayForeground
+        self._grayIcon = palette.grayIcon
+        self._accentIcon = palette.accentIcon
+        self._badgeMuted = palette.badgeMuted
+        self._badge = palette.badge
+        self._indicatorColor = palette.indicatorColor
+        self._selectMessage = palette.selectMessage
+        self._monospacedPre = palette.monospacedPre
+        self._monospacedCode = palette.monospacedCode
+        self._monospacedPreBubble_incoming = palette.monospacedPreBubble_incoming
+        self._monospacedPreBubble_outgoing = palette.monospacedPreBubble_outgoing
+        self._monospacedCodeBubble_incoming = palette.monospacedCodeBubble_incoming
+        self._monospacedCodeBubble_outgoing = palette.monospacedCodeBubble_outgoing
+        self._selectTextBubble_incoming = palette.selectTextBubble_incoming
+        self._selectTextBubble_outgoing = palette.selectTextBubble_outgoing
+        self._bubbleBackground_incoming = palette.bubbleBackground_incoming
+        self._bubbleBackground_outgoing = palette.bubbleBackground_outgoing
+        self._bubbleBorder_incoming = palette.bubbleBorder_incoming
+        self._bubbleBorder_outgoing = palette.bubbleBorder_outgoing
+        self._grayTextBubble_incoming = palette.grayTextBubble_incoming
+        self._grayTextBubble_outgoing = palette.grayTextBubble_outgoing
+        self._grayIconBubble_incoming = palette.grayIconBubble_incoming
+        self._grayIconBubble_outgoing = palette.grayIconBubble_outgoing
+        self._accentIconBubble_incoming = palette.accentIconBubble_incoming
+        self._accentIconBubble_outgoing = palette.accentIconBubble_outgoing
+        self._linkBubble_incoming = palette.linkBubble_incoming
+        self._linkBubble_outgoing = palette.linkBubble_outgoing
+        self._textBubble_incoming = palette.textBubble_incoming
+        self._textBubble_outgoing = palette.textBubble_outgoing
+        self._selectMessageBubble = palette.selectMessageBubble
+        self._fileActivityBackground = palette.fileActivityBackground
+        self._fileActivityForeground = palette.fileActivityForeground
+        self._fileActivityBackgroundBubble_incoming = palette.fileActivityBackgroundBubble_incoming
+        self._fileActivityBackgroundBubble_outgoing = palette.fileActivityBackgroundBubble_outgoing
+        self._fileActivityForegroundBubble_incoming = palette.fileActivityForegroundBubble_incoming
+        self._fileActivityForegroundBubble_outgoing = palette.fileActivityForegroundBubble_outgoing
+        self._waveformBackground = palette.waveformBackground
+        self._waveformForeground = palette.waveformForeground
+        self._waveformBackgroundBubble_incoming = palette.waveformBackgroundBubble_incoming
+        self._waveformBackgroundBubble_outgoing = palette.waveformBackgroundBubble_outgoing
+        self._waveformForegroundBubble_incoming = palette.waveformForegroundBubble_incoming
+        self._waveformForegroundBubble_outgoing = palette.waveformForegroundBubble_outgoing
+        self._webPreviewActivity = palette.webPreviewActivity
+        self._webPreviewActivityBubble_incoming = palette.webPreviewActivityBubble_incoming
+        self._webPreviewActivityBubble_outgoing = palette.webPreviewActivityBubble_outgoing
+        self._redBubble_incoming = palette.redBubble_incoming
+        self._redBubble_outgoing = palette.redBubble_outgoing
+        self._greenBubble_incoming = palette.greenBubble_incoming
+        self._greenBubble_outgoing = palette.greenBubble_outgoing
+        self._chatReplyTitle = palette.chatReplyTitle
+        self._chatReplyTextEnabled = palette.chatReplyTextEnabled
+        self._chatReplyTextDisabled = palette.chatReplyTextDisabled
+        self._chatReplyTitleBubble_incoming = palette.chatReplyTitleBubble_incoming
+        self._chatReplyTitleBubble_outgoing = palette.chatReplyTitleBubble_outgoing
+        self._chatReplyTextEnabledBubble_incoming = palette.chatReplyTextEnabledBubble_incoming
+        self._chatReplyTextEnabledBubble_outgoing = palette.chatReplyTextEnabledBubble_outgoing
+        self._chatReplyTextDisabledBubble_incoming = palette.chatReplyTextDisabledBubble_incoming
+        self._chatReplyTextDisabledBubble_outgoing = palette.chatReplyTextDisabledBubble_outgoing
+        self._groupPeerNameRed = palette.groupPeerNameRed
+        self._groupPeerNameOrange = palette.groupPeerNameOrange
+        self._groupPeerNameViolet = palette.groupPeerNameViolet
+        self._groupPeerNameGreen = palette.groupPeerNameGreen
+        self._groupPeerNameCyan = palette.groupPeerNameCyan
+        self._groupPeerNameLightBlue = palette.groupPeerNameLightBlue
+        self._groupPeerNameBlue = palette.groupPeerNameBlue
+        self._peerAvatarRedTop = palette.peerAvatarRedTop
+        self._peerAvatarRedBottom = palette.peerAvatarRedBottom
+        self._peerAvatarOrangeTop = palette.peerAvatarOrangeTop
+        self._peerAvatarOrangeBottom = palette.peerAvatarOrangeBottom
+        self._peerAvatarVioletTop = palette.peerAvatarVioletTop
+        self._peerAvatarVioletBottom = palette.peerAvatarVioletBottom
+        self._peerAvatarGreenTop = palette.peerAvatarGreenTop
+        self._peerAvatarGreenBottom = palette.peerAvatarGreenBottom
+        self._peerAvatarCyanTop = palette.peerAvatarCyanTop
+        self._peerAvatarCyanBottom = palette.peerAvatarCyanBottom
+        self._peerAvatarBlueTop = palette.peerAvatarBlueTop
+        self._peerAvatarBlueBottom = palette.peerAvatarBlueBottom
+        self._peerAvatarPinkTop = palette.peerAvatarPinkTop
+        self._peerAvatarPinkBottom = palette.peerAvatarPinkBottom
+        self._bubbleBackgroundHighlight_incoming = palette.bubbleBackgroundHighlight_incoming
+        self._bubbleBackgroundHighlight_outgoing = palette.bubbleBackgroundHighlight_outgoing
+        self._chatDateActive = palette.chatDateActive
+        self._chatDateText = palette.chatDateText
+        self._revealAction_neutral1_background = palette.revealAction_neutral1_background
+        self._revealAction_neutral1_foreground = palette.revealAction_neutral1_foreground
+        self._revealAction_neutral2_background = palette.revealAction_neutral2_background
+        self._revealAction_neutral2_foreground = palette.revealAction_neutral2_foreground
+        self._revealAction_destructive_background = palette.revealAction_destructive_background
+        self._revealAction_destructive_foreground = palette.revealAction_destructive_foreground
+        self._revealAction_constructive_background = palette.revealAction_constructive_background
+        self._revealAction_constructive_foreground = palette.revealAction_constructive_foreground
+        self._revealAction_accent_background = palette.revealAction_accent_background
+        self._revealAction_accent_foreground = palette.revealAction_accent_foreground
+        self._revealAction_warning_background = palette.revealAction_warning_background
+        self._revealAction_warning_foreground = palette.revealAction_warning_foreground
+        self._revealAction_inactive_background = palette.revealAction_inactive_background
+        self._revealAction_inactive_foreground = palette.revealAction_inactive_foreground
+        self._chatBackground = palette.chatBackground
+        self._listBackground = palette.listBackground
+        self._listGrayText = palette.listGrayText
+        self._grayHighlight = palette.grayHighlight
+        self._focusAnimationColor = palette.focusAnimationColor
+        self._premium = palette.premium
+        self._vibrant = palette.vibrant
+
+        self.colorSignature = ColorPalette._computeColorSignature(self)
+    }
+
     public func listProperties(reflect: Mirror? = nil) -> [String] {
         let mirror = reflect ?? Mirror(reflecting: self)
         
@@ -1281,133 +1414,7 @@ public class ColorPalette : Equatable {
     }
     
     public func withUpdatedName(_ name: String) -> ColorPalette {
-        return ColorPalette(isNative: self.isNative, isDark: isDark,
-                            tinted: tinted,
-                            name: name,
-                            parent: parent,
-                            wallpaper: wallpaper,
-                            copyright: copyright,
-                            accentList: accentList,
-                            basicAccent: basicAccent,
-                            background: background,
-                            text: text,
-                            grayText: grayText,
-                            link: link,
-                            accent: accent,
-                            redUI: redUI,
-                            greenUI: greenUI,
-                            blackTransparent: blackTransparent,
-                            grayTransparent: grayTransparent,
-                            grayUI: grayUI,
-                            darkGrayText: darkGrayText,
-                            accentSelect: accentSelect,
-                            selectText: selectText,
-                            border: border,
-                            grayBackground: grayBackground,
-                            grayForeground: grayForeground,
-                            grayIcon: grayIcon,
-                            accentIcon: accentIcon,
-                            badgeMuted: badgeMuted,
-                            badge: badge,
-                            indicatorColor: indicatorColor,
-                            selectMessage: selectMessage,
-                            monospacedPre: monospacedPre,
-                            monospacedCode: monospacedCode,
-                            monospacedPreBubble_incoming: monospacedPreBubble_incoming,
-                            monospacedPreBubble_outgoing: monospacedPreBubble_outgoing,
-                            monospacedCodeBubble_incoming: monospacedCodeBubble_incoming,
-                            monospacedCodeBubble_outgoing: monospacedCodeBubble_outgoing,
-                            selectTextBubble_incoming: selectTextBubble_incoming,
-                            selectTextBubble_outgoing: selectTextBubble_outgoing,
-                            bubbleBackground_incoming: bubbleBackground_incoming,
-                            bubbleBackground_outgoing: bubbleBackground_outgoing,
-                            bubbleBorder_incoming: bubbleBorder_incoming,
-                            bubbleBorder_outgoing: bubbleBorder_outgoing,
-                            grayTextBubble_incoming: grayTextBubble_incoming,
-                            grayTextBubble_outgoing: grayTextBubble_outgoing,
-                            grayIconBubble_incoming: grayIconBubble_incoming,
-                            grayIconBubble_outgoing: grayIconBubble_outgoing,
-                            accentIconBubble_incoming: accentIconBubble_incoming,
-                            accentIconBubble_outgoing: accentIconBubble_outgoing,
-                            linkBubble_incoming: linkBubble_incoming,
-                            linkBubble_outgoing: linkBubble_outgoing,
-                            textBubble_incoming: textBubble_incoming,
-                            textBubble_outgoing: textBubble_outgoing,
-                            selectMessageBubble: selectMessageBubble,
-                            fileActivityBackground: fileActivityBackground,
-                            fileActivityForeground: fileActivityForeground,
-                            fileActivityBackgroundBubble_incoming: fileActivityBackgroundBubble_incoming,
-                            fileActivityBackgroundBubble_outgoing: fileActivityBackgroundBubble_outgoing,
-                            fileActivityForegroundBubble_incoming: fileActivityForegroundBubble_incoming,
-                            fileActivityForegroundBubble_outgoing: fileActivityForegroundBubble_outgoing,
-                            waveformBackground: waveformBackground,
-                            waveformForeground: waveformForeground,
-                            waveformBackgroundBubble_incoming: waveformBackgroundBubble_incoming,
-                            waveformBackgroundBubble_outgoing: waveformBackgroundBubble_outgoing,
-                            waveformForegroundBubble_incoming: waveformForegroundBubble_incoming,
-                            waveformForegroundBubble_outgoing: waveformForegroundBubble_outgoing,
-                            webPreviewActivity: webPreviewActivity,
-                            webPreviewActivityBubble_incoming: webPreviewActivityBubble_incoming,
-                            webPreviewActivityBubble_outgoing: webPreviewActivityBubble_outgoing,
-                            redBubble_incoming: redBubble_incoming,
-                            redBubble_outgoing: redBubble_outgoing,
-                            greenBubble_incoming: greenBubble_incoming,
-                            greenBubble_outgoing: greenBubble_outgoing,
-                            chatReplyTitle: chatReplyTitle,
-                            chatReplyTextEnabled: chatReplyTextEnabled,
-                            chatReplyTextDisabled: chatReplyTextDisabled,
-                            chatReplyTitleBubble_incoming: chatReplyTitleBubble_incoming,
-                            chatReplyTitleBubble_outgoing: chatReplyTitleBubble_outgoing,
-                            chatReplyTextEnabledBubble_incoming: chatReplyTextEnabledBubble_incoming,
-                            chatReplyTextEnabledBubble_outgoing: chatReplyTextEnabledBubble_outgoing,
-                            chatReplyTextDisabledBubble_incoming: chatReplyTextDisabledBubble_incoming,
-                            chatReplyTextDisabledBubble_outgoing: chatReplyTextDisabledBubble_outgoing,
-                            groupPeerNameRed: groupPeerNameRed,
-                            groupPeerNameOrange: groupPeerNameOrange,
-                            groupPeerNameViolet: groupPeerNameViolet,
-                            groupPeerNameGreen: groupPeerNameGreen,
-                            groupPeerNameCyan: groupPeerNameCyan,
-                            groupPeerNameLightBlue: groupPeerNameLightBlue,
-                            groupPeerNameBlue: groupPeerNameBlue,
-                            peerAvatarRedTop: peerAvatarRedTop,
-                            peerAvatarRedBottom: peerAvatarRedBottom,
-                            peerAvatarOrangeTop: peerAvatarOrangeTop,
-                            peerAvatarOrangeBottom: peerAvatarOrangeBottom,
-                            peerAvatarVioletTop: peerAvatarVioletTop,
-                            peerAvatarVioletBottom: peerAvatarVioletBottom,
-                            peerAvatarGreenTop: peerAvatarGreenTop,
-                            peerAvatarGreenBottom: peerAvatarGreenBottom,
-                            peerAvatarCyanTop: peerAvatarCyanTop,
-                            peerAvatarCyanBottom: peerAvatarCyanBottom,
-                            peerAvatarBlueTop: peerAvatarBlueTop,
-                            peerAvatarBlueBottom: peerAvatarBlueBottom,
-                            peerAvatarPinkTop: peerAvatarPinkTop,
-                            peerAvatarPinkBottom: peerAvatarPinkBottom,
-                            bubbleBackgroundHighlight_incoming: bubbleBackgroundHighlight_incoming,
-                            bubbleBackgroundHighlight_outgoing: bubbleBackgroundHighlight_outgoing,
-                            chatDateActive: chatDateActive,
-                            chatDateText: chatDateText,
-                            revealAction_neutral1_background: revealAction_neutral1_background,
-                            revealAction_neutral1_foreground: revealAction_neutral1_foreground,
-                            revealAction_neutral2_background: revealAction_neutral2_background,
-                            revealAction_neutral2_foreground: revealAction_neutral2_foreground,
-                            revealAction_destructive_background: revealAction_destructive_background,
-                            revealAction_destructive_foreground: revealAction_destructive_foreground,
-                            revealAction_constructive_background: revealAction_constructive_background,
-                            revealAction_constructive_foreground: revealAction_constructive_foreground,
-                            revealAction_accent_background: revealAction_accent_background,
-                            revealAction_accent_foreground: revealAction_accent_foreground,
-                            revealAction_warning_background: revealAction_warning_background,
-                            revealAction_warning_foreground: revealAction_warning_foreground,
-                            revealAction_inactive_background: revealAction_inactive_background,
-                            revealAction_inactive_foreground: revealAction_inactive_foreground,
-                            chatBackground: chatBackground,
-                            listBackground: listBackground,
-                            listGrayText: listGrayText,
-                            grayHighlight: grayHighlight,
-                            focusAnimationColor: focusAnimationColor,
-                            premium: premium,
-                            vibrant: vibrant)
+        return ColorPalette(copying: self, name: name)
     }
     public func withUpdatedWallpaper(_ wallpaper: PaletteWallpaper) -> ColorPalette {
         return ColorPalette(isNative: self.isNative, isDark: isDark,
