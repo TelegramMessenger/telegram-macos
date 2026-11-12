@@ -1001,7 +1001,7 @@ private final class HeaderItem : GeneralRowItem {
             if let sender = state.headerGiftMessage?.sender {
                 let senderName = sender._asPeer().displayTitle
                 let attr = NSMutableAttributedString()
-                attr.append(string: "from \(senderName)", color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text)) //TODOLANG
+                attr.append(string: strings().chatServiceStarGiftFrom(senderName), color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text))
                 let senderRange = attr.string.nsstring.range(of: senderName, options: .backwards)
                 if senderRange.location != NSNotFound {
                     attr.addAttribute(.foregroundColor, value: NSColor.white, range: senderRange)
