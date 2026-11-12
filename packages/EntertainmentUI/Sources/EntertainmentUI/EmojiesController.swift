@@ -20,6 +20,7 @@ import InputDataUI
 import ChatModeTypes
 import Cocoa
 import InlineStickerLayer
+import AppAnalytics
 import ObjcUtils
 
 
@@ -2154,6 +2155,16 @@ public final class EmojiesController<Context: AccountContextProtocol> : Telegram
         self.color = color
         self.ignorePremium = ignorePremium
         super.init(context)
+        switch mode {
+        case .stories:
+            analyticsScreen = AnalyticsScreen.chatInputEmoji
+        case .channelStatus:
+            analyticsScreen = AnalyticsScreen.premiumEmojiStatus
+        case .backgroundIcon:
+            analyticsScreen = AnalyticsScreen.appEmojiPicker
+        default:
+            break
+        }
         _frameRect = NSMakeRect(0, 0, 350, 300)
         self.bar = .init(height: 0)
 

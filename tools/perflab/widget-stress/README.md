@@ -81,7 +81,7 @@ python3 tools/perflab/widget-stress/sync-fixtures.py
 python3 tools/perflab/widget-stress/sync-fixtures.py --check
 ```
 
-The shared `widget-sandbox/showcase/stress/perflab-*.html` resources are loaded by both `All Widgets` and `All Widgets — WebKit`. This updates the source resources for the next app build; it does not rebuild or modify an installed app.
+The shared `widget-sandbox/showcase/stress/perflab-*.html` fixtures live in `packages/HTMLBubbles/Tests/HTMLBubblesTests/Fixtures` and ship only with the HTMLBubbles tests. Since 2026-10-26 the app has no `All Widgets` chats, so the app-driven runs below need a local build that sets `HTMLDemoCatalog.fixturesRoot`.
 
 ## Measured results — 2026-10-14
 

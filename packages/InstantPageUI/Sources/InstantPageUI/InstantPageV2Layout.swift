@@ -385,7 +385,8 @@ public func layoutInstantPageV2(
     codeTextColor: NSColor? = nil,
     collageMosaic: (([Media], CGFloat) -> [CGRect])? = nil,
     mediaBleed: CGFloat = 0,
-    unsupportedStyle: (any InstantPageV2UnsupportedBandStyle)? = nil
+    unsupportedStyle: (any InstantPageV2UnsupportedBandStyle)? = nil,
+    buttonsEnabled: Bool = true
 ) -> InstantPageV2Layout {
     guard case let .Loaded(loadedContent) = webpage.content else {
         return InstantPageV2Layout(contentSize: .zero, items: [], detailsIndices: [])
@@ -413,7 +414,8 @@ public func layoutInstantPageV2(
         codeTextColor: codeTextColor,
         collageMosaic: collageMosaic,
         mediaBleed: mediaBleed,
-        unsupportedStyle: unsupportedStyle
+        unsupportedStyle: unsupportedStyle,
+        buttonsEnabled: buttonsEnabled
     )
 
     return layoutBlockSequenceV2(
@@ -483,6 +485,7 @@ private struct LayoutContextV2 {
     public let collageMosaic: (([Media], CGFloat) -> [CGRect])?
     public let mediaBleed: CGFloat
     public let unsupportedStyle: (any InstantPageV2UnsupportedBandStyle)?
+    public let buttonsEnabled: Bool
 
     public var isInsideTableCell: Bool = false
 }
@@ -1049,7 +1052,7 @@ private func layoutSimpleTextV2(
     horizontalInset: CGFloat,
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
-    let styleStack = InstantPageTextStyleStack()
+    let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(styleStack, theme: context.theme, category: category, link: false)
     let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
     let attributedString = attributedStringForRichText(text, styleStack: styleStack, inlineButtonMaxWidth: boundingWidth - horizontalInset * 2.0, isInsideTableCell: context.isInsideTableCell)
@@ -1089,7 +1092,8 @@ private func instantPageBlockButtonExtraSideInsetV2(_ button: InstantPageButton,
 private func instantPageBlockButtonMeasureV2(
     button: InstantPageButton,
     labelString: NSAttributedString,
-    pillWidth: CGFloat
+    pillWidth: CGFloat,
+    buttonsEnabled: Bool
 ) -> (attachment: InstantPageInlineButtonAttachment, extraSideInset: CGFloat) {
     func measure(padding: CGFloat) -> (attachment: InstantPageInlineButtonAttachment, extraSideInset: CGFloat) {
         let extra = instantPageBlockButtonExtraSideInsetV2(button, padding: padding)
@@ -1098,7 +1102,8 @@ private func instantPageBlockButtonMeasureV2(
             presentation: .pill,
             labelString: labelString,
             maxWidth: max(0.0, pillWidth - extra * 2.0),
-            horizontalPadding: padding
+            horizontalPadding: padding,
+            isEnabled: buttonsEnabled
         )
         return (attachment, extra)
     }
@@ -1141,7 +1146,7 @@ private func layoutButtonRowV2(
     }
 
     let labelledButtons: [(button: InstantPageButton, labelString: NSAttributedString)] = buttons.map { button in
-        let labelStyleStack = InstantPageTextStyleStack()
+        let labelStyleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
         setupStyleStackV2(labelStyleStack, theme: context.theme, category: .paragraph, link: false)
         labelStyleStack.push(.fontSize(instantPageBlockButtonFontSize))
         labelStyleStack.push(.semibold)
@@ -1155,7 +1160,8 @@ private func layoutButtonRowV2(
             labelledButtons,
             availableWidth: availableWidth,
             horizontalInset: horizontalInset,
-            rtl: context.rtl
+            rtl: context.rtl,
+            buttonsEnabled: context.buttonsEnabled
         )
     case .left, .center, .right:
         layout = layoutHuggingButtonRowV2(
@@ -1163,7 +1169,8 @@ private func layoutButtonRowV2(
             alignment: alignment,
             availableWidth: availableWidth,
             horizontalInset: horizontalInset,
-            rtl: context.rtl
+            rtl: context.rtl,
+            buttonsEnabled: context.buttonsEnabled
         )
     }
 
@@ -1180,7 +1187,8 @@ private func layoutJustifiedButtonRowV2(
     _ labelledButtons: [(button: InstantPageButton, labelString: NSAttributedString)],
     availableWidth: CGFloat,
     horizontalInset: CGFloat,
-    rtl: Bool
+    rtl: Bool,
+    buttonsEnabled: Bool
 ) -> (entries: [(attachment: InstantPageInlineButtonAttachment, frame: CGRect)], totalHeight: CGFloat) {
     var entries: [(attachment: InstantPageInlineButtonAttachment, frame: CGRect)] = []
     var y: CGFloat = 0.0
@@ -1194,7 +1202,7 @@ private func layoutJustifiedButtonRowV2(
         let totalSpacing = buttonSpacing * CGFloat(gapCount)
         let buttonWidth = max(0.0, (availableWidth - totalSpacing) / CGFloat(rowButtons.count))
         for (position, entry) in rowButtons.enumerated() {
-            let (attachment, _) = instantPageBlockButtonMeasureV2(button: entry.button, labelString: entry.labelString, pillWidth: buttonWidth)
+            let (attachment, _) = instantPageBlockButtonMeasureV2(button: entry.button, labelString: entry.labelString, pillWidth: buttonWidth, buttonsEnabled: buttonsEnabled)
             let column = rtl ? rowButtons.count - 1 - position : position
             let x = horizontalInset + CGFloat(column) * (buttonWidth + buttonSpacing)
             entries.append((attachment, CGRect(x: x, y: y, width: buttonWidth, height: instantPageBlockButtonHeightV2)))
@@ -1210,11 +1218,12 @@ private func layoutHuggingButtonRowV2(
     alignment: InstantPageButtonRowAlignment,
     availableWidth: CGFloat,
     horizontalInset: CGFloat,
-    rtl: Bool
+    rtl: Bool,
+    buttonsEnabled: Bool
 ) -> (entries: [(attachment: InstantPageInlineButtonAttachment, frame: CGRect)], totalHeight: CGFloat) {
     let measured: [(attachment: InstantPageInlineButtonAttachment, width: CGFloat)] = labelledButtons.map { entry in
         let (attachment, extraInset) = instantPageBlockButtonMeasureV2(
-            button: entry.button, labelString: entry.labelString, pillWidth: availableWidth)
+            button: entry.button, labelString: entry.labelString, pillWidth: availableWidth, buttonsEnabled: buttonsEnabled)
         return (attachment, min(availableWidth, attachment.size.width + extraInset * 2.0))
     }
 
@@ -1266,7 +1275,7 @@ private func layoutThinkingV2(
     horizontalInset: CGFloat,
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
-    let styleStack = InstantPageTextStyleStack()
+    let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(styleStack, theme: context.theme, category: .paragraph, link: false)
     let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
     styleStack.push(.textColor(context.theme.panelSecondaryColor))
@@ -1292,7 +1301,7 @@ private func layoutHeadingV2(
     horizontalInset: CGFloat,
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
-    let styleStack = InstantPageTextStyleStack()
+    let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(styleStack, theme: context.theme, attributes: context.theme.headingTextAttributes(level: level, link: false))
     let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
     let attributedString = attributedStringForRichText(text, styleStack: styleStack, inlineButtonMaxWidth: boundingWidth - horizontalInset * 2.0)
@@ -1318,7 +1327,7 @@ private func layoutAuthorDateV2(
     previousItems: [InstantPageV2LaidOutItem],
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
-    let styleStack = InstantPageTextStyleStack()
+    let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(styleStack, theme: context.theme, category: .caption, link: false)
     let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
 
@@ -1494,7 +1503,7 @@ private func layoutCodeBlockV2(
     let lineInset: CGFloat = 9.0
     let cornerRadius: CGFloat = 6.0
 
-    let styleStack = InstantPageTextStyleStack()
+    let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(styleStack, theme: context.theme, category: .paragraph, link: false)
     styleStack.push(.fontFixed(true))
     let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
@@ -1578,7 +1587,7 @@ private func layoutPullQuoteV2(
     let availWidth = max(boundingWidth - horizontalInset * 2.0, 1.0)
     let measureWidth = max(availWidth - hPad * 2.0, 1.0)
 
-    let textStack = InstantPageTextStyleStack()
+    let textStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(textStack, theme: context.theme, category: .paragraph, link: false)
     textStack.push(.fontSize(15.0))
     textStack.push(.lineSpacingFactor(1.0))
@@ -1586,7 +1595,7 @@ private func layoutPullQuoteV2(
     let textLineMetrics = InstantPageTextLineMetrics(styleStack: textStack)
     let textAttributed = attributedStringForRichText(text, styleStack: textStack)
 
-    let captionStack = InstantPageTextStyleStack()
+    let captionStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(captionStack, theme: context.theme, category: .caption, link: false)
     captionStack.push(.textColor(context.theme.quoteAccentColor))
     captionStack.push(.linkColor(context.theme.quoteAccentColor))
@@ -1679,7 +1688,7 @@ private func layoutBlockQuoteV2(
 
     var items: [InstantPageV2LaidOutItem] = []
 
-    let textStack = InstantPageTextStyleStack()
+    let textStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(textStack, theme: context.theme, category: .paragraph, link: false)
     if isPull {
         textStack.push(.italic)   // pull quotes render forced-italic; block quotes keep the run styling (WYSIWYG with the editor)
@@ -1709,7 +1718,7 @@ private func layoutBlockQuoteV2(
     }
     contentHeight += textSize.height
 
-    let captionStack = InstantPageTextStyleStack()
+    let captionStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(captionStack, theme: context.theme, category: .caption, link: false)
     if !isPull {
         captionStack.push(.textColor(context.theme.quoteAccentColor))
@@ -1802,7 +1811,7 @@ private func layoutBlockQuoteBlocksV2(
         items.append(contentsOf: offset)
     }
 
-    let captionStack = InstantPageTextStyleStack()
+    let captionStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(captionStack, theme: context.theme, category: .caption, link: false)
     captionStack.push(.textColor(context.theme.quoteAccentColor))
     captionStack.push(.linkColor(context.theme.quoteAccentColor))
@@ -1867,7 +1876,7 @@ private func layoutListV2(
     horizontalInset: CGFloat,
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
-    let indexStack = InstantPageTextStyleStack()
+    let indexStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(indexStack, theme: context.theme, category: .paragraph, link: false)
     let indexLineMetrics = InstantPageTextLineMetrics(styleStack: indexStack)
     var indexLayouts: [InstantPageTextItem?] = []
@@ -1932,7 +1941,7 @@ private func layoutListV2(
             contentHeight += context.fitToWidth ? 4.0 : 18.0
         }
 
-        let textStack = InstantPageTextStyleStack()
+        let textStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
         setupStyleStackV2(textStack, theme: context.theme, category: .paragraph, link: false)
         let textLineMetrics = InstantPageTextLineMetrics(styleStack: textStack)
         let textValue: RichText
@@ -2182,7 +2191,7 @@ private func layoutDetailsV2(
     let chevronReserve: CGFloat = 32.0
     let titleHorizontalInset: CGFloat = 23.0
 
-    let titleStyleStack = InstantPageTextStyleStack()
+    let titleStyleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(titleStyleStack, theme: context.theme, category: .paragraph, link: false)
     titleStyleStack.push(.semibold)
     let titleLineMetrics = InstantPageTextLineMetrics(styleStack: titleStyleStack)
@@ -2362,7 +2371,7 @@ private func layoutTableV2(
         ? NSEdgeInsets(top: v2TableCellInsets.top / 2.0, left: v2TableCellInsets.left / 2.0, bottom: v2TableCellInsets.bottom / 2.0, right: v2TableCellInsets.right / 2.0)
         : v2TableCellInsets
 
-    let styleStack = InstantPageTextStyleStack()
+    let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(styleStack, theme: context.theme, category: .paragraph, link: false)
     let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
 
@@ -2783,7 +2792,7 @@ private func layoutCaptionAndCreditV2(
         captionIsEmpty = false
         totalHeight += mediaCaptionSpacing
         y += mediaCaptionSpacing
-        let styleStack = InstantPageTextStyleStack()
+        let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
         setupStyleStackV2(styleStack, theme: context.theme, category: .caption, link: false)
         let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
         let attributedString = attributedStringForRichText(caption.text, styleStack: styleStack, inlineButtonMaxWidth: boundingWidth - horizontalInset * 2.0)
@@ -2814,7 +2823,7 @@ private func layoutCaptionAndCreditV2(
             totalHeight += 10.0
             y += 10.0
         }
-        let styleStack = InstantPageTextStyleStack()
+        let styleStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
         setupStyleStackV2(styleStack, theme: context.theme, category: .credit, link: false)
         let lineMetrics = InstantPageTextLineMetrics(styleStack: styleStack)
         let attributedString = attributedStringForRichText(caption.credit, styleStack: styleStack, inlineButtonMaxWidth: boundingWidth - horizontalInset * 2.0)

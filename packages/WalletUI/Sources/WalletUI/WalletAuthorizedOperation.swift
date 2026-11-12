@@ -10,6 +10,7 @@ import Cocoa
 import TGUIKit
 import SwiftSignalKit
 import WalletContext
+import AppAnalytics
 
 @available(macOS 10.15, *)
 public func walletAuthorizationErrorMessage(_ error: WalletContext.WalletError) -> (title: String, text: String)? {
@@ -233,6 +234,7 @@ private func walletPasswordPromptController<Value>(
             failed(.authorizationCancelled)
         }
     }, hasDone: true)
+    controller.analyticsScreen = .walletPassword
 
     controller.autoInputAction = true
 

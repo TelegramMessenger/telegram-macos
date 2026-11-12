@@ -3,7 +3,7 @@
 import PackageDescription
 
 let deps: [(String, String)] = [
-
+    ("AppAnalytics", "../AppAnalytics"),
     ("AlertsUI", "../AlertsUI"),
     ("AvatarEditorUI", "../AvatarEditorUI"),
     ("AvatarUI", "../AvatarUI"),

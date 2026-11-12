@@ -1,3 +1,4 @@
+import AppAnalytics
 import TelegramContext
 import Cocoa
 import CoreLocation
@@ -8,8 +9,10 @@ import SwiftSignalKit
 import CodeSyntax
 import CallsUI
 import ChatUI
+import ChatListUI
 import WebAppUI
 import ImageCanvasUI
+import PeerInfoUI
 import AvatarEditorUI
 
 extension GlobalBadgeNode: @retroactive ChatUIBadgeNode {
@@ -77,8 +80,8 @@ func installChatUIHooks() {
         return InlineAudioPlayerView.ContextObject(controller: controller, context: context.concrete, tableView: tableView, supportTableView: nil)
     }, makeSendAudioModal: { context, chatInteraction in
         return SendAudioModalController(context: context.concrete, chatInteraction: chatInteraction)
-    }, makePreviewSender: { urls, chatInteraction, asMedia, attributedString in
-        return PreviewSenderController(urls: urls, chatInteraction: chatInteraction, asMedia: asMedia, attributedString: attributedString)
+    }, makePreviewSender: { urls, chatInteraction, asMedia, attributedString, analyticsContext in
+        return PreviewSenderController(urls: urls, chatInteraction: chatInteraction, asMedia: asMedia, attributedString: attributedString, analyticsContext: analyticsContext)
     }, removeChatInteractively: { context, peerId, userId in
         return removeChatInteractively(context: context.concrete, peerId: peerId, userId: userId, offerDeleteForAll: true)
     }, removeThreadInteractively: { context, peerId, threadId, userId in
@@ -149,28 +152,66 @@ func installChatUIHooks() {
     }, makeChannelAdminModal: { context, peerId, adminId, initialParticipant in
         return ChannelAdminModalController(context.concrete, peerId: peerId, adminId: adminId, initialParticipant: initialParticipant, updated: { _ in }, upgradedToSupergroup: { _, _ in })
     })
-    hooks.makeForwardMessagesShareModalWithContext = { context, messages, getMessages in
-        let object = ForwardMessagesObject(context.concrete, messages: messages, getMessages: getMessages)
-        return ShareModalController(object)
+    hooks.makeForwardMessagesShareModalWithContext = { context, messages, getMessages, analyticsContext in
+        let object = ForwardMessagesObject(context.concrete, messages: messages, getMessages: getMessages, analyticsContext: analyticsContext)
+        return ShareModalController(object, analyticsContext: analyticsContext)
     }
-    hooks.navigateToChatWithContext = { navigation, context, location, focus, action, additional in
-        navigateToChat(navigation: navigation, context: context.concrete, chatLocation: location, focusTarget: focus, initialAction: action, additional: additional)
+    hooks.makeForwardMessagesShareModalWithSource = { context, messages, getMessages, analyticsContext, entry in
+        let object = ForwardMessagesObject(context.concrete, messages: messages, getMessages: getMessages, analyticsContext: analyticsContext)
+        let controller = ShareModalController(object, analyticsContext: analyticsContext)
+        controller.setAnalyticsForwardJourney(AnalyticsForwardPickerJourney(context: controller.analyticsContext ?? Analytics.shared.unresolvedContext(), entry: entry))
+        return controller
     }
-    hooks.makePeerMediaControllerWithContext = { context, peerId, thread, isBot in
-        PeerMediaController(context: context.concrete, peerId: peerId, threadInfo: thread, isBot: isBot)
+    hooks.attachForwardJourney = { controller, journey in
+        if let controller = controller as? ShareModalController {
+            controller.setAnalyticsForwardJourney(journey)
+        } else {
+            journey.discard()
+        }
     }
-    hooks.pushPeerInfoWithContext = { navigation, context, peerId, thread, stories, mode, album in
-        PeerInfoController.push(navigation: navigation, context: context.concrete, peerId: peerId, threadInfo: thread, stories: stories, mediaMode: mode, albumId: album)
+    hooks.attachPreviewJourney = { controller, journey in
+        if let controller = controller as? PreviewSenderController {
+            controller.analyticsMediaJourney = journey
+        } else {
+            journey.discard()
+        }
     }
-    hooks.showSingleStoryWithContext = { context, storyId, initialId, emptyCallback in
-        StoryModalController.ShowSingleStory(context: context.concrete, storyId: storyId, initialId: initialId, emptyCallback: emptyCallback)
+    hooks.navigateToChatWithContext = { navigation, context, location, focus, action, additional, analyticsContext in
+        navigateToChat(navigation: navigation, context: context.concrete, chatLocation: location, focusTarget: focus, initialAction: action, additional: additional, analyticsContext: analyticsContext)
     }
-    hooks.showStoriesWithContext = { context, isHidden, initialId, singlePeer in
-        StoryModalController.ShowStories(context: context.concrete, isHidden: isHidden, initialId: initialId, singlePeer: singlePeer)
+    hooks.makePeerMediaControllerWithContext = { context, peerId, thread, isBot, analyticsContext in
+        PeerMediaController(context: context.concrete, peerId: peerId, threadInfo: thread, isBot: isBot, analyticsContext: analyticsContext)
+    }
+    hooks.pushPeerInfoWithContext = { navigation, context, peerId, thread, stories, mode, album, analyticsContext in
+        PeerInfoController.push(navigation: navigation, context: context.concrete, peerId: peerId, threadInfo: thread, stories: stories, mediaMode: mode, albumId: album, analyticsContext: analyticsContext)
+    }
+    hooks.showSingleStoryWithContext = { context, storyId, initialId, emptyCallback, analyticsContext in
+        StoryModalController.ShowSingleStory(context: context.concrete, storyId: storyId, initialId: initialId, emptyCallback: emptyCallback, analyticsContext: analyticsContext)
+    }
+    hooks.showStoriesWithContext = { context, isHidden, initialId, singlePeer, analyticsContext in
+        StoryModalController.ShowStories(context: context.concrete, isHidden: isHidden, initialId: initialId, singlePeer: singlePeer, analyticsContext: analyticsContext)
     }
     hooks.bindPreviewSendValidation = { controller, isCurrent in
         guard let controller = controller as? PreviewSenderController else { return false }
         return controller.bindSendSourceValidation(isCurrent)
+    }
+    hooks.forumSidebarToggleImage = { open in
+        open ? NSImage(resource: .iconMonoforumToggleFilled) : NSImage(resource: .iconMonoforumToggle)
+    }
+    hooks.addForumMembers = { context, peerId in selectForumMembers(context: context.concrete, peerId: peerId) }
+    hooks.makeForumSidebarRows = { context, onSelect in
+        ForumSidebarRowsView(context: context as! AccountContext, onSelect: onSelect)
+    }
+    hooks.updateForumSidebarPane = { context, owner, controller, open in
+        if context.isExternal {
+            appDelegate?.supportAccountContextValue?.setForumSidebar(context: context.concrete, owner: owner, controller: controller, open: open)
+            return
+        }
+        appDelegate?.enumerateApplicationContexts { applicationContext in
+            if applicationContext.context.window === context.window {
+                applicationContext.setForumSidebar(owner: owner, controller: controller, open: open)
+            }
+        }
     }
     ChatUIHooks.install(hooks)
 }
@@ -178,14 +219,25 @@ func installChatUIHooks() {
 
 private func makeChatNavigationHooks() -> ChatNavigationHooks {
     var hooks = ChatNavigationHooks()
+    hooks.widgetWalletAvailable = { context in
+        guard #available(macOS 10.15, *), let context = context as? AccountContext else { return false }
+        return widgetWalletAvailable(context)
+    }
+    hooks.openWidgetWallet = { context, message, call, complete in
+        guard #available(macOS 10.15, *), let context = context as? AccountContext else { complete(.failure(.notAllowed)); return }
+        openWidgetWallet(context: context, message: message, call: call, complete: complete)
+    }
     hooks.showAddTonBalance = { context, amount, window in
         showModal(with: AddTonBalanceController(context: context, tonAmount: amount), for: window)
     }
-    hooks.makeCalendarPopover = { context, peerId, threadId, current, select in
+    hooks.makeCalendarModal = { context, peerId, threadId, current, select in
         if threadId != nil || peerId.namespace == Namespaces.Peer.SecretChat {
-            return CalendarController(NSMakeRect(0, 0, 300, 300), context.window, current: current, selectHandler: select)
+            return PlainCalendarModalController(window: context.window, current: current, select: select)
         }
         return ChatCalendarController(context: context, peerId: peerId, current: current, select: select)
+    }
+    hooks.makeSearchCalendar = { context, peerId, threadId, current, select in
+        return ChatCalendarSearchController(context: context, peerId: peerId, threadId: threadId, current: current, select: select)
     }
     hooks.makeBirthdayCalendar = { window, date in
         return CalendarController(NSMakeRect(0, 0, 300, 300), window, current: date, lowYear: 1900, canBeNoYear: true, selectHandler: { _ in }, autoclose: false)
@@ -212,14 +264,14 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.pushGroupsInCommon = { context, peerId in
         context.bindings.rootNavigation().push(GroupsInCommonViewController(context: context, peerId: peerId, standalone: true))
     }
-    hooks.pushGroupsInCommonWithContext = { context, peerId in
-        context.bindings.rootNavigation().push(GroupsInCommonViewController(context: context, peerId: peerId, standalone: true))
+    hooks.pushGroupsInCommonWithContext = { context, peerId, analyticsContext in
+        context.bindings.rootNavigation().push(GroupsInCommonViewController(context: context, peerId: peerId, standalone: true, analyticsContext: analyticsContext))
     }
     hooks.showInactiveChannelsOnJoin = { context in
         showInactiveChannels(context: context, source: .join)
     }
-    hooks.showInactiveChannelsOnJoinWithContext = { context in
-        showInactiveChannels(context: context, source: .join)
+    hooks.showInactiveChannelsOnJoinWithContext = { context, analyticsContext in
+        showInactiveChannels(context: context, source: .join, analyticsContext: analyticsContext)
     }
     hooks.showFrozenAccount = { context, window in
         showModal(with: FrozenAccountController(context: context), for: window)
@@ -227,8 +279,11 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.pushMessageStats = { context, messageId in
         context.bindings.rootNavigation().push(MessageStatsController(context, subject: .messageId(messageId)))
     }
-    hooks.pushMessageStatsWithContext = { context, messageId in
-        context.bindings.rootNavigation().push(MessageStatsController(context, subject: .messageId(messageId)))
+    hooks.pushMessageStatsWithContext = { context, messageId, analyticsContext in
+        context.bindings.rootNavigation().push(MessageStatsController(context, subject: .messageId(messageId), analyticsContext: analyticsContext))
+    }
+    hooks.openHTMLPage = { context, url in
+        BrowserStateContext.get(context).open(tab: .tonsite(url: url.absoluteString))
     }
     hooks.showVerifyAgeAlert = { context, window in
         showModal(with: VerifyAgeAlertController(context: context), for: window)
@@ -254,11 +309,11 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.showPaymentsCheckout = { context, messageId, invoice, window in
         showModal(with: PaymentsCheckoutController(context: context, source: .message(messageId), invoice: invoice), for: window)
     }
-    hooks.showPaymentsReceiptWithContext = { context, messageId, invoice, window in
-        showModal(with: PaymentsReceiptController(context: context, messageId: messageId, invoice: invoice), for: window)
+    hooks.showPaymentsReceiptWithContext = { context, messageId, invoice, window, analyticsContext in
+        showModal(with: PaymentsReceiptController(context: context, messageId: messageId, invoice: invoice, analyticsContext: analyticsContext), for: window)
     }
-    hooks.showPaymentsCheckoutWithContext = { context, messageId, invoice, window in
-        showModal(with: PaymentsCheckoutController(context: context, source: .message(messageId), invoice: invoice), for: window)
+    hooks.showPaymentsCheckoutWithContext = { context, messageId, invoice, window, analyticsContext in
+        showModal(with: PaymentsCheckoutController(context: context, source: .message(messageId), invoice: invoice, analyticsContext: analyticsContext), for: window)
     }
     hooks.applyExternalProxy = { server, accountManager in
         applyExternalProxy(server, accountManager: accountManager)
@@ -291,16 +346,16 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.showEditTagLabel = { context, reaction, label, window in
         showModal(with: EditTagLabelController(context: context, reaction: reaction, label: label), for: window)
     }
-    hooks.showEditTagLabelWithContext = { context, reaction, label, window in
-        showModal(with: EditTagLabelController(context: context, reaction: reaction, label: label), for: window)
+    hooks.showEditTagLabelWithContext = { context, reaction, label, window, analyticsContext in
+        showModal(with: EditTagLabelController(context: context, reaction: reaction, label: label, analyticsContext: analyticsContext), for: window)
     }
     hooks.showUserTagInfo = { context, tag, authorName, groupName, badgeType, window in
         let config = UserTagInfoConfiguration(tag: tag, authorName: authorName, groupName: groupName, badgeType: badgeType, canEditRank: false)
         showModal(with: UserTagInfoModalController(context: context, configuration: config), for: window)
     }
-    hooks.showUserTagInfoWithContext = { context, tag, authorName, groupName, badgeType, window in
+    hooks.showUserTagInfoWithContext = { context, tag, authorName, groupName, badgeType, window, analyticsContext in
         let config = UserTagInfoConfiguration(tag: tag, authorName: authorName, groupName: groupName, badgeType: badgeType, canEditRank: false)
-        showModal(with: UserTagInfoModalController(context: context, configuration: config), for: window)
+        showModal(with: UserTagInfoModalController(context: context, configuration: config, analyticsContext: analyticsContext), for: window)
     }
     hooks.showReportDetails = { context, reason, updated, window in
         showModal(with: ReportDetailsController(context: context, reason: reason, updated: updated), for: window)
@@ -348,6 +403,16 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
             return selected.first.map { ($0, behavior.participants[$0]?.participant) }
         }
     }
+    hooks.selectRichTextButtonUser = { context, title in
+        return selectModalPeers(window: context.window, context: context, title: title, settings: [.contacts, .remote, .bots], limit: 1)
+        |> mapToSignal { ids -> Signal<Peer?, NoError> in
+            guard let id = ids.first, id.namespace == Namespaces.Peer.CloudUser else { return .single(nil) }
+            return context.account.postbox.transaction { transaction -> Peer? in
+                guard let peer = transaction.getPeer(id) as? TelegramUser else { return nil }
+                return peer
+            }
+        }
+    }
     hooks.selectSpecificPeer = { context, peerType, messageId, buttonId, maxQuantity in
         selectSpecificPeer(context: context, peerType: peerType, messageId: messageId, buttonId: buttonId, maxQuantity: maxQuantity)
     }
@@ -375,8 +440,8 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.showChatGallery = { context, message, delegate, interactions, type, reversed, chatMode, chatLocation, contextHolder, cachedPeerData in
         showChatGallery(context: context, message: message, delegate, interactions, type: galleryAppearType(type), reversed: reversed, chatMode: chatMode, chatLocation: chatLocation, contextHolder: contextHolder, cachedPeerData: cachedPeerData)
     }
-    hooks.showChatGalleryWithContext = { context, message, delegate, interactions, type, reversed, chatMode, chatLocation, contextHolder, cachedPeerData in
-        showChatGallery(context: context, message: message, delegate, interactions, type: galleryAppearType(type), reversed: reversed, chatMode: chatMode, chatLocation: chatLocation, contextHolder: contextHolder, cachedPeerData: cachedPeerData)
+    hooks.showChatGalleryWithContext = { context, message, delegate, interactions, type, reversed, chatMode, chatLocation, contextHolder, cachedPeerData, analyticsContext in
+        showChatGallery(context: context, message: message, delegate, interactions, type: galleryAppearType(type), reversed: reversed, chatMode: chatMode, chatLocation: chatLocation, contextHolder: contextHolder, cachedPeerData: cachedPeerData, analyticsContext: analyticsContext)
     }
     hooks.showPhotosGallery = { context, peerId, firstStableId, delegate, interactions in
         showPhotosGallery(context: context, peerId: peerId, firstStableId: firstStableId, delegate, interactions)
@@ -436,15 +501,15 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
         showModal(with: LocationModalPreview(context, map: map, peer: peer, messageId: messageId), for: window)
     }
     hooks.showLocationPicker = { chatInteraction, window, morphSource in
-        showModal(with: LocationModalController(chatInteraction), for: window, morphSource: morphSource)
+        showModal(with: LocationModalController(chatInteraction, analyticsContext: chatInteraction.captureAnalyticsContext()), for: window, morphSource: morphSource)
     }
     hooks.showLocationSelector = { chatInteraction, select, window in
         let picker = LocationModalController(chatInteraction, destination: .select)
         picker.selectCallback = select
         showModal(with: picker, for: window)
     }
-    hooks.showLocationSelectorWithContext = { chatInteraction, select, window in
-        let picker = LocationModalController(chatInteraction, destination: .select)
+    hooks.showLocationSelectorWithContext = { chatInteraction, select, window, analyticsContext in
+        let picker = LocationModalController(chatInteraction, destination: .select, analyticsContext: analyticsContext)
         picker.selectCallback = select
         showModal(with: picker, for: window)
     }
@@ -467,20 +532,20 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
     hooks.openBrowserTab = { context, tab in
         BrowserStateContext.get(context).open(tab: browserTabData(tab))
     }
-    hooks.openBrowserTabWithContext = { context, tab in
-        BrowserStateContext.get(context).open(tab: browserTabData(tab))
+    hooks.openBrowserTabWithContext = { context, tab, analyticsContext in
+        BrowserStateContext.get(context).open(tab: browserTabData(tab), analyticsContext: analyticsContext)
     }
     hooks.installAttachMenuBot = { context, peer, completion in
         installAttachMenuBot(context: context, peer: peer, completion: completion)
     }
-    hooks.installAttachMenuBotWithContext = { context, peer, completion in
-        installAttachMenuBot(context: context, peer: peer, completion: completion)
+    hooks.installAttachMenuBotWithContext = { context, peer, analyticsContext, completion in
+        installAttachMenuBot(context: context, peer: peer, analyticsContext: analyticsContext, completion: completion)
     }
     hooks.openJoinChatBotWebView = { context, botId, url, queryId, joinedPeerId in
         openJoinChatBotWebView(context: context, botId: botId, url: url, queryId: queryId, joinedPeerId: joinedPeerId)
     }
-    hooks.openJoinChatBotWebViewWithContext = { context, botId, url, queryId, joinedPeerId in
-        openJoinChatBotWebView(context: context, botId: botId, url: url, queryId: queryId, joinedPeerId: joinedPeerId)
+    hooks.openJoinChatBotWebViewWithContext = { context, botId, url, queryId, joinedPeerId, analyticsContext in
+        openJoinChatBotWebView(context: context, botId: botId, url: url, queryId: queryId, joinedPeerId: joinedPeerId, analyticsContext: analyticsContext)
     }
     hooks.makeInlineWebViewRowItem = { size, text, url, account, callback in
         return ContextInlineWebViewRowItem(size, text: text, url: url, account: account, callback: callback)
@@ -667,12 +732,14 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
             }
         })
     }
-    let editImageWithEvents: (any AccountContextProtocol, URL, EditedImageData?, @escaping () -> Void, @escaping () -> Void) -> Signal<(URL, EditedImageData?), NoError> = { context, url, defaultData, cancelled, dismissed in
+    let editImageWithEvents: (any AccountContextProtocol, URL, EditedImageData?, AnalyticsContext, @escaping () -> Void, @escaping () -> Void) -> Signal<(URL, EditedImageData?), NoError> = { context, url, defaultData, analyticsContext, cancelled, dismissed in
+        let presentation = analyticsContext.beginPresentation()
         let context = context as! AccountContext
         guard let controller = EditImageModalController(url, context: context, defaultData: defaultData) else {
             dismissed()
             return .complete()
         }
+        controller.analyticsContext = analyticsContext
         controller.onCancelled = cancelled
         let onClose = controller.onClose
         controller.onClose = {
@@ -683,16 +750,17 @@ private func makeChatNavigationHooks() -> ChatNavigationHooks {
         controller.onDeinit = {
             onDeinit?()
             dismissed()
+            presentation.end()
         }
         showModal(with: controller, for: context.window, animationType: .scaleCenter)
         return controller.result
     }
     hooks.editImageWithEvents = editImageWithEvents
-    hooks.editImageWithContext = { context, url, defaultData in
-        editImageWithEvents(context, url, defaultData, {}, {})
+    hooks.editImageWithContext = { context, url, defaultData, analyticsContext in
+        editImageWithEvents(context, url, defaultData, analyticsContext, {}, {})
     }
     hooks.editImage = { context, url, defaultData in
-        editImageWithEvents(context, url, defaultData, {}, {})
+        editImageWithEvents(context, url, defaultData, Analytics.shared.unresolvedContext(), {}, {})
     }
     #if DEBUG
     hooks.showFirstGramsModal = { context, window in

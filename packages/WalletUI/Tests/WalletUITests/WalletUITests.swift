@@ -368,10 +368,10 @@ final class WalletUITests: XCTestCase {
     func testImportReadinessFollowsWalletPhaseAndActiveOperation() {
         var input = importState()
         input.words = Array(repeating: "alpha", count: 12)
-        for phase: WalletContext.Phase in [.empty, .wallet(.init(address: address, publicKey: "key"))] {
+        for phase: WalletContext.Phase in [.empty, .wallet(.init(address: address, publicKey: "key")), .failed(.corrupted)] {
             XCTAssertTrue(walletCanSubmitImport(input, walletState: state(phase), isMnemonicWord: { _ in true }))
         }
-        for phase: WalletContext.Phase in [.restoring, .creating, .failed(.corrupted)] {
+        for phase: WalletContext.Phase in [.restoring, .creating] {
             XCTAssertFalse(walletCanSubmitImport(input, walletState: state(phase), isMnemonicWord: { _ in true }))
         }
         let busy = WalletContext.State(phase: .empty, balance: .idle, transactions: .init(items: [], offset: 0, canLoadMore: false, isLoadingMore: false, error: nil), pendingTransfers: [], activeOperation: .disablingBackup)

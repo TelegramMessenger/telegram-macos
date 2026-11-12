@@ -12,6 +12,7 @@ import TelegramUtils
 import GeneralRows
 import InputDataUI
 import AvatarUI
+import AppAnalytics
 
 
 
@@ -258,6 +259,7 @@ public func GiftLinkModalController(context: any AccountContextProtocol, info: P
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().giftLinkTitle)
+    controller.analyticsScreen = .boostsGiftLink
     
     controller.onDeinit = {
         actionsDisposable.dispose()

@@ -10,6 +10,7 @@ import MessageTextUtils
 import TelegramTheme
 import TelegramUtils
 import Localization
+import HTMLBubbles
 import MessageUtils
 public struct SelectContainer {
     public let text:NSAttributedString
@@ -662,7 +663,8 @@ public class ChatSelectText : NSObject {
                 if let index = self?.table.row(at: point), index > 0, let item = self?.table.item(at: index), let view = item.view as? ChatRowView {
                     
                     if event.clickCount > 1, selectManager.isEmpty {
-                        if !view.isAllowedToDoubleAction(view.convert(event.locationInWindow, from: nil)) {
+                        if !view.isAllowedToDoubleAction(view.convert(event.locationInWindow, from: nil)),
+                           (window.firstResponder as? HTMLBubbleView)?.selectedText == nil {
                             view.textSelectionSources.restoreFocus(in: window)
                         }
                     }
