@@ -57,8 +57,12 @@ final class ChatInputRestrictionTests: XCTestCase {
         return TelegramMediaImage(imageId: MediaId(namespace: Namespaces.Media.CloudImage, id: 1), representations: [], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])
     }
 
-    private func file() -> TelegramMediaFile {
-        return TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.CloudFile, id: 1), partialReference: nil, resource: LocalFileMediaResource(fileId: 1), previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "application/octet-stream", size: 1, attributes: [], alternativeRepresentations: [])
+    private func file(mimeType: String = "application/octet-stream", attributes: [TelegramMediaFileAttribute] = []) -> TelegramMediaFile {
+        return TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.CloudFile, id: 1), partialReference: nil, resource: LocalFileMediaResource(fileId: 1), previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: mimeType, size: 1, attributes: attributes, alternativeRepresentations: [])
+    }
+
+    private func message(media: [Media] = []) -> Message {
+        return Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: 1), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: nil, text: "Existing message", attributes: [], media: media, peers: SimpleDictionary(), associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:])
     }
 
     private func thread(closed: Bool, owned: Bool = false) -> MessageHistoryThreadData {
@@ -125,6 +129,63 @@ final class ChatInputRestrictionTests: XCTestCase {
         }
     }
 
+    func testCombinedDefaultAndPersonalBansOfferBoost() {
+        for defaultFlags: TelegramChatBannedRightsFlags in [[.banSendText], allSendingRights.subtracting([.banSendVoice])] {
+            let peer = channel(defaults: defaultFlags, personal: allSendingRights.subtracting(defaultFlags))
+            XCTAssertFalse(peer.canSendSomething())
+            XCTAssertTrue(peer.canSendSomething(ignoreDefault: true))
+            guard case .action = state(peer, required: 2, applied: 1).state else {
+                return XCTFail("Expected boost action for combined restrictions")
+            }
+            let boosted = state(peer, required: 2, applied: 2)
+            XCTAssertEqual(boosted.state, .normal)
+            for required: Int32? in [nil, 0] {
+                guard case .restricted = state(peer, required: required).state else {
+                    return XCTFail("Expected full combined restriction")
+                }
+            }
+        }
+    }
+
+    func testCombinedRestrictionsUpdateWhenBoostsChange() {
+        let peer = channel(defaults: [.banSendText], personal: allSendingRights.subtracting([.banSendText]))
+        let original = state(peer, required: 2, applied: 1)
+        let boosted = original.withUpdatedCachedData(cached(required: 2, applied: 2))
+        XCTAssertEqual(boosted.state, .normal)
+        XCTAssertNil(boosted.textRestriction)
+        XCTAssertTrue(peer.canSendMessage(cachedData: boosted.cachedData))
+        XCTAssertFalse(peer.canSendMessage(media: photo(), cachedData: boosted.cachedData))
+        guard case .action = boosted.withUpdatedCachedData(cached(required: 2, applied: 1)).state else {
+            return XCTFail("Expected boost action after losing the bypass")
+        }
+    }
+
+    func testStickerFormatsUseStickerPermissions() {
+        let sticker = TelegramMediaFileAttribute.Sticker(displayText: "", packReference: nil, maskData: nil)
+        let video = TelegramMediaFileAttribute.Video(duration: 1, size: PixelDimensions(width: 64, height: 64), flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil)
+        let stickers = [
+            file(mimeType: "image/webp", attributes: [sticker]),
+            file(mimeType: "application/x-tgsticker", attributes: [.FileName(fileName: "sticker.tgs"), sticker]),
+            file(mimeType: "video/webm", attributes: [sticker, video, .Animated])
+        ]
+        let fileRestrictedPeers: [Peer] = [group(defaults: [.banSendFiles, .banSendVideos, .banSendGifs]), channel(defaults: [.banSendFiles, .banSendVideos, .banSendGifs])]
+        for peer in fileRestrictedPeers {
+            for sticker in stickers {
+                XCTAssertNil(checkMediaPermission(sticker, for: peer))
+                XCTAssertTrue(peer.canSendMessage(media: sticker))
+            }
+            XCTAssertNotNil(checkMediaPermission(file(), for: peer))
+        }
+        let stickerRestrictedPeers: [Peer] = [group(defaults: [.banSendStickers]), channel(defaults: [.banSendStickers])]
+        for peer in stickerRestrictedPeers {
+            for sticker in stickers {
+                XCTAssertNotNil(checkMediaPermission(sticker, for: peer))
+                XCTAssertFalse(peer.canSendMessage(media: sticker))
+            }
+            XCTAssertNil(checkMediaPermission(file(), for: peer))
+        }
+    }
+
     func testMissingOrZeroThresholdNeverBypassesRestrictions() {
         let peer = channel(defaults: allSendingRights)
         for required: Int32? in [nil, 0] {
@@ -163,24 +224,80 @@ final class ChatInputRestrictionTests: XCTestCase {
         XCTAssertNil(unrestricted.textRestriction)
     }
 
-    func testRestrictedDraftStaysStoredAndCannotSend() {
+    func testRestrictedDraftStaysStoredWhileVoiceIsAvailable() {
         let draft = ChatTextInputState(inputText: "Saved draft")
         let presentation = state(channel(defaults: [.banSendText]), required: 2)
             .updatedInterfaceState { $0.withUpdatedInputState(draft) }
         XCTAssertFalse(presentation.abilityToSend)
-        XCTAssertFalse(ChatInputView.sendButtonState(from: presentation).isSendEnabled)
-        XCTAssertFalse(ChatInputView.sendButtonState(from: presentation, hasRichDraft: true).isSendEnabled)
+        for hasRichDraft in [false, true] {
+            let button = ChatInputView.sendButtonState(from: presentation, hasRichDraft: hasRichDraft)
+            XCTAssertEqual(button.kind, .voice)
+            XCTAssertTrue(button.isSendEnabled)
+        }
+        XCTAssertTrue(presentation.inputForSending.inputText.isEmpty)
         XCTAssertEqual(presentation.effectiveInput, draft)
         let boosted = presentation.withUpdatedCachedData(cached(required: 2, applied: 2))
         XCTAssertTrue(boosted.abilityToSend)
         XCTAssertTrue(ChatInputView.sendButtonState(from: boosted, hasRichDraft: true).isSendEnabled)
+        XCTAssertEqual(ChatInputView.sendButtonState(from: boosted, hasRichDraft: true).kind, .send)
+        XCTAssertEqual(boosted.inputForSending, draft)
         XCTAssertEqual(boosted.effectiveInput, draft)
     }
 
-    func testRichDraftWithoutPlainTextCannotSendWhenRestricted() {
+    func testRestrictedRichDraftDoesNotHideVoice() {
         let presentation = state(channel(defaults: [.banSendText]))
-        XCTAssertFalse(ChatInputView.sendButtonState(from: presentation, hasRichDraft: true).isSendEnabled)
+        let button = ChatInputView.sendButtonState(from: presentation, hasRichDraft: true)
+        XCTAssertEqual(button.kind, .voice)
+        XCTAssertTrue(button.isSendEnabled)
+        XCTAssertFalse(presentation.abilityToSend)
         XCTAssertTrue(presentation.canAttachFiles)
+    }
+
+    func testHiddenDraftDoesNotBlockForwardingAllowedMedia() {
+        let forwarded = message(media: [photo()])
+        for draft in [ChatTextInputState(), ChatTextInputState(inputText: "Saved draft")] {
+            let presentation = state(channel(defaults: [.banSendText]))
+                .updatedInterfaceState {
+                    $0.withUpdatedInputState(draft)
+                        .withUpdatedForwardMessageIds([forwarded.id])
+                        .withUpdatedForwardMessages([forwarded])
+                }
+            for hasRichDraft in [false, true] {
+                let button = ChatInputView.sendButtonState(from: presentation, hasRichDraft: hasRichDraft)
+                XCTAssertEqual(button.kind, .send)
+                XCTAssertTrue(button.isSendEnabled)
+            }
+            XCTAssertTrue(presentation.abilityToSend)
+            XCTAssertTrue(presentation.inputForSending.inputText.isEmpty)
+            XCTAssertEqual(presentation.effectiveInput, draft)
+            XCTAssertNil(checkMediaPermission(photo(), for: presentation.peer))
+        }
+    }
+
+    func testHiddenDraftDoesNotTriggerSlowModeCommentRestriction() {
+        let forwarded = message(media: [photo()])
+        let presentation = state(channel(defaults: [.banSendText]))
+            .updatedInterfaceState {
+                $0.withUpdatedInputState(ChatTextInputState(inputText: String(repeating: "a", count: 5000)))
+                    .withUpdatedForwardMessageIds([forwarded.id])
+                    .withUpdatedForwardMessages([forwarded])
+            }
+            .updateSlowMode { _ in SlowMode() }
+        XCTAssertFalse(presentation.slowModeMultipleLocked)
+        XCTAssertNil(presentation.slowModeErrorText)
+        XCTAssertTrue(presentation.abilityToSend)
+    }
+
+    func testHiddenDraftIsNotCountedAsAPaidMessage() {
+        let forwarded = message(media: [photo()])
+        let presentation = state(channel(defaults: [.banSendText]))
+            .updatedInterfaceState {
+                $0.withUpdatedInputState(ChatTextInputState(inputText: "Saved draft"))
+                    .withUpdatedForwardMessageIds([forwarded.id])
+                    .withUpdatedForwardMessages([forwarded])
+            }
+            .withUpdatedSendPaidMessageStars(StarsAmount(value: 5, nanos: 0))
+        XCTAssertEqual(ChatInputView.sendButtonState(from: presentation, hasRichDraft: true).kind, .paidStars(amount: 5))
     }
 
     func testClosedTopicsRetainPrecedenceOverBoosts() {
@@ -226,7 +343,7 @@ final class ChatInputRestrictionTests: XCTestCase {
 
     func testEditingRetainsItsExistingPermissionBehavior() {
         let peer = channel(defaults: allSendingRights)
-        let message = Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: 1), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: nil, text: "Existing message", attributes: [], media: [], peers: SimpleDictionary(), associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:])
+        let message = self.message()
         let presentation = state(peer).withEditMessage(message)
         XCTAssertEqual(presentation.state, .editing)
         XCTAssertNil(presentation.textRestriction)

@@ -76,6 +76,14 @@ public func canBypassChatRestrictions(_ cachedData: CachedPeerData?) -> Bool {
     return applied >= required
 }
 
+public extension TelegramChannel {
+    func canSendSomething(ignoreDefault: Bool = false) -> Bool {
+        let defaultFlags: TelegramChatBannedRightsFlags = ignoreDefault ? [] : defaultBannedRights?.flags ?? []
+        let flags = defaultFlags.union(bannedRights?.flags ?? [])
+        return withUpdatedDefaultBannedRights(TelegramChatBannedRights(flags: flags, untilDate: Int32.max)).hasPermission(.sendSomething)
+    }
+}
+
 public func checkMediaPermission(_ media: Media, for peer: Peer?, cachedData: CachedPeerData? = nil) -> String? {
     guard let peer = peer else {
         return nil
@@ -86,10 +94,10 @@ public func checkMediaPermission(_ media: Media, for peer: Peer?, cachedData: Ca
     case _ as TelegramMediaImage:
         return permissionText(from: peer, for: .banSendPhotos, cachedData: cachedData)
     case let file as TelegramMediaFile:
-        if file.isAnimated && file.isVideo {
-            return permissionText(from: peer, for: .banSendGifs, cachedData: cachedData)
-        } else if file.isStaticSticker {
+        if file.isSticker || file.isAnimatedSticker || file.isVideoSticker {
             return permissionText(from: peer, for: .banSendStickers, cachedData: cachedData)
+        } else if file.isAnimated && file.isVideo {
+            return permissionText(from: peer, for: .banSendGifs, cachedData: cachedData)
         } else if file.isMusic {
             return permissionText(from: peer, for: .banSendMusic, cachedData: cachedData)
         } else if file.isVoice {
@@ -267,13 +275,13 @@ public extension Peer {
                 switch channel.participationStatus {
                 case .member:
                     if let media = media {
-                        return channel.hasPermission(.sendSomething, ignoreDefault: ignoreDefault) && checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
+                        return channel.canSendSomething(ignoreDefault: ignoreDefault) && checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
                     }
                     return channel.hasPermission(.sendText, ignoreDefault: ignoreDefault)
                 case .left:
                     if isThreadMode {
                         if let media = media {
-                            return channel.hasPermission(.sendSomething, ignoreDefault: ignoreDefault) && checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
+                            return channel.canSendSomething(ignoreDefault: ignoreDefault) && checkMediaPermission(media, for: channel, cachedData: cachedData) == nil
                         }
                         return channel.hasPermission(.sendText, ignoreDefault: ignoreDefault)
                     }

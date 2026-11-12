@@ -2232,9 +2232,12 @@ public class ChatInputView: View, Notifable {
         hasRichDraft: Bool = false,
         canStopIncomingStreamingMessage: Bool = false
     ) -> ChatInputSendButton.State {
+        let input = value.inputForSending
+        let canSendText = value.textRestriction == nil
+        let hasRichDraft = hasRichDraft && canSendText
         let isInlineLoading: Bool = {
-            if let query = value.inputQueryResult, case let .contextRequestResult(peer, data) = query {
-                if let address = peer.addressName, "@\(address)" != value.effectiveInput.inputText {
+            if canSendText, let query = value.inputQueryResult, case let .contextRequestResult(peer, data) = query {
+                if let address = peer.addressName, "@\(address)" != input.inputText {
                     return data == nil
                 }
             }
@@ -2242,7 +2245,7 @@ public class ChatInputView: View, Notifable {
         }()
 
         let hasInlineRequest: Bool = {
-            if let query = value.inputQueryResult, case .contextRequestResult = query {
+            if canSendText, let query = value.inputQueryResult, case .contextRequestResult = query {
                 return true
             }
             return false
@@ -2253,7 +2256,7 @@ public class ChatInputView: View, Notifable {
             && !isInlineLoading
             && !hasInlineRequest
 
-        let hasContent = !value.effectiveInput.inputText.isEmpty
+        let hasContent = !input.inputText.isEmpty
             || !value.interfaceState.forwardMessageIds.isEmpty
             || value.state == .editing
             || value.chatMode.customChatLink != nil
@@ -2275,7 +2278,7 @@ public class ChatInputView: View, Notifable {
         } else if hasInlineRequest && !isInlineLoading {
             kind = .inlineCancel
         } else if hasContent, let stars = value.sendPaidMessageStars {
-            let messagesCount = (value.interfaceState.inputState.inputText.isEmpty ? 0 : 1) + value.interfaceState.forwardMessages.count
+            let messagesCount = (canSendText && !value.interfaceState.inputState.inputText.isEmpty ? 1 : 0) + value.interfaceState.forwardMessages.count
             kind = .paidStars(amount: stars.value * Int64(messagesCount))
         } else if hasContent {
             kind = .send
@@ -2283,8 +2286,7 @@ public class ChatInputView: View, Notifable {
             kind = .voice
         }
 
-        let isSendEnabled = (value.chatMode.customChatLink == nil || !value.effectiveInput.inputText.isEmpty)
-            && (value.textRestriction == nil || (!hasRichDraft && value.effectiveInput.inputText.isEmpty))
+        let isSendEnabled = value.chatMode.customChatLink == nil || !input.inputText.isEmpty
 
         return ChatInputSendButton.State(
             kind: kind,

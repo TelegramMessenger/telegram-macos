@@ -4739,7 +4739,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         let _afterSentTransition:(Bool)->Void = { [weak self] flushInput in
             self?.chatInteraction.update({ presentation in
-                let keepsInput = !flushInput && presentation.interfaceState.editState == nil && !presentation.interfaceState.inputState.inputText.isEmpty
+                let keepsInput = (!flushInput || presentation.textRestriction != nil) && presentation.interfaceState.editState == nil && !presentation.interfaceState.inputState.inputText.isEmpty
                 return presentation.updatedInputQueryResult { current in
                     return keepsInput ? current : nil
                 }.updatedInterfaceState { current in
@@ -4977,13 +4977,13 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
             if let strongSelf = self,
                let contents = strongSelf.mode.customChatContents as? HTMLDemoChatContents,
-               contents.handleGameCommand(strongSelf.chatInteraction.presentation.effectiveInput.inputText) {
+               contents.handleGameCommand(strongSelf.chatInteraction.presentation.inputForSending.inputText) {
                 strongSelf.chatInteraction.updateInput(with: "")
                 return
             }
             #if DEBUG
             if let strongSelf = self,
-               isChatSyntheticButtonsCommand(strongSelf.chatInteraction.presentation.effectiveInput.inputText) {
+               isChatSyntheticButtonsCommand(strongSelf.chatInteraction.presentation.inputForSending.inputText) {
                 insertSyntheticButtonsMessages(
                     context: strongSelf.context,
                     peerId: strongSelf.chatInteraction.peerId,
@@ -4993,7 +4993,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 return
             }
             if let strongSelf = self,
-               isChatUnsupportedMessageCommand(strongSelf.chatInteraction.presentation.effectiveInput.inputText) {
+               isChatUnsupportedMessageCommand(strongSelf.chatInteraction.presentation.inputForSending.inputText) {
                 insertUnsupportedMockMessages(
                     context: strongSelf.context,
                     peerId: strongSelf.chatInteraction.peerId,
@@ -5003,7 +5003,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 return
             }
             if let strongSelf = self,
-               isChatUnsupportedMessage2Command(strongSelf.chatInteraction.presentation.effectiveInput.inputText) {
+               isChatUnsupportedMessage2Command(strongSelf.chatInteraction.presentation.inputForSending.inputText) {
                 insertSupportedFileMockMessage(
                     context: strongSelf.context,
                     peerId: strongSelf.chatInteraction.peerId,
@@ -5013,7 +5013,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 return
             }
             if let strongSelf = self,
-               isChatGramsModalCommand(strongSelf.chatInteraction.presentation.effectiveInput.inputText) {
+               isChatGramsModalCommand(strongSelf.chatInteraction.presentation.inputForSending.inputText) {
                 strongSelf.chatInteraction.updateInput(with: "")
                 ChatNavigationHooks.shared.showFirstGramsModal(strongSelf.context, strongSelf.context.window)
                 return
@@ -5023,11 +5023,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             // posts the current edited content (we don't continuously sync — that loops).
             if let interaction = self?.chatInteraction,
                let restriction = interaction.presentation.textRestriction,
+               interaction.presentation.interfaceState.forwardMessageIds.isEmpty,
                interaction.richTextDraft != nil || !interaction.presentation.effectiveInput.inputText.isEmpty {
                 showModalText(for: context.window, text: restriction)
                 return
             }
-            self?.chatInteraction.flushRichTextDraft?()
+            if let interaction = self?.chatInteraction, interaction.presentation.textRestriction == nil {
+                interaction.flushRichTextDraft?()
+            }
             let deferredSendAction = self?.chatInteraction.captureDeferredSendAction()
             // A structural rich-text draft (composed in the rich editor, shown as the composer preview) sends
             // as a RichTextMessageAttribute, bypassing the plain text/forward send below — the text input is
@@ -5104,6 +5107,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             if let strongSelf = self, !strongSelf.nextTransaction.isExutable, !strongSelf.chatInteraction.isPreparingForwardSend {
                 let chatInteraction = strongSelf.chatInteraction
                 let presentation = chatInteraction.presentation
+                let input = presentation.inputForSending
                 let peerId = strongSelf.chatInteraction.peerId
                 let currentSendAsPeerId = presentation.currentSendAsPeerId
                 if presentation.abilityToSend {
@@ -5116,6 +5120,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         defer { analyticsPresentation.end() }
                         let destinationReply = takeReplyId()
                         let destinationThreadId = makeThreadId64(true)
+                        let completeTransition: () -> Void = {
+                            _afterSentTransition(presentation.textRestriction == nil)
+                        }
                         var makeTextSignal: (AnalyticsContext) -> Signal<Never, NoError> = { _ in .complete() }
                         
                         let suggest = presentation.interfaceState.suggestPost
@@ -5136,17 +5143,17 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             editMessage(state, atDate)
                             return
                         } else {
-                            let hasText = !presentation.effectiveInput.inputText.trimmed.isEmpty
+                            let hasText = !input.inputText.trimmed.isEmpty
                             let hasForwards = !presentation.interfaceState.forwardMessageIds.isEmpty
                             let resultGroup = submission?.group(part: part, count: (hasText ? 1 : 0) + (hasForwards ? 1 : 0))
                             var messagesCount: Int = presentation.interfaceState.forwardMessageIds.count
-                            if !presentation.effectiveInput.inputText.trimmed.isEmpty {
+                            if !input.inputText.trimmed.isEmpty {
                                 setNextToTransaction = true
                                 let paidMessageStars = takePaidMessageStars()
                                 makeTextSignal = { [weak controller] textContext in
                                     guard let controller else { submission?.discard(); return .complete() }
                                     let sendObservation = controller.makeMessageSendObservation(.text, analyticsContext: textContext, scheduled: atDate != nil, silent: silent)
-                                    return Sender.enqueue(input: rewrittenInput ?? presentation.effectiveInput, context: context, peerId: destinationPeerId, replyId: destinationReply, threadId: destinationThreadId, disablePreview: presentation.interfaceState.composeDisableUrlPreview != nil, linkBelowMessage: presentation.interfaceState.linkBelowMessage, largeMedia: presentation.interfaceState.largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: currentSendAsPeerId, mediaPreview: rewrittenInput == nil ? presentation.urlPreview?.1 : nil, emptyHandler: { [weak controller] in
+                                    return Sender.enqueue(input: rewrittenInput ?? input, context: context, peerId: destinationPeerId, replyId: destinationReply, threadId: destinationThreadId, disablePreview: presentation.interfaceState.composeDisableUrlPreview != nil, linkBelowMessage: presentation.interfaceState.linkBelowMessage, largeMedia: presentation.interfaceState.largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: currentSendAsPeerId, mediaPreview: rewrittenInput == nil ? presentation.urlPreview?.1 : nil, emptyHandler: { [weak controller] in
                                         _ = controller?.nextTransaction.execute()
                                     }, customChatContents: customChatContents, messageEffect: messageEffect, sendPaidMessageStars: paidMessageStars, suggestPost: presentation.interfaceState.suggestPost, observedResult: { expectedCount, ids in
                                         sendObservation?.complete(expectedCount: expectedCount, resultCount: ids.count, acceptedCount: ids.compactMap { $0 }.count)
@@ -5173,9 +5180,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                     startedSending = true
                                     if setNextToTransaction {
                                         if atDate != nil {
-                                            afterSentTransition()
+                                            completeTransition()
                                         } else {
-                                            controller.nextTransaction.set(handler: afterSentTransition)
+                                            controller.nextTransaction.set(handler: completeTransition)
                                         }
                                     }
                                 }
@@ -5236,7 +5243,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                     invokeSignal = makeTextSignal(origin)
                                 }
 
-                                if fwdIds.isEmpty, atDate == nil, !presentation.effectiveInput.inputText.trimmed.isEmpty, presentation.botMenu?.revealed != true, controller.historyState.isDownOfHistory {
+                                if fwdIds.isEmpty, atDate == nil, !input.inputText.trimmed.isEmpty, presentation.botMenu?.revealed != true, controller.historyState.isDownOfHistory {
                                     controller.textSendFlight?.launch(compactSource: rewrittenInput != nil)
                                 }
 
@@ -5312,14 +5319,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         apply(strongSelf, atDate: atDate?.date, repeatPeriod: atDate?.repeatPeriod)
                     case let .customLink(contents):
                         submission?.discard()
-                        contents.saveText?(presentation.effectiveInput)
+                        contents.saveText?(input)
                         strongSelf.navigationController?.invokeBack(checkLock: false)
                     case .preview:
                         break
                     }
                     
                 } else {
-                    if presentation.effectiveInput.inputText.trimmed.isEmpty, presentation.interfaceState.forwardMessageIds.isEmpty, chatInteraction.richTextDraft == nil, presentation.interfaceState.editState == nil {
+                    if input.inputText.trimmed.isEmpty, presentation.interfaceState.forwardMessageIds.isEmpty, chatInteraction.richTextDraft == nil, presentation.interfaceState.editState == nil {
                         submission?.skip(part: part)
                     } else {
                         submission?.complete(part: part, result: .rejected)
@@ -5367,7 +5374,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
             let interaction = self.chatInteraction
             let presentation = interaction.presentation
-            let draft = presentation.effectiveInput
+            let draft = presentation.inputForSending
             if interaction.appliedAIEditorDraft != nil {
                 self.cancelAlwaysUseAIRequest()
                 sendMessage(silent, atDate, messageEffect, submission, part, nil)

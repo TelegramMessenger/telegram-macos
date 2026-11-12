@@ -601,16 +601,20 @@ public class ChatPresentationInterfaceState: Equatable {
         return permissionText(from: peer, for: .banSendText, cachedData: cachedData)
     }
 
+    var inputForSending: ChatTextInputState {
+        return textRestriction == nil ? effectiveInput : ChatTextInputState()
+    }
+
     var canAttachFiles: Bool {
         return state == .normal && permissionText(from: peer, for: .banSendFiles, cachedData: cachedData) == nil
     }
 
     private var groupRestrictionState: ChatState? {
         if let channel = peer as? TelegramChannel, case .group = channel.info {
-            if channel.hasPermission(.sendSomething, ignoreDefault: canBypassChatRestrictions(cachedData)) {
+            if channel.canSendSomething(ignoreDefault: canBypassChatRestrictions(cachedData)) {
                 return nil
             }
-            if channel.hasPermission(.sendSomething, ignoreDefault: true),
+            if channel.canSendSomething(ignoreDefault: true),
                let required = (cachedData as? CachedChannelData)?.boostsToUnrestrict,
                required > 0, required > ((cachedData as? CachedChannelData)?.appliedBoosts ?? 0) {
                 return .action(strings().boostGroupChatInputAction, { chatInteraction in
@@ -965,9 +969,9 @@ public class ChatPresentationInterfaceState: Equatable {
                     forwardMessages.append(message)
                 }
             }
-            if forwardMessages.count > 1 || (!effectiveInput.inputText.isEmpty && forwardMessages.count == 1) {
+            if forwardMessages.count > 1 || (!inputForSending.inputText.isEmpty && forwardMessages.count == 1) {
                 return true
-            } else if effectiveInput.inputText.length > 4096 {
+            } else if inputForSending.inputText.length > 4096 {
                 return true
             }
         }
@@ -978,7 +982,7 @@ public class ChatPresentationInterfaceState: Equatable {
         if let slowMode = self.slowMode, slowMode.hasLocked {
             return slowMode.errorText
         } else if slowModeMultipleLocked {
-            if effectiveInput.inputText.length > 4096 {
+            if inputForSending.inputText.length > 4096 {
                 return strings().slowModeTooLongError
             }
             return strings().slowModeForwardCommentError
@@ -989,9 +993,6 @@ public class ChatPresentationInterfaceState: Equatable {
     
     public var abilityToSend:Bool {
         if state == .normal {
-            if !effectiveInput.inputText.isEmpty && textRestriction != nil {
-                return false
-            }
             if let suggestPost = interfaceState.suggestPost, suggestPost.amount == nil {
                 return false
             }
@@ -1002,7 +1003,7 @@ public class ChatPresentationInterfaceState: Equatable {
                     return false
                 }
             }
-            return (!effectiveInput.inputText.isEmpty || !interfaceState.forwardMessageIds.isEmpty)
+            return (!inputForSending.inputText.isEmpty || !interfaceState.forwardMessageIds.isEmpty)
         } else if let editState = interfaceState.editState {
             if editState.message.media.count == 0 {
                 return !effectiveInput.inputText.isEmpty
