@@ -15,6 +15,7 @@ import AlertsUI
 import ColorPalette
 import FoundationUtils
 import LocalAnimations
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -360,6 +361,7 @@ public func LanguageController(_ context: any AccountContextProtocol, focusOnIte
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().telegramLanguageViewController, hasDone: false, identifier: "language")
+    controller.analyticsScreen = .settingsLanguage
 
     controller._becomeFirstResponder = {
         return false

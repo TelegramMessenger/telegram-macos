@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--check', action='store_true')
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
-destination = source.parents[2] / 'packages/HTMLBubbles/Sources/HTMLBubbles/Resources/widget-sandbox/showcase/stress'
+destination = source.parents[2] / 'packages/HTMLBubbles/Tests/HTMLBubblesTests/Fixtures/widget-sandbox/showcase/stress'
 fixtures = sorted(source.glob('*.html'))
 mismatches = []
 for fixture in fixtures:

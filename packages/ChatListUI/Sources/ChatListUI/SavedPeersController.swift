@@ -13,6 +13,7 @@ import GeneralRows
 import MessageUtils
 import InputDataUI
 import ShortPeerRow
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -174,6 +175,7 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
     }
     
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsScreen = .peerInfoMediaSavedChats
     controller.bar = .init(height: 0)
     let search = InputDataMediaSearchContext()
     
@@ -241,7 +243,7 @@ public func SavedPeersController(context: any AccountContextProtocol) -> InputDa
         if state.request.isEmpty {
             return .single(.init(peers: nil, searchState: state))
         } else {
-            return context.engine.messages.searchLocalSavedMessagesPeers(query: state.request, indexNameMapping: [:])
+            return context.engine.messages.searchLocalSavedMessagesPeers(peerId: context.peerId, query: state.request, indexNameMapping: [:])
             |> map(Optional.init)
             |> map { .init(peers: $0, searchState: state) }
         }

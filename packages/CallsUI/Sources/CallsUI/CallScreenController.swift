@@ -18,6 +18,7 @@ import AvatarUI
 import TelegramContext
 import TelegramUtils
 import CallVideoLayer
+import AppAnalytics
 
 private func insertSpacesBetweenEmojis(in text: String) -> String {
     var newString = ""
@@ -244,6 +245,7 @@ public func callScreen(_ result:PCallResult, source: CallWindowSource? = nil) {
         }, endcall: { [weak session] state in
             
             if case .ringing = state.state {
+                Analytics.shared.send(AnalyticsEvents.callDecline())
             }
             
             switch state.state {
@@ -267,6 +269,7 @@ public func callScreen(_ result:PCallResult, source: CallWindowSource? = nil) {
             })
         }, acceptcall: { [weak session] in
             if let session {
+                Analytics.shared.send(AnalyticsEvents.callAccept(video: session.isVideo))
             }
             session?.acceptCallSession()
         }, video: { [weak session] isIncoming in
@@ -353,15 +356,28 @@ private func observeCallTermination(_ session: PCallSession) {
     let peerId = session.peerId
     let isVideo = session.isVideo
     let outcome = session.account.callSessionManager.callState(internalId: session.internalId)
-    |> mapToSignal { callSession -> Signal<CallTerminationOutcome, NoError> in
+    |> mapToSignal { callSession -> Signal<(CallTerminationOutcome, AnalyticsEvents.CallEndReason?), NoError> in
         if let outcome = callTerminationOutcome(callSession.state) {
-            return .single(outcome)
+            return .single((outcome, analyticsCallEndReason(callSession.state)))
         }
         return .complete()
     }
     |> take(1)
-    let terminated = outcome |> deliverOnMainQueue
-    callTerminationDisposable.set(terminated.startStandalone(next: { outcome in
+    let activeStart: Signal<Double?, NoError> = .single(nil) |> then(session.state |> mapToSignal { state -> Signal<Double?, NoError> in
+        switch state.state {
+        case let .active(startTime, _, _), let .reconnecting(startTime, _, _):
+            return .single(startTime)
+        default:
+            return .complete()
+        }
+    } |> take(1))
+    let terminated = combineLatest(outcome, activeStart)
+    |> take(1)
+    |> deliverOnMainQueue
+    callTerminationDisposable.set(terminated.startStandalone(next: { [weak session] values, activeStart in
+        let (outcome, reason) = values
+        let duration = activeStart.flatMap { AnalyticsValues.CallDuration(bucketing: Int(CFAbsoluteTimeGetCurrent() - $0)) }
+        Analytics.shared.send(AnalyticsEvents.callEnd(duration: duration, video: session?.isVideo ?? isVideo, reason: reason))
         guard let accountContext = CallsCoreHooks.shared.accountContext(accountId) else {
             return
         }
@@ -376,6 +392,32 @@ private func observeCallTermination(_ session: PCallSession) {
             showModal(with: CallRatingModalViewController(accountContext, callId: callId, userInitiated: false, isVideo: isVideo), for: accountContext.window)
         }
     }))
+}
+
+private func analyticsCallEndReason(_ state: CallSessionState) -> AnalyticsEvents.CallEndReason? {
+    guard case let .terminated(_, reason, _) = state else {
+        return nil
+    }
+    switch reason {
+    case let .ended(type):
+        switch type {
+        case .hungUp:
+            return .hangup
+        case .busy:
+            return .busy
+        case .missed:
+            return .missed
+        case .switchedToConference:
+            return nil
+        }
+    case let .error(error):
+        switch error {
+        case .disconnected:
+            return .disconnected
+        default:
+            return .failed
+        }
+    }
 }
 
 func callErrorText(_ error: CallSessionError, peer: Peer) -> String? {

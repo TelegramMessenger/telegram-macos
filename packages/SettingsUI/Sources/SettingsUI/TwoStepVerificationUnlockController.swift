@@ -14,6 +14,7 @@ import SwiftSignalKit
 import TelegramCore
 
 import Postbox
+import AppAnalytics
 
 
 
@@ -849,6 +850,14 @@ public func twoStepVerificationUnlockController(context: any AccountContextProto
             
         }
     }, removeAfterDisappear: false, hasDone: true, identifier: "tsv-unlock")
+    switch mode {
+    case .access(.set):
+        controller.analyticsScreen = .settingsPrivacyTwoStepPassword
+    case .access(.notSet(pendingEmail: .some)):
+        controller.analyticsScreen = .settingsPrivacyTwoStepSetup
+    default:
+        controller.analyticsScreen = .settingsPrivacyTwoStep
+    }
     return controller
 }
 
@@ -1020,6 +1029,7 @@ private func twoStepVerificationResetPasswordController(context: any AccountCont
             f(loading ? .loading : code.isEmpty ? .disabled(strings().navigationDone) : .enabled(strings().navigationDone))
         }
     }, removeAfterDisappear: true, hasDone: true, identifier: "tsv-reset")
+    controller.analyticsScreen = .settingsPrivacyTwoStepReset
     return controller
 }
 
@@ -1476,6 +1486,7 @@ public func twoStepVerificationPasswordEntryController(context: any AccountConte
             controller.setCenterTitle(title)
         }
     })
+    controller.analyticsScreen = .settingsPrivacyTwoStepSetup
     return controller
     
 }

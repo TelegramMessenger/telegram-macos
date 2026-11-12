@@ -11,7 +11,7 @@ let deps: [(String, String)] = [
     ("TelegramTheme", "../TelegramTheme"),
     ("AlertsUI", "../AlertsUI"),
     ("LocalAnimations", "../LocalAnimations"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

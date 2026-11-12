@@ -15,6 +15,7 @@ import TelegramContext
 import TelegramTheme
 import TelegramUtils
 import TelegramMediaUtils
+import AppAnalytics
 
 public enum PeerMediaSharedEntryStableId : Hashable {
     case messageId(MessageId)
@@ -404,9 +405,13 @@ open class PeerMediaListController<Context: AccountContextProtocol>: TableViewCo
     
     public func load(with tagMask:MessageTags) -> Void {
         if tagMask.contains(.file) {
+            analyticsScreen = .peerInfoMediaFiles
         } else if tagMask.contains(.webPage) {
+            analyticsScreen = .peerInfoMediaLinks
         } else if tagMask.contains(.music) {
+            analyticsScreen = .peerInfoMediaMusic
         } else if tagMask.contains(.voiceOrInstantVideo) {
+            analyticsScreen = .peerInfoMediaVoice
         }
      
         

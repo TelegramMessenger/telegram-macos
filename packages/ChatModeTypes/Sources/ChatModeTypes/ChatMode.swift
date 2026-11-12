@@ -28,6 +28,7 @@ public enum ChatCustomContentsKind: Equatable {
     case quickReplyMessageInput(shortcut: String)
     case welcomeMessages
     case searchHashtag(hashtag: String, onlyMy: Bool)
+    case htmlDemo(title: String, status: String)
     public var text: String {
         switch self {
         case .greetingMessageInput:
@@ -40,9 +41,27 @@ public enum ChatCustomContentsKind: Equatable {
             return strings().welcomeMessageTitle
         case let .searchHashtag(hashtag, _):
             return "#\(hashtag)"
+        case let .htmlDemo(title, _):
+            return title
         }
     }
 
+    public var status: String {
+        switch self {
+        case let .htmlDemo(_, status):
+            return status
+        default:
+            return ""
+        }
+    }
+
+    public var isHTMLDemo: Bool {
+        if case .htmlDemo = self {
+            return true
+        }
+        return false
+    }
+    
     public var hashtag: String? {
         switch self {
         case let .searchHashtag(hashtag, _):

@@ -1,0 +1,37 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:16px;display:flex;align-items:center;gap:10px}h2{font-size:20px;margin:0;flex:1}
+button{background:#293d58;color:white;border:0;border-radius:8px;padding:8px 10px}
+.summary{margin:0 16px 12px;color:#a6b8cf}.matrix{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:0 12px 12px;box-sizing:border-box}
+.card{padding:8px;background:#1c2c40;border:1px solid #39516e;border-radius:10px;box-shadow:0 3px 6px #0006;min-width:0}
+.caption{display:flex;justify-content:space-between;margin-bottom:6px;font:10px Menlo,monospace}
+.window{height:32px;overflow:hidden;border-radius:5px;background:#101923}.track{display:flex;width:300px;height:32px;align-items:center}
+.pill{width:100px;flex-shrink:0;box-sizing:border-box;padding:5px 10px;color:#92e5c4;background:linear-gradient(90deg,#163c42,#263858)}
+.pill:nth-child(2){color:#ffd08e;background:linear-gradient(90deg,#634c2b,#3d3357)}
+.pill:nth-child(3){color:#8bc5ff;background:linear-gradient(90deg,#213d67,#193e47)}
+</style>
+<header><h2>Clipped tickers</h2><button id="pause">Pause</button><button id="resize">Lock width</button></header>
+<p class="summary">120 moving tracks · 30 changing readings per frame · continuous grid resizing</p>
+<div class="matrix" id="matrix"></div>
+<script>
+const matrix=document.getElementById('matrix'),tracks=[],readings=[];
+for(let i=0;i<120;i++){
+  const card=document.createElement('div');card.className='card';
+  card.innerHTML='<div class="caption"><span>S'+String(i+1).padStart(3,'0')+'</span><span class="reading">0.00</span></div><div class="window"><div class="track"><span class="pill">Active '+i+'</span><span class="pill">Queue '+(i%9)+'</span><span class="pill">Ready '+(i%7)+'</span></div></div>';
+  matrix.appendChild(card);tracks.push(card.querySelector('.track'));readings.push(card.querySelector('.reading').firstChild);
+}
+let running=true,resizing=true,start=0,frames=0;
+function draw(t,all){
+  matrix.style.width=(resizing?94+6*Math.sin(t*.7):100).toFixed(3)+'%';
+  for(let i=0;i<tracks.length;i++){
+    tracks[i].style.transform='translateX('+(-95-90*Math.sin(t*.9+i*.31)).toFixed(3)+'px)';
+    if(all||i%4===frames%4)readings[i].data=(50+49*Math.sin(t+i*.1)).toFixed(2);
+  }
+}
+function frame(ms){if(!start)start=ms;if(running){draw((ms-start)/1000,false);frames++;}requestAnimationFrame(frame);}
+const pause=document.getElementById('pause'),resize=document.getElementById('resize');
+pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};
+resize.onclick=function(){resizing=!resizing;resize.textContent=resizing?'Lock width':'Resize';draw((Date.now()%10000)/1000,true);};
+window.stress={freeze:function(){running=false;resizing=true;draw(1.25,true);pause.textContent='Resume';resize.textContent='Lock width';},resume:function(){running=true;pause.textContent='Pause';}};
+draw(0,true);requestAnimationFrame(frame);
+</script>

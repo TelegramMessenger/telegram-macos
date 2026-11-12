@@ -21,6 +21,7 @@ import TelegramLinks
 import ChatHistoryModel
 import FilePanels
 import WallpaperUI
+import AppAnalytics
 
 private let _id_no_preview1 = InputDataIdentifier("_id_no_preview1")
 private let _id_no_preview2 = InputDataIdentifier("_id_no_preview2")
@@ -409,6 +410,7 @@ public func EditThemeController(context: any AccountContextProtocol, telegramThe
     }, getBackgroundColor: {
         theme.colors.background
     })
+    controller.analyticsScreen = .settingsAppearanceThemeEditor
     
     
     chatInteraction.getGradientOffsetRect = { [weak controller] in

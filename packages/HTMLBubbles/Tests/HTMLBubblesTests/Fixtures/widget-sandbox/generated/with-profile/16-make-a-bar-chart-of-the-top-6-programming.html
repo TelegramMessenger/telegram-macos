@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Top Programming Languages</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; --muted: #6b7280; --track: #f3f4f6; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #f3f4f6; --muted: #9ca3af; --track: #1f2937; } }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); }
+  h2 { font-size: 17px; margin: 0 0 2px; }
+  p { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .chart { position: relative; height: 270px; }
+  .row { display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
+  .track { height: 18px; background: var(--track); border-radius: 9px; overflow: hidden; }
+  .track div { height: 100%; border-radius: 9px; }
+  .tip { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 16px; }
+</style>
+</head>
+<body>
+<h2>📊 Top 6 Programming Languages</h2>
+<p>Share of developers using each language (illustrative)</p>
+<div class="chart" id="chartWrap"><canvas id="c"></canvas></div>
+<div id="fallback" hidden></div>
+<div class="tip" id="tip"></div>
+<script>
+  var langs = [['JavaScript', 62, '#f7df1e', 'Web, Node.js'], ['Python', 51, '#3776ab', 'Data science, AI'], ['Java', 30, '#e76f00', 'Enterprise, Android'], ['TypeScript', 38, '#3178c6', 'Typed JavaScript'], ['C#', 27, '#68217a', '.NET, Unity'], ['Go', 14, '#00add8', 'Cloud, backend']];
+  var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  if (typeof Chart !== 'undefined') {
+    var tick = dark ? '#d1d5db' : '#374151', grid = dark ? '#374151' : '#f3f4f6';
+    var chart = new Chart(document.getElementById('c'), {
+      type: 'bar',
+      data: { labels: langs.map(function (l) { return l[0]; }), datasets: [{ label: '% of developers', data: langs.map(function (l) { return l[1]; }), backgroundColor: langs.map(function (l) { return l[2]; }), borderRadius: 6 }] },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (c) { return ' ' + c.parsed.x + '% of developers'; }, afterLabel: function (c) { return langs[c.dataIndex][3]; } } } },
+        scales: { x: { max: 70, ticks: { color: tick, callback: function (v) { return v + '%'; } }, grid: { color: grid } }, y: { ticks: { color: tick }, grid: { display: false } } }
+      }
+    });
+    document.getElementById('c').addEventListener('click', function (e) {
+      var pts = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, false);
+      if (pts.length) document.getElementById('tip').textContent = langs[pts[0].index][0] + ': ' + langs[pts[0].index][1] + '% · ' + langs[pts[0].index][3];
+    });
+  } else {
+    document.getElementById('chartWrap').hidden = true;
+    var fb = document.getElementById('fallback'); fb.hidden = false;
+    fb.innerHTML = langs.map(function (l) { return '<div class="row" title="' + l[3] + '"><span>' + l[0] + '</span><div class="track"><div style="width:' + (l[1] / 70 * 100) + '%;background:' + l[2] + '"></div></div><span>' + l[1] + '%</span></div>'; }).join('');
+  }
+</script>
+</body>
+</html>

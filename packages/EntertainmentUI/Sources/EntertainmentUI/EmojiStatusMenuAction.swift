@@ -20,14 +20,15 @@ final class EmojiStatusMenuAction {
         self.operationId = operationId
         let pending = MetaDisposable()
         self.disposable.set(pending)
-        let applied = ValuePromise<Bool>(false, ignoreRepeated: true)
-        _ = context.engine.accountData.setEmojiStatus(file: file, expirationDate: nil).startStandalone(completed: {
-            applied.set(true)
-        })
-        let signal = applied.get()
-        |> filter { $0 }
-        |> take(1)
-        |> ignoreValues
+        let request = context.engine.accountData.setEmojiStatusWithResult(file: file, expirationDate: nil)
+        let signal = Signal<Never, SetEmojiStatusError> { subscriber in
+            let _ = request.startStandalone(error: { error in
+                subscriber.putError(error)
+            }, completed: {
+                subscriber.putCompletion()
+            })
+            return EmptyDisposable
+        }
         |> deliverOnMainQueue
         |> afterDisposed { [weak self] in
             Queue.mainQueue().justDispatch { [weak self] in

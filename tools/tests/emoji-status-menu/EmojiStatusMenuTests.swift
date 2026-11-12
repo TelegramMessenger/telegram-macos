@@ -37,7 +37,7 @@ final class Request {
 }
 final class AccountData {
     var requests: [Request] = []; var onSubscribe: ((Request) -> Void)?
-    func requestEmojiStatus(file: TelegramMediaFile?, expirationDate: Int32?) -> Signal<Never, SetEmojiStatusError> {
+    func setEmojiStatusWithResult(file: TelegramMediaFile?, expirationDate: Int32?) -> Signal<Never, SetEmojiStatusError> {
         Signal { subscriber in
             let request = Request(subscriber, file: file, expiry: expirationDate)
             self.requests.append(request)
@@ -45,7 +45,7 @@ final class AccountData {
             return ActionDisposable { request.dispose() }
         }
     }
-    func setEmojiStatus(file: TelegramMediaFile?, expirationDate: Int32?) -> Signal<Never, NoError> { requestEmojiStatus(file: file, expirationDate: expirationDate) |> `catch` { _ in .complete() } }
+    func setEmojiStatus(file: TelegramMediaFile?, expirationDate: Int32?) -> Signal<Never, NoError> { setEmojiStatusWithResult(file: file, expirationDate: expirationDate) |> `catch` { _ in .complete() } }
 }
 final class Engine { let accountData = AccountData() }
 protocol AccountContextProtocol: AnyObject { var engine: Engine { get }; var window: Window { get }; var isPremium: Bool { get } }
@@ -69,9 +69,10 @@ final class Row {
 }
 final class EmojiStatusMenuTests: XCTestCase {
     override func tearDown() { Progress.reset(); Queue.main.drain() }
-    func testWaitsForCompletion() { let c = Context(); let r = Row(c); r.menu()!.handler(); XCTAssertTrue(c.window.messages.isEmpty); XCTAssertEqual(c.engine.accountData.requests.count, 1); c.engine.accountData.requests[0].accept(); XCTAssertEqual(c.window.messages, ["Success"]) }
+    func testWaitsForAcceptance() { let c = Context(); let r = Row(c); r.menu()!.handler(); XCTAssertTrue(c.window.messages.isEmpty); XCTAssertEqual(c.engine.accountData.requests.count, 1); c.engine.accountData.requests[0].accept(); XCTAssertEqual(c.window.messages, ["Success"]) }
+    func testRejectionShowsErrorWithoutSuccess() { let c = Context(); let r = Row(c); r.menu()!.handler(); c.engine.accountData.requests[0].reject(); XCTAssertEqual(c.window.messages, ["Error"]) }
     func testDuplicateClicksSharePendingRequest() { let c = Context(); let r = Row(c); let menu = r.menu()!; menu.handler(); menu.handler(); XCTAssertEqual(c.engine.accountData.requests.count, 1) }
-    func testNewChoiceAfterCompletion() { let c = Context(); let r = Row(c); let menu = r.menu()!; menu.handler(); c.engine.accountData.requests[0].accept(); menu.handler(); XCTAssertEqual(c.engine.accountData.requests.count, 2); c.engine.accountData.requests[1].accept(); XCTAssertEqual(c.window.messages, ["Success", "Success"]) }
+    func testRetryAfterFailure() { let c = Context(); let r = Row(c); let menu = r.menu()!; menu.handler(); c.engine.accountData.requests[0].reject(); menu.handler(); XCTAssertEqual(c.engine.accountData.requests.count, 2); c.engine.accountData.requests[1].accept(); XCTAssertEqual(c.window.messages, ["Error", "Success"]) }
     func testOldDisposalCannotClearNewRequest() { let c = Context(); let r = Row(c); let menu = r.menu()!; menu.handler(); c.engine.accountData.requests[0].accept(); menu.handler(); Queue.main.drain(); menu.handler(); XCTAssertEqual(c.engine.accountData.requests.count, 2) }
     func testProgressCancellationIsSilentAndRetryable() { let c = Context(); let r = Row(c); let menu = r.menu()!; menu.handler(); XCTAssertEqual(Progress.pending.count, 1); Progress.pending.first?.dispose(); Queue.main.drain(); menu.handler(); XCTAssertEqual(c.engine.accountData.requests.count, 2); XCTAssertFalse(c.engine.accountData.requests[0].disposed); XCTAssertTrue(c.window.messages.isEmpty) }
     func testLateSuccessAfterCancellationIsIgnored() { let c = Context(); let r = Row(c); r.menu()!.handler(); Progress.pending.first?.dispose(); Queue.main.drain(); c.engine.accountData.requests[0].accept(); XCTAssertTrue(c.window.messages.isEmpty) }
@@ -86,6 +87,7 @@ final class EmojiStatusMenuTests: XCTestCase {
     func testFileRevalidatedAtInvocation() { let c = Context(); let r = Row(c); let file = (r.view as! EmojiesSectionRowView).itemUnderMouse!.0.file; let menu = r.menu()!; file.isCustomEmoji = false; menu.handler(); XCTAssertTrue(c.engine.accountData.requests.isEmpty) }
     func testExactFileAndIndefiniteExpiration() { let c = Context(); let r = Row(c); r.menu()!.handler(); XCTAssertEqual(c.engine.accountData.requests[0].file?.id, 10); XCTAssertNil(c.engine.accountData.requests[0].expiry) }
     func testSynchronousSuccessAllowsNextChoice() { let c = Context(); let r = Row(c); c.engine.accountData.onSubscribe = { $0.accept() }; let menu = r.menu()!; menu.handler(); menu.handler(); XCTAssertEqual(c.window.messages, ["Success", "Success"]); XCTAssertTrue(c.engine.accountData.requests.allSatisfy { $0.disposed }) }
+    func testSynchronousFailureIsNotSuccess() { let c = Context(); let r = Row(c); c.engine.accountData.onSubscribe = { $0.reject() }; r.menu()!.handler(); XCTAssertEqual(c.window.messages, ["Error"]) }
     func testDuplicateTerminalEventsDoNotRepeatToast() { let c = Context(); let r = Row(c); r.menu()!.handler(); let q = c.engine.accountData.requests[0]; q.accept(); q.accept(); q.reject(); XCTAssertEqual(c.window.messages, ["Success"]) }
     func testCompletedRequestIsReleased() { let c = Context(); let a = EmojiStatusMenuAction(); a.perform(context: c, file: TelegramMediaFile(), window: c.window, canPresent: { true }); c.engine.accountData.requests[0].accept(); XCTAssertTrue(c.engine.accountData.requests[0].disposed); XCTAssertEqual(c.window.messages, ["Success"]) }
     func testResetDuringPresentationCheckSuppressesFeedback() { let c = Context(); let a = EmojiStatusMenuAction(); var checks = 0; a.perform(context: c, file: TelegramMediaFile(), window: c.window, canPresent: { checks += 1; if checks > 1 { a.reset() }; return true }); c.engine.accountData.requests[0].accept(); XCTAssertTrue(c.window.messages.isEmpty) }

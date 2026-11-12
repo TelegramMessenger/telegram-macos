@@ -1,0 +1,157 @@
+<!--
+  source: Telegram macOS 12.10 (283300), 13-3d-lab.chat, message 2
+  author: lab 10:01 · bare (full width, no bubble)
+  ported: classic 3D card; three.js from app:three draws through the twidget 3D side channel, and twidget3d.js drives render(), onAction, onPointer, onKey and onFocus
+-->
+<style>
+  :root { color-scheme: light dark;
+    --fg: light-dark(#000, #fff); --muted: light-dark(#6e6e73, #98989d);
+    --card: light-dark(#fff, #1c1c1e); --border: light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.14));
+    --blue: #007aff; --blue-h: #0a6ee0; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.3; color: var(--fg); }
+  .card { background-color: var(--card); border: 1px solid var(--border); border-radius: 14px; color: var(--fg); }
+  .pad { padding: 12px 14px; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .row { display: flex; align-items: center; } .between { justify-content: space-between; }
+  button { font-family: inherit; font-size: 14px; font-weight: 600; padding: 5px 13px; border: 0; border-radius: 9px; background-color: rgba(127,127,127,0.16); color: var(--fg); text-align: center; cursor: pointer; }
+  button:hover { background-color: rgba(127,127,127,0.28); }
+  button.primary { background-color: var(--blue); color: #fff; } button.primary:hover { background-color: var(--blue-h); }
+  button:active { background-color: rgba(127,127,127,0.40); } button.primary:active { background-color: var(--blue-h); }
+  .grow { flex: 1; min-width: 0; }
+</style>
+<style>
+  .tj { width: 400px; max-width: 100%; background-color: #10131a; border: 0; color: #e9edf5; }
+  .tj .stage { height: 300px; border-radius: 14px; background-color: #10131a; text-align: center; }
+  .tj .stage .note { padding-top: 136px; font-size: 13px; font-weight: 600; color: #8e99ad; }
+  .tj .head { padding: 8px 14px 0 14px; }
+  .tj .title { font-size: 14px; font-weight: 800; }
+  .tj .sub { font-size: 12px; color: #8e97a8; }
+  .tj .tools { padding: 8px 8px 4px 8px; text-align: center; }
+  .tj .tools button { margin: 0 3px; color: #e9edf5; background-color: rgba(255,255,255,0.1); }
+  .tj .tools button:hover { background-color: rgba(255,255,255,0.18); }
+  .tj .tools button.on { background-color: rgba(0,122,255,0.5); }
+  .tj .stats { padding: 4px 14px 10px 14px; text-align: center; font-size: 12px; color: #8e97a8; }
+</style>
+<div class="card tj">
+  <div class="stage" data-3d><div class="note">This needs scripts and Metal</div></div>
+  <div class="head"><div class="title">three.js on Metal</div><div class="sub">Real three.js r160, drawn by the app's Metal renderer</div></div>
+  <div class="stats">&nbsp;</div>
+</div>
+<script src="app:three"></script>
+<script>
+const renderer = new THREE.WebGLRenderer({ antialias: true, cornerRadius: 14 });
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x10131a);
+scene.fog = new THREE.Fog(0x10131a, 9, 22);
+const camera = new THREE.PerspectiveCamera(42, 4 / 3, 0.1, 60);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x1d2330, roughness: 0.9 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(0.8, 0.26, 180, 24), new THREE.MeshStandardMaterial({ color: 0xffb340, metalness: 0.85, roughness: 0.25 }));
+knot.position.y = 1.7;
+knot.castShadow = true;
+scene.add(knot);
+
+const balls = [];
+for (let i = 0; i < 5; i++) {
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.34, 40, 20), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.55 + i * 0.09, 0.7, 0.55), metalness: 0.2, roughness: 0.1 + i * 0.2 }));
+  ball.castShadow = true;
+  scene.add(ball);
+  balls.push(ball);
+}
+
+const COUNT = 22 * 22;
+const field = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 1, 0.22), new THREE.MeshLambertMaterial(), COUNT);
+field.castShadow = true;
+field.receiveShadow = true;
+scene.add(field);
+const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3(1, 1, 1), color = new THREE.Color();
+
+const orbs = [0xff3d6e, 0x3dd6ff, 0x9dff3d].map(hex => {
+  const light = new THREE.PointLight(hex, 9, 7, 2);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), new THREE.MeshBasicMaterial({ color: hex }));
+  light.add(bulb);
+  scene.add(light);
+  return light;
+});
+scene.add(new THREE.HemisphereLight(0x8090b0, 0x101018, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(-4, 8, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: 1, far: 25 });
+scene.add(sun);
+
+let paused = false, wire = false, shadows = true, time = 0, last = 0, width = 0, height = 0, frames = 0, fps = 0, fpsStart = 0;
+function setWire(on) { wire = on; for (const m of [knot.material, ...balls.map(b => b.material)]) m.wireframe = on; }
+
+function tick(t) {
+  const dt = last ? Math.min(0.05, (t - last) / 1000) : 0;
+  last = t;
+  if (!paused) time += dt;
+  const size = renderer.getSize(new THREE.Vector2());
+  if (size.x !== width || size.y !== height) {
+    width = size.x; height = size.y;
+    camera.aspect = width / Math.max(1, height);
+    camera.updateProjectionMatrix();
+  }
+  const r = 7.2, a = time * 0.12;
+  camera.position.set(Math.sin(a) * r, 3.4, Math.cos(a) * r);
+  camera.lookAt(0, 1.1, 0);
+  knot.rotation.set(time * 0.6, time * 0.9, 0);
+  balls.forEach((ball, i) => {
+    const b = time * 0.8 + i * Math.PI * 2 / balls.length;
+    ball.position.set(Math.cos(b) * 2.6, 0.42 + Math.abs(Math.sin(time * 2 + i)) * 0.6, Math.sin(b) * 2.6);
+  });
+  orbs.forEach((light, i) => {
+    const b = -time * 1.3 + i * 2.1;
+    light.position.set(Math.cos(b) * 1.9, 0.9 + Math.sin(time * 1.7 + i) * 0.5, Math.sin(b) * 1.9);
+  });
+  let k = 0;
+  for (let x = 0; x < 22; x++) {
+    for (let z = 0; z < 22; z++) {
+      const px = (x - 10.5) * 0.46, pz = (z - 10.5) * 0.46, d = Math.hypot(px, pz);
+      const h = d < 3.2 ? 0.02 : 0.15 + 0.35 * (1 + Math.sin(d * 1.6 - time * 2.4));
+      position.set(px, h / 2, pz);
+      scale.set(1, h, 1);
+      field.setMatrixAt(k, matrix.compose(position, quaternion, scale));
+      field.setColorAt(k, color.setHSL(0.6 + d * 0.025, 0.65, 0.25 + h * 0.4));
+      k++;
+    }
+  }
+  field.instanceMatrix.needsUpdate = true;
+  field.instanceColor.needsUpdate = true;
+  renderer.shadowMap.enabled = shadows;
+  renderer.render(scene, camera);
+  frames++;
+  if (t - fpsStart > 1000) { fps = Math.round(frames * 1000 / (t - fpsStart)); frames = 0; fpsStart = t; dirty = true; }
+  requestAnimationFrame(tick);
+}
+
+function onAction(name) {
+  if (name === 'pause') paused = !paused;
+  else if (name === 'wire') setWire(!wire);
+  else if (name === 'shadows') shadows = !shadows;
+  dirty = true;
+}
+
+let dirty = true, html = '';
+function render() {
+  if (!dirty) return html;
+  dirty = false;
+  const info = renderer.info.render;
+  const stage = renderer.isSupported ? '' : '<div class="note">3D needs a Mac with Metal</div>';
+  const button = (action, label, on) => `<button data-action="${action}"${on ? ' class="on"' : ''}>${label}</button>`;
+  html = `<div class="card tj">
+  <div class="stage" data-3d>${stage}</div>
+  <div class="head"><div class="title">three.js on Metal</div><div class="sub">Real three.js r160, drawn by the app's Metal renderer</div></div>
+  <div class="tools">${button('pause', paused ? '▶ Play' : '❚❚ Pause', paused)}${button('shadows', 'Shadows', shadows)}${button('wire', 'Wireframe', wire)}</div>
+  <div class="stats">${fps} fps · ${info.calls} draws · ${Math.round(info.triangles / 1000)}k triangles · ${COUNT + 9} objects</div>
+</div>`;
+  return html;
+}
+requestAnimationFrame(tick);
+</script>

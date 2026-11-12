@@ -1,0 +1,128 @@
+import Foundation
+
+extension String {
+    var length: Int {
+        return (self as NSString).length
+    }
+    var nsstring: NSString {
+        return self as NSString
+    }
+}
+
+extension NSRange {
+    var min: Int {
+        return self.location
+    }
+    var max: Int {
+        return self.location + self.length
+    }
+}
+
+extension NSAttributedString {
+__TRIMMED__
+}
+
+enum ChatTextInputAttribute: Equatable {
+    case bold(Range<Int>)
+    case strikethrough(Range<Int>)
+    case spoiler(Range<Int>)
+    case underline(Range<Int>)
+    case italic(Range<Int>)
+    case pre(Range<Int>, String?)
+    case code(Range<Int>)
+    case uid(Range<Int>, Int64)
+    case url(Range<Int>, String)
+    case animated(Range<Int>, String, Int64, Int?, Int?)
+    case quote(Range<Int>, Bool)
+    case date(Range<Int>, Int32)
+
+__ATTRIBUTE_WEIGHT__
+
+__ATTRIBUTE_RANGES__
+}
+
+__MARKDOWN__
+
+private let boldKey = NSAttributedString.Key("composer.test.bold")
+
+func chatTextAttributes(from text: NSAttributedString) -> [ChatTextInputAttribute] {
+    var result: [ChatTextInputAttribute] = []
+    text.enumerateAttribute(boldKey, in: NSMakeRange(0, text.length), options: []) { value, range, _ in
+        if value != nil {
+            result.append(.bold(range.lowerBound ..< range.upperBound))
+        }
+    }
+    return result
+}
+
+final class ChatTextInputState {
+    let inputText: String
+    let attributes: [ChatTextInputAttribute]
+    private let source: NSAttributedString
+
+    init(inputText: String, selectionRange: Range<Int>, attributes: [ChatTextInputAttribute]) {
+        self.inputText = inputText
+        self.attributes = attributes
+        self.source = NSAttributedString(string: inputText)
+    }
+
+    init(source: NSAttributedString) {
+        self.inputText = source.string
+        self.attributes = []
+        self.source = source
+    }
+
+    func attributedString() -> NSAttributedString {
+        return self.source
+    }
+
+__SUB_INPUT_STATE__
+}
+
+struct Case {
+    let name: String
+    let input: NSAttributedString
+    let text: String
+    let attributes: [ChatTextInputAttribute]
+}
+
+func plain(_ text: String) -> NSAttributedString {
+    return NSAttributedString(string: text)
+}
+
+func bolded(_ text: String, _ range: NSRange) -> NSAttributedString {
+    let result = NSMutableAttributedString(string: text)
+    result.addAttribute(boldKey, value: true, range: range)
+    return result
+}
+
+let cases: [Case] = [
+    Case(name: "digits-and-brackets-at-end", input: plain("see you @7 (pm)"), text: "see you @7 (pm)", attributes: []),
+    Case(name: "digits-and-brackets-in-middle", input: plain("call @123 (office) tomorrow"), text: "call @123 (office) tomorrow", attributes: []),
+    Case(name: "digits-and-brackets-only", input: plain("@5 (five)"), text: "@5 (five)", attributes: []),
+    Case(name: "digits-and-brackets-without-space", input: plain("at @7(pm)"), text: "at @7(pm)", attributes: []),
+    Case(name: "digits-and-brackets-inside-word", input: plain("email me@123 (work)"), text: "email me@123 (work)", attributes: []),
+    Case(name: "digits-and-brackets-with-line-break", input: plain("@7\n(pm)"), text: "@7\n(pm)", attributes: []),
+    Case(name: "two-occurrences", input: plain("@1 (a) and @2 (b)"), text: "@1 (a) and @2 (b)", attributes: []),
+    Case(name: "markdown-inside-brackets", input: plain("@1 (a **b** c)"), text: "@1 (a b c)", attributes: [.bold(6 ..< 7)]),
+    Case(name: "markdown-after-digits-and-brackets", input: plain("@7 (pm) **bold** tail"), text: "@7 (pm) bold tail", attributes: [.bold(8 ..< 12)]),
+    Case(name: "formatted-digits-and-brackets", input: bolded("see you @7 (pm)", NSMakeRange(12, 2)), text: "see you @7 (pm)", attributes: [.bold(12 ..< 14)]),
+    Case(name: "formatted-markdown-after-digits-and-brackets", input: bolded("@7 (pm) **a** tail", NSMakeRange(10, 1)), text: "@7 (pm) **a** tail", attributes: [.bold(10 ..< 11)]),
+    Case(name: "inline-markdown", input: plain("**bold** and `code`"), text: "bold and code", attributes: [.bold(0 ..< 4), .code(9 ..< 13)]),
+    Case(name: "other-inline-markdown", input: plain("__a__ ~~b~~ ||c||"), text: "a b c", attributes: [.italic(0 ..< 1), .strikethrough(2 ..< 3), .spoiler(4 ..< 5)]),
+    Case(name: "code-block", input: plain("```\nlet x\n```"), text: "let x", attributes: [.pre(0 ..< 5, "")]),
+]
+
+var failed = 0
+for item in cases {
+    let result = ChatTextInputState(source: item.input).subInputState(from: NSMakeRange(0, item.input.length))
+    let passed = result.inputText == item.text && result.attributes == item.attributes
+    failed += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(item.name)")
+    if !passed {
+        print("  text: \(result.inputText.debugDescription)")
+        print("  attributes: \(result.attributes)")
+    }
+}
+print("\(cases.count - failed) passed; \(failed) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failed == 0 ? 0 : 1)

@@ -44,7 +44,7 @@ struct SelectColorStatusUpdate {
         guard isAccount || isChannel else { return .fail(.generic) }
         guard let status else {
             if isAccount {
-                return engine.accountData.setEmojiStatus(file: nil, expirationDate: nil) |> mapError { _ in .generic }
+                return engine.accountData.setEmojiStatusWithResult(file: nil, expirationDate: nil) |> mapError { _ in .generic }
             } else {
                 return engine.peers.updatePeerEmojiStatus(peerId: peer.id, fileId: nil, expirationDate: nil) |> mapError { _ in .generic }
             }
@@ -60,12 +60,12 @@ struct SelectColorStatusUpdate {
             |> castError(SelectColorSaveError.self)
             |> mapToSignal { file -> Signal<Never, SelectColorSaveError> in
                 guard let file, file.fileId.id == fileId, file.isCustomEmoji else { return .fail(.generic) }
-                return engine.accountData.setEmojiStatus(file: file, expirationDate: status.expirationDate) |> mapError { _ in .generic }
+                return engine.accountData.setEmojiStatusWithResult(file: file, expirationDate: status.expirationDate) |> mapError { _ in .generic }
             }
         case let .starGift(id, _, _, _, _, _, _, _, _):
             guard let gift, gift.id == id, (gift.owner?.peerId ?? gift.hostPeerId) == peer.id else { return .fail(.generic) }
             if isAccount {
-                return engine.accountData.setStarGiftStatus(starGift: gift, expirationDate: status.expirationDate) |> mapError { _ in .generic }
+                return engine.accountData.setStarGiftStatusWithResult(starGift: gift, expirationDate: status.expirationDate) |> mapError { _ in .generic }
             } else {
                 return engine.peers.updatePeerStarGiftStatus(peerId: peer.id, starGift: gift, expirationDate: status.expirationDate) |> mapError { _ in .generic }
             }

@@ -11,7 +11,7 @@ import QuartzCore
 import TelegramMediaPlayer
 import CoreMedia
 
-public protocol R_LottieBridge: NSObject {
+public protocol LottieRendererBridge: NSObject {
     func renderFrame(with index: Int32, into buffer: UnsafeMutablePointer<UInt8>, width: Int32, height: Int32, bytesPerRow: Int32)
     func startFrame() -> Int32
     func endFrame() -> Int32
@@ -19,7 +19,7 @@ public protocol R_LottieBridge: NSObject {
     func setColor(_ color: NSColor, forKeyPath keyPath: String)
 }
 
-public var makeRLottie:((String, String)->R_LottieBridge?)? = nil
+public var makeLottieRenderer:((String)->LottieRendererBridge?)? = nil
 
 
 final class RenderAtomic<T> {
@@ -251,26 +251,20 @@ private final class RenderFpsLoops {
     }
     
     func add(token: RenderFpsToken, callback:@escaping()->Void) {
-        let current: RenderFpsLoop
-        if let value = self.loops.with({ $0[token.value] }) {
-            current = value
-        } else {
-            var installed: RenderFpsLoop?
-            _ = self.loops.modify { value in
-                if let existing = value[token.value] {
-                    installed = existing
-                    return value
-                }
-                var value = value
-                let loop = RenderFpsLoop(duration: token.value.duration, queue: token.value.queue, suspended: self.suspended.with { $0 })
+        _ = self.loops.modify { value in
+            var value = value
+            let loop: RenderFpsLoop
+            if let current = value[token.value] {
+                loop = current
+            } else {
+                loop = RenderFpsLoop(duration: token.value.duration, queue: token.value.queue, suspended: self.suspended.with { $0 })
                 value[token.value] = loop
-                installed = loop
-                return value
             }
-            current = installed!
+            loop.add(token, callback: callback)
+            return value
         }
-        current.add(token, callback: callback)
     }
+
     func remove(token: RenderFpsToken) {
         _ = self.loops.modify { loops in
             var loops = loops
@@ -295,22 +289,15 @@ private struct RenderFpsCallback {
 }
 private final class RenderFpsLoop {
     
-    private class Values {
-        var values: [RenderFpsToken: RenderFpsCallback] = [:]
-    }
-    
     private let duration: Double
     private var timer: SwiftSignalKit.Timer?
-    private let values:QueueLocalObject<Values>
+    private let values = Atomic<[RenderFpsToken: RenderFpsCallback]>(value: [:])
     private let queue: Queue
     init(duration: Double, queue: Queue, suspended: Bool) {
         
         
         self.duration = duration
         self.queue = queue
-        self.values = .init(queue: queue, generate: {
-            return .init()
-        })
         
         if !suspended {
             self.startTimer()
@@ -340,38 +327,37 @@ private final class RenderFpsLoop {
     }
     
     private func loop() {
-        
-                
-        self.values.with { current in
-            let values = current.values
-            let batch = LottieMainBatch()
-            let previous = pthread_getspecific(lottieMainBatchKey)
-            pthread_setspecific(lottieMainBatchKey, Unmanaged.passUnretained(batch).toOpaque())
-            for (_, c) in values {
-                c.callback()
-            }
-            pthread_setspecific(lottieMainBatchKey, previous)
-            if !batch.actions.isEmpty {
-                let actions = batch.actions
-                DispatchQueue.main.async {
-                    for action in actions {
-                        action()
-                    }
+        let values = self.values.with { $0 }
+        let batch = LottieMainBatch()
+        let previous = pthread_getspecific(lottieMainBatchKey)
+        pthread_setspecific(lottieMainBatchKey, Unmanaged.passUnretained(batch).toOpaque())
+        for (_, c) in values {
+            c.callback()
+        }
+        pthread_setspecific(lottieMainBatchKey, previous)
+        if !batch.actions.isEmpty {
+            let actions = batch.actions
+            DispatchQueue.main.async {
+                for action in actions {
+                    action()
                 }
             }
         }
     }
     
     func remove(_ token: RenderFpsToken) -> Bool {
-        return self.values.syncWith { current in
-            current.values.removeValue(forKey: token)
-            return current.values.isEmpty
-        }
+        return self.values.modify { current in
+            var current = current
+            current.removeValue(forKey: token)
+            return current
+        }.isEmpty
     }
     
     func add(_ token: RenderFpsToken, callback: @escaping()->Void) {
-        self.values.with { current in
-            current.values[token] = .init(callback: callback)
+        _ = self.values.modify { current in
+            var current = current
+            current[token] = .init(callback: callback)
+            return current
         }
     }
 }
@@ -1476,7 +1462,7 @@ private final class WebmRenderer : RenderContainer {
 private final class LottieRenderer : RenderContainer {
     
     private let animation: LottieAnimation
-    private let bridgeValue: Atomic<R_LottieBridge?>
+    private let bridgeValue: Atomic<LottieRendererBridge?>
     private let appliedColors: Atomic<[(String, NSColor)]> = Atomic(value: [])
     private let restoreState: Atomic<(restored: Bool, failed: Bool)> = Atomic(value: (false, false))
     private let fileSupplyment: TRLotFileSupplyment?
@@ -1484,7 +1470,7 @@ private final class LottieRenderer : RenderContainer {
     private let animationEndFrame: Int32
     private let animationStartFrame: Int32
     
-    init(animation: LottieAnimation, bridge: R_LottieBridge?, fileSupplyment: TRLotFileSupplyment?) {
+    init(animation: LottieAnimation, bridge: LottieRendererBridge?, fileSupplyment: TRLotFileSupplyment?) {
         self.animation = animation
         self.bridgeValue = Atomic(value: bridge)
         self.fileSupplyment = fileSupplyment
@@ -1492,7 +1478,7 @@ private final class LottieRenderer : RenderContainer {
         self.animationEndFrame = bridge?.endFrame() ?? fileSupplyment?.endFrame ?? 0
         self.animationStartFrame = bridge?.startFrame() ?? fileSupplyment?.startFrame ?? 0
     }
-    private var bridge: R_LottieBridge? {
+    private var bridge: LottieRendererBridge? {
         return bridgeValue.with { $0 }
     }
     var fps: Int {
@@ -1531,7 +1517,7 @@ private final class LottieRenderer : RenderContainer {
             }
         }
     }
-    private func restoreBridge() -> R_LottieBridge? {
+    private func restoreBridge() -> LottieRendererBridge? {
         if self.restoreState.with({ $0.failed }) {
             return nil
         }
@@ -1577,7 +1563,7 @@ private final class LottieRenderer : RenderContainer {
         }
         if data == nil {
             let bridge = self.bridge ?? (fileSupplyment != nil ? restoreBridge() : nil)
-            func renderFrame(s: (w: Int, h: Int), bridge: R_LottieBridge?, frame: Int32) -> Data? {
+            func renderFrame(s: (w: Int, h: Int), bridge: LottieRendererBridge?, frame: Int32) -> Data? {
                 let bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: s.w)
                 let bufferSize = s.h * bytesPerRow
 
@@ -1741,7 +1727,7 @@ public final class LottieAnimation : Equatable {
     }
     
     
-    fileprivate func makeBridge() -> R_LottieBridge? {
+    fileprivate func makeBridge() -> LottieRendererBridge? {
         let data: Data = TGGUnzipData(self.compressed, 8 * 1024 * 1024) ?? self.compressed
         if !data.isEmpty {
             let modified: Data
@@ -1752,7 +1738,7 @@ public final class LottieAnimation : Equatable {
             }
            
             if let json = String(data: modified, encoding: .utf8) {
-                if let bridge = makeRLottie?(json, self.cacheKey) {
+                if let bridge = makeLottieRenderer?(json) {
                     for color in self.colors {
                         bridge.setColor(color.color, forKeyPath: color.keyPath)
                     }

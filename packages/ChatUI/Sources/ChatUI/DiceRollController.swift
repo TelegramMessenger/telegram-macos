@@ -14,6 +14,7 @@ import InputDataUI
 import InputTextView
 import LocalAnimations
 import InlineStickerLayer
+import AppAnalytics
 
 // MARK: - Arguments
 private final class Arguments {
@@ -1327,6 +1328,7 @@ public func DiceRollController(context: any AccountContextProtocol, interactions
         title: "",
         hasDone: false
     )
+    controller.analyticsScreen = .chatDiceStake
 
     getController = { [weak controller] in
         return controller

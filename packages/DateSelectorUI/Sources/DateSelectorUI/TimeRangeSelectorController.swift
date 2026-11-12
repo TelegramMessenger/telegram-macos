@@ -11,6 +11,7 @@ import Localization
 import Cocoa
 import TGUIKit
 import SwiftSignalKit
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -192,6 +193,7 @@ public func TimeRangeSelectorController(context: any AccountContextProtocol, fro
     }
     
     let controller = InputDataController(dataSignal: signal, title: title)
+    controller.analyticsScreen = .appTimeRangePicker
     
     controller.onDeinit = {
         actionsDisposable.dispose()

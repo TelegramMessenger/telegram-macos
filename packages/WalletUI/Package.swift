@@ -10,6 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "CurrencyFormat", path: "../CurrencyFormat"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
         .package(name: "TelegramUtils", path: "../TelegramUtils"),
         .package(name: "InputDataUI", path: "../InputDataUI"),
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
@@ -30,12 +31,16 @@ let package = Package(
         .package(name: "QRCodeUtils", path: "../QRCodeUtils"),
         .package(name: "UniqueGiftRenderer", path: "../UniqueGiftRenderer"),
         .package(name: "InlineStickerLayer", path: "../InlineStickerLayer"),
+        .package(name: "WidgetSandbox", path: "../../third-party/widget-sandbox"),
+        .package(name: "WalletEngine", path: "../WalletEngine"),
+        .package(name: "rnoise", path: "../../submodules/telegram-ios/third-party/rnnoise"),
     ],
     targets: [
         .target(
             name: "WalletUI",
             dependencies: [
                 .product(name: "CurrencyFormat", package: "CurrencyFormat"),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
                 .product(name: "TelegramUtils", package: "TelegramUtils"),
                 .product(name: "InputDataUI", package: "InputDataUI"),
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
@@ -59,6 +64,6 @@ let package = Package(
             ],
             path: "Sources/WalletUI",
             resources: [.copy("Resources/ChatListNoResults.tgs"), .copy("Resources/GramDiamondLight.tgs"), .copy("Resources/WalletCommentLock.tgs"), .copy("Resources/WalletTransactionKey.pdf"), .copy("Resources/WalletTransactionKeyLarge.pdf"), .copy("Resources/WalletAddressInfo.pdf")]),
-        .testTarget(name: "WalletUITests", dependencies: ["WalletUI", .product(name: "GZIP", package: "GZIP"), .product(name: "SceneEffects", package: "SceneEffects"), .product(name: "PasscodeCore", package: "PasscodeCore"), .product(name: "WalletContext", package: "WalletContext")]),
+        .testTarget(name: "WalletUITests", dependencies: ["WalletUI", .product(name: "GZIP", package: "GZIP"), .product(name: "SceneEffects", package: "SceneEffects"), .product(name: "PasscodeCore", package: "PasscodeCore"), .product(name: "WalletContext", package: "WalletContext"), .product(name: "WidgetSandbox", package: "WidgetSandbox"), .product(name: "WalletEngineFFI", package: "WalletEngine"), .product(name: "rnoise", package: "rnoise")]),
     ]
 )
