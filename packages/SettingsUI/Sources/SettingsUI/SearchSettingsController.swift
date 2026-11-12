@@ -50,11 +50,13 @@ private func searchSettingsEntries<Context: AccountContextProtocol>(context: Con
             
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: item.title, description: desc.isEmpty ? nil : desc, type: .context("  "), action: {
                 
+                searchDbg("tap title=\(item.title) id=\(item.id)")
                 addRecentSettingsSearchItem(postbox: context.account.postbox, item: item.id)
                 
                 item.present(context, context.bindings.rootNavigation(), { presentation, controller in
                     switch presentation {
                     case .push:
+                        searchDbg("present push controller=\(String(describing: controller.map { type(of: $0) }))")
                         if let controller = controller {
                             context.bindings.rootNavigation().push(controller)
                         }

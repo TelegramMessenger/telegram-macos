@@ -77,27 +77,27 @@ extension PrivacySearchTag: SettingsSearchTag {
                 }
             }))
         case .lastSeen:
-            presentSelectivePrivacy(context, kind: .presence, present: present)
+            presentSelectivePrivacy(context, kind: .presence, loaded: environment.privacySettings, present: present)
         case .profilePhoto:
-            presentSelectivePrivacy(context, kind: .profilePhoto, present: present)
+            presentSelectivePrivacy(context, kind: .profilePhoto, loaded: environment.privacySettings, present: present)
         case .forwards:
-            presentSelectivePrivacy(context, kind: .forwards, present: present)
+            presentSelectivePrivacy(context, kind: .forwards, loaded: environment.privacySettings, present: present)
         case .voiceCalls:
-            presentSelectivePrivacy(context, kind: .voiceCalls, present: present)
+            presentSelectivePrivacy(context, kind: .voiceCalls, loaded: environment.privacySettings, present: present)
         case .groups:
-            presentSelectivePrivacy(context, kind: .groupInvitations, present: present)
+            presentSelectivePrivacy(context, kind: .groupInvitations, loaded: environment.privacySettings, present: present)
         case .phoneNumber:
-            presentSelectivePrivacy(context, kind: .phoneNumber, present: present)
+            presentSelectivePrivacy(context, kind: .phoneNumber, loaded: environment.privacySettings, present: present)
         case .voiceMessages:
-            presentSelectivePrivacy(context, kind: .voiceMessages, present: present)
+            presentSelectivePrivacy(context, kind: .voiceMessages, loaded: environment.privacySettings, present: present)
         case .bio:
-            presentSelectivePrivacy(context, kind: .bio, present: present)
+            presentSelectivePrivacy(context, kind: .bio, loaded: environment.privacySettings, present: present)
         case .birthday:
-            presentSelectivePrivacy(context, kind: .birthday, present: present)
+            presentSelectivePrivacy(context, kind: .birthday, loaded: environment.privacySettings, present: present)
         case .gifts:
-            presentSelectivePrivacy(context, kind: .gifts, present: present)
+            presentSelectivePrivacy(context, kind: .gifts, loaded: environment.privacySettings, present: present)
         case .savedMusic:
-            presentSelectivePrivacy(context, kind: .savedMusic, present: present)
+            presentSelectivePrivacy(context, kind: .savedMusic, loaded: environment.privacySettings, present: present)
         case .deleteAccount:
             present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .accountTimeout, twoStepVerificationConfiguration: nil))
         case .topPeers:
@@ -231,10 +231,30 @@ extension PrivacySearchTag: SettingsSearchTag {
     }
 }
 
-private func presentSelectivePrivacy<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
-    _ = (context.engine.privacy.requestAccountPrivacySettings()
+private let selectivePrivacyRequest = MetaDisposable()
+private var selectivePrivacyRequestInFlight = false
+
+private func presentSelectivePrivacy<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, loaded: AccountPrivacySettings?, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+    let open: (AccountPrivacySettings) -> Void = { settings in
+        searchDbg("opening kind=\(kind) fromSnapshot=\(loaded != nil)")
+        present(.push, selectivePrivacyController(context, kind: kind, settings: settings, updated: { _, _, _, _ in }))
+    }
+    if let loaded = loaded {
+        open(loaded)
+        return
+    }
+    if selectivePrivacyRequestInFlight {
+        searchDbg("ignored tap, request in flight kind=\(kind)")
+        return
+    }
+    selectivePrivacyRequestInFlight = true
+    searchDbg("requesting settings kind=\(kind)")
+    selectivePrivacyRequest.set((context.engine.privacy.requestAccountPrivacySettings()
         |> take(1)
         |> deliverOnMainQueue).start(next: { settings in
-            present(.push, selectivePrivacyController(context, kind: kind, settings: settings, updated: { _, _, _, _ in }))
-        })
+            selectivePrivacyRequestInFlight = false
+            open(settings)
+        }, completed: {
+            selectivePrivacyRequestInFlight = false
+        }))
 }
