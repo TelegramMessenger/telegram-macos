@@ -1,0 +1,433 @@
+import Foundation
+
+struct MediaId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+struct PixelDimensions: Equatable {
+    let width: Int32
+    let height: Int32
+    init(_ width: Int32, _ height: Int32) {
+        self.width = width
+        self.height = height
+    }
+}
+
+final class MediaResource {
+    let name: String
+    init(_ name: String) {
+        self.name = name
+    }
+}
+
+struct TelegramMediaImageRepresentation {
+    let dimensions: PixelDimensions
+    let resource: MediaResource
+    init(dimensions: PixelDimensions, resource: MediaResource, progressiveSizes: [Int32], immediateThumbnailData: Data?, hasVideo: Bool, isPersonal: Bool) {
+        self.dimensions = dimensions
+        self.resource = resource
+    }
+}
+
+struct TelegramMediaImageFlags: OptionSet {
+    let rawValue: Int32
+}
+
+struct TelegramMediaImageReference {}
+struct PartialMediaReference {}
+
+protocol Media: AnyObject {
+    var id: MediaId? { get }
+}
+
+final class TelegramMediaImage: Media {
+    let imageId: MediaId
+    let representations: [TelegramMediaImageRepresentation]
+    init(imageId: MediaId, representations: [TelegramMediaImageRepresentation], immediateThumbnailData: Data?, reference: TelegramMediaImageReference?, partialReference: PartialMediaReference?, flags: TelegramMediaImageFlags) {
+        self.imageId = imageId
+        self.representations = representations
+    }
+    var id: MediaId? {
+        return imageId
+    }
+}
+
+final class TelegramMediaFile: Media {
+    let fileId: MediaId
+    let mimeType: String
+    let isVideo: Bool
+    let isAnimated: Bool
+    let isSticker: Bool
+    let isAnimatedSticker = false
+    let isVideoSticker = false
+    let dimensions: PixelDimensions?
+    let resource: MediaResource
+    let previewRepresentations: [TelegramMediaImageRepresentation]
+    init(fileId: MediaId, mimeType: String, isVideo: Bool, isAnimated: Bool, isSticker: Bool, dimensions: PixelDimensions?, resource: MediaResource, previewRepresentations: [TelegramMediaImageRepresentation]) {
+        self.fileId = fileId
+        self.mimeType = mimeType
+        self.isVideo = isVideo
+        self.isAnimated = isAnimated
+        self.isSticker = isSticker
+        self.dimensions = dimensions
+        self.resource = resource
+        self.previewRepresentations = previewRepresentations
+    }
+    var id: MediaId? {
+        return fileId
+    }
+}
+
+extension Media {
+__IS_GRAPHIC_FILE__
+
+__IS_VIDEO_FILE__
+}
+
+final class Message {
+    let id: Int32
+    init(id: Int32) {
+        self.id = id
+    }
+}
+
+protocol AccountContextProtocol {}
+final class Context: AccountContextProtocol {}
+
+enum GalleryEntry {
+    case media(Media, Int, Message)
+
+    var source: Media {
+        switch self {
+        case let .media(media, _, _):
+            return media
+        }
+    }
+
+    var index: Int {
+        switch self {
+        case let .media(_, index, _):
+            return index
+        }
+    }
+
+    var stableId: AnyHashable {
+        return AnyHashable(index)
+    }
+}
+
+var castFailed = false
+
+func forceImage(_ media: Media) -> TelegramMediaImage {
+    if let image = media as? TelegramMediaImage {
+        return image
+    }
+    castFailed = true
+    return TelegramMediaImage(imageId: MediaId(namespace: -1, id: -1), representations: [], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])
+}
+
+final class PhotoProbe {
+    var media: TelegramMediaImage!
+    var secureIdAccessContext: Int?
+    let crashed: Bool
+
+    init(_ entry: GalleryEntry) {
+        castFailed = false
+        switch entry {
+__PHOTO_MEDIA_CASE__
+        }
+        crashed = castFailed
+    }
+}
+
+class MGalleryItem {
+    let entry: GalleryEntry
+    init(_ context: any AccountContextProtocol, _ entry: GalleryEntry, _ pagerSize: NSSize) {
+        self.entry = entry
+    }
+    var stableId: AnyHashable {
+        return entry.stableId
+    }
+    var identifier: String {
+        return "\(entry.index)" + String(describing: type(of: self))
+    }
+    var kind: String {
+        return "item"
+    }
+}
+
+final class MGalleryPhotoItem: MGalleryItem {
+    let probe: PhotoProbe
+    override init(_ context: any AccountContextProtocol, _ entry: GalleryEntry, _ pagerSize: NSSize) {
+        self.probe = PhotoProbe(entry)
+        super.init(context, entry, pagerSize)
+    }
+    override var kind: String {
+        return "photo"
+    }
+}
+
+final class MGalleryVideoItem: MGalleryItem {
+    override var kind: String {
+        return "video"
+    }
+}
+
+final class MGalleryGIFItem: MGalleryItem {
+    override var kind: String {
+        return "gif"
+    }
+}
+
+struct UpdateTransition<T> {
+    let deleted: [Int]
+    let inserted: [(Int, T)]
+    let updated: [(Int, T)]
+}
+
+final class PageController {
+    var arrangedObjects: [Any] = []
+}
+
+func galleryItems(_ media: [Media], parent: Message) -> [(Int, MGalleryItem)] {
+    let context: any AccountContextProtocol = Context()
+    let pagerSize = NSSize(width: 1200, height: 800)
+__GALLERY_FACTORY__
+    return inserted
+}
+
+func pagerItems(_ inserted: [(Int, MGalleryItem)]) -> [MGalleryItem] {
+    let transition = UpdateTransition<MGalleryItem>(deleted: [], inserted: inserted, updated: [])
+    var items: [MGalleryItem] = []
+    var identifiers: [String: MGalleryItem] = [:]
+    let cache = NSCache<AnyObject, AnyObject>()
+__PAGER_INSERT__
+    _ = identifiers
+    return items
+}
+
+func pagerIndex(_ index: Int, _ items: [MGalleryItem]) -> Int {
+    let controller = PageController()
+    controller.arrangedObjects = items
+    do {
+        __PAGER_CLAMP__
+        return index
+    }
+}
+
+__IS_POLL_GALLERY_MEDIA__
+
+struct PollOption {
+    let optionMedia: Media?
+}
+
+final class ChatPollItem {
+    let attachedMedia: Media?
+    let options: [PollOption]
+    var openedAt: Int?
+
+    init(attachedMedia: Media?, options: [PollOption]) {
+        self.attachedMedia = attachedMedia
+        self.options = options
+    }
+
+__GALLERY_MEDIA_INFO__
+
+__ALL_GALLERY_MEDIAS__
+
+    func openGallery(firstIndex: Int) {
+        openedAt = firstIndex
+    }
+}
+
+final class OptionView {
+__OPEN_GALLERY_FOR_OPTION__
+}
+
+enum Kind: String, CaseIterable {
+    case none
+    case photo
+    case thinJpeg = "1200x100 JPEG file"
+    case smallPng = "64x32 PNG file"
+    case video
+    case videoFile = "MP4 file without video attribute"
+    case gif
+    case sticker
+    case pdf
+
+    var galleryKind: String? {
+        switch self {
+        case .photo, .thinJpeg, .smallPng:
+            return "photo"
+        case .video, .videoFile:
+            return "video"
+        case .gif:
+            return "gif"
+        case .none, .sticker, .pdf:
+            return nil
+        }
+    }
+}
+
+var nextId: Int64 = 1
+
+func make(_ kind: Kind) -> Media? {
+    nextId += 1
+    let id = nextId
+    func preview(_ width: Int32, _ height: Int32) -> [TelegramMediaImageRepresentation] {
+        return [TelegramMediaImageRepresentation(dimensions: PixelDimensions(width, height), resource: MediaResource("preview \(id)"), progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false)]
+    }
+    func file(_ mime: String, _ dimensions: PixelDimensions?, video: Bool = false, animated: Bool = false, sticker: Bool = false, previews: [TelegramMediaImageRepresentation] = []) -> TelegramMediaFile {
+        return TelegramMediaFile(fileId: MediaId(namespace: 1, id: id), mimeType: mime, isVideo: video, isAnimated: animated, isSticker: sticker, dimensions: dimensions, resource: MediaResource("file \(id)"), previewRepresentations: previews)
+    }
+    switch kind {
+    case .none:
+        return nil
+    case .photo:
+        return TelegramMediaImage(imageId: MediaId(namespace: 0, id: id), representations: preview(800, 600), immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])
+    case .thinJpeg:
+        return file("image/jpeg", PixelDimensions(1200, 100), previews: preview(90, 8))
+    case .smallPng:
+        return file("image/png", PixelDimensions(64, 32))
+    case .video:
+        return file("video/mp4", PixelDimensions(640, 360), video: true, previews: preview(90, 50))
+    case .videoFile:
+        return file("video/mp4", nil)
+    case .gif:
+        return file("video/mp4", PixelDimensions(320, 240), video: true, animated: true)
+    case .sticker:
+        return file("image/webp", PixelDimensions(512, 512), sticker: true)
+    case .pdf:
+        return file("application/pdf", nil)
+    }
+}
+
+var passed = 0
+var failures = 0
+var printed = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        if printed < 60 {
+            print("FAIL \(name)")
+            printed += 1
+        }
+    }
+}
+
+struct Poll {
+    let attached: Kind
+    let options: [Kind]
+    let item: ChatPollItem
+    let attachedMedia: Media?
+    let optionMedia: [Media?]
+    let message = Message(id: 7)
+
+    init(attached: Kind = .none, _ options: [Kind]) {
+        self.attached = attached
+        self.options = options
+        self.attachedMedia = make(attached)
+        self.optionMedia = options.map(make)
+        self.item = ChatPollItem(attachedMedia: attachedMedia, options: optionMedia.map { PollOption(optionMedia: $0) })
+    }
+
+    var name: String {
+        let list = options.map { $0.rawValue }.joined(separator: ", ")
+        return attached == .none ? "[\(list)]" : "[\(list)] with \(attached.rawValue) above"
+    }
+
+    func open(option index: Int) -> Int? {
+        item.openedAt = nil
+        OptionView().openGalleryForOption(context: Context(), item: item, message: message, optionIndex: index)
+        return item.openedAt
+    }
+
+    func openAttached() -> Int? {
+        item.openedAt = nil
+        if let index = item.allGalleryMedias().attachedMediaIndex {
+            item.openGallery(firstIndex: index)
+        }
+        return item.openedAt
+    }
+}
+
+func verifyShown(_ name: String, poll: Poll, firstIndex: Int?, media: Media, kind: Kind) {
+    guard let firstIndex = firstIndex else {
+        check("\(name): the click opens the gallery", false)
+        return
+    }
+    let info = poll.item.allGalleryMedias()
+    let items = pagerItems(galleryItems(info.medias, parent: poll.message))
+    let index = pagerIndex(firstIndex, items)
+    guard items.indices.contains(index) else {
+        check("\(name): the viewer has an item to show (index \(index) of \(items.count) items, the app crashes)", false)
+        return
+    }
+    check("\(name): the viewer has an item to show", true)
+    let shown = items[index]
+    check("\(name): the viewer shows this option's own media, not media #\(shown.entry.index)", shown.entry.source === media)
+    check("\(name): it opens as a \(kind.galleryKind ?? "-") item, not \(shown.kind)", shown.kind == kind.galleryKind)
+    if let photo = shown as? MGalleryPhotoItem {
+        check("\(name): the photo item builds without a failed cast", !photo.probe.crashed)
+        if let image = media as? TelegramMediaImage {
+            check("\(name): a photo is shown as it is", photo.probe.media === image)
+        } else if let file = media as? TelegramMediaFile {
+            let representations = photo.probe.media.representations
+            let full = representations.last
+            check("\(name): the photo item shows the file itself", full?.resource === file.resource)
+            check("\(name): at the file's own size", full?.dimensions == file.dimensions)
+            check("\(name): with the file's previews kept", representations.count == file.previewRepresentations.count + 1 && zip(representations, file.previewRepresentations).allSatisfy { $0.resource === $1.resource })
+        }
+    }
+}
+
+func verify(_ poll: Poll) {
+    let info = poll.item.allGalleryMedias()
+    let inserted = galleryItems(info.medias, parent: poll.message)
+    let items = pagerItems(inserted)
+    check("\(poll.name): every media the poll lists becomes one gallery item, in order", inserted.map { $0.0 } == Array(info.medias.indices) && items.count == info.medias.count)
+    check("\(poll.name): the gallery holds each media once", Set(items.map { $0.entry.index }).count == items.count)
+    for (index, kind) in poll.options.enumerated() where kind.galleryKind != nil {
+        verifyShown("\(poll.name) option \(index + 1)", poll: poll, firstIndex: poll.open(option: index), media: poll.optionMedia[index]!, kind: kind)
+    }
+    if poll.attached == .photo || poll.attached == .video {
+        verifyShown("\(poll.name) media above the options", poll: poll, firstIndex: poll.openAttached(), media: poll.attachedMedia!, kind: poll.attached)
+    }
+}
+
+verify(Poll([.thinJpeg, .none]))
+verify(Poll([.smallPng, .none]))
+verify(Poll([.thinJpeg, .photo]))
+verify(Poll([.photo, .thinJpeg, .photo]))
+verify(Poll(attached: .thinJpeg, [.photo, .photo]))
+verify(Poll([.videoFile, .photo]))
+verify(Poll([.sticker, .pdf, .photo]))
+
+let sticker = Poll([.sticker, .pdf, .photo, .thinJpeg])
+check("stickers and PDFs stay out of the gallery list", sticker.item.allGalleryMedias().medias.count == 2)
+
+let named = (passed, failures)
+
+let attachedKinds: [Kind] = [.none, .photo, .thinJpeg, .video]
+var polls = 0
+for attached in attachedKinds {
+    for first in Kind.allCases {
+        for second in Kind.allCases {
+            verify(Poll(attached: attached, [first, second]))
+            polls += 1
+            for third in Kind.allCases {
+                verify(Poll(attached: attached, [first, second, third]))
+                polls += 1
+            }
+        }
+    }
+}
+
+print("named cases: \(named.0) passed, \(named.1) failed")
+print("all \(polls) polls of 2 and 3 options: \(passed - named.0) passed, \(failures - named.1) failed")
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
