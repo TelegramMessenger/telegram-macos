@@ -1,0 +1,271 @@
+import Foundation
+
+enum TextInputAttributes {
+    static let quote = NSAttributedString.Key("Attribute__Blockquote")
+}
+
+final class TextViewBlockQuoteData: NSObject {
+    let id: Int
+    init(id: Int) {
+        self.id = id
+        super.init()
+    }
+    override func isEqual(_ object: Any?) -> Bool {
+        return (object as? TextViewBlockQuoteData)?.id == self.id
+    }
+    override var hash: Int {
+        return self.id
+    }
+}
+
+extension NSRange {
+    var min: Int {
+        return self.location
+    }
+    var max: Int {
+        return self.location + self.length
+    }
+}
+
+extension String {
+    var length: Int {
+        return (self as NSString).length
+    }
+    var nsstring: NSString {
+        return self as NSString
+    }
+}
+
+extension NSAttributedString {
+    static func initialize(string: String?) -> NSAttributedString {
+        return NSAttributedString(string: string ?? "")
+    }
+}
+
+extension NSMutableAttributedString {
+    __REMOVE_WHITESPACE__
+}
+
+struct TextSelectedRange {
+    var range: NSRange = NSMakeRange(NSNotFound, 0)
+}
+
+final class TextViewLayout {
+    private(set) var attributedString: NSAttributedString
+    var selectedRange = TextSelectedRange()
+    var lines: [Int] = []
+    var string: String {
+        return self.attributedString.string
+    }
+    init(_ attributedString: NSAttributedString) {
+        self.attributedString = attributedString
+    }
+    func setAttributedString(_ string: NSAttributedString) {
+        self.attributedString = string
+    }
+}
+
+final class FoldingTextLayout {
+    struct ViewLayout {
+        let text: TextViewLayout
+    }
+
+    var blocks: [ViewLayout]
+    let blockRanges: [NSRange]
+    let attributedString: NSAttributedString
+
+    init(attributedString: NSAttributedString, blocks: [TextViewLayout], blockRanges: [NSRange]) {
+        self.attributedString = attributedString
+        self.blocks = blocks.map { ViewLayout(text: $0) }
+        self.blockRanges = blockRanges
+    }
+
+    __MERGED__
+
+    __BREAK_STRING__
+
+    static func make(_ string: NSAttributedString) -> FoldingTextLayout {
+        let blockRanges = FoldingTextLayout.breakString(string)
+        return FoldingTextLayout(attributedString: string, blocks: blockRanges.map { TextViewLayout(string.attributedSubstring(from: $0)) }, blockRanges: blockRanges)
+    }
+}
+
+var total = 0
+var failed = 0
+
+func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String) {
+    total += 1
+    if !condition {
+        failed += 1
+        print("FAIL \(name): \(detail())")
+    }
+}
+
+func shownText(_ text: String, quotes: [(Int, Int)]) -> NSMutableAttributedString {
+    let string = NSMutableAttributedString(string: text)
+    for (index, quote) in quotes.enumerated() {
+        string.addAttribute(TextInputAttributes.quote, value: TextViewBlockQuoteData(id: index + 1), range: NSRange(location: quote.0, length: quote.1))
+    }
+    string.removeWhitespaceFromQuoteAttribute()
+    return string
+}
+
+func quoteRanges(_ string: NSAttributedString) -> [NSRange] {
+    var result: [NSRange] = []
+    string.enumerateAttribute(TextInputAttributes.quote, in: NSRange(location: 0, length: string.length), options: []) { value, range, _ in
+        if value != nil {
+            result.append(range)
+        }
+    }
+    return result
+}
+
+func clearSelection(_ layout: FoldingTextLayout) {
+    for block in layout.blocks {
+        block.text.selectedRange.range = NSMakeRange(NSNotFound, 0)
+    }
+}
+
+func select(_ layout: FoldingTextLayout, from start: Int, to end: Int) -> NSRange? {
+    clearSelection(layout)
+    var first: Int?
+    var last: Int?
+    var cursor = 0
+    for (block, range) in zip(layout.blocks, layout.blockRanges) {
+        if range.location > cursor {
+            cursor = range.location
+        }
+        let length = block.text.attributedString.length
+        let lower = Swift.max(start, cursor)
+        let upper = Swift.min(end, cursor + length)
+        if lower < upper {
+            block.text.selectedRange.range = NSMakeRange(lower - cursor, upper - lower)
+            first = first ?? lower
+            last = upper
+        }
+        cursor = NSMaxRange(range)
+    }
+    if let first, let last {
+        return NSMakeRange(first, last - first)
+    }
+    return nil
+}
+
+struct Selection {
+    let from: String
+    let to: String
+    let expected: String
+}
+
+struct Case {
+    let name: String
+    let text: String
+    let quotes: [(Int, Int)]
+    let shown: String?
+    let selections: [Selection]
+}
+
+let cases: [Case] = [
+    Case(name: "quote in the middle", text: "Intro\nQuoted line\nOutro", quotes: [(6, 11)], shown: "Intro\nQuoted line\nOutro", selections: [
+        Selection(from: "line", to: "Out", expected: "line\nOut"),
+        Selection(from: "tro", to: "Quoted", expected: "tro\nQuoted"),
+        Selection(from: "tro", to: "Out", expected: "tro\nQuoted line\nOut"),
+        Selection(from: "Quoted", to: "line", expected: "Quoted line"),
+        Selection(from: "Outro", to: "Outro", expected: "Outro"),
+    ]),
+    Case(name: "code block", text: "Hi\nlet x = 1\nBye", quotes: [(3, 9)], shown: "Hi\nlet x = 1\nBye", selections: [
+        Selection(from: "1", to: "By", expected: "1\nBy"),
+        Selection(from: "Hi", to: "Bye", expected: "Hi\nlet x = 1\nBye"),
+    ]),
+    Case(name: "code block typed with fences", text: "Hi\n\nlet x = 1\n\nBye", quotes: [(3, 11)], shown: "Hi\nlet x = 1\nBye", selections: [
+        Selection(from: "1", to: "By", expected: "1\nBy"),
+    ]),
+    Case(name: "two quotes in a row", text: "A\nB\nC", quotes: [(0, 1), (2, 1), (4, 1)], shown: "A\nB\nC", selections: [
+        Selection(from: "A", to: "C", expected: "A\nB\nC"),
+        Selection(from: "B", to: "C", expected: "B\nC"),
+    ]),
+    Case(name: "quote first", text: "Quoted\nTail", quotes: [(0, 6)], shown: "Quoted\nTail", selections: [
+        Selection(from: "ted", to: "Ta", expected: "ted\nTa"),
+    ]),
+    Case(name: "quote last", text: "Head\nQuoted", quotes: [(5, 6)], shown: "Head\nQuoted", selections: [
+        Selection(from: "ad", to: "Quo", expected: "ad\nQuo"),
+    ]),
+    Case(name: "quote with line breaks at its edges", text: "Intro\n\nQuoted\n\nOutro", quotes: [(6, 8)], shown: "Intro\nQuoted\nOutro", selections: [
+        Selection(from: "ted", to: "Out", expected: "ted\nOut"),
+    ]),
+    Case(name: "quote inside a line", text: "before quoted after", quotes: [(7, 6)], shown: nil, selections: [
+        Selection(from: "quoted", to: "aft", expected: "quoted\n aft"),
+    ]),
+    Case(name: "trailing line break after a quote", text: "Head\nQuoted\n", quotes: [(5, 6)], shown: "Head\nQuoted\n", selections: []),
+    Case(name: "emoji around a quote", text: "👍 Intro\nQuoted 👍\n👍 Outro", quotes: [(9, 9)], shown: "👍 Intro\nQuoted 👍\n👍 Outro", selections: [
+        Selection(from: "ted 👍", to: "👍 Out", expected: "ted 👍\n👍 Out"),
+    ]),
+    Case(name: "no quotes", text: "first line\nsecond line", quotes: [], shown: "first line\nsecond line", selections: [
+        Selection(from: "line", to: "sec", expected: "line\nsec"),
+    ]),
+]
+
+for item in cases {
+    let shown = shownText(item.text, quotes: item.quotes)
+    if let expected = item.shown {
+        check("\(item.name): shown text", shown.string == expected, "the fixture shows \(shown.string.debugDescription), expected \(expected.debugDescription)")
+    }
+    let layout = FoldingTextLayout.make(shown)
+    let copied = layout.merged
+    check("\(item.name): Copy Text", copied.attributedString.string == shown.string, "copied \(copied.attributedString.string.debugDescription), the message shows \(shown.string.debugDescription)")
+    check("\(item.name): copied quotes", quoteRanges(copied.attributedString) == quoteRanges(shown), "copied quote ranges \(quoteRanges(copied.attributedString)), the message has \(quoteRanges(shown))")
+    check("\(item.name): no selection", copied.selectedRange.range.location == NSNotFound, "merged reports a selection \(copied.selectedRange.range) with nothing selected")
+
+    let string = shown.string as NSString
+    for selection in item.selections {
+        let start = string.range(of: selection.from)
+        guard start.location != NSNotFound else {
+            check("\(item.name): \(selection.expected.debugDescription)", false, "\(selection.from.debugDescription) is not in the shown text")
+            continue
+        }
+        let end = string.range(of: selection.to, options: [], range: NSRange(location: start.location, length: string.length - start.location))
+        guard end.location != NSNotFound, let selected = select(layout, from: start.location, to: NSMaxRange(end)) else {
+            check("\(item.name): \(selection.expected.debugDescription)", false, "the selection from \(selection.from.debugDescription) to \(selection.to.debugDescription) is empty")
+            continue
+        }
+        let merged = layout.merged
+        let range = merged.selectedRange.range
+        let valid = range.location != NSNotFound && NSMaxRange(range) <= merged.attributedString.length
+        let text = valid ? (merged.attributedString.string as NSString).substring(with: range) : "<range \(range) out of \(merged.attributedString.length)>"
+        check("\(item.name): Copy Selected Text \(selection.expected.debugDescription)", text == selection.expected, "copied \(text.debugDescription)")
+        check("\(item.name): selection \(selection.expected.debugDescription) is where it was made", range == selected, "merged selection \(range), made at \(selected) in the shown text")
+    }
+}
+
+do {
+    let shown = shownText("Intro\nQuoted\nin 59 seconds", quotes: [(6, 6)])
+    let layout = FoldingTextLayout.make(shown)
+    let last = layout.blocks[layout.blocks.count - 1].text
+    last.setAttributedString(NSAttributedString(string: "in 1 minute"))
+    let expected = "Intro\nQuoted\nin 1 minute"
+    check("relative date updated: Copy Text", layout.merged.attributedString.string == expected, "copied \(layout.merged.attributedString.string.debugDescription)")
+    clearSelection(layout)
+    layout.blocks[1].text.selectedRange.range = NSMakeRange(3, 3)
+    last.selectedRange.range = NSMakeRange(0, 4)
+    let merged = layout.merged
+    let range = merged.selectedRange.range
+    let valid = range.location != NSNotFound && NSMaxRange(range) <= merged.attributedString.length
+    let text = valid ? (merged.attributedString.string as NSString).substring(with: range) : "<range \(range)>"
+    check("relative date updated: Copy Selected Text", text == "ted\nin 1", "copied \(text.debugDescription)")
+}
+
+do {
+    let shown = shownText("Intro\nQuoted\nOutro", quotes: [(6, 6)])
+    let layout = FoldingTextLayout.make(shown)
+    clearSelection(layout)
+    layout.blocks[0].text.selectedRange.range = NSMakeRange(0, 2)
+    layout.blocks[2].text.selectedRange.range = NSMakeRange(3, 0)
+    let merged = layout.merged
+    let range = merged.selectedRange.range
+    let valid = range.location != NSNotFound && NSMaxRange(range) <= merged.attributedString.length
+    let text = valid ? (merged.attributedString.string as NSString).substring(with: range) : "<range \(range)>"
+    check("an empty range left in another block: Copy Selected Text", text == "In", "copied \(text.debugDescription)")
+}
+
+print("\(total - failed)/\(total) checks passed")
+exit(failed == 0 ? 0 : 1)
