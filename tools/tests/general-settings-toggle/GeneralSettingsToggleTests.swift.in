@@ -1,0 +1,202 @@
+import Foundation
+import CoreGraphics
+
+enum UserDefaults {
+    static var standard: Foundation.UserDefaults!
+}
+
+final class FastSettings {
+__SETTINGS__
+}
+
+struct GeneralSettingsArguments {
+__PROPERTIES__
+}
+
+func makeArguments() -> GeneralSettingsArguments {
+    return GeneralSettingsArguments(
+__CALLBACKS__
+    )
+}
+
+enum Setting: CaseIterable {
+    case enableRFTCopy, sendLargePhotos, emojiReplacements
+    var key: String {
+        switch self {
+        case .enableRFTCopy: return "kRTFEnable"
+        case .sendLargePhotos: return "kPhotoSize"
+        case .emojiReplacements: return "kAutomaticConvertEmojiesType2"
+        }
+    }
+    func rawValue(_ enabled: Bool) -> Bool {
+        self == .sendLargePhotos ? enabled : !enabled
+    }
+}
+
+func read(_ setting: Setting) -> Bool {
+    switch setting {
+__READ_CASES__
+    }
+}
+
+func seed(_ setting: Setting, _ enabled: Bool) {
+    UserDefaults.standard.set(setting.rawValue(enabled), forKey: setting.key)
+}
+
+enum GeneralInteractedType {
+    case switchable(Bool)
+    case none
+    var value: Bool? {
+        if case let .switchable(value) = self { return value }
+        return nil
+    }
+}
+
+final class GeneralInteractedRowItem {
+    var type: GeneralInteractedType
+    let action: () -> Void
+    let autoswitch = true
+    let enabled = true
+    let switchAction: (() -> Void)? = nil
+    init(_ size: CGSize, stableId: Int, name: String, type: GeneralInteractedType, viewType: Int, action: @escaping () -> Void) {
+        self.type = type
+        self.action = action
+    }
+}
+
+struct Strings {
+    let generalSettingsCopyRTF = ""
+    let generalSettingsSendLargePhotos = ""
+    let generalSettingsEmojiReplacements = ""
+}
+func strings() -> Strings { Strings() }
+
+func makeRow(_ setting: Setting, _ arguments: GeneralSettingsArguments) -> GeneralInteractedRowItem {
+    let enabled = read(setting)
+    let initialSize = CGSize.zero
+    let stableId = 0
+    let viewType = 0
+    switch setting {
+__ROW_CASES__
+    }
+}
+
+enum NSAccessibility {
+    enum Notification { case valueChanged }
+    static func post(element: Any, notification: Notification) {}
+}
+
+final class Layer {
+    func removeAllAnimations() {}
+}
+
+final class SwitchView {
+    private struct PendingChange {
+        let target: Bool
+        let notify: Bool
+        let autoswitch: Bool
+        let action: (() -> Void)?
+    }
+    var isOn = false
+    var autoswitch = true
+    var stateChanged: (() -> Void)?
+    private var pendingChange: PendingChange?
+    private var activeMotions: [String: Int] = [:]
+    private let thumbLayer = Layer()
+    private let trackLayer = Layer()
+    private let window: AnyObject? = nil
+    private let canInteract = true
+    private var visualPosition = 0
+    private var lifted = false
+    private var dragOffset = 0
+    private func reduceMotion() -> Bool { true }
+    private func render(animated: Bool) {}
+    private func invalidateInteraction() { pendingChange = nil }
+    private func installEscapeMonitor() {}
+    private func removeEscapeMonitor() {}
+__SWITCH_METHODS__
+}
+
+final class GeneralInteractedRowView {
+    var item: GeneralInteractedRowItem?
+    let switchView: SwitchView? = SwitchView()
+    init(_ item: GeneralInteractedRowItem) {
+        self.item = item
+        switchView?.setIsOn(item.type.value!, animated: false)
+__STATE_CHANGED__
+    }
+    func invokeAction(_ item: GeneralInteractedRowItem) {
+__ROW_ACTION__
+    }
+}
+
+var checks = 0
+var failures = 0
+func check(_ condition: Bool, _ name: String) {
+    checks += 1
+    if !condition {
+        failures += 1
+        print("FAIL: \(name)")
+    }
+}
+
+func runTests() {
+    let suite = "GeneralSettingsToggleTests.\(UUID().uuidString)"
+    UserDefaults.standard = Foundation.UserDefaults(suiteName: suite)!
+    defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+    for setting in Setting.allCases {
+        check(read(setting) == (setting != .sendLargePhotos), "\(setting) default value")
+        for initial in [false, true] {
+            for wholeRow in [false, true] {
+                seed(setting, initial)
+                let otherValues = Setting.allCases.filter { $0 != setting }.map { read($0) }
+                let arguments = makeArguments()
+                let row = makeRow(setting, arguments)
+                let view = GeneralInteractedRowView(row)
+                let toggle = view.switchView!
+                let label = "\(setting) initial=\(initial) wholeRow=\(wholeRow)"
+                check(toggle.isOn == initial && row.type.value == initial, "\(label) initial UI")
+                for (index, expected) in [!initial, initial, !initial, initial].enumerated() {
+                    if wholeRow {
+                        view.invokeAction(row)
+                    } else {
+                        toggle.performToggle()
+                    }
+                    check(read(setting) == !expected, "\(label) defers persistence until switch commits")
+                    toggle.finishPendingChange()
+                    toggle.finishPendingChange()
+                    check(read(setting) == expected, "\(label) toggle \(index + 1) persists current state")
+                    check(toggle.isOn == expected && row.type.value == expected, "\(label) toggle \(index + 1) UI matches storage")
+                    check(makeRow(setting, arguments).type.value == expected, "\(label) rebuilt row reads storage")
+                    UserDefaults.standard.synchronize()
+                    let reopened = Foundation.UserDefaults(suiteName: suite)!
+                    check(reopened.bool(forKey: setting.key) == setting.rawValue(expected), "\(label) reopened storage retains toggle \(index + 1)")
+                    UserDefaults.standard = reopened
+                }
+                check(Setting.allCases.filter { $0 != setting }.map { read($0) } == otherValues, "\(label) leaves other settings unchanged")
+                let first = wholeRow ? { view.invokeAction(row) } : { toggle.performToggle() }
+                let second = wholeRow ? { toggle.performToggle() } : { view.invokeAction(row) }
+                first()
+                check(read(setting) == initial, "\(label) rapid first action is pending")
+                second()
+                check(read(setting) == !initial && toggle.isOn == !initial, "\(label) rapid second action commits first")
+                toggle.finishPendingChange()
+                toggle.setIsOn(row.type.value!, animated: false)
+                check(read(setting) == initial && toggle.isOn == initial && row.type.value == initial, "\(label) rapid mixed actions return to initial state")
+            }
+            seed(setting, initial)
+            let arguments = makeArguments()
+            let action = makeRow(setting, arguments).action
+            for expected in [!initial, initial, !initial, initial] {
+                action()
+                check(read(setting) == expected, "\(setting) retained action initial=\(initial) reads current storage")
+                check(makeRow(setting, arguments).type.value == expected, "\(setting) rebuilt row after retained action uses current storage")
+            }
+        }
+        UserDefaults.standard.removeObject(forKey: setting.key)
+    }
+}
+
+runTests()
+print("\(checks - failures)/\(checks) checks passed")
+exit(failures == 0 ? 0 : 1)
