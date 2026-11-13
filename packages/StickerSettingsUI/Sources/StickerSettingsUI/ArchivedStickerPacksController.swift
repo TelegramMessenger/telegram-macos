@@ -156,27 +156,25 @@ private func archivedStickerPacksControllerEntries(state: ArchivedStickerPacksCo
    
     
     if let packs = packs {
-        
-        
+        var installedIds = Set<ItemCollectionId>()
+        if let view = installedView?.views[.itemCollectionIds(namespaces: [Namespaces.ItemCollection.CloudStickerPacks])] as? ItemCollectionIdsView, let ids = view.idsByNamespace[Namespaces.ItemCollection.CloudStickerPacks] {
+            installedIds = ids
+        }
+
+        let packs = packs.filter { item in
+            return !installedIds.contains(item.info.id)
+        }
+
         if packs.isEmpty {
             entries.append(.loading(false))
         } else {
             var sectionId:Int32 = 1
-            
+
             entries.append(.section(sectionId: sectionId))
             sectionId += 1
-            
+
             entries.append(.info(sectionId: sectionId, strings().archivedStickersDescription, .textTopItem))
-                        
-            var installedIds = Set<ItemCollectionId>()
-            if let view = installedView?.views[.itemCollectionIds(namespaces: [Namespaces.ItemCollection.CloudStickerPacks])] as? ItemCollectionIdsView, let ids = view.idsByNamespace[Namespaces.ItemCollection.CloudStickerPacks] {
-                installedIds = ids
-            }
-            
-            let packs = packs.filter { item in
-                return !installedIds.contains(item.info.id)
-            }
-            
+
             var index: Int32 = 0
             for item in packs {
                 entries.append(.pack(sectionId: sectionId, index, item.info, item.topItems.first, item.info.count, !state.removingPackIds.contains(item.info.id), ItemListStickerPackItemEditing(editable: true, editing: state.editing), bestGeneralViewType(packs, for: item)))
