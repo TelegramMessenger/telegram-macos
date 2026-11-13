@@ -1,0 +1,577 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+struct MessageId: Hashable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+}
+
+enum Namespaces {
+    enum Message {
+        static let Cloud: Int32 = 0
+        static let Local: Int32 = 1
+    }
+}
+
+protocol Media: AnyObject {}
+
+final class TelegramMediaImage: Media {}
+
+final class TelegramMediaFile: Media {
+    let isVideo: Bool
+    init(isVideo: Bool = false) {
+        self.isVideo = isVideo
+    }
+}
+
+final class RichTextMessageAttribute {
+    let media: [Media]
+    init(media: [Media]) {
+        self.media = media
+    }
+}
+
+final class Message: Equatable {
+    let stableId: UInt32
+    let id: MessageId
+    let media: [Media]
+    let richText: RichTextMessageAttribute?
+    let groupingKey: Int64?
+
+    init(stableId: UInt32, id: MessageId, media: [Media], richText: RichTextMessageAttribute?, groupingKey: Int64? = nil) {
+        self.stableId = stableId
+        self.id = id
+        self.media = media
+        self.richText = richText
+        self.groupingKey = groupingKey
+    }
+
+    static func == (lhs: Message, rhs: Message) -> Bool {
+        return lhs.id == rhs.id && lhs.stableId == rhs.stableId
+    }
+
+    var anyMedia: Media? {
+        return media.first
+    }
+
+    var effectiveMedia: [Media] {
+        if !media.isEmpty {
+            return media
+        }
+        return richText?.media ?? []
+    }
+
+    func sharedMediaMatching(_ predicate: (Media) -> Bool) -> [Media] {
+        return effectiveMedia.filter(predicate)
+    }
+
+    func withUpdatedMedia(_ media: [Media]) -> Message {
+        return Message(stableId: stableId, id: id, media: media, richText: richText, groupingKey: groupingKey)
+    }
+
+    func withUpdatedId(_ id: MessageId) -> Message {
+        return Message(stableId: stableId, id: id, media: media, richText: richText, groupingKey: groupingKey)
+    }
+
+    func withUpdatedStableId(_ stableId: UInt32) -> Message {
+        return Message(stableId: stableId, id: id, media: media, richText: richText, groupingKey: groupingKey)
+    }
+}
+
+__EXPANSION__
+
+final class Account {}
+
+final class Context {
+    let account = Account()
+}
+
+enum ChatLocation {
+    case peer(PeerId)
+}
+
+enum ChatMode {
+    case history
+}
+
+enum GalleryAppearType {
+    case history
+    case recentDownloaded
+}
+
+var allowDelete = true
+
+func canDeleteMessage(_ message: Message, account: Account, chatLocation: ChatLocation, mode: ChatMode) -> Bool {
+    return allowDelete
+}
+
+func canForwardMessage(_ message: Message, chatInteraction: ChatInteraction) -> Bool {
+    return true
+}
+
+enum ContextMenuItemMode {
+    case normal
+    case destruct
+}
+
+struct MenuIcon {
+    let value = 0
+}
+
+enum MenuAnimation {
+    static let menu_delete = MenuIcon()
+    static let menu_select_messages = MenuIcon()
+    static let menu_select_multiple = MenuIcon()
+}
+
+class ContextMenuItem {
+    let title: String
+    let handler: (() -> Void)?
+    var submenu: ContextMenu?
+    init(_ title: String, handler: (() -> Void)? = nil, itemMode: ContextMenuItemMode = .normal, itemImage: Int? = nil) {
+        self.title = title
+        self.handler = handler
+    }
+}
+
+final class ContextSeparatorItem: ContextMenuItem {
+    init() {
+        super.init("-")
+    }
+}
+
+struct MenuPresentation {
+    let colors: Int
+}
+
+let darkPalette = 0
+
+final class ContextMenu {
+    var items: [ContextMenuItem] = []
+    init(presentation: MenuPresentation) {}
+    func addItem(_ item: ContextMenuItem) {
+        items.append(item)
+    }
+}
+
+final class Strings {
+    let galleryContextDeletePhoto = "Delete"
+    let messageContextDelete = "Delete"
+    let galleryContextShareThisPhoto = "This Photo"
+    let galleryContextShareThisVideo = "This Video"
+    func galleryContextShareAllPhotosOther(_ count: Int) -> String { return "All \(count) Photos" }
+    func galleryContextShareAllVideosOther(_ count: Int) -> String { return "All \(count) Videos" }
+    func galleryContextShareAllItemsOther(_ count: Int) -> String { return "All \(count) Items" }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+final class Store {
+    var local: [MessageId: Message] = [:]
+    var server: Set<Int32> = []
+
+    func add(_ message: Message) {
+        local[message.id] = message
+        if message.id.namespace == Namespaces.Message.Cloud {
+            server.insert(message.id.id)
+        }
+    }
+
+    func messagesAtIds(_ ids: [MessageId]) -> [Message] {
+        return ids.compactMap { local[$0] }
+    }
+
+    func deleteMessagesInteractively(_ ids: [MessageId]) {
+        for id in ids {
+            local[id] = nil
+            if id.namespace != Namespaces.Message.Local {
+                server.remove(id.id)
+            }
+        }
+    }
+
+    func onServer(_ message: Message) -> Bool {
+        return message.id.namespace == Namespaces.Message.Cloud && server.contains(message.id.id)
+    }
+
+    func onMac(_ message: Message) -> Bool {
+        return local[message.id] != nil
+    }
+}
+
+var store = Store()
+
+struct BasicActions {
+    var canDelete = false
+    var canForward = false
+    func withUpdatedBasicActions(_ actions: (Bool, Bool)) -> BasicActions {
+        return BasicActions(canDelete: actions.0, canForward: actions.1)
+    }
+}
+
+final class InteractionContext {
+    let account = Account()
+}
+
+final class ChatInteraction {
+    let chatLocation: ChatLocation
+    let interactionContext = InteractionContext()
+    var actions = BasicActions()
+    init(chatLocation: ChatLocation) {
+        self.chatLocation = chatLocation
+    }
+    func deleteMessages(_ messageIds: [MessageId], _ morphSource: (() -> Void)?) {
+        let messages = store.messagesAtIds(messageIds)
+        if messages.isEmpty {
+            return
+        }
+        if handlerAllowsDelete(messageIds, messages, HandlerOwner(interactions: self)) {
+            store.deleteMessagesInteractively(messageIds)
+        }
+    }
+    func update(_ f: (BasicActions) -> BasicActions) {
+        actions = f(actions)
+    }
+}
+
+final class HandlerOwner {
+    let interactions: ChatInteraction
+    init(interactions: ChatInteraction) {
+        self.interactions = interactions
+    }
+}
+
+func handlerAllowsDelete(_ messageIds: [MessageId], _ messages: [Message], _ strongSelf: HandlerOwner) -> Bool {
+    let context = Context()
+    var canDelete:Bool = __HANDLER_INIT__
+    for message in messages {
+        if __HANDLER_CONDITION__ {
+            canDelete = false
+        }
+    }
+    return canDelete
+}
+
+struct ThumbEntry {
+    let message: Message?
+}
+
+struct ThumbItem {
+    let entry: ThumbEntry
+}
+
+struct ThumbsControl {
+    var items: [ThumbItem] = []
+}
+
+struct Pager {
+    var thumbsControl = ThumbsControl()
+}
+
+final class Viewer {
+    let context = Context()
+    let chatLocation: ChatLocation
+    let chatMode: ChatMode = .history
+    var pager = Pager()
+
+    init(chatLocation: ChatLocation) {
+        self.chatLocation = chatLocation
+    }
+
+    func deleteMessages(_ messages: [Message]) {
+        store.deleteMessagesInteractively(messages.map { $0.id })
+    }
+
+    func menu(for message: Message, thumbs: [Message], paidMedia: Bool = false) -> [ContextMenuItem] {
+        pager.thumbsControl.items = thumbs.map { ThumbItem(entry: ThumbEntry(message: $0)) }
+        var items: [ContextMenuItem] = []
+        __VIEWER_DELETE__
+        return items
+    }
+}
+
+final class GridItem {
+    let context = Context()
+    let chatInteraction: ChatInteraction
+
+    init(chatInteraction: ChatInteraction) {
+        self.chatInteraction = chatInteraction
+    }
+
+    func menu(for message: Message) -> [ContextMenuItem] {
+        var items: [ContextMenuItem] = []
+        __GRID_DELETE__
+        return items
+    }
+}
+
+func rowMenu(for message: Message, interface: ChatInteraction, mode: GalleryAppearType) -> [ContextMenuItem] {
+    let messageId = message.id
+    var thirdBlock: [ContextMenuItem] = []
+    __ROW_DELETE__
+    return thirdBlock
+}
+
+final class MediaController {
+    let context = Context()
+    var interactions: ChatInteraction?
+
+    init(interactions: ChatInteraction) {
+        self.interactions = interactions
+    }
+
+    func selectionActions(ids: [MessageId]) -> BasicActions {
+        let context = self.context
+        let messages = store.messagesAtIds(ids)
+        let apply: () -> Void = { [weak self] in
+            __SELECTION__
+        }
+        apply()
+        return interactions?.actions ?? BasicActions()
+    }
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func flatten(_ items: [ContextMenuItem]) -> [ContextMenuItem] {
+    return items.flatMap { item -> [ContextMenuItem] in
+        if let submenu = item.submenu {
+            return [item] + flatten(submenu.items)
+        }
+        return [item]
+    }
+}
+
+func deleteItems(_ items: [ContextMenuItem]) -> [ContextMenuItem] {
+    let names: Set<String> = ["Delete", "This Photo", "This Video"]
+    return flatten(items).filter { names.contains($0.title) || $0.title.hasPrefix("All ") }
+}
+
+let saved = PeerId(namespace: 0, id: 1)
+let friend = PeerId(namespace: 0, id: 2)
+let location = ChatLocation.peer(saved)
+var nextId: Int32 = 100
+
+func article(photos: Int, files: Int = 0, namespace: Int32 = Namespaces.Message.Cloud, id: Int32? = nil) -> Message {
+    nextId += 1
+    let media: [Media] = (0 ..< photos).map { _ in TelegramMediaImage() } + (0 ..< files).map { _ in TelegramMediaFile() }
+    return Message(stableId: UInt32(nextId), id: MessageId(peerId: saved, namespace: namespace, id: id ?? nextId), media: [], richText: RichTextMessageAttribute(media: media))
+}
+
+func plainPhoto(groupingKey: Int64? = nil, peerId: PeerId = saved, id: Int32? = nil) -> Message {
+    nextId += 1
+    return Message(stableId: UInt32(nextId), id: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: id ?? nextId), media: [TelegramMediaImage()], richText: nil, groupingKey: groupingKey)
+}
+
+func plainFile() -> Message {
+    nextId += 1
+    return Message(stableId: UInt32(nextId), id: MessageId(peerId: saved, namespace: Namespaces.Message.Cloud, id: nextId), media: [TelegramMediaFile()], richText: nil)
+}
+
+let isPhoto: (Media) -> Bool = { $0 is TelegramMediaImage }
+let isFile: (Media) -> Bool = { $0 is TelegramMediaFile }
+
+func fresh(_ messages: [Message]) {
+    store = Store()
+    for message in messages {
+        store.add(message)
+    }
+}
+
+func checkArticleKept(_ name: String, _ source: Message) {
+    check("\(name): the Article stays on the server", store.onServer(source))
+    check("\(name): the Article stays on the Mac", store.onMac(source))
+}
+
+for photos in [1, 2, 3] {
+    for reverse in [true, false] {
+        let source = article(photos: photos)
+        let expanded = expandSharedMediaMessages([source], where: isPhoto, reverseMedia: reverse)
+        let order = reverse ? "Shared Media order" : "viewer order"
+        check("\(photos) photos, \(order): one item per photo", expanded.count == photos)
+        check("\(photos) photos, \(order): every item keeps the Article's server id", expanded.allSatisfy { $0.id.peerId == source.id.peerId && $0.id.id == source.id.id })
+
+        for (index, item) in expanded.enumerated() {
+            let name = "\(photos) photos, \(order), item \(index + 1)"
+
+            fresh([source])
+            let grid = GridItem(chatInteraction: ChatInteraction(chatLocation: location))
+            let gridMenu = grid.menu(for: item)
+            check("\(name): Shared Media has no Delete", deleteItems(gridMenu).isEmpty)
+            for action in deleteItems(gridMenu) {
+                action.handler?()
+            }
+            checkArticleKept("\(name) after Shared Media's Delete", source)
+
+            fresh([source])
+            let viewer = Viewer(chatLocation: location)
+            let viewerMenu = viewer.menu(for: item, thumbs: expanded)
+            check("\(name): the viewer has no Delete", deleteItems(viewerMenu).isEmpty)
+            for action in deleteItems(viewerMenu) {
+                fresh([source])
+                action.handler?()
+                checkArticleKept("\(name) after the viewer's \(action.title)", source)
+            }
+
+            fresh([source])
+            let controller = MediaController(interactions: ChatInteraction(chatLocation: location))
+            check("\(name): selecting it disables Delete", !controller.selectionActions(ids: [item.id]).canDelete)
+        }
+
+        let other = plainPhoto()
+        fresh([source, other])
+        let controller = MediaController(interactions: ChatInteraction(chatLocation: location))
+        for item in expanded {
+            check("\(photos) photos, \(order): an Article photo selected with a plain photo disables Delete", !controller.selectionActions(ids: [item.id, other.id]).canDelete)
+        }
+        check("\(photos) photos, \(order): the whole Article selected with a plain photo disables Delete", !controller.selectionActions(ids: expanded.map { $0.id } + [other.id]).canDelete)
+    }
+}
+
+for reverse in [true, false] {
+    let source = article(photos: 2)
+    let other = plainPhoto()
+    for item in expandSharedMediaMessages([source], where: isPhoto, reverseMedia: reverse) {
+        fresh([source, other])
+        ChatInteraction(chatLocation: location).deleteMessages([other.id, item.id], nil)
+        check("Shared Media's delete request with an Article item and a plain photo: nothing is deleted", store.onServer(other) && store.onMac(other))
+        check("Shared Media's delete request with an Article item and a plain photo: the Article stays on the server and the Mac", store.onServer(source) && store.onMac(source))
+    }
+}
+
+do {
+    let pending = article(photos: 2, namespace: Namespaces.Message.Local, id: 7)
+    let unrelated = plainPhoto(peerId: friend, id: 7)
+    for reverse in [true, false] {
+        let expanded = expandSharedMediaMessages([pending], where: isPhoto, reverseMedia: reverse)
+        for (index, item) in expanded.enumerated() {
+            let name = "a pending Article, \(reverse ? "Shared Media order" : "viewer order"), item \(index + 1)"
+            fresh([pending, unrelated])
+            let viewer = Viewer(chatLocation: location)
+            let viewerMenu = viewer.menu(for: item, thumbs: expanded)
+            check("\(name): the viewer has no Delete", deleteItems(viewerMenu).isEmpty)
+            for action in deleteItems(viewerMenu) {
+                fresh([pending, unrelated])
+                action.handler?()
+                check("\(name), after the viewer's \(action.title): message 7 in another chat stays on the server", store.onServer(unrelated))
+            }
+            let other = plainPhoto()
+            fresh([pending, unrelated, other])
+            ChatInteraction(chatLocation: location).deleteMessages([other.id, item.id], nil)
+            check("\(name), Shared Media's delete request with a plain photo: message 7 in another chat stays on the server", store.onServer(unrelated))
+        }
+    }
+}
+
+do {
+    let source = article(photos: 2)
+    fresh([source])
+    let viewer = Viewer(chatLocation: location)
+    let viewerMenu = viewer.menu(for: source, thumbs: [source, source])
+    check("an Article opened from the chat: the viewer has no Delete", deleteItems(viewerMenu).isEmpty)
+    for action in deleteItems(viewerMenu) {
+        fresh([source])
+        action.handler?()
+        checkArticleKept("an Article opened from the chat, after \(action.title)", source)
+    }
+}
+
+for files in [1, 2] {
+    let source = article(photos: 1, files: files)
+    let expanded = expandSharedMediaMessages([source], where: isFile, reverseMedia: false)
+    check("\(files) files: one row per file", expanded.count == files)
+    for (index, item) in expanded.enumerated() {
+        fresh([source])
+        let interface = ChatInteraction(chatLocation: location)
+        let menu = rowMenu(for: item, interface: interface, mode: .history)
+        check("\(files) files, row \(index + 1): no Delete", deleteItems(menu).isEmpty)
+        for action in deleteItems(menu) {
+            action.handler?()
+        }
+        checkArticleKept("\(files) files, row \(index + 1), after Delete", source)
+        check("\(files) files, row \(index + 1): Downloads keeps Delete", deleteItems(rowMenu(for: item, interface: interface, mode: .recentDownloaded)).count == 1)
+    }
+}
+
+do {
+    let photo = plainPhoto()
+    let neighbour = plainPhoto()
+    fresh([photo, neighbour])
+    let grid = GridItem(chatInteraction: ChatInteraction(chatLocation: location))
+    let gridDelete = deleteItems(grid.menu(for: photo))
+    check("a plain photo: Shared Media keeps Delete", gridDelete.count == 1)
+    gridDelete.first?.handler?()
+    check("a plain photo: Shared Media's Delete deletes it on the Mac and the server", !store.onMac(photo) && !store.onServer(photo))
+    check("a plain photo: Shared Media's Delete leaves other messages", store.onMac(neighbour) && store.onServer(neighbour))
+
+    fresh([photo, neighbour])
+    let viewer = Viewer(chatLocation: location)
+    let viewerDelete = deleteItems(viewer.menu(for: photo, thumbs: [photo]))
+    check("a plain photo: the viewer keeps Delete", viewerDelete.count == 1)
+    viewerDelete.first?.handler?()
+    check("a plain photo: the viewer's Delete deletes it on the Mac and the server", !store.onMac(photo) && !store.onServer(photo))
+    check("a plain photo: the viewer's Delete leaves other messages", store.onMac(neighbour) && store.onServer(neighbour))
+
+    let file = plainFile()
+    fresh([file])
+    let rowDelete = deleteItems(rowMenu(for: file, interface: ChatInteraction(chatLocation: location), mode: .history))
+    check("a plain file: the row keeps Delete", rowDelete.count == 1)
+    rowDelete.first?.handler?()
+    check("a plain file: the row's Delete deletes it", !store.onMac(file) && !store.onServer(file))
+
+    fresh([photo, neighbour])
+    let controller = MediaController(interactions: ChatInteraction(chatLocation: location))
+    check("plain photos selected: Delete stays enabled", controller.selectionActions(ids: [photo.id, neighbour.id]).canDelete)
+    check("no selection: Delete stays disabled", !controller.selectionActions(ids: []).canDelete)
+}
+
+do {
+    let key: Int64 = 7
+    let album = [plainPhoto(groupingKey: key), plainPhoto(groupingKey: key)]
+    fresh(album)
+    let viewer = Viewer(chatLocation: location)
+    let menu = viewer.menu(for: album[1], thumbs: album)
+    let titles = deleteItems(menu).map { $0.title }
+    check("an album photo: the viewer keeps Delete, This Photo and All 2 Photos", titles == ["Delete", "This Photo", "All 2 Photos"])
+    deleteItems(menu).first(where: { $0.title == "This Photo" })?.handler?()
+    check("an album photo: This Photo deletes only that photo", !store.onServer(album[1]) && store.onServer(album[0]) && store.onMac(album[0]))
+}
+
+do {
+    allowDelete = false
+    let photo = plainPhoto()
+    let file = plainFile()
+    fresh([photo, file])
+    check("no right to delete: Shared Media has no Delete", deleteItems(GridItem(chatInteraction: ChatInteraction(chatLocation: location)).menu(for: photo)).isEmpty)
+    check("no right to delete: the viewer has no Delete", deleteItems(Viewer(chatLocation: location).menu(for: photo, thumbs: [photo])).isEmpty)
+    check("no right to delete: the row has no Delete", deleteItems(rowMenu(for: file, interface: ChatInteraction(chatLocation: location), mode: .history)).isEmpty)
+    check("no right to delete: Downloads keeps Delete", deleteItems(rowMenu(for: file, interface: ChatInteraction(chatLocation: location), mode: .recentDownloaded)).count == 1)
+    check("no right to delete: selection disables Delete", !MediaController(interactions: ChatInteraction(chatLocation: location)).selectionActions(ids: [photo.id]).canDelete)
+    allowDelete = true
+}
+
+do {
+    let paid = plainPhoto()
+    fresh([paid])
+    check("paid media: the viewer has no Delete", deleteItems(Viewer(chatLocation: location).menu(for: paid, thumbs: [paid], paidMedia: true)).isEmpty)
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
