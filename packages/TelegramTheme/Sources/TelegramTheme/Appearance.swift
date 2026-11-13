@@ -2262,16 +2262,19 @@ public func telegramUpdateTheme(_ theme: TelegramPresentationTheme, window: Wind
             appearanceDisposable.set(signal.start())
             
         }
-        window.contentView?.background = theme.colors.background
-        window.contentView?.subviews.first?.background = theme.colors.background
         window.appearance = theme.appearance
-        
-        
-        window.backgroundColor = theme.colors.grayBackground
+        applyWindowMaterialBackground(window, theme: theme)
         window.titlebarAppearsTransparent = true
         
     }
     _themeSignal.set(theme)
+}
+
+public func applyWindowMaterialBackground(_ window: Window, theme: TelegramPresentationTheme) {
+    let material = System.windowMaterialActive
+    window.contentView?.background = material ? .clear : theme.colors.background
+    window.contentView?.subviews.first?.background = material ? .clear : theme.colors.background
+    window.backgroundColor = material ? .windowBackgroundColor : theme.colors.grayBackground
 }
 
 public func setDefaultTheme(for window: Window? = nil) {

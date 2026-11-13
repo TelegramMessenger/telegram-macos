@@ -8,6 +8,7 @@ import TelegramMedia
 import Localization
 import TelegramContext
 import TelegramTheme
+import ColorPalette
 import TelegramUtils
 import GeneralRows
 import Strings
@@ -1472,6 +1473,16 @@ public class ChatListRowView: TableRowView {
     }
     
     
+    private static func materialSeparatorColor(_ colors: ColorPalette) -> NSColor {
+        guard colors.isDark else {
+            return NSColor(white: 0, alpha: 0.12)
+        }
+        let base = NSColor(white: 1, alpha: 1)
+        let tinted = colors.tinted || !colors.background.isEqual(colors.parent.palette.background)
+        let color = tinted ? (base.blended(withFraction: 0.25, of: colors.accent) ?? base) : base
+        return color.withAlphaComponent(0.16)
+    }
+
     fileprivate func drawContent(in ctx: CGContext) {
         if let item = self.item as? ChatListRowItem {
              let nextItem = item.table?.nextItem(after: item.index) as? ChatListRowItem
@@ -1487,7 +1498,8 @@ public class ChatListRowView: TableRowView {
              let suppressForReveal = isRevealSurfaceVisible || (nextRowView?.isRevealSurfaceVisible ?? false)
              if !suppressForSelection, !suppressForHighlight, !suppressForResort, !suppressForDrag, !suppressForReveal, !item.isAutohidden, !nextSelected, !nextHighlighted, !nextResorting, !nextDragging {
 
-                ctx.setFillColor(theme.colors.border.cgColor)
+                let separatorColor = System.windowMaterialActive ? ChatListRowView.materialSeparatorColor(theme.colors) : theme.colors.border
+                ctx.setFillColor(separatorColor.cgColor)
                 let minX = item.isLastPinned ? 0 : item.leftInset
                 ctx.fill(NSMakeRect(minX, contentView.bounds.height - .borderSize, max(0, contentView.bounds.width - item.margin - minX), .borderSize))
             }
