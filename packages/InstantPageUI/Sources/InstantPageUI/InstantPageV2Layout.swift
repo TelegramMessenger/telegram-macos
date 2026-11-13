@@ -1898,7 +1898,12 @@ private func layoutListV2(
             break
         }
     }
-    let indexSpacing: CGFloat = ordered ? (hasTaskItem ? 10.0 : 8.0) : (hasTaskItem ? 12.0 : 10.0)
+    // Marker metrics of Telegram Desktop's message lists (defaultMarkdownList in iv/iv.style): a marker
+    // column at least 22pt wide, 8pt between the column and the text, and 2pt-radius bullets centered
+    // where a one-digit number would be, so bullets, numbers and nested lists share one text edge.
+    let markerColumnMinimumWidth: CGFloat = 22.0
+    let markerSkip: CGFloat = 8.0
+    let bulletSize: CGFloat = 4.0
     let checklistMarkerSize: CGFloat = 18.0
     for (i, _) in listItems.enumerated() {
         if ordered {
@@ -1925,7 +1930,10 @@ private func layoutListV2(
         if case let .text(text, _, _) = item { return instantPageRichTextContainsRTL(text) }
         return false
     })
-    let markerColumnWidth = maxIndexWidth + indexSpacing
+    let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
+    let markerColumnWidth = markerWidth + markerSkip
+    let singleDigitWidth = ceil(attributedStringForRichText(.plain("8."), styleStack: indexStack).size().width)
+    let bulletInset = markerWidth - floor((singleDigitWidth + 1.0) / 2.0) - bulletSize / 2.0
     var items: [InstantPageV2LaidOutItem] = []
     var contentHeight: CGFloat = 0.0
     let textOriginX = rtl ? horizontalInset : (horizontalInset + markerColumnWidth)
@@ -2074,7 +2082,7 @@ private func layoutListV2(
             let boxSize: CGFloat = 18.0
             let markerY = markerOriginY(height: boxSize)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - boxSize) : (horizontalInset + maxIndexWidth - boxSize),
+                x: rtl ? (boundingWidth - horizontalInset - boxSize) : horizontalInset,
                 y: markerY,
                 width: boxSize,
                 height: boxSize
@@ -2082,22 +2090,21 @@ private func layoutListV2(
             let boxBottom = markerY + boxSize - contentHeight
             itemContentHeight = max(itemContentHeight, boxBottom)
         } else if ordered, let indexItem = indexLayouts[i] {
-            let markerWidth = indexItem.lines.first?.frame.width ?? indexItem.frame.width
+            let numberWidth = indexItem.lines.first?.frame.width ?? indexItem.frame.width
             let numberHeight: CGFloat = 20.0
             markerKind = .number(indexItem.attributedString.string)
             let markerY = markerOriginY(height: numberHeight)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - markerWidth) : (horizontalInset + (maxIndexWidth - markerWidth)),
+                x: rtl ? (boundingWidth - horizontalInset - markerWidth) : (horizontalInset + (markerWidth - numberWidth)),
                 y: markerY,
-                width: markerWidth,
+                width: numberWidth,
                 height: numberHeight
             )
         } else {
             markerKind = .bullet
-            let bulletSize: CGFloat = 5.0
             let markerY = markerOriginY(height: bulletSize)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - bulletSize) : horizontalInset,
+                x: rtl ? (boundingWidth - horizontalInset - bulletInset - bulletSize) : (horizontalInset + bulletInset),
                 y: markerY,
                 width: bulletSize,
                 height: bulletSize
