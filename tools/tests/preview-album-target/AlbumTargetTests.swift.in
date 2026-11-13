@@ -1,0 +1,237 @@
+import Foundation
+import CoreGraphics
+
+typealias Media = Int
+typealias CGImage = Int
+typealias EditedImageData = Int
+protocol AccountContextProtocol {}
+struct Context: AccountContextProtocol {}
+struct TelegramPresentationTheme {}
+struct PeerId { init(_ value: Int64) {} }
+struct MessageId {
+    typealias Id = Int32
+    let id: Id
+    init(peerId: PeerId, namespace: Int32, id: Id) { self.id = id }
+}
+struct Message {
+    let media: [Media]
+    let id: MessageId
+    init(_ media: Media, stableId: UInt32, messageId: MessageId) {
+        self.media = [media]
+        self.id = messageId
+    }
+}
+struct PreviewSendingState {
+    enum State { case media, file, archive }
+    var state: State = .media
+    var isCollage = true
+    var isSpoiler = false
+    var payAmount: Int64?
+}
+struct PreviewState {
+    let urls: [URL]
+    let medias: [Media]
+    let currentState: PreviewSendingState
+    let editedData: [URL: EditedImageData]
+    let renderingPreviews: [URL: CGImage]
+}
+class TableRowItem {
+    let index = 0
+    var table: Table? = nil
+    init(_ initialSize: NSSize) {}
+    func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool { true }
+}
+final class Table { func noteHeightOfRow(_ index: Int, _ animated: Bool) {} }
+final class ChatMediaLayoutParameters {
+    enum Presentation { case empty }
+    let media: Media
+    var forceSpoiler = false
+    init(presentation: Presentation, media: Media) { self.media = media }
+}
+final class GroupedLayout {
+    var messages: [Message]
+    var count: Int { messages.count }
+    init(_ messages: [Message]) { self.messages = messages }
+    func frame(at index: Int) -> NSRect { NSMakeRect(CGFloat(index) * 20, 0, 20, 20) }
+__LAYOUT_MOVE__
+}
+extension Array {
+__ARRAY_MOVE__
+__CHUNKS__
+}
+__ARGUMENTS__
+private enum PreviewEntry {
+__ENTRY_CASES__
+    func item(arguments: SenderPreviewArguments, state: PreviewState, initialSize: NSSize) -> MediaGroupPreviewRowItem? {
+        switch self {
+__GROUP_ITEM__
+        default:
+            return nil
+        }
+    }
+}
+__ENTRIES__
+__ROW_ITEM__
+
+final class EditControl {
+    var edit: () -> Void = {}
+    var paint: () -> Void = {}
+    var delete: () -> Void = {}
+    var editedData: EditedImageData?
+    func set(edit: @escaping () -> Void, paint: @escaping () -> Void, delete: @escaping () -> Void, editedData: EditedImageData?) {
+        self.edit = edit
+        self.paint = paint
+        self.delete = delete
+        self.editedData = editedData
+    }
+}
+final class RowActions {
+    let item: MediaGroupPreviewRowItem
+    let editControl = EditControl()
+    var contents: [Media]
+    let frame = NSMakeRect(0, 0, 320, 320)
+    init(_ item: MediaGroupPreviewRowItem) {
+        self.item = item
+        self.contents = item.layout.messages.map { $0.media[0] }
+    }
+    func configure(at i: Int) {
+        let item = self.item
+__CONTROL__
+    }
+    func renderingPreview(at i: Int) -> CGImage? {
+        let item = self.item
+        return __RENDERING__
+    }
+    func move(from index: Int, to destination: Int) {
+        let item = self.item
+        let target = item.layout.frame(at: destination)
+        guard let newIndex = item.layout.moveItemIfNeeded(at: index, point: NSMakePoint(target.midX, target.midY)) else { return }
+__DROP__
+    }
+}
+private final class Controller {
+    var urls: [URL]
+    var edited: [URL] = []
+    var painted: [URL] = []
+    init(_ urls: [URL]) { self.urls = urls }
+    func arguments() -> SenderPreviewArguments {
+        SenderPreviewArguments(context: Context(), theme: TelegramPresentationTheme(), edit: { self.edited.append($0) }, paint: { self.painted.append($0) }, delete: { url in
+__DELETE__
+        }, reorder: { from, to in
+__GLOBAL_MOVE__
+        })
+    }
+}
+
+private var checks = 0
+private var failures = 0
+private func expect<T: Equatable>(_ actual: T, _ expected: T, _ label: String) {
+    checks += 1
+    if actual != expected {
+        failures += 1
+        print("FAIL \(label): \(actual) != \(expected)")
+    }
+}
+private func url(_ number: Int) -> URL { URL(fileURLWithPath: "/images/\(number).jpg") }
+private func number(_ url: URL) -> Int { Int(url.deletingPathExtension().lastPathComponent)! }
+private func state(_ urls: [URL], grouped: Bool = true, spoiler: Bool = false, mode: PreviewSendingState.State = .media) -> PreviewState {
+    PreviewState(urls: urls, medias: urls.map(number), currentState: PreviewSendingState(state: mode, isCollage: grouped, isSpoiler: spoiler, payAmount: nil), editedData: Dictionary(uniqueKeysWithValues: urls.map { ($0, number($0) + 100) }), renderingPreviews: Dictionary(uniqueKeysWithValues: urls.map { ($0, number($0) + 200) }))
+}
+private func rows(_ state: PreviewState, _ controller: Controller) -> [MediaGroupPreviewRowItem] {
+    previewMediaEntries(state).compactMap { $0.item(arguments: controller.arguments(), state: state, initialSize: NSMakeSize(320, 320)) }
+}
+private func expectTargets(_ row: MediaGroupPreviewRowItem, _ expected: [URL], _ controller: Controller, _ label: String) {
+    let view = RowActions(row)
+    expect(row.urls, expected, label + " URLs")
+    expect(row.layout.messages.map { $0.media[0] }, expected.map(number), label + " media")
+    expect(row.parameters.map { $0.media }, expected.map(number), label + " parameters")
+    for i in expected.indices {
+        view.configure(at: i)
+        view.editControl.edit()
+        view.editControl.paint()
+        expect(controller.edited.last, expected[i], label + " edit \(i)")
+        expect(controller.painted.last, expected[i], label + " draw \(i)")
+        expect(view.editControl.editedData, number(expected[i]) + 100, label + " edit data \(i)")
+        expect(view.renderingPreview(at: i), number(expected[i]) + 200, label + " rendering \(i)")
+    }
+}
+
+for (count, sizes) in [(0, []), (1, [1]), (9, [9]), (10, [10]), (11, [10, 1]), (12, [10, 2]), (20, [10, 10]), (21, [10, 10, 1]), (22, [10, 10, 2]), (30, [10, 10, 10])] {
+    let urls = (0..<count).map { url($0 + 1) }
+    let controller = Controller(urls)
+    let albums = rows(state(urls), controller)
+    expect(albums.map { $0.layout.count }, sizes, "\(count) album sizes")
+    var offset = 0
+    for album in albums {
+        let expected = Array(urls[offset..<(offset + album.layout.count)])
+        expectTargets(album, expected, controller, "\(count) starting at \(offset)")
+        offset += album.layout.count
+    }
+}
+
+for (count, albumIndex, from, to, order) in [
+    (12, 1, 0, 1, Array(1...10) + [12, 11]),
+    (22, 1, 0, 9, Array(1...10) + Array(12...20) + [11, 21, 22]),
+    (22, 2, 1, 0, Array(1...20) + [22, 21]),
+    (30, 2, 0, 9, Array(1...20) + Array(22...30) + [21])
+] {
+    let original = (1...count).map(url)
+    let controller = Controller(original)
+    let albums = rows(state(original, spoiler: true), controller)
+    let view = RowActions(albums[albumIndex])
+    view.move(from: from, to: to)
+    let expected = order.map(url)
+    expect(controller.urls, expected, "album \(albumIndex) global reorder \(from) to \(to)")
+    let offset = albumIndex * 10
+    let local = Array(expected[offset..<(offset + view.item.layout.count)])
+    expectTargets(view.item, local, controller, "immediate reorder \(count)")
+    expect(view.contents, local.map(number), "reordered view contents")
+    expect(view.item.parameters.allSatisfy { $0.forceSpoiler }, true, "reorder preserves spoilers")
+    let refreshed = rows(state(controller.urls, spoiler: true), controller)
+    expectTargets(refreshed[albumIndex], local, controller, "refreshed reorder \(count)")
+    view.move(from: to, to: from)
+    expect(controller.urls, original, "second reorder before row refresh")
+}
+
+for (count, albumIndex, localIndex, removed) in [(12, 1, 0, 11), (22, 1, 9, 20), (22, 2, 0, 21), (22, 2, 1, 22)] {
+    let original = (1...count).map(url)
+    let controller = Controller(original)
+    let album = rows(state(original), controller)[albumIndex]
+    let view = RowActions(album)
+    view.configure(at: localIndex)
+    view.editControl.delete()
+    let expected = original.filter { $0 != url(removed) }
+    expect(controller.urls, expected, "delete \(removed), not a first-album attachment")
+    let rebuilt = rows(state(controller.urls), controller)
+    expect(rebuilt.flatMap { $0.urls }, expected, "delete rechunks matching URLs")
+    if rebuilt.count > 1 {
+        expectTargets(rebuilt[1], Array(expected[10..<min(20, expected.count)]), controller, "second album after delete \(removed)")
+    }
+}
+
+private let original = (1...22).map(url)
+private let controller = Controller(original)
+controller.urls[10] = URL(fileURLWithPath: "/edited/11.jpg")
+private let editedAlbums = rows(state(controller.urls), controller)
+expectTargets(editedAlbums[1], Array(controller.urls[10..<20]), controller, "rebuilt edited attachment")
+private let view = RowActions(editedAlbums[1])
+view.move(from: 0, to: 9)
+view.configure(at: 9)
+view.editControl.delete()
+expect(controller.urls, original.filter { $0 != url(11) }, "delete edited attachment after reorder")
+
+for spoiler in [false, true] {
+    for album in rows(state(original, spoiler: spoiler), Controller(original)) {
+        expect(album.parameters.allSatisfy { $0.forceSpoiler == spoiler }, true, "spoiler flag pass-through")
+    }
+}
+for mode in [PreviewSendingState.State.media, .file] {
+    let entries = previewMediaEntries(state(original, grouped: false, mode: mode))
+    let urls = entries.compactMap { entry -> URL? in
+        if case let .media(_, _, url, _, _, _, _) = entry { return url }
+        return nil
+    }
+    expect(urls, original, "ungrouped \(mode) order")
+}
+print("\(checks) checks, \(failures) failures")
+exit(failures == 0 ? 0 : 1)
