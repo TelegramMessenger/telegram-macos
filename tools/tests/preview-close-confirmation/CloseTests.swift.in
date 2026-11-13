@@ -1,0 +1,225 @@
+import Foundation
+import XCTest
+
+__PENDING__
+__CHILD__
+
+enum ModalAnimationCloseBehaviour: Equatable { case common, noMorph }
+class ModalViewController {
+    var dismissals: [ModalAnimationCloseBehaviour] = []
+    func close(animationType: ModalAnimationCloseBehaviour = .common) { dismissals.append(animationType) }
+}
+final class AnalyticsPresentation { func end() {} }
+struct AnalyticsContext { func beginPresentation() -> AnalyticsPresentation { AnalyticsPresentation() } }
+struct Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> AnalyticsContext { AnalyticsContext() }
+}
+final class Journey {
+    enum Step: Equatable { case openConfirmation, cancelConfirmation }
+    var steps: [Step] = []
+    var cancels = 0
+    func step(_ value: Step) { steps.append(value) }
+    func cancel() { cancels += 1 }
+}
+struct TextState { var inputText: String }
+final class TextView {
+    var text = ""
+    func string() -> String { text }
+}
+final class PreviewView { let textView = TextView() }
+struct Context { let window = 0 }
+struct Strings {
+    let mediaSenderDiscardChangesHeader = "Discard Changes?"
+    let mediaSenderDiscardChangesText = "Discard changes?"
+    let mediaSenderDiscardChangesOK = "Discard"
+}
+func strings() -> Strings { Strings() }
+final class ChatAction {
+    let valid: () -> Bool
+    var taken = false
+    init(_ valid: @escaping () -> Bool) { self.valid = valid }
+    func takeIfCurrent() -> Bool {
+        guard !taken else { return false }
+        taken = true
+        return valid()
+    }
+}
+final class ChatInteraction {
+    var revision = UUID()
+    func captureDeferredSendAction() -> ChatAction {
+        let captured = revision
+        return ChatAction { [weak self] in self?.revision == captured }
+    }
+}
+struct Alert {
+    let discard: (Int) -> Void
+    let cancel: () -> Void
+    let deinitAction: () -> Void
+}
+var alerts: [Alert] = []
+func verifyAlert_button(for window: Int, header: String, information: String, ok: String, successHandler: @escaping (Int) -> Void, cancelHandler: @escaping () -> Void, onDeinit: @escaping () -> Void) {
+    alerts.append(Alert(discard: successHandler, cancel: cancelHandler, deinitAction: onDeinit))
+}
+final class PreviewController: ModalViewController {
+    let pendingActions = PreviewSenderPendingActions()
+    let chatInteraction = ChatInteraction()
+    let genericView = PreviewView()
+    let context = Context()
+    let analyticsContext: AnalyticsContext? = nil
+    let analyticsMediaJourney: Journey? = Journey()
+    var temporaryInputState: TextState?
+    var sent = false
+    __CAPTURE__
+    __CLOSE__
+    __CLOSE_MODAL__
+}
+final class Button {
+    enum Event { case Click }
+    var handler: ((Int) -> Void)?
+    func set(handler: @escaping (Int) -> Void, for event: Event) { self.handler = handler }
+    func click() { handler?(0) }
+}
+final class View {
+    weak var controller: PreviewController?
+    let closeButton = Button()
+    init(_ controller: PreviewController) {
+        self.controller = controller
+        __BUTTON__
+    }
+}
+final class CloseTests: XCTestCase {
+    override func setUp() { alerts = [] }
+
+    func testNewCaptionRequestsConfirmation() {
+        let controller = PreviewController()
+        controller.genericView.textView.text = "new caption"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertEqual(controller.dismissals.count, 0)
+        XCTAssertFalse(controller.pendingActions.isClosed)
+    }
+
+    func testCancelKeepsPendingCaption() {
+        let controller = PreviewController()
+        controller.genericView.textView.text = "keep this"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        alerts.last?.cancel()
+        XCTAssertEqual(controller.genericView.textView.text, "keep this")
+        XCTAssertFalse(controller.pendingActions.isClosed)
+        XCTAssertEqual(controller.dismissals.count, 0)
+        XCTAssertEqual(controller.analyticsMediaJourney?.steps, [.openConfirmation, .cancelConfirmation])
+    }
+
+    func testDiscardClosesOnce() {
+        let controller = PreviewController()
+        controller.genericView.textView.text = "discard this"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        alerts.last?.discard(0)
+        alerts.last?.discard(0)
+        XCTAssertEqual(controller.dismissals, [.common])
+        XCTAssertTrue(controller.pendingActions.isClosed)
+        XCTAssertEqual(controller.analyticsMediaJourney?.cancels, 1)
+    }
+
+    func testChangedExistingCaptionRequestsConfirmation() {
+        let controller = PreviewController()
+        controller.temporaryInputState = TextState(inputText: "original")
+        controller.genericView.textView.text = "edited"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertEqual(controller.temporaryInputState?.inputText, "original")
+        XCTAssertTrue(controller.dismissals.isEmpty)
+    }
+
+    func testDeletingExistingCaptionRequestsConfirmation() {
+        let controller = PreviewController()
+        controller.temporaryInputState = TextState(inputText: "original")
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertTrue(controller.dismissals.isEmpty)
+    }
+
+    func testUnchangedCaptionClosesWithoutPrompt() {
+        let controller = PreviewController()
+        controller.temporaryInputState = TextState(inputText: "same")
+        controller.genericView.textView.text = "same"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testEmptyCaptionClosesWithoutPrompt() {
+        let controller = PreviewController()
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testStaleDiscardCannotCloseChangedPreview() {
+        let controller = PreviewController()
+        controller.genericView.textView.text = "caption"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        controller.pendingActions.invalidate()
+        alerts.last?.discard(0)
+        XCTAssertTrue(controller.dismissals.isEmpty)
+        XCTAssertFalse(controller.pendingActions.isClosed)
+    }
+
+    func testStaleChatCannotClosePreview() {
+        let controller = PreviewController()
+        controller.genericView.textView.text = "caption"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        controller.chatInteraction.revision = UUID()
+        alerts.last?.discard(0)
+        XCTAssertTrue(controller.dismissals.isEmpty)
+    }
+
+    func testAlreadyClosedAndSentIgnoreCloseButton() {
+        for sent in [false, true] {
+            let controller = PreviewController()
+            controller.sent = sent
+            if !sent { controller.pendingActions.close() }
+            controller.genericView.textView.text = "caption"
+            let view = View(controller)
+            view.closeButton.click()
+            XCTAssertTrue(alerts.isEmpty)
+            XCTAssertTrue(controller.dismissals.isEmpty)
+        }
+    }
+
+    func testProgrammaticPostSendCloseStillBypassesDiscard() {
+        let controller = PreviewController()
+        controller.sent = true
+        controller.genericView.textView.text = "sent caption"
+        controller.closeModal()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.noMorph])
+        XCTAssertEqual(controller.analyticsMediaJourney?.cancels, 0)
+    }
+
+    func testReleasedViewDoesNotRetainControllerOrClose() {
+        var controller: PreviewController? = PreviewController()
+        weak var weakController = controller
+        var view: View? = View(controller!)
+        let button = view!.closeButton
+        view = nil
+        controller = nil
+        button.click()
+        XCTAssertNil(weakController)
+        XCTAssertTrue(alerts.isEmpty)
+    }
+}
