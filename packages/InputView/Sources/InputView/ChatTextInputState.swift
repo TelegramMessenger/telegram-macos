@@ -35,7 +35,7 @@ private func concatAttributes(_ attributes: [ChatTextInputAttribute]) -> [ChatTe
     return mergedAttributes
 }
 
-private let markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
+private let markdownRegexFormat = "(^|\\s|\\n)((?>`{5,})|````?)([\\s\\S]+?)(\\2)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let markdownRegex = try? NSRegularExpression(pattern: markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
 
 
@@ -622,20 +622,15 @@ public final class ChatTextInputState: Codable, Equatable {
         if addPreAsBlock {
             var offset: Int = 0
             for (pre, language) in pres.sorted(by: { $0.0.lowerBound < $1.0.lowerBound }) {
-                let symbols = "```"
+                let code = string.string.nsstring.substring(with: NSMakeRange(pre.lowerBound + offset, pre.count))
+                let longest = code.components(separatedBy: CharacterSet(charactersIn: "`").inverted).map(\.count).max() ?? 0
+                let symbols = String(repeating: "`", count: max(3, longest + 1))
+                let multiline = code.rangeOfCharacter(from: CharacterSet(charactersIn: "\n\u{2028}")) != nil
+                let opening = symbols + language + (language.isEmpty && !multiline && code.unicodeScalars.first != "`" ? "" : "\n")
 
-                string.insert(.initialize(string: symbols), at: pre.lowerBound + offset)
-                offset += symbols.count
+                string.insert(.initialize(string: opening), at: pre.lowerBound + offset)
+                offset += opening.length
 
-                if !language.isEmpty {
-                    if string.string.nsstring.substring(with: NSMakeRange(pre.lowerBound + offset, 1)) == "\n" {
-                        string.insert(.initialize(string: language), at: pre.lowerBound + offset)
-                        offset += language.length
-                    } else {
-                        string.insert(.initialize(string: language + "\n"), at: pre.lowerBound + offset)
-                        offset += language.length + 1
-                    }
-                }
                 string.insert(.initialize(string: symbols), at: pre.upperBound + offset)
                 offset += symbols.count
             }
@@ -724,19 +719,24 @@ public final class ChatTextInputState: Codable, Equatable {
                         if newLineRange.location != 0 && newLineRange.location != NSNotFound {
                             let lang = text.nsstring.substring(with: NSMakeRange(0, newLineRange.location))
                             let test = lang.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                            if test.length == lang.length {
+                            if test.length == lang.length, lang.unicodeScalars.first != "`" {
                                 language = lang
                                 offsetRanges.append(NSMakeRange(matchIndex + newLineRange.location, lang.length))
                                 text = String(text.nsstring.substring(with: NSMakeRange(newLineRange.location, text.length - newLineRange.location)))
                                 rawOffset -= newLineRange.location
                             }
                         }
+                        if text.length > 1, text.nsstring.substring(to: 1) == "\n" {
+                            text = text.nsstring.substring(from: 1)
+                            offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, 1))
+                            rawOffset -= 1
+                        }
 
                         rawOffset -= match.range(at: 2).length + match.range(at: 4).length
                         newText.append(raw.nsstring.substring(with: match.range(at: 1)) + text + raw.nsstring.substring(with: match.range(at: 5)))
                         attributes.append(.pre(matchIndex + match.range(at: 1).length ..< matchIndex + match.range(at: 1).length + text.length, language))
-                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, 3))
-                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length + text.length + 3, 3))
+                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, match.range(at: 2).length))
+                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length + text.length + 3, match.range(at: 4).length))
                     } else {
                         let text = raw.nsstring.substring(with: pre)
                         let entity = raw.nsstring.substring(with: match.range(at: 2))

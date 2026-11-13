@@ -1,0 +1,506 @@
+import Foundation
+import AppKit
+
+extension String {
+    var nsstring: NSString { return self as NSString }
+    var length: Int { return self.nsstring.length }
+}
+
+extension NSRange {
+    var min: Int { return self.location }
+    var max: Int { return self.location + self.length }
+}
+
+extension NSAttributedString {
+    static func initialize(string: String?, color: NSColor? = nil, font: NSFont? = nil) -> NSAttributedString {
+        guard let string, !string.isEmpty else {
+            return NSAttributedString(string: "")
+        }
+        return NSAttributedString(string: string)
+    }
+
+    __TRIMMED__
+}
+
+func arc4random64() -> Int64 {
+    return Int64.random(in: 0 ... Int64.max)
+}
+
+struct StringCodingKey: CodingKey, ExpressibleByStringLiteral {
+    var stringValue: String
+    var intValue: Int? { return nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+    init(stringLiteral value: String) { self.stringValue = value }
+}
+
+protocol Media {}
+
+struct TelegramMediaFile: Codable, Equatable, Media {
+    var isPremiumEmoji: Bool { return false }
+}
+
+struct ItemCollectionId: Codable, Hashable {}
+
+struct MediaId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Media {
+        static let CloudFile: Int32 = 0
+    }
+    enum Peer {
+        static let CloudUser: Int32 = 0
+    }
+}
+
+struct PeerId: Hashable {
+    struct Id: Hashable {
+        let value: Int64
+        static func _internalFromInt64Value(_ value: Int64) -> Id { return Id(value: value) }
+        func _internalGetInt64Value() -> Int64 { return self.value }
+    }
+    let namespace: Int32
+    let id: Id
+}
+
+struct StickerPackReference: Equatable {}
+
+enum MessageTextEntityType: Equatable {
+    enum DateTimeFormat: Equatable {
+        enum TimeFormat: Equatable { case short }
+        enum DateFormat: Equatable { case short }
+        case relative
+        case full(timeFormat: TimeFormat?, dateFormat: DateFormat?, dayOfWeek: Bool)
+    }
+    case Unknown
+    case Mention
+    case Hashtag
+    case BotCommand
+    case Url
+    case Email
+    case Bold
+    case Italic
+    case Code
+    case Pre(language: String?)
+    case TextUrl(url: String)
+    case TextMention(peerId: PeerId)
+    case PhoneNumber
+    case Strikethrough
+    case BlockQuote(isCollapsed: Bool)
+    case Underline
+    case BankCard
+    case Spoiler
+    case CustomEmoji(stickerPack: StickerPackReference?, fileId: Int64)
+    case FormattedDate(format: DateTimeFormat, date: Int32)
+}
+
+struct MessageTextEntity: Equatable {
+    let range: Range<Int>
+    let type: MessageTextEntityType
+}
+
+struct TextEntitiesMessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+struct TextInputAttributes {
+    static let bold = NSAttributedString.Key(rawValue: "Attribute__Bold")
+    static let italic = NSAttributedString.Key(rawValue: "Attribute__Italic")
+    static let monospace = NSAttributedString.Key(rawValue: "Attribute__Monospace")
+    static let strikethrough = NSAttributedString.Key(rawValue: "Attribute__Strikethrough")
+    static let underline = NSAttributedString.Key(rawValue: "Attribute__Underline")
+    static let textMention = NSAttributedString.Key(rawValue: "Attribute__TextMention")
+    static let textUrl = NSAttributedString.Key(rawValue: "Attribute__TextUrl")
+    static let spoiler = NSAttributedString.Key(rawValue: "Attribute__Spoiler")
+    static let customEmoji = NSAttributedString.Key(rawValue: "Attribute__CustomEmoji")
+    static let code = NSAttributedString.Key(rawValue: "Attribute__Code")
+    static let quote = NSAttributedString.Key(rawValue: "Attribute__Blockquote")
+    static let formattedDate = NSAttributedString.Key(rawValue: "Attribute__FormattedDate")
+    static let embedded = NSAttributedString.Key(rawValue: "Attribute__EmbeddedItem")
+}
+
+final class ChatTextInputTextMentionAttribute: NSObject {
+    let peerId: PeerId
+    init(peerId: PeerId) { self.peerId = peerId }
+}
+
+final class TextInputTextUrlAttribute: NSObject {
+    let url: String
+    init(url: String) { self.url = url }
+}
+
+final class TextInputTextDateAttribute: NSObject {
+    let date: Int32
+    init(date: Int32) { self.date = date }
+}
+
+final class TextInputTextQuoteAttribute: NSObject {
+    let collapsed: Bool
+    init(collapsed: Bool) { self.collapsed = collapsed }
+}
+
+final class TextInputTextCustomEmojiAttribute: NSObject {
+    let collectionId: ItemCollectionId?
+    let fileId: Int64
+    let file: TelegramMediaFile?
+    let emoji: String
+    init(collectionId: ItemCollectionId? = nil, fileId: Int64, file: TelegramMediaFile?, emoji: String) {
+        self.collectionId = collectionId
+        self.fileId = fileId
+        self.file = file
+        self.emoji = emoji
+    }
+}
+
+protocol EmbeddedCustomEmojiAttributeValue {
+    var customEmojiAttribute: TextInputTextCustomEmojiAttribute? { get }
+}
+
+struct Updated_ChatTextInputState {
+    let inputText: NSAttributedString
+    let selectionRange: Range<Int>
+    init(inputText: NSAttributedString, selectionRange: Range<Int>) {
+        self.inputText = inputText
+        self.selectionRange = selectionRange
+    }
+}
+
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Hashtags = ParsingType(rawValue: 1 << 0)
+    static let Links = ParsingType(rawValue: 1 << 1)
+}
+
+struct DetectedTextLink {
+    let text: String
+    let range: NSRange
+}
+
+func detectedTextLinks(in text: String, type: ParsingType) -> [DetectedTextLink] {
+    return []
+}
+
+enum ExtractedDateFormat {
+    case relative
+    case full(Bool, Bool)
+}
+
+struct ExtractedDate {
+    let range: Range<Int>
+    let date: Date
+    let format: ExtractedDateFormat
+}
+
+func extractDates(from text: String) -> [ExtractedDate] {
+    return []
+}
+
+struct Message {
+    let text: String
+    let attributes: [Any]
+}
+
+struct AnalyticsScope {
+    let isValid: Bool
+}
+
+struct AnalyticsOrigin {
+    let isExcluded: Bool
+    let scope: AnalyticsScope?
+}
+
+__STATE__
+
+final class EditSeed {
+    let inputState: ChatTextInputState
+
+    init(message: Message, state: ChatTextInputState? = nil) {
+        __SEED__
+    }
+}
+
+__HAND_BACKS__
+
+struct Entity {
+    let text: String
+    let type: MessageTextEntityType
+}
+
+struct Case {
+    let name: String
+    let text: String
+    let entities: [Entity]
+    let box: String?
+}
+
+struct Result {
+    let box: String
+    let saved: ChatTextInputState
+}
+
+struct Span: Equatable, CustomStringConvertible {
+    let kind: String
+    let text: String
+    let language: String?
+
+    var description: String {
+        return "\(self.kind) \(self.text.debugDescription)\(self.kind == "pre" ? " language \(self.language.debugDescription)" : "")"
+    }
+}
+
+func kind(_ type: MessageTextEntityType) -> String {
+    switch type {
+    case .Pre:
+        return "pre"
+    case .Bold:
+        return "bold"
+    case .Italic:
+        return "italic"
+    case .Code:
+        return "code"
+    default:
+        return "other"
+    }
+}
+
+func language(_ type: MessageTextEntityType) -> String? {
+    if case let .Pre(language) = type {
+        return language
+    }
+    return nil
+}
+
+func plain(_ language: String?) -> Bool {
+    return language == nil || language == ""
+}
+
+func entities(_ item: Case) -> [MessageTextEntity] {
+    var from = 0
+    return item.entities.map { entity in
+        let found = (item.text as NSString).range(of: entity.text, options: [], range: NSMakeRange(from, (item.text as NSString).length - from))
+        precondition(found.location != NSNotFound, "\(entity.text) is not in \(item.text)")
+        from = NSMaxRange(found)
+        return MessageTextEntity(range: found.location ..< NSMaxRange(found), type: entity.type)
+    }
+}
+
+func spans(of state: ChatTextInputState) -> [Span] {
+    let text = state.inputText as NSString
+    return state.messageTextEntities([]).sorted(by: { $0.range.lowerBound < $1.range.lowerBound }).compactMap { entity in
+        guard entity.range.lowerBound >= 0, entity.range.upperBound <= text.length else {
+            return Span(kind: kind(entity.type), text: "out of the text at \(entity.range)", language: language(entity.type))
+        }
+        return Span(kind: kind(entity.type), text: text.substring(with: NSRange(location: entity.range.lowerBound, length: entity.range.count)), language: language(entity.type))
+    }
+}
+
+func save(_ state: ChatTextInputState, box: String) -> Result {
+    return Result(box: box, saved: state.subInputState(from: NSMakeRange(0, (state.inputText as NSString).length)))
+}
+
+func seed(_ text: String, _ entities: [MessageTextEntity]) -> ChatTextInputState {
+    return EditSeed(message: Message(text: text, attributes: [TextEntitiesMessageAttribute(entities: entities)])).inputState
+}
+
+func editMessage(_ item: Case) -> Result {
+    let seeded = seed(item.text, entities(item))
+    let box = NSMutableAttributedString(attributedString: seeded.attributedString())
+    let word = (box.string as NSString).range(of: "check old")
+    precondition(word.location != NSNotFound, "the edit box lost the text outside the block")
+    box.replaceCharacters(in: word, with: "check new")
+    return save(ChatTextInputState(attributedText: box, selectionRange: box.length ..< box.length), box: seeded.inputText)
+}
+
+func editAgain(_ saved: ChatTextInputState) -> Result? {
+    let entities = saved.messageTextEntities([])
+    guard entities.allSatisfy({ $0.range.lowerBound >= 0 && $0.range.upperBound <= (saved.inputText as NSString).length }) else {
+        return nil
+    }
+    let seeded = seed(saved.inputText, entities)
+    return save(seeded, box: seeded.inputText)
+}
+
+func handBack(_ path: @escaping (String, [MessageTextEntity], AnalyticsOrigin) -> ChatTextInputState, origin: AnalyticsOrigin) -> (Case) -> Result {
+    return { item in
+        let restored = path(item.text, entities(item), origin)
+        return save(restored, box: restored.inputText)
+    }
+}
+
+func expectedTexts(_ item: Case, edited: Bool) -> Set<String> {
+    let text = edited ? item.text.replacingOccurrences(of: "check old", with: "check new") : item.text
+    var results: [String] = [text]
+    for entity in item.entities where !plain(language(entity.type)) {
+        results += results.map { $0.replacingOccurrences(of: entity.text, with: "\n" + entity.text) }
+    }
+    return Set(results)
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAIL \(name)\(detail().isEmpty ? "" : ": \(detail())")")
+    }
+}
+
+func pre(_ text: String, _ language: String? = nil) -> Entity {
+    return Entity(text: text, type: .Pre(language: language))
+}
+
+func bold(_ text: String) -> Entity {
+    return Entity(text: text, type: .Bold)
+}
+
+let cases: [Case] = [
+    Case(name: "a block that ends with a backtick", text: "check old\nname = `x`", entities: [pre("name = `x`")], box: "check old\n```name = `x````"),
+    Case(name: "a block that starts with a backtick", text: "check old\n`x` = 1", entities: [pre("`x` = 1")], box: nil),
+    Case(name: "a block with a backtick at both ends", text: "check old\n`date`", entities: [pre("`date`")], box: nil),
+    Case(name: "a block that starts with a backtick and a combining mark", text: "check old\n`\u{301}x = 1", entities: [pre("`\u{301}x = 1")], box: nil),
+    Case(name: "a block that starts with a backtick and a combining mark and ends with a backtick", text: "check old\n`\u{301}x`", entities: [pre("`\u{301}x`")], box: nil),
+    Case(name: "a block that ends with two backticks", text: "check old\nx = ``", entities: [pre("x = ``")], box: nil),
+    Case(name: "a block that ends with three backticks", text: "check old\necho ```", entities: [pre("echo ```")], box: nil),
+    Case(name: "a block that starts with three backticks", text: "check old\n```js", entities: [pre("```js")], box: nil),
+    Case(name: "a block that starts with four backticks", text: "check old\n```` is a fence", entities: [pre("```` is a fence")], box: "check old\n`````\n```` is a fence`````"),
+    Case(name: "a block with a longer run of backticks after a shorter one", text: "check old\n`a` and ```` b", entities: [pre("`a` and ```` b")], box: "check old\n`````\n`a` and ```` b`````"),
+    Case(name: "a block that starts with four backticks and a letter", text: "check old\n````md", entities: [pre("````md")], box: nil),
+    Case(name: "a block that is four backticks", text: "check old\n````", entities: [pre("````")], box: nil),
+    Case(name: "a block that ends with four backticks", text: "check old\nx ````", entities: [pre("x ````")], box: nil),
+    Case(name: "a block that starts and ends with four backticks", text: "check old\n```` x ````", entities: [pre("```` x ````")], box: nil),
+    Case(name: "a block whose first line is four backticks", text: "check old\n````\n```js\nlet a = 1\n```\n````", entities: [pre("````\n```js\nlet a = 1\n```\n````")], box: nil),
+    Case(name: "a block whose first line has inline code", text: "check old\n`a` = 1\nb = 2", entities: [pre("`a` = 1\nb = 2")], box: nil),
+    Case(name: "a block whose first line ends with inline code", text: "check old\nx = `a`\ny = 2", entities: [pre("x = `a`\ny = 2")], box: nil),
+    Case(name: "a block that is one backtick", text: "check old\n`", entities: [pre("`")], box: nil),
+    Case(name: "a block that ends with a backtick at the start of the message", text: "name = `x`\ncheck old", entities: [pre("name = `x`")], box: nil),
+    Case(name: "a block that ends with a backtick before more text", text: "check old\nname = `x`\nand then text", entities: [pre("name = `x`")], box: nil),
+    Case(name: "a block that ends with a backtick, then bold text", text: "check old\nname = `x`\nthen bold here", entities: [pre("name = `x`"), bold("bold")], box: nil),
+    Case(name: "a block that starts with a backtick, then bold text", text: "check old\n`x` = 1\nthen bold here", entities: [pre("`x` = 1"), bold("bold")], box: nil),
+    Case(name: "a block that ends with a backtick, then bold text right after it", text: "check old\nname = `x`\nbold here", entities: [pre("name = `x`"), bold("bold")], box: nil),
+    Case(name: "a block that ends with three backticks, then bold text right after it", text: "check old\necho ```\nbold here", entities: [pre("echo ```"), bold("bold")], box: nil),
+    Case(name: "bold text, then a block that ends with a backtick", text: "check old bold\nname = `x`", entities: [bold("bold"), pre("name = `x`")], box: nil),
+    Case(name: "two blocks that end with a backtick", text: "check old\nx = `a`\nmiddle\ny = `b`\nthen bold here", entities: [pre("x = `a`"), pre("y = `b`"), bold("bold")], box: nil),
+    Case(name: "a language block that ends with a backtick", text: "check old\nconst s = `hi`", entities: [pre("const s = `hi`", "javascript")], box: nil),
+    Case(name: "a language block that starts with a backtick", text: "check old\n`date` > now", entities: [pre("`date` > now", "bash")], box: "check old\n```bash\n`date` > now```"),
+    Case(name: "a block that starts with a line break and ends with a backtick", text: "check old\n\na = 1\nb = `c`", entities: [pre("\na = 1\nb = `c`")], box: nil),
+    Case(name: "a block with an indented first line that ends with a backtick", text: "check old\n    a = 1\nb = `c`", entities: [pre("    a = 1\nb = `c`")], box: nil),
+    Case(name: "a block without backticks at its ends", text: "check old\nx = 1", entities: [pre("x = 1")], box: "check old\n```x = 1```"),
+    Case(name: "a block with backticks inside", text: "check old\na `b` c", entities: [pre("a `b` c")], box: "check old\n```a `b` c```"),
+    Case(name: "a block without backticks at its ends, then bold text", text: "check old\nx = 1\nthen bold here", entities: [pre("x = 1"), bold("bold")], box: "check old\n```x = 1```\nthen bold here"),
+    Case(name: "a language block without backticks at its ends", text: "check old\nprint(1)", entities: [pre("print(1)", "python")], box: "check old\n```python\nprint(1)```"),
+    Case(name: "a block whose language has a backtick inside", text: "check old\nprint(1)", entities: [pre("print(1)", "c`d")], box: "check old\n```c`d\nprint(1)```"),
+]
+
+let show = __SHOW__
+var paths: [(String, Bool, (Case) -> Result)] = [("edit", true, editMessage)]
+for (index, path) in articleEditorHandBacks.enumerated() {
+    paths.append(("article editor \(index + 1)", false, handBack(path, origin: AnalyticsOrigin(isExcluded: false, scope: AnalyticsScope(isValid: true)))))
+    paths.append(("article editor \(index + 1), excluded from analytics", false, handBack(path, origin: AnalyticsOrigin(isExcluded: true, scope: nil))))
+}
+
+for (path, edited, run) in paths {
+    for item in cases {
+        let name = "\(path), \(item.name)"
+        let result = run(item)
+        let saved = spans(of: result.saved)
+        if show {
+            print("== \(name)")
+            print("   box:    \(result.box.debugDescription)")
+            print("   saved:  \(result.saved.inputText.debugDescription)")
+            print("   spans:  \(saved)")
+        }
+        if let box = item.box {
+            check("\(name): the box has three-backtick fences", result.box == box, result.box.debugDescription)
+        }
+        check("\(name): every entity is still there", saved.count == item.entities.count, "\(saved)")
+        for (index, entity) in item.entities.enumerated() where index < saved.count {
+            let span = saved[index]
+            let allowed = plain(language(entity.type)) ? [entity.text] : [entity.text, "\n" + entity.text]
+            check("\(name): entity \(index + 1) is still \(kind(entity.type))", span.kind == kind(entity.type), span.description)
+            check("\(name): entity \(index + 1) keeps every character", allowed.contains(span.text), span.description)
+            if kind(entity.type) == "pre" {
+                if let language = language(entity.type), !language.isEmpty {
+                    check("\(name): entity \(index + 1) keeps its language", span.language == language, span.description)
+                } else {
+                    check("\(name): entity \(index + 1) gets no language", plain(span.language), span.description)
+                }
+            }
+        }
+        check("\(name): the text is the same", expectedTexts(item, edited: edited).contains(result.saved.inputText), result.saved.inputText.debugDescription)
+        if edited {
+            if let again = editAgain(result.saved) {
+                check("\(name): saving it again changes nothing", again.saved.inputText == result.saved.inputText && spans(of: again.saved) == saved, "\(again.saved.inputText.debugDescription) \(spans(of: again.saved))")
+            } else {
+                check("\(name): saving it again changes nothing", false, "the saved entities are out of the text: \(saved)")
+            }
+        }
+    }
+}
+
+let typed: [(String, String, String?)] = [
+    ("three-backtick fences", "```x = 1```\nbold here", "x = 1"),
+    ("four-backtick fences", "````x = 1````\nbold here", "x = 1"),
+    ("five-backtick fences", "`````x = 1`````\nbold here", "x = 1"),
+    ("three backticks, then four", "```x = 1````\nbold here", "x = 1`"),
+    ("four backticks, then three", "````x = 1```\nbold here", "`x = 1"),
+    ("three-backtick fences around code that starts with a backtick", "````ls` -la```\nbold here", "`ls` -la"),
+    ("four backticks and a language, then three", "````python\nx = 1\n```\nbold here", "`python\nx = 1\n"),
+    ("four backticks on their own line, then three", "````\nx = 1\n```\nbold here", "`\nx = 1\n"),
+    ("four backticks, a combining mark and a language, then three", "````\u{301}py\nx = 1\n```\nbold here", "`\u{301}py\nx = 1\n"),
+    ("three-backtick fences around code that ends with a backtick", "```x = `1````\nbold here", "x = `1`"),
+]
+
+for (fences, text, code) in typed {
+    let name = "typed in the input, \(fences), then bold text right after it"
+    let box = NSMutableAttributedString(string: text)
+    box.addAttribute(TextInputAttributes.bold, value: true as NSNumber, range: (text as NSString).range(of: "bold"))
+    let saved = save(ChatTextInputState(attributedText: box, selectionRange: box.length ..< box.length), box: text).saved
+    if show {
+        print("== \(name)")
+        print("   saved:  \(saved.inputText.debugDescription)")
+        print("   spans:  \(spans(of: saved))")
+    }
+    if let code {
+        check("\(name): the text is the same", saved.inputText == code + "\nbold here", saved.inputText.debugDescription)
+        check("\(name): the block and the bold text stay in place", spans(of: saved) == [Span(kind: "pre", text: code, language: ""), Span(kind: "bold", text: "bold", language: nil)], "\(spans(of: saved))")
+    } else {
+        check("\(name): the text stays as typed", saved.inputText == text, saved.inputText.debugDescription)
+        check("\(name): the bold text stays in place", spans(of: saved) == [Span(kind: "bold", text: "bold", language: nil)], "\(spans(of: saved))")
+    }
+}
+
+let unreadable = Case(name: "blocks that can't be read back, with bold text between and after them", text: "check old\nab c\n`d\ne", entities: [pre("a"), bold("c"), pre("`d"), bold("e")], box: nil)
+
+for (path, _, run) in paths {
+    let result = run(unreadable)
+    let bold = spans(of: result.saved).filter { $0.kind == "bold" }
+    if show {
+        print("== \(path), \(unreadable.name)")
+        print("   box:    \(result.box.debugDescription)")
+        print("   saved:  \(result.saved.inputText.debugDescription)")
+        print("   spans:  \(spans(of: result.saved))")
+    }
+    check("\(path), \(unreadable.name): the bold text stays in place", bold.map { $0.text } == ["c", "e"], "\(bold)")
+}
+
+let backticks = String(repeating: "`", count: 4096)
+let timed: [(String, () -> Void)] = [
+    ("typed in the input, 4096 backticks", { _ = save(ChatTextInputState(inputText: backticks, selectionRange: 0 ..< 0, attributes: []), box: backticks) }),
+    ("typed in the input, text and 4096 backticks", { _ = save(ChatTextInputState(inputText: "x " + backticks + " y", selectionRange: 0 ..< 0, attributes: []), box: backticks) }),
+    ("edit, a block of 4096 backticks", { _ = editMessage(Case(name: "", text: "check old\n" + backticks, entities: [pre(backticks)], box: nil)) }),
+]
+for (name, run) in timed {
+    let start = Date()
+    run()
+    let seconds = Date().timeIntervalSince(start)
+    check("\(name): saves in under five seconds", seconds < 5, String(format: "%.2fs", seconds))
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
