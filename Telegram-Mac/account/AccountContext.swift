@@ -284,7 +284,7 @@ final class AccountContext {
     let dockControl: DockControl
     private(set) var reactionSettings: ReactionSettings = ReactionSettings.default
     private let reactionSettingsDisposable = MetaDisposable()
-    private var chatInterfaceTempState:[PeerId : ChatInterfaceTempState] = [:]
+    private var chatInterfaceTempState:[PeerAndThreadId : ChatInterfaceTempState] = [:]
     
     
     private let _chatThemes: Promise<[(ChatTheme, TelegramPresentationTheme)]> = Promise([])
@@ -999,16 +999,17 @@ final class AccountContext {
         temporaryPwdDisposable.set(nil)
     }
     #if !SHARE
-    func setChatInterfaceTempState(_ state: ChatInterfaceTempState, for peerId: PeerId) {
+    func setChatInterfaceTempState(_ state: ChatInterfaceTempState, for peerId: PeerId, threadId: Int64?) {
+        let key = PeerAndThreadId(peerId: peerId, threadId: threadId)
         if state.editState == nil {
-            self.chatInterfaceTempState.removeValue(forKey: peerId)
+            self.chatInterfaceTempState.removeValue(forKey: key)
         } else {
-            self.chatInterfaceTempState[peerId] = state
+            self.chatInterfaceTempState[key] = state
         }
     }
-    func getChatInterfaceTempState(_ peerId: PeerId?) -> ChatInterfaceTempState? {
+    func getChatInterfaceTempState(_ peerId: PeerId?, threadId: Int64?) -> ChatInterfaceTempState? {
         if let peerId = peerId {
-            return self.chatInterfaceTempState[peerId]
+            return self.chatInterfaceTempState[PeerAndThreadId(peerId: peerId, threadId: threadId)]
         } else {
             return nil
         }

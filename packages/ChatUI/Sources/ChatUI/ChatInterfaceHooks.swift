@@ -42,7 +42,7 @@ public struct ChatInterfaceHooks {
     public let freezeAlert: (any AccountContextProtocol) -> Void
     public let resolveUsername: (String, any AccountContextProtocol) -> Signal<Peer?, NoError>
     public let makeGroupCallPanelData: (any AccountContextProtocol, PeerId, Bool, GroupCallSummary) -> Signal<GroupCallPanelData?, GetCurrentGroupCallError>
-    public let setChatInterfaceTempState: (any AccountContextProtocol, ChatInterfaceTempState, PeerId) -> Void
+    public let setChatInterfaceTempState: (any AccountContextProtocol, ChatInterfaceTempState, PeerId, Int64?) -> Void
     public let inputSource: (any AccountContextProtocol) -> InputSources
     public let executeUrl: (ChatInteraction, String) -> Void
     public let executeConfirmedUrl: (ChatInteraction, String) -> Void
@@ -56,7 +56,7 @@ public struct ChatInterfaceHooks {
     public init(freezeAlert: @escaping (any AccountContextProtocol) -> Void,
                 resolveUsername: @escaping (String, any AccountContextProtocol) -> Signal<Peer?, NoError>,
                 makeGroupCallPanelData: @escaping (any AccountContextProtocol, PeerId, Bool, GroupCallSummary) -> Signal<GroupCallPanelData?, GetCurrentGroupCallError>,
-                setChatInterfaceTempState: @escaping (any AccountContextProtocol, ChatInterfaceTempState, PeerId) -> Void,
+                setChatInterfaceTempState: @escaping (any AccountContextProtocol, ChatInterfaceTempState, PeerId, Int64?) -> Void,
                 inputSource: @escaping (any AccountContextProtocol) -> InputSources,
                 executeUrl: @escaping (ChatInteraction, String) -> Void,
                 executeConfirmedUrl: @escaping (ChatInteraction, String) -> Void,

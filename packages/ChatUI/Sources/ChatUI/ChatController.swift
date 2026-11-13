@@ -8970,7 +8970,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         
             let opaqueState = initialData.storedInterfaceState.flatMap(_internal_decodeStoredChatInterfaceState)
             
-            let interfaceState = ChatInterfaceState.parse(opaqueState, peerId: self.chatLocation.peerId, context: context)
+            let interfaceState = ChatInterfaceState.parse(opaqueState, peerId: self.chatLocation.peerId, threadId: self.chatLocation.threadId, context: context)
             
             self.chatInteraction.update(animated:false, { present in
                 var present = present
