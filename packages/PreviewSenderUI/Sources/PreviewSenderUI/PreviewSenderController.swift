@@ -2376,7 +2376,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                             return
                         }
                     }
-                    if let string = checkMediaPermission(medias[i], for: peer) {
+                    if let string = checkMediaPermission(medias[i], for: peer, cachedData: chatInteraction.presentation.cachedData) {
                         permissions.append((string, i))
                     }
                 }
@@ -2407,9 +2407,17 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 }
                 
                 if let first = permissions.first {
-                    if let totalBoostNeed = chatInteraction.presentation.totalBoostNeed {
-                        if totalBoostNeed > 0 {
-                            self.analyticsMediaJourney?.submissionBlocked(.permission)
+                    self.analyticsMediaJourney?.submissionBlocked(.permission)
+                    if let totalBoostNeed = chatInteraction.presentation.totalBoostNeed, totalBoostNeed > 0,
+                       let cachedData = chatInteraction.presentation.cachedData as? CachedChannelData {
+                        let boostedData = cachedData.withUpdatedAppliedBoosts(totalBoostNeed)
+                        let boostsResolvePermissions = permissions.allSatisfy { _, index in
+                            if index == -1 {
+                                return permissionText(from: peer, for: .banSendText, cachedData: boostedData) == nil
+                            }
+                            return checkMediaPermission(medias[index], for: peer, cachedData: boostedData) == nil
+                        }
+                        if boostsResolvePermissions {
                             let childAction = PreviewSenderChildAction(context: self.analyticsContext ?? Analytics.shared.unresolvedContext(), isCurrent: self.capturePendingAction())
                             verifyAlert(for: context.window, information: strings().boostGroupChatInputSendMedia, ok: strings().boostGroupChatInputBoost, successHandler: { [weak self] _ in
                                 childAction.resolve { self?.chatInteraction.boostToUnrestrict(.unblockText(totalBoostNeed)) }
@@ -2420,15 +2428,11 @@ public class PreviewSenderController: ModalViewController, Notifable {
                             })
                             return
                         }
-                    } else {
-                        self.analyticsMediaJourney?.submissionBlocked(.permission)
-                        showModalText(for: context.window, text: first.0)
-                        return
                     }
+                    showModalText(for: context.window, text: first.0)
+                    return
                 }
-                
-              
-                
+
                 let amount = state.payAmount
                 
                 let makeMedia:([Media], Bool)->[Media] = { media, collage in

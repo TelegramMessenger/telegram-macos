@@ -594,6 +594,52 @@ public class ChatPresentationInterfaceState: Equatable {
         }
     }
     
+    var textRestriction: String? {
+        if interfaceState.editState != nil {
+            return nil
+        }
+        return permissionText(from: peer, for: .banSendText, cachedData: cachedData)
+    }
+
+    var textRestrictionBoostsRequired: Int32? {
+        guard textRestriction != nil,
+              let channel = peer as? TelegramChannel, case .group = channel.info,
+              let cachedData = cachedData as? CachedChannelData,
+              let required = cachedData.boostsToUnrestrict, required > 0,
+              required > (cachedData.appliedBoosts ?? 0),
+              channel.hasBannedPermission(.banSendText, ignoreDefault: true) == nil else {
+            return nil
+        }
+        return required
+    }
+
+    var inputForSending: ChatTextInputState {
+        return textRestriction == nil ? effectiveInput : ChatTextInputState()
+    }
+
+    var canAttachFiles: Bool {
+        return state == .normal && permissionText(from: peer, for: .banSendFiles, cachedData: cachedData) == nil
+    }
+
+    private var groupRestrictionState: ChatState? {
+        if let channel = peer as? TelegramChannel, case .group = channel.info {
+            if channel.canSendSomething(ignoreDefault: canBypassChatRestrictions(cachedData)) {
+                return nil
+            }
+            if channel.canSendSomething(ignoreDefault: true),
+               let required = (cachedData as? CachedChannelData)?.boostsToUnrestrict,
+               required > 0, required > ((cachedData as? CachedChannelData)?.appliedBoosts ?? 0) {
+                return .action(strings().boostGroupChatInputAction, { chatInteraction in
+                    chatInteraction.boostToUnrestrict(.unblockText(required))
+                }, right: nil, left: nil)
+            }
+            return .restricted(textRestriction ?? strings().channelPersmissionDeniedSendMessagesDefaultRestrictedText)
+        } else if let group = peer as? TelegramGroup, !group.hasPermission(.sendSomething) {
+            return .restricted(textRestriction ?? strings().channelPersmissionDeniedSendMessagesDefaultRestrictedText)
+        }
+        return nil
+    }
+
     public var state:ChatState {
         if self.selectionState == nil {
             if ChatBotForumControls.showsStart(
@@ -779,12 +825,12 @@ public class ChatPresentationInterfaceState: Equatable {
                                 chatInteraction.joinChannel()
                             }, right: nil, left: nil, accent: true)
                         } else {
-                            return .normal
+                            return groupRestrictionState ?? .normal
                         }
                     } else if peer.participationStatus == .kicked {
                         return .restricted(strings().chatCommentsKicked)
                     } else if peer.participationStatus == .member {
-                        return .normal
+                        return groupRestrictionState ?? .normal
                     }
                     
                 case .history:
@@ -876,24 +922,8 @@ public class ChatPresentationInterfaceState: Equatable {
                 }, right: nil, left: nil)
             }
             
-            //, !peer.hasPermission(.sendSomething)
-            
-            if let peer = peer as? TelegramChannel {
-                if let text = permissionText(from: peer, for: .banSendText) {
-                    
-                    let isPersonalRestriction = peer.hasBannedPermission(.banSendText)?.1 ?? false
-                    
-                    if let cachedData = cachedData as? CachedChannelData, let boostsToRestrict = cachedData.boostsToUnrestrict, !isPersonalRestriction {
-                        let appliedBoosts = cachedData.appliedBoosts ?? 0
-                        if boostsToRestrict > appliedBoosts {
-                            return .action(strings().boostGroupChatInputAction, { chatInteraction in
-                                chatInteraction.boostToUnrestrict(.unblockText(boostsToRestrict))
-                            }, right: nil, left: nil)
-                        }
-                    } else {
-                        return .restricted(text)
-                    }
-                }
+            if let restrictionState = groupRestrictionState {
+                return restrictionState
             }
             
             if let blocked = isBlocked, blocked {
@@ -951,9 +981,9 @@ public class ChatPresentationInterfaceState: Equatable {
                     forwardMessages.append(message)
                 }
             }
-            if forwardMessages.count > 1 || (!effectiveInput.inputText.isEmpty && forwardMessages.count == 1) {
+            if forwardMessages.count > 1 || (!inputForSending.inputText.isEmpty && forwardMessages.count == 1) {
                 return true
-            } else if effectiveInput.inputText.length > 4096 {
+            } else if inputForSending.inputText.length > 4096 {
                 return true
             }
         }
@@ -964,7 +994,7 @@ public class ChatPresentationInterfaceState: Equatable {
         if let slowMode = self.slowMode, slowMode.hasLocked {
             return slowMode.errorText
         } else if slowModeMultipleLocked {
-            if effectiveInput.inputText.length > 4096 {
+            if inputForSending.inputText.length > 4096 {
                 return strings().slowModeTooLongError
             }
             return strings().slowModeForwardCommentError
@@ -985,7 +1015,7 @@ public class ChatPresentationInterfaceState: Equatable {
                     return false
                 }
             }
-            return (!effectiveInput.inputText.isEmpty || !interfaceState.forwardMessageIds.isEmpty)
+            return (!inputForSending.inputText.isEmpty || !interfaceState.forwardMessageIds.isEmpty)
         } else if let editState = interfaceState.editState {
             if editState.message.media.count == 0 {
                 return !effectiveInput.inputText.isEmpty
