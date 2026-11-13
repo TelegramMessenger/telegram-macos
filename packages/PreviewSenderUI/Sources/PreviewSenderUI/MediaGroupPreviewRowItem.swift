@@ -19,13 +19,13 @@ class MediaGroupPreviewRowItem: TableRowItem {
     private let _stableId: UInt32 = arc4random()
     fileprivate let layout: GroupedLayout
     fileprivate let reorder:(Int, Int)->Void
-    fileprivate let urls: [URL]
+    fileprivate var urls: [URL]
     fileprivate let editedData: [URL: EditedImageData]
     fileprivate let renderingPreviews: [URL: CGImage]
     fileprivate let edit:(URL)->Void
     fileprivate let paint:(URL)->Void
     fileprivate let delete:(URL)->Void
-    fileprivate let parameters:[ChatMediaLayoutParameters]
+    fileprivate var parameters:[ChatMediaLayoutParameters]
     fileprivate let payAmount: Int64?
     init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], isSpoiler: Bool, payAmount: Int64?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(Int, Int)->Void) {
         layout = GroupedLayout(messages)
@@ -220,7 +220,9 @@ class MediaGroupPreviewRowView : TableRowView, ModalPreviewRowViewProtocol {
             let current = contents[index]
             contents.remove(at: index)
             contents.insert(current, at: newIndex)
-            
+            item.urls.move(at: index, to: newIndex)
+            item.parameters.move(at: index, to: newIndex)
+
             _ = item.makeSize(frame.width, oldWidth: 0)
             item.table?.noteHeightOfRow(item.index, true)
             

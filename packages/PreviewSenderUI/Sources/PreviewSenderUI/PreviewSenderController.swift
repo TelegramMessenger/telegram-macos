@@ -950,6 +950,7 @@ private enum PreviewEntry : Comparable, Identifiable {
               // arguments.delete(url)
             })
         case let .mediaGroup(_, _, urls, messages, isSpoiler, payAmount, renderingPreviews):
+            let offset = Int(messages[0].id.id)
             return MediaGroupPreviewRowItem(initialSize, messages: messages, urls: urls, editedData: state.editedData, renderingPreviews: renderingPreviews, isSpoiler: isSpoiler, payAmount: payAmount, edit: { url in
                 arguments.edit(url)
             }, paint: { url in
@@ -957,7 +958,7 @@ private enum PreviewEntry : Comparable, Identifiable {
             }, delete: { url in
                 arguments.delete(url)
             }, context: arguments.context, reorder: { from, to in
-                arguments.reorder(from, to)
+                arguments.reorder(from + offset, to + offset)
             })
         }
     }
@@ -1023,7 +1024,8 @@ private func previewMediaEntries( _ state: PreviewState) -> [PreviewEntry] {
             }
             let collages = messages.chunks(10)
             for collage in collages {
-                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: state.urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
+                let urls = collage.map { state.urls[Int($0.id.id)] }
+                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
                 index += 1
             }
         } else {
