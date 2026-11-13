@@ -43,17 +43,10 @@ func sidebarFilterExcluding(_ filter: ChatListFilter, peerIds: [PeerId], maximum
         let peerIds = Set(peerIds).subtracting(categories)
         data.excludePeers = Array(peerIds.uniqueElements.prefix(Int(maximumPeers)))
         data.includePeers.setPeers(data.includePeers.peers.filter { !data.excludePeers.contains($0) })
-        for cat in categories.compactMap(categoryForPeer) {
-            if cat == .excludeMuted {
-                data.excludeMuted = true
-            }
-            if cat == .excludeRead {
-                data.excludeRead = true
-            }
-            if cat == .excludeArchived {
-                data.excludeArchived = true
-            }
-        }
+        let cats = categories.compactMap(categoryForPeer)
+        data.excludeMuted = cats.contains(.excludeMuted)
+        data.excludeRead = cats.contains(.excludeRead)
+        data.excludeArchived = cats.contains(.excludeArchived)
         filter = .filter(id: id, title: title, emoticon: emoticon, data: data)
     }
 

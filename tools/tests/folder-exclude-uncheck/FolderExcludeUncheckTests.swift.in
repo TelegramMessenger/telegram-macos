@@ -1,0 +1,401 @@
+import Foundation
+
+struct PeerId: Hashable, CustomStringConvertible {
+    let namespace: Int32
+    let id: Int64
+    var description: String {
+        return namespace == 7 ? "category \(id)" : "chat \(id)"
+    }
+}
+
+protocol Peer {
+    var id: PeerId { get }
+}
+
+struct ChatPeer: Peer {
+    let id: PeerId
+}
+
+struct CategoryPeer: Peer {
+    let id: PeerId
+}
+
+struct ChatListFilterPeerCategories: OptionSet, Hashable {
+    var rawValue: Int32
+    init(rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+    static let contacts = ChatListFilterPeerCategories(rawValue: 1 << 0)
+    static let nonContacts = ChatListFilterPeerCategories(rawValue: 1 << 1)
+    static let groups = ChatListFilterPeerCategories(rawValue: 1 << 2)
+    static let channels = ChatListFilterPeerCategories(rawValue: 1 << 3)
+    static let bots = ChatListFilterPeerCategories(rawValue: 1 << 4)
+    static let all: ChatListFilterPeerCategories = [.contacts, .nonContacts, .groups, .channels, .bots]
+}
+
+__CATEGORIES__
+
+struct ChatListFilterIncludePeers: Equatable {
+    private(set) var peers: [PeerId] = []
+    mutating func setPeers(_ peers: [PeerId]) {
+        self.peers = peers
+    }
+}
+
+struct ChatListFilterData: Equatable {
+    var isShared: Bool
+    var hasSharedLinks: Bool
+    var categories: ChatListFilterPeerCategories
+    var excludeMuted: Bool
+    var excludeRead: Bool
+    var excludeArchived: Bool
+    var includePeers: ChatListFilterIncludePeers
+    var excludePeers: [PeerId]
+}
+
+struct ChatFolderTitle: Equatable {
+    let text: String
+}
+
+enum ChatListFilter: Equatable {
+    case allChats
+    case filter(id: Int32, title: ChatFolderTitle, emoticon: String?, data: ChatListFilterData)
+
+    var data: ChatListFilterData? {
+        switch self {
+        case .allChats:
+            return nil
+        case let .filter(_, _, _, data):
+            return data
+        }
+    }
+}
+
+extension Sequence where Iterator.Element: Hashable {
+    var uniqueElements: [Iterator.Element] {
+        return self.reduce([], { current, value in
+            if current.contains(value) {
+                return current
+            } else {
+                return current + [value]
+            }
+        })
+    }
+}
+
+enum NoError {}
+
+struct Signal<T, E> {
+    static func complete() -> Signal<T, E> {
+        return Signal<T, E>()
+    }
+}
+
+struct Strings {
+    func chatListFilterExcludeLimitReachedNew(_ value: Int) -> String {
+        return ""
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+final class Picker {
+    let defaults: Set<PeerId>
+    let listed: [PeerId]
+    let callback: ([PeerId]) -> Signal<Never, NoError>
+    init(requested: Set<PeerId>, listed: [PeerId], callback: @escaping ([PeerId]) -> Signal<Never, NoError>) {
+        self.defaults = requested.filter { listed.contains($0) || $0.namespace != 7 }
+        self.listed = listed
+        self.callback = callback
+    }
+    func done(_ selection: [PeerId]) {
+        _ = callback(selection)
+    }
+}
+
+var picker: Picker?
+
+protocol SidebarUIEnvironment {
+    func category(for peerId: PeerId) -> ChatListFilterPeerCategories?
+    func categoryPeer(_ category: ChatListFilterPeerCategories) -> Peer
+    func selectPeers(defaultSelectedIds: Set<PeerId>, categories: [Peer], limit: Int, limitReachedText: String, callback: @escaping ([PeerId]) -> Signal<Never, NoError>)
+}
+
+final class Environment: SidebarUIEnvironment {
+    func category(for peerId: PeerId) -> ChatListFilterPeerCategories? {
+        guard peerId.namespace == 7 else { return nil }
+        return ChatListFilterPeerCategories(rawValue: Int32(peerId.id))
+    }
+    func categoryPeer(_ category: ChatListFilterPeerCategories) -> Peer {
+        return CategoryPeer(id: PeerId(namespace: 7, id: Int64(category.rawValue)))
+    }
+    func selectPeers(defaultSelectedIds: Set<PeerId>, categories: [Peer], limit: Int, limitReachedText: String, callback: @escaping ([PeerId]) -> Signal<Never, NoError>) {
+        picker = Picker(requested: defaultSelectedIds, listed: categories.map { $0.id }, callback: callback)
+    }
+}
+
+let environment: SidebarUIEnvironment = Environment()
+
+struct Arguments {
+    let environment: SidebarUIEnvironment
+}
+
+let arguments = Arguments(environment: environment)
+
+struct State {
+    var filter: ChatListFilter
+    mutating func withUpdatedFilter(_ f: (ChatListFilter) -> ChatListFilter) {
+        self.filter = f(self.filter)
+    }
+}
+
+final class Atomic<T> {
+    var value: T
+    init(value: T) {
+        self.value = value
+    }
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+let stateValue = Atomic(value: State(filter: .allChats))
+
+func updateState(_ f: (State) -> State) {
+    stateValue.value = f(stateValue.value)
+}
+
+var maximumPeers = 100
+
+__EXCLUDING__
+
+__SELECTION__
+
+func addExclude() {
+__ADD_EXCLUDE__
+}
+
+func removeExcluded(_ peerId: PeerId) {
+__REMOVE_EXCLUDED__
+}
+
+func editorExcludeRows(_ data: ChatListFilterData) -> [PeerId] {
+    var excludePeers: [Peer] = data.excludePeers.map { ChatPeer(id: $0) }
+    __ROWS__
+    return excludePeers.map { $0.id }
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func chat(_ value: Int64) -> PeerId {
+    return PeerId(namespace: 0, id: value)
+}
+
+func categoryId(_ category: ChatListFilterPeerCategories) -> PeerId {
+    return environment.categoryPeer(category).id
+}
+
+func folder(include: [PeerId] = [], exclude: [PeerId] = [], muted: Bool = false, read: Bool = false, archived: Bool = false) -> ChatListFilter {
+    var includePeers = ChatListFilterIncludePeers()
+    includePeers.setPeers(include)
+    return .filter(id: 10, title: ChatFolderTitle(text: "Folder"), emoticon: nil, data: ChatListFilterData(isShared: false, hasSharedLinks: false, categories: [], excludeMuted: muted, excludeRead: read, excludeArchived: archived, includePeers: includePeers, excludePeers: exclude))
+}
+
+struct Flags: Equatable, CustomStringConvertible {
+    var muted: Bool
+    var read: Bool
+    var archived: Bool
+    var description: String {
+        return "muted \(muted), read \(read), archived \(archived)"
+    }
+}
+
+func flags(_ data: ChatListFilterData?) -> Flags? {
+    guard let data = data else { return nil }
+    return Flags(muted: data.excludeMuted, read: data.excludeRead, archived: data.excludeArchived)
+}
+
+var current: ChatListFilterData {
+    return stateValue.value.filter.data!
+}
+
+func start(_ filter: ChatListFilter) {
+    stateValue.value = State(filter: filter)
+    maximumPeers = 100
+    picker = nil
+}
+
+func open() -> Picker? {
+    picker = nil
+    addExclude()
+    return picker
+}
+
+func sameFolder(_ data: ChatListFilterData, as filter: ChatListFilter) -> Bool {
+    guard let original = filter.data else { return false }
+    return flags(data) == flags(original) && Set(data.excludePeers) == Set(original.excludePeers) && data.excludePeers.count == original.excludePeers.count && data.includePeers == original.includePeers
+}
+
+func permutations(_ items: [PeerId]) -> [[PeerId]] {
+    if items.count <= 1 {
+        return [items]
+    }
+    var result: [[PeerId]] = []
+    for (index, item) in items.enumerated() {
+        var rest = items
+        rest.remove(at: index)
+        for tail in permutations(rest) {
+            result.append([item] + tail)
+        }
+    }
+    return result
+}
+
+func flag(_ data: ChatListFilterData, _ category: ChatListFilterPeerCategories) -> Bool {
+    switch category {
+    case .excludeMuted:
+        return data.excludeMuted
+    case .excludeRead:
+        return data.excludeRead
+    default:
+        return data.excludeArchived
+    }
+}
+
+func flagsOn(_ on: [ChatListFilterPeerCategories]) -> Flags {
+    return Flags(muted: on.contains(.excludeMuted), read: on.contains(.excludeRead), archived: on.contains(.excludeArchived))
+}
+
+let categories: [(String, ChatListFilterPeerCategories)] = [
+    ("Muted", .excludeMuted),
+    ("Read", .excludeRead),
+    ("Archived", .excludeArchived),
+]
+let allOn = flagsOn([.excludeMuted, .excludeRead, .excludeArchived])
+let allOff = flagsOn([])
+let full = folder(include: [chat(3)], exclude: [chat(1), chat(2)], muted: true, read: true, archived: true)
+
+start(full)
+check("Add Chats to Exclude opens the picker", open() != nil)
+
+for (name, category) in categories {
+    let id = categoryId(category)
+    let others = categories.map { $0.1 }.filter { $0 != category }
+    let expected = flagsOn(others)
+
+    start(full)
+    guard let first = open() else {
+        check("\(name): the picker opens", false)
+        continue
+    }
+    check("\(name): the picker lists it", first.listed.contains(id))
+    check("\(name): the picker opens with it checked", first.defaults.contains(id))
+    first.done(Array(first.defaults.subtracting([id])))
+    check("\(name): unchecking it and pressing Done turns it off", !flag(current, category))
+    check("\(name): the other categories stay excluded", others.allSatisfy { flag(current, $0) })
+    check("\(name): the excluded chats stay", Set(current.excludePeers) == Set([chat(1), chat(2)]) && current.excludePeers.count == 2)
+    check("\(name): the included chats stay", current.includePeers.peers == [chat(3)])
+    let rows = editorExcludeRows(current)
+    check("\(name): the folder editor stops listing it", !rows.contains(id))
+    check("\(name): the folder editor still lists the rest", Set(others.map(categoryId) + [chat(1), chat(2)]).isSubset(of: Set(rows)))
+
+    guard let second = open() else {
+        check("\(name): the picker opens again", false)
+        continue
+    }
+    check("\(name): the picker opens again with it unchecked", !second.defaults.contains(id))
+    second.done(Array(second.defaults.union([id])))
+    check("\(name): checking it again turns it back on", sameFolder(current, as: full))
+
+    start(folder(exclude: [chat(1)]))
+    if let picker = open() {
+        check("\(name): the picker opens with it unchecked on a folder without it", !picker.defaults.contains(id))
+        picker.done(Array(picker.defaults.union([id])))
+        check("\(name): checking it on a folder without it turns only it on", flags(current) == flagsOn([category]) && current.excludePeers == [chat(1)])
+    } else {
+        check("\(name): the picker opens on a folder without it", false)
+    }
+
+    start(full)
+    removeExcluded(id)
+    check("\(name): the remove button on its row turns it off", flags(current) == expected && Set(current.excludePeers) == Set([chat(1), chat(2)]))
+}
+
+for (name, filter) in [("every category on", full), ("no category on", folder(include: [chat(3)], exclude: [chat(1), chat(2)])), ("only Read on", folder(exclude: [chat(1)], read: true)), ("only categories", folder(muted: true, archived: true))] {
+    start(filter)
+    if let picker = open() {
+        picker.done(Array(picker.defaults))
+        check("Done with no change keeps the folder as it was (\(name))", sameFolder(current, as: filter))
+    } else {
+        check("the picker opens (\(name))", false)
+    }
+}
+
+start(full)
+if let picker = open() {
+    picker.done(Array(picker.defaults.subtracting(categories.map { categoryId($0.1) })))
+    check("unchecking all three categories turns them all off", flags(current) == allOff)
+    check("unchecking all three categories keeps the excluded chats", Set(current.excludePeers) == Set([chat(1), chat(2)]))
+    check("the folder editor then lists only the chats", Set(editorExcludeRows(current)) == Set([chat(1), chat(2)]))
+}
+
+start(full)
+if let picker = open() {
+    picker.done([])
+    check("unchecking everything clears the categories and the chats", flags(current) == allOff && current.excludePeers.isEmpty && current.includePeers.peers == [chat(3)])
+}
+
+start(folder(include: [chat(3)], exclude: [chat(1)]))
+if let picker = open() {
+    picker.done(Array(picker.defaults.union(categories.map { categoryId($0.1) })))
+    check("checking all three categories turns them all on", flags(current) == allOn && current.excludePeers == [chat(1)])
+}
+
+var orderResults: [String] = []
+for selection in permutations([chat(1), categoryId(.excludeRead), chat(2), categoryId(.excludeArchived)]) {
+    start(full)
+    open()?.done(selection)
+    orderResults.append("\(flags(current).map { $0.description } ?? "no folder"), chats \(Set(current.excludePeers).map { $0.id }.sorted())")
+}
+check("the result doesn't depend on the order of the picked ids (\(Set(orderResults).sorted().joined(separator: " | ")))", Set(orderResults).count == 1)
+check("picking Read, Archived and two chats excludes exactly those (\(orderResults.first ?? "nothing"))", orderResults.first == "\(flagsOn([.excludeRead, .excludeArchived])), chats [1, 2]")
+
+start(full)
+if let picker = open() {
+    picker.done(Array(picker.defaults.subtracting([chat(2)])))
+    check("unchecking a chat removes only that chat", current.excludePeers == [chat(1)] && flags(current) == allOn)
+}
+
+start(full)
+if let picker = open() {
+    picker.done(Array(picker.defaults.union([chat(3)])))
+    check("excluding an included chat takes it out of the included chats", current.includePeers.peers.isEmpty && Set(current.excludePeers) == Set([chat(1), chat(2), chat(3)]) && flags(current) == allOn)
+}
+
+start(full)
+maximumPeers = 2
+if let picker = open() {
+    picker.done([chat(1), chat(1), chat(2), chat(4)] + categories.map { categoryId($0.1) })
+    check("the chat limit drops extra chats, and the categories don't count toward it", current.excludePeers.count == 2 && Set(current.excludePeers).isSubset(of: [chat(1), chat(2), chat(4)]) && flags(current) == allOn)
+}
+
+start(full)
+removeExcluded(chat(1))
+check("the remove button on a chat row removes only that chat", current.excludePeers == [chat(2)] && flags(current) == allOn)
+
+check("All Chats stays as it is", sidebarFilterExcluding(.allChats, peerIds: [categoryId(.excludeMuted), chat(1)], maximumPeers: 100, categoryForPeer: environment.category) == .allChats)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
