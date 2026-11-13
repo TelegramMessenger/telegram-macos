@@ -7705,6 +7705,7 @@ public final class L10n {
   public static var customEmojiInfo: String  { return L10n.tr("Localizable", "CustomEmoji.Info") }
   /// Subscribe to Telegram Premium to unlock this emoji. [Read More]()
   public static var customEmojiPremiumAlert: String  { return L10n.tr("Localizable", "CustomEmoji.PremiumAlert") }
+  public static var customEmojiRemoveConfirm: String  { return L10n.tr("Localizable", "CustomEmoji.Remove.Confirm") }
   /// Suggest Animated Emoji
   public static var customEmojiSuggest: String  { return L10n.tr("Localizable", "CustomEmoji.Suggest") }
   /// Subscribe to Telegram Premium to unlock this reaction. [Read More]()
