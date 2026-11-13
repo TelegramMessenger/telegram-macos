@@ -25,46 +25,46 @@ struct FocusAccountEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        if let telegramUserId {
-            return DisplayRepresentation(title: "\(title) (\(String(telegramUserId)))")
+        guard FocusIntentStorage.isCatalogAccessible else {
+            return DisplayRepresentation(title: "Locked account")
         }
-        return DisplayRepresentation(title: "\(title)")
+        return DisplayRepresentation(title: focusAccountDisplayTitle(title, telegramUserId: telegramUserId))
     }
 }
 
 struct FocusAccountQuery: EntityStringQuery {
-    private let catalogProvider: @Sendable () -> FocusFilterCatalog
+    private let catalogAccess: FocusEntityCatalogAccess
 
     init() {
         self.init(catalogProvider: { FocusIntentStorage.loadCatalog() })
     }
 
-    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog) {
-        self.catalogProvider = catalogProvider
+    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessAllowed: @escaping @Sendable () -> Bool = { FocusIntentStorage.isCatalogAccessible }) {
+        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessAllowed: accessAllowed)
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusAccountEntity] {
         FocusIntentStorage.withRequest {
-            FocusEntityCatalog(catalogProvider()).accounts(for: identifiers)
+            catalogAccess.resolve { $0.accounts(for: identifiers) }
         }
     }
 
     func suggestedEntities() async throws -> [FocusAccountEntity] {
-        FocusIntentStorage.withRequest {
-            FocusEntityCatalog(catalogProvider()).accounts
+        try FocusIntentStorage.withRequest {
+            try catalogAccess.browse { $0.accounts }
         }
     }
 
     func entities(matching string: String) async throws -> [FocusAccountEntity] {
-        return FocusIntentStorage.withRequest {
-            let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            let entities = FocusEntityCatalog(catalogProvider()).accounts
-            guard !search.isEmpty else {
-                return entities
-            }
-            return entities.filter {
-                $0.title.localizedStandardContains(search)
+        try FocusIntentStorage.withRequest {
+            try catalogAccess.browse { catalog in
+                let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                let entities = catalog.accounts
+                guard !search.isEmpty else { return entities }
+                return entities.filter {
+                    $0.title.localizedStandardContains(search)
                     || $0.telegramUserId.map { String($0).localizedStandardContains(search) } == true
+                }
             }
         }
     }
@@ -95,44 +95,47 @@ struct FocusFolderEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
+        guard FocusIntentStorage.isCatalogAccessible else {
+            return DisplayRepresentation(title: "Locked folder")
+        }
         return DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
     }
 }
 
 struct FocusFolderQuery: EntityStringQuery {
-    private let catalogProvider: @Sendable () -> FocusFilterCatalog
+    private let catalogAccess: FocusEntityCatalogAccess
 
     init() {
         self.init(catalogProvider: { FocusIntentStorage.loadCatalog() })
     }
 
-    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog) {
-        self.catalogProvider = catalogProvider
+    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessAllowed: @escaping @Sendable () -> Bool = { FocusIntentStorage.isCatalogAccessible }) {
+        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessAllowed: accessAllowed)
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusFolderEntity] {
         FocusIntentStorage.withRequest {
-            FocusEntityCatalog(catalogProvider()).folders(for: identifiers)
+            catalogAccess.resolve { $0.folders(for: identifiers) }
         }
     }
 
     func suggestedEntities() async throws -> [FocusFolderEntity] {
-        FocusIntentStorage.withRequest {
-            FocusEntityCatalog(catalogProvider()).folders
+        try FocusIntentStorage.withRequest {
+            try catalogAccess.browse { $0.folders }
         }
     }
 
     func entities(matching string: String) async throws -> [FocusFolderEntity] {
-        return FocusIntentStorage.withRequest {
-            let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            let entities = FocusEntityCatalog(catalogProvider()).folders
-            guard !search.isEmpty else {
-                return entities
-            }
-            return entities.filter {
-                $0.title.localizedStandardContains(search)
+        try FocusIntentStorage.withRequest {
+            try catalogAccess.browse { catalog in
+                let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                let entities = catalog.folders
+                guard !search.isEmpty else { return entities }
+                return entities.filter {
+                    $0.title.localizedStandardContains(search)
                     || $0.telegramAccountId.map { String($0).localizedStandardContains(search) } == true
                     || $0.accountTitle.localizedStandardContains(search)
+                }
             }
         }
     }
@@ -163,6 +166,9 @@ struct FocusChatEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
+        guard FocusIntentStorage.isCatalogAccessible else {
+            return DisplayRepresentation(title: "Locked chat")
+        }
         if let telegramChatId {
             return DisplayRepresentation(title: "\(title) (\(String(telegramChatId)))", subtitle: "\(accountTitle)")
         }
@@ -171,41 +177,70 @@ struct FocusChatEntity: AppEntity, Hashable {
 }
 
 struct FocusChatQuery: EntityStringQuery {
-    private let catalogProvider: @Sendable () -> FocusFilterCatalog
+    private let catalogAccess: FocusEntityCatalogAccess
 
     init() {
         self.init(catalogProvider: { FocusIntentStorage.loadCatalog() })
     }
 
-    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog) {
-        self.catalogProvider = catalogProvider
+    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessAllowed: @escaping @Sendable () -> Bool = { FocusIntentStorage.isCatalogAccessible }) {
+        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessAllowed: accessAllowed)
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusChatEntity] {
         FocusIntentStorage.withRequest {
-            FocusEntityCatalog(catalogProvider()).chats(for: identifiers)
+            catalogAccess.resolve { $0.chats(for: identifiers) }
         }
     }
 
     func suggestedEntities() async throws -> [FocusChatEntity] {
-        FocusIntentStorage.withRequest {
-            FocusEntityCatalog(catalogProvider()).chats
+        try FocusIntentStorage.withRequest {
+            try catalogAccess.browse { $0.chats }
         }
     }
 
     func entities(matching string: String) async throws -> [FocusChatEntity] {
-        return FocusIntentStorage.withRequest {
-            let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            let entities = FocusEntityCatalog(catalogProvider()).chats
-            guard !search.isEmpty else {
-                return entities
-            }
-            return entities.filter {
-                $0.title.localizedStandardContains(search)
+        try FocusIntentStorage.withRequest {
+            try catalogAccess.browse { catalog in
+                let search = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                let entities = catalog.chats
+                guard !search.isEmpty else { return entities }
+                return entities.filter {
+                    $0.title.localizedStandardContains(search)
                     || $0.telegramChatId.map { String($0).localizedStandardContains(search) } == true
                     || $0.accountTitle.localizedStandardContains(search)
+                }
             }
         }
+    }
+}
+
+private struct FocusEntityCatalogAccess {
+    let catalogProvider: @Sendable () -> FocusFilterCatalog
+    let accessAllowed: @Sendable () -> Bool
+
+    func resolve<Result>(_ projection: (FocusEntityCatalog) -> Result) -> Result {
+        guard accessAllowed() else {
+            return projection(FocusEntityCatalog(FocusFilterCatalog()))
+        }
+        let catalog = catalogProvider()
+        guard accessAllowed() else {
+            return projection(FocusEntityCatalog(FocusFilterCatalog()))
+        }
+        let result = projection(FocusEntityCatalog(catalog))
+        guard accessAllowed() else {
+            return projection(FocusEntityCatalog(FocusFilterCatalog()))
+        }
+        return result
+    }
+
+    func browse<Result>(_ projection: (FocusEntityCatalog) -> Result) throws -> Result {
+        guard accessAllowed() else { throw FocusStorageError.locked }
+        let catalog = catalogProvider()
+        guard accessAllowed() else { throw FocusStorageError.locked }
+        let result = projection(FocusEntityCatalog(catalog))
+        guard accessAllowed() else { throw FocusStorageError.locked }
+        return result
     }
 }
 
@@ -273,6 +308,13 @@ private struct FocusEntityCatalog {
         guard let account = catalog.accounts.first(where: { $0.id == accountId }) else {
             return String(localized: "Unavailable account")
         }
-        return String(localized: FocusAccountEntity(id: String(account.id), title: account.title, telegramUserId: account.telegramUserId).displayRepresentation.title)
+        return String(localized: focusAccountDisplayTitle(account.title, telegramUserId: account.telegramUserId))
     }
+}
+
+private func focusAccountDisplayTitle(_ title: String, telegramUserId: Int64?) -> LocalizedStringResource {
+    if let telegramUserId {
+        return "\(title) (\(String(telegramUserId)))"
+    }
+    return "\(title)"
 }

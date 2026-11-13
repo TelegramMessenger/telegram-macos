@@ -24,3 +24,7 @@
 "Choose individual private chats, groups, or channels in addition to folders." = "Выберите отдельные личные чаты, группы или каналы в дополнение к папкам.";
 "Filter Telegram" = "Фильтровать Telegram";
 "%@ (%@)" = "%@ (%@)";
+"Locked account" = "Скрытый аккаунт";
+"Locked folder" = "Скрытая папка";
+"Locked chat" = "Скрытый чат";
+"Open and unlock Telegram to choose accounts, folders, and chats. Saved Focus rules keep working." = "Откройте и разблокируйте Telegram, чтобы выбрать аккаунты, папки и чаты. Сохранённые правила фокусирования продолжают работать.";

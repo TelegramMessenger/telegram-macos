@@ -182,6 +182,25 @@ account from the catalogue. The catalogue uses local Postbox views and coalesced
 transactions, without requesting remote chat history. Its additional view memory
 and transaction cost should be measured with large accounts before release.
 
+Browsing or searching accounts, folders and chats requires the corresponding
+Telegram installation to be running and unlocked. Access starts denied before
+decryption and is revoked before asynchronous passcode checks or lock-screen UI.
+Screen locking and logout revoke it too. A live process permit is scoped to the
+build channel, application directory and executable identity; another installed
+copy cannot grant access. Multiple processes for the same installation must all
+be unlocked. Process termination releases its permit, and absent owners, stale
+installations and access failures deny catalogue reads.
+
+Saved selections still resolve to their stable identities while locked, with
+neutral placeholders instead of names or public Telegram IDs. Entity display
+getters recheck access, including for objects created before locking. Configuration
+restoration, notification predicates and intent execution remain available in the
+background; locking does not disable a saved Focus rule or change notification
+fallback behavior. This gate protects the extension's catalogue interface, not
+the shared file against another process with App Group access. It cannot revoke
+text already copied into System Settings' own rendering cache; that behavior
+requires an installed, signed application check with the editor open.
+
 While the filter is unavailable, new notifications carry a neutral criterion that
 also passes the last predicate installed by the extension. Otherwise, notification
 criteria contain the account, full peer identifier and folder tokens.
@@ -216,6 +235,8 @@ python3 tools/tests/focus-chat-list/run.py
 python3 tools/tests/focus-catalog/run.py
 python3 tools/tests/focus-notification-membership/run.py
 python3 tools/tests/focus-intents/run.py
+python3 tools/tests/focus-catalog-access/run.py
+python3 tools/tests/focus-lock-state/run.py
 python3 tools/tests/focus-extension-lifecycle/run.py
 python3 tools/tests/focus-filters/build_extension.py
 python3 tools/tests/focus-filters/build_extension.py --configuration Release
@@ -240,6 +261,25 @@ stale identifiers, enum mappings, configuration and persistence failures. Reposi
 checks inject memory persistence/change delivery, verify callback execution outside the lock,
 and distinguish missing files from permission failures.
 These checks do not replace complete application compilation or a device test.
+
+The catalogue-access check compiles the production permit implementation and
+uses separate owner and reader processes for startup, revocation, crashes,
+concurrent owners, installation replacement and failed-state recovery. The lock
+state check compiles the production state-transition methods with lightweight
+signal fixtures. Both also run with a Linux Swift compiler. On Linux,
+`python3 tools/tests/focus-catalog-queries/run.py` additionally compiles the
+production entity queries with display/protocol fixtures. It does not validate
+App Intents serialization, metadata or system rendering; use the native intent
+runner on macOS. Darwin file-lock semantics and Mach-O identity checks still
+require macOS. Set `SWIFTC` for the access/query runners, or pass `--swiftc` to
+the state runner, when the compiler is outside `PATH`.
+
+On a signed macOS build, check every picker and search route while initially
+locked, after unlocking, and after locking with the editor already open. Confirm
+that existing names and IDs disappear from system-rendered results, saved
+selections survive, and their rules still execute. Repeat with two installed
+copies, simultaneous processes, crash/relaunch and an A-to-B application update.
+Do not treat a passing getter test as proof that System Settings clears its cache.
 
 The extension build check extracts the real `FocusIntents` target and its local
 package dependency into an isolated project. It compiles and links the extension,

@@ -48,11 +48,7 @@ final class FocusExtensionInstallation {
         let bundleURL = bundleURL.standardizedFileURL
         let executableURL = executableURL.standardizedFileURL
         guard bundleURL.pathExtension == "appex", executableURL.path.hasPrefix(bundleURL.path + "/") else { return nil }
-        var applicationURL = bundleURL.deletingLastPathComponent()
-        while applicationURL.pathExtension != "app" && applicationURL.path != "/" {
-            applicationURL.deleteLastPathComponent()
-        }
-        guard applicationURL.pathExtension == "app" else { return nil }
+        guard let applicationURL = FocusApplicationLocation.applicationURL(containing: bundleURL) else { return nil }
         self.bundleURL = bundleURL
         self.executableURL = executableURL
         self.applicationURL = applicationURL
@@ -62,18 +58,15 @@ final class FocusExtensionInstallation {
 
     func snapshot() -> Snapshot? {
         let applicationInfo = applicationURL.appendingPathComponent("Contents/Info.plist")
-        guard let applicationInfoIdentity = FileIdentity(url: applicationInfo), applicationInfoIdentity.size <= 1_048_576,
-              let data = try? Data(contentsOf: applicationInfo),
-              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let executableName = info["CFBundleExecutable"] as? String,
-              !executableName.isEmpty, executableName != ".", executableName != "..", !executableName.contains("/") else { return nil }
+        guard let applicationInfoIdentity = FileIdentity(url: applicationInfo),
+              let applicationExecutable = FocusApplicationLocation.executableURL(in: applicationURL) else { return nil }
         let required = [
             FileIdentity(url: bundleURL, directory: true),
             FileIdentity(url: applicationURL, directory: true),
             FileIdentity(url: executableURL),
             FileIdentity(url: bundleURL.appendingPathComponent("Contents/Info.plist")),
             applicationInfoIdentity,
-            FileIdentity(url: applicationURL.appendingPathComponent("Contents/MacOS/\(executableName)"))
+            FileIdentity(url: applicationExecutable)
         ]
         guard required.allSatisfy({ $0 != nil }), let uuids = Self.executableUUIDs(at: executableURL) else { return nil }
         let optional = [bundleURL, applicationURL].map { FileIdentity(url: $0.appendingPathComponent("Contents/_CodeSignature/CodeResources")) }
@@ -167,7 +160,7 @@ final class FocusExtensionInstallation {
         return offset == commands.count ? result : nil
     }
 
-    private static func loadedExecutableUUID() -> UUID? {
+    static func loadedExecutableUUID() -> UUID? {
         guard let header = _dyld_get_image_header(0) else { return nil }
         let value = header.pointee
         guard value.magic == MH_MAGIC || value.magic == MH_MAGIC_64, value.sizeofcmds <= 1_048_576 else { return nil }

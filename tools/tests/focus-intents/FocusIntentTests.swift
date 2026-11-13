@@ -7,7 +7,12 @@ enum TestFailure: Error {
     case persistence
 }
 
+enum FocusStorageError: Error {
+    case locked
+}
+
 enum FocusIntentStorage {
+    static var isCatalogAccessible = true
     static var repository: (any FocusFilterRepository)?
 
     static func withRequest<Result>(_ work: () throws -> Result) rethrows -> Result {
@@ -77,6 +82,30 @@ private final class TestCatalogSource: @unchecked Sendable {
         defer { lock.unlock() }
         readCount += 1
         return catalog
+    }
+}
+
+private final class TestCatalogPermission: @unchecked Sendable {
+    private let lock = NSLock()
+    private var available = true
+    private var remainingChecks: Int?
+
+    func allow(_ available: Bool, checks: Int? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.available = available
+        remainingChecks = checks
+    }
+
+    func isAllowed() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard available else { return false }
+        if let remainingChecks {
+            guard remainingChecks > 0 else { return false }
+            self.remainingChecks = remainingChecks - 1
+        }
+        return true
     }
 }
 
@@ -300,7 +329,151 @@ private enum FocusIntentTests {
         precondition(cleared.count == 600)
     }
 
+    private static var privateCatalog: FocusFilterCatalog {
+        FocusFilterCatalog(
+            accounts: [.init(id: -71, title: "Private account", telegramUserId: 6_123_456_789)],
+            chats: [.init(id: .init(accountId: -71, peerId: 42), title: "Private chat", telegramChatId: 42)],
+            folders: [.init(id: .init(accountId: -71, folderId: 7), title: "Private folder", peerIds: [42])]
+        )
+    }
+
+    private static func expectLocked<Value>(_ operation: () async throws -> Value) async throws {
+        do {
+            _ = try await operation()
+            preconditionFailure("Browsing while locked must require unlocking Telegram")
+        } catch FocusStorageError.locked {
+        }
+    }
+
+    private static func testDeniedQueriesDoNotReadCatalog() async throws {
+        let source = TestCatalogSource(catalog: privateCatalog)
+        let provider: @Sendable () -> FocusFilterCatalog = { source.loadCatalog() }
+        let accounts = FocusAccountQuery(catalogProvider: provider, accessAllowed: { false })
+        let folders = FocusFolderQuery(catalogProvider: provider, accessAllowed: { false })
+        let chats = FocusChatQuery(catalogProvider: provider, accessAllowed: { false })
+        try await expectLocked { try await accounts.suggestedEntities() }
+        try await expectLocked { try await folders.suggestedEntities() }
+        try await expectLocked { try await chats.suggestedEntities() }
+        for search in ["Private", "6123456789", "42", "", " \n\t "] {
+            try await expectLocked { try await accounts.entities(matching: search) }
+            try await expectLocked { try await folders.entities(matching: search) }
+            try await expectLocked { try await chats.entities(matching: search) }
+        }
+        let restoredAccounts = try await accounts.entities(for: ["-71", "-071", "invalid"])
+        let restoredFolders = try await folders.entities(for: ["-71:7", "-071:007", "invalid"])
+        let restoredChats = try await chats.entities(for: ["-71:42", "-071:042", "invalid"])
+        precondition(restoredAccounts.map(\.id) == ["-71"])
+        precondition(restoredFolders.map(\.id) == ["-71:7"])
+        precondition(restoredChats.map(\.id) == ["-71:42"])
+        precondition(restoredAccounts[0].title == String(localized: "Unavailable account"))
+        precondition(restoredFolders[0].title == String(localized: "Unavailable folder"))
+        precondition(restoredChats[0].title == String(localized: "Unavailable chat"))
+        precondition(restoredAccounts[0].telegramUserId == nil)
+        precondition(restoredFolders[0].telegramAccountId == nil)
+        precondition(restoredChats[0].telegramChatId == nil)
+        precondition(restoredFolders[0].accountTitle == String(localized: "Unavailable account"))
+        precondition(restoredChats[0].accountTitle == String(localized: "Unavailable account"))
+        precondition(source.reads == 0)
+    }
+
+    private static func testRevocationDuringQueries() async throws {
+        for allowedChecks in [1, 2] {
+            let permission = TestCatalogPermission()
+            let source = TestCatalogSource(catalog: privateCatalog)
+            let provider: @Sendable () -> FocusFilterCatalog = { source.loadCatalog() }
+            let access: @Sendable () -> Bool = { permission.isAllowed() }
+            let accounts = FocusAccountQuery(catalogProvider: provider, accessAllowed: access)
+            let folders = FocusFolderQuery(catalogProvider: provider, accessAllowed: access)
+            let chats = FocusChatQuery(catalogProvider: provider, accessAllowed: access)
+            let browse: [() async throws -> Void] = [
+                { _ = try await accounts.suggestedEntities() },
+                { _ = try await folders.suggestedEntities() },
+                { _ = try await chats.suggestedEntities() },
+                { _ = try await accounts.entities(matching: "Private") },
+                { _ = try await folders.entities(matching: "Private") },
+                { _ = try await chats.entities(matching: "Private") },
+                { _ = try await accounts.entities(matching: "") },
+                { _ = try await folders.entities(matching: "") },
+                { _ = try await chats.entities(matching: "") }
+            ]
+            for query in browse {
+                permission.allow(true, checks: allowedChecks)
+                try await expectLocked(query)
+            }
+            permission.allow(true, checks: allowedChecks)
+            let restoredAccounts = try await accounts.entities(for: ["-71"])
+            permission.allow(true, checks: allowedChecks)
+            let restoredFolders = try await folders.entities(for: ["-71:7"])
+            permission.allow(true, checks: allowedChecks)
+            let restoredChats = try await chats.entities(for: ["-71:42"])
+            precondition(restoredAccounts[0].title == String(localized: "Unavailable account"))
+            precondition(restoredFolders[0].title == String(localized: "Unavailable folder"))
+            precondition(restoredChats[0].title == String(localized: "Unavailable chat"))
+            precondition(restoredAccounts[0].telegramUserId == nil)
+            precondition(restoredFolders[0].telegramAccountId == nil)
+            precondition(restoredChats[0].telegramChatId == nil)
+            precondition(source.reads == 12)
+            permission.allow(true)
+            let visible = try await chats.suggestedEntities()
+            precondition(visible[0].title == "Private chat")
+        }
+    }
+
+    private static func testExistingDisplaysAndRulesWhileLocked() async throws {
+        defer {
+            FocusIntentStorage.isCatalogAccessible = true
+            FocusIntentStorage.repository = nil
+        }
+        let catalog = privateCatalog
+        let accountQuery = FocusAccountQuery(catalogProvider: { catalog })
+        let folderQuery = FocusFolderQuery(catalogProvider: { catalog })
+        let chatQuery = FocusChatQuery(catalogProvider: { catalog })
+        let accounts = try await accountQuery.suggestedEntities()
+        let folders = try await folderQuery.suggestedEntities()
+        let chats = try await chatQuery.suggestedEntities()
+        let intent = TelegramFocusFilter()
+        intent.accounts = Set(accounts)
+        intent.folders = Set(folders)
+        intent.chats = Set(chats)
+        intent.mode = .excludeSelected
+        intent.effect = .both
+        let configuration = intent.configuration
+        let predicate = intent.appContext.notificationFilterPredicate
+        FocusIntentStorage.isCatalogAccessible = false
+        precondition(String(localized: accounts[0].displayRepresentation.title) == String(localized: "Locked account"))
+        precondition(String(localized: folders[0].displayRepresentation.title) == String(localized: "Locked folder"))
+        precondition(String(localized: chats[0].displayRepresentation.title) == String(localized: "Locked chat"))
+        precondition(accounts[0].displayRepresentation.subtitle == nil)
+        precondition(folders[0].displayRepresentation.subtitle == nil)
+        precondition(chats[0].displayRepresentation.subtitle == nil)
+        precondition(String(localized: intent.displayRepresentation.subtitle!) == String(localized: "Locked account"))
+        precondition(intent.configuration == configuration)
+        precondition(intent.appContext.notificationFilterPredicate == predicate)
+        let restoredAccounts = try await accountQuery.entities(for: accounts.map(\.id))
+        let restoredFolders = try await folderQuery.entities(for: folders.map(\.id))
+        let restoredChats = try await chatQuery.entities(for: chats.map(\.id))
+        intent.accounts = Set(restoredAccounts)
+        intent.folders = Set(restoredFolders)
+        intent.chats = Set(restoredChats)
+        precondition(intent.configuration == configuration)
+        precondition(intent.appContext.notificationFilterPredicate == predicate)
+        let repository = TestRepository()
+        FocusIntentStorage.repository = repository
+        _ = try await intent.perform()
+        precondition(repository.configurations == [configuration])
+        precondition(Set(accounts + restoredAccounts).count == 1)
+        precondition(Set(folders + restoredFolders).count == 1)
+        precondition(Set(chats + restoredChats).count == 1)
+        FocusIntentStorage.isCatalogAccessible = true
+        let available = try await chatQuery.suggestedEntities()
+        precondition(available[0].title == "Private chat")
+        precondition(String(localized: chats[0].displayRepresentation.title) == "Private chat (42)")
+    }
+
     static func main() async throws {
+        try await testDeniedQueriesDoNotReadCatalog()
+        try await testRevocationDuringQueries()
+        try await testExistingDisplaysAndRulesWhileLocked()
         try await testFolderAccountIdentifiers()
         try await testTelegramChatIdentifiers()
         try await testTelegramAccountIdentifiers()
@@ -379,6 +552,6 @@ private enum FocusIntentTests {
         } catch TestFailure.persistence {
             precondition(repository.configurations == [configuration])
         }
-        print("PASS: Telegram user IDs, stable local identity, legacy catalogs, unique Focus selections, queries, configuration and persistence errors")
+        print("PASS: Telegram user IDs, stable local identity, legacy catalogs, unique Focus selections, queries, configuration, persistence errors and locked-catalog privacy")
     }
 }

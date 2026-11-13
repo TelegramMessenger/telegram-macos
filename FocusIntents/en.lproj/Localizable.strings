@@ -24,3 +24,7 @@
 "Choose individual private chats, groups, or channels in addition to folders." = "Choose individual private chats, groups, or channels in addition to folders.";
 "Filter Telegram" = "Filter Telegram";
 "%@ (%@)" = "%@ (%@)";
+"Locked account" = "Locked account";
+"Locked folder" = "Locked folder";
+"Locked chat" = "Locked chat";
+"Open and unlock Telegram to choose accounts, folders, and chats. Saved Focus rules keep working." = "Open and unlock Telegram to choose accounts, folders, and chats. Saved Focus rules keep working.";

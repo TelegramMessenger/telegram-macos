@@ -281,6 +281,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     private var memoryPressureMonitor: MemoryPressureMonitor?
     private var rustEngineCrash: CrashedRun?
     private var focusFilterCoordinator: FocusFilterCoordinator?
+    private var focusCatalogAccessSession: FocusCatalogAccessSession?
     private let focusFilterWarningDisposable = MetaDisposable()
     private var didShowFocusFilterWarning = false
     private var focusFilterWarningIsVisible = false
@@ -484,7 +485,22 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     
+    private func prepareFocusCatalogAccess() {
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if let session = focusCatalogAccessSession {
+                try session.update(isUnlocked: false)
+            } else {
+                let location = try FocusFilterStorageLocation.resolve(appGroupIdentifier: ApiEnvironment.group, buildSource: Configuration.value(for: .source))
+                focusCatalogAccessSession = try FocusCatalogAccessSession(storageDirectory: location.directory, applicationBundleURL: Bundle.main.bundleURL)
+            }
+        } catch {
+            os_log("Unable to prepare Focus catalog access: %{private}@", log: focusFilterLogger, type: .error, error.localizedDescription)
+        }
+    }
+
     private func launchInterface() {
+        prepareFocusCatalogAccess()
         initializeAccountManagement()
         
 
@@ -1003,7 +1019,14 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
                 })
                 
-                let sharedNotificationManager = SharedNotificationManager(activeAccounts: sharedContext.activeAccounts |> map { ($0.0, $0.1.map { ($0.0, $0.1) }) }, appEncryption: appEncryption, accountManager: accountManager, bindings: notificationsBindings, focusPolicySource: focusPolicySource)
+                let catalogAccessSession = self.focusCatalogAccessSession
+                let sharedNotificationManager = SharedNotificationManager(activeAccounts: sharedContext.activeAccounts |> map { ($0.0, $0.1.map { ($0.0, $0.1) }) }, appEncryption: appEncryption, accountManager: accountManager, bindings: notificationsBindings, focusPolicySource: focusPolicySource, initialUnlockVerified: true, catalogAccessUpdated: { [logger = self.focusFilterLogger] isUnlocked in
+                    do {
+                        try catalogAccessSession?.update(isUnlocked: isUnlocked)
+                    } catch {
+                        os_log("Unable to update Focus catalog access: %{private}@", log: logger, type: .error, error.localizedDescription)
+                    }
+                })
                 let sharedWakeupManager = SharedWakeupManager(sharedContext: sharedContext, inForeground: self.presentAccountStatus.get())
                 let sharedApplicationContext = SharedApplicationContext(sharedContext: sharedContext, notificationManager: sharedNotificationManager, sharedWakeupManager: sharedWakeupManager)
                 
@@ -1720,6 +1743,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        try? focusCatalogAccessSession?.update(isUnlocked: false)
         self.terminated = true
         disarmCrashMarker()
         if let containerUrl = self.containerUrl {
