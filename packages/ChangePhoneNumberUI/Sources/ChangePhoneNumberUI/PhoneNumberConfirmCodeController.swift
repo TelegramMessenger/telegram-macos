@@ -22,6 +22,9 @@ public final class PhoneNumberCodeConfirmView : View {
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        input.accessibilityElementLabel = { index, count in
+            strings().voiceOverLoginCodeDigit(index, count)
+        }
         addSubview(input)
         addSubview(desc)
         addSubview(next)

@@ -323,6 +323,22 @@ final class AccessibilityBaseTests: XCTestCase {
         XCTAssertEqual(chosen, ["Work"])
         XCTAssertEqual(AccessibilityAudit.audit(segment), [])
     }
+    func testCodeEntryCellsReadAsLabeledTextFields() {
+        let control = CodeEntryControl(frame: NSMakeRect(0, 0, 200, 40))
+        control.accessibilityElementLabel = { index, count in
+            return "Digit \(index) of \(count)"
+        }
+        control.setFrameSize(control.update(count: 4))
+        host(control)
+        control.layoutSubtreeIfNeeded()
+        let cells = AccessibilityAudit.elements(control).filter { $0.accessibilityRole() == .textField }
+        XCTAssertEqual(cells.count, 4)
+        XCTAssertEqual(cells.compactMap { $0.accessibilityLabel() }, ["Digit 1 of 4", "Digit 2 of 4", "Digit 3 of 4", "Digit 4 of 4"])
+        XCTAssertNil(cells[0].accessibilityValue())
+        control.insertAll([1, 2, 3, 4])
+        XCTAssertEqual(control.value, "1234")
+        XCTAssertEqual(cells.map { $0.accessibilityValue() as? String }, ["1", "2", "3", "4"])
+    }
     func testDynamicCounterReadsItsWholeText() {
         let counter = DynamicCounterTextView(frame: NSMakeRect(0, 0, 200, 20))
         host(counter)
