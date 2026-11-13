@@ -828,7 +828,7 @@ private func updatedAddressName(state: State, peer: Peer) -> String? {
         } else {
             return nil
         }
-    } else if let _ = peer as? TelegramGroup {
+    } else if let _ = peer as? TelegramGroup, state.selectedType == .publicChannel {
         let currentAddressName = state.editingPublicLinkText ?? ""
         if !currentAddressName.isEmpty {
             return currentAddressName

@@ -1,0 +1,482 @@
+import Foundation
+
+typealias PeerId = Int64
+
+enum CurrentChannelType: Equatable {
+    case publicChannel
+    case privateChannel
+}
+
+enum CurrentChannelJoinToSend: Equatable {
+    case everyone
+    case members
+}
+
+enum AddressNameFormatError: Equatable {
+    case startsWithUnderscore
+    case endsWithUnderscore
+    case startsWithDigit
+    case tooShort
+    case invalidCharacters
+}
+
+enum AddressNameAvailability: Equatable {
+    case available
+    case invalid
+    case taken
+    case purchaseAvailable
+}
+
+enum AddressNameValidationStatus: Equatable {
+    case checking
+    case invalidFormat(AddressNameFormatError)
+    case availability(AddressNameAvailability)
+}
+
+enum AddressNameDomain {
+    case account
+    case peer(PeerId)
+}
+
+protocol Peer: AnyObject {
+    var id: PeerId { get }
+    var addressName: String? { get }
+    var isChannel: Bool { get }
+    var isGroup: Bool { get }
+}
+
+final class TelegramGroup: Peer {
+    let id: PeerId
+    init(id: PeerId) {
+        self.id = id
+    }
+    var addressName: String? {
+        return nil
+    }
+    var isChannel: Bool {
+        return false
+    }
+    var isGroup: Bool {
+        return true
+    }
+}
+
+final class TelegramChannel: Peer {
+    let id: PeerId
+    let broadcast: Bool
+    let username: String?
+    init(id: PeerId, broadcast: Bool, username: String?) {
+        self.id = id
+        self.broadcast = broadcast
+        self.username = username
+    }
+    var addressName: String? {
+        return self.username
+    }
+    var isChannel: Bool {
+        return self.broadcast
+    }
+    var isGroup: Bool {
+        return false
+    }
+}
+
+struct PeerEquatable: Equatable {
+    let peer: Peer
+    init(_ peer: Peer) {
+        self.peer = peer
+    }
+    static func ==(lhs: PeerEquatable, rhs: PeerEquatable) -> Bool {
+        return lhs.peer === rhs.peer
+    }
+}
+
+struct State: Equatable {
+    var selectedType: CurrentChannelType?
+    var editingPublicLinkText: String?
+    var addressNameValidationStatus: AddressNameValidationStatus?
+    var updatingAddressName: Bool = false
+    var forwardingEnabled: Bool?
+    var joinToSend: CurrentChannelJoinToSend?
+    var approveMembers: Bool?
+    var peer: PeerEquatable?
+    var publicChannelsToRevoke: [PeerEquatable]?
+}
+
+enum ConvertGroupToSupergroupError {
+    case tooManyChannels
+    case generic
+}
+
+enum UpdateAddressNameError {
+    case generic
+}
+
+enum ToggleError {
+    case generic
+}
+
+enum AlertResult {
+    case basic
+    case thrid
+}
+
+enum InactiveChannelsSource {
+    case upgrade
+}
+
+struct Strings {
+    func channelVisibilityConfirmMakePrivateChannel(_ address: String) -> String {
+        return "make private \(address)"
+    }
+    func channelVisibilityConfirmMakePrivateGroup(_ address: String) -> String {
+        return "make private \(address)"
+    }
+    var unknownError: String {
+        return "An error occurred."
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+final class Window {}
+
+var requests: [String] = []
+var alerts: [String] = []
+var upgradedId: PeerId = 0
+
+final class PeersEngine {
+    func validateAddressNameInteractive(domain: AddressNameDomain, name: String) -> Signal<AddressNameValidationStatus, NoError> {
+        if name.count < 5 {
+            return .single(.invalidFormat(.tooShort))
+        }
+        let availability: AddressNameAvailability = name.hasPrefix("taken") ? .taken : .available
+        return .single(.checking) |> then(.single(.availability(availability)))
+    }
+    func convertGroupToSupergroup(peerId: PeerId) -> Signal<PeerId, ConvertGroupToSupergroupError> {
+        requests.append("migrate \(peerId)")
+        upgradedId = 100 + peerId
+        return .single(upgradedId)
+    }
+    func updateAddressName(domain: AddressNameDomain, name: String?) -> Signal<Void, UpdateAddressNameError> {
+        if case let .peer(peerId) = domain {
+            requests.append("username \(peerId) \(name ?? "none")")
+        }
+        return .single(Void())
+    }
+    func toggleMessageCopyProtection(peerId: PeerId, enabled: Bool) -> Signal<Void, NoError> {
+        requests.append("protect \(peerId) \(enabled)")
+        return .complete()
+    }
+    func toggleChannelJoinToSend(peerId: PeerId, enabled: Bool) -> Signal<Never, ToggleError> {
+        requests.append("join to send \(peerId) \(enabled)")
+        return .complete()
+    }
+    func toggleChannelJoinRequest(peerId: PeerId, enabled: Bool) -> Signal<Never, ToggleError> {
+        requests.append("join request \(peerId) \(enabled)")
+        return .complete()
+    }
+}
+
+final class Engine {
+    let peers = PeersEngine()
+}
+
+final class Context {
+    let engine = Engine()
+    let window = Window()
+}
+
+let context = Context()
+
+func verifyAlertSignal(for window: Window, information: String) -> Signal<AlertResult?, NoError> {
+    alerts.append(information)
+    return .single(.basic)
+}
+
+func showModalProgress<T, E>(signal: Signal<T, E>, for window: Window) -> Signal<T, E> {
+    return signal
+}
+
+func alert(for window: Window, info: String) {
+    alerts.append(info)
+}
+
+final class FeatureNavigationHooks {
+    static let shared = FeatureNavigationHooks()
+    func showInactiveChannels(_ context: Context, _ source: InactiveChannelsSource) {
+        alerts.append("inactive channels")
+    }
+}
+
+final class CompletionRecorder {
+    var values: [PeerId?] = []
+    func set(_ signal: Signal<PeerId?, NoError>) {
+        _ = signal.start(next: { [weak self] value in
+            self?.values.append(value)
+        })
+    }
+}
+
+__EFFECTIVE__
+
+__UPDATED__
+
+func shownForChannel(state: State, peer: TelegramChannel) -> (type: CurrentChannelType, link: String) {
+    __SHOWN_CHANNEL__
+    return (selectedType, currentAddressName)
+}
+
+func shownForGroup(state: State, peer: TelegramGroup) -> (type: CurrentChannelType, link: String) {
+    __SHOWN_GROUP__
+    return (selectedType, currentAddressName)
+}
+
+func shown(_ state: State) -> (type: CurrentChannelType, link: String) {
+    if let peer = state.peer?.peer as? TelegramChannel {
+        return shownForChannel(state: state, peer: peer)
+    }
+    return shownForGroup(state: state, peer: state.peer!.peer as! TelegramGroup)
+}
+
+func isDoneEnabled(_ state: State) -> Bool {
+    __DONE_ENABLED__
+    return doneEnabled
+}
+
+final class Screen {
+    var state = State()
+    let peerId: PeerId
+    let checkAddressNameDisposable = MetaDisposable()
+    let updateAddressNameDisposable = MetaDisposable()
+    let onComplete = CompletionRecorder()
+    var updateCurrentType: ((CurrentChannelType) -> Void)!
+    var updatePublicLinkText: ((String?, String) -> Void)!
+
+    init(peer: Peer) {
+        self.peerId = peer.id
+        self.state.peer = PeerEquatable(peer)
+        self.state.publicChannelsToRevoke = []
+        let peerId = self.peerId
+        let updateState: ((State) -> State) -> Void = { [weak self] f in
+            if let strongSelf = self {
+                strongSelf.state = f(strongSelf.state)
+            }
+        }
+        self.updateCurrentType = __UPDATE_TYPE__
+        self.updatePublicLinkText = __UPDATE_LINK__
+        _ = peerId
+        _ = updateState
+    }
+
+    func updateState(_ f: @escaping (State) -> State) {
+        self.state = f(self.state)
+    }
+
+    func done() {
+        let state = self.state
+        let peerId = self.peerId
+        let updateState: ((State) -> State) -> Void = { [weak self] f in
+            if let strongSelf = self {
+                strongSelf.state = f(strongSelf.state)
+            }
+        }
+        let handler: () -> Void = { [weak self] in
+            __DONE__
+        }
+        handler()
+        _ = peerId
+        _ = updateState
+    }
+}
+
+var passed = 0
+var failures = 0
+var failedNames: [String] = []
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        if failedNames.count < 40 {
+            failedNames.append(name)
+        }
+    }
+}
+
+enum Action: CustomStringConvertible {
+    case publicType
+    case privateType
+    case type(String)
+
+    var description: String {
+        switch self {
+        case .publicType:
+            return "Public"
+        case .privateType:
+            return "Private"
+        case let .type(text):
+            return "type \(text.isEmpty ? "nothing" : text)"
+        }
+    }
+}
+
+struct Kind {
+    let name: String
+    let make: () -> Peer
+}
+
+let kinds = [
+    Kind(name: "basic group", make: { TelegramGroup(id: 1) }),
+    Kind(name: "private supergroup", make: { TelegramChannel(id: 2, broadcast: false, username: nil) }),
+    Kind(name: "public supergroup", make: { TelegramChannel(id: 3, broadcast: false, username: "oldlink") }),
+    Kind(name: "private channel", make: { TelegramChannel(id: 4, broadcast: true, username: nil) }),
+    Kind(name: "public channel", make: { TelegramChannel(id: 5, broadcast: true, username: "oldlink") })
+]
+
+let alphabet: [Action] = [.publicType, .privateType, .type("freelink"), .type("otherlink"), .type("takenlink"), .type(""), .type("ab"), .type("oldlink")]
+
+func sequences(_ length: Int) -> [[Action]] {
+    if length == 0 {
+        return [[]]
+    }
+    return sequences(length - 1).flatMap { prefix in alphabet.map { prefix + [$0] } }
+}
+
+func expected(peer: Peer, shownType: CurrentChannelType, shownLink: String) -> [String] {
+    switch shownType {
+    case .privateChannel:
+        if peer.addressName != nil {
+            return ["username \(peer.id) none"]
+        }
+        return []
+    case .publicChannel:
+        if shownLink.isEmpty {
+            return peer.addressName != nil ? ["username \(peer.id) none"] : []
+        }
+        if shownLink == peer.addressName {
+            return []
+        }
+        if peer.isGroup {
+            return ["migrate \(peer.id)", "username \(100 + peer.id) \(shownLink)"]
+        }
+        return ["username \(peer.id) \(shownLink)"]
+    }
+}
+
+func reopened(after peer: Peer, requests: [String]) -> Peer {
+    var current = peer
+    for request in requests {
+        let parts = request.split(separator: " ").map(String.init)
+        if parts[0] == "migrate" {
+            current = TelegramChannel(id: 100 + peer.id, broadcast: false, username: nil)
+        } else if parts[0] == "username", let channel = current as? TelegramChannel, String(channel.id) == parts[1] {
+            current = TelegramChannel(id: channel.id, broadcast: channel.broadcast, username: parts[2] == "none" ? nil : parts[2])
+        }
+    }
+    return current
+}
+
+var flows = 0
+var flowsWithDone = 0
+
+for kind in kinds {
+    for length in 0 ... 4 {
+        for actions in sequences(length) {
+            let peer = kind.make()
+            let screen = Screen(peer: peer)
+            var possible = true
+            for action in actions {
+                switch action {
+                case .publicType:
+                    screen.updateCurrentType(.publicChannel)
+                    check("\(kind.name): \(actions): a press on Public shows Public", shown(screen.state).type == .publicChannel)
+                case .privateType:
+                    screen.updateCurrentType(.privateChannel)
+                    check("\(kind.name): \(actions): a press on Private shows Private", shown(screen.state).type == .privateChannel)
+                case let .type(text):
+                    if shown(screen.state).type != .publicChannel {
+                        possible = false
+                    } else {
+                        screen.updatePublicLinkText(peer.addressName, text)
+                    }
+                }
+                if !possible {
+                    break
+                }
+            }
+            if !possible {
+                continue
+            }
+            flows += 1
+            let name = "\(kind.name): \(actions.isEmpty ? "nothing" : actions.map { $0.description }.joined(separator: ", ")), Done"
+            let page = shown(screen.state)
+            if page.type == .privateChannel {
+                check("\(name): Done is enabled with Private shown", isDoneEnabled(screen.state))
+            }
+            guard isDoneEnabled(screen.state) else {
+                continue
+            }
+            flowsWithDone += 1
+            requests = []
+            alerts = []
+            screen.done()
+            let sent = requests
+            let wanted = expected(peer: peer, shownType: page.type, shownLink: page.link)
+            check("\(name): the page shows \(page.type == .publicChannel ? "Public" : "Private")\(page.type == .privateChannel || page.link.isEmpty ? "" : " with \(page.link)"), Done should send \(wanted) and sent \(sent)", sent == wanted)
+            if page.type == .privateChannel {
+                check("\(name): Private shown, Done makes no supergroup", !sent.contains(where: { $0.hasPrefix("migrate") }))
+                check("\(name): Private shown, Done sets no link", !sent.contains(where: { $0.hasPrefix("username") && !$0.hasSuffix(" none") }))
+            }
+            check("\(name): Done closes the page once", screen.onComplete.values.count == 1)
+            if let result = screen.onComplete.values.first {
+                let migrated = sent.contains(where: { $0.hasPrefix("migrate") })
+                check("\(name): the page reports \(migrated ? "the new supergroup" : "no new chat")", result == (migrated ? 100 + peer.id : nil))
+            }
+            let after = reopened(after: peer, requests: sent)
+            let again = shown(Screen(peer: after).state)
+            let confirmedPrivate = page.type == .publicChannel && page.link.isEmpty && peer.addressName != nil && !alerts.isEmpty
+            let chosen: CurrentChannelType = confirmedPrivate ? .privateChannel : page.type
+            check("\(name): the page opened again shows what was chosen", again.type == chosen && (chosen == .privateChannel || again.link == page.link))
+            if peer.isGroup && page.type == .privateChannel {
+                check("\(name): the basic group stays a basic group", after is TelegramGroup)
+            }
+        }
+    }
+}
+
+let types: [CurrentChannelType?] = [nil, .publicChannel, .privateChannel]
+let texts: [String?] = [nil, "", "freelink", "oldlink"]
+for kind in kinds {
+    for selectedType in types {
+        for text in texts {
+            let peer = kind.make()
+            var state = Screen(peer: peer).state
+            state.selectedType = selectedType
+            state.editingPublicLinkText = text
+            let page = shown(state)
+            let wanted: String?
+            switch page.type {
+            case .privateChannel:
+                wanted = peer.addressName != nil ? "" : nil
+            case .publicChannel:
+                if page.link.isEmpty {
+                    wanted = peer.addressName != nil ? "" : nil
+                } else {
+                    wanted = page.link == peer.addressName ? nil : page.link
+                }
+            }
+            let result = updatedAddressName(state: state, peer: peer)
+            check("\(kind.name), selected \(selectedType.map { "\($0)" } ?? "nothing"), text \(text ?? "none"): the page shows \(page.type), Done should save \(wanted ?? "no change") and saves \(result ?? "no change")", result == wanted)
+        }
+    }
+}
+
+for name in failedNames {
+    print("FAILED: \(name)")
+}
+print("\(flows) flows, \(flowsWithDone) with Done; \(passed) passed, \(failures) failed")
+exit(failures == 0 && flowsWithDone > 0 ? 0 : 1)
