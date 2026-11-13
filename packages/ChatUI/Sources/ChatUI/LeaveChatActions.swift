@@ -390,6 +390,13 @@ private func showStandardLeaveDialog(context: any AccountContextProtocol, peer: 
                     return true
                 }
 
+                if let threadId = threadId, let controller = context.bindings.rootNavigation().controller as? ChatControllerKind, controller.chatInteraction.chatLocation.peerId == peerId, controller.chatInteraction.presentation.monoforumState != nil {
+                    if controller.chatInteraction.chatLocation.threadId == threadId {
+                        controller.chatInteraction.updateChatLocationThread(nil)
+                    }
+                    return true
+                }
+
                 switch location {
                 case let .peer(id):
                     if id == peerId {
