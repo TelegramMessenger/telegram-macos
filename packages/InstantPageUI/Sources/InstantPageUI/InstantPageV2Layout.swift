@@ -1974,9 +1974,15 @@ private func layoutListV2(
         }
     }
 
-    let rtl = listItems.contains(where: { item in
-        if case let .text(text, _, _) = item { return instantPageRichTextContainsRTL(text) }
-        return false
+    let rtl = context.rtl || listItems.contains(where: { item in
+        switch item {
+        case let .text(text, _, _):
+            return instantPageRichTextContainsRTL(text)
+        case let .blocks(blocks, _, _):
+            return instantPageRichTextContainsRTL(instantPageRichTextFromBlocks(blocks))
+        case .unknown:
+            return false
+        }
     })
     let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
     let markerColumnWidth = markerWidth + markerSkip
@@ -1991,6 +1997,15 @@ private func layoutListV2(
         border: context.theme.checklistBorderColor
     )
     let textBoundingWidth = boundingWidth - horizontalInset * 2.0 - markerColumnWidth
+    // Text items are fitted to their widest line and start at the column's left edge, so in RTL
+    // each block of an item is moved against the right edge, next to its marker.
+    let textColumnMaxX = textOriginX + textBoundingWidth
+    func movedToColumnEnd(_ laidOut: [InstantPageV2LaidOutItem]) -> [InstantPageV2LaidOutItem] {
+        guard rtl, let maxX = laidOut.map({ $0.frame.maxX }).max(), maxX < textColumnMaxX else {
+            return laidOut
+        }
+        return laidOut.map { $0.offsetBy(CGPoint(x: textColumnMaxX - maxX, y: 0.0)) }
+    }
 
     for (i, listItem) in listItems.enumerated() {
         if i != 0 {
@@ -2070,7 +2085,7 @@ private func layoutListV2(
                     spacing = spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth)
                 }
                 let offsetY = subContentHeight + spacing
-                let translated = subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) }
+                let translated = movedToColumnEnd(subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) })
 
                 // Only the first block can place the marker, and only when it opens with text: in an item
                 // that starts with a photo (even one with a caption), the marker stays at the item's top
@@ -2173,7 +2188,7 @@ private func layoutListV2(
             color: context.theme.textCategories.paragraph.color
         )))
         if let textItem = inlineTextItem {
-            items.append(.text(InstantPageV2TextItem(frame: textItem.frame, textItem: textItem)))
+            items.append(contentsOf: movedToColumnEnd([.text(InstantPageV2TextItem(frame: textItem.frame, textItem: textItem))]))
         }
         items.append(contentsOf: blockItems)
         contentHeight += itemContentHeight
