@@ -22,6 +22,12 @@ let package = Package(
             name: "ObjcUtils",
             dependencies: [],
             path: ".",
+            exclude: ["Tests"],
             publicHeadersPath: "Sources/ObjcUtils"),
+        .testTarget(
+            name: "ObjcUtilsTests",
+            dependencies: ["ObjcUtils"],
+            path: "Tests/ObjcUtilsTests",
+            resources: [.copy("Fixtures")]),
     ]
 )
