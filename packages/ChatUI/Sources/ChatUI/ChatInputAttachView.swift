@@ -172,6 +172,20 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
         button.additionalGlassEffectView = ghost
     }
 
+    static func canAttachPoll(peer: Peer, mainPeer: Peer?, accountPeerId: PeerId) -> Bool {
+        var canAttachPoll = peer.id == accountPeerId
+        if (peer.isGroup || peer.isSupergroup) && !peer.isMonoForum {
+            canAttachPoll = true
+        }
+        if mainPeer?.isBot == true {
+            canAttachPoll = true
+        }
+        if let channel = peer as? TelegramChannel, channel.hasPermission(.sendText) {
+            canAttachPoll = true
+        }
+        return canAttachPoll && permissionText(from: peer, for: .banSendPolls) == nil
+    }
+
     private func setupContextMenu() {
         let chatInteraction = self.chatInteraction
         let context = chatInteraction.interactionContext
@@ -362,7 +376,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                 }
 
 
-                var canAttachPoll: Bool = false
+                let canAttachPoll = Self.canAttachPoll(peer: peer, mainPeer: chatInteraction.presentation.mainPeer, accountPeerId: context.peerId)
                 var canAttachLocation: Bool = true
                 var canAttachTodo: Bool = true
 
@@ -370,22 +384,8 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                     canAttachTodo = false
                 }
 
-                if let peer = chatInteraction.presentation.peer, peer.isGroup || peer.isSupergroup, !peer.isMonoForum {
-                    canAttachPoll = true
-                }
-                if let peer = chatInteraction.presentation.mainPeer, peer.isBot {
-                    canAttachPoll = true
-                }
-
-                if let peer = chatInteraction.presentation.peer as? TelegramChannel {
-                    if peer.hasPermission(.sendText) {
-                        canAttachPoll = true
-                    } else {
-                        canAttachLocation = false
-                    }
-                }
-                if canAttachPoll && permissionText(from: peer, for: .banSendPolls) != nil {
-                    canAttachPoll = false
+                if let channel = peer as? TelegramChannel, !channel.hasPermission(.sendText) {
+                    canAttachLocation = false
                 }
 
                 if canAttachPoll {
