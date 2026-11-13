@@ -80,7 +80,14 @@ public class MGalleryPhotoItem: MGalleryItem {
             self.media = document.image
             self.secureIdAccessContext = document.context
         case .media(let media, _, _):
-            self.media = media as! TelegramMediaImage
+            if let media = media as? TelegramMediaFile {
+                let represenatation = TelegramMediaImageRepresentation(dimensions: media.dimensions ?? PixelDimensions(0, 0), resource: media.resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false)
+                var representations = media.previewRepresentations
+                representations.append(represenatation)
+                self.media = TelegramMediaImage(imageId: MediaId(namespace: 0, id: 0), representations: representations, immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])
+            } else {
+                self.media = media as! TelegramMediaImage
+            }
             secureIdAccessContext = nil
         default:
             fatalError("photo item not supported entry type")
