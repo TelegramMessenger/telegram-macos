@@ -1726,6 +1726,9 @@ public final class AnimatedEmojiesView : Control {
             case .Focus:
                 window._canBecomeKey = true
                 window.makeKey()
+                if window.isMainWindow, let chatWindow = context?.window, chatWindow !== window, chatWindow.isVisible, chatWindow.canBecomeMain {
+                    chatWindow.makeMain()
+                }
             case .None:
                 window._canBecomeKey = false
                 context?.window.makeKey()
