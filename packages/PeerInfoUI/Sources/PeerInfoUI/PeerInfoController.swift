@@ -1010,6 +1010,7 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     public override func viewWillAppear(_ animated: Bool) {
         _userArguments?.setEmojiPermissionRequestsActive(true)
         super.viewWillAppear(animated)
+        genericView.navigationBarView.usesWindowEdgeInsets = navigationController?.usesWindowEdgeInsets ?? false
         PeerInfoNavigationHooks.shared.prefetchQrStudio(context, peer)
         if initialState == .Edit {
             update(with: initialState)

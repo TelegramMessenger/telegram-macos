@@ -796,12 +796,35 @@ public final class AccountControllerView : Control {
         needsLayout = true
     }
     
+    private var windowControlsCenterY: CGFloat? {
+        guard System.edgeToEdgeSidebar, let window = window, !window.styleMask.contains(.fullScreen), let button = window.standardWindowButton(.closeButton), !button.isHidden, let buttonSuperview = button.superview else {
+            return nil
+        }
+        let rect = statusContainer.convert(buttonSuperview.convert(button.frame, to: nil), from: nil)
+        guard rect.maxX > 0, rect.minX < statusContainer.bounds.width else {
+            return nil
+        }
+        let centerY = statusContainer.isFlipped ? rect.midY : statusContainer.bounds.height - rect.midY
+        return centerY > 0 && centerY < statusContainer.bounds.height ? centerY : nil
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if System.edgeToEdgeSidebar {
+            needsLayout = true
+        }
+    }
+
     public override func layout() {
         super.layout()
         statusContainer.frame = NSMakeRect(0, 0, frame.width, 40)
         edit.sizeToFit(NSMakeSize(10, 14))
         edit.setFrameOrigin(NSMakePoint(statusContainer.frame.width - edit.frame.width - 10, statusContainer.frame.height - edit.frame.height))
         textView.centerX(y: 14)
+        if let centerY = windowControlsCenterY {
+            textView.setFrameOrigin(NSMakePoint(textView.frame.minX, floorToScreenPixels(backingScaleFactor, centerY - textView.frame.height / 2)))
+            edit.setFrameOrigin(NSMakePoint(edit.frame.minX, floorToScreenPixels(backingScaleFactor, centerY - edit.frame.height / 2)))
+        }
 
         if hasSidebar {
             searchView.frame = NSMakeRect(0, statusContainer.frame.maxY, frame.width, 50)

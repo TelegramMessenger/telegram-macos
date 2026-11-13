@@ -243,10 +243,10 @@ private final class TitlePillView: Control {
 final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
     static let bubbleHeight: CGFloat = 40
-    static let topInset: CGFloat = 12
+    static let topInset: CGFloat = ChatInputView.inputEdgeInset
     static let bottomInset: CGFloat = 10
-    static let sideInset: CGFloat = 12
-    static let interBubbleSpacing: CGFloat = 10
+    static let sideInset: CGFloat = ChatInputView.inputEdgeInset
+    static let interBubbleSpacing: CGFloat = 8
 
     private static let menuModeTransition: ContainedViewLayoutTransition = .animated(duration: ChatInputSendButton.fieldMotionDuration, curve: .easeOut)
 

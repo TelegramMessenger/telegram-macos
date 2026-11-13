@@ -467,6 +467,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         
         
         rightController = MajorNavigationController(ChatController.self, emptyController, context.window);
+        rightController.usesWindowEdgeInsets = true
         rightController.set(header: NavigationHeader(52, initializer: { header, contextObject, view -> (NavigationHeaderView, CGFloat) in
             let newView = view ?? InlineAudioPlayerView(header)
             newView.update(with: contextObject)
@@ -1267,9 +1268,10 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         switch state {
         case .single:
             let hasLeftSidebar = !(folders?.isEmpty ?? true) && (folders?.sidebar ?? false)
-            leftController.insets = hasLeftSidebar
+            leftController.insets = hasLeftSidebar && !System.edgeToEdgeSidebar
                 ? NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
                 : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+            leftController.genericView.showsTrailingSeparator = false
 
             if rightController.stackCount == 1, previousState != .none {
                 leftController.viewWillAppear(false)
@@ -1282,7 +1284,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
             }
         case .dual:
             rightController.empty = emptyController
-            leftController.insets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+            leftController.insets = MainController_View.splitInsets
+            leftController.genericView.showsTrailingSeparator = true
             let fixedCount = self.view.splitView.fixedControllerCount
             self.view.splitView.insertController(controller: leftController, proportion: SplitProportion(min: w, max: w), at: fixedCount)
             self.view.splitView.insertController(controller: rightController, proportion: rightProp, at: fixedCount + 1)
@@ -1292,7 +1295,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 self.view.splitView.mustMinimisize = true
             }
             rightController.empty = emptyController
-            leftController.insets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+            leftController.insets = MainController_View.splitInsets
+            leftController.genericView.showsTrailingSeparator = true
             let fixedCount = self.view.splitView.fixedControllerCount
             self.view.splitView.insertController(controller: leftController, proportion: SplitProportion(min: 90, max: 90), at: fixedCount)
             self.view.splitView.insertController(controller: rightController, proportion: rightProp, at: fixedCount + 1)
@@ -1526,9 +1530,6 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
             pendingApplyWindowChrome = false
             applyWindowChrome(forState: self.view.splitView.state)
         }
-        if let mode = appliedChromeMode {
-            window.applyCornerRadius(for: mode)
-        }
     }
 
     private func applyWindowChrome(forState state: SplitViewState) {
@@ -1544,21 +1545,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         appliedChromeMode = mode
         leftController.genericView.compactCorners = (mode == .compact)
         window.applyChrome(mode)
-        window.applyCornerRadius(for: mode)
         window.clampToScreen()
     }
 
-}
-
-extension Window {
-    func applyCornerRadius(for mode: Window.ChromeMode) {
-        if #available(macOS 27.0, *) {
-            let selector = Selector(("_setCornerRadius:"))
-            if self.responds(to: selector) {
-                typealias SetCornerRadius = @convention(c) (AnyObject, Selector, Double) -> Void
-                let radius: Double = mode == .standard && !isFullScreen ? 28 : 0
-                unsafeBitCast(self.method(for: selector), to: SetCornerRadius.self)(self, selector, radius)
-            }
-        }
-    }
 }
