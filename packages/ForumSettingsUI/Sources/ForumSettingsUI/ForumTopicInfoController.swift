@@ -21,11 +21,13 @@ private final class Arguments {
     let purpose: ForumTopicInfoPurpose
     let updateName:(String)->Void
     let getView:()->NSView
-    init(context: any AccountContextProtocol, purpose: ForumTopicInfoPurpose, updateName:@escaping(String)->Void, getView:@escaping()->NSView) {
+    let toggleHidden:()->Void
+    init(context: any AccountContextProtocol, purpose: ForumTopicInfoPurpose, updateName:@escaping(String)->Void, getView:@escaping()->NSView, toggleHidden:@escaping()->Void) {
         self.context = context
         self.purpose = purpose
         self.updateName = updateName
         self.getView = getView
+        self.toggleHidden = toggleHidden
     }
 }
 
@@ -33,13 +35,14 @@ private struct State : Equatable {
     
     var icon: ForumNameRowItem.Icon?
     var name: String
+    var isHidden: Bool
 }
 
 private let _id_name = InputDataIdentifier("_id_name")
 private let _id_emojies = InputDataIdentifier("_id_emojies")
 private let _id_hide_general = InputDataIdentifier("_id_hide_general")
 
-private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
+private func entries(_ state: State, arguments: Arguments, canHideGeneral: Bool) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
     
     var sectionId:Int32 = 0
@@ -67,13 +70,10 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     index += 1
     
     let isGeneral: Bool
-    let isHidden: Bool
     switch arguments.purpose {
     case .create:
         isGeneral = false
-        isHidden = false
-    case let .edit(data, threadId):
-        isHidden = data.isHidden
+    case let .edit(_, threadId):
         isGeneral = threadId == 1
     }
     
@@ -83,7 +83,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         }))
         index += 1
     } else {
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_hide_general, data: .init(name: strings().forumTopicEditGeneralShow, color: theme.colors.text, type: .switchable(!isHidden), viewType: .singleItem)))
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_hide_general, data: .init(name: strings().forumTopicEditGeneralShow, color: theme.colors.text, type: .switchable(!state.isHidden), viewType: .singleItem, enabled: canHideGeneral, action: arguments.toggleHidden, autoswitch: false)))
         index += 1
         
         entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().forumTopicEditGeneralInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
@@ -114,7 +114,7 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
     switch purpose {
     case .create:
         let file = ForumUI.makeIconFile(title: "A")
-        initialState = State(icon: .init(file: file, fileId: file.fileId.id, fromRect: nil), name: "")
+        initialState = State(icon: .init(file: file, fileId: file.fileId.id, fromRect: nil), name: "", isHidden: false)
         title = strings().forumTopicTitleCreate
     case let .edit(data, threadId):
         let icon: ForumNameRowItem.Icon?
@@ -124,7 +124,7 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
             let file = ForumUI.makeIconFile(title: data.info.title, iconColor: data.info.iconColor, isGeneral: threadId == 1)
             icon = .init(file: file, fileId: file.fileId.id, fromRect: nil)
         }
-        initialState = State(icon: icon, name: data.info.title)
+        initialState = State(icon: icon, name: data.info.title, isHidden: data.isHidden)
         title = strings().forumTopicTitleEdit
     }
     
@@ -196,20 +196,48 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
         }
     }, getView: {
         return emojis.genericView
+    }, toggleHidden: {
+        updateState { current in
+            var current = current
+            current.isHidden = !current.isHidden
+            return current
+        }
     })
     
-    let signal = combineLatest(statePromise.get(), emojis.ready.get() |> filter { $0 }) |> deliverOnPrepareQueue |> map { state, _ in
-        return InputDataSignalValue(entries: entries(state, arguments: arguments))
+    let canHideGeneral: Signal<Bool, NoError> = context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId)) |> map { peer in
+        if case let .channel(channel) = peer {
+            return channel.hasPermission(.manageTopics)
+        } else {
+            return false
+        }
     }
     
-    let CheckEdited:()->Bool = {
+    let signal = combineLatest(statePromise.get(), emojis.ready.get() |> filter { $0 }, canHideGeneral) |> deliverOnPrepareQueue |> map { state, _, canHideGeneral in
+        return InputDataSignalValue(entries: entries(state, arguments: arguments, canHideGeneral: canHideGeneral))
+    }
+    
+    let infoEdited:()->Bool = {
         let state = stateValue.with { $0}
         switch purpose {
         case .create:
             return true
-        case let .edit(data, _):
-            return data.info.title != state.name || data.info.icon != state.icon?.fileId
+        case let .edit(data, threadId):
+            return data.info.title != state.name || (threadId != 1 && data.info.icon != state.icon?.fileId)
         }
+    }
+    
+    let hiddenEdited:()->Bool = {
+        let state = stateValue.with { $0}
+        switch purpose {
+        case .create:
+            return false
+        case let .edit(data, _):
+            return data.isHidden != state.isHidden
+        }
+    }
+    
+    let CheckEdited:()->Bool = {
+        return infoEdited() || hiddenEdited()
     }
     
     let controller = InputDataController(dataSignal: signal, title: title, updateDoneValue: { data in
@@ -249,9 +277,10 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
                         alert(for: context.window, info: "create topic error: \(error)")
                     })
                 case let .edit(_, threadId):
-                    let signal = context.engine.peers.editForumChannelTopic(id: peerId, threadId: threadId, title: state.name, iconFileId: threadId == 1 ? nil : fileId)
+                    let edit: Signal<Never, EditForumChannelTopicError> = infoEdited() ? context.engine.peers.editForumChannelTopic(id: peerId, threadId: threadId, title: state.name, iconFileId: threadId == 1 ? nil : fileId) : .complete()
+                    let hide: Signal<Never, EditForumChannelTopicError> = hiddenEdited() ? context.engine.peers.setForumChannelTopicHidden(id: peerId, threadId: threadId, isHidden: state.isHidden) : .complete()
                     
-                    _ = showModalProgress(signal: signal, for: context.window).start(error: { error in
+                    _ = showModalProgress(signal: edit |> then(hide), for: context.window).start(error: { error in
                         alert(for: context.window, info: "edit topic error: \(error)")
                     }, completed: {
                         context.bindings.rootNavigation().back()
