@@ -1,0 +1,169 @@
+import Foundation
+import CoreGraphics
+
+func floorToScreenPixels(_ value: CGFloat) -> CGFloat { floor(value) }
+enum ContainedViewLayoutTransition { case immediate, animated }
+final class NSCursor {
+    static let closedHand = NSCursor()
+    static var pushes = 0
+    func push() { NSCursor.pushes += 1 }
+}
+final class TabBarItemControl: Equatable {
+    let id: Int
+    var frame: NSRect
+    init(_ id: Int, _ frame: NSRect) { self.id = id; self.frame = frame }
+    static func == (lhs: TabBarItemControl, rhs: TabBarItemControl) -> Bool { lhs === rhs }
+}
+final class Delegate {
+    var changes: [Int] = []
+    var scrolls = 0
+    func didChange(selected: Int, index: Int) { changes.append(index) }
+    func scrollup() { scrolls += 1 }
+}
+__LAYOUT__
+final class Bar {
+    __GESTURE__
+    static let reorderHoldDuration: TimeInterval = 0.25
+    var allowsReordering = __APP_POLICY__
+    var tabs: [Int]
+    var itemControls: [TabBarItemControl]
+    var contentScales: [CGFloat]
+    var selectedIndex: Int
+    var gesture: SelectionGesture?
+    let bounds: NSRect
+    var delegate: Delegate? = Delegate()
+    var reorders = 0
+    var pickups = 0
+    var reduceMotion: () -> Bool = { false }
+    var itemLayout: FloatingTabBarLayout { FloatingTabBarLayout(size: bounds.size, count: tabs.count) }
+    var reorderTransition: ContainedViewLayoutTransition { .animated }
+    var reorderGesture: SelectionGesture? {
+        guard let gesture, gesture.reordersTabs, gesture.isDragging else { return nil }
+        return gesture
+    }
+    init(width: CGFloat = 333, count: Int = 4, selected: Int = 0) {
+        bounds = NSRect(x: 0, y: 0, width: width, height: 48)
+        tabs = Array(0..<count)
+        let layout = FloatingTabBarLayout(size: bounds.size, count: count)
+        itemControls = (0..<count).map { TabBarItemControl($0, layout.itemFrames[$0]) }
+        contentScales = Array(repeating: 1, count: count)
+        selectedIndex = selected
+    }
+    func center(_ index: Int) -> NSPoint {
+        let rect = itemLayout.itemFrames[index]
+        return NSPoint(x: rect.midX, y: rect.midY)
+    }
+    func begin(_ index: Int, time: TimeInterval = 1) {
+        let point = center(index)
+        gesture = SelectionGesture(start: point, center: point.x, sourceIndex: index, pressedAt: time, heldPosition: nil, position: CGFloat(index), destination: index)
+    }
+    func startPickup(for control: TabBarItemControl) { pickups += 1 }
+    func updateSelection(animated: Bool, playSelectedItem: Bool = false) {}
+    func updateLens(transition: ContainedViewLayoutTransition) {}
+    func didReorderTabs() { reorders += 1 }
+    func move(_ control: TabBarItemControl, tab: Int, to frame: NSRect, transition: ContainedViewLayoutTransition) { control.frame = frame }
+    func finishGesture(reorderTransition: ContainedViewLayoutTransition = .immediate) {
+        gesture = nil
+        updateItemFrames(transition: reorderTransition)
+    }
+    func cancelSelection() { finishGesture() }
+    __UPDATE__
+    __END__
+    __END_REORDER__
+    __FRAMES__
+}
+var assertions = 0
+var failures: [String] = []
+var scenarios = 0
+var cases = 0
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    assertions += 1
+    if !condition() { failures.append(message) }
+}
+func test(_ body: () -> Void) { cases += 1; body() }
+func scenario(_ body: () -> Void) { scenarios += 1; body() }
+
+test {
+    for width: CGFloat in [240, 333, 500] {
+        for count in [2, 3, 4] {
+            for delay in [0.1, 0.251, 1.0, 5.0] {
+                scenario {
+                    let bar = Bar(width: width, count: count)
+                    let order = bar.tabs
+                    let controls = bar.itemControls
+                    let frames = controls.map(\.frame)
+                    bar.begin(0)
+                    bar.updateSelection(at: bar.center(count - 1), timestamp: 1 + delay)
+                    expect(bar.itemControls.map(\.frame) == frames, "icons stay in slots while sliding")
+                    expect(bar.pickups == 0, "held icon is never picked up")
+                    bar.endSelection(at: bar.center(count - 1))
+                    expect(bar.tabs == order && bar.itemControls == controls, "hold does not reorder tabs")
+                    expect(bar.selectedIndex == count - 1, "slide selects destination")
+                    expect(bar.delegate?.changes == [count - 1], "slide invokes selection once")
+                    expect(bar.reorders == 0, "hold never saves a reordered array")
+                }
+            }
+        }
+    }
+}
+test {
+    for delay in [0.1, 1.0] {
+        scenario {
+            let bar = Bar(selected: 2)
+            let frames = bar.itemControls.map(\.frame)
+            bar.begin(3)
+            bar.updateSelection(at: bar.center(0), timestamp: 1 + delay)
+            expect(bar.itemControls.map(\.frame) == frames, "reverse slide keeps slots")
+            bar.endSelection(at: bar.center(0))
+            expect(bar.selectedIndex == 0 && bar.tabs == [0, 1, 2, 3], "reverse slide changes selection not order")
+        }
+    }
+}
+test {
+    for selected in 0..<4 {
+        scenario {
+            let bar = Bar(selected: selected)
+            bar.begin(selected)
+            bar.endSelection(at: bar.center(selected))
+            expect(bar.delegate?.scrolls == 1 && bar.delegate?.changes.isEmpty == true, "selected tab click still scrolls up")
+            expect(bar.tabs == [0,1,2,3] && bar.reorders == 0, "click preserves order")
+        }
+    }
+}
+test {
+    for x: CGFloat in [-500, 1000] {
+        scenario {
+            let bar = Bar()
+            bar.begin(1)
+            bar.updateSelection(at: NSPoint(x: x, y: 24), timestamp: 4)
+            bar.endSelection(at: NSPoint(x: x, y: 24))
+            expect(bar.selectedIndex == (x < 0 ? 0 : 3), "slide clamps selection at valid edge")
+            expect(bar.reorders == 0 && bar.tabs == [0,1,2,3], "edge slide cannot reorder")
+        }
+    }
+}
+test {
+    scenario {
+        let bar = Bar(selected: 1)
+        bar.begin(0)
+        bar.updateSelection(at: bar.center(3), timestamp: 4)
+        bar.cancelSelection()
+        expect(bar.selectedIndex == 1 && bar.tabs == [0,1,2,3], "cancel keeps original selection and order")
+        expect(bar.gesture == nil && bar.reorders == 0, "cancel leaves no persisted gesture")
+    }
+}
+test {
+    scenario {
+        let bar = Bar()
+        bar.allowsReordering = true
+        bar.begin(0)
+        bar.updateSelection(at: bar.center(3), timestamp: 2)
+        bar.endSelection(at: bar.center(3))
+        expect(bar.tabs == [1,2,3,0], "generic explicit reorder opt-in still works")
+        expect(bar.reorders == 1 && bar.selectedIndex == 3, "generic reorder preserves selected identity")
+    }
+}
+let report: [String: Any] = ["cases": cases, "scenarios": scenarios, "assertions": assertions, "failures": failures.count, "failure_messages": failures]
+let data = try! JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+print(String(data: data, encoding: .utf8)!)
+exit(failures.isEmpty ? 0 : 1)

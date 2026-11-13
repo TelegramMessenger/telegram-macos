@@ -1,0 +1,239 @@
+import AppKit
+import QuartzCore
+
+public struct TestColors {
+    var text = NSColor()
+    var accentIcon = NSColor()
+    var isDark = false
+}
+
+public struct PresentationTheme {
+    var colors = TestColors()
+    var appearance = NSAppearance(named: .aqua)!
+}
+
+let presentation = PresentationTheme()
+let systemLiquidGlassDidChange = Notification.Name("TestLiquidGlassDidChange")
+
+enum System {
+    static var backingScale: CGFloat = 2
+    static var liquidGlass = false {
+        didSet {
+            NotificationCenter.default.post(name: systemLiquidGlassDidChange, object: nil)
+        }
+    }
+}
+
+enum TGUIKitAccessibility {
+    static var isEnabled = true
+}
+
+public protocol AppearanceViewProtocol {
+    func updateLocalizationAndTheme(theme: PresentationTheme)
+}
+
+open class View: NSView, AppearanceViewProtocol {
+    var isEventLess = false
+    var userInteractionEnabled = true
+    var backgroundColor = presentation.colors.text.withAlphaComponent(0)
+
+    required public override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        autoresizesSubviews = false
+        layer?.actions = ["position": NSNull(), "bounds": NSNull(), "transform": NSNull(), "opacity": NSNull()]
+    }
+
+    required public init?(coder: NSCoder) {
+        fatalError()
+    }
+
+    public override var isFlipped: Bool { true }
+
+    open func updateLocalizationAndTheme(theme: PresentationTheme) {
+        for case let view as AppearanceViewProtocol in subviews {
+            view.updateLocalizationAndTheme(theme: theme)
+        }
+    }
+}
+
+enum ControlEvent {
+    case RightDown, RightUp, Click
+}
+
+open class Control: View {
+    var isEnabled = true
+    var isSelected = false
+    private var handlers: [ControlEvent: (Control) -> Void] = [:]
+
+    func set(handler: @escaping (Control) -> Void, for event: ControlEvent) {
+        handlers[event] = handler
+    }
+
+    func send(event: ControlEvent) {
+        handlers[event]?(self)
+    }
+
+    open override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) {
+            send(event: .RightDown)
+        }
+    }
+
+    open override func rightMouseDown(with event: NSEvent) {
+        send(event: .RightDown)
+    }
+
+    open override func isAccessibilityElement() -> Bool { true }
+
+    open override func accessibilityPerformPress() -> Bool {
+        guard isEnabled, userInteractionEnabled else { return false }
+        send(event: .Click)
+        return true
+    }
+}
+
+public final class TestNode {
+    var view: NSView?
+
+    init() {
+        view = View(frame: NSMakeRect(0, 0, 10, 10))
+    }
+
+    func update() {
+        if let view, let superview = view.superview {
+            view.setFrameOrigin(NSMakePoint(floor(superview.bounds.midX) + 4, 4))
+        }
+    }
+}
+
+public final class TabItem: Equatable {
+    public static func == (lhs: TabItem, rhs: TabItem) -> Bool { lhs === rhs }
+    var accessibilityTitle: String?
+    var longHoverHandler: ((Control) -> Void)?
+    var subNode: TestNode?
+    var animatedSelections = 0
+
+    init(_ title: String, badge: Bool = false) {
+        accessibilityTitle = title
+        subNode = badge ? TestNode() : nil
+    }
+
+    func makeView() -> NSView { View(frame: NSMakeRect(0, 0, 24, 24)) }
+
+    func setSelected(_ selected: Bool, for view: NSView, animated: Bool) {
+        if selected && animated { animatedSelections += 1 }
+    }
+
+    func lensContentSources(for view: NSView, lensedTintColor: NSColor, unlensedTintColor: NSColor) -> [LiquidGlassLensContentSource] {
+        return [LiquidGlassLensContentSource(view: view)]
+    }
+}
+
+final class LiquidGlassView: View {
+    var cornerRadius: CGFloat
+    var effectView: NSView!
+
+    init(frame: NSRect, cornerRadius: CGFloat, hasShadow: Bool = true, hasBorder: Bool = true, tintAlpha: CGFloat = 0.3) {
+        self.cornerRadius = cornerRadius
+        super.init(frame: frame)
+        effectView = View(frame: bounds)
+        addSubview(effectView)
+    }
+
+    required init(frame: NSRect) { fatalError() }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        transition.updateFrame(view: effectView, frame: size.bounds)
+    }
+}
+
+enum ContainedViewLayoutTransitionCurve {
+    case easeOut, spring
+    var timingFunction: CAMediaTimingFunctionName {
+        switch self {
+        case .easeOut: return .easeOut
+        case .spring: return .spring
+        }
+    }
+}
+
+enum ContainedViewLayoutTransition {
+    case immediate
+    case animated(duration: TimeInterval, curve: ContainedViewLayoutTransitionCurve)
+
+    func updateFrame(view: NSView, frame: NSRect) { view.frame = frame }
+    func updateAlpha(view: NSView, alpha: CGFloat) { view.alphaValue = alpha }
+}
+
+extension CAMediaTimingFunctionName {
+    static let spring = CAMediaTimingFunctionName(rawValue: "spring")
+}
+
+extension CALayer {
+    func animate(from: Any, to: Any, keyPath: String, timingFunction: CAMediaTimingFunctionName, duration: TimeInterval) {
+        let animation = CABasicAnimation(keyPath: keyPath)
+        animation.fromValue = from
+        animation.toValue = to
+        animation.duration = duration
+        add(animation, forKey: keyPath)
+    }
+
+    func animatePosition(from: NSPoint, to: NSPoint, duration: TimeInterval, timingFunction: CAMediaTimingFunctionName) {
+        animate(from: NSValue(point: from), to: NSValue(point: to), keyPath: "position", timingFunction: timingFunction, duration: duration)
+    }
+
+    func animateBounds(from: NSRect, to: NSRect, duration: TimeInterval, timingFunction: CAMediaTimingFunctionName) {
+        animate(from: NSValue(rect: from), to: NSValue(rect: to), keyPath: "bounds", timingFunction: timingFunction, duration: duration)
+    }
+}
+
+extension NSView {
+    func center() {
+        if let superview {
+            setFrameOrigin(NSPoint(x: (superview.bounds.width - frame.width) / 2, y: (superview.bounds.height - frame.height) / 2))
+        }
+    }
+}
+
+extension NSSize {
+    var bounds: NSRect { NSRect(origin: .zero, size: self) }
+}
+
+func floorToScreenPixels(_ value: CGFloat) -> CGFloat { floor(value * System.backingScale) / System.backingScale }
+func tooltip(for control: Control, text: String) {}
+
+enum TestCursor {
+    static var depth = 0
+    static func push() { depth += 1 }
+    static func pop() { depth -= 1 }
+}
+
+enum TestEventMonitor {
+    private final class Token {
+        let handler: (NSEvent) -> NSEvent?
+        init(_ handler: @escaping (NSEvent) -> NSEvent?) { self.handler = handler }
+    }
+
+    private static var tokens: [Token] = []
+    static var count: Int { tokens.count }
+
+    static func addLocalMonitorForEvents(matching: NSEvent.EventTypeMask, handler: @escaping (NSEvent) -> NSEvent?) -> Any? {
+        let token = Token(handler)
+        tokens.append(token)
+        return token
+    }
+
+    static func removeMonitor(_ monitor: Any) {
+        tokens.removeAll { $0 === monitor as AnyObject }
+    }
+
+    static func dispatch(_ event: NSEvent) -> NSEvent? {
+        var result: NSEvent? = event
+        for token in tokens {
+            if let current = result { result = token.handler(current) }
+        }
+        return result
+    }
+}

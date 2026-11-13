@@ -1,0 +1,313 @@
+import AppKit
+import QuartzCore
+
+var assertions = 0
+var failures = 0
+var scenarios = 0
+
+func check(_ condition: @autoclosure () -> Bool, _ message: String, line: Int = #line) {
+    assertions += 1
+    if !condition() {
+        failures += 1
+        print("FAIL line \(line): \(message)")
+    }
+}
+
+func scenario(_ name: String, _ body: () -> Void) {
+    scenarios += 1
+    let before = failures
+    autoreleasepool { body() }
+    check(TestEventMonitor.count == 0, "event monitor released after \(name)")
+    check(TestCursor.depth == 0, "cursor balanced after \(name)")
+    print("\(failures == before ? "PASS" : "FAIL") \(name)")
+}
+
+func close(_ lhs: CGFloat, _ rhs: CGFloat) -> Bool { abs(lhs - rhs) < 0.00001 }
+
+func sameTransform(_ lhs: CATransform3D, _ rhs: CATransform3D) -> Bool {
+    return close(lhs.m11, rhs.m11) && close(lhs.m22, rhs.m22) && close(lhs.m41, rhs.m41) && close(lhs.m42, rhs.m42)
+}
+
+final class SelectionDelegate: TabViewDelegate {
+    var changes: [Int] = []
+    var scrolls = 0
+    func didChange(selected item: TabItem, index: Int) { changes.append(index) }
+    func scrollup() { scrolls += 1 }
+}
+
+func makeBar(width: CGFloat = 333, count: Int = 4, selected: Int = 0) -> TabBarView {
+    let bar = TabBarView(frame: NSMakeRect(0, 0, width, 48))
+    bar.allowsReordering = false
+    bar.reduceMotion = { false }
+    bar.reduceTransparency = { false }
+    for index in 0 ..< count { bar.addTab(TabItem("Tab \(index)", badge: index == 2)) }
+    bar.setSelectedIndex(selected, respondToDelegate: false, animated: false)
+    return bar
+}
+
+func center(_ bar: TabBarView, _ index: Int) -> NSPoint {
+    let frame = bar.control(for: index).frame
+    return NSPoint(x: frame.midX, y: frame.midY)
+}
+
+func springBack(_ bar: TabBarView) {
+    check(CATransform3DIsIdentity(bar.layer!.transform), "release restores model transform")
+    let spring = bar.layer?.animation(forKey: "transform") as? CASpringAnimation
+    check(spring != nil, "release uses real GlassTouchEffect spring")
+    if let spring {
+        let parameters = GlassTouchEffect.Parameters().liftOff
+        check(close(spring.mass, parameters.mass), "Update button liftOff mass")
+        check(close(spring.stiffness, parameters.stiffness), "Update button liftOff stiffness")
+        check(close(spring.damping, parameters.damping), "Update button liftOff damping")
+        check(spring.duration == spring.settlingDuration, "Update button spring settling duration")
+        check(spring.isRemovedOnCompletion, "release animation cleans itself up")
+    }
+}
+
+_ = NSApplication.shared
+
+for mode in ["fallback", "native", "no-lens", "reduce-transparency"] {
+    scenario("two-axis held stretch, slots and release: \(mode)") {
+        System.liquidGlass = false
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 1)
+        if mode == "no-lens" { bar.lensFactory = { nil } }
+        if mode == "reduce-transparency" { bar.reduceTransparency = { true } }
+        System.liquidGlass = mode != "fallback"
+        bar.updateLocalizationAndTheme(theme: presentation)
+        if mode == "native" { check(bar.nativeLens != nil, "native lens created for native coverage") }
+        if mode != "native" { check(bar.nativeLens == nil, "fallback path selected") }
+        let controls = bar.itemControls
+        let slots = controls.map(\.frame)
+        let children = controls.map { $0.subviews }
+        let delegate = SelectionDelegate()
+        bar.delegate = delegate
+        var reorders = 0
+        bar.didReorderTabs = { reorders += 1 }
+        let start = center(bar, 1)
+        bar.beginSelection(at: start, timestamp: 1)
+        check(bar.layer!.transform.m11 > 1, "whole capsule lifts on press")
+        check(bar.layer?.animation(forKey: "transform") is CASpringAnimation, "lift uses GlassTouchEffect spring")
+        let oracleView = View(frame: bar.bounds)
+        let oracle = GlassTouchEffect(transformView: oracleView)
+        oracle.setIsTracking(true)
+        var hasHorizontalDrag = false
+        for delta in [NSPoint(x: 0, y: -80), NSPoint(x: 2, y: 70), NSPoint(x: 140, y: -60), NSPoint(x: -1000, y: -1000), NSPoint(x: 1000, y: 1000), NSPoint(x: 0, y: 0)] {
+            bar.updateSelection(at: NSPoint(x: start.x + delta.x, y: start.y + delta.y), timestamp: 10)
+            oracle.setStretchVector(delta)
+            check(sameTransform(bar.layer!.transform, oracleView.layer!.transform), "capsule follows existing Update button geometry for \(delta)")
+            check(abs(bar.layer!.transform.m41) < 24 && abs(bar.layer!.transform.m42) < 24, "stretch is bounded")
+            check(bar.itemControls == controls && controls.map(\.frame) == slots, "held icons retain order and relative slots")
+            check(zip(controls, children).allSatisfy { $0.subviews == $1 }, "no individually picked-up icon or badge")
+            check(bar.selectedIndex == 1 && delegate.changes.isEmpty, "no selection commit while held")
+            check(bar.layer?.animation(forKey: "transform") == nil, "drag follows pointer without delayed transform animation")
+            let layout = FloatingTabBarLayout(size: bar.bounds.size, count: bar.count)
+            hasHorizontalDrag = hasHorizontalDrag || abs(delta.x) >= 3
+            let position = hasHorizontalDrag ? layout.position(at: start.x + delta.x) : 1
+            let base = layout.selectionFrame(at: position, lifted: true, nativeLens: bar.nativeLens != nil)
+            let transform = bar.layer!.transform
+            let foregroundX = (bar.selectionFrame.midX - base.midX) * transform.m11
+            let foregroundY = (bar.selectionFrame.midY - base.midY) * transform.m22
+            check(close(foregroundX, oracleView.layer!.transform.m41 / 3), "foreground adds one-third horizontal follow")
+            check(close(foregroundY, oracleView.layer!.transform.m42 / 3), "foreground adds one-third vertical follow")
+            check(abs(foregroundX) < 8 && abs(foregroundY) < 8, "foreground extra travel is bounded")
+            if delta != .zero {
+                check(abs(foregroundX) + abs(foregroundY) > 0, "foreground moves relative to rear capsule")
+            }
+            if let lens = bar.nativeLens { check(lens.currentLensFrame == bar.selectionFrame, "native lens receives foreground offset") }
+        }
+        let target = center(bar, 3)
+        bar.updateSelection(at: target, timestamp: 20)
+        check(close((bar.selectionFrame.midX - target.x) * bar.layer!.transform.m11, bar.layer!.transform.m41 / 3), "selection oval leads destination without changing slot target")
+        if let lens = bar.nativeLens { check(lens.currentLensFrame == bar.selectionFrame, "native lens shares selection geometry") }
+        bar.endSelection(at: target)
+        springBack(bar)
+        check(bar.selectedIndex == 3 && delegate.changes == [3], "release selects destination once")
+        check(bar.selectionFrame == FloatingTabBarLayout(size: bar.bounds.size, count: bar.count).selectionFrame(at: 3, lifted: false, nativeLens: bar.nativeLens != nil), "release clears foreground offset")
+        check(bar.itemControls == controls && reorders == 0, "long hold never reorders when disabled")
+        bar.endSelection(at: target)
+        check(delegate.changes == [3], "duplicate mouse up is inert")
+    }
+}
+
+for width in [CGFloat(280), 333, 500] {
+    for count in [3, 4] {
+        scenario("vertical-only drag and reselect \(width)x\(count)") {
+            let bar = makeBar(width: width, count: count, selected: 1)
+            let delegate = SelectionDelegate()
+            bar.delegate = delegate
+            let start = center(bar, 1)
+            bar.beginSelection(at: start)
+            bar.updateSelection(at: NSPoint(x: start.x, y: start.y - 100))
+            check(bar.layer!.transform.m42 < 0, "vertical movement stretches before horizontal drag threshold")
+            check(close(bar.selectionFrame.midX, start.x), "vertical stretch does not move oval between slots")
+            check(bar.selectionFrame.midY < start.y, "vertical foreground follows beyond rear capsule")
+            check(close((bar.selectionFrame.midY - start.y) * bar.layer!.transform.m22, bar.layer!.transform.m42 / 3), "vertical foreground displacement is one-third extra")
+            bar.endSelection(at: NSPoint(x: start.x, y: start.y - 100))
+            springBack(bar)
+            check(delegate.scrolls == 1 && delegate.changes.isEmpty, "existing reselect behavior preserved")
+        }
+    }
+}
+
+for cancellation in ["cancel", "escape", "resize", "remove", "replace", "insert", "hide", "detach", "programmatic", "motion", "transparency", "glass-mode", "reordering-policy"] {
+    scenario("cancellation: \(cancellation)") {
+        let bar = makeBar(selected: 2)
+        let delegate = SelectionDelegate()
+        bar.delegate = delegate
+        let start = center(bar, 0)
+        bar.beginSelection(at: start)
+        bar.updateSelection(at: NSPoint(x: start.x + 100, y: start.y - 100))
+        check(bar.layer!.transform.m42 < 0, "stretch active before cancellation")
+        switch cancellation {
+        case "cancel": bar.cancelSelection()
+        case "escape":
+            let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 2, windowNumber: 0, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+            check(TestEventMonitor.dispatch(event) == nil, "production Escape callback consumes Escape")
+        case "resize": bar.setFrameSize(NSSize(width: 401, height: 48))
+        case "remove": bar.removeTab(at: 0)
+        case "replace": bar.replaceTab(TabItem("Replacement"), at: 0)
+        case "insert": bar.insertTab(TabItem("Inserted"), at: 0)
+        case "hide": bar.isHidden = true
+        case "detach": bar.viewDidMoveToWindow()
+        case "programmatic": bar.setSelectedIndex(3, respondToDelegate: false, animated: false)
+        case "motion":
+            bar.reduceMotion = { true }
+            NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        case "transparency":
+            bar.reduceTransparency = { true }
+            NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        case "glass-mode": System.liquidGlass = true
+        case "reordering-policy": bar.allowsReordering = true
+        default: fatalError()
+        }
+        check(!bar.isTrackingSelection, "gesture cancelled")
+        check(CATransform3DIsIdentity(bar.layer!.transform), "cancel restores capsule transform")
+        if ["cancel", "escape"].contains(cancellation) {
+            springBack(bar)
+        } else {
+            check(bar.layer?.animation(forKey: "transform") == nil, "structural cancellation removes spring")
+        }
+        let expected = cancellation == "remove" ? 1 : ["insert", "programmatic"].contains(cancellation) ? 3 : 2
+        check(bar.selectedIndex == expected && delegate.changes.isEmpty, "cancellation does not commit preview")
+        check(bar.selectionFrame == FloatingTabBarLayout(size: bar.bounds.size, count: bar.count).selectionFrame(at: CGFloat(expected), lifted: false, nativeLens: bar.nativeLens != nil), "cancellation clears foreground displacement")
+        bar.endSelection(at: start)
+        check(bar.selectedIndex == expected && delegate.changes.isEmpty, "late release after cancellation is ignored")
+        System.liquidGlass = false
+    }
+}
+
+scenario("window resignation and removal use production notification path") {
+    let bar = makeBar(selected: 2)
+    let window = NSWindow(contentRect: bar.bounds, styleMask: .borderless, backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    window.contentView = bar
+    defer { window.contentView = nil; window.close() }
+    bar.beginSelection(at: center(bar, 0))
+    bar.updateSelection(at: NSPoint(x: 200, y: -80))
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+    check(!bar.isTrackingSelection && bar.selectedIndex == 2, "resign notification cancels without selection")
+    springBack(bar)
+    bar.beginSelection(at: center(bar, 0))
+    bar.updateSelection(at: NSPoint(x: 200, y: -80))
+    window.contentView = nil
+    check(!bar.isTrackingSelection && CATransform3DIsIdentity(bar.layer!.transform), "window detach resets interaction")
+    check(bar.layer?.animation(forKey: "transform") == nil, "detach removes animation")
+}
+
+scenario("Reduce Motion prevents lift, stretch and spring, including reused effect") {
+    let bar = makeBar()
+    bar.beginSelection(at: center(bar, 0))
+    bar.cancelSelection(animated: false)
+    bar.reduceMotion = { true }
+    bar.beginSelection(at: center(bar, 0))
+    bar.updateSelection(at: NSPoint(x: center(bar, 3).x, y: -200))
+    check(CATransform3DIsIdentity(bar.layer!.transform), "Reduce Motion prevents reused effect deformation")
+    check(bar.layer?.animation(forKey: "transform") == nil, "Reduce Motion has no held spring")
+    check(bar.selectionFrame.height == 40, "Reduce Motion keeps unlifted selection")
+    check(close(bar.selectionFrame.midY, 24), "Reduce Motion has no foreground offset")
+    bar.endSelection(at: center(bar, 3))
+    check(bar.selectedIndex == 3, "Reduce Motion still selects")
+    check(CATransform3DIsIdentity(bar.layer!.transform) && bar.layer?.animation(forKey: "transform") == nil, "Reduce Motion has no release spring")
+}
+
+scenario("completed spring is cleared by structural change") {
+    let bar = makeBar()
+    bar.beginSelection(at: center(bar, 0))
+    bar.updateSelection(at: NSPoint(x: 100, y: -100))
+    bar.endSelection(at: center(bar, 1))
+    springBack(bar)
+    bar.setFrameSize(NSSize(width: 400, height: 48))
+    check(bar.layer?.animation(forKey: "transform") == nil, "resize after release clears pending spring")
+    check(CATransform3DIsIdentity(bar.layer!.transform), "resize after release stays at identity")
+}
+
+scenario("optional generic reordering remains separate after elastic use") {
+    let bar = makeBar()
+    bar.beginSelection(at: center(bar, 0))
+    bar.updateSelection(at: NSPoint(x: 100, y: -100))
+    bar.allowsReordering = true
+    let controls = bar.itemControls
+    let start = center(bar, 0)
+    let target = center(bar, 3)
+    var reorders = 0
+    bar.didReorderTabs = { reorders += 1 }
+    bar.beginSelection(at: start, timestamp: 1)
+    bar.updateSelection(at: target, timestamp: 1.3)
+    check(CATransform3DIsIdentity(bar.layer!.transform), "inactive reused effect cannot reshape reorder gesture")
+    check(bar.layer?.animation(forKey: "transform") == nil, "reorder does not animate whole capsule")
+    bar.endSelection(at: target)
+    check(bar.itemControls[3] === controls[0] && reorders == 1, "opted-in generic reordering still works")
+    bar.beginSelection(at: center(bar, 0), timestamp: 2)
+    bar.updateSelection(at: center(bar, 2), timestamp: 2.1)
+    bar.endSelection(at: center(bar, 2))
+    check(CATransform3DIsIdentity(bar.layer!.transform) && bar.layer?.animation(forKey: "transform") == nil, "generic quick selection does not acquire a capsule spring")
+    bar.setSelectedIndex(1, respondToDelegate: false, animated: true)
+    check(bar.layer?.animation(forKey: "transform") == nil, "programmatic selection outside elastic gesture does not spring capsule")
+    bar.allowsReordering = false
+    bar.beginSelection(at: center(bar, 0), timestamp: 2)
+    bar.updateSelection(at: NSPoint(x: center(bar, 0).x, y: -100), timestamp: 3)
+    check(bar.layer!.transform.m42 < 0, "switching back enables elastic selection")
+    bar.cancelSelection(animated: false)
+}
+
+scenario("mouse handlers, context action and accessibility selection") {
+    let bar = makeBar()
+    let delegate = SelectionDelegate()
+    bar.delegate = delegate
+    let control = bar.itemControls[2]
+    var contextActions = 0
+    bar.tab(at: 2).longHoverHandler = { _ in contextActions += 1 }
+    func event(_ type: NSEvent.EventType, _ point: NSPoint, flags: NSEvent.ModifierFlags = []) -> NSEvent {
+        NSEvent.mouseEvent(with: type, location: bar.convert(point, to: nil), modifierFlags: flags, timestamp: 2, windowNumber: 0, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
+    }
+    control.mouseDown(with: event(.leftMouseDown, center(bar, 2)))
+    control.mouseDragged(with: event(.leftMouseDragged, NSPoint(x: center(bar, 2).x, y: -100)))
+    check(bar.layer!.transform.m42 < 0, "real item mouseDragged routes vertical stretch")
+    control.mouseUp(with: event(.leftMouseUp, center(bar, 2)))
+    check(delegate.changes == [2], "mouse selection commits once")
+    springBack(bar)
+    control.mouseDown(with: event(.leftMouseDown, center(bar, 2), flags: .control))
+    control.mouseUp(with: event(.leftMouseUp, center(bar, 2)))
+    check(contextActions == 1 && delegate.changes == [2], "control click does not select")
+    check(!bar.isTrackingSelection && CATransform3DIsIdentity(bar.layer!.transform), "context action never starts elastic tracking")
+    check(bar.control(for: 1).accessibilityPerformPress(), "accessibility action remains supported")
+    check(bar.control(for: 1).isAccessibilitySelected() && delegate.changes == [2, 1], "accessibility selects destination")
+    check(bar.accessibilityRole() == .tabGroup && control.accessibilityRole() == .radioButton, "accessibility roles retained")
+    check(!bar.isTrackingSelection, "accessibility action does not start pointer tracking")
+    check(bar.layer?.animation(forKey: "transform") == nil, "accessibility selection without a gesture does not spring capsule")
+}
+
+scenario("effect and event monitor do not retain tab bar") {
+    weak var released: TabBarView?
+    autoreleasepool {
+        let bar = makeBar()
+        released = bar
+        bar.beginSelection(at: center(bar, 0))
+        bar.updateSelection(at: NSPoint(x: 100, y: -100))
+    }
+    check(released == nil, "tracking bar deallocates")
+}
+
+print("RESULT scenarios=\(scenarios) assertions=\(assertions) failures=\(failures)")
+exit(failures == 0 ? 0 : 1)
