@@ -705,7 +705,7 @@ public class InputContextViewController : GenericViewController<InputContextView
     public func selectFirstInRowIfCan(_ start:Int? = nil, _ bottom: Bool = false) {
         if let selectedItem = genericView.tableView.selectedItem() as? ContextStickerRowItem {
             var index = start ?? 0
-            index = max(index, 0)
+            index = min(max(index, 0), selectedItem.result.entries.count - 1)
             selectedItem.selectedIndex = index
             selectedItem.redraw()
         }
