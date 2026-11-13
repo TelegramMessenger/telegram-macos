@@ -463,6 +463,10 @@ public final class ReactionsWindowController : NSObject {
             guard let view = view, let initialView = initialView, let `self` = self else {
                 return
             }
+            if let panel = self.panel, panel.isVisible {
+                panel._canBecomeMain = true
+                panel.makeMain()
+            }
             AppMenu.closeAll()
             initialView.revealDidStart()
             CATransaction.begin()
@@ -511,17 +515,28 @@ public final class ReactionsWindowController : NSObject {
         AppMenu.closeAll()
         
         var panel: Window? = self.panel
+        let parentWindow = self.parentWindow
         if animated {
             if let v = panel?.contentView?.subviews.first(where: { $0 is V }) as? V, !v.usesGlass {
                 v.layer?.rasterizationScale = System.backingScale
                 v.layer?.shouldRasterize = true
             }
             panel?.contentView?.layer?.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { _ in
-                panel?.orderOut(nil)
+                if let window = panel {
+                    let wasMain = window.isMainWindow
+                    window.orderOut(nil)
+                    if wasMain {
+                        restoreMainWindow(after: window, preferred: parentWindow)
+                    }
+                }
                 panel = nil
             })
-        } else {
-            self.panel?.orderOut(nil)
+        } else if let window = self.panel {
+            let wasMain = window.isMainWindow
+            window.orderOut(nil)
+            if wasMain {
+                restoreMainWindow(after: window, preferred: parentWindow)
+            }
         }
         reactions = nil
     }

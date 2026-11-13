@@ -4,11 +4,41 @@ import AppKit
 import KeyboardKey
 
 private extension Window {
-    var view: MenuView {
-        return self.contentView!.subviews.first! as! MenuView
-    }
     var weakView: MenuView? {
-        return self.contentView?.subviews.first as? MenuView
+        return (self as? MenuHostWindow)?.rootView
+    }
+}
+
+private final class MenuHostWindow: Window {
+    weak var rootView: MenuView?
+}
+
+private final class MenuSurface: FlippableView {
+    weak var host: MenuHostWindow?
+
+    var view: MenuView {
+        return self.subviews.first! as! MenuView
+    }
+
+    var screenFrame: NSRect {
+        guard let host else {
+            return self.frame
+        }
+        return host.convertToScreen(self.convert(self.bounds, to: nil))
+    }
+
+    func setScreenFrame(_ rect: NSRect) {
+        guard let host else {
+            return
+        }
+        self.frame = host.convertFromScreen(rect)
+    }
+
+    func convertFromScreen(_ point: NSPoint) -> NSPoint {
+        guard let host else {
+            return point
+        }
+        return self.convert(host.convertPoint(fromScreen: point), from: nil)
     }
 }
 
@@ -416,8 +446,9 @@ final class MenuView: Control, TableViewDelegate {
     }
     
     var submenuId: Int64?
-    weak var parentView: Window?
-    weak var childView: Window?
+    fileprivate weak var surface: MenuSurface?
+    fileprivate weak var parentView: MenuSurface?
+    fileprivate weak var childView: MenuSurface?
     var dismissed: Bool = false
 }
 
@@ -446,7 +477,12 @@ final class AppMenuController : NSObject  {
     
     private let overlay = OverlayControl()
 
-    private var windows:[Key : Window] = [:]
+    private var windows:[Key : MenuSurface] = [:]
+    private var host: MenuHostWindow?
+    private var barContainer: FlippableView?
+    private weak var barView: NSView?
+    private var passThroughTimer: Foundation.Timer?
+    private weak var previousMainWindow: NSWindow?
     
     private var previousCopyHandler: (()->Void)? = nil
 
@@ -693,33 +729,41 @@ final class AppMenuController : NSObject  {
         
         let duration: Double = 0.2
         if !isClosed {
-            for (_, panel) in self.windows {
+            self.passThroughTimer?.invalidate()
+            self.passThroughTimer = nil
+            if let host = self.host {
+                host.ignoresMouseEvents = true
+                let barContainer = self.barContainer
+                let barView = self.barView
+                let previousMainWindow = self.previousMainWindow
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = duration
-                    panel.animator().alphaValue = 0
+                    host.animator().alphaValue = 0
                 }, completionHandler: {
-                    panel.orderOut(nil)
+                    let wasMain = host.isMainWindow
+                    host.orderOut(nil)
+                    host.rootView = nil
+                    if let barView, barView.superview === barContainer {
+                        barView.removeFromSuperview()
+                    }
+                    host.removeAllHandlers(for: self)
+                    if self.host === host {
+                        self.host = nil
+                        self.barContainer = nil
+                    }
+                    if wasMain {
+                        restoreMainWindow(after: host, preferred: previousMainWindow)
+                    }
                 })
             }
-            
+
             self.onClose()
-            
+
             self.windows.removeAll()
             self.parent?.removeAllHandlers(for: self)
             self.strongHolder = nil
             self.overlay.removeFromSuperview()
             self.parent?.copyhandler = self.previousCopyHandler
-
-            if let window = self.menu.topWindow, let view = window.contentView {
-                NSAnimationContext.runAnimationGroup({ context in
-                    context.duration = duration
-                    window.animator().alphaValue = 0
-                }, completionHandler: { [weak view, weak window] in
-                    view?.removeFromSuperview()
-                    window?.orderOut(nil)
-                })
-            }
-            
         }
         self.menu.isShown = false
         self.isClosed = true
@@ -727,27 +771,114 @@ final class AppMenuController : NSObject  {
     
 
     
-    private func getView(for menu: ContextMenu, screen: NSScreen, parentView: Window?, submenuId: Int64?) -> Window {
-        let panel = MenuPanelWindow(contentRect: .zero, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
-        panel._canBecomeMain = false
-        panel._canBecomeKey = false
-        panel.level = .screenSaver
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = false
-        
-        
-        let contentView = FlippableView()
-        panel.contentView = contentView
+    private func makeHost(screen: NSScreen) -> MenuHostWindow {
+        if let host = self.host {
+            return host
+        }
+        let host = MenuHostWindow(contentRect: screen.frame, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+        host._canBecomeMain = true
+        host._canBecomeKey = false
+        host.level = .screenSaver
+        host.backgroundColor = .clear
+        host.isOpaque = false
+        host.hasShadow = false
+        host.ignoresMouseEvents = true
+        host.setFrame(screen.frame, display: false)
 
+        let contentView = FlippableView(frame: screen.frame.size.bounds)
         contentView.backgroundColor = .clear
         contentView.flip = false
         contentView.layer?.isOpaque = false
+        host.contentView = contentView
+
+        host.set(mouseHandler: { [weak self] _ in
+            if self?.isMouseInsideMenus() == false {
+                self?.closeAll()
+            }
+            return .rejected
+        }, with: self, for: .leftMouseDown)
+
+        host.set(mouseHandler: { [weak self] _ in
+            if let windows = self?.windows {
+                if let _ = self?.foundItem, let menu = self?.activeMenu {
+                    if menu.mouseInside() {
+                        menu.tableView.cancelSelection()
+                        self?.foundItem = nil
+                    }
+                }
+                for (_, surface) in windows {
+                    surface.view.tableView.enumerateViews(with: { view in
+                        view.updateMouse(animated: true)
+                        return true
+                    })
+                }
+            }
+            return .rejected
+        }, with: self, for: .mouseMoved)
+
+        self.host = host
+        return host
+    }
+
+    private func interactiveScreenRects() -> [NSRect] {
+        guard let host = self.host else {
+            return []
+        }
+        var rects: [NSRect] = []
+        for (_, surface) in self.windows where !surface.isHidden && !surface.view.dismissed {
+            rects.append(host.convertToScreen(surface.view.convert(surface.view.bounds, to: nil)))
+        }
+        if let barView = self.barView, barView.window === host {
+            rects.append(host.convertToScreen(barView.convert(barView.bounds, to: nil)))
+        }
+        return rects
+    }
+
+    private func isMouseInsideMenus() -> Bool {
+        let location = NSEvent.mouseLocation
+        return interactiveScreenRects().contains(where: { $0.contains(location) })
+    }
+
+    private func updatePassThrough() {
+        guard let host = self.host, !self.isClosed else {
+            return
+        }
+        let ignores = !isMouseInsideMenus()
+        if host.ignoresMouseEvents != ignores {
+            host.ignoresMouseEvents = ignores
+        }
+    }
+
+    private func showHost() {
+        guard let host = self.host, !host.isVisible else {
+            return
+        }
+        host.alphaValue = 1
+        self.previousMainWindow = NSApp.mainWindow
+        host.orderFront(nil)
+        host.makeMain()
+        updatePassThrough()
+        let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true, block: { [weak self] _ in
+            self?.updatePassThrough()
+        })
+        RunLoop.main.add(timer, forMode: .common)
+        self.passThroughTimer = timer
+    }
+
+    private func getView(for menu: ContextMenu, screen: NSScreen, parentView: MenuSurface?, submenuId: Int64?) -> MenuSurface {
+        let host = makeHost(screen: screen)
+        let panel = MenuSurface(frame: .zero)
+        panel.host = host
+        panel.backgroundColor = .clear
+        panel.flip = false
+        panel.layer?.isOpaque = false
+        panel.isHidden = true
 
 
         let view = MenuView(frame: .zero)
         view.submenuId = submenuId
         view.parentView = parentView
+        view.surface = panel
         
                 
         let presentation = self.presentation
@@ -792,37 +923,10 @@ final class AppMenuController : NSObject  {
         view.tableView.verticalScrollElasticity = .none
 
         
-        panel.setFrame(view.frame.insetBy(dx: -20, dy: -20), display: false)
-        panel.contentView?.addSubview(view)
-        
-        
-        panel.set(mouseHandler: { [weak view, weak self] _ in
-            if view?.mouseInside() == false {
-                self?.closeAll()
-            }
-            return .rejected
-        }, with: self, for: .leftMouseDown)
-        
-        panel.set(mouseHandler: { [weak self] _ in
-            if let windows = self?.windows {
-                
-                if let _ = self?.foundItem, let menu = self?.activeMenu {
-                    if menu.mouseInside() {
-                        menu.tableView.cancelSelection()
-                        self?.foundItem = nil
-                    }
-                }
-                
-                for (_, window) in windows {
-                    window.view.tableView.enumerateViews(with: { view in
-                        view.updateMouse(animated: true)
-                        return true
-                    })
-                }
-            }
-            return .rejected
-        }, with: self, for: .mouseMoved)
-        
+        panel.frame = NSRect(origin: .zero, size: view.frame.insetBy(dx: -20, dy: -20).size)
+        panel.addSubview(view)
+        host.contentView?.addSubview(panel)
+
         view.center()
         
         self.windows[.init(submenuId: submenuId, timestamp: Date().timeIntervalSince1970)] = panel
@@ -840,13 +944,13 @@ final class AppMenuController : NSObject  {
         
     }
     
-    private func findSubmenu(_ id: Int64) -> Window? {
+    private func findSubmenu(_ id: Int64) -> MenuSurface? {
         return self.windows.first(where: {
             $0.value.view.submenuId == id
         })?.value
     }
     
-    private func cancelSubmenuNow(_ submenu: Window) {
+    private func cancelSubmenuNow(_ submenu: MenuSurface) {
         self.windows = self.windows.filter({
             $0.key.submenuId != submenu.view.submenuId
         })
@@ -863,7 +967,7 @@ final class AppMenuController : NSObject  {
             context.duration = 0.2
             submenu.animator().alphaValue = 0
         }, completionHandler: { [weak submenu] in
-            submenu?.orderOut(nil)
+            submenu?.removeFromSuperview()
         })
         
         if let childView = submenu.view.childView {
@@ -891,13 +995,13 @@ final class AppMenuController : NSObject  {
         
     }
     
-    private func presentSubmenu(_ menu: ContextMenu, parentView: Window, for id: Int64) {
+    private func presentSubmenu(_ menu: ContextMenu, parentView: MenuSurface, for id: Int64) {
         guard self.findSubmenu(id) == nil, let screen = self.parent?.screen else {
             return
         }
         
         if let active = self.activeMenu, active.submenuId != nil {
-            if active.parentView == parentView, let window = active._window {
+            if active.parentView == parentView, let window = active.surface {
                 self.cancelSubmenuNow(window)
                 parentView.view.childView = nil
             }
@@ -930,29 +1034,29 @@ final class AppMenuController : NSObject  {
             return
         }
         
-        let view = self.getView(for: menu, screen: screen, parentView: parentView, submenuId: id)
-        guard let parentItem = parentView.view.item(for: id), let parentItemView = parentItem.view else {
+        guard let parentItem = parentView.view.item(for: id), let parentItemView = parentItem.view, let host = self.host else {
             return
         }
+        let view = self.getView(for: menu, screen: screen, parentView: parentView, submenuId: id)
         _ = parentView.view.tableView.select(item: parentItem)
         
         parentView.view.childView = view
 
         
         var point = parentItemView.convert(NSMakePoint(parentItemView.frame.width - 5, -parentItemView.frame.height), to: nil)
-        point = parentView.convertToScreen(CGRect(origin: point, size: .zero)).origin
+        point = host.convertToScreen(CGRect(origin: point, size: .zero)).origin
         
         point.y -= view.frame.height
         point.x -= 20
         
         let rect = self.adjust(CGRect(origin: point, size: view.frame.size), parent: parentView)
         
-        view.setFrame(rect, display: true)
-        view.makeKeyAndOrderFront(nil)
+        view.setScreenFrame(rect)
+        view.isHidden = false
         view.view.announceForAccessibility()
 
-        let itemRect = parentView.convertToScreen(parentItemView.convert(parentItemView.bounds, to: nil))
-        let itemCenter = view.convertPoint(fromScreen: NSMakePoint(itemRect.midX, itemRect.midY))
+        let itemRect = host.convertToScreen(parentItemView.convert(parentItemView.bounds, to: nil))
+        let itemCenter = view.convertFromScreen(NSMakePoint(itemRect.midX, itemRect.midY))
         let menuFrame = view.view.frame
         let anchorX: CGFloat = rect.midX >= itemRect.midX ? 0 : menuFrame.width
         let anchorY = min(max(itemCenter.y - menuFrame.minY, 0), menuFrame.height)
@@ -988,11 +1092,13 @@ final class AppMenuController : NSObject  {
         
         rect = adjust(rect)
         
-        view.setFrame(rect, display: true)
-        view.makeKeyAndOrderFront(nil)
+        view.setScreenFrame(rect)
+        view.isHidden = false
+        self.host?.rootView = view.view
+        showHost()
         view.view.announceForAccessibility()
                 
-        var anchor = view.view.convert(view.mouseLocationOutsideOfEventStream, to: nil)
+        var anchor = view.view.convert(view.convertFromScreen(NSEvent.mouseLocation), to: view)
         anchor.y = rect.height - anchor.y
         
         anchor.x -= 20
@@ -1013,28 +1119,39 @@ final class AppMenuController : NSObject  {
         }
         self.menu.isShown = true
         
-        if let window = menu.topWindow {
+        let rootSurface = view
+        if let window = menu.topWindow, let host = self.host, let view = window.contentView?.subviews.first {
             
             let width = window.frame.width
-            let view = window.contentView!.subviews.first!
             let cursorAppearance = (view as? AppMenuCursorAppearance).flatMap { $0.canAppearFromCursor ? $0 : nil }
             let extra: CGFloat = cursorAppearance != nil ? AppMenuCursorAppearanceExtraHeight : 0
             let viewSize = view.frame.size
             let rect = NSMakeRect(rect.maxX - width + 40, rect.maxY - 25 - extra, width, window.frame.height + extra)
-            window.setFrame(rect, display: true)
-            window.makeKeyAndOrderFront(nil)
+            
+            let container = FlippableView(frame: host.convertFromScreen(rect))
+            container.backgroundColor = .clear
+            container.flip = false
+            container.layer?.isOpaque = false
+            view.removeFromSuperview()
+            container.addSubview(view)
+            host.contentView?.addSubview(container, positioned: .below, relativeTo: rootSurface)
+            self.barContainer = container
+            self.barView = view
             
             view.frame = NSMakeRect(rect.focus(viewSize).minX, extra, viewSize.width, viewSize.height)
             
             if let cursorAppearance {
-                let cursor = view.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+                let cursor = view.convert(host.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
                 cursorAppearance.appearFromCursor(cursor)
             } else {
-                window.contentView?.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.2)
-                window.contentView?.layer?.animateScaleSpringFrom(anchor: NSMakePoint(anchor.x, rect.height / 2), from: 0.2, to: 1, duration: 0.28, bounce: true)
+                container.layer?.animateAlpha(from: 0.1, to: 1, duration: 0.2)
+                container.layer?.animateScaleSpringFrom(anchor: NSMakePoint(anchor.x, rect.height / 2), from: 0.2, to: 1, duration: 0.28, bounce: true)
             }
             
-            window.set(mouseHandler: { [weak self] event in
+            host.set(mouseHandler: { [weak self, weak container] event in
+                guard let container, NSPointInRect(event.locationInWindow, container.frame) else {
+                    return .rejected
+                }
                 if AppMenu.keepsOpenOnNextMouseUp {
                     AppMenu.keepsOpenOnNextMouseUp = false
                     return .rejected
@@ -1045,10 +1162,11 @@ final class AppMenuController : NSObject  {
                 return .rejected
             }, with: self, for: .leftMouseUp, priority: .supreme)
             
+            updatePassThrough()
         }
     }
     
-    private func adjust(_ rect: NSRect, parent: Window? = nil) -> NSRect {
+    private func adjust(_ rect: NSRect, parent: MenuSurface? = nil) -> NSRect {
         guard let owner = self.parent, let screen = owner.screen else {
             return rect
         }
@@ -1064,13 +1182,13 @@ final class AppMenuController : NSObject  {
         
         if rect.minX < visible.minX {
             if let parent = parent {
-                rect.origin.x = parent.frame.maxX - 40
+                rect.origin.x = parent.screenFrame.maxX - 40
             } else {
                 rect.origin.x = visible.minX + 40
             }
         } else if rect.maxX > visible.maxX {
             if let parent = parent {
-                rect.origin.x = parent.frame.minX - rect.width + 40 + 5
+                rect.origin.x = parent.screenFrame.minX - rect.width + 40 + 5
             } else {
                 rect.origin.x = rect.minX - rect.width + 40
             }
@@ -1175,8 +1293,18 @@ public extension NSColor {
 }
 
 public final class MenuPanelWindow: Window {
-    @objc(_hasActiveAppearanceIgnoringKeyFocus)
-    func hasActiveAppearanceIgnoringKeyFocus() -> Bool {
-        return true
+}
+
+public func restoreMainWindow(after window: NSWindow, preferred: NSWindow?) {
+    guard NSApp.isActive else {
+        return
+    }
+    if let main = NSApp.mainWindow, main !== window, main.isVisible {
+        return
+    }
+    if let preferred, preferred !== window, preferred.isVisible, preferred.canBecomeMain {
+        preferred.makeMain()
+    } else if let key = NSApp.keyWindow, key !== window, key.isVisible, key.canBecomeMain {
+        key.makeMain()
     }
 }

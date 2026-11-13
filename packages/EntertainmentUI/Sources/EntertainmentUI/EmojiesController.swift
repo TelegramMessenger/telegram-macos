@@ -1729,6 +1729,9 @@ public final class AnimatedEmojiesView : Control {
             case .None:
                 window._canBecomeKey = false
                 context?.window.makeKey()
+                if window is MenuPanelWindow, window.isVisible, window.canBecomeMain {
+                    window.makeMain()
+                }
             }
         }
         
