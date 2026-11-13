@@ -630,8 +630,8 @@ class UserInfoArguments<Context: AccountContextProtocol> : PeerInfoArguments<Con
                 }), for: context.window)
             }
             let addSimple:()->Void = {
-                verifyAlert_button(for: context.window, information: strings().confirmAddBotToGroup(values.dest.displayTitle), successHandler: { [weak self] _ in
-                    addBotAsMember(context: context, peer: values.source, to: values.dest, completion: { [weak self] peerId in
+                verifyAlert_button(for: context.window, information: strings().confirmAddBotToGroup(values.source.displayTitle), successHandler: { [weak self] _ in
+                    addBotAsMember(context: context, peer: values.dest, to: values.source, completion: { [weak self] peerId in
                         self?.peerChat(peerId, postId: nil)
                     }, error: { error in 
                         alert(for: context.window, info: error)

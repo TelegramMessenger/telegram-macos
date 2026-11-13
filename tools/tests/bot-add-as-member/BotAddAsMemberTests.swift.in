@@ -1,0 +1,655 @@
+import Foundation
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: DefaultPrecedence
+}
+infix operator |> : PipeRight
+
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+enum NoError {}
+
+final class Disposable {}
+
+struct Signal<T, E> {
+    let run: (@escaping (T) -> Void, @escaping (E) -> Void, @escaping () -> Void) -> Void
+
+    init(_ run: @escaping (@escaping (T) -> Void, @escaping (E) -> Void, @escaping () -> Void) -> Void) {
+        self.run = run
+    }
+
+    static func single(_ value: T) -> Signal<T, E> {
+        return Signal { next, _, completed in
+            next(value)
+            completed()
+        }
+    }
+
+    static func fail(_ error: E) -> Signal<T, E> {
+        return Signal { _, failed, _ in
+            failed(error)
+        }
+    }
+
+    static func complete() -> Signal<T, E> {
+        return Signal { _, _, completed in
+            completed()
+        }
+    }
+
+    @discardableResult
+    func start(next: @escaping (T) -> Void = { _ in }, error: @escaping (E) -> Void = { _ in }, completed: @escaping () -> Void = {}) -> Disposable {
+        self.run(next, error, completed)
+        return Disposable()
+    }
+}
+
+func map<T, E, R>(_ f: @escaping (T) -> R) -> (Signal<T, E>) -> Signal<R, E> {
+    return { signal in
+        Signal { next, error, completed in
+            signal.start(next: { next(f($0)) }, error: error, completed: completed)
+        }
+    }
+}
+
+func mapError<T, E, R>(_ f: @escaping (E) -> R) -> (Signal<T, E>) -> Signal<T, R> {
+    return { signal in
+        Signal { next, error, completed in
+            signal.start(next: next, error: { error(f($0)) }, completed: completed)
+        }
+    }
+}
+
+func castError<T, E>(_ type: E.Type) -> (Signal<T, NoError>) -> Signal<T, E> {
+    return { signal in
+        Signal { next, _, completed in
+            signal.start(next: next, completed: completed)
+        }
+    }
+}
+
+func ignoreValues<T, E>(_ signal: Signal<T, E>) -> Signal<Never, E> {
+    return Signal { _, error, completed in
+        signal.start(error: error, completed: completed)
+    }
+}
+
+struct PeerId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Peer {
+        static let CloudUser: Int32 = 0
+        static let CloudGroup: Int32 = 1
+        static let CloudChannel: Int32 = 2
+    }
+}
+
+struct MessageId {}
+
+struct TelegramChatAdminRightsFlags: OptionSet {
+    let rawValue: Int32
+    static let canChangeInfo = TelegramChatAdminRightsFlags(rawValue: 1 << 0)
+    static let canPostMessages = TelegramChatAdminRightsFlags(rawValue: 1 << 1)
+    static let canInviteUsers = TelegramChatAdminRightsFlags(rawValue: 1 << 5)
+    static let canAddAdmins = TelegramChatAdminRightsFlags(rawValue: 1 << 7)
+}
+
+struct TelegramChatAdminRights {
+    let rights: TelegramChatAdminRightsFlags
+}
+
+enum TelegramGroupRole {
+    case creator(rank: String?)
+    case admin(rank: String?)
+    case member
+}
+
+struct GroupAccess {
+    let isCreator: Bool
+}
+
+protocol Peer: AnyObject {
+    var id: PeerId { get }
+    var displayTitle: String { get }
+}
+
+extension Peer {
+    var isGroup: Bool {
+        return self is TelegramGroup
+    }
+    var isChannel: Bool {
+        if let channel = self as? TelegramChannel, case .broadcast = channel.info {
+            return true
+        }
+        return false
+    }
+    var isSupergroup: Bool {
+        if let channel = self as? TelegramChannel, case .group = channel.info {
+            return true
+        }
+        return false
+    }
+}
+
+final class TelegramUser: Peer {
+    let id: PeerId
+    let displayTitle: String
+    init(id: Int64, title: String) {
+        self.id = PeerId(namespace: Namespaces.Peer.CloudUser, id: id)
+        self.displayTitle = title
+    }
+}
+
+final class TelegramGroup: Peer {
+    let id: PeerId
+    let displayTitle: String
+    let role: TelegramGroupRole
+    init(id: Int64, title: String, role: TelegramGroupRole) {
+        self.id = PeerId(namespace: Namespaces.Peer.CloudGroup, id: id)
+        self.displayTitle = title
+        self.role = role
+    }
+}
+
+final class TelegramChannel: Peer {
+    enum Info {
+        case group
+        case broadcast
+    }
+    let id: PeerId
+    let displayTitle: String
+    let info: Info
+    let isCreator: Bool
+    let adminRights: TelegramChatAdminRights?
+    init(id: Int64, title: String, info: Info, isCreator: Bool, adminRights: TelegramChatAdminRightsFlags?) {
+        self.id = PeerId(namespace: Namespaces.Peer.CloudChannel, id: id)
+        self.displayTitle = title
+        self.info = info
+        self.isCreator = isCreator
+        self.adminRights = adminRights.map { TelegramChatAdminRights(rights: $0) }
+    }
+    var groupAccess: GroupAccess {
+        return GroupAccess(isCreator: self.isCreator)
+    }
+}
+
+struct EnginePeer {
+    let peer: Peer
+    func _asPeer() -> Peer {
+        return self.peer
+    }
+}
+
+enum AddGroupMemberError {
+    case generic
+    case groupFull
+    case privacy
+    case notMutualContact
+    case tooManyChannels
+}
+
+struct TelegramForbiddenInvitePeer {}
+
+enum AddChannelMemberError {
+    case generic
+    case restricted(TelegramForbiddenInvitePeer?)
+    case notMutualContact
+    case limitExceeded
+    case tooMuchJoined
+    case bot(PeerId)
+    case botDoesntSupportGroups
+    case tooMuchBots
+    case kicked
+}
+
+enum ConvertGroupToSupergroupError {
+    case generic
+    case tooManyChannels
+}
+
+enum UpdateChannelAdminRightsError {
+    case generic
+}
+
+func channelAdminRightsErrorText(_ error: UpdateChannelAdminRightsError, isGroup: Bool) -> String {
+    return isGroup ? "adminRightsErrorGroup" : "adminRightsErrorChannel"
+}
+
+enum RequestStartBotInGroupError {
+    case generic
+}
+
+struct ChannelParticipant {}
+
+struct RenderedChannelParticipant {
+    let peer: Peer
+}
+
+enum StartBotInGroupResult {
+    case none
+    case channelParticipant(RenderedChannelParticipant)
+}
+
+enum ChatInitialAction {
+    case start(parameter: String, behavior: Int)
+}
+
+enum ConfirmResult {
+    case basic
+}
+
+final class Window {}
+
+var events: [String] = []
+var names: [PeerId: String] = [:]
+var channelAddError: AddChannelMemberError?
+var groupAddError: AddGroupMemberError?
+
+func record(_ event: String) {
+    events.append(event)
+}
+
+func name(_ peerId: PeerId) -> String {
+    return names[peerId] ?? "unknown"
+}
+
+func describe(_ error: AddChannelMemberError) -> String {
+    switch error {
+    case .generic:
+        return "generic"
+    case .restricted:
+        return "restricted"
+    case .notMutualContact:
+        return "notMutualContact"
+    case .limitExceeded:
+        return "limitExceeded"
+    case .tooMuchJoined:
+        return "tooMuchJoined"
+    case .bot:
+        return "bot"
+    case .botDoesntSupportGroups:
+        return "botDoesntSupportGroups"
+    case .tooMuchBots:
+        return "tooMuchBots"
+    case .kicked:
+        return "kicked"
+    }
+}
+
+func describe(_ action: ChatInitialAction?) -> String {
+    switch action {
+    case let .start(parameter, _)?:
+        return "start(\(parameter))"
+    case nil:
+        return "none"
+    }
+}
+
+final class EnginePeers {
+    func addGroupMember(peerId: PeerId, memberId: PeerId) -> Signal<Void, AddGroupMemberError> {
+        record("addGroupMember \(name(peerId)) \(name(memberId))")
+        if let error = groupAddError {
+            return .fail(error)
+        }
+        return .single(())
+    }
+
+    func addChannelMember(peerId: PeerId, memberId: PeerId) -> Signal<(ChannelParticipant?, RenderedChannelParticipant), AddChannelMemberError> {
+        record("engine addChannelMember \(name(peerId)) \(name(memberId))")
+        if let error = channelAddError {
+            return .fail(error)
+        }
+        return .single((nil, RenderedChannelParticipant(peer: TelegramUser(id: memberId.id, title: name(memberId)))))
+    }
+
+    func convertGroupToSupergroup(peerId: PeerId) -> Signal<PeerId, ConvertGroupToSupergroupError> {
+        record("convertGroupToSupergroup \(name(peerId))")
+        return .fail(.generic)
+    }
+}
+
+final class EngineMessages {
+    func requestStartBotInGroup(botPeerId: PeerId, groupPeerId: PeerId, payload: String?) -> Signal<StartBotInGroupResult, RequestStartBotInGroupError> {
+        record("startBotInGroup \(name(botPeerId)) \(name(groupPeerId)) \(payload ?? "")")
+        return .single(.none)
+    }
+}
+
+final class Engine {
+    let peers = EnginePeers()
+    let messages = EngineMessages()
+}
+
+final class MemberLists {
+    func addMembers(peerId: PeerId, memberIds: [PeerId]) -> Signal<[PeerId], AddChannelMemberError> {
+        for memberId in memberIds {
+            record("addMembers \(name(peerId)) \(name(memberId))")
+        }
+        if let error = channelAddError {
+            return .fail(error)
+        }
+        return .single(memberIds)
+    }
+
+    func addMember(peerId: PeerId, memberId: PeerId) -> Signal<Void, NoError> {
+        record("addMember \(name(peerId)) \(name(memberId))")
+        return .complete()
+    }
+
+    func updateMemberAdminRights(peerId: PeerId, memberId: PeerId, adminRights: TelegramChatAdminRights?, rank: String?) -> Signal<Void, NoError> {
+        record("updateMemberAdminRights \(name(peerId)) \(name(memberId))")
+        return .single(())
+    }
+
+    func externallyAdded(peerId: PeerId, participant: RenderedChannelParticipant) {
+    }
+}
+
+protocol AccountContextProtocol: AnyObject {
+    var engine: Engine { get }
+    var window: Window { get }
+    var peerChannelMemberCategoriesContextsManager: MemberLists { get }
+}
+
+final class LabContext: AccountContextProtocol {
+    let engine = Engine()
+    let window = Window()
+    let peerChannelMemberCategoriesContextsManager = MemberLists()
+}
+
+let lab = LabContext()
+
+func getWindow(_ context: any AccountContextProtocol) -> Window {
+    return context.window
+}
+
+struct Strings {
+    var unknownError: String { return "unknownError" }
+    var channelInfoAddUserLeftError: String { return "channelInfoAddUserLeftError" }
+    var channelErrorAddTooMuch: String { return "channelErrorAddTooMuch" }
+    var channelBotDoesntSupportGroups: String { return "channelBotDoesntSupportGroups" }
+    var channelTooMuchBots: String { return "channelTooMuchBots" }
+    var inviteChannelsTooMuch: String { return "inviteChannelsTooMuch" }
+    var channelAddBotErrorHaveRights: String { return "channelAddBotErrorHaveRights" }
+    var channelErrorAddBlocked: String { return "channelErrorAddBlocked" }
+    var channelAddUserKickedError: String { return "channelAddUserKickedError" }
+    func confirmAddBotToGroup(_ p1: String) -> String {
+        return "confirmAddBotToGroup(\(p1))"
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+func showModalProgress<T, E>(signal: Signal<T, E>, for window: Window) -> Signal<T, E> {
+    return signal
+}
+
+func alert(for window: Window, info: String) {
+    record("alert \(info)")
+}
+
+func verifyAlert_button(for window: Window, header: String = "", information: String?, ok: String = "", cancel: String = "", successHandler: @escaping (ConfirmResult) -> Void) {
+    record("confirm \(information ?? "")")
+    successHandler(.basic)
+}
+
+final class BotAdminWindow {
+    let callback: (PeerId) -> Void
+    init(callback: @escaping (PeerId) -> Void) {
+        self.callback = callback
+    }
+}
+
+var openWindows: [BotAdminWindow] = []
+
+func ChannelBotAdminController(context: any AccountContextProtocol, peer: Peer, admin: Peer, rights: String? = nil, callback: @escaping (PeerId) -> Void) -> BotAdminWindow {
+    record("window \(name(peer.id)) \(name(admin.id))")
+    return BotAdminWindow(callback: callback)
+}
+
+func showModal(with controller: BotAdminWindow, for window: Window) {
+    openWindows.append(controller)
+}
+
+final class FeatureNavigationHooks {
+    enum Inactive {
+        case upgrade
+    }
+    static let shared = FeatureNavigationHooks()
+    func showInactiveChannels(_ context: any AccountContextProtocol, _ source: Inactive) {
+        record("showInactiveChannels")
+    }
+}
+
+__TOP__
+
+typealias AddBotError = (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)
+
+func runWindowMember(peer: Peer, admin: Peer) {
+    let context = lab
+    var signal: Signal<PeerId, AddBotError>
+    __WINDOW_MEMBER__
+    signal.start(next: { peerId in
+        record("added to \(name(peerId))")
+    }, error: { error in
+        if error.0 != nil {
+            record("group error")
+        } else if let error = error.1 {
+            record("channel error \(describe(error))")
+        } else if error.2 != nil {
+            record("convert error")
+        } else if error.3 != nil {
+            record("admin rights error")
+        }
+    })
+}
+
+func runWindowError(_ value: AddBotError, peer: Peer) {
+    let context = lab
+    let handler: (AddBotError) -> Void = {__WINDOW_ERROR__}
+    handler(value)
+}
+
+final class BotProfile {
+    let context = lab
+
+    func peerChat(_ peerId: PeerId, postId: MessageId? = nil) {
+        record("open \(name(peerId))")
+    }
+
+    func addToGroup(_ values: (dest: Peer, source: Peer)) {
+        let context = self.context
+        let handler: ((dest: Peer, source: Peer)) -> Void = {__PROFILE__}
+        handler(values)
+    }
+}
+
+func runLink(_ values: (dest: Peer, source: Peer), payload: String, action: ChatInitialAction?) {
+    let context = lab
+    let rights: String? = nil
+    let botPeerId = EnginePeer(peer: values.dest)
+    let callback: (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void = { peerId, _, _, action in
+        record("open \(name(peerId)) action \(describe(action))")
+    }
+    let handler: ((dest: Peer, source: Peer)) -> Void = {__LINK__}
+    handler(values)
+}
+
+func peer<T: Peer>(_ value: T) -> T {
+    names[value.id] = value.displayTitle
+    return value
+}
+
+let bot = peer(TelegramUser(id: 100, title: "Bot"))
+let memberSupergroup = peer(TelegramChannel(id: 200, title: "Supergroup", info: .group, isCreator: false, adminRights: nil))
+let adminSupergroup = peer(TelegramChannel(id: 201, title: "AdminSupergroup", info: .group, isCreator: false, adminRights: [.canChangeInfo, .canInviteUsers]))
+let ownSupergroup = peer(TelegramChannel(id: 202, title: "OwnSupergroup", info: .group, isCreator: true, adminRights: nil))
+let promotedSupergroup = peer(TelegramChannel(id: 203, title: "PromotedSupergroup", info: .group, isCreator: false, adminRights: [.canInviteUsers, .canAddAdmins]))
+let memberGroup = peer(TelegramGroup(id: 300, title: "Group", role: .member))
+let ownGroup = peer(TelegramGroup(id: 301, title: "OwnGroup", role: .creator(rank: nil)))
+let upgradedGroup = PeerId(namespace: Namespaces.Peer.CloudChannel, id: 302)
+names[upgradedGroup] = "UpgradedGroup"
+let adminChannel = peer(TelegramChannel(id: 400, title: "Channel", info: .broadcast, isCreator: false, adminRights: [.canPostMessages]))
+let ownChannel = peer(TelegramChannel(id: 401, title: "OwnChannel", info: .broadcast, isCreator: true, adminRights: nil))
+
+let profile = BotProfile()
+
+var passed = 0
+var failures = 0
+
+func check(_ title: String, _ expected: [String], channelError: AddChannelMemberError? = nil, groupError: AddGroupMemberError? = nil, finishWindow: PeerId? = nil, _ body: () -> Void) {
+    events = []
+    openWindows = []
+    channelAddError = channelError
+    groupAddError = groupError
+    body()
+    if let finishWindow = finishWindow {
+        if let window = openWindows.last {
+            channelAddError = nil
+            groupAddError = nil
+            window.callback(finishWindow)
+        } else {
+            record("no Add Bot window")
+        }
+    }
+    if events == expected {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(title)\n  expected: \(expected)\n  got:      \(events)")
+    }
+}
+
+check("window, supergroup, Admin Rights off: the bot is added to the supergroup", ["addMembers OwnSupergroup Bot", "added to OwnSupergroup"]) {
+    runWindowMember(peer: ownSupergroup, admin: bot)
+}
+check("window, supergroup: a refusal reaches the error handler", ["addMembers OwnSupergroup Bot", "channel error tooMuchBots"], channelError: .tooMuchBots) {
+    runWindowMember(peer: ownSupergroup, admin: bot)
+}
+check("window, channel: the server's answer that bots join channels only as admins is shown", ["addMembers OwnChannel Bot", "channel error bot"], channelError: .bot(bot.id)) {
+    runWindowMember(peer: ownChannel, admin: bot)
+}
+check("window, basic group, Admin Rights off: the bot is added as before", ["addGroupMember OwnGroup Bot", "added to OwnGroup"]) {
+    runWindowMember(peer: ownGroup, admin: bot)
+}
+check("window, basic group: a refusal reaches the error handler as before", ["addGroupMember OwnGroup Bot", "group error"], groupError: .privacy) {
+    runWindowMember(peer: ownGroup, admin: bot)
+}
+
+let windowErrors: [(AddChannelMemberError, String)] = [
+    (.notMutualContact, "channelInfoAddUserLeftError"),
+    (.limitExceeded, "channelErrorAddTooMuch"),
+    (.botDoesntSupportGroups, "channelBotDoesntSupportGroups"),
+    (.tooMuchBots, "channelTooMuchBots"),
+    (.tooMuchJoined, "inviteChannelsTooMuch"),
+    (.generic, "unknownError"),
+    (.bot(bot.id), "channelAddBotErrorHaveRights"),
+    (.restricted(nil), "channelErrorAddBlocked"),
+    (.kicked, "channelAddUserKickedError")
+]
+for (error, text) in windowErrors {
+    check("window error \(describe(error)) shows \(text)", ["alert \(text)"]) {
+        runWindowError((nil, error, nil, nil), peer: memberSupergroup)
+    }
+}
+check("window error from a basic group shows unknownError", ["alert unknownError"]) {
+    runWindowError((.generic, nil, nil, nil), peer: memberSupergroup)
+}
+check("window error from the upgrade to a supergroup shows unknownError", ["alert unknownError"]) {
+    runWindowError((nil, nil, .generic, nil), peer: memberSupergroup)
+}
+check("window error for too many channels opens the inactive channels list", ["showInactiveChannels"]) {
+    runWindowError((nil, nil, .tooManyChannels, nil), peer: memberSupergroup)
+}
+check("window error from the admin rights update shows its own text", ["alert adminRightsErrorGroup"]) {
+    runWindowError((nil, nil, nil, .generic), peer: memberSupergroup)
+}
+
+check("addBotAsMember adds the bot to a basic group", ["addGroupMember Group Bot", "done Group"]) {
+    addBotAsMember(context: lab, peer: bot, to: memberGroup, completion: { record("done \(name($0))") }, error: { record("error \($0)") })
+}
+check("addBotAsMember reports a basic group refusal", ["addGroupMember Group Bot", "error unknownError"], groupError: .privacy) {
+    addBotAsMember(context: lab, peer: bot, to: memberGroup, completion: { record("done \(name($0))") }, error: { record("error \($0)") })
+}
+check("addBotAsMember adds the bot to a supergroup", ["addMembers Supergroup Bot", "done Supergroup"]) {
+    addBotAsMember(context: lab, peer: bot, to: memberSupergroup, completion: { record("done \(name($0))") }, error: { record("error \($0)") })
+}
+check("addBotAsMember reports a supergroup refusal with its own text", ["addMembers Supergroup Bot", "error channelTooMuchBots"], channelError: .tooMuchBots) {
+    addBotAsMember(context: lab, peer: bot, to: memberSupergroup, completion: { record("done \(name($0))") }, error: { record("error \($0)") })
+}
+check("addBotAsMember in a channel shows that bots join channels only as admins", ["addMembers Channel Bot", "error channelAddBotErrorHaveRights"], channelError: .bot(bot.id)) {
+    addBotAsMember(context: lab, peer: bot, to: adminChannel, completion: { record("done \(name($0))") }, error: { record("error \($0)") })
+}
+
+check("profile, member of a supergroup: confirm names the group, adds the bot, opens the group", ["confirm confirmAddBotToGroup(Supergroup)", "addMembers Supergroup Bot", "open Supergroup"]) {
+    profile.addToGroup((dest: bot, source: memberSupergroup))
+}
+check("profile, admin without Add Admins: the same plain add", ["confirm confirmAddBotToGroup(AdminSupergroup)", "addMembers AdminSupergroup Bot", "open AdminSupergroup"]) {
+    profile.addToGroup((dest: bot, source: adminSupergroup))
+}
+check("profile, member of a basic group: confirm names the group, adds the bot, opens the group", ["confirm confirmAddBotToGroup(Group)", "addGroupMember Group Bot", "open Group"]) {
+    profile.addToGroup((dest: bot, source: memberGroup))
+}
+check("profile, channel admin without Add Admins: the server's refusal is shown, nothing opens", ["confirm confirmAddBotToGroup(Channel)", "addMembers Channel Bot", "alert channelAddBotErrorHaveRights"], channelError: .bot(bot.id)) {
+    profile.addToGroup((dest: bot, source: adminChannel))
+}
+check("profile, supergroup refusal: the error is shown, nothing opens", ["confirm confirmAddBotToGroup(Supergroup)", "addMembers Supergroup Bot", "alert channelTooMuchBots"], channelError: .tooMuchBots) {
+    profile.addToGroup((dest: bot, source: memberSupergroup))
+}
+check("profile, owner of a supergroup: the Add Bot window opens and its result opens the group", ["window OwnSupergroup Bot", "open OwnSupergroup"], finishWindow: ownSupergroup.id) {
+    profile.addToGroup((dest: bot, source: ownSupergroup))
+}
+check("profile, admin with Add Admins: the Add Bot window opens", ["window PromotedSupergroup Bot", "open PromotedSupergroup"], finishWindow: promotedSupergroup.id) {
+    profile.addToGroup((dest: bot, source: promotedSupergroup))
+}
+check("profile, owner of a basic group: the window's upgraded group opens", ["window OwnGroup Bot", "open UpgradedGroup"], finishWindow: upgradedGroup) {
+    profile.addToGroup((dest: bot, source: ownGroup))
+}
+
+check("link, member of a supergroup: confirm names the group, adds the bot, opens the group", ["confirm confirmAddBotToGroup(Supergroup)", "addMembers Supergroup Bot", "open Supergroup action none"]) {
+    runLink((dest: bot, source: memberSupergroup), payload: "", action: nil)
+}
+check("link with an empty start value, member: no start action in the group", ["confirm confirmAddBotToGroup(Supergroup)", "addMembers Supergroup Bot", "open Supergroup action none"]) {
+    runLink((dest: bot, source: memberSupergroup), payload: "", action: .start(parameter: "", behavior: 0))
+}
+check("link with a start value, member: the bot starts in the chosen group", ["confirm confirmAddBotToGroup(Supergroup)", "startBotInGroup Bot Supergroup abc", "open Supergroup action none"]) {
+    runLink((dest: bot, source: memberSupergroup), payload: "abc", action: .start(parameter: "abc", behavior: 0))
+}
+check("link, member of a basic group: confirm names the group, adds the bot, opens the group", ["confirm confirmAddBotToGroup(Group)", "addGroupMember Group Bot", "open Group action none"]) {
+    runLink((dest: bot, source: memberGroup), payload: "", action: nil)
+}
+check("link, supergroup refusal: the error is shown, nothing opens", ["confirm confirmAddBotToGroup(Supergroup)", "addMembers Supergroup Bot", "alert channelTooMuchBots"], channelError: .tooMuchBots) {
+    runLink((dest: bot, source: memberSupergroup), payload: "", action: nil)
+}
+check("link, channel admin without Add Admins: the server's refusal is shown", ["confirm confirmAddBotToGroup(Channel)", "addMembers Channel Bot", "alert channelAddBotErrorHaveRights"], channelError: .bot(bot.id)) {
+    runLink((dest: bot, source: adminChannel), payload: "", action: nil)
+}
+check("link, channel admin with a start value: channels don't start bots, the bot is added", ["confirm confirmAddBotToGroup(Channel)", "addMembers Channel Bot", "alert channelAddBotErrorHaveRights"], channelError: .bot(bot.id)) {
+    runLink((dest: bot, source: adminChannel), payload: "abc", action: .start(parameter: "abc", behavior: 0))
+}
+check("link, owner of a supergroup: after the window the group opens, nothing is added twice", ["window OwnSupergroup Bot", "open OwnSupergroup action none"], finishWindow: ownSupergroup.id) {
+    runLink((dest: bot, source: ownSupergroup), payload: "", action: nil)
+}
+check("link with an empty start value, owner: no start action in the group", ["window OwnSupergroup Bot", "open OwnSupergroup action none"], finishWindow: ownSupergroup.id) {
+    runLink((dest: bot, source: ownSupergroup), payload: "", action: .start(parameter: "", behavior: 0))
+}
+check("link, owner of a basic group: the upgraded group opens, the old group gets no request", ["window OwnGroup Bot", "open UpgradedGroup action none"], finishWindow: upgradedGroup) {
+    runLink((dest: bot, source: ownGroup), payload: "", action: nil)
+}
+check("link with a start value, owner: the bot starts in the group after the window", ["window OwnSupergroup Bot", "startBotInGroup Bot OwnSupergroup abc", "open OwnSupergroup action none"], finishWindow: ownSupergroup.id) {
+    runLink((dest: bot, source: ownSupergroup), payload: "abc", action: .start(parameter: "abc", behavior: 0))
+}
+check("link with a start value, channel owner: the channel opens after the window, no start in a channel", ["window OwnChannel Bot", "open OwnChannel action none"], finishWindow: ownChannel.id) {
+    runLink((dest: bot, source: ownChannel), payload: "abc", action: .start(parameter: "abc", behavior: 0))
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
