@@ -124,6 +124,22 @@ func combineLatest<A, B, C, E>(queue: Queue, _ a: Signal<A, E>, _ b: Signal<B, E
     }
 }
 
+func combineLatest<A, B, C, D, E>(queue: Queue, _ a: Signal<A, E>, _ b: Signal<B, E>, _ c: Signal<C, E>, _ d: Signal<D, E>) -> Signal<(A, B, C, D), E> {
+    return Signal { completed in
+        var remaining = 4
+        let finish = {
+            remaining -= 1
+            if remaining == 0 {
+                completed()
+            }
+        }
+        _ = a.start(completed: finish)
+        _ = b.start(completed: finish)
+        _ = c.start(completed: finish)
+        _ = d.start(completed: finish)
+    }
+}
+
 final class MetaDisposable {
     func set(_ disposable: Disposable?) {
     }
@@ -746,8 +762,10 @@ do {
     let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(), globalSettings: global())
     page.change { $0.callP2PMode = .contacts }
     page.didRemovedFromStack()
-    check("a peer-to-peer change does not stay saving", !page.state().saving)
-    check("a peer-to-peer change does not go back a second time", page.dismissed == 0)
+    check("a peer-to-peer change is saving while its request runs", page.state().saving)
+    check("a peer-to-peer change waits for the answer", page.dismissed == 0)
+    page.server.answer()
+    check("a peer-to-peer save ends with the answer", !page.state().saving && page.dismissed == 1)
 }
 
 check("a save never finishes while the page is being removed", !wentBackWhileLeaving)

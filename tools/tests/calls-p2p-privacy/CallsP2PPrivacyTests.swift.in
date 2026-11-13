@@ -1,0 +1,633 @@
+import Foundation
+
+struct PeerId: Hashable {
+    struct Namespace: Hashable {
+        let rawValue: Int32
+
+        func _internalGetInt32Value() -> Int32 {
+            return self.rawValue
+        }
+    }
+
+    let namespace: Namespace
+    let id: Int64
+
+    init(id: Int64, namespace: Int32 = 0) {
+        self.namespace = Namespace(rawValue: namespace)
+        self.id = id
+    }
+}
+
+enum ChatListFilterPeerCategories {
+    static let Namespace: Int32 = 7
+}
+
+struct TelegramFilterCategory {
+    enum Category {
+        case premiumUsers
+        case miniApps
+    }
+
+    let category: Category
+
+    var id: PeerId {
+        switch self.category {
+        case .premiumUsers:
+            return PeerId(id: 1, namespace: ChatListFilterPeerCategories.Namespace)
+        case .miniApps:
+            return PeerId(id: 2, namespace: ChatListFilterPeerCategories.Namespace)
+        }
+    }
+}
+
+final class SelectivePrivacyPeer: Equatable {
+    let peerId: PeerId
+    let participantCount: Int32?
+
+    init(_ id: Int64, participantCount: Int32? = nil) {
+        self.peerId = PeerId(id: id)
+        self.participantCount = participantCount
+    }
+
+    static func ==(lhs: SelectivePrivacyPeer, rhs: SelectivePrivacyPeer) -> Bool {
+        return lhs.peerId == rhs.peerId && lhs.participantCount == rhs.participantCount
+    }
+}
+
+enum SelectivePrivacySettings: Equatable {
+    case enableEveryone(disableFor: [PeerId: SelectivePrivacyPeer])
+    case enableContacts(enableFor: [PeerId: SelectivePrivacyPeer], disableFor: [PeerId: SelectivePrivacyPeer], enableForPremium: Bool, enableForBots: Bool)
+    case disableEveryone(enableFor: [PeerId: SelectivePrivacyPeer], enableForCloseFriends: Bool, enableForPremium: Bool, enableForBots: Bool)
+}
+
+struct TelegramDisallowedGifts: OptionSet {
+    var rawValue: Int32
+
+    static let unlimited = TelegramDisallowedGifts(rawValue: 1 << 0)
+    static let limited = TelegramDisallowedGifts(rawValue: 1 << 1)
+    static let unique = TelegramDisallowedGifts(rawValue: 1 << 2)
+    static let premium = TelegramDisallowedGifts(rawValue: 1 << 3)
+    static let channel = TelegramDisallowedGifts(rawValue: 1 << 4)
+}
+
+struct GlobalPrivacySettings: Equatable {
+    var automaticallyArchiveAndMuteNonContacts: Bool
+    var keepArchivedUnmuted: Bool
+    var keepArchivedFolders: Bool
+    var hideReadTime: Bool
+    var disallowedGifts: TelegramDisallowedGifts
+    var displayGiftButton: Bool
+}
+
+enum UpdateSelectiveAccountPrivacySettingsType: Equatable {
+    case presence
+    case groupInvitations
+    case voiceCalls
+    case voiceCallsP2P
+    case profilePhoto
+    case forwards
+    case phoneNumber
+    case voiceMessages
+    case bio
+    case birthday
+    case giftsAutoSave
+    case noPaidMessages
+    case savedMusic
+}
+
+final class TelegramMediaImage: Equatable {
+    static func ==(lhs: TelegramMediaImage, rhs: TelegramMediaImage) -> Bool {
+        return lhs === rhs
+    }
+}
+
+struct PeerInfoUpdatingPhotoState: Equatable {
+}
+
+@dynamicMemberLookup
+struct Strings {
+    subscript(dynamicMember name: String) -> String {
+        return name
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+class ViewController {
+}
+
+final class SelectivePrivacySettingsPeersController: ViewController {
+    let title: String
+    let initialPeers: [PeerId: SelectivePrivacyPeer]
+    let updated: ([PeerId: SelectivePrivacyPeer]) -> Void
+
+    init(_ context: Context, title: String, initialPeers: [PeerId: SelectivePrivacyPeer], premiumUsers: Bool?, enableForBots: Bool?, updated: @escaping ([PeerId: SelectivePrivacyPeer]) -> Void) {
+        self.title = title
+        self.initialPeers = initialPeers
+        self.updated = updated
+    }
+}
+
+enum NoError {
+}
+
+final class Disposable {
+}
+
+final class Queue {
+    static func mainQueue() -> Queue {
+        return Queue()
+    }
+}
+
+final class Signal<T, E> {
+    private let run: (@escaping () -> Void) -> Void
+
+    init(_ run: @escaping (@escaping () -> Void) -> Void) {
+        self.run = run
+    }
+
+    static func complete() -> Signal<T, E> {
+        return Signal { completed in
+            completed()
+        }
+    }
+
+    func start(completed: @escaping () -> Void = {}) -> Disposable {
+        self.run(completed)
+        return Disposable()
+    }
+}
+
+func combineLatest<A, B, C, E>(queue: Queue, _ a: Signal<A, E>, _ b: Signal<B, E>, _ c: Signal<C, E>) -> Signal<(A, B, C), E> {
+    return Signal { completed in
+        var remaining = 3
+        let finish = {
+            remaining -= 1
+            if remaining == 0 {
+                completed()
+            }
+        }
+        _ = a.start(completed: finish)
+        _ = b.start(completed: finish)
+        _ = c.start(completed: finish)
+    }
+}
+
+func combineLatest<A, B, C, D, E>(queue: Queue, _ a: Signal<A, E>, _ b: Signal<B, E>, _ c: Signal<C, E>, _ d: Signal<D, E>) -> Signal<(A, B, C, D), E> {
+    return Signal { completed in
+        var remaining = 4
+        let finish = {
+            remaining -= 1
+            if remaining == 0 {
+                completed()
+            }
+        }
+        _ = a.start(completed: finish)
+        _ = b.start(completed: finish)
+        _ = c.start(completed: finish)
+        _ = d.start(completed: finish)
+    }
+}
+
+final class MetaDisposable {
+    func set(_ disposable: Disposable?) {
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func modify(_ f: (T) -> T) -> T {
+        self.value = f(self.value)
+        return self.value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+final class ValuePromise<T> {
+    init(_ value: T, ignoreRepeated: Bool = false) {
+    }
+
+    func set(_ value: T) {
+    }
+}
+
+enum Write: Equatable {
+    case selective(UpdateSelectiveAccountPrivacySettingsType, SelectivePrivacySettings)
+    case phoneDiscovery(Bool)
+    case global(GlobalPrivacySettings)
+}
+
+final class Server {
+    var writes: [Write] = []
+    var pendingAnswers: [() -> Void] = []
+
+    func request<T>(_ write: Write) -> Signal<T, NoError> {
+        return Signal { completed in
+            self.writes.append(write)
+            self.pendingAnswers.append(completed)
+        }
+    }
+
+    func answer() {
+        self.pendingAnswers.forEach { $0() }
+        self.pendingAnswers = []
+    }
+}
+
+final class Privacy {
+    let server: Server
+
+    init(_ server: Server) {
+        self.server = server
+    }
+
+    func updatePhoneNumberDiscovery(value: Bool) -> Signal<Void, NoError> {
+        return self.server.request(.phoneDiscovery(value))
+    }
+
+    func updateSelectiveAccountPrivacySettings(type: UpdateSelectiveAccountPrivacySettingsType, settings: SelectivePrivacySettings) -> Signal<Void, NoError> {
+        return self.server.request(.selective(type, settings))
+    }
+
+    func updateGlobalPrivacySettings(settings: GlobalPrivacySettings) -> Signal<Never, NoError> {
+        return self.server.request(.global(settings))
+    }
+}
+
+final class Engine {
+    let privacy: Privacy
+
+    init(_ server: Server) {
+        self.privacy = Privacy(server)
+    }
+}
+
+final class Context {
+    let engine: Engine
+    let isPremium = true
+
+    init(_ server: Server) {
+        self.engine = Engine(server)
+    }
+}
+
+__TYPES__
+
+__STATE__
+
+struct Report {
+    let settings: SelectivePrivacySettings
+    let callSettings: SelectivePrivacySettings?
+    let phoneDiscoveryEnabled: Bool?
+    let globalSettings: GlobalPrivacySettings?
+}
+
+final class Page {
+    let server = Server()
+    let context: Context
+    let kind: SelectivePrivacySettingsKind
+    let current: SelectivePrivacySettings
+    let callSettings: SelectivePrivacySettings?
+    let phoneDiscoveryEnabled: Bool? = nil
+    let globalSettings: GlobalPrivacySettings?
+    var reports: [Report] = []
+    var pushed: [ViewController] = []
+    var savePressed: (() -> Void)?
+    var chooseP2P: ((SelectivePrivacySettingType) -> Void)!
+    var openAlways: ((SelectivePrivacySettingsPeerTarget) -> Void)!
+    var openNever: ((SelectivePrivacySettingsPeerTarget) -> Void)!
+    var edit: (((SelectivePrivacySettingsControllerState) -> SelectivePrivacySettingsControllerState) -> Void)!
+    var state: (() -> SelectivePrivacySettingsControllerState)!
+    var dismissed = 0
+    var isLeaving = false
+
+    init(_ kind: SelectivePrivacySettingsKind, current: SelectivePrivacySettings, callSettings: SelectivePrivacySettings? = nil, globalSettings: GlobalPrivacySettings? = nil) {
+        self.context = Context(self.server)
+        self.kind = kind
+        self.current = current
+        self.callSettings = callSettings
+        self.globalSettings = globalSettings
+        self.viewDidLoad()
+    }
+
+    func viewDidLoad() {
+        let context = self.context
+        let kind = self.kind
+        let current = self.current
+        let updated: (SelectivePrivacySettings, SelectivePrivacySettings?, Bool?, GlobalPrivacySettings?) -> Void = { [unowned self] settings, callSettings, phoneDiscoveryEnabled, globalSettings in
+            self.reports.append(Report(settings: settings, callSettings: callSettings, phoneDiscoveryEnabled: phoneDiscoveryEnabled, globalSettings: globalSettings))
+        }
+
+        __LOAD__
+
+        let updateSettingsDisposable = MetaDisposable()
+        let globalSettings = self.globalSettings
+
+        __OPEN_ENABLE_FOR__
+
+        __OPEN_DISABLE_FOR__
+
+        __P2P_MODE__
+
+        __SAVE__
+
+        pushControllerImpl = { [unowned self] controller in
+            self.pushed.append(controller)
+        }
+        dismissImpl = { [unowned self] in
+            self.dismissed += 1
+            wentBackWhileLeaving = wentBackWhileLeaving || self.isLeaving
+        }
+        self.chooseP2P = p2pMode
+        self.openAlways = openEnableFor
+        self.openNever = openDisableFor
+        self.edit = updateState
+        self.state = { stateValue.with { $0 } }
+    }
+
+    func didRemovedFromStack() {
+        self.isLeaving = true
+        __REMOVED__
+        self.isLeaving = false
+    }
+
+    func pick(_ open: (SelectivePrivacySettingsPeerTarget) -> Void, _ target: SelectivePrivacySettingsPeerTarget, _ peers: [PeerId: SelectivePrivacyPeer]) -> [PeerId: SelectivePrivacyPeer]? {
+        let count = self.pushed.count
+        open(target)
+        guard self.pushed.count == count + 1, let list = self.pushed.last as? SelectivePrivacySettingsPeersController else {
+            return nil
+        }
+        list.updated(peers)
+        return list.initialPeers
+    }
+
+    func change(_ f: @escaping (inout SelectivePrivacySettingsControllerState) -> Void) {
+        self.edit { current in
+            var current = current
+            f(&current)
+            return current
+        }
+    }
+
+    var writes: [Write] {
+        return self.server.writes
+    }
+}
+
+var failures = 0
+var passed = 0
+var wentBackWhileLeaving = false
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func peers(_ ids: Int64...) -> [PeerId: SelectivePrivacyPeer] {
+    var result: [PeerId: SelectivePrivacyPeer] = [:]
+    for id in ids {
+        result[PeerId(id: id)] = SelectivePrivacyPeer(id)
+    }
+    return result
+}
+
+func global(hideReadTime: Bool = false) -> GlobalPrivacySettings {
+    return GlobalPrivacySettings(automaticallyArchiveAndMuteNonContacts: true, keepArchivedUnmuted: false, keepArchivedFolders: true, hideReadTime: hideReadTime, disallowedGifts: [], displayGiftButton: false)
+}
+
+func nobody(_ enableFor: [PeerId: SelectivePrivacyPeer] = [:], closeFriends: Bool = false, premium: Bool = false, bots: Bool = false) -> SelectivePrivacySettings {
+    return .disableEveryone(enableFor: enableFor, enableForCloseFriends: closeFriends, enableForPremium: premium, enableForBots: bots)
+}
+
+func contacts(_ enableFor: [PeerId: SelectivePrivacyPeer] = [:], disableFor: [PeerId: SelectivePrivacyPeer] = [:], premium: Bool = false, bots: Bool = false) -> SelectivePrivacySettings {
+    return .enableContacts(enableFor: enableFor, disableFor: disableFor, enableForPremium: premium, enableForBots: bots)
+}
+
+func everybody(_ disableFor: [PeerId: SelectivePrivacyPeer] = [:]) -> SelectivePrivacySettings {
+    return .enableEveryone(disableFor: disableFor)
+}
+
+func describe(_ rule: SelectivePrivacySettings) -> String {
+    switch rule {
+    case let .enableEveryone(disableFor):
+        return "Everybody with \(disableFor.count) never"
+    case let .enableContacts(enableFor, disableFor, premium, bots):
+        return "My Contacts with \(enableFor.count) always, \(disableFor.count) never" + (premium ? ", premium" : "") + (bots ? ", bots" : "")
+    case let .disableEveryone(enableFor, closeFriends, premium, bots):
+        return "Nobody with \(enableFor.count) always" + (closeFriends ? ", close friends" : "") + (premium ? ", premium" : "") + (bots ? ", bots" : "")
+    }
+}
+
+func expectedP2P(_ mode: SelectivePrivacySettingType, from loaded: SelectivePrivacySettings, enableFor newEnableFor: [PeerId: SelectivePrivacyPeer]? = nil, disableFor newDisableFor: [PeerId: SelectivePrivacyPeer]? = nil) -> SelectivePrivacySettings {
+    var enableFor: [PeerId: SelectivePrivacyPeer] = [:]
+    var disableFor: [PeerId: SelectivePrivacyPeer] = [:]
+    var closeFriends = false
+    switch loaded {
+    case let .enableEveryone(loadedDisableFor):
+        disableFor = loadedDisableFor
+    case let .enableContacts(loadedEnableFor, loadedDisableFor, _, _):
+        enableFor = loadedEnableFor
+        disableFor = loadedDisableFor
+    case let .disableEveryone(loadedEnableFor, loadedCloseFriends, _, _):
+        enableFor = loadedEnableFor
+        closeFriends = loadedCloseFriends
+    }
+    enableFor = newEnableFor ?? enableFor
+    disableFor = newDisableFor ?? disableFor
+    switch mode {
+    case .everybody:
+        return everybody(disableFor)
+    case .contacts:
+        return contacts(enableFor, disableFor: disableFor)
+    case .nobody:
+        return nobody(enableFor, closeFriends: closeFriends)
+    }
+}
+
+func isP2P(_ write: Write) -> Bool {
+    if case .selective(.voiceCallsP2P, _) = write {
+        return true
+    } else {
+        return false
+    }
+}
+
+let modes: [SelectivePrivacySettingType] = [.everybody, .contacts, .nobody]
+let loadedP2P: [SelectivePrivacySettings] = [
+    everybody(),
+    everybody(peers(3, 4)),
+    contacts(),
+    contacts(peers(3), disableFor: peers(4)),
+    nobody(),
+    nobody(peers(3)),
+    nobody(peers(3), closeFriends: true)
+]
+let loadedWithExtras: [SelectivePrivacySettings] = [
+    contacts(peers(3), premium: true, bots: true),
+    nobody(premium: true, bots: true)
+]
+let callRules: [SelectivePrivacySettings] = [
+    everybody(),
+    contacts(peers(1), disableFor: peers(2), premium: true, bots: true),
+    nobody(peers(1), closeFriends: true)
+]
+
+for loaded in loadedP2P + loadedWithExtras {
+    for mode in modes where mode != SelectivePrivacySettingType(loaded) {
+        let name = "peer-to-peer \(describe(loaded)) to \(mode)"
+        let expected = expectedP2P(mode, from: loaded)
+        let page = Page(.voiceCalls, current: contacts(peers(1)), callSettings: loaded, globalSettings: global(hideReadTime: true))
+        page.chooseP2P(mode)
+        page.didRemovedFromStack()
+        check("\(name) sends the new peer-to-peer rule and nothing else", page.writes == [.selective(.voiceCallsP2P, expected)])
+        check("\(name) reports the new rule to the Privacy section", page.reports.count == 1 && page.reports[0].callSettings == expected && page.reports[0].settings == contacts(peers(1)) && page.reports[0].globalSettings == nil)
+        check("\(name) waits for the answer", page.state().saving && page.dismissed == 0)
+        page.server.answer()
+        check("\(name) ends with the answer", !page.state().saving && page.dismissed == 1)
+    }
+}
+
+for loaded in loadedP2P + loadedWithExtras {
+    for callRule in callRules {
+        let page = Page(.voiceCalls, current: callRule, callSettings: loaded, globalSettings: global())
+        page.didRemovedFromStack()
+        check("peer-to-peer \(describe(loaded)), calls \(describe(callRule)): leaving without a change sends nothing", page.writes.isEmpty && page.reports.isEmpty && !page.state().saving)
+    }
+
+    let same = Page(.voiceCalls, current: everybody(), callSettings: loaded, globalSettings: global())
+    same.chooseP2P(SelectivePrivacySettingType(loaded))
+    same.didRemovedFromStack()
+    check("peer-to-peer \(describe(loaded)) chosen again sends nothing", same.writes.isEmpty && same.reports.isEmpty)
+
+    for mode in modes where mode != SelectivePrivacySettingType(loaded) {
+        let page = Page(.voiceCalls, current: everybody(), callSettings: loaded, globalSettings: global())
+        page.chooseP2P(mode)
+        page.chooseP2P(SelectivePrivacySettingType(loaded))
+        page.didRemovedFromStack()
+        check("peer-to-peer \(describe(loaded)) to \(mode) and back sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+    }
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(peers(3)), globalSettings: global())
+    let opened = page.pick(page.openNever, .callP2P, peers(3, 4))
+    page.didRemovedFromStack()
+    check("the peer-to-peer Never list opens with its own peers", opened == peers(3))
+    check("a peer added to the peer-to-peer Never list is sent", page.writes == [.selective(.voiceCallsP2P, everybody(peers(3, 4)))])
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(peers(9)), callSettings: contacts(peers(3), disableFor: peers(4)), globalSettings: global())
+    let opened = page.pick(page.openAlways, .callP2P, peers(3, 4))
+    page.didRemovedFromStack()
+    check("the peer-to-peer Always list opens with its own peers", opened == peers(3))
+    check("a peer moved to peer-to-peer Always leaves Never and is sent", page.writes == [.selective(.voiceCallsP2P, contacts(peers(3, 4)))])
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: contacts(peers(3), disableFor: peers(4)), globalSettings: global())
+    _ = page.pick(page.openNever, .callP2P, peers(3, 4))
+    page.didRemovedFromStack()
+    check("a peer moved to peer-to-peer Never leaves Always and is sent", page.writes == [.selective(.voiceCallsP2P, contacts(disableFor: peers(3, 4)))])
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: nobody(peers(3), closeFriends: true), globalSettings: global())
+    _ = page.pick(page.openAlways, .callP2P, peers(3, 5))
+    page.didRemovedFromStack()
+    check("a peer-to-peer Always edit on Nobody keeps Close Friends", page.writes == [.selective(.voiceCallsP2P, nobody(peers(3, 5), closeFriends: true))])
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: contacts(peers(3)), globalSettings: global())
+    _ = page.pick(page.openAlways, .callP2P, peers(3, 5))
+    _ = page.pick(page.openAlways, .callP2P, peers(3))
+    page.didRemovedFromStack()
+    check("a peer-to-peer list edit undone sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(peers(4)), globalSettings: global())
+    page.chooseP2P(.contacts)
+    _ = page.pick(page.openAlways, .callP2P, peers(9))
+    page.chooseP2P(.everybody)
+    page.didRemovedFromStack()
+    check("a peer-to-peer list edited while it is hidden sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody())
+    page.chooseP2P(.nobody)
+    _ = page.pick(page.openAlways, .callP2P, peers(3))
+    page.didRemovedFromStack()
+    check("a new peer-to-peer mode and its list go out in one request", page.writes == [.selective(.voiceCallsP2P, nobody(peers(3)))])
+}
+
+do {
+    let page = Page(.voiceCalls, current: contacts(), callSettings: nobody(peers(3)), globalSettings: global())
+    _ = page.pick(page.openAlways, .main, peers(7))
+    page.didRemovedFromStack()
+    check("the calls Always list does not touch peer-to-peer", page.writes == [.selective(.voiceCalls, contacts(peers(7)))] && page.reports.first?.callSettings == nil)
+}
+
+do {
+    let page = Page(.voiceCalls, current: contacts(), callSettings: nobody(peers(3)), globalSettings: global())
+    page.change { $0.setting = .nobody }
+    page.didRemovedFromStack()
+    check("a calls rule change does not send peer-to-peer", page.writes == [.selective(.voiceCalls, nobody())])
+}
+
+do {
+    let page = Page(.voiceCalls, current: contacts(premium: true, bots: true), callSettings: everybody(), globalSettings: global())
+    page.chooseP2P(.contacts)
+    page.didRemovedFromStack()
+    check("the peer-to-peer rule does not take Premium or Bots from the calls rule", page.writes == [.selective(.voiceCallsP2P, contacts())])
+}
+
+do {
+    let page = Page(.voiceCalls, current: contacts(), callSettings: everybody(peers(3)), globalSettings: global())
+    page.change { $0.setting = .nobody }
+    page.chooseP2P(.nobody)
+    page.didRemovedFromStack()
+    check("a calls rule and a peer-to-peer change send both", page.writes.count == 2 && page.writes.contains(.selective(.voiceCalls, nobody())) && page.writes.contains(.selective(.voiceCallsP2P, nobody())))
+    check("a calls rule and a peer-to-peer change are reported together", page.reports.count == 1 && page.reports[0].settings == nobody() && page.reports[0].callSettings == nobody())
+    check("the save waits for both answers", page.server.pendingAnswers.count == 2 && page.state().saving && page.dismissed == 0)
+    page.server.answer()
+    check("the save ends after both answers", !page.state().saving && page.dismissed == 1)
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(), globalSettings: global())
+    page.chooseP2P(.nobody)
+    page.didRemovedFromStack()
+    page.didRemovedFromStack()
+    check("a second leave during a peer-to-peer save sends nothing more", page.writes.count == 1 && page.reports.count == 1)
+}
+
+for kind in [SelectivePrivacySettingsKind.voiceMessages, .gifts, .savedMusic] {
+    let page = Page(kind, current: everybody(), callSettings: nobody(peers(3)), globalSettings: global())
+    page.change { $0.setting = .contacts }
+    page.didRemovedFromStack()
+    check("\(kind): a rule change on a page without the peer-to-peer section does not send it", !page.writes.contains(where: isP2P) && page.writes.count == 1 && page.reports.first?.callSettings == nil)
+}
+
+check("a save never finishes while the page is being removed", !wentBackWhileLeaving)
+check("the Calls page opens with the loaded peer-to-peer rule and the Privacy section keeps the reported one", __CALLER_KEEPS_P2P__)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
