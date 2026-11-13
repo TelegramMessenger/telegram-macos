@@ -1922,3 +1922,64 @@ index b413951961c2040d6e18c233d2da558cca8a41f7..0e05c4924868260623c68ae6617c5e3c
  private func widgetBase64(_ value: String) throws -> String {
      var normalized = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
      while normalized.hasSuffix("=") {
+diff --git a/submodules/Postbox/Sources/ChatListViewState.swift b/submodules/Postbox/Sources/ChatListViewState.swift
+index 2c637fcb..c3aa7625 100644
+--- a/submodules/Postbox/Sources/ChatListViewState.swift
++++ b/submodules/Postbox/Sources/ChatListViewState.swift
+@@ -65,28 +65,23 @@ enum ChatListViewSpace: Hashable {
+     }
+ }
+ 
++func chatListPeerIsUnread(postbox: PostboxImpl, peer: Peer) -> Bool {
++    let isThreadBased = postbox.seedConfiguration.peerSummaryIsThreadBased(peer, peer.associatedPeerId.flatMap(postbox.peerTable.get)).value
++    let displayAsRegularChat = postbox.cachedPeerDataTable.get(peer.id).map(postbox.seedConfiguration.decodeDisplayPeerAsRegularChat) ?? false
++    if isThreadBased && !displayAsRegularChat {
++        return (postbox.peerThreadsSummaryTable.get(peerId: peer.id)?.effectiveUnreadCount ?? 0) > 0
++    }
++    return postbox.readStateTable.getCombinedState(peer.id)?.isUnread ?? false
++}
++
+ private func mappedChatListFilterPredicate(postbox: PostboxImpl, currentTransaction: Transaction, groupId: PeerGroupId, predicate: ChatListFilterPredicate) -> (ChatListIntermediateEntry) -> Bool {
+     let globalNotificationSettings = postbox.getGlobalNotificationSettings(transaction: currentTransaction)
+     return { entry in
+         switch entry {
+         case let .message(index, _):
+             if let peer = postbox.peerTable.get(index.messageIndex.id.peerId) {
+-                var isUnread: Bool
+-                
+-                var displayAsRegularChat = false
+-                if let cachedPeerData = postbox.cachedPeerDataTable.get(peer.id), postbox.seedConfiguration.decodeDisplayPeerAsRegularChat(cachedPeerData) {
+-                    displayAsRegularChat = true
+-                }
+-                let isThreadBased = postbox.seedConfiguration.peerSummaryIsThreadBased(peer, peer.associatedPeerId.flatMap(postbox.peerTable.get)).value
+-                if !isThreadBased {
+-                    displayAsRegularChat = true
+-                }
+-                if isThreadBased && !displayAsRegularChat {
+-                    isUnread = (postbox.peerThreadsSummaryTable.get(peerId: peer.id)?.effectiveUnreadCount ?? 0) > 0
+-                } else {
+-                    isUnread = postbox.readStateTable.getCombinedState(index.messageIndex.id.peerId)?.isUnread ?? false
+-                }
+-                
++                let isUnread = chatListPeerIsUnread(postbox: postbox, peer: peer)
++
+                 let notificationsPeerId = peer.notificationSettingsPeerId ?? peer.id
+                 let isContact = postbox.contactsTable.isContact(peerId: notificationsPeerId)
+                 let isRemovedFromTotalUnreadCount = resolvedIsRemovedFromTotalUnreadCount(globalSettings: globalNotificationSettings, peer: peer, peerSettings: postbox.peerNotificationSettingsTable.getEffective(notificationsPeerId))
+diff --git a/submodules/Postbox/Sources/Postbox.swift b/submodules/Postbox/Sources/Postbox.swift
+index 72585b34..0b3bae38 100644
+--- a/submodules/Postbox/Sources/Postbox.swift
++++ b/submodules/Postbox/Sources/Postbox.swift
+@@ -504,6 +504,12 @@ public final class Transaction {
+         return self.postbox?.chatListTable.getPeerChatListIndex(peerId: peerId)
+     }
+     
++    public func isChatListPeerUnread(_ peer: Peer) -> Bool {
++        assert(!self.disposed)
++        guard let postbox = self.postbox else { return false }
++        return chatListPeerIsUnread(postbox: postbox, peer: peer)
++    }
++
+     public func getChatListPeers(groupId: PeerGroupId, filterPredicate: ChatListFilterPredicate?, additionalFilter: ((Peer) -> Bool)?) -> [Peer] {
+         assert(!self.disposed)
+         if let postbox = self.postbox {

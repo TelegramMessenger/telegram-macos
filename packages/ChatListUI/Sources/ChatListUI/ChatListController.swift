@@ -22,6 +22,7 @@ import ChatUI
 import ChatModeTypes
 import InlineStickerLayer
 import InputDataUI
+import FocusFilterCore
 import HTMLBubbles
 import AppAnalytics
 
@@ -324,7 +325,7 @@ public enum UIChatListEntry : Identifiable, Comparable {
     case chat(EngineChatList.Item, [PeerListState.InputActivities.Activity], UIChatAdditionalItem?, filter: ChatListFilter, generalStatus: ItemHideStatus?, selectedForum: PeerId?, appearMode: PeerListState.AppearMode, hideContent: Bool, folders: FilterData?, communityCategories: [PeerId: ChatListFilterPeerCategories], canPreviewChat: Bool)
     case group(Int, EngineChatList.GroupItem, Bool, ItemHideStatus, PeerListState.AppearMode, Bool, EngineStorySubscriptions?)
     case reveal([ChatListFilter], ChatListFilter, ChatListFilterBadges)
-    case empty(ChatListFilter, PeerListMode, SplitViewState, PeerEquatable?, hideContent: Bool)
+    case empty(ChatListFilter, PeerListMode, SplitViewState, PeerEquatable?, hideContent: Bool, hiddenByFocus: Bool)
     case systemDeprecated(ChatListFilter)
     case auction(ChatListAuctionInfo)
     case sharedFolderUpdated(ChatFolderUpdates)
@@ -355,8 +356,8 @@ public enum UIChatListEntry : Identifiable, Comparable {
             } else {
                 return false
             }
-        case let .empty(filter, mode, state, peer, hideContent):
-            if case .empty(filter, mode, state, peer, hideContent) = rhs {
+        case let .empty(filter, mode, state, peer, hideContent, hiddenByFocus):
+            if case .empty(filter, mode, state, peer, hideContent, hiddenByFocus) = rhs {
                 return true
             } else {
                 return false
@@ -572,8 +573,8 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<UIChatListEntry>]?,
                 return ChatListRowItem(initialSize, context: arguments.context, stableId: entry.entry.stableId, pinnedType: .none, groupId: item.id, groupItems: item.items, messages: messages, unreadCount: item.unreadCount, animateGroup: animated, hideStatus: hideStatus, appearMode: appearMode, hideContent: hideContent, getHideProgress: arguments.getHideProgress, openStory: arguments.openStory, storyState: storyState)
             case let .reveal(tabs, selected, counters):
                 return ChatListRevealItem(initialSize, context: arguments.context, tabs: tabs, selected: selected, counters: counters)
-            case let .empty(filter, mode, state, peer, hideContent):
-                return ChatListEmptyRowItem(initialSize, stableId: entry.stableId, filter: filter, mode: mode, peer: peer?.peer, layoutState: state, hideContent: hideContent, context: arguments.context, openFilterSettings: arguments.openFilterSettings, createTopic: arguments.createTopic, switchOffForum: arguments.switchOffForum)
+            case let .empty(filter, mode, state, peer, hideContent, hiddenByFocus):
+                return ChatListEmptyRowItem(initialSize, stableId: entry.stableId, filter: filter, mode: mode, peer: peer?.peer, layoutState: state, hideContent: hideContent, hiddenByFocus: hiddenByFocus, context: arguments.context, openFilterSettings: arguments.openFilterSettings, createTopic: arguments.createTopic, switchOffForum: arguments.switchOffForum)
             case .systemDeprecated:
                 return ChatListSystemDeprecatedItem(initialSize, stableId: entry.stableId, hideAction: arguments.hideDeprecatedSystem)
             case let .sharedFolderUpdated(updates):
@@ -937,11 +938,13 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
         }))
 
         
-        let chatHistoryView: Signal<(ChatListViewUpdate, FilterData, Bool, ChatFolderUpdates?), NoError> = filterSignal |> distinctUntilChanged(isEqual: { lhs, rhs in
+        let focusPolicies = ChatListFocusHooks.shared.policies()
+        let focusSelection = chatListFocusSelection(accountId: context.account.id.int64, policies: focusPolicies)
+        let chatHistoryView: Signal<(ChatListFocusViewUpdate, FilterData, Bool, ChatFolderUpdates?), NoError> = combineLatest(filterSignal |> distinctUntilChanged(isEqual: { lhs, rhs in
             return lhs.filter == rhs.filter && lhs.request == rhs.request
-        }) |> mapToSignal { data in
+        }), focusSelection) |> mapToSignal { data, selection in
             
-            let signal = combineLatest(context.engine.peers.subscribedChatFolderUpdates(folderId: ChatListUIHooks.shared.chatListFilterId(data.filter)), chatListViewForLocation(chatListLocation: mode.location, location: data.request, filter: data.filter, account: context.account))
+            let signal = combineLatest(context.engine.peers.subscribedChatFolderUpdates(folderId: ChatListUIHooks.shared.chatListFilterId(data.filter)), focusFilteredChatListView(chatListLocation: mode.location, location: data.request, filter: data.filter, account: context.account, selection: selection, policies: focusPolicies))
             return  signal |> map { updates, view in
                 return (view, data, false, updates)
             }
@@ -1003,7 +1006,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
             let filterData = value.1
             let rowFolders = FilterData(filter: .allChats, tabs: state.filterData.tabs, sidebar: false, showTags: state.filterData.showTags, request: .Initial(50, nil), badges: .init(total: 0, filters: []), requestTimestamp: 0, isTop: true)
             let folderUpdates = value.3
-            let update = value.0
+            let update = value.0.view
             let removeNextAnimation = update.removeNextAnimation
             let previous = first.swap((hasEarlier: update.list.hasEarlier,
                                        hasLater: update.list.hasLater))
@@ -1077,7 +1080,7 @@ public class ChatListController<Context: AccountContextProtocol> : PeersListCont
             
             if mapped.isEmpty {
                 if !update.list.isLoading {
-                    mapped.append(.empty(filterData.filter, mode, state.splitState, .init(state.forumPeer?.peer), hideContent: state.appear == .short))
+                    mapped.append(.empty(filterData.filter, mode, state.splitState, .init(state.forumPeer?.peer), hideContent: state.appear == .short, hiddenByFocus: value.0.hiddenByFocus))
                 } else {
                     mapped.append(.loading(filterData.filter))
                 }

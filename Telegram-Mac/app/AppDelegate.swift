@@ -48,6 +48,9 @@ import StarsUI
 import PerfLab
 #endif
 import SettingsUI
+import FocusFilterCore
+import FocusFilterInfrastructure
+import OSLog
 import HTMLBubbles
 
 //#if BETA || DEBUG
@@ -277,6 +280,12 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     private(set) var appEncryption: AppEncryptionParameters!
     private var memoryPressureMonitor: MemoryPressureMonitor?
     private var rustEngineCrash: CrashedRun?
+    private var focusFilterCoordinator: FocusFilterCoordinator?
+    private var focusCatalogAccessSession: FocusCatalogAccessSession?
+    private let focusFilterWarningDisposable = MetaDisposable()
+    private var didShowFocusFilterWarning = false
+    private var focusFilterWarningIsVisible = false
+    private let focusFilterLogger = OSLog(subsystem: "org.telegram.macos", category: "FocusFilters")
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         TGUIKitAccessibility.isEnabled = FastSettings.accessibilityTreeEffective
@@ -476,7 +485,22 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     
+    private func prepareFocusCatalogAccess() {
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if let session = focusCatalogAccessSession {
+                try session.update(isUnlocked: false)
+            } else {
+                let location = try FocusFilterStorageLocation.resolve(appGroupIdentifier: ApiEnvironment.group, buildSource: Configuration.value(for: .source))
+                focusCatalogAccessSession = try FocusCatalogAccessSession(storageDirectory: location.directory, applicationBundleURL: Bundle.main.bundleURL)
+            }
+        } catch {
+            os_log("Unable to prepare Focus catalog access: %{private}@", log: focusFilterLogger, type: .error, error.localizedDescription)
+        }
+    }
+
     private func launchInterface() {
+        prepareFocusCatalogAccess()
         initializeAccountManagement()
         
 
@@ -833,6 +857,40 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                 let networkArguments = NetworkInitializationArguments(apiId: ApiEnvironment.apiId, apiHash: ApiEnvironment.apiHash, languagesCategory: ApiEnvironment.language, appVersion: ApiEnvironment.version, voipMaxLayer: OngoingCallContext.maxLayer, voipVersions: voipVersions, appData: appData, externalRequestVerificationStream: .single([:]), externalRecaptchaRequestVerification: { _, _ in return .complete() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: ApiEnvironment.customDeviceModel ?? systemDeviceModel, useBetaFeatures: useBetaFeatures, isICloudEnabled: false, networkEngineFactory: RustNetworkEngineFactory())
                 
                 let sharedContext = SharedAccountContext(accountManager: accountManager, networkArguments: networkArguments, rootPath: rootPath, encryptionParameters: encryptionParameters, appEncryption: appEncryption, displayUpgradeProgress: displayUpgrade)
+                let focusPolicySource: any FocusFilterPolicySource
+                if #available(macOS 13.0, *) {
+                    do {
+                        let location = try FocusFilterStorageLocation.resolve(appGroupIdentifier: ApiEnvironment.group, buildSource: Configuration.value(for: .source))
+                        let repository = FocusFilterStore(location: location, onReadFailure: { [logger = self.focusFilterLogger] error in
+                            os_log("Unable to read Focus filter state: %{private}@", log: logger, type: .error, error.localizedDescription)
+                        })
+                        self.focusFilterCoordinator = FocusFilterCoordinator(sharedContext: sharedContext, repository: repository)
+                        focusPolicySource = repository
+                    } catch {
+                        os_log("Unable to resolve Focus filter storage: %{private}@", log: self.focusFilterLogger, type: .error, error.localizedDescription)
+                        focusPolicySource = InactiveFocusFilterPolicySource(isNotificationFilteringUnavailable: true)
+                    }
+                } else {
+                    focusPolicySource = InactiveFocusFilterPolicySource()
+                }
+                let focusPolicies = Signal<FocusFilterPolicy, NoError> { subscriber in
+                    let observation = focusPolicySource.observe { policy in
+                        subscriber.putNext(policy)
+                    }
+                    return ActionDisposable { observation.invalidate() }
+                }
+                ChatListFocusHooks.install(.init(policies: { focusPolicies }))
+                self.focusFilterWarningDisposable.set((focusPolicies
+                    |> map { $0.isNotificationFilteringUnavailable }
+                    |> distinctUntilChanged
+                    |> deliverOnMainQueue).start(next: { [weak self, weak focusPolicySource] unavailable in
+                    guard let self, let focusPolicySource else { return }
+                    if unavailable {
+                        self.showFocusFilterWarningIfNeeded(for: focusPolicySource)
+                    } else {
+                        self.didShowFocusFilterWarning = false
+                    }
+                }))
                 
                 self.hangKeybind(sharedContext)
                 
@@ -961,7 +1019,14 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
                 })
                 
-                let sharedNotificationManager = SharedNotificationManager(activeAccounts: sharedContext.activeAccounts |> map { ($0.0, $0.1.map { ($0.0, $0.1) }) }, appEncryption: appEncryption, accountManager: accountManager, bindings: notificationsBindings)
+                let catalogAccessSession = self.focusCatalogAccessSession
+                let sharedNotificationManager = SharedNotificationManager(activeAccounts: sharedContext.activeAccounts |> map { ($0.0, $0.1.map { ($0.0, $0.1) }) }, appEncryption: appEncryption, accountManager: accountManager, bindings: notificationsBindings, focusPolicySource: focusPolicySource, initialUnlockVerified: true, catalogAccessUpdated: { [logger = self.focusFilterLogger] isUnlocked in
+                    do {
+                        try catalogAccessSession?.update(isUnlocked: isUnlocked)
+                    } catch {
+                        os_log("Unable to update Focus catalog access: %{private}@", log: logger, type: .error, error.localizedDescription)
+                    }
+                })
                 let sharedWakeupManager = SharedWakeupManager(sharedContext: sharedContext, inForeground: self.presentAccountStatus.get())
                 let sharedApplicationContext = SharedApplicationContext(sharedContext: sharedContext, notificationManager: sharedNotificationManager, sharedWakeupManager: sharedWakeupManager)
                 
@@ -1206,6 +1271,8 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                             }
                             self.window.deminiaturize(self)
                             NSApp.activate(ignoringOtherApps: true)
+
+                            self.showFocusFilterWarningIfNeeded(for: focusPolicySource)
                              
                             
                         }
@@ -1530,7 +1597,21 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         return rect;
     }
     
+    private func showFocusFilterWarningIfNeeded(for source: any FocusFilterPolicySource) {
+        guard contextValue != nil, source.policy.isNotificationFilteringUnavailable, !didShowFocusFilterWarning else { return }
+        didShowFocusFilterWarning = true
+        guard !focusFilterWarningIsVisible else { return }
+        focusFilterWarningIsVisible = true
+        let warning = focusFilterConfigurationWarning()
+        alert(for: window, header: warning.title, info: warning.message, onDeinit: { [weak self] in
+            self?.focusFilterWarningIsVisible = false
+        })
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
+        if #available(macOS 13.0, *) {
+            focusFilterCoordinator?.refresh()
+        }
         updatePeerPresence()
         Analytics.shared.startSession()
         analyticsForegroundStart = Analytics.shared.now
@@ -1662,6 +1743,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        try? focusCatalogAccessSession?.update(isUnlocked: false)
         self.terminated = true
         disarmCrashMarker()
         if let containerUrl = self.containerUrl {
