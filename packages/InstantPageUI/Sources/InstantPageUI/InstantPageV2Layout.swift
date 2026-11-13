@@ -1900,9 +1900,28 @@ private func layoutListV2(
     }
     let indexSpacing: CGFloat = ordered ? (hasTaskItem ? 10.0 : 8.0) : (hasTaskItem ? 12.0 : 10.0)
     let checklistMarkerSize: CGFloat = 18.0
+    let explicitNumbers: [String?] = listItems.map { listItem in
+        switch listItem {
+        case let .text(_, number, _), let .blocks(_, number, _):
+            guard let number, !number.isEmpty, number != markdownTaskListCheckedNumber, number != markdownTaskListUncheckedNumber else {
+                return nil
+            }
+            return number
+        case .unknown:
+            return nil
+        }
+    }
+    // Same rule as the V1 layout: once any item carries its own number (the item `value` of a
+    // Bot API list), every item shows its own number instead of its position.
+    let hasExplicitNumbers = explicitNumbers.contains(where: { $0 != nil })
     for (i, _) in listItems.enumerated() {
         if ordered {
-            let value = "\(i + 1)."
+            let value: String
+            if hasExplicitNumbers {
+                value = explicitNumbers[i].map { "\($0)." } ?? " "
+            } else {
+                value = "\(i + 1)."
+            }
             let (item, _, _) = layoutTextItemWithStringV2(
                 attributedStringForRichText(.plain(value), styleStack: indexStack),
                 boundingWidth: boundingWidth - horizontalInset * 2.0,
