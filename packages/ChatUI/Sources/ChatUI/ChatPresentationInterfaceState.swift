@@ -601,6 +601,18 @@ public class ChatPresentationInterfaceState: Equatable {
         return permissionText(from: peer, for: .banSendText, cachedData: cachedData)
     }
 
+    var textRestrictionBoostsRequired: Int32? {
+        guard textRestriction != nil,
+              let channel = peer as? TelegramChannel, case .group = channel.info,
+              let cachedData = cachedData as? CachedChannelData,
+              let required = cachedData.boostsToUnrestrict, required > 0,
+              required > (cachedData.appliedBoosts ?? 0),
+              channel.hasBannedPermission(.banSendText, ignoreDefault: true) == nil else {
+            return nil
+        }
+        return required
+    }
+
     var inputForSending: ChatTextInputState {
         return textRestriction == nil ? effectiveInput : ChatTextInputState()
     }

@@ -83,6 +83,48 @@ final class ChatInputRestrictionTests: XCTestCase {
         XCTAssertEqual(strings().channelPersmissionMessageBlock, "Text is not Allowed")
     }
 
+    func testTextLockOffersBoostWhileMediaRemainsAvailable() {
+        let peer = channel(defaults: [.banSendText])
+        for applied: Int32? in [nil, 0, 1] {
+            let presentation = state(peer, required: 2, applied: applied)
+            XCTAssertEqual(presentation.state, .normal)
+            XCTAssertEqual(presentation.textRestrictionBoostsRequired, 2)
+            XCTAssertTrue(presentation.canAttachFiles)
+            XCTAssertTrue(peer.canSendMessage(media: photo(), cachedData: presentation.cachedData))
+        }
+        let personalMediaBan = state(channel(defaults: [.banSendText], personal: [.banSendFiles]), required: 2)
+        XCTAssertEqual(personalMediaBan.textRestrictionBoostsRequired, 2)
+        XCTAssertFalse(personalMediaBan.canAttachFiles)
+    }
+
+    func testTextLockDoesNotOfferBoostForNonRemovableTextBans() {
+        for required: Int32? in [nil, 0, -1] {
+            XCTAssertNil(state(channel(defaults: [.banSendText]), required: required).textRestrictionBoostsRequired)
+        }
+        XCTAssertNil(state(channel(personal: [.banSendText]), required: 2).textRestrictionBoostsRequired)
+        XCTAssertNil(state(channel(defaults: [.banSendText], personal: [.banSendText]), required: 2).textRestrictionBoostsRequired)
+        XCTAssertNil(state(group(defaults: [.banSendText]), required: 2).textRestrictionBoostsRequired)
+        XCTAssertNil(state(channel(), required: 2).textRestrictionBoostsRequired)
+        XCTAssertNil(state(channel(defaults: [.banSendText], admin: true), required: 2).textRestrictionBoostsRequired)
+    }
+
+    func testTextLockBoostActionUpdatesWithPermissionsAndBoosts() {
+        let original = state(channel(defaults: [.banSendText]), required: 2, applied: 1)
+        let personalBan = original.updatedPeer { _ in self.channel(defaults: [.banSendText], personal: [.banSendText]) }
+        XCTAssertEqual(original.textRestriction, personalBan.textRestriction)
+        XCTAssertEqual(original.textRestrictionBoostsRequired, 2)
+        XCTAssertNil(personalBan.textRestrictionBoostsRequired)
+        let boosted = original.withUpdatedCachedData(cached(required: 2, applied: 2))
+        XCTAssertNil(boosted.textRestriction)
+        XCTAssertNil(boosted.textRestrictionBoostsRequired)
+        let raisedThreshold = boosted.withUpdatedCachedData(cached(required: 3, applied: 2))
+        XCTAssertEqual(raisedThreshold.textRestrictionBoostsRequired, 3)
+        let disabledBoosts = raisedThreshold.withUpdatedCachedData(cached(required: 0, applied: 2))
+        XCTAssertNotNil(disabledBoosts.textRestriction)
+        XCTAssertNil(disabledBoosts.textRestrictionBoostsRequired)
+        XCTAssertTrue(disabledBoosts.canAttachFiles)
+    }
+
     func testFullDefaultBanOffersBoostOnlyWhenEnabled() {
         let peer = channel(defaults: allSendingRights)
         let boostable = state(peer, required: 2, applied: 1)
@@ -347,6 +389,7 @@ final class ChatInputRestrictionTests: XCTestCase {
         let presentation = state(peer).withEditMessage(message)
         XCTAssertEqual(presentation.state, .editing)
         XCTAssertNil(presentation.textRestriction)
+        XCTAssertNil(presentation.textRestrictionBoostsRequired)
         XCTAssertTrue(presentation.abilityToSend)
     }
 }

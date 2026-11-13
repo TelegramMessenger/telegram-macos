@@ -107,6 +107,13 @@ public final class ChatInputContainerView: FlippableView {
         return chatInteraction.presentation.state == .normal && chatInteraction.presentation.textRestriction != nil ? 12 : 0
     }
 
+    fileprivate var textRestrictionFrame: NSRect {
+        var frame = textView.frame
+        frame.origin.x -= textRestrictionIconInset
+        frame.size.width += textRestrictionIconInset
+        return frame
+    }
+
     /// Top-right "open in rich editor" affordance, shown when the input grows to 4+ lines (mirrors the AI
     /// button trigger). Clicking opens the rich editor with the current input (works even for plain text).
     /// Created lazily (only while shown).
@@ -1387,6 +1394,7 @@ public class ChatInputView: View, Notifable {
 
         if let value = value as? ChatPresentationInterfaceState, let oldValue = oldValue as? ChatPresentationInterfaceState {
             let textPermissionChanged = value.textRestriction != oldValue.textRestriction
+                || value.textRestrictionBoostsRequired != oldValue.textRestrictionBoostsRequired
 
             if value.effectiveInput != oldValue.effectiveInput || oldValue.state != value.state || textPermissionChanged {
                 updateInput(value, prevState: oldValue, animated: animated)
@@ -1928,18 +1936,29 @@ public class ChatInputView: View, Notifable {
             if let view = self.disallowText {
                 current = view
             } else {
-                current = Control(frame: textView.frame)
+                current = Control(frame: container.textRestrictionFrame)
                 self.textFieldContainer.addSubview(current)
                 self.disallowText = current
             }
             current.removeAllHandlers()
             current.set(handler: { [weak self] _ in
-                showModalText(for: context.window, text: text, theme: self?.currentChatTheme ?? theme)
+                guard let self,
+                      let text = self.chatInteraction.presentation.textRestriction,
+                      self.chatInteraction.presentation.state == .normal else {
+                    return
+                }
+                if let required = self.chatInteraction.presentation.textRestrictionBoostsRequired {
+                    self.chatInteraction.boostToUnrestrict(.unblockText(required))
+                } else {
+                    showModalText(for: context.window, text: text, theme: self.currentChatTheme ?? theme)
+                }
             }, for: .Click)
-            current.setAccessibilityLabel(text)
-            current.set(cursor: .arrow, for: .Normal)
-            current.set(cursor: .arrow, for: .Highlight)
-            current.set(cursor: .arrow, for: .Hover)
+            let canBoost = chatInteraction.presentation.textRestrictionBoostsRequired != nil
+            current.setAccessibilityLabel(canBoost ? strings().boostGroupChatInputAction : text)
+            let cursor: NSCursor = canBoost ? .pointingHand : .arrow
+            current.set(cursor: cursor, for: .Normal)
+            current.set(cursor: cursor, for: .Highlight)
+            current.set(cursor: cursor, for: .Hover)
         } else if let view = self.disallowText {
             performSubviewRemoval(view, animated: animated)
             self.disallowText = nil
@@ -2164,7 +2183,7 @@ public class ChatInputView: View, Notifable {
         }
 
         if let view = disallowText {
-            transition.updateFrame(view: view, frame: textView.frame)
+            transition.updateFrame(view: view, frame: container.textRestrictionFrame)
         }
                 
         if let view = paidMessageView {
