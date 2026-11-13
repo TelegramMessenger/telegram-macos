@@ -1,0 +1,158 @@
+import AppKit
+
+var assertions = 0
+var failures = 0
+func check(_ condition: @autoclosure () -> Bool, _ message: String) {
+    assertions += 1
+    if !condition() {
+        failures += 1
+        if failures <= 12 { print("FAIL: \(message)") }
+    }
+}
+
+class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+struct ContainedViewLayoutTransition {
+    static let immediate = ContainedViewLayoutTransition()
+    func updateFrame(view: NSView, frame: NSRect) { view.frame = frame }
+}
+class ViewController {
+    let view: FlippedView
+    var loaded = true
+    var bounds: NSRect { view.bounds }
+    var containerContentInsets = NSEdgeInsets()
+    init(view: FlippedView = FlippedView(frame: .zero)) { self.view = view }
+    func isLoaded() -> Bool { loaded }
+    func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) { __BASE_INSETS__ }
+}
+final class TableProbe {
+    var contentInsets = NSEdgeInsets()
+    var scrollerInsets = NSEdgeInsets()
+}
+final class SettingsController: ViewController {
+    let tableView = TableProbe()
+    var searchController: ViewController?
+    override func updateContainerContentInsets(_ insets: NSEdgeInsets, transition: ContainedViewLayoutTransition) { __ACCOUNT_INSETS__ }
+}
+final class PeerListContainerView: FlippedView {
+    var layoutBottomOverlay: ((CGFloat, ContainedViewLayoutTransition) -> NSRect?)?
+    var updateCount = 0
+    var overlay: NSRect?
+    func updateBottomControls(size: NSSize, transition: ContainedViewLayoutTransition) {
+        updateCount += 1
+        overlay = layoutBottomOverlay?(size.height - 76, transition)
+    }
+}
+final class Navigation: ViewController {
+    var controller = ViewController(view: PeerListContainerView(frame: .zero))
+    let other = ViewController(view: PeerListContainerView(frame: .zero))
+    func enumerateControllers(_ callback: (ViewController, Int) -> Bool) {
+        _ = callback(other, 0)
+    }
+}
+final class TabController {
+    var current: ViewController?
+    var containerContentInsets = NSEdgeInsets()
+    var contentBottomInset: CGFloat = 76
+}
+final class UpdateController {
+    let genericView = FlippedView(frame: NSRect(x: 120, y: 0, width: 160, height: 40))
+}
+enum LayoutState { case minimisize, dual }
+final class Context { var layout: LayoutState = .dual }
+final class Main: ViewController {
+    let tabController = TabController()
+    let settings = SettingsController()
+    let navigation = Navigation()
+    let updateController = UpdateController()
+    let context = Context()
+    let connectingStatusView = FlippedView(frame: NSRect(x: 0, y: 0, width: 100, height: 30))
+    override init(view: FlippedView = FlippedView(frame: NSRect(x: 0, y: 0, width: 400, height: 700))) {
+        super.init(view: view)
+        settings.view.frame = bounds
+        navigation.view.frame = bounds
+        navigation.controller.view.frame = bounds
+        navigation.other.view.frame = bounds
+        view.addSubview(settings.view)
+        view.addSubview(navigation.view)
+        navigation.view.addSubview(navigation.controller.view)
+        navigation.view.addSubview(navigation.other.view)
+        view.addSubview(updateController.genericView)
+        view.addSubview(connectingStatusView)
+        connectingStatusView.isHidden = true
+        tabController.current = settings
+    }
+    func updateButtonBottomY(_ bottomY: CGFloat) -> CGFloat { __UPDATE_BUTTON_Y__ }
+    func updateChatListBottomOverlays() { __UPDATE_OVERLAYS__ }
+}
+
+let main = Main()
+main.tabController.containerContentInsets = NSEdgeInsets(top: 3, left: 5, bottom: 7, right: 9)
+main.settings.searchController = ViewController()
+for height: CGFloat in [700, 420, 900, 500] {
+    main.view.frame.size.height = height
+    main.settings.view.frame = NSRect(x: 10, y: 20, width: 380, height: height - 30)
+    for tabInset: CGFloat in [0, 76] {
+        main.tabController.contentBottomInset = tabInset
+        for buttonHeight: CGFloat in [30, 40, 60] {
+            main.updateController.genericView.frame.size.height = buttonHeight
+            for buttonWidth: CGFloat in [40, 180, 280] {
+                main.updateController.genericView.frame.size.width = buttonWidth
+                for visible in [true, false, true] {
+                    main.updateController.genericView.isHidden = !visible
+                    main.tabController.current = main.settings
+                    var initialInsets = main.tabController.containerContentInsets
+                    initialInsets.bottom += tabInset
+                    main.settings.updateContainerContentInsets(initialInsets, transition: .immediate)
+                    main.updateChatListBottomOverlays()
+                    let rect = main.settings.view.convert(main.updateController.genericView.frame, from: main.view)
+                    let base = tabInset + 7
+                    let expected = visible ? max(base, main.settings.bounds.height - rect.minY + 12) : base
+                    check(main.settings.tableView.contentInsets.bottom == expected, "settings bottom clearance")
+                    check(main.settings.containerContentInsets.bottom == expected, "stored inset supports later search creation")
+                    check(main.settings.searchController?.containerContentInsets.bottom == expected, "active search inherits clearance")
+                    check(main.settings.tableView.scrollerInsets.bottom == 0, "scroller presentation preserved")
+                    check(main.settings.containerContentInsets.top == 3 && main.settings.containerContentInsets.left == 5 && main.settings.containerContentInsets.right == 9, "non-bottom inherited insets preserved")
+                    if visible {
+                        let lastContentMaxY = main.settings.bounds.height - expected
+                        check(lastContentMaxY <= rect.minY - 12, "last row clears update button with gap")
+                    }
+                    main.updateChatListBottomOverlays()
+                    check(main.settings.tableView.contentInsets.bottom == expected, "repeated layout does not accumulate inset")
+                    main.tabController.current = main.navigation
+                    main.updateChatListBottomOverlays()
+                    check(main.settings.tableView.contentInsets.bottom == base, "leaving Settings restores base inset")
+                    check((main.navigation.controller.view as! PeerListContainerView).updateCount > 0, "existing chat overlay path retained")
+                    check((main.navigation.other.view as! PeerListContainerView).overlay == nil, "inactive chat controller receives no overlay")
+                }
+            }
+        }
+    }
+}
+main.tabController.current = main.settings
+main.updateController.genericView.isHidden = false
+main.updateController.genericView.removeFromSuperview()
+main.updateChatListBottomOverlays()
+check(main.settings.tableView.contentInsets.bottom == 83, "unattached update control adds no clearance")
+main.view.addSubview(main.updateController.genericView)
+main.settings.view.removeFromSuperview()
+main.updateChatListBottomOverlays()
+check(main.settings.tableView.contentInsets.bottom == 83, "unattached settings adds no clearance")
+main.view.addSubview(main.settings.view)
+main.updateController.genericView.frame.origin.x = 1000
+main.updateChatListBottomOverlays()
+check(main.settings.tableView.contentInsets.bottom == 83, "nonintersecting control adds no clearance")
+main.updateController.genericView.frame.origin.x = 100
+main.context.layout = .minimisize
+main.connectingStatusView.isHidden = false
+main.connectingStatusView.frame.origin.y = 250
+main.updateChatListBottomOverlays()
+let raisedRect = main.settings.view.convert(main.updateController.genericView.frame, from: main.view)
+check(main.settings.tableView.contentInsets.bottom == main.settings.bounds.height - raisedRect.minY + 12, "raised update button uses actual converted rectangle")
+main.settings.loaded = false
+main.settings.tableView.contentInsets.bottom = 123
+main.updateChatListBottomOverlays()
+check(main.settings.tableView.contentInsets.bottom == 123, "unloaded settings is not accessed")
+print("Assertions: \(assertions), failures: \(failures)")
+exit(failures == 0 ? 0 : 1)
