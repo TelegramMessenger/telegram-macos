@@ -20,14 +20,17 @@ final class AccountData {var requests:[Request]=[];var onStart:((Request)->Void)
 struct Engine {let accountData=AccountData()}
 final class Context {var window=Window();let engine=Engine()}
 final class CalendarController {let selected:(Date)->Void;init(_ selected:@escaping(Date)->Void) {self.selected=selected}}
-final class SettingsNavigationHooks {static let shared=SettingsNavigationHooks();func makeBirthdayCalendarController(_ window:Window,_ selected:@escaping(Date)->Void)->CalendarController {CalendarController(selected)}}
+final class SettingsNavigationHooks {static let shared=SettingsNavigationHooks();func makeBirthdayCalendarController(_ window:Window,_ selected:@escaping(Date)->Void)->CalendarController {CalendarController(selected)};func makeBirthdayCalendarController(_ window:Window,_ current:Date,_ selected:@escaping(Date)->Void)->CalendarController {CalendarController(selected)}}
+extension TelegramBirthday {var dateForPicker:Date? {nil}}
+struct PickerState {var birthday:TelegramBirthday? {nil}}
+struct PickerStateValue {func with<T>(_ f:(PickerState)->T)->T {f(PickerState())}}
 __HELPER__
 __GLOBAL__
 final class Screen {
     let context=Context();var controller:Controller?;let profileSaveAction=EditAccountProfileSaveAction();let birthdaySaveAction=EditAccountProfileSaveAction();let actionsDisposable=DisposableSet()
     init() {let controller=Controller(context.window);self.controller=controller;let profileSaveAction=self.profileSaveAction;let birthdaySaveAction=self.birthdaySaveAction;let avatarAcquisition=EditAccountProfileSaveAction();let actionsDisposable=self.actionsDisposable;__HOOKS__}
     func makeCalendar()->CalendarController {
-        let context=self.context;let birthdaySaveAction=self.birthdaySaveAction;let getController:(()->Controller?)? = {[weak self] in self?.controller}
+        let context=self.context;let birthdaySaveAction=self.birthdaySaveAction;let getController:(()->Controller?)? = {[weak self] in self?.controller};let stateValue=PickerStateValue()
         __UPDATE__
         __CALENDAR__
         return controller

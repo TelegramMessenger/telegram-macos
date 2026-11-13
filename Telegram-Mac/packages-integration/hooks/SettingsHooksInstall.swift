@@ -534,8 +534,8 @@ private func makeSettingsNavigationHooks() -> SettingsNavigationHooks {
     hooks.makePremiumBoardingController = { context, source in
         return PremiumBoardingController(context: context, source: mapSettingsPremiumSource(source))
     }
-    hooks.makeBirthdayCalendarController = { window, selectHandler in
-        return CalendarController(NSMakeRect(0, 0, 300, 300), window, current: Date(), lowYear: 1900, canBeNoYear: true, selectHandler: selectHandler)
+    hooks.makeBirthdayCalendarController = { window, current, selectHandler in
+        return CalendarController(NSMakeRect(0, 0, 300, 300), window, current: current, lowYear: 1900, canBeNoYear: true, selectHandler: selectHandler)
     }
     hooks.makeBoostInfoController = { context, peer, boosts, myStatus, source in
         return BoostChannelModalController(context: context, peer: peer, boosts: boosts, myStatus: myStatus, infoOnly: true, source: mapSettingsBoostSource(source))
