@@ -1,0 +1,954 @@
+import AppKit
+import QuartzCore
+
+public enum ContainedViewLayoutTransition {
+    case immediate
+    case animated
+
+    func updateFrame(view: NSView, frame: NSRect) {
+        view.frame = frame
+    }
+}
+
+func floorToScreenPixels(_ value: CGFloat) -> CGFloat { floor(value) }
+func floorToScreenPixels(_ scale: CGFloat, _ value: CGFloat) -> CGFloat { floor(value * scale) / scale }
+
+extension CAMediaTimingFunctionName {
+    static let spring = CAMediaTimingFunctionName.easeOut
+}
+
+extension NSView {
+    var backingScaleFactor: CGFloat { 2 }
+
+    func _changeBounds(from: NSRect, to: NSRect, animated: Bool, duration: Double, timingFunction: CAMediaTimingFunctionName, completion: (Bool) -> Void) {
+        bounds = to
+        completion(true)
+    }
+}
+
+class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+open class ViewController {
+    var view: NSView
+    var loaded = true
+    var bounds: NSRect { view.bounds }
+    var containerContentInsets = NSEdgeInsets()
+
+    init(_ view: NSView = FlippedView()) { self.view = view }
+    func isLoaded() -> Bool { loaded }
+
+__BASE_INSETS__
+}
+
+class NavigationViewController: ViewController {
+    var stack: [ViewController] = []
+    var controller: ViewController { stack.last! }
+    var controllerDidChange: (() -> Void)?
+
+__NAVIGATION_INSETS__
+
+__NAVIGATION_CHANGED__
+
+__NAVIGATION_ENUMERATE__
+}
+
+__TAB_LAYOUT__
+
+final class TabItem {
+    let controller: ViewController
+    init(_ controller: ViewController) { self.controller = controller }
+}
+
+final class TabView: FlippedView {
+    var items: [TabItem] = []
+    func enumerateItems(_ f: (TabItem) -> Bool) {
+        for item in items where f(item) { break }
+    }
+}
+
+final class TabContainer: FlippedView {
+    let tabView = TabView()
+    func updateShadow() {}
+}
+
+final class TabBarController: ViewController {
+    var genericView: TabContainer { view as! TabContainer }
+    var current: ViewController?
+
+__TAB_BOTTOM_INSET__
+
+__TAB_CONTENT_INSETS__
+
+__TAB_UPDATE_INSETS__
+
+__TAB_HIDE__
+}
+
+final class UpdateController {
+    let genericView = FlippedView()
+}
+
+enum SplitViewState { case dual, single, minimisize }
+
+final class Context {
+    var layout: SplitViewState = .dual
+}
+
+final class MainViewController: ViewController {
+    let context = Context()
+    let navigation = NavigationViewController()
+    let tabController = TabBarController(TabContainer())
+    let updateController = UpdateController()
+    let connectingStatusView = FlippedView()
+
+__MAIN_BOTTOM__
+
+__MAIN_OVERLAYS__
+
+    func refresh() { updateChatListBottomOverlays() }
+}
+
+final class FilterData {
+    var isTop = true
+}
+
+final class PeerListState {
+    var splitState: SplitViewState = .dual
+    var isContacts = false
+    let filterData = FilterData()
+}
+
+final class Arguments {
+    func getController() -> ViewController? { nil }
+}
+
+extension ViewController {
+    func scrollup() {}
+}
+
+extension CALayer {
+    func animateAlpha(from: CGFloat, to: CGFloat, duration: Double) {}
+}
+
+func performSubviewRemoval(_ view: NSView, animated: Bool) {
+    view.removeFromSuperview()
+}
+
+final class GlassView: FlippedView {
+    func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {}
+}
+
+class ImageButton: FlippedView {
+    enum ControlState { case Normal, Highlight }
+    enum ControlEvent { case Click }
+    var autohighlight = false
+    var _glassView: GlassView?
+    var glassSize: NSSize?
+    var _glassSize: NSSize? { glassSize }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+    convenience init() { self.init(frame: .zero) }
+    func set(image: Int, for state: ControlState) {}
+    func setFrameSize(_ width: CGFloat, _ height: CGFloat) { setFrameSize(NSSize(width: width, height: height)) }
+    func setGlassEffect(size: NSSize) {
+        glassSize = size
+        let glass = GlassView()
+        _glassView = glass
+        addSubview(glass)
+        layoutGlass()
+    }
+    func setSingle(handler: (ImageButton) -> Void, for event: ControlEvent) {}
+
+    func layoutGlass() {
+        let size = bounds.size
+        let transition = ContainedViewLayoutTransition.immediate
+__IMAGE_BUTTON_GLASS_LAYOUT__
+    }
+
+__IMAGE_BUTTON_HIT_TEST__
+}
+
+final class DownloadsControl: FlippedView {}
+final class ChatRemovalUndoView: FlippedView {}
+final class ChatNavigationScroller: ImageButton {
+    enum Source {
+        case scrollerUp
+        var image: Int { 0 }
+        var active: Int { 0 }
+    }
+    let source: Source
+
+__SCROLLER_INIT__
+
+    override init(frame frameRect: NSRect) {
+        source = .scrollerUp
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+final class PeerListContainerView: FlippedView {
+    var layoutBottomOverlay: ((CGFloat, ContainedViewLayoutTransition) -> NSRect?)?
+    let tableView = TableView()
+    var downloads: DownloadsControl?
+    var removalUndo: ChatRemovalUndoView?
+    var scrollerView: ChatNavigationScroller?
+    var state: PeerListState? = PeerListState()
+    var arguments: Arguments?
+    var navigationHeight: CGFloat = 90
+    var maskHeight: CGFloat = 0
+
+__PEERS_BOTTOM_INSET__
+
+__PEERS_CONTROLS__
+
+__PEERS_SCROLLER__
+
+__PEERS_DOWNLOADS_FRAME__
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        autoresizesSubviews = false
+        tableView.frame = bounds
+        addSubview(tableView)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+    func updateScrollerInset(animated: Bool) {}
+    func updateTableMask(spaceHeight: CGFloat) { maskHeight = max(0, tableView.frame.height - spaceHeight) }
+}
+
+class PeersListController: ViewController {
+    var genericView: PeerListContainerView { view as! PeerListContainerView }
+    var searchSection: ViewController?
+
+__PEERS_INSETS__
+}
+
+final class TGClipView: NSClipView {
+    var scrollAnimationId = 0
+    var scrollCompletion: ((Bool) -> Void)?
+    var scrollDidComplete: ((Bool) -> Void)?
+    var animatingContentRect: NSRect?
+    var destinationOrigin: NSPoint?
+    var point: NSPoint?
+    var isScrollingToPoint = false
+    var destination: NSPoint? { destinationOrigin }
+    var documentOffset: NSPoint { point ?? bounds.origin }
+
+__CLIP_UPDATE_BOUNDS__
+
+__CLIP_SCROLL__
+
+__CLIP_NATIVE_SCROLL__
+}
+
+public enum TableSavingSide { case upper }
+public struct TableAnimationInterface: Equatable {}
+
+__TABLE_SCROLL_TYPES__
+
+final class RowView: FlippedView {
+    var interactableView: NSView { self }
+    func focusAnimation(_ innerId: AnyHashable?, text: String?, range: NSRange?) {}
+}
+
+final class TableRowItem {
+    let index: Int
+    let heightValue: CGFloat
+    var view: RowView?
+
+    init(index: Int, height: CGFloat) {
+        self.index = index
+        self.heightValue = height
+    }
+
+    func inset(for string: String, range: NSRange?) -> CGFloat { 0 }
+}
+
+final class TableDelegate {
+    func findGroupStableId(for stableId: AnyHashable) -> AnyHashable? { nil }
+}
+
+final class TableScrollListener {
+    let uniqueId = UUID()
+    let handler: (Int) -> Void
+    init(_ handler: @escaping (Int) -> Void) { self.handler = handler }
+}
+
+final class NativeRows: NSTableView {
+    override var isFlipped: Bool { true }
+}
+
+class TableView: NSScrollView, NSTableViewDataSource {
+    let tableView = NativeRows()
+    var bottomInset: CGFloat = 0
+    var delegate: TableDelegate?
+    var pendingAnimatedScrollListener: TableScrollListener?
+    var items: [TableRowItem] = []
+    var clipView: TGClipView { contentView as! TGClipView }
+    var documentOffset: NSPoint { clipView.documentOffset }
+    override var isFlipped: Bool { true }
+
+__DOCUMENT_SIZE__
+
+__TABLE_AT_BOTTOM__
+
+__TABLE_SCROLL__
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        contentView = TGClipView(frame: contentView.frame)
+        automaticallyAdjustsContentInsets = false
+        drawsBackground = false
+        borderType = .noBorder
+        hasVerticalScroller = true
+        scrollerStyle = .overlay
+        verticalScrollElasticity = .none
+        autoresizesSubviews = false
+        tableView.style = .fullWidth
+        tableView.headerView = nil
+        tableView.intercellSpacing = .zero
+        tableView.usesAutomaticRowHeights = false
+        tableView.rowSizeStyle = .custom
+        tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("chat")))
+        tableView.dataSource = self
+        documentView = tableView
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+    convenience init() { self.init(frame: .zero) }
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+
+    func populate(count: Int, rowHeight: CGFloat) {
+        items = (0 ..< count).map { TableRowItem(index: $0, height: rowHeight) }
+        tableView.rowHeight = rowHeight
+        tableView.reloadData()
+        tile()
+        tableView.frame.size = NSSize(width: frame.width, height: CGFloat(count) * rowHeight)
+    }
+
+    func item(stableId: AnyHashable) -> TableRowItem? {
+        guard let index = stableId as? Int, items.indices.contains(index) else { return nil }
+        return items[index]
+    }
+
+    func rectOf(item: TableRowItem) -> NSRect { tableView.rect(ofRow: item.index) }
+    func viewNecessary(at index: Int, makeIfNecessary: Bool = false) -> RowView? { nil }
+    func addScroll(listener: TableScrollListener) {}
+    func removeScroll(listener: TableScrollListener) {}
+    func scrollPosition() -> (current: Int, previous: Int) { (0, 0) }
+    func scrollDidChangedBounds() {}
+    func notifyScrollHandlers() {}
+
+    func nativeMaximumScroll() {
+        var proposed = clipView.bounds
+        proposed.origin.y = 1_000_000
+        clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
+        reflectScrolledClipView(clipView)
+    }
+}
+
+final class HorizontalTableView: TableView {}
+
+var cases: [String: Int] = [:]
+var scenarios = 0
+var assertions = 0
+var failures: [[String: String]] = []
+var currentCase = ""
+var currentScenario = ""
+
+func test(_ name: String, _ body: () -> Void) {
+    currentCase = name
+    cases[name] = 0
+    body()
+}
+
+func scenario(_ name: String, _ body: () -> Void) {
+    currentScenario = name
+    scenarios += 1
+    cases[currentCase, default: 0] += 1
+    autoreleasepool(invoking: body)
+}
+
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    assertions += 1
+    if !condition() {
+        failures.append(["case": currentCase, "scenario": currentScenario, "assertion": message])
+    }
+}
+
+func near(_ first: CGFloat, _ second: CGFloat) -> Bool { abs(first - second) < 0.51 }
+
+final class Harness {
+    let main: MainViewController
+    let peers: PeersListController
+    var list: PeerListContainerView { peers.genericView }
+    let tabbar = FlippedView()
+    let size: NSSize
+
+    init(width: CGFloat = 320, height: CGFloat = 640, tabbarVisible: Bool = true, updateVisible: Bool = true, updateHeight: CGFloat = 40, layout: SplitViewState = .dual, translated: Bool = false) {
+        size = NSSize(width: width, height: height)
+        let origin = translated ? NSPoint(x: 31, y: 47) : .zero
+        main = MainViewController(FlippedView(frame: NSRect(x: 0, y: 0, width: width + origin.x + 23, height: height + origin.y + 19)))
+        peers = PeersListController(PeerListContainerView(frame: NSRect(origin: .zero, size: size)))
+        main.navigation.view.frame = NSRect(origin: origin, size: size)
+        main.tabController.view.frame = NSRect(origin: .zero, size: size)
+        main.tabController.current = main.navigation
+        main.tabController.genericView.tabView.items = [TabItem(main.navigation)]
+        main.tabController.genericView.tabView.isHidden = !tabbarVisible
+        main.navigation.stack = [peers]
+        main.view.addSubview(main.navigation.view)
+        main.navigation.view.addSubview(list)
+        main.navigation.view.addSubview(tabbar)
+        tabbar.frame = FloatingTabBarLayout.frame(in: size)
+        tabbar.isHidden = !tabbarVisible
+        main.view.addSubview(main.updateController.genericView)
+        main.updateController.genericView.frame = NSRect(x: origin.x + max(0, (width - min(180, width)) / 2), y: 0, width: min(180, width), height: updateHeight)
+        main.updateController.genericView.isHidden = !updateVisible
+        main.context.layout = layout
+        main.connectingStatusView.isHidden = true
+        list.state?.splitState = layout
+        main.tabController.updateContainerContentInsets(NSEdgeInsets(), transition: .immediate)
+        main.refresh()
+    }
+
+    func layout() {
+        main.refresh()
+        list.tableView.tile()
+    }
+
+    func visibleOverlays() -> [NSRect] {
+        var rects: [NSRect] = []
+        if !tabbar.isHidden { rects.append(list.convert(tabbar.bounds, from: tabbar)) }
+        let update = main.updateController.genericView
+        if !update.isHidden, let parent = update.superview, list.isDescendant(of: parent), main.tabController.current === main.navigation, main.navigation.controller === peers {
+            rects.append(list.convert(update.bounds, from: update))
+        }
+        if let arrow = list.scrollerView, !arrow.isHidden, arrow.superview === list {
+            rects.append(list.convert(arrow.bounds, from: arrow))
+        }
+        return rects.filter { $0.intersects(list.bounds) }
+    }
+
+    func showArrow() {
+        list.state?.filterData.isTop = false
+        list.updateScroller(animated: false)
+    }
+
+    func checkLastRow(count: Int = 30, rowHeight: CGFloat = 70, programmatic: Bool = false) {
+        let table = list.tableView
+        table.populate(count: count, rowHeight: rowHeight)
+        if programmatic {
+            table.scroll(to: .down(false))
+        } else {
+            table.nativeMaximumScroll()
+        }
+        let row = table.tableView.rect(ofRow: count - 1)
+        let rect = list.convert(row, from: table.tableView)
+        expect(near(row.height, rowHeight), "native NSTableView row retains its height")
+        expect(rect.minY >= -0.51, "entire last row remains inside the top of the list")
+        expect(rect.maxY <= table.frame.maxY + 0.51, "entire last row remains inside the table viewport")
+        for overlay in visibleOverlays() {
+            expect(rect.maxY <= overlay.minY + 0.51, "last row bottom \(rect.maxY) clears visible overlay top \(overlay.minY)")
+        }
+        if CGFloat(count) * rowHeight > list.frame.height {
+            expect(table.isAtBottom, "TGUIKit reports bottom after maximum scroll")
+            let update = main.updateController.genericView
+            let hasUpdate = !update.isHidden && update.superview != nil && main.tabController.current === main.navigation
+            let hasArrow = list.scrollerView.map { !$0.isHidden && $0.superview === list } ?? false
+            if hasUpdate || hasArrow, let top = visibleOverlays().map(\.minY).min() {
+                expect(near(rect.maxY + 12, top), "last row uses the existing overlay gap, not an arbitrary oversized margin")
+            }
+        }
+        if let arrow = list.scrollerView, !arrow.isHidden, arrow.superview === list {
+            arrow.layoutGlass()
+            let center = NSPoint(x: arrow.frame.midX, y: arrow.frame.midY)
+            let padding = NSPoint(x: arrow.frame.midX, y: arrow.frame.minY + 1)
+            expect(arrow.hitTest(center) === arrow, "native hit test reaches the arrow center")
+            expect(arrow.hitTest(padding) === arrow, "native hit test includes transparent padding outside the glass circle")
+            expect(arrow.hitTest(NSPoint(x: arrow.frame.midX, y: rect.maxY - 1)) == nil, "last-row bottom is not intercepted by the arrow hit area")
+            if let glass = arrow._glassView {
+                let visualFrame = list.convert(glass.bounds, from: glass)
+                expect(rect.maxY <= visualFrame.minY, "last row clears the visible glass circle as well as the hit area")
+                expect(near(visualFrame.midY, arrow.frame.midY), "production glass layout centers the smaller visible surface")
+                expect(glass.hitTest(NSPoint(x: glass.frame.midX, y: glass.frame.minY - 1)) == nil, "transparent arrow padding lies outside the glass hit surface")
+            }
+        }
+        var proposed = table.clipView.bounds
+        proposed.origin.y += 10000
+        expect(near(table.clipView.constrainBoundsRect(proposed).minY, table.clipView.bounds.minY), "native maximum is stable without elastic overscroll")
+    }
+}
+
+test("native-maximum-scroll") {
+    for width: CGFloat in [280, 360, 640] {
+        for height: CGFloat in [400, 640, 900] {
+            for updateHeight: CGFloat in [28, 40, 60] {
+                for layout: SplitViewState in [.dual, .single] {
+                    scenario("\(width)x\(height), update \(updateHeight), \(layout)") {
+                        let harness = Harness(width: width, height: height, updateHeight: updateHeight, layout: layout)
+                        harness.checkLastRow()
+                        expect(near(harness.list.tableView.frame.height, height), "expanded chat table keeps its full-height drawing area")
+                        expect(near(harness.list.contentBottomInset, harness.main.tabController.contentBottomInset), "overlay never accumulates into the tabbar base inset")
+                    }
+                }
+            }
+        }
+    }
+}
+
+test("table-programmatic-bottom") {
+    for count in [5, 9, 35] {
+        for height: CGFloat in [400, 640] {
+            for updateVisible in [false, true] {
+                scenario("rows \(count), height \(height), update \(updateVisible)") {
+                    let harness = Harness(height: height, updateVisible: updateVisible)
+                    harness.checkLastRow(count: count, programmatic: true)
+                }
+            }
+        }
+    }
+}
+
+test("tabbar-and-update-visibility") {
+    for tabbar in [false, true] {
+        for update in [false, true] {
+            scenario("tabbar \(tabbar), update \(update)") {
+                let harness = Harness(tabbarVisible: tabbar, updateVisible: update)
+                harness.checkLastRow()
+                if !update {
+                    expect(near(harness.list.tableView.contentInsets.bottom, harness.main.tabController.contentBottomInset), "hidden update restores exactly the tabbar base inset")
+                }
+            }
+        }
+    }
+}
+
+test("visibility-resize-and-idempotence") {
+    scenario("visible, hidden, resized and visible again") {
+        let harness = Harness()
+        let originalBase = harness.list.contentBottomInset
+        harness.checkLastRow()
+        let firstInset = harness.list.tableView.contentInsets.bottom
+        for _ in 0 ..< 10 { harness.layout() }
+        expect(near(firstInset, harness.list.tableView.contentInsets.bottom), "repeated layout does not grow the inset")
+        harness.main.updateController.genericView.isHidden = true
+        harness.layout()
+        expect(near(harness.list.tableView.contentInsets.bottom, originalBase), "hiding update removes only overlay clearance")
+        harness.checkLastRow()
+        harness.list.frame.size.height = 730
+        harness.main.navigation.view.frame.size.height = 730
+        harness.tabbar.frame = FloatingTabBarLayout.frame(in: harness.list.frame.size)
+        harness.main.updateController.genericView.frame.size.height = 52
+        harness.main.updateController.genericView.isHidden = false
+        harness.layout()
+        harness.checkLastRow()
+        expect(near(harness.list.contentBottomInset, originalBase), "resize preserves parent inset ownership")
+        harness.main.tabController.hideTabView(true)
+        harness.tabbar.isHidden = true
+        harness.layout()
+        expect(near(harness.list.contentBottomInset, 0), "tabbar hiding propagates zero base through navigation")
+        harness.checkLastRow()
+        harness.main.tabController.hideTabView(false)
+        harness.tabbar.isHidden = false
+        harness.layout()
+        harness.checkLastRow()
+    }
+}
+
+test("translated-and-stacked-overlays") {
+    for translated in [false, true] {
+        for controls in 0 ..< 3 {
+            scenario("translated \(translated), stacked controls \(controls)") {
+                let harness = Harness(translated: translated)
+                if controls > 0 {
+                    harness.list.downloads = DownloadsControl(frame: NSRect(x: 0, y: 0, width: 180, height: 30))
+                    harness.list.addSubview(harness.list.downloads!)
+                }
+                if controls > 1 {
+                    harness.list.removalUndo = ChatRemovalUndoView(frame: NSRect(x: 0, y: 0, width: 180, height: 44))
+                    harness.list.addSubview(harness.list.removalUndo!)
+                }
+                harness.showArrow()
+                harness.layout()
+                harness.checkLastRow()
+                let update = harness.list.convert(harness.main.updateController.genericView.bounds, from: harness.main.updateController.genericView)
+                let controlsTop = harness.list.removalUndo?.frame.minY ?? harness.list.downloads?.frame.minY ?? (harness.list.bounds.height - harness.list.contentBottomInset)
+                expect(near(update.maxY + 12, controlsTop), "update placement uses the existing stack gap in converted coordinates")
+                expect(!harness.list.scrollerView!.frame.intersects(update), "scroll-up control does not collide with update")
+            }
+        }
+    }
+}
+
+test("collapsed-layout-preservation") {
+    for height: CGFloat in [400, 700] {
+        for update in [false, true] {
+            for connecting in [false, true] {
+                scenario("height \(height), update \(update), connecting \(connecting)") {
+                    let harness = Harness(width: 90, height: height, tabbarVisible: false, updateVisible: update, layout: .minimisize)
+                    harness.main.connectingStatusView.frame = NSRect(x: 20, y: height - 80, width: 40, height: 36)
+                    harness.main.connectingStatusView.isHidden = !connecting
+                    harness.layout()
+                    harness.checkLastRow()
+                    expect(near(harness.list.tableView.contentInsets.bottom, 0), "collapsed clipped viewport does not double-count overlay clearance")
+                    if update {
+                        let overlay = harness.list.convert(harness.main.updateController.genericView.bounds, from: harness.main.updateController.genericView)
+                        expect(near(harness.list.tableView.frame.maxY, overlay.minY - 12), "existing collapsed viewport divider gap is preserved")
+                    } else {
+                        expect(near(harness.list.tableView.frame.height, height), "collapsed viewport restores full height without update")
+                    }
+                }
+            }
+        }
+    }
+}
+
+test("list-lengths-and-row-heights") {
+    for count in [1, 6, 9, 40] {
+        for rowHeight: CGFloat in [52, 70, 92] {
+            scenario("rows \(count), row height \(rowHeight)") {
+                let harness = Harness()
+                harness.checkLastRow(count: count, rowHeight: rowHeight)
+            }
+        }
+    }
+}
+
+test("layout-mode-transitions") {
+    scenario("expanded to collapsed and back with the same table") {
+        let harness = Harness()
+        harness.checkLastRow()
+        let expandedInset = harness.list.tableView.contentInsets.bottom
+        harness.main.context.layout = .minimisize
+        harness.list.state?.splitState = .minimisize
+        harness.main.tabController.hideTabView(true)
+        harness.tabbar.isHidden = true
+        harness.layout()
+        harness.checkLastRow()
+        expect(near(harness.list.tableView.contentInsets.bottom, 0), "collapsing removes the expanded overlay inset")
+        harness.main.context.layout = .dual
+        harness.list.state?.splitState = .dual
+        harness.main.tabController.hideTabView(false)
+        harness.tabbar.isHidden = false
+        harness.layout()
+        harness.checkLastRow()
+        expect(near(harness.list.tableView.frame.height, harness.list.frame.height), "expanding restores full table height")
+        expect(near(harness.list.tableView.contentInsets.bottom, expandedInset), "expanding recomputes the same clearance without accumulation")
+    }
+}
+
+test("nonzero-parent-insets") {
+    for bottom: CGFloat in [17, 83] {
+        scenario("parent bottom \(bottom)") {
+            let harness = Harness()
+            harness.main.tabController.updateContainerContentInsets(NSEdgeInsets(top: 11, left: 7, bottom: bottom, right: 9), transition: .immediate)
+            harness.layout()
+            expect(near(harness.list.contentBottomInset, bottom + harness.main.tabController.contentBottomInset), "parent and tabbar base insets are preserved")
+            harness.checkLastRow()
+            harness.main.updateController.genericView.isHidden = true
+            harness.layout()
+            expect(near(harness.list.tableView.contentInsets.bottom, harness.list.contentBottomInset), "hiding restores the nonzero parent base")
+        }
+    }
+}
+
+test("table-bottom-row-target") {
+    for height: CGFloat in [400, 640] {
+        scenario("viewport height \(height)") {
+            let harness = Harness(height: height)
+            let table = harness.list.tableView
+            table.populate(count: 25, rowHeight: 70)
+            table.scroll(to: .bottom(id: 24, innerId: nil, animated: false, focus: .init(focus: false), inset: 0))
+            let row = harness.list.convert(table.tableView.rect(ofRow: 24), from: table.tableView)
+            let overlay = harness.list.convert(harness.main.updateController.genericView.bounds, from: harness.main.updateController.genericView)
+            expect(row.maxY <= overlay.minY, "TGUIKit row-targeted bottom scroll clears update")
+            expect(near(row.maxY + 12, overlay.minY), "row-targeted bottom uses the computed visible height")
+        }
+    }
+}
+
+test("inactive-detached-and-nonintersecting") {
+    for condition in ["other-tab", "detached-update", "detached-list", "outside-horizontal", "unloaded"] {
+        scenario(condition) {
+            let harness = Harness()
+            switch condition {
+            case "other-tab": harness.main.tabController.current = ViewController()
+            case "detached-update": harness.main.updateController.genericView.removeFromSuperview()
+            case "detached-list": harness.list.removeFromSuperview()
+            case "outside-horizontal": harness.main.updateController.genericView.frame.origin.x = 5000
+            default: harness.peers.loaded = false
+            }
+            harness.layout()
+            if condition != "unloaded" {
+                expect(near(harness.list.tableView.contentInsets.bottom, harness.list.contentBottomInset), "inactive or nonintersecting update reserves no extra space")
+            }
+            expect(harness.list.tableView.contentInsets.bottom.isFinite, "inset remains finite")
+        }
+    }
+}
+
+test("all-chats-and-folder-navigation") {
+    scenario("push folder and return to All Chats") {
+        let harness = Harness()
+        let allChats = harness.list
+        let folder = PeersListController(PeerListContainerView(frame: allChats.frame))
+        harness.main.navigation.stack.append(folder)
+        harness.main.navigation.view.addSubview(folder.view)
+        harness.main.navigation.controllerDidChange = { [weak main = harness.main] in main?.refresh() }
+        harness.main.navigation.currentControllerDidChange()
+        let folderList = folder.genericView
+        folderList.tableView.populate(count: 25, rowHeight: 70)
+        folderList.tableView.nativeMaximumScroll()
+        let rect = folderList.convert(folderList.tableView.tableView.rect(ofRow: 24), from: folderList.tableView.tableView)
+        let overlay = folderList.convert(harness.main.updateController.genericView.bounds, from: harness.main.updateController.genericView)
+        expect(rect.maxY <= overlay.minY + 0.51, "folder's final chat clears the current update control")
+        expect(near(allChats.tableView.contentInsets.bottom, allChats.contentBottomInset), "inactive All Chats drops update-only clearance")
+        expect(near(folderList.contentBottomInset, allChats.contentBottomInset), "new folder receives the same tabbar base inset")
+        folder.view.removeFromSuperview()
+        harness.main.navigation.stack.removeLast()
+        harness.main.navigation.currentControllerDidChange()
+        harness.checkLastRow()
+    }
+}
+
+test("direct-geometry-and-inset-preservation") {
+    for overlay in [NSRect(x: 50, y: 450, width: 170, height: 40), NSRect(x: 50, y: 610, width: 170, height: 80), NSRect(x: 500, y: 450, width: 100, height: 40), NSRect(x: 50, y: 800, width: 170, height: 40)] {
+        scenario("overlay \(overlay)") {
+            let harness = Harness(updateVisible: false)
+            harness.list.tableView.contentInsets.top = 7
+            harness.list.tableView.contentInsets.left = 3
+            harness.list.tableView.contentInsets.right = 5
+            harness.list.layoutBottomOverlay = { _, _ in overlay }
+            harness.list.updateBottomControls(size: harness.size, transition: .immediate)
+            let insets = harness.list.tableView.contentInsets
+            expect(near(insets.top, 7) && near(insets.left, 3) && near(insets.right, 5), "only bottom inset changes")
+            if overlay.intersects(harness.list.bounds) {
+                let table = harness.list.tableView
+                table.populate(count: 30, rowHeight: 70)
+                table.nativeMaximumScroll()
+                let row = harness.list.convert(table.tableView.rect(ofRow: 29), from: table.tableView)
+                expect(row.maxY <= overlay.minY + 0.51, "clearance follows intersecting overlay geometry")
+            } else {
+                expect(near(insets.bottom, harness.list.contentBottomInset), "offscreen overlay does not add clearance")
+            }
+            harness.list.layoutBottomOverlay = { _, _ in nil }
+            harness.list.updateBottomControls(size: harness.size, transition: .immediate)
+            expect(near(harness.list.tableView.contentInsets.bottom, harness.list.contentBottomInset), "nil geometry resets to parent inset")
+        }
+    }
+}
+
+test("arrow-native-and-programmatic-clearance") {
+    for width: CGFloat in [280, 360, 640] {
+        for height: CGFloat in [400, 700] {
+            for update in [false, true] {
+                for programmatic in [false, true] {
+                    scenario("\(width)x\(height), update \(update), programmatic \(programmatic)") {
+                        let harness = Harness(width: width, height: height, updateVisible: update)
+                        harness.showArrow()
+                        expect(harness.list.scrollerView?.frame.size == NSSize(width: 64, height: 64), "real scroller initializer supplies the 64-point hit frame")
+                        expect(harness.list.scrollerView?.glassSize == NSSize(width: 40, height: 40), "real scroller initializer supplies the 40-point glass")
+                        harness.checkLastRow(programmatic: programmatic)
+                        expect(near(harness.list.tableView.frame.height, height), "arrow clearance preserves expanded table drawing height")
+                    }
+                }
+            }
+        }
+    }
+}
+
+test("arrow-visibility-lifecycle") {
+    for update in [false, true] {
+        for animated in [false, true] {
+            scenario("update \(update), animated \(animated)") {
+                let harness = Harness(updateVisible: update)
+                let initial = harness.list.tableView.contentInsets.bottom
+                harness.list.tableView.populate(count: 30, rowHeight: 70)
+                harness.list.tableView.nativeMaximumScroll()
+                harness.list.updateScroller(animated: animated)
+                expect(harness.list.scrollerView != nil, "scrolling below a viewport creates the arrow")
+                harness.checkLastRow()
+                let expanded = harness.list.tableView.contentInsets.bottom
+                for _ in 0 ..< 10 { harness.list.updateScroller(animated: animated) }
+                expect(near(harness.list.tableView.contentInsets.bottom, expanded), "repeated scroll notifications do not accumulate clearance")
+                harness.list.tableView.clipView.updateBounds(to: .zero)
+                harness.list.updateScroller(animated: animated)
+                expect(harness.list.scrollerView == nil, "returning to top removes the arrow")
+                expect(near(harness.list.tableView.contentInsets.bottom, initial), "removal callback immediately restores non-arrow clearance without unrelated layout")
+                harness.list.state?.filterData.isTop = false
+                harness.list.updateScroller(animated: animated)
+                expect(harness.list.scrollerView != nil, "a non-top filter creates the arrow independently of scroll offset")
+                harness.checkLastRow()
+                harness.list.state?.isContacts = true
+                harness.list.updateScroller(animated: animated)
+                expect(harness.list.scrollerView == nil, "contacts state removes the arrow")
+                expect(near(harness.list.tableView.contentInsets.bottom, initial), "state-driven arrow removal restores the prior inset")
+            }
+        }
+    }
+}
+
+test("arrow-collapsed-clearance") {
+    for height: CGFloat in [400, 700] {
+        for update in [false, true] {
+            for connecting in [false, true] {
+                scenario("height \(height), update \(update), connecting \(connecting)") {
+                    let harness = Harness(width: 90, height: height, tabbarVisible: false, updateVisible: update, layout: .minimisize)
+                    harness.main.connectingStatusView.frame = NSRect(x: 20, y: height - 80, width: 40, height: 36)
+                    harness.main.connectingStatusView.isHidden = !connecting
+                    harness.layout()
+                    let clippedHeight = harness.list.tableView.frame.height
+                    harness.showArrow()
+                    harness.checkLastRow()
+                    expect(near(harness.list.tableView.frame.height, clippedHeight), "arrow adds scroll clearance without changing existing collapsed clipping")
+                    let arrow = harness.list.scrollerView!
+                    expect(near(harness.list.tableView.contentInsets.bottom, clippedHeight - arrow.frame.minY + 12), "collapsed inset counts only the arrow intersection with the already clipped viewport")
+                    harness.list.state?.isContacts = true
+                    harness.list.updateScroller(animated: false)
+                    expect(near(harness.list.tableView.contentInsets.bottom, 0), "removing the collapsed arrow restores zero additional inset")
+                    expect(near(harness.list.tableView.frame.height, clippedHeight), "removal preserves the collapsed table boundary")
+                }
+            }
+        }
+    }
+}
+
+test("arrow-geometry-visibility-and-resize") {
+    scenario("resize, dimensions, hidden, detached and reattached") {
+        let harness = Harness(translated: true)
+        let initial = harness.list.tableView.contentInsets.bottom
+        harness.showArrow()
+        let arrow = harness.list.scrollerView!
+        harness.checkLastRow()
+        arrow.frame.size = NSSize(width: 80, height: 88)
+        arrow.glassSize = NSSize(width: 48, height: 56)
+        harness.layout()
+        harness.checkLastRow()
+        let expanded = harness.list.tableView.contentInsets.bottom
+        for _ in 0 ..< 10 { harness.layout() }
+        expect(near(harness.list.tableView.contentInsets.bottom, expanded), "changed arrow geometry does not accumulate on repeat layout")
+        arrow.isHidden = true
+        harness.layout()
+        expect(near(harness.list.tableView.contentInsets.bottom, initial), "hidden arrow does not reserve space")
+        arrow.isHidden = false
+        arrow.removeFromSuperview()
+        harness.layout()
+        expect(near(harness.list.tableView.contentInsets.bottom, initial), "detached arrow does not reserve space")
+        harness.list.addSubview(arrow)
+        harness.list.frame.size.height = 760
+        harness.main.navigation.view.frame.size.height = 760
+        harness.tabbar.frame = FloatingTabBarLayout.frame(in: harness.list.frame.size)
+        harness.layout()
+        harness.checkLastRow()
+        harness.main.updateController.genericView.isHidden = true
+        harness.layout()
+        harness.checkLastRow()
+        harness.main.tabController.hideTabView(true)
+        harness.tabbar.isHidden = true
+        harness.layout()
+        harness.checkLastRow()
+    }
+}
+
+test("arrow-folder-navigation-and-row-target") {
+    scenario("arrow on All Chats and a pushed folder") {
+        let harness = Harness()
+        harness.showArrow()
+        harness.checkLastRow()
+        let folder = PeersListController(PeerListContainerView(frame: harness.list.frame))
+        harness.main.navigation.stack.append(folder)
+        harness.main.navigation.view.addSubview(folder.view)
+        harness.main.navigation.controllerDidChange = { [weak main = harness.main] in main?.refresh() }
+        harness.main.navigation.currentControllerDidChange()
+        let list = folder.genericView
+        list.state?.filterData.isTop = false
+        list.updateScroller(animated: false)
+        let table = list.tableView
+        table.populate(count: 25, rowHeight: 70)
+        table.scroll(to: .bottom(id: 24, innerId: nil, animated: false, focus: .init(focus: false), inset: 0))
+        let row = list.convert(table.tableView.rect(ofRow: 24), from: table.tableView)
+        let arrow = list.scrollerView!
+        expect(row.maxY <= arrow.frame.minY, "folder last-row target clears the arrow hit frame")
+        expect(near(row.maxY + 12, arrow.frame.minY), "folder arrow receives exactly the existing control gap")
+        expect(arrow.hitTest(NSPoint(x: arrow.frame.midX, y: row.maxY - 1)) == nil, "folder final row is not hit by the arrow")
+        folder.view.removeFromSuperview()
+        harness.main.navigation.stack.removeLast()
+        harness.main.navigation.currentControllerDidChange()
+        harness.checkLastRow()
+    }
+}
+
+test("arrow-short-lists-and-layout-transitions") {
+    for count in [1, 7, 9, 25] {
+        for rowHeight: CGFloat in [52, 70, 92] {
+            scenario("rows \(count), height \(rowHeight)") {
+                let harness = Harness()
+                harness.showArrow()
+                harness.checkLastRow(count: count, rowHeight: rowHeight)
+            }
+        }
+    }
+    scenario("expanded to collapsed and back with visible arrow") {
+        let harness = Harness()
+        harness.showArrow()
+        harness.checkLastRow()
+        let original = harness.list.tableView.contentInsets.bottom
+        harness.main.context.layout = .minimisize
+        harness.list.state?.splitState = .minimisize
+        harness.main.tabController.hideTabView(true)
+        harness.tabbar.isHidden = true
+        harness.layout()
+        harness.checkLastRow()
+        harness.main.context.layout = .dual
+        harness.list.state?.splitState = .dual
+        harness.main.tabController.hideTabView(false)
+        harness.tabbar.isHidden = false
+        harness.layout()
+        harness.checkLastRow()
+        expect(near(harness.list.tableView.contentInsets.bottom, original), "layout-mode round trip restores exactly the arrow clearance")
+    }
+}
+
+test("arrow-repeat-lifecycle-and-mid-scroll") {
+    scenario("appear and disappear at threshold without a visible-row jump") {
+        let harness = Harness()
+        let table = harness.list.tableView
+        table.populate(count: 30, rowHeight: 70)
+        let base = table.contentInsets.bottom
+        for _ in 0 ..< 8 {
+            let shownOffset = table.frame.height + 1
+            table.clipView.updateBounds(to: NSPoint(x: 0, y: shownOffset))
+            harness.list.updateScroller(animated: false)
+            expect(harness.list.scrollerView != nil, "crossing threshold creates arrow each time")
+            expect(near(table.clipView.bounds.minY, shownOffset), "adding bottom clearance preserves the current mid-list offset")
+            let hiddenOffset = table.frame.height - 1
+            table.clipView.updateBounds(to: NSPoint(x: 0, y: hiddenOffset))
+            harness.list.updateScroller(animated: false)
+            expect(harness.list.scrollerView == nil, "crossing back removes arrow each time")
+            expect(near(table.contentInsets.bottom, base), "each removal drops stale arrow space")
+            expect(near(table.clipView.bounds.minY, hiddenOffset), "removing clearance preserves the current mid-list offset")
+        }
+    }
+}
+
+let report: [String: Any] = [
+    "test_cases": cases.count,
+    "scenarios": scenarios,
+    "assertions": assertions,
+    "failed_assertions": failures.count,
+    "case_scenarios": cases,
+    "failures": failures
+]
+let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+print(String(decoding: data, as: UTF8.self))
+exit(failures.isEmpty ? 0 : 1)
