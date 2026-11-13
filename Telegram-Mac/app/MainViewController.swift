@@ -476,6 +476,17 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
             updateContainer(controller)
             return false
         }
+        if settings.isLoaded() {
+            var insets = tabController.containerContentInsets
+            insets.bottom += tabController.contentBottomInset
+            if tabController.current === settings, !updateView.isHidden, let container = updateView.superview, settings.view.isDescendant(of: container) {
+                let rect = settings.view.convert(updateView.frame, from: container)
+                if rect.intersects(settings.bounds) {
+                    insets.bottom = max(insets.bottom, settings.bounds.height - rect.minY + 12)
+                }
+            }
+            settings.updateContainerContentInsets(insets, transition: .immediate)
+        }
     }
 
     override var absorbsNavigationHeaderOverflow: Bool {
