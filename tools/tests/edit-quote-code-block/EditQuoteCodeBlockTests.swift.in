@@ -1,0 +1,527 @@
+import Foundation
+import AppKit
+
+extension String {
+    var nsstring: NSString { return self as NSString }
+    var length: Int { return self.nsstring.length }
+}
+
+extension NSRange {
+    var min: Int { return self.location }
+    var max: Int { return self.location + self.length }
+}
+
+extension NSAttributedString {
+    static func initialize(string: String?, color: NSColor? = nil, font: NSFont? = nil) -> NSAttributedString {
+        guard let string, !string.isEmpty else {
+            return NSAttributedString(string: "")
+        }
+        return NSAttributedString(string: string)
+    }
+
+    __TRIMMED__
+}
+
+extension NSFont {
+    static func normal(_ size: CGFloat) -> NSFont { return NSFont.systemFont(ofSize: size) }
+    static func semibold(_ size: CGFloat) -> NSFont { return NSFont.boldSystemFont(ofSize: size) }
+    static func italic(_ size: CGFloat) -> NSFont { return NSFontManager.shared.convert(NSFont.systemFont(ofSize: size), toHaveTrait: .italicFontMask) }
+    static func boldItalic(_ size: CGFloat) -> NSFont { return NSFontManager.shared.convert(NSFont.boldSystemFont(ofSize: size), toHaveTrait: .italicFontMask) }
+    static func code(_ size: CGFloat) -> NSFont { return NSFont.monospacedSystemFont(ofSize: size, weight: .regular) }
+    static func semiboldMonospace(_ size: CGFloat) -> NSFont { return NSFont.monospacedSystemFont(ofSize: size, weight: .semibold) }
+    static func italicMonospace(_ size: CGFloat) -> NSFont { return NSFont.monospacedSystemFont(ofSize: size, weight: .regular) }
+    static func semiboldItalicMonospace(_ size: CGFloat) -> NSFont { return NSFont.monospacedSystemFont(ofSize: size, weight: .semibold) }
+}
+
+func arc4random64() -> Int64 {
+    return Int64.random(in: 0 ... Int64.max)
+}
+
+struct StringCodingKey: CodingKey, ExpressibleByStringLiteral {
+    var stringValue: String
+    var intValue: Int? { return nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+    init(stringLiteral value: String) { self.stringValue = value }
+}
+
+protocol Media {}
+
+struct MediaId: Hashable, Codable {
+    let namespace: Int32
+    let id: Int64
+}
+
+struct TelegramMediaFile: Codable, Equatable, Media {
+    var isPremiumEmoji: Bool { return false }
+    var fileId: MediaId { return MediaId(namespace: 0, id: 0) }
+}
+
+struct ItemCollectionId: Codable, Hashable {}
+
+enum Namespaces {
+    enum Media {
+        static let CloudFile: Int32 = 0
+    }
+    enum Peer {
+        static let CloudUser: Int32 = 0
+    }
+}
+
+struct PeerId: Hashable {
+    struct Id: Hashable {
+        let value: Int64
+        static func _internalFromInt64Value(_ value: Int64) -> Id { return Id(value: value) }
+        func _internalGetInt64Value() -> Int64 { return self.value }
+    }
+    let namespace: Int32
+    let id: Id
+}
+
+struct StickerPackReference: Equatable {}
+
+enum MessageTextEntityType: Equatable {
+    enum DateTimeFormat: Equatable {
+        enum TimeFormat: Equatable { case short, long }
+        enum DateFormat: Equatable { case short, long }
+        case relative
+        case full(timeFormat: TimeFormat?, dateFormat: DateFormat?, dayOfWeek: Bool)
+    }
+    case Unknown
+    case Mention
+    case Hashtag
+    case BotCommand
+    case Url
+    case Email
+    case Bold
+    case Italic
+    case Code
+    case Pre(language: String?)
+    case TextUrl(url: String)
+    case TextMention(peerId: PeerId)
+    case PhoneNumber
+    case Strikethrough
+    case BlockQuote(isCollapsed: Bool)
+    case Underline
+    case BankCard
+    case TonAddress
+    case Spoiler
+    case CustomEmoji(stickerPack: StickerPackReference?, fileId: Int64)
+    case FormattedDate(format: DateTimeFormat?, date: Int32)
+}
+
+struct MessageTextEntity: Equatable {
+    var range: Range<Int>
+    var type: MessageTextEntityType
+}
+
+struct TextEntitiesMessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+final class EmojiTextAttachment: NSTextAttachment {}
+
+protocol EmbeddedCustomEmojiAttributeValue {
+    var customEmojiAttribute: TextInputTextCustomEmojiAttribute? { get }
+}
+
+struct InputViewTheme {
+    let textColor: NSColor
+    let accentColor: NSColor
+    let fontSize: CGFloat
+}
+
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Hashtags = ParsingType(rawValue: 1 << 0)
+    static let Links = ParsingType(rawValue: 1 << 1)
+    static let Mentions = ParsingType(rawValue: 1 << 2)
+    static let Commands = ParsingType(rawValue: 1 << 3)
+}
+
+struct DetectedTextLink {
+    let text: String
+    let range: NSRange
+}
+
+func detectedTextLinks(in text: String, type: ParsingType) -> [DetectedTextLink] {
+    return []
+}
+
+enum ExtractedDateFormat {
+    case relative
+    case full(Bool, Bool)
+}
+
+struct ExtractedDate {
+    let range: Range<Int>
+    let date: Date
+    let format: ExtractedDateFormat
+}
+
+func extractDates(from text: String) -> [ExtractedDate] {
+    return []
+}
+
+struct Message {
+    let text: String
+    let attributes: [Any]
+}
+
+struct AnalyticsScope {
+    let isValid: Bool
+}
+
+struct AnalyticsOrigin {
+    let isExcluded: Bool
+    let scope: AnalyticsScope?
+}
+
+__TEXT_INPUT_ATTRIBUTES__
+
+__INPUT_ATTRIBUTES__
+
+__UPDATED_STATE__
+
+__STATE__
+
+final class EditSeed {
+    let inputState: ChatTextInputState
+
+    init(message: Message, state: ChatTextInputState? = nil) {
+        __SEED__
+    }
+}
+
+__HAND_BACKS__
+
+let fontSize: CGFloat = 13
+let textColor = NSColor.black
+let accentColor = NSColor.systemBlue
+let added = "added line"
+
+struct Part {
+    let text: String
+    let type: MessageTextEntityType
+    let occurrence: Int
+}
+
+func quote(_ text: String, collapsed: Bool = false, occurrence: Int = 0) -> Part {
+    return Part(text: text, type: .BlockQuote(isCollapsed: collapsed), occurrence: occurrence)
+}
+
+func pre(_ text: String, _ language: String? = nil, occurrence: Int = 0) -> Part {
+    return Part(text: text, type: .Pre(language: language), occurrence: occurrence)
+}
+
+func bold(_ text: String, occurrence: Int = 0) -> Part {
+    return Part(text: text, type: .Bold, occurrence: occurrence)
+}
+
+func code(_ text: String, occurrence: Int = 0) -> Part {
+    return Part(text: text, type: .Code, occurrence: occurrence)
+}
+
+func entities(_ text: String, _ parts: [Part]) -> [MessageTextEntity] {
+    let string = text as NSString
+    return parts.map { part in
+        var found = NSRange(location: NSNotFound, length: 0)
+        var from = 0
+        for _ in 0 ... part.occurrence {
+            found = string.range(of: part.text, options: [], range: NSMakeRange(from, string.length - from))
+            precondition(found.location != NSNotFound, "\(part.text.debugDescription) is not in \(text.debugDescription)")
+            from = found.location + 1
+        }
+        return MessageTextEntity(range: found.location ..< NSMaxRange(found), type: part.type)
+    }
+}
+
+struct Sample: Equatable {
+    let text: String
+    let entities: [MessageTextEntity]
+
+    init(text: String, entities: [MessageTextEntity]) {
+        self.text = text
+        self.entities = entities.map { entity in
+            if case .Pre(nil) = entity.type {
+                return MessageTextEntity(range: entity.range, type: .Pre(language: ""))
+            }
+            return entity
+        }.sorted(by: { ($0.range.lowerBound, $0.range.upperBound, "\($0.type)") < ($1.range.lowerBound, $1.range.upperBound, "\($1.type)") })
+    }
+
+    var description: String {
+        let string = self.text as NSString
+        let parts = self.entities.map { entity -> String in
+            let covered = entity.range.lowerBound >= 0 && entity.range.upperBound <= string.length ? string.substring(with: NSRange(location: entity.range.lowerBound, length: entity.range.count)).debugDescription : "out of the text"
+            return "\(entity.type) \(entity.range.lowerBound)+\(entity.range.count) \(covered)"
+        }
+        return "\(self.text.debugDescription) [\(parts.joined(separator: "; "))]"
+    }
+}
+
+func refresh(_ view: NSTextView) {
+    refreshTextInputAttributes(textView: view, primaryTextColor: textColor, accentTextColor: accentColor, baseFontSize: fontSize, spoilersRevealed: false, availableEmojis: Set())
+}
+
+func makeBox(_ state: ChatTextInputState) -> NSTextView {
+    let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 480, height: 480))
+    view.isRichText = true
+    view.isEditable = true
+    view.allowsUndo = false
+    view.isAutomaticQuoteSubstitutionEnabled = false
+    view.isAutomaticDashSubstitutionEnabled = false
+    view.isAutomaticTextReplacementEnabled = false
+    view.isAutomaticSpellingCorrectionEnabled = false
+    view.isAutomaticLinkDetectionEnabled = false
+    view.isAutomaticDataDetectionEnabled = false
+    let presentation = state.textInputState()
+    let attributed = textAttributedStringForStateText(presentation.inputText, fontSize: fontSize, textColor: textColor, accentTextColor: accentColor, writingDirection: nil, spoilersRevealed: false, availableEmojis: Set())
+    view.textStorage?.setAttributedString(attributed)
+    view.setSelectedRange(NSRange(location: presentation.selectionRange.lowerBound, length: presentation.selectionRange.count))
+    refresh(view)
+    return view
+}
+
+func readBox(_ view: NSTextView) -> ChatTextInputState {
+    let selection = view.selectedRange()
+    let presentation = Updated_ChatTextInputState(inputText: stateAttributedStringForText(view.attributedString().copy() as! NSAttributedString), selectionRange: selection.location ..< selection.location + selection.length)
+    return presentation.textInputState()
+}
+
+func type(_ text: String, into view: NSTextView, at location: Int) {
+    view.setSelectedRange(NSRange(location: location, length: 0))
+    view.typingAttributes = [.font: NSFont.normal(fontSize), .foregroundColor: textColor]
+    view.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    refresh(view)
+}
+
+func quotes(in view: NSTextView) -> [String] {
+    var result: [String] = []
+    let storage = view.attributedString()
+    storage.enumerateAttribute(TextInputAttributes.quote, in: NSRange(location: 0, length: storage.length), options: []) { value, range, _ in
+        if value != nil {
+            result.append((storage.string as NSString).substring(with: range))
+        }
+    }
+    return result
+}
+
+func save(_ state: ChatTextInputState) -> Sample {
+    let saved = state.subInputState(from: NSMakeRange(0, (state.inputText as NSString).length))
+    return Sample(text: saved.inputText, entities: saved.messageTextEntities([]))
+}
+
+func seed(_ sample: Sample) -> ChatTextInputState {
+    return EditSeed(message: Message(text: sample.text, attributes: [TextEntitiesMessageAttribute(entities: sample.entities)])).inputState
+}
+
+func shifted(_ entities: [MessageTextEntity], by offset: Int) -> [MessageTextEntity] {
+    return entities.map { MessageTextEntity(range: $0.range.lowerBound + offset ..< $0.range.upperBound + offset, type: $0.type) }
+}
+
+func inside(_ sample: Sample) -> Bool {
+    let length = (sample.text as NSString).length
+    return sample.entities.allSatisfy { $0.range.lowerBound >= 0 && $0.range.upperBound <= length }
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAIL \(name)\(detail().isEmpty ? "" : ": \(detail())")")
+    }
+}
+
+let show = __SHOW__
+
+struct Case {
+    let name: String
+    let text: String
+    let parts: [Part]
+    let box: String?
+    let boxQuotes: [String]?
+
+    init(_ name: String, _ text: String, _ parts: [Part], box: String? = nil, boxQuotes: [String]? = nil) {
+        self.name = name
+        self.text = text
+        self.parts = parts
+        self.box = box
+        self.boxQuotes = boxQuotes
+    }
+
+    var sample: Sample {
+        return Sample(text: self.text, entities: entities(self.text, self.parts))
+    }
+}
+
+let cases: [Case] = [
+    Case("a code block inside a quote, with text before and after", "quote edit\nshe wrote:\nprint(1)\nend", [quote("she wrote:\nprint(1)"), pre("print(1)", "python")], box: "quote edit\nshe wrote:\n```python\nprint(1)```\nend", boxQuotes: ["she wrote:\n```python\nprint(1)```"]),
+    Case("a quote that is only a code block", "check\nprint(1)\nend", [quote("print(1)"), pre("print(1)", "python")], box: "check\n```python\nprint(1)```\nend", boxQuotes: ["```python\nprint(1)```"]),
+    Case("a quote that is only a code block, at the start of the message", "print(1)\nend", [quote("print(1)"), pre("print(1)", "python")], boxQuotes: ["```python\nprint(1)```"]),
+    Case("a quote that ends the message with a code block", "check\nshe wrote:\nprint(1)", [quote("she wrote:\nprint(1)"), pre("print(1)", "python")], boxQuotes: ["she wrote:\n```python\nprint(1)```"]),
+    Case("a one-line code block without a language inside a quote", "check\nshe wrote:\nx = 1\nend", [quote("she wrote:\nx = 1"), pre("x = 1")], box: "check\nshe wrote:\n```x = 1```\nend", boxQuotes: ["she wrote:\n```x = 1```"]),
+    Case("a multi-line code block without a language inside a quote", "check\nshe wrote:\na = 1\nb = 2\nend", [quote("she wrote:\na = 1\nb = 2"), pre("a = 1\nb = 2")], boxQuotes: ["she wrote:\n```\na = 1\nb = 2```"]),
+    Case("a code block that starts with a line break inside a quote", "check\nshe wrote:\n\na = 1\nend", [quote("she wrote:\n\na = 1"), pre("\na = 1")]),
+    Case("a code block inside a collapsed quote", "check\nshe wrote:\nprint(1)\nend", [quote("she wrote:\nprint(1)", collapsed: true), pre("print(1)", "python")], boxQuotes: ["she wrote:\n```python\nprint(1)```"]),
+    Case("two code blocks inside one quote", "check\nshe wrote:\nprint(1)\nthen\nb = 2\nend", [quote("she wrote:\nprint(1)\nthen\nb = 2"), pre("print(1)", "python"), pre("b = 2")], boxQuotes: ["she wrote:\n```python\nprint(1)```\nthen\n```b = 2```"]),
+    Case("a code block inside a quote, then bold text after the quote", "check\nshe wrote:\nprint(1)\nthen bold here", [quote("she wrote:\nprint(1)"), pre("print(1)", "python"), bold("bold")]),
+    Case("bold text inside the quote before its code block", "check\nshe wrote bold:\nprint(1)\nend", [quote("she wrote bold:\nprint(1)"), bold("bold"), pre("print(1)", "python")]),
+    Case("bold text inside the quote after its code block", "check\nshe wrote:\nprint(1)\nand bold here\nend", [quote("she wrote:\nprint(1)\nand bold here"), pre("print(1)", "python"), bold("bold")]),
+    Case("inline code and literal markdown inside the quote with a code block", "check\nuse x and **kw**:\nprint(1)\nend", [quote("use x and **kw**:\nprint(1)"), code("x"), pre("print(1)", "python")]),
+    Case("a code block in the second of two quotes", "first quote\nmiddle\nshe wrote:\nprint(1)\nend", [quote("first quote"), quote("she wrote:\nprint(1)"), pre("print(1)", "python")], boxQuotes: ["first quote", "she wrote:\n```python\nprint(1)```"]),
+    Case("code blocks in two quotes", "a wrote:\nprint(1)\nmiddle\nb wrote:\nprint(2)\nend", [quote("a wrote:\nprint(1)"), pre("print(1)", "python"), quote("b wrote:\nprint(2)"), pre("print(2)", "swift")]),
+    Case("a code block inside a quote, then one outside", "check\nshe wrote:\nprint(1)\nmine:\nprint(2)\nend", [quote("she wrote:\nprint(1)"), pre("print(1)", "python"), pre("print(2)", "swift")], boxQuotes: ["she wrote:\n```python\nprint(1)```"]),
+    Case("a code block outside a quote, then a code block inside one", "check\nprint(0)\nshe wrote:\nprint(1)\nend", [pre("print(0)", "python"), quote("she wrote:\nprint(1)"), pre("print(1)", "python")]),
+    Case("a code block that ends with a backtick inside a quote", "check\nshe wrote:\nname = `x`\nend", [quote("she wrote:\nname = `x`"), pre("name = `x`")], boxQuotes: ["she wrote:\n```name = `x````"]),
+    Case("a code block with ``` inside a quote", "check\nshe wrote:\na ``` b\nend", [quote("she wrote:\na ``` b"), pre("a ``` b", "md")]),
+    Case("emoji before the quote", "👍🏽 ok 🇺🇦\nshe wrote:\nprint(1)\nend", [quote("she wrote:\nprint(1)"), pre("print(1)", "python")]),
+    Case("emoji inside the quote and the code block", "check\nshe 👍🏽 wrote:\nprint(\"🇺🇦\")\nend", [quote("she 👍🏽 wrote:\nprint(\"🇺🇦\")"), pre("print(\"🇺🇦\")", "python")]),
+    Case("a code block with four backticks inside a quote", "check\nshe wrote:\na ```` b\nend", [quote("she wrote:\na ```` b"), pre("a ```` b")], boxQuotes: ["she wrote:\n`````a ```` b`````"]),
+    Case("two quotes right after each other with code blocks, the second collapsed", "a wrote:\nprint(1)\nb wrote:\nprint(2)", [quote("a wrote:\nprint(1)"), pre("print(1)", "python"), quote("b wrote:\nprint(2)", collapsed: true), pre("print(2)", "swift")]),
+    Case("a code block that ends with a line break, then more quoted text", "check\nshe wrote:\na = 1\n\nmore\nend", [quote("she wrote:\na = 1\n\nmore"), pre("a = 1\n")]),
+    Case("a collapsed quote that ends the message with a multi-line code block", "she wrote:\nlet x = 1\nprint(x)", [quote("she wrote:\nlet x = 1\nprint(x)", collapsed: true), pre("let x = 1\nprint(x)", "swift")]),
+    Case("two code blocks right after each other inside a quote", "check\nshe wrote:\nx\ny\nend", [quote("she wrote:\nx\ny"), pre("x"), pre("y")]),
+    Case("a code block in the middle of a quoted line", "check\nshe: x = 1 then\nend", [quote("she: x = 1 then"), pre("x = 1")]),
+    Case("bold text after the code block on the same quoted line", "check\nshe wrote:\nx = 1 bold\nend", [quote("she wrote:\nx = 1 bold"), pre("x = 1"), bold("bold")]),
+    Case("a code block that is one backtick inside a quote", "check\n`\nend", [quote("`"), pre("`")]),
+    Case("a code block without a quote", "check\nprint(1)\nend", [pre("print(1)", "python")], boxQuotes: []),
+    Case("a quote above a code block, on its own line", "check\nshe wrote:\nprint(1)\nend", [quote("she wrote:"), pre("print(1)", "python")], boxQuotes: ["she wrote:"]),
+    Case("a quote below a code block, on its own line", "check\nprint(1)\nshe wrote\nend", [pre("print(1)", "python"), quote("she wrote")], boxQuotes: ["she wrote"]),
+]
+
+for item in cases {
+    let original = item.sample
+    let paths: [(String, (NSTextView) -> Void, Sample)] = [
+        ("edit, save without changes", { _ in }, original),
+        ("edit, add a line at the end", { view in type("\n" + added, into: view, at: (view.string as NSString).length) }, Sample(text: original.text + "\n" + added, entities: original.entities)),
+        ("edit, add a line at the start", { view in type(added + "\n", into: view, at: 0) }, Sample(text: added + "\n" + original.text, entities: shifted(original.entities, by: (added as NSString).length + 1))),
+    ]
+    for (path, change, expected) in paths {
+        let name = "\(path), \(item.name)"
+        let view = makeBox(seed(original))
+        let box = view.string
+        let boxQuotes = quotes(in: view)
+        change(view)
+        let saved = save(readBox(view))
+        if show {
+            print("== \(name)")
+            print("   box:      \(box.debugDescription) quotes \(boxQuotes)")
+            print("   expected: \(expected.description)")
+            print("   saved:    \(saved.description)")
+        }
+        if let expectedBox = item.box {
+            check("\(name): the edit box has the fences", box == expectedBox, box.debugDescription)
+        }
+        if let expectedQuotes = item.boxQuotes {
+            check("\(name): the edit box keeps each quote whole, fences included", boxQuotes == expectedQuotes, "\(boxQuotes)")
+        }
+        check("\(name): the saved text and entities are exact", saved == expected, "saved \(saved.description), expected \(expected.description)")
+        check("\(name): every entity is inside the text", inside(saved), saved.description)
+        if path == paths[0].0 {
+            let again = save(readBox(makeBox(seed(saved))))
+            check("\(name): editing the saved message again changes nothing", again == saved, "again \(again.description)")
+        }
+    }
+    for (index, handBack) in articleEditorHandBacks.enumerated() {
+        for origin in [AnalyticsOrigin(isExcluded: false, scope: AnalyticsScope(isValid: true)), AnalyticsOrigin(isExcluded: true, scope: nil)] {
+            let name = "article editor \(index + 1)\(origin.isExcluded ? ", excluded from analytics" : ""), \(item.name)"
+            let view = makeBox(handBack(original.text, original.entities, origin))
+            let saved = save(readBox(view))
+            if show {
+                print("== \(name)")
+                print("   box:      \(view.string.debugDescription) quotes \(quotes(in: view))")
+                print("   saved:    \(saved.description)")
+            }
+            check("\(name): the sent text and entities are exact", saved == original, "saved \(saved.description), expected \(original.description)")
+        }
+    }
+}
+
+let partial: [Case] = [
+    Case("a quote that ends inside a code block", "check\nshe wrote:\nprint(1)\nmore\nend", [quote("she wrote:\nprint(1)"), pre("print(1)\nmore", "python")], boxQuotes: ["she wrote:", "print(1)"]),
+    Case("a quote that starts inside a code block", "check\nprint(1)\nmore\nend", [pre("print(1)\nmore", "python"), quote("more\nend")], boxQuotes: ["more```", "end"]),
+]
+
+for item in partial {
+    let name = "edit, \(item.name)"
+    let view = makeBox(seed(item.sample))
+    if show {
+        print("== \(name)")
+        print("   box:      \(view.string.debugDescription) quotes \(quotes(in: view))")
+    }
+    check("\(name): the edit box doesn't stretch the quote over the rest of the block", quotes(in: view) == item.boxQuotes, "\(quotes(in: view))")
+}
+
+struct Typed {
+    let name: String
+    let text: String
+    let quoted: [String]
+    let expected: Sample
+}
+
+func typedSample(_ text: String, _ parts: [Part]) -> Sample {
+    return Sample(text: text, entities: entities(text, parts))
+}
+
+let typed: [Typed] = [
+    Typed(name: "fences typed inside a quote", text: "she wrote:\n```python\nprint(1)```", quoted: ["she wrote:\n```python\nprint(1)```"], expected: typedSample("she wrote:\nprint(1)", [quote("she wrote:\nprint(1)"), pre("print(1)", "python")])),
+    Typed(name: "fences typed inside a quote, with quoted text after them", text: "she wrote:\n```x = 1```\nthat is all", quoted: ["she wrote:\n```x = 1```\nthat is all"], expected: typedSample("she wrote:\nx = 1\nthat is all", [quote("she wrote:\nx = 1\nthat is all"), pre("x = 1")])),
+    Typed(name: "fences and literal markdown typed inside a quote", text: "use **kw** here:\n```x = 1```", quoted: ["use **kw** here:\n```x = 1```"], expected: typedSample("use **kw** here:\nx = 1", [quote("use **kw** here:\nx = 1"), pre("x = 1")])),
+    Typed(name: "fences typed below a quote", text: "she wrote:\n```x = 1```", quoted: ["she wrote:"], expected: typedSample("she wrote:\nx = 1", [quote("she wrote:"), pre("x = 1")])),
+    Typed(name: "a quote over only the code between typed fences", text: "```\nx = 1\n```", quoted: ["x = 1"], expected: typedSample("```\nx = 1\n```", [quote("x = 1")])),
+    Typed(name: "inline markdown typed inside a quote", text: "she said **hi**", quoted: ["she said **hi**"], expected: typedSample("she said **hi**", [quote("she said **hi**")])),
+    Typed(name: "two one-line blocks typed on one quoted line", text: "she: ```x``` ```y```", quoted: ["she: ```x``` ```y```"], expected: typedSample("she: x y", [quote("she: x y"), pre("x"), pre("y")])),
+]
+
+for item in typed {
+    let name = "typed in the input, \(item.name)"
+    let text = NSMutableAttributedString(string: item.text)
+    for part in item.quoted {
+        text.addAttribute(TextInputAttributes.quote, value: TextInputTextQuoteAttribute(collapsed: false), range: (item.text as NSString).range(of: part))
+    }
+    let view = makeBox(ChatTextInputState(attributedText: text, selectionRange: text.length ..< text.length))
+    let saved = save(readBox(view))
+    if show {
+        print("== \(name)")
+        print("   box:      \(view.string.debugDescription) quotes \(quotes(in: view))")
+        print("   expected: \(item.expected.description)")
+        print("   saved:    \(saved.description)")
+    }
+    check("\(name): the sent text and entities are exact", saved == item.expected, "saved \(saved.description), expected \(item.expected.description)")
+}
+
+let neighbours: [(String, String, [Part], String)] = [
+    ("literal __a__ right after literal ~~a~~, then a code block, in a quote that ends the message", "check\n~~a~~ __a__\nx = 1", [quote("~~a~~ __a__\nx = 1"), pre("x = 1")], "~~a~~ a\nx = 1"),
+    ("literal **b** right after literal **a**, then a code block, in a quote", "use **a** **b**:\nprint(1)\nend", [quote("use **a** **b**:\nprint(1)"), pre("print(1)", "python")], "use **a** b:\nprint(1)"),
+]
+
+for (title, text, parts, quoted) in neighbours {
+    let name = "edit, \(title)"
+    let saved = save(readBox(makeBox(seed(Sample(text: text, entities: entities(text, parts))))))
+    let covered = saved.entities.compactMap { entity -> String? in
+        guard case .BlockQuote = entity.type, inside(Sample(text: saved.text, entities: [entity])) else { return nil }
+        return (saved.text as NSString).substring(with: NSRange(location: entity.range.lowerBound, length: entity.range.count))
+    }
+    if show {
+        print("== \(name)")
+        print("   saved:    \(saved.description)")
+    }
+    check("\(name): every entity is inside the text", inside(saved), saved.description)
+    check("\(name): the quote covers the same lines", covered == [quoted], "\(covered)")
+}
+
+let long = Sample(text: "first part\nshe wrote:\nprint(1)\nend", entities: entities("first part\nshe wrote:\nprint(1)\nend", [quote("she wrote:\nprint(1)"), pre("print(1)", "python")]))
+let state = readBox(makeBox(seed(long)))
+let start = ((state.inputText as NSString).range(of: "she wrote:")).location
+let part = state.subInputState(from: NSMakeRange(start, (state.inputText as NSString).length - start))
+let partSample = Sample(text: part.inputText, entities: part.messageTextEntities([]))
+let expectedPart = Sample(text: "she wrote:\nprint(1)\nend", entities: entities("she wrote:\nprint(1)\nend", [quote("she wrote:\nprint(1)"), pre("print(1)", "python")]))
+check("edit, a message saved in parts, the part with the quote and its code block is exact", partSample == expectedPart, "saved \(partSample.description), expected \(expectedPart.description)")
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
