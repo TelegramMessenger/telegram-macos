@@ -215,7 +215,7 @@ fileprivate class PreviewSenderView : Control {
         
       
         closeButton.set(handler: { [weak self] _ in
-            self?.controller?.closeModal()
+            self?.controller?.close()
         }, for: .Click)
         
         headerView.layer?.masksToBounds = false
