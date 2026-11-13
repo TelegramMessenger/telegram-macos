@@ -341,7 +341,8 @@ public class InputContextViewController : GenericViewController<InputContextView
     }
     
     fileprivate var markAsNeedShown: Bool = false
-    
+    var allowsSilentSendShortcut: Bool = false
+
     private let context:any AccountContextProtocol
     private let chatInteraction:ChatInteraction
     private let highlightInsteadOfSelect: Bool
@@ -441,7 +442,10 @@ public class InputContextViewController : GenericViewController<InputContextView
             return .invokeNext
         }, with: self, for: .RightArrow, priority: .modal)
         
-        context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
+        context.window.set(handler: { [weak self] event -> KeyHandlerResult in
+            if self?.allowsSilentSendShortcut == true, ChatSilentSendShortcut.matches(event) {
+                return .rejected
+            }
             if let strongSelf = self {
                 if strongSelf.context.isInGlobalSearch {
                     return .rejected

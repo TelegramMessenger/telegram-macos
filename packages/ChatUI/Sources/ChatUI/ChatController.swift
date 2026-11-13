@@ -488,6 +488,7 @@ public class ChatControllerView : View, ChatInputDelegate {
 
         scroller = ChatNavigationScroller(.scroller)
         inputContextHelper = InputContextHelper(chatInteraction: chatInteraction)
+        inputContextHelper.controller.allowsSilentSendShortcut = true
         tableView = TableView(frame:NSMakeRect(0,0,frameRect.width,frameRect.height - 50), isFlipped:false)
 
         bubblesView = ChatHeaderBubblesView(frame: NSMakeRect(0, 0, frameRect.width, ChatHeaderBubblesView.totalHeight), chatInteraction: chatInteraction)
@@ -5055,9 +5056,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     submission?.restrict(to: analyticsContext)
                     let analyticsPresentation = analyticsContext.beginPresentation()
                     defer { analyticsPresentation.end() }
-                    let sendObservation = strongSelf.makeMessageSendObservation(.text, analyticsContext: analyticsContext, scheduled: date != nil, silent: false)
+                    let sendObservation = strongSelf.makeMessageSendObservation(.text, analyticsContext: analyticsContext, scheduled: date != nil, silent: silent)
                     ci.setRichTextDraft(nil)
                     var attributes: [MessageAttribute] = [RichTextMessageAttribute(instantPage: draft, fullInstantPage: nil)]
+                    if silent {
+                        attributes.append(NotificationInfoMessageAttribute(flags: [.muted]))
+                    }
                     if let date {
                         attributes.append(OutgoingScheduleInfoMessageAttribute(scheduleTime: Int32(min(date.timeIntervalSince1970, Double(scheduleWhenOnlineTimestamp))), repeatPeriod: repeatPeriod))
                     }
@@ -11443,6 +11447,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
     }
     
     public override func returnKeyAction() -> KeyHandlerResult {
+        if chatInteraction.presentation.recordingState != nil, let event = NSApp.currentEvent, ChatSilentSendShortcut.matches(event) {
+            return .invoked
+        }
         if let transcription = chatInteraction.voiceTranscription, transcription.isActive, chatInteraction.presentation.recordingState != nil {
             transcription.perform(.edit)
             return .invoked

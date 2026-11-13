@@ -1,0 +1,663 @@
+import Cocoa
+import KeyboardKey
+import SendingPreference
+import XCTest
+
+final class WindowRecorder {
+    struct Handler {
+        let object: NSObject
+        let key: KeyboardKey
+        let flags: NSEvent.ModifierFlags?
+        let action: (NSEvent) -> KeyHandlerResult
+    }
+
+    var firstResponder: NSResponder?
+    var handlers: [Handler] = []
+    var alerts = 0
+    var scheduleSelections: [(Date, Int32?) -> Void] = []
+
+    func set(handler: @escaping (NSEvent) -> KeyHandlerResult, with object: NSObject, for key: KeyboardKey, priority: Priority, modifierFlags: NSEvent.ModifierFlags? = nil) {
+        handlers.append(Handler(object: object, key: key, flags: modifierFlags, action: handler))
+        if key == .Return {
+            handlers.append(Handler(object: object, key: .KeypadEnter, flags: modifierFlags, action: handler))
+        }
+    }
+
+    func remove(object: NSObject, for key: KeyboardKey, modifierFlags: NSEvent.ModifierFlags? = nil, forceCheckFlags: Bool = false) {
+        handlers.removeAll { $0.object === object && ($0.key == key || (key == .Return && $0.key == .KeypadEnter)) && $0.flags == modifierFlags }
+    }
+
+    func invoke(_ event: NSEvent) -> KeyHandlerResult {
+        for handler in handlers where handler.key.rawValue == event.keyCode && (handler.flags == nil || event.modifierFlags.contains(handler.flags!)) {
+            let result = handler.action(event)
+            if result != .rejected { return result }
+        }
+        return .rejected
+    }
+}
+
+enum Priority { case high, modal }
+final class Account {
+    var peerId = 1
+    var typingUpdates = 0
+    func updateLocalInputActivity(peerId: Int, activity: Activity, isPresent: Bool) { typingUpdates += 1 }
+}
+enum Activity { case typingText }
+public struct AnalyticsContext {
+    struct Presentation { func end() {} }
+    func beginPresentation() -> Presentation { Presentation() }
+}
+enum Analytics {
+    static let shared = AnalyticsContextProvider()
+}
+struct AnalyticsContextProvider {
+    func unresolvedContext() -> AnalyticsContext { AnalyticsContext() }
+}
+final class Context {
+    let account = Account()
+    let window = WindowRecorder()
+    var peerId: Int { account.peerId }
+    var isPremium = true
+    var premiumIsBlocked = false
+    var isInGlobalSearch = false
+}
+struct Peer {
+    var id = 2
+    var isSecretChat = false
+}
+enum State { case normal, editing, blocked }
+enum Mode { case history, thread, scheduled, other }
+struct SlowMode { var hasLocked = false }
+struct InterfaceState { var forwardMessageIds: [Int] = [] }
+struct Presentation {
+    var peer: Peer? = Peer()
+    var state: State = .normal
+    var slowMode: SlowMode?
+    var interfaceState = InterfaceState()
+    var canScheduleWhenOnline = true
+    var sendPaidMessageStars: Int?
+    var messageEffect: Int? = 7
+    var effectiveInput = EffectiveInput()
+    var recordingState: RecordingState?
+}
+struct EffectiveInput { var inputText = "" }
+struct InstantPage { let value = 1 }
+public final class ChatInteraction {
+    public struct Schedule { let date: Date; var repeatPeriod: Int32? }
+    struct Send {
+        let silent: Bool
+        let schedule: Schedule?
+        let effect: Int?
+    }
+    let interactionContext = Context()
+    var context: Context { interactionContext }
+    var presentation = Presentation()
+    var mode: Mode = .history
+    var richTextDraft: InstantPage?
+    var voiceTranscription: TranscriptionRecorder?
+    var maxInputCharacters = 4096
+    var peerIsAccountPeer: Bool { presentation.peer?.id == interactionContext.account.peerId }
+    var activitySpace = 1
+    var sends: [Send] = []
+    var scrolls = 0
+    var revision = 0
+    var richAttributes: [[MessageAttribute]] = []
+    func sendMessage(_ silent: Bool, _ schedule: Schedule?, _ effect: Int?) { sends.append(Send(silent: silent, schedule: schedule, effect: effect)) }
+    func scrollToLatest(_ animated: Bool) { scrolls += 1 }
+    func setRichTextDraft(_ draft: InstantPage?, analyticsContext: AnalyticsContext? = nil) { richTextDraft = draft }
+    func captureAnalyticsContext(inherited: AnalyticsContext? = nil) -> AnalyticsContext { inherited ?? AnalyticsContext() }
+    func captureDeferredSendAction() -> ChatDeferredSendAction {
+        let captured = revision
+        return ChatDeferredSendAction { [weak self] in self?.revision == captured }
+    }
+}
+
+enum RecordingSendSource { case keyboard }
+final class RecordingState {
+    var sends = 0
+    var source: RecordingSendSource?
+    func send(from: ChatInteraction, via: RecordingSendSource? = nil, closingOtherModals: Bool) { sends += 1; source = via }
+}
+final class TranscriptionRecorder {
+    enum Action { case edit }
+    var isActive = true
+    var edits = 0
+    func perform(_ action: Action) { edits += 1 }
+}
+final class ApplicationRecorder { var currentEvent: NSEvent? }
+let NSApp = ApplicationRecorder()
+class ControllerBase {
+    func returnKeyAction() -> KeyHandlerResult { .rejected }
+}
+final class ChatControllerFixture: ControllerBase {
+    let chatInteraction = ChatInteraction()
+    __CONTROLLER_RETURN__
+}
+
+struct LocalStrings {
+    let chatSendWithoutSound = "Silent"
+    let chatSendSendWhenOnline = "When online"
+    let chatSendSetReminder = "Reminder"
+    let chatSendScheduledMessage = "Schedule"
+    let alertOK = "OK"
+    let premiumGetPremiumDouble = "Premium"
+    func chatInputErrorMessageTooLongOther(_ count: Int) -> String { "Too long" }
+}
+func strings() -> LocalStrings { LocalStrings() }
+enum MenuAnimation {
+    case menu_mute, menu_online, menu_schedule_message
+    var value: Int { 0 }
+}
+public class ContextMenuItem: NSMenuItem {
+    __KEY_EQUIVALENT__
+    let keyEquivalentValue: KeyEquiavalent
+    var handler: (() -> Void)?
+    init(_ title: String, handler: (() -> Void)? = nil, itemImage: Int = 0, keyEquivalent: KeyEquiavalent = .none) {
+        self.handler = handler
+        self.keyEquivalentValue = keyEquivalent
+        super.init(title: title, action: nil, keyEquivalent: "")
+    }
+    required init(coder: NSCoder) { fatalError() }
+}
+let scheduleWhenOnlineDate = Date(timeIntervalSince1970: 100)
+let scheduleWhenOnlineTimestamp: Int32 = 2147483646
+enum DateMode { case schedule(Int) }
+func chatDateSelector(context: Context, mode: DateMode, analyticsContext: AnalyticsContext? = nil, selectedAt: @escaping (Date, Int32?) -> Void) -> Int {
+    context.window.scheduleSelections.append(selectedAt)
+    return 0
+}
+func showModal(with: Int, for window: WindowRecorder) {}
+func alert(for window: WindowRecorder, info: String) { window.alerts += 1 }
+enum AlertResult { case basic, thrid }
+enum Limit { case caption(Int) }
+func showPremiumLimit(context: Context, type: Limit) {}
+func verifyAlert_button(for window: WindowRecorder, information: String, ok: String, cancel: String, option: String, successHandler: (AlertResult) -> Void) { window.alerts += 1 }
+extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    var length: Int { (self as NSString).length }
+}
+enum FastSettings {
+    static var commandEnter = false
+    static func checkSendingAbility(for event: NSEvent) -> Bool { isEnterAccessObjc(event, commandEnter) }
+}
+final class InputText {
+    var text = "hello"
+    func string() -> String { text }
+}
+final class Preview {
+    func undoInline() {}
+    func redoInline() {}
+}
+final class Container { var richDraftPreview: Preview? = Preview() }
+final class InputFixture: NSView {
+    let chatInteraction = ChatInteraction()
+    let textView = InputText()
+    let container = Container()
+    var deletedRichDraft: (page: InstantPage, origin: AnalyticsContext)?
+    var markNextTextChangeToFalseActivity = false
+    __PLAIN_ENTER__
+    __RICH_SHORTCUT__
+    __RICH_HANDLERS__
+    func installRichHandlers() { updateRichDraftKeyHandlers() }
+}
+final class MarkedTextView: NSTextView {
+    var marked = false
+    override func hasMarkedText() -> Bool { marked }
+}
+
+__SEND_MENU__
+
+protocol MessageAttribute {}
+struct RichTextMessageAttribute: MessageAttribute { let instantPage: InstantPage; let fullInstantPage: InstantPage? }
+struct NotificationFlags: OptionSet {
+    let rawValue: Int
+    static let muted = NotificationFlags(rawValue: 1)
+}
+struct NotificationInfoMessageAttribute: MessageAttribute { let flags: NotificationFlags }
+struct OutgoingScheduleInfoMessageAttribute: MessageAttribute { let scheduleTime: Int32; let repeatPeriod: Int32? }
+func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute]) { chatInteraction.richAttributes.append(attributes) }
+func sendRich(_ ci: ChatInteraction, silent: Bool, date: Date? = nil) {
+    let draft = InstantPage()
+    let repeatPeriod: Int32? = nil
+    __RICH_ATTRIBUTES__
+    richTextEnqueue(chatInteraction: ci, text: "", attributes: attributes)
+}
+
+final class SuggestionFixture: NSObject {
+    let context = Context()
+    __SUGGESTION_FLAG__
+    var invocations = 0
+    func invoke() -> KeyHandlerResult { invocations += 1; return .invoked }
+    func install() {
+__CONTEXT_RETURN__
+    }
+}
+
+enum InputDataReturnResult { case invokeEvent, nothing }
+final class ControllerRecorder { var returnKeyInvocation: (Int?, NSEvent) -> InputDataReturnResult = { _, _ in .invokeEvent } }
+final class EditorRecorder { let editor = NSView() }
+final class ModalFixture {
+    let context = Context()
+    let controller = ControllerRecorder()
+    let coordinator = EditorRecorder()
+    var items: [ContextMenuItem] = []
+    init() {
+        let context = self.context
+        let controller = self.controller
+        let coordinator = self.coordinator
+        let menuItems: () -> [ContextMenuItem]? = { [weak self] in self?.items }
+__MODAL_RETURN__
+    }
+}
+
+class TableRowItem {}
+final class AppMenuBasicItem: TableRowItem {
+    struct Interaction { let action: (ContextMenuItem) -> Void }
+    let menuItem: ContextMenuItem?
+    let interaction: Interaction?
+    init(_ item: ContextMenuItem, action: @escaping (ContextMenuItem) -> Void) {
+        menuItem = item
+        interaction = Interaction(action: action)
+    }
+}
+final class MenuTable {
+    var items: [AppMenuBasicItem] = []
+    var selected: AppMenuBasicItem?
+    func enumerateItems(with body: (TableRowItem) -> Bool) {
+        for item in items { if !body(item) { break } }
+    }
+    func select(item: AppMenuBasicItem) -> Bool { selected = item; return true }
+}
+final class MenuRecorder { let tableView = MenuTable() }
+final class MenuFixture {
+    var activeMenu: MenuRecorder? = MenuRecorder()
+    __MENU_INVOKE__
+    func invoke(_ event: NSEvent) -> Bool { invokeReturnKeyEquivalent(event) }
+}
+func displayedMenuShortcut(_ item: ContextMenuItem) -> String { __MENU_LABEL__ }
+
+final class SilentSendShortcutTests: XCTestCase {
+    override func setUp() { FastSettings.commandEnter = false }
+    private func event(_ flags: NSEvent.ModifierFlags = [.command, .shift], key: KeyboardKey = .Return, repeatKey: Bool = false, type: NSEvent.EventType = .keyDown) -> NSEvent {
+        return NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: key == .KeypadEnter ? "\u{3}" : "\r", charactersIgnoringModifiers: "\r", isARepeat: repeatKey, keyCode: key.rawValue)!
+    }
+    private func item(_ interaction: ChatInteraction) throws -> ContextMenuItem {
+        return try XCTUnwrap(sendMessageMenuItems(chatInteraction: interaction, send: { interaction.sendMessage($0, $1, nil) })?.first)
+    }
+    private func richFixture() -> InputFixture {
+        let input = InputFixture()
+        input.chatInteraction.richTextDraft = InstantPage()
+        let responder = NSView()
+        input.addSubview(responder)
+        input.chatInteraction.interactionContext.window.firstResponder = responder
+        input.installRichHandlers()
+        return input
+    }
+
+    func testRecordingDoesNotSendOnSilentShortcut() {
+        let fixture = ChatControllerFixture()
+        let recording = RecordingState()
+        fixture.chatInteraction.presentation.recordingState = recording
+        NSApp.currentEvent = event()
+        defer { NSApp.currentEvent = nil }
+        XCTAssertEqual(fixture.returnKeyAction(), .invoked)
+        XCTAssertEqual(recording.sends, 0)
+    }
+    func testRecordingKeypadAndRepeatDoNotSendOnSilentShortcut() {
+        let fixture = ChatControllerFixture()
+        let recording = RecordingState()
+        fixture.chatInteraction.presentation.recordingState = recording
+        defer { NSApp.currentEvent = nil }
+        for key in [KeyboardKey.Return, .KeypadEnter] {
+            NSApp.currentEvent = event(key: key, repeatKey: true)
+            XCTAssertEqual(fixture.returnKeyAction(), .invoked)
+        }
+        XCTAssertEqual(recording.sends, 0)
+    }
+    func testRecordingOrdinaryReturnStillSends() {
+        let fixture = ChatControllerFixture()
+        let recording = RecordingState()
+        fixture.chatInteraction.presentation.recordingState = recording
+        NSApp.currentEvent = event([])
+        defer { NSApp.currentEvent = nil }
+        XCTAssertEqual(fixture.returnKeyAction(), .invoked)
+        XCTAssertEqual(recording.sends, 1)
+    }
+    func testNoRecordingLetsSilentShortcutReachComposer() {
+        let fixture = ChatControllerFixture()
+        NSApp.currentEvent = event()
+        defer { NSApp.currentEvent = nil }
+        XCTAssertEqual(fixture.returnKeyAction(), .rejected)
+    }
+    func testOnlyExactCommandShiftReturnMatches() {
+        XCTAssertTrue(ChatSilentSendShortcut.matches(event()))
+        for flags: NSEvent.ModifierFlags in [[], [.command], [.shift], [.option], [.command, .option], [.command, .shift, .option], [.command, .shift, .control]] {
+            XCTAssertFalse(ChatSilentSendShortcut.matches(event(flags)))
+        }
+    }
+    func testKeypadCapsLockAndFunctionDoNotChangeShortcut() {
+        XCTAssertTrue(ChatSilentSendShortcut.matches(event([.command, .shift, .capsLock, .numericPad, .function], key: .KeypadEnter)))
+        XCTAssertFalse(ChatSilentSendShortcut.matches(event(key: .A)))
+        XCTAssertFalse(ChatSilentSendShortcut.matches(event(type: .keyUp)))
+    }
+    func testSilentSendWorksWithEnterPreference() {
+        let input = InputFixture()
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [true])
+        XCTAssertEqual(input.chatInteraction.sends.first?.effect, 7)
+        XCTAssertNil(input.chatInteraction.sends.first?.schedule)
+    }
+    func testSilentSendWorksWithCommandEnterPreference() {
+        FastSettings.commandEnter = true
+        let input = InputFixture()
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [true])
+    }
+    func testOrdinaryEnterStillSendsNormally() {
+        let input = InputFixture()
+        XCTAssertTrue(input.textViewEnterPressed(event([])))
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [false])
+    }
+    func testOrdinaryCommandEnterStillSendsNormally() {
+        FastSettings.commandEnter = true
+        let input = InputFixture()
+        XCTAssertTrue(input.textViewEnterPressed(event([.command])))
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [false])
+    }
+    func testShiftReturnAndOptionReturnStillInsertNewline() {
+        for preference in [false, true] {
+            FastSettings.commandEnter = preference
+            let input = InputFixture()
+            XCTAssertFalse(input.textViewEnterPressed(event([.shift])))
+            XCTAssertFalse(input.textViewEnterPressed(event([.option])))
+            XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+        }
+    }
+    func testRepeatedShortcutDoesNotSendAgain() {
+        for preference in [false, true] {
+            FastSettings.commandEnter = preference
+            let input = InputFixture()
+            XCTAssertTrue(input.textViewEnterPressed(event(repeatKey: true)))
+            XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+        }
+    }
+    func testSavedMessagesDoesNotFallThroughToOrdinarySend() {
+        FastSettings.commandEnter = true
+        let input = InputFixture()
+        input.chatInteraction.presentation.peer?.id = 1
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testEditingDoesNotFallThroughToSave() {
+        FastSettings.commandEnter = true
+        let input = InputFixture()
+        input.chatInteraction.presentation.state = .editing
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testBlockedSlowModeAndMissingPeerDoNotSend() {
+        FastSettings.commandEnter = true
+        let input = InputFixture()
+        input.chatInteraction.presentation.slowMode = SlowMode(hasLocked: true)
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        input.chatInteraction.presentation.slowMode = nil
+        input.chatInteraction.presentation.state = .blocked
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        input.chatInteraction.presentation.state = .normal
+        input.chatInteraction.presentation.peer = nil
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testEmptyDraftDoesNotSend() {
+        let input = InputFixture()
+        input.textView.text = " \n "
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testForwardOnlyUsesSilentSend() {
+        let input = InputFixture()
+        input.textView.text = ""
+        input.chatInteraction.presentation.interfaceState.forwardMessageIds = [10]
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [true])
+    }
+    func testLengthValidationStillRunsForSilentSend() {
+        let input = InputFixture()
+        input.chatInteraction.maxInputCharacters = 2
+        XCTAssertTrue(input.textViewEnterPressed(event()))
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.alerts, 1)
+    }
+    func testNativeMenuHasRealKeyEquivalentAndModifierMask() throws {
+        let menuItem = try item(ChatInteraction())
+        XCTAssertEqual(menuItem.keyEquivalent, "\r")
+        XCTAssertEqual(menuItem.keyEquivalentModifierMask, [.command, .shift])
+        XCTAssertEqual(displayedMenuShortcut(menuItem), "⇧⌘↩")
+    }
+    func testMenuActionStillSendsSilentlyOnce() throws {
+        let interaction = ChatInteraction()
+        let menuItem = try item(interaction)
+        menuItem.handler?()
+        menuItem.handler?()
+        XCTAssertEqual(interaction.sends.map(\.silent), [true])
+    }
+    func testStaleMenuActionDoesNotSendChangedDraft() throws {
+        let interaction = ChatInteraction()
+        let menuItem = try item(interaction)
+        interaction.revision += 1
+        menuItem.handler?()
+        XCTAssertTrue(interaction.sends.isEmpty)
+    }
+    func testAvailabilityAgreesWithSilentMenuPresence() {
+        let interaction = ChatInteraction()
+        for state in [State.normal, .editing, .blocked] {
+            for locked in [false, true] {
+                for peer in [Peer(id: 1), Peer(id: 2), nil] {
+                    interaction.presentation.state = state
+                    interaction.presentation.slowMode = SlowMode(hasLocked: locked)
+                    interaction.presentation.peer = peer
+                    let items = sendMessageMenuItems(chatInteraction: interaction, send: { _, _ in })
+                    XCTAssertEqual(ChatSilentSendShortcut.isAvailable(for: interaction), items?.contains { $0.title == strings().chatSendWithoutSound } ?? false)
+                }
+            }
+        }
+    }
+    func testInlineRichDraftShortcutUsesSilentSend() {
+        let input = richFixture()
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.invoke(event()), .invoked)
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [true])
+    }
+    func testInlineRichDraftKeypadShortcutAndReinstall() {
+        let input = richFixture()
+        input.installRichHandlers()
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.invoke(event(key: .KeypadEnter)), .invoked)
+        XCTAssertEqual(input.chatInteraction.sends.map(\.silent), [true])
+    }
+    func testInlineRichDraftDoesNotSendWhileAnotherFieldFocused() {
+        FastSettings.commandEnter = true
+        let input = richFixture()
+        input.chatInteraction.interactionContext.window.firstResponder = NSTextView()
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.invoke(event()), .invokeNext)
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testInlineRichDraftDoesNotSendMarkedComposition() {
+        FastSettings.commandEnter = true
+        let input = richFixture()
+        let marked = MarkedTextView()
+        marked.marked = true
+        input.addSubview(marked)
+        input.chatInteraction.interactionContext.window.firstResponder = marked
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.invoke(event()), .invokeNext)
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testInlineRichDraftRepeatAndUnavailableAreConsumed() {
+        FastSettings.commandEnter = true
+        let input = richFixture()
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.invoke(event(repeatKey: true)), .invoked)
+        input.chatInteraction.presentation.peer?.id = 1
+        XCTAssertEqual(input.chatInteraction.interactionContext.window.invoke(event()), .invoked)
+        XCTAssertTrue(input.chatInteraction.sends.isEmpty)
+    }
+    func testRichDraftIncludesMutedAttribute() {
+        let interaction = ChatInteraction()
+        sendRich(interaction, silent: true)
+        let attributes = interaction.richAttributes[0]
+        XCTAssertEqual(attributes.compactMap { $0 as? NotificationInfoMessageAttribute }.map(\.flags), [.muted])
+        XCTAssertEqual(attributes.compactMap { $0 as? RichTextMessageAttribute }.count, 1)
+    }
+    func testNormalRichDraftDoesNotGainMutedAttribute() {
+        let interaction = ChatInteraction()
+        sendRich(interaction, silent: false)
+        XCTAssertTrue(interaction.richAttributes[0].compactMap { $0 as? NotificationInfoMessageAttribute }.isEmpty)
+    }
+    func testScheduledRichDraftRetainsMutedAttribute() {
+        let interaction = ChatInteraction()
+        sendRich(interaction, silent: true, date: Date(timeIntervalSince1970: 1000))
+        XCTAssertEqual(interaction.richAttributes[0].compactMap { $0 as? NotificationInfoMessageAttribute }.count, 1)
+        XCTAssertEqual(interaction.richAttributes[0].compactMap { $0 as? OutgoingScheduleInfoMessageAttribute }.first?.scheduleTime, 1000)
+    }
+    func testSuggestionsDoNotConsumeSilentSendShortcut() {
+        let fixture = SuggestionFixture()
+        __MAIN_SUGGESTION_OPT_IN__
+        fixture.install()
+        XCTAssertEqual(fixture.context.window.invoke(event()), .rejected)
+        XCTAssertEqual(fixture.invocations, 0)
+    }
+    func testAttachmentCaptionSuggestionsKeepExistingReturnBehavior() {
+        FastSettings.commandEnter = true
+        let fixture = SuggestionFixture()
+        fixture.install()
+        let result = fixture.context.window.invoke(event())
+        var ordinaryAttachmentSends = 0
+        if result == .rejected && FastSettings.checkSendingAbility(for: event()) {
+            ordinaryAttachmentSends += 1
+        }
+        XCTAssertEqual(result, .invoked)
+        XCTAssertEqual(fixture.invocations, 1)
+        XCTAssertEqual(ordinaryAttachmentSends, 0)
+    }
+    func testUnscopedSuggestionShortcutWorksUnderBothPreferences() {
+        for preference in [false, true] {
+            FastSettings.commandEnter = preference
+            let fixture = SuggestionFixture()
+            fixture.install()
+            XCTAssertEqual(fixture.context.window.invoke(event(key: .KeypadEnter)), .invoked)
+            XCTAssertEqual(fixture.invocations, 1)
+        }
+    }
+    func testOrdinaryReturnStillSelectsSuggestion() {
+        let fixture = SuggestionFixture()
+        fixture.install()
+        XCTAssertEqual(fixture.context.window.invoke(event([])), .invoked)
+        XCTAssertEqual(fixture.invocations, 1)
+    }
+    func testExpandedEditorInvokesExistingSilentMenuAction() throws {
+        let fixture = ModalFixture()
+        let interaction = ChatInteraction()
+        fixture.items = [try item(interaction)]
+        let responder = NSView()
+        fixture.coordinator.editor.addSubview(responder)
+        fixture.context.window.firstResponder = responder
+        XCTAssertEqual(fixture.controller.returnKeyInvocation(nil, event()), .nothing)
+        XCTAssertEqual(interaction.sends.map(\.silent), [true])
+    }
+    func testExpandedEditorPreservesOrdinaryReturn() {
+        let fixture = ModalFixture()
+        XCTAssertEqual(fixture.controller.returnKeyInvocation(nil, event([])), .invokeEvent)
+        XCTAssertEqual(fixture.controller.returnKeyInvocation(nil, event([.shift])), .invokeEvent)
+    }
+    func testExpandedEditorIgnoresOtherFieldsMarkedTextAndRepeats() throws {
+        let fixture = ModalFixture()
+        let interaction = ChatInteraction()
+        fixture.items = [try item(interaction)]
+        let marked = MarkedTextView()
+        fixture.context.window.firstResponder = marked
+        XCTAssertEqual(fixture.controller.returnKeyInvocation(nil, event()), .invokeEvent)
+        fixture.coordinator.editor.addSubview(marked)
+        marked.marked = true
+        XCTAssertEqual(fixture.controller.returnKeyInvocation(nil, event()), .invokeEvent)
+        marked.marked = false
+        XCTAssertEqual(fixture.controller.returnKeyInvocation(nil, event(repeatKey: true)), .nothing)
+        XCTAssertTrue(interaction.sends.isEmpty)
+    }
+    func testCustomMenuInvokesShortcutNotHighlightedScheduleItem() throws {
+        let fixture = MenuFixture()
+        let interaction = ChatInteraction()
+        let silent = AppMenuBasicItem(try item(interaction), action: { $0.handler?() })
+        var scheduled = 0
+        let schedule = AppMenuBasicItem(ContextMenuItem("Schedule"), action: { _ in scheduled += 1 })
+        fixture.activeMenu?.tableView.items = [silent, schedule]
+        fixture.activeMenu?.tableView.selected = schedule
+        XCTAssertTrue(fixture.invoke(event()))
+        XCTAssertEqual(interaction.sends.map(\.silent), [true])
+        XCTAssertEqual(scheduled, 0)
+    }
+    func testCustomMenuShortcutIsExactAndIgnoresRepeat() throws {
+        let fixture = MenuFixture()
+        let interaction = ChatInteraction()
+        fixture.activeMenu?.tableView.items = [AppMenuBasicItem(try item(interaction), action: { $0.handler?() })]
+        XCTAssertFalse(fixture.invoke(event([.command])))
+        XCTAssertFalse(fixture.invoke(event([.command, .shift, .option])))
+        XCTAssertTrue(fixture.invoke(event(repeatKey: true)))
+        XCTAssertTrue(interaction.sends.isEmpty)
+    }
+    func testCustomMenuDisabledHiddenAndSubmenuItemsDoNotInvoke() throws {
+        let fixture = MenuFixture()
+        let interaction = ChatInteraction()
+        let menuItem = try item(interaction)
+        fixture.activeMenu?.tableView.items = [AppMenuBasicItem(menuItem, action: { $0.handler?() })]
+        menuItem.isEnabled = false
+        XCTAssertFalse(fixture.invoke(event()))
+        menuItem.isEnabled = true
+        menuItem.isHidden = true
+        XCTAssertFalse(fixture.invoke(event()))
+        menuItem.isHidden = false
+        menuItem.submenu = NSMenu()
+        XCTAssertFalse(fixture.invoke(event()))
+        XCTAssertTrue(interaction.sends.isEmpty)
+    }
+    func testGenericReturnLabelsKeepOtherShortcutsUnchanged() {
+        let menuItem = ContextMenuItem("Test", keyEquivalent: .cmdc)
+        XCTAssertNil(menuItem.returnKeyEquivalentText)
+        XCTAssertEqual(displayedMenuShortcut(menuItem), "⌘C")
+        menuItem.keyEquivalent = "\u{3}"
+        menuItem.keyEquivalentModifierMask = [.control, .option]
+        XCTAssertEqual(menuItem.returnKeyEquivalentText, "⌃⌥⌤")
+    }
+    func testNativeReturnHintOverridesEmptyCustomMenuEnum() throws {
+        let menuItem = try item(ChatInteraction())
+        XCTAssertEqual(menuItem.keyEquivalentValue, .none)
+        XCTAssertEqual(displayedMenuShortcut(menuItem), "⇧⌘↩")
+    }
+    func testSilentRecordingShortcutDoesNotEnterTranscriptionEditing() {
+        let fixture = ChatControllerFixture()
+        fixture.chatInteraction.presentation.recordingState = RecordingState()
+        let transcription = TranscriptionRecorder()
+        fixture.chatInteraction.voiceTranscription = transcription
+        NSApp.currentEvent = event()
+        defer { NSApp.currentEvent = nil }
+        XCTAssertEqual(fixture.returnKeyAction(), .invoked)
+        XCTAssertEqual(transcription.edits, 0)
+        XCTAssertEqual(fixture.chatInteraction.presentation.recordingState?.sends, 0)
+    }
+    func testOrdinaryRecordingReturnPreservesTranscriptionEditing() {
+        let fixture = ChatControllerFixture()
+        fixture.chatInteraction.presentation.recordingState = RecordingState()
+        let transcription = TranscriptionRecorder()
+        fixture.chatInteraction.voiceTranscription = transcription
+        NSApp.currentEvent = event([])
+        defer { NSApp.currentEvent = nil }
+        XCTAssertEqual(fixture.returnKeyAction(), .invoked)
+        XCTAssertEqual(transcription.edits, 1)
+        XCTAssertEqual(fixture.chatInteraction.presentation.recordingState?.sends, 0)
+    }
+    func testOrdinaryRecordingReturnRetainsKeyboardSource() {
+        let fixture = ChatControllerFixture()
+        let recording = RecordingState()
+        fixture.chatInteraction.presentation.recordingState = recording
+        NSApp.currentEvent = event([])
+        defer { NSApp.currentEvent = nil }
+        XCTAssertEqual(fixture.returnKeyAction(), .invoked)
+        XCTAssertEqual(recording.source, .keyboard)
+    }
+}
