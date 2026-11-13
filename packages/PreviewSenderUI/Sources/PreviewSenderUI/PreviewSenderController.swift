@@ -2469,13 +2469,15 @@ public class PreviewSenderController: ModalViewController, Notifable {
                     }
                     if state.isCollage && medias.count > 1 {
                         let collages = medias.chunks(10)
+                        let captionCollage = (medias.firstIndex(where: { $0.isInteractiveMedia }) ?? medias.count - 1) / 10
                         for (index, collage) in collages.enumerated() {
                             guard self.validateSendSource() else {
                                 submission?.discard()
                                 self.closeModal()
                                 return
                             }
-                            self.chatInteraction.sendMediasObserved(makeMedia(collage, true), input, state.isCollage && state.payAmount == nil, additionalMessage, silent, atDate, asSpoiler ?? state.isSpoiler, effect, state.sortValue == .up, submission: submission, part: index + 1)
+                            let caption = index == captionCollage || state.payAmount != nil ? input : ChatTextInputState()
+                            self.chatInteraction.sendMediasObserved(makeMedia(collage, true), caption, state.isCollage && state.payAmount == nil, additionalMessage, silent, atDate, asSpoiler ?? state.isSpoiler, effect, state.sortValue == .up, submission: submission, part: index + 1)
                             additionalMessage = nil
                         }
                     } else {

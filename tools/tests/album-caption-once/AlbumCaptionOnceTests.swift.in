@@ -1,0 +1,606 @@
+import Foundation
+
+struct PeerId: Equatable {
+    let namespace: Int32
+}
+
+enum Namespaces {
+    enum Peer {
+        static let CloudUser: Int32 = 0
+        static let SecretChat: Int32 = 3
+    }
+}
+
+typealias ItemCollectionId = Int
+typealias EngineMessageReplySubject = Int
+typealias StoryId = Int
+typealias StarsAmount = Int64
+
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Links = ParsingType(rawValue: 1 << 0)
+    static let Hashtags = ParsingType(rawValue: 1 << 1)
+}
+
+struct MessageTextEntity: Equatable {
+    let kind: String
+    let range: Range<Int>
+}
+
+protocol MessageAttribute {
+}
+
+struct TextEntitiesMessageAttribute: MessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+struct NotificationInfoMessageAttribute: MessageAttribute {
+    struct Flags: OptionSet {
+        let rawValue: Int
+        static let muted = Flags(rawValue: 1)
+    }
+
+    let flags: Flags
+}
+
+struct OutgoingScheduleInfoMessageAttribute: MessageAttribute {
+    let scheduleTime: Int32
+    let repeatPeriod: Int32?
+}
+
+struct SendAsMessageAttribute: MessageAttribute {
+    let peerId: PeerId
+}
+
+struct EmojiSearchQueryMessageAttribute: MessageAttribute {
+    let query: String
+}
+
+struct PaidStarsMessageAttribute: MessageAttribute {
+    let stars: StarsAmount
+    let postponeSending: Bool
+}
+
+struct MediaSpoilerMessageAttribute: MessageAttribute {
+}
+
+struct EffectMessageAttribute: MessageAttribute {
+    let id: Int64
+}
+
+struct InvertMediaMessageAttribute: MessageAttribute {
+}
+
+enum AvailableMessageEffects {
+    struct MessageEffect {
+        let id: Int64
+    }
+}
+
+enum ChatInterfaceState {
+    struct ChannelSuggestPost {
+        let attribute: MessageAttribute?
+    }
+}
+
+protocol Media: AnyObject {
+    var name: String { get }
+}
+
+final class TelegramMediaImage: Media {
+    let name: String
+
+    init(_ name: String) {
+        self.name = name
+    }
+}
+
+final class TelegramMediaFile: Media {
+    let name: String
+    let mimeType: String
+    let isVideo: Bool
+    let isAnimated: Bool
+    let isInstantVideo: Bool
+    let isVoice: Bool
+    let isWebm = false
+    let isAnimatedSticker = false
+    let isStaticSticker = false
+
+    init(_ name: String, mimeType: String, isVideo: Bool = false, isAnimated: Bool = false, isInstantVideo: Bool = false, isVoice: Bool = false) {
+        self.name = name
+        self.mimeType = mimeType
+        self.isVideo = isVideo
+        self.isAnimated = isAnimated
+        self.isInstantVideo = isInstantVideo
+        self.isVoice = isVoice
+    }
+}
+
+final class TelegramMediaMap: Media {
+    let name = "map"
+    let venue: Int? = nil
+}
+
+final class TelegramMediaDice: Media {
+    let name = "dice"
+}
+
+final class TelegramMediaPaidContent: Media {
+    enum ExtendedMedia {
+        case full(media: Media)
+    }
+
+    let amount: Int64
+    let extendedMedia: [ExtendedMedia]
+
+    init(amount: Int64, extendedMedia: [ExtendedMedia]) {
+        self.amount = amount
+        self.extendedMedia = extendedMedia
+    }
+
+    var items: [Media] {
+        return extendedMedia.map { item -> Media in
+            switch item {
+            case let .full(media):
+                return media
+            }
+        }
+    }
+
+    var name: String {
+        return "paid " + items.map { $0.name }.joined(separator: ", ")
+    }
+}
+
+extension Media {
+    var supposeToBeSticker: Bool {
+        return false
+    }
+
+    __IS_INTERACTIVE__
+    __CAN_HAVE_CAPTION__
+}
+
+extension Array {
+    __CHUNKS__
+}
+
+extension String {
+    var length: Int {
+        return (self as NSString).length
+    }
+
+    __TRIMMED__
+}
+
+struct ChatTextInputAttribute: Equatable {
+    let kind: String
+    let range: Range<Int>
+}
+
+struct ChatTextInputState {
+    let inputText: String
+    let attributes: [ChatTextInputAttribute]
+    let inlineMedia: [Int: String]
+
+    init() {
+        self.init(inputText: "")
+    }
+
+    init(inputText: String, attributes: [ChatTextInputAttribute] = [], inlineMedia: [Int: String] = [:]) {
+        self.inputText = inputText
+        self.attributes = attributes
+        self.inlineMedia = inlineMedia
+    }
+
+    var upstairCollections: [ItemCollectionId] {
+        return inlineMedia.keys.sorted()
+    }
+
+    func subInputState(from range: NSRange) -> ChatTextInputState {
+        let lower = range.location
+        let upper = range.location + range.length
+        let attributes = self.attributes.compactMap { attribute -> ChatTextInputAttribute? in
+            let start = Swift.max(attribute.range.lowerBound, lower)
+            let end = Swift.min(attribute.range.upperBound, upper)
+            return start < end ? ChatTextInputAttribute(kind: attribute.kind, range: (start - lower) ..< (end - lower)) : nil
+        }
+        return ChatTextInputState(inputText: (inputText as NSString).substring(with: range), attributes: attributes, inlineMedia: inlineMedia)
+    }
+
+    func messageTextEntities(_ type: ParsingType, extractDates: Bool) -> [MessageTextEntity] {
+        return attributes.map { MessageTextEntity(kind: $0.kind, range: $0.range) }
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+
+    func swap(_ value: T) -> T {
+        let previous = self.value
+        self.value = value
+        return previous
+    }
+}
+
+enum AnyMediaReference {
+    case standalone(media: Media)
+
+    var media: Media {
+        switch self {
+        case let .standalone(media):
+            return media
+        }
+    }
+}
+
+struct EnqueueMessage {
+    let text: String
+    let attributes: [MessageAttribute]
+    let inlineStickers: [Int: String]
+    let media: Media?
+    let group: Int64?
+
+    static func message(text: String, attributes: [MessageAttribute], inlineStickers: [Int: String], mediaReference: AnyMediaReference?, threadId: Int64?, replyToMessageId: EngineMessageReplySubject?, replyToStoryId: StoryId?, localGroupingKey: Int64?, correlationId: Int64?, bubbleUpEmojiOrStickersets: [ItemCollectionId]) -> EnqueueMessage {
+        return EnqueueMessage(text: text, attributes: attributes, inlineStickers: inlineStickers, media: mediaReference?.media, group: localGroupingKey)
+    }
+}
+
+enum FastSettings {
+    static func isChannelMessagesMuted(_ peerId: PeerId) -> Bool {
+        return false
+    }
+}
+
+var lastGroupingKey: Int64 = 100
+
+func arc4random64() -> Int64 {
+    lastGroupingKey += 1
+    return lastGroupingKey
+}
+
+func cut_long_message(_ text: String, _ limit: Int) -> [String] {
+    return stride(from: 0, to: text.length, by: limit).map { (text as NSString).substring(with: NSRange(location: $0, length: Swift.min(limit, text.length - $0))) }
+}
+
+func enqueue(media: [Media], caption: ChatTextInputState, peerId: PeerId, replyId: EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, isCollage: Bool = false, additionText: ChatTextInputState? = nil, silent: Bool = false, atDate: Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, query: String? = nil, collectionId: ItemCollectionId? = nil, isSpoiler: Bool = false, messageEffect: AvailableMessageEffects.MessageEffect? = nil, leadingText: Bool = false, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil) -> [EnqueueMessage] {
+    let dynamicEmojiOrder: Bool = false
+
+    __ENQUEUE__
+
+    return messages
+}
+
+struct Schedule {
+    var date: Date
+    var repeatPeriod: Int32?
+}
+
+final class AnalyticsMediaSubmission {
+    func discard() {}
+}
+
+enum AnalyticsMediaJourney {
+    enum Spec {
+        enum MediaMode {
+            case media
+            case file
+            case archive
+        }
+    }
+}
+
+final class ChatInteraction {
+    var sendMedias: ([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool) -> Void = { _, _, _, _, _, _, _, _, _ in }
+
+    func sendMediasObserved(_ medias: [Media], _ caption: ChatTextInputState, _ collage: Bool, _ additionalText: ChatTextInputState?, _ silent: Bool, _ schedule: Schedule?, _ spoiler: Bool, _ effect: AvailableMessageEffects.MessageEffect?, _ leadingText: Bool, submission: AnalyticsMediaSubmission?, part: Int) {
+        sendMedias(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText)
+    }
+}
+
+struct TextPresentation {
+    let inputText: NSAttributedString
+    let state: ChatTextInputState
+
+    init(_ state: ChatTextInputState) {
+        self.inputText = NSAttributedString(string: state.inputText)
+        self.state = state
+    }
+
+    func textInputState() -> ChatTextInputState {
+        return state
+    }
+}
+
+__SENDING_STATE__
+
+struct Call {
+    let medias: [Media]
+    let caption: ChatTextInputState
+    let isCollage: Bool
+    let additionText: ChatTextInputState?
+}
+
+let peer = PeerId(namespace: Namespaces.Peer.CloudUser)
+
+final class Preview {
+    let chatInteraction = ChatInteraction()
+    var sources: [Bool]
+    var closed = 0
+    var calls: [Call] = []
+    var messages: [EnqueueMessage] = []
+
+    init(sources: [Bool] = []) {
+        self.sources = sources
+        self.chatInteraction.sendMedias = { [unowned self] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText in
+            self.calls.append(Call(medias: medias, caption: caption, isCollage: isCollage, additionText: additionText))
+            self.messages += enqueue(media: medias, caption: caption, peerId: peer, replyId: nil, threadId: nil, isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate?.date, repeatPeriod: atDate?.repeatPeriod, isSpoiler: isSpoiler, messageEffect: messageEffect, leadingText: leadingText)
+        }
+    }
+
+    func validateSendSource() -> Bool {
+        return sources.isEmpty ? true : sources.removeFirst()
+    }
+
+    func closeModal() {
+        closed += 1
+    }
+
+    fileprivate func send(_ medias: [Media], _ caption: ChatTextInputState, state: PreviewSendingState, silent: Bool = false, atDate: Schedule? = nil, asSpoiler: Bool? = nil, effect: AvailableMessageEffects.MessageEffect? = nil) {
+        let inputState = TextPresentation(caption)
+
+        __SPLIT__
+
+        __MAKE_MEDIA__
+
+        let submission: AnalyticsMediaSubmission? = nil
+        let invoke: () -> Void = {
+            __SEND__
+        }
+        invoke()
+    }
+}
+
+var failures = 0
+var passed = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+fileprivate let mediaAlbum = PreviewSendingState(state: .media, isCollage: true, isSpoiler: false, sort: .down, payAmount: nil)
+fileprivate let mediaSeparate = PreviewSendingState(state: .media, isCollage: false, isSpoiler: false, sort: .down, payAmount: nil)
+fileprivate let fileAlbum = PreviewSendingState(state: .file, isCollage: true, isSpoiler: false, sort: .down, payAmount: nil)
+fileprivate let fileSeparate = PreviewSendingState(state: .file, isCollage: false, isSpoiler: false, sort: .down, payAmount: nil)
+fileprivate let captionAbove = PreviewSendingState(state: .media, isCollage: true, isSpoiler: false, sort: .up, payAmount: nil)
+fileprivate let paidAlbum = PreviewSendingState(state: .media, isCollage: true, isSpoiler: false, sort: .down, payAmount: 50)
+
+let caption = ChatTextInputState(inputText: "Trip 2026")
+let formatted = ChatTextInputState(inputText: "Trip 2026 day one", attributes: [ChatTextInputAttribute(kind: "bold", range: 0 ..< 4)], inlineMedia: [7: "custom emoji"])
+
+func photos(_ count: Int) -> [Media] {
+    return (1 ... count).map { TelegramMediaImage("photo \($0)") }
+}
+
+func videos(_ count: Int) -> [Media] {
+    return (1 ... count).map { TelegramMediaFile("video \($0)", mimeType: "video/mp4", isVideo: true) }
+}
+
+func documents(_ count: Int) -> [Media] {
+    return (1 ... count).map { TelegramMediaFile("file \($0).pdf", mimeType: "application/pdf") }
+}
+
+func names(_ message: EnqueueMessage) -> [String] {
+    guard let media = message.media else {
+        return []
+    }
+    if let paid = media as? TelegramMediaPaidContent {
+        return paid.items.map { $0.name }
+    }
+    return [media.name]
+}
+
+func albums(_ messages: [EnqueueMessage]) -> [[EnqueueMessage]] {
+    var result: [[EnqueueMessage]] = []
+    for message in messages {
+        if let group = message.group, let last = result.last?.last, last.group == group {
+            result[result.count - 1].append(message)
+        } else {
+            result.append([message])
+        }
+    }
+    return result
+}
+
+func sizes(_ count: Int) -> [Int] {
+    return stride(from: 0, to: count, by: 10).map { Swift.min(10, count - $0) }
+}
+
+func entities(_ message: EnqueueMessage) -> [MessageTextEntity] {
+    return message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.first?.entities ?? []
+}
+
+func captioned(_ messages: [EnqueueMessage]) -> [Int] {
+    return messages.indices.filter { !messages[$0].text.isEmpty }
+}
+
+func plain(_ state: ChatTextInputState) -> Bool {
+    return state.inputText.isEmpty && state.attributes.isEmpty && state.inlineMedia.isEmpty
+}
+
+fileprivate func sendAlbum(_ items: [Media], _ text: ChatTextInputState, state: PreviewSendingState, sources: [Bool] = [], silent: Bool = false, atDate: Schedule? = nil, asSpoiler: Bool? = nil) -> Preview {
+    let preview = Preview(sources: sources)
+    preview.send(items, text, state: state, silent: silent, atDate: atDate, asSpoiler: asSpoiler)
+    return preview
+}
+
+fileprivate func checkAlbum(_ name: String, _ items: [Media], _ text: ChatTextInputState, state: PreviewSendingState, captionAt: Int) {
+    let preview = sendAlbum(items, text, state: state)
+    let messages = preview.messages
+    let runs = albums(messages)
+    check("\(name): every item is sent once, in order", messages.flatMap(names) == items.map { $0.name })
+    check("\(name): no separate text message", messages.allSatisfy { $0.media != nil })
+    check("\(name): sent as albums of up to 10", runs.map { $0.count } == sizes(items.count))
+    check("\(name): each album has its own grouping key", runs.allSatisfy { $0.first?.group != nil } && Set(runs.compactMap { $0.first?.group }).count == runs.count)
+    check("\(name): one send per album", preview.calls.count == runs.count && preview.calls.allSatisfy { $0.isCollage && $0.additionText == nil })
+    check("\(name): the caption is sent once", captioned(messages) == [captionAt])
+    check("\(name): the caption keeps its text", messages.indices.contains(captionAt) && messages[captionAt].text == text.inputText)
+    check("\(name): the caption keeps its formatting and custom emoji", messages.indices.contains(captionAt) && entities(messages[captionAt]) == text.messageTextEntities([], extractDates: false) && messages[captionAt].inlineStickers == text.inlineMedia)
+    check("\(name): only the album with the captioned item is sent with the caption", preview.calls.enumerated().allSatisfy { $0.offset == captionAt / 10 ? $0.element.caption.inputText == text.inputText : plain($0.element.caption) })
+    check("\(name): the other albums carry no caption formatting", messages.enumerated().allSatisfy { $0.offset / 10 == captionAt / 10 || (entities($0.element).isEmpty && $0.element.inlineStickers.isEmpty) })
+}
+
+for count in [2, 3, 9, 10, 11, 12, 15, 19, 20, 21, 25, 30, 41, 99, 100] {
+    checkAlbum("\(count) photos as an album", photos(count), caption, state: mediaAlbum, captionAt: 0)
+}
+
+for count in [11, 25] {
+    checkAlbum("\(count) videos as an album", videos(count), caption, state: mediaAlbum, captionAt: 0)
+}
+
+do {
+    let items = (1 ... 25).map { index -> Media in
+        index % 3 == 0 ? TelegramMediaFile("video \(index)", mimeType: "video/mp4", isVideo: true) : TelegramMediaImage("photo \(index)")
+    }
+    checkAlbum("25 photos and videos as an album", items, caption, state: mediaAlbum, captionAt: 0)
+}
+
+do {
+    let items = [TelegramMediaFile("video 1", mimeType: "video/mp4", isVideo: true)] + photos(24)
+    checkAlbum("an album of 25 that starts with a video", items, caption, state: mediaAlbum, captionAt: 0)
+}
+
+for count in [2, 9, 10] {
+    checkAlbum("\(count) files as an album", documents(count), caption, state: fileAlbum, captionAt: count - 1)
+}
+
+for count in [11, 20, 25] {
+    checkAlbum("\(count) files as an album", documents(count), caption, state: fileAlbum, captionAt: count - 1)
+}
+
+for count in [11, 25] {
+    checkAlbum("\(count) photos as an album with a formatted caption", photos(count), formatted, state: mediaAlbum, captionAt: 0)
+    checkAlbum("\(count) files as an album with a formatted caption", documents(count), formatted, state: fileAlbum, captionAt: count - 1)
+}
+
+do {
+    let items = (1 ... 10).map { TelegramMediaFile("panorama \($0).jpg", mimeType: "image/jpeg") as Media } + photos(2)
+    checkAlbum("10 panoramas sent as files and 2 photos as an album", items, caption, state: mediaAlbum, captionAt: 10)
+}
+
+do {
+    let items = [TelegramMediaFile("panorama.jpg", mimeType: "image/jpeg") as Media] + photos(11)
+    checkAlbum("a panorama sent as a file and 11 photos as an album", items, caption, state: mediaAlbum, captionAt: 1)
+}
+
+checkAlbum("25 photos with the caption above", photos(25), caption, state: captionAbove, captionAt: 0)
+
+do {
+    let preview = sendAlbum(photos(25), caption, state: captionAbove)
+    check("25 photos with the caption above: every photo keeps the caption-above flag", preview.messages.count == 25 && preview.messages.allSatisfy { $0.attributes.contains { $0 is InvertMediaMessageAttribute } })
+}
+
+do {
+    let preview = sendAlbum(photos(25), formatted, state: mediaAlbum)
+    let messages = preview.messages
+    check("a formatted caption on 25 photos is sent once", captioned(messages) == [0])
+    check("a formatted caption keeps its formatting", messages.first.map(entities) == [MessageTextEntity(kind: "bold", range: 0 ..< 4)])
+    check("a formatted caption keeps its custom emoji", messages.first?.inlineStickers == [7: "custom emoji"])
+    check("a formatted caption: the later albums carry no formatting or custom emoji", messages.count == 25 && messages[10...].allSatisfy { entities($0).isEmpty && $0.inlineStickers.isEmpty })
+}
+
+for count in [1, 7, 10] {
+    let preview = sendAlbum(photos(count), caption, state: paidAlbum)
+    let messages = preview.messages
+    check("\(count) paid photos are one paid post", messages.count == 1 && (messages.first?.media as? TelegramMediaPaidContent)?.items.count == count)
+    check("\(count) paid photos: the post has the caption", messages.first?.text == caption.inputText)
+    check("\(count) paid photos: the post is not grouped", messages.allSatisfy { $0.group == nil })
+}
+
+for count in [11, 25, 30] {
+    let preview = sendAlbum(photos(count), caption, state: paidAlbum)
+    let messages = preview.messages
+    let posts = messages.compactMap { $0.media as? TelegramMediaPaidContent }
+    check("\(count) paid photos: one paid post per 10 photos", posts.count == messages.count && posts.map { $0.items.count } == sizes(count) && posts.allSatisfy { $0.amount == 50 })
+    check("\(count) paid photos: every photo is sent once, in order", messages.flatMap(names) == photos(count).map { $0.name })
+    check("\(count) paid photos: the posts are not grouped", messages.allSatisfy { $0.group == nil })
+    check("\(count) paid photos: every paid post keeps the caption", captioned(messages) == Array(messages.indices) && messages.allSatisfy { $0.text == caption.inputText })
+}
+
+do {
+    let preview = sendAlbum(photos(25), formatted, state: paidAlbum)
+    let messages = preview.messages
+    check("25 paid photos with a formatted caption: every paid post keeps the text, formatting and custom emoji", messages.count == 3 && messages.allSatisfy { $0.text == formatted.inputText && entities($0) == [MessageTextEntity(kind: "bold", range: 0 ..< 4)] && $0.inlineStickers == [7: "custom emoji"] })
+}
+
+for (name, items, state) in [("25 separate photos", photos(25), mediaSeparate), ("3 separate files", documents(3), fileSeparate), ("12 separate files", documents(12), fileSeparate)] {
+    let preview = sendAlbum(items, caption, state: state)
+    let messages = preview.messages
+    check("\(name): the caption goes first, as its own message", messages.first?.media == nil && messages.first?.text == caption.inputText)
+    check("\(name): the items follow without text, in order", messages.dropFirst().allSatisfy { $0.media != nil && $0.text.isEmpty } && messages.flatMap(names) == items.map { $0.name })
+    check("\(name): nothing is grouped", messages.allSatisfy { $0.group == nil })
+    check("\(name): one send", preview.calls.count == 1 && preview.calls.first.map { plain($0.caption) && $0.additionText?.inputText == caption.inputText } == true)
+}
+
+do {
+    let preview = sendAlbum(photos(1), caption, state: mediaAlbum)
+    let messages = preview.messages
+    check("one photo with the album on keeps its caption", messages.count == 1 && messages.first?.text == caption.inputText && messages.first?.group == nil)
+}
+
+do {
+    let preview = sendAlbum(documents(1), caption, state: fileAlbum)
+    let messages = preview.messages
+    check("one file with the album on keeps its caption", messages.count == 1 && messages.first?.text == caption.inputText)
+}
+
+for text in [ChatTextInputState(), ChatTextInputState(inputText: "  \n ")] {
+    let preview = sendAlbum(photos(25), text, state: mediaAlbum)
+    let messages = preview.messages
+    check("25 photos with an empty caption \(text.inputText.debugDescription): no text anywhere", messages.count == 25 && captioned(messages).isEmpty)
+    check("25 photos with an empty caption \(text.inputText.debugDescription): still three albums", albums(messages).map { $0.count } == [10, 10, 5])
+}
+
+do {
+    let preview = sendAlbum(photos(25), caption, state: mediaAlbum, sources: [true, false])
+    let messages = preview.messages
+    check("the chat changes before the second album: only the first album goes, with the caption", messages.count == 10 && captioned(messages) == [0])
+    check("the chat changes before the second album: the preview closes", preview.closed == 1 && preview.calls.count == 1)
+}
+
+do {
+    let preview = sendAlbum(photos(25), caption, state: mediaAlbum, sources: [false])
+    check("the chat changes before the first album: nothing is sent", preview.messages.isEmpty && preview.closed == 1)
+}
+
+do {
+    let date = Date(timeIntervalSince1970: 2_000_000_000)
+    let preview = sendAlbum(photos(25), caption, state: mediaAlbum, silent: true, atDate: Schedule(date: date, repeatPeriod: 86400))
+    let messages = preview.messages
+    check("a scheduled silent album of 25: every photo is scheduled", messages.count == 25 && messages.allSatisfy { $0.attributes.contains { ($0 as? OutgoingScheduleInfoMessageAttribute).map { $0.scheduleTime == 2_000_000_000 && $0.repeatPeriod == 86400 } == true } })
+    check("a scheduled silent album of 25: every photo is silent", messages.allSatisfy { $0.attributes.contains { ($0 as? NotificationInfoMessageAttribute)?.flags.contains(.muted) == true } })
+    check("a scheduled silent album of 25: the caption is sent once", captioned(messages) == [0])
+}
+
+do {
+    let preview = sendAlbum(photos(25), caption, state: mediaAlbum, asSpoiler: true)
+    let messages = preview.messages
+    check("a spoiler album of 25: every photo is a spoiler", messages.count == 25 && messages.allSatisfy { $0.attributes.contains { $0 is MediaSpoilerMessageAttribute } })
+    check("a spoiler album of 25: the caption is sent once", captioned(messages) == [0])
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
