@@ -1121,7 +1121,7 @@ public class ChatControllerView : View, ChatInputDelegate {
             transition.updateFrame(view: view, frame: NSMakeRect(textContainer.minX, textContainer.minY - view.frame.height - gap, textContainer.width, view.frame.height))
         }
         if let currentView = header.currentView {
-            let headerEdge: CGFloat = 12
+            let headerEdge: CGFloat = ChatInputView.inputEdgeInset
             var inset: CGFloat = 0
             if let monoforum_VerticalView {
                 inset += 12 + monoforum_VerticalView.frame.width
@@ -1145,7 +1145,7 @@ public class ChatControllerView : View, ChatInputDelegate {
 
         let inputY: CGFloat = themeSelectorView != nil ? frame.height : tableView.frame.maxY - inputHeight
 
-        let inputRect = NSMakeRect(0, inputY, frame.width, max(50, inputHeight))
+        let inputRect = NSMakeRect(0, inputY, frame.width, inputHeight)
         transition.updateFrame(view: inputView, frame: inputRect)
         inputView.updateLayout(size: NSMakeSize(frame.width, inputRect.height), transition: transition)
 
@@ -1522,7 +1522,9 @@ public class ChatControllerView : View, ChatInputDelegate {
     }
 
     private var scrollerRect: NSRect {
-        return NSMakeRect(frame.width - scroller.frame.width,  frame.height - inputView.frame.height - 6 - scroller.frame.height, scroller.frame.width, scroller.frame.height)
+        let glassInset = (scroller.frame.width - 40) / 2
+        let trailing = glassInset - System.windowEdgeInset
+        return NSMakeRect(frame.width - scroller.frame.width + trailing,  frame.height - inputView.frame.height - 6 - scroller.frame.height, scroller.frame.width, scroller.frame.height)
     }
     private var mentionsRect: NSRect {
         if let _ = mentions {

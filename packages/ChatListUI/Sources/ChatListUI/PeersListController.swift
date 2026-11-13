@@ -1644,7 +1644,7 @@ public class PeerListContainerView : Control {
         
         let containerSize = NSMakeSize(state.splitState == .minimisize ? 90 : size.width, offset)
                 
-        transition.updateFrame(view: self.containerView, frame: NSMakeRect(0, inset, containerSize.width, offset))
+        transition.updateFrame(view: self.containerView, frame: NSMakeRect(0, inset + windowControlsCenterShift, containerSize.width, offset))
         
         
         transition.updateFrame(view: self.statusContainer, frame: NSMakeRect(0, 0, containerSize.width, statusHeight))
@@ -1656,7 +1656,7 @@ public class PeerListContainerView : Control {
         
         let navigationHeight_ = self.navigationHeight
 
-        transition.updateFrame(view: self.borderView, frame: CGRect(origin: CGPoint(x: 0, y: navigationHeight_ - .borderSize), size: CGSize(width: size.width, height: .borderSize)))
+        transition.updateFrame(view: self.borderView, frame: CGRect(origin: CGPoint(x: 0, y: navigationHeight_ + windowControlsCenterShift - .borderSize), size: CGSize(width: size.width, height: .borderSize)))
         transition.updateAlpha(view: borderView, alpha: state.searchState == .Focus ? 0 : 1)
 
         forumSeparatorView.isHidden = !mode.isForumLike || displaysFullForumHeader
@@ -1819,6 +1819,26 @@ public class PeerListContainerView : Control {
         return progress
     }
     
+    private var windowControlsCenterShift: CGFloat {
+        guard System.edgeToEdgeSidebar, let window = window, !window.styleMask.contains(.fullScreen), let button = window.standardWindowButton(.closeButton), !button.isHidden, let buttonSuperview = button.superview else {
+            return 0
+        }
+        let rect = convert(buttonSuperview.convert(button.frame, to: nil), from: nil)
+        guard rect.maxX > 0, rect.minX < bounds.width else {
+            return 0
+        }
+        let centerY = isFlipped ? rect.midY : bounds.height - rect.midY
+        let shift = centerY - statusHeight / 2
+        return abs(shift) < statusHeight / 4 ? floorToScreenPixels(backingScaleFactor, shift) : 0
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if System.edgeToEdgeSidebar {
+            needsLayout = true
+        }
+    }
+
     public var navigationHeight: CGFloat {
         guard let state = self.state else {
             return 50
@@ -1888,7 +1908,8 @@ public class PeerListContainerView : Control {
         guard tableHeight > 0 else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        tableMaskLayer.frame = NSMakeRect(0, spaceHeight, tableView.bounds.width, max(0, tableHeight - spaceHeight))
+        let top = spaceHeight + windowControlsCenterShift
+        tableMaskLayer.frame = NSMakeRect(0, top, tableView.bounds.width, max(0, tableHeight - top))
         CATransaction.commit()
     }
     

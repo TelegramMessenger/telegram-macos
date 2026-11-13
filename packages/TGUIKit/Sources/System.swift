@@ -115,6 +115,20 @@ public struct System {
     /// background instead.
     public static var blurEnabled: Bool = true
 
+    public static let edgeToEdgeSidebar: Bool = {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "DebugFloatingSidebar") {
+            return false
+        }
+        #endif
+        if #available(macOS 27.0, *) {
+            return true
+        }
+        return false
+    }()
+
+    public static let windowEdgeInset: CGFloat = 8
+
 }
 
 let systemLiquidGlassDidChange = Notification.Name("TGUIKitLiquidGlassDidChange")
