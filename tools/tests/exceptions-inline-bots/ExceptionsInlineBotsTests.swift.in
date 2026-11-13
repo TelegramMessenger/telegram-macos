@@ -1,0 +1,410 @@
+import Foundation
+
+struct TelegramChatBannedRightsFlags: OptionSet, Hashable {
+    var rawValue: Int32
+    init(rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+    init() {
+        self.rawValue = 0
+    }
+    static let banReadMessages = TelegramChatBannedRightsFlags(rawValue: 1 << 0)
+    static let banSendMedia = TelegramChatBannedRightsFlags(rawValue: 1 << 2)
+    static let banSendStickers = TelegramChatBannedRightsFlags(rawValue: 1 << 3)
+    static let banSendGifs = TelegramChatBannedRightsFlags(rawValue: 1 << 4)
+    static let banSendGames = TelegramChatBannedRightsFlags(rawValue: 1 << 5)
+    static let banSendInline = TelegramChatBannedRightsFlags(rawValue: 1 << 6)
+    static let banEmbedLinks = TelegramChatBannedRightsFlags(rawValue: 1 << 7)
+    static let banSendPolls = TelegramChatBannedRightsFlags(rawValue: 1 << 8)
+    static let banChangeInfo = TelegramChatBannedRightsFlags(rawValue: 1 << 10)
+    static let banAddMembers = TelegramChatBannedRightsFlags(rawValue: 1 << 15)
+    static let banPinMessages = TelegramChatBannedRightsFlags(rawValue: 1 << 17)
+    static let banManageTopics = TelegramChatBannedRightsFlags(rawValue: 1 << 18)
+    static let banSendPhotos = TelegramChatBannedRightsFlags(rawValue: 1 << 19)
+    static let banSendVideos = TelegramChatBannedRightsFlags(rawValue: 1 << 20)
+    static let banSendInstantVideos = TelegramChatBannedRightsFlags(rawValue: 1 << 21)
+    static let banSendMusic = TelegramChatBannedRightsFlags(rawValue: 1 << 22)
+    static let banSendVoice = TelegramChatBannedRightsFlags(rawValue: 1 << 23)
+    static let banSendFiles = TelegramChatBannedRightsFlags(rawValue: 1 << 24)
+    static let banSendText = TelegramChatBannedRightsFlags(rawValue: 1 << 25)
+    static let banSendReactions = TelegramChatBannedRightsFlags(rawValue: 1 << 27)
+    static let banEditRank = TelegramChatBannedRightsFlags(rawValue: 1 << 26)
+    static let banManageLinkedPeers = TelegramChatBannedRightsFlags(rawValue: 1 << 28)
+}
+
+struct TelegramChatBannedRights: Equatable {
+    let flags: TelegramChatBannedRightsFlags
+    let untilDate: Int32
+}
+
+enum TelegramChannelPermission {
+    case banMembers
+    case pinMessages
+    case manageTopics
+    case changeInfo
+}
+
+struct PeerId: Hashable {
+    let value: Int64
+}
+
+class Peer {}
+
+final class TelegramChannel: Peer {
+    let defaultBannedRights: TelegramChatBannedRights?
+    init(defaultBannedRights: TelegramChatBannedRights?) {
+        self.defaultBannedRights = defaultBannedRights
+    }
+}
+
+final class TelegramGroup: Peer {
+    let defaultBannedRights: TelegramChatBannedRights?
+    init(defaultBannedRights: TelegramChatBannedRights?) {
+        self.defaultBannedRights = defaultBannedRights
+    }
+}
+
+struct PeerView {
+    let peerId: PeerId
+    let peers: [PeerId: Peer]
+}
+
+struct ChannelParticipantAdminInfo {}
+
+struct ChannelParticipantBannedInfo {
+    let rights: TelegramChatBannedRights
+    let restrictedBy: PeerId
+    let timestamp: Int32
+    let isMember: Bool
+}
+
+enum ChannelParticipant {
+    case creator(id: PeerId, adminInfo: ChannelParticipantAdminInfo?, rank: String?)
+    case member(id: PeerId, invitedAt: Int32, adminInfo: ChannelParticipantAdminInfo?, banInfo: ChannelParticipantBannedInfo?, rank: String?, subscriptionUntilDate: Int32?)
+}
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: DefaultPrecedence
+}
+infix operator |> : PipeRight
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+final class Disposable {}
+
+struct Signal<T> {
+    let value: T
+    func start(next: (T) -> Void) -> Disposable {
+        next(self.value)
+        return Disposable()
+    }
+}
+
+func take<T>(_ count: Int) -> (Signal<T>) -> Signal<T> {
+    return { $0 }
+}
+
+func deliverOnMainQueue<T>(_ signal: Signal<T>) -> Signal<T> {
+    return signal
+}
+
+final class Promise<T> {
+    let value: T
+    init(_ value: T) {
+        self.value = value
+    }
+    func get() -> Signal<T> {
+        return Signal(value: self.value)
+    }
+}
+
+final class Atomic<T> {
+    var value: T
+    init(value: T) {
+        self.value = value
+    }
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+__STATE__
+
+__COMPLETE__
+
+__PAGE_COMPLETE__
+
+__MEDIA_LIST__
+
+__DEPENDENCIES__
+
+final class Screen {
+    let chatDefaults: TelegramChatBannedRightsFlags
+    let stored: TelegramChatBannedRights?
+    var state = RestrictedControllerState(referenceTimestamp: 0, updatedFlags: nil, updatedTimeout: nil, updating: false)
+    var sent: [TelegramChatBannedRights] = []
+    var toggleRight: (TelegramChatBannedRightsFlags, Bool) -> Void = { _, _ in }
+    var okClicked: () -> Void = {}
+    init(chatDefaults: TelegramChatBannedRightsFlags, stored: TelegramChatBannedRights?) {
+        self.chatDefaults = chatDefaults
+        self.stored = stored
+    }
+}
+
+func openException(chatDefaults: TelegramChatBannedRightsFlags, stored: TelegramChatBannedRights? = nil, basicGroup: Bool = false, withParticipant: Bool = true) -> Screen {
+    let screen = Screen(chatDefaults: chatDefaults, stored: stored)
+    let peerId = PeerId(value: 1)
+    let memberId = PeerId(value: 2)
+    let chatRights = TelegramChatBannedRights(flags: chatDefaults, untilDate: Int32.max)
+    let chat: Peer = basicGroup ? TelegramGroup(defaultBannedRights: chatRights) : TelegramChannel(defaultBannedRights: chatRights)
+    let view = PeerView(peerId: peerId, peers: [peerId: chat])
+    let peerView = Promise(view)
+    let latestChannelView = Atomic<PeerView?>(value: view)
+    let banInfo = stored.map { ChannelParticipantBannedInfo(rights: $0, restrictedBy: PeerId(value: 3), timestamp: 0, isMember: true) }
+    let initialParticipant: ChannelParticipant? = withParticipant ? .member(id: memberId, invitedAt: 0, adminInfo: nil, banInfo: banInfo, rank: nil, subscriptionUntilDate: nil) : nil
+    let updateState: ((RestrictedControllerState) -> RestrictedControllerState) -> Void = { f in
+        screen.state = f(screen.state)
+    }
+    let close: (() -> Void)? = {}
+    let updated: (TelegramChatBannedRights) -> Void = { rights in
+        screen.sent.append(rights)
+    }
+    screen.toggleRight = { rights, value in
+__TOGGLE__
+    }
+    screen.okClicked = {
+__OK__
+    }
+    return screen
+}
+
+func shownFlags(_ screen: Screen) -> TelegramChatBannedRightsFlags {
+    if let updatedFlags = screen.state.updatedFlags {
+        return updatedFlags
+    } else if let stored = screen.stored {
+        return stored.flags
+    } else {
+        return screen.chatDefaults
+    }
+}
+
+func shownOn(_ screen: Screen, _ right: TelegramChatBannedRightsFlags) -> Bool {
+    return !screen.chatDefaults.contains(right) && !shownFlags(screen).contains(right)
+}
+
+func flip(_ screen: Screen, _ right: TelegramChatBannedRightsFlags) {
+    screen.toggleRight(right, !shownOn(screen, right))
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+let rows: [(String, TelegramChatBannedRightsFlags)] = [__ROWS__]
+let stickersGroup: TelegramChatBannedRightsFlags = [.banSendStickers, .banSendGifs, .banSendGames, .banSendInline]
+let newSupergroupDefaults: TelegramChatBannedRightsFlags = [.banAddMembers, .banPinMessages, .banEditRank, .banChangeInfo]
+let forever = Int32.max
+
+check("the screen lists rights rows", !rows.isEmpty)
+check("inline bots have no switch of their own, Stickers & GIFs stands for them", !rows.contains(where: { $0.1 == .banSendInline }) && rows.contains(where: { $0.1 == .banSendGifs }))
+
+var inputs: [TelegramChatBannedRightsFlags] = []
+let varying: [TelegramChatBannedRightsFlags] = [.banSendStickers, .banSendGifs, .banSendGames, .banSendInline, .banReadMessages]
+for mask in 0 ..< (1 << varying.count) {
+    var base: TelegramChatBannedRightsFlags = []
+    for (index, flag) in varying.enumerated() where mask & (1 << index) != 0 {
+        base.insert(flag)
+    }
+    inputs.append(base)
+    inputs.append(base.union([.banSendPolls, .banPinMessages]))
+    inputs.append(base.union(newSupergroupDefaults))
+}
+
+var inlineFollowsWhenAllowed = true
+var inlineFollowsWhenBanned = true
+var stickersFollow = true
+var othersKept = true
+var readDropped = true
+var sameAsPage = true
+for input in inputs {
+    let result = completeRights(input)
+    let banned = input.contains(.banSendGifs)
+    if banned {
+        inlineFollowsWhenBanned = inlineFollowsWhenBanned && result.contains(.banSendInline)
+        stickersFollow = stickersFollow && result.isSuperset(of: [.banSendStickers, .banSendGifs, .banSendGames])
+    } else {
+        inlineFollowsWhenAllowed = inlineFollowsWhenAllowed && !result.contains(.banSendInline)
+        stickersFollow = stickersFollow && result.intersection([.banSendStickers, .banSendGifs, .banSendGames]).isEmpty
+    }
+    let rest = input.subtracting(stickersGroup).subtracting(.banReadMessages)
+    othersKept = othersKept && result.subtracting(stickersGroup) == rest
+    readDropped = readDropped && !result.contains(.banReadMessages)
+    sameAsPage = sameAsPage && result == pageCompleteRights(input)
+}
+check("inline bots are allowed whenever Stickers & GIFs is allowed", inlineFollowsWhenAllowed)
+check("inline bots are banned whenever Stickers & GIFs is banned", inlineFollowsWhenBanned)
+check("stickers, GIFs and games follow the Stickers & GIFs switch", stickersFollow)
+check("other rights are sent as they were set", othersKept)
+check("read access is never sent as part of an exception", readDropped)
+check("the exception window completes rights like the group's Permissions page", sameAsPage)
+
+func applied(_ screen: Screen) -> TelegramChatBannedRights? {
+    screen.okClicked()
+    return screen.sent.count == 1 ? screen.sent[0] : nil
+}
+
+func inlineMatchesScreen(_ screen: Screen, _ rights: TelegramChatBannedRights?) -> Bool {
+    guard let rights = rights else {
+        return false
+    }
+    return rights.flags.contains(.banSendInline) == !shownOn(screen, .banSendGifs)
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults)
+    flip(screen, .banSendPolls)
+    let shownPolls = shownOn(screen, .banSendPolls)
+    let sent = applied(screen)
+    check("new exception, Send Polls off: the screen shows Send Polls off", !shownPolls)
+    check("new exception, Send Polls off: Apply sends the group's defaults and Send Polls only", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: forever))
+    check("new exception, Send Polls off: inline bots follow Stickers & GIFs as shown", inlineMatchesScreen(screen, sent))
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults)
+    let sent = applied(screen)
+    check("new exception, nothing changed: Apply sends the group's defaults only", sent == TelegramChatBannedRights(flags: newSupergroupDefaults, untilDate: forever))
+}
+
+do {
+    let screen = openException(chatDefaults: [])
+    screen.okClicked()
+    check("new exception in a group that allows everything, nothing changed: Apply sends nothing", screen.sent.isEmpty)
+}
+
+do {
+    let screen = openException(chatDefaults: [])
+    screen.state.updatedTimeout = 86400
+    screen.okClicked()
+    check("new exception in a group that allows everything, only Duration changed: Apply sends nothing", screen.sent.isEmpty)
+}
+
+do {
+    let screen = openException(chatDefaults: [], basicGroup: true)
+    screen.okClicked()
+    check("basic group that allows everything, new exception, nothing changed: Apply sends nothing", screen.sent.isEmpty)
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults)
+    flip(screen, .banSendMedia)
+    let sent = applied(screen)
+    let media = TelegramChatBannedRightsFlags(banSendMediaSubList().map { $0.0 })
+    check("new exception, Send Media off: every media right is banned, with stickers, GIFs, games and inline bots", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendMedia).union(media).union(stickersGroup), untilDate: forever))
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults)
+    flip(screen, .banSendGifs)
+    let sent = applied(screen)
+    check("new exception, Stickers & GIFs off: stickers, GIFs, games and inline bots are banned", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(stickersGroup), untilDate: forever))
+}
+
+do {
+    let chatDefaults = pageCompleteRights(newSupergroupDefaults.union(.banSendGifs))
+    let screen = openException(chatDefaults: chatDefaults)
+    flip(screen, .banSendPolls)
+    let sent = applied(screen)
+    check("group bans Stickers & GIFs: a new exception keeps inline bots banned", sent == TelegramChatBannedRights(flags: chatDefaults.union(.banSendPolls), untilDate: forever))
+}
+
+do {
+    let stored = TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: forever)
+    let screen = openException(chatDefaults: newSupergroupDefaults, stored: stored)
+    screen.okClicked()
+    check("saved exception, nothing changed: Apply sends nothing", screen.sent.isEmpty)
+}
+
+do {
+    let stored = TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: forever)
+    let screen = openException(chatDefaults: newSupergroupDefaults, stored: stored)
+    screen.state.updatedTimeout = 86400
+    let sent = applied(screen)
+    check("saved exception, only Duration changed: inline bots stay allowed", sent == TelegramChatBannedRights(flags: stored.flags, untilDate: 86400))
+}
+
+do {
+    let stored = TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: forever)
+    let screen = openException(chatDefaults: newSupergroupDefaults, stored: stored)
+    flip(screen, .banSendPolls)
+    flip(screen, .banSendPolls)
+    screen.okClicked()
+    check("saved exception, Send Polls switched on and back off: Apply sends nothing", screen.sent.isEmpty)
+}
+
+do {
+    let stored = TelegramChatBannedRights(flags: .banSendPolls, untilDate: forever)
+    let screen = openException(chatDefaults: newSupergroupDefaults, stored: stored)
+    flip(screen, .banSendText)
+    let sent = applied(screen)
+    check("saved exception without the group's defaults, Send Messages off: Apply adds the defaults back", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union([.banSendPolls, .banSendText]), untilDate: forever))
+}
+
+do {
+    let stored = TelegramChatBannedRights(flags: newSupergroupDefaults.union([.banSendPolls, .banSendInline]), untilDate: forever)
+    let screen = openException(chatDefaults: newSupergroupDefaults, stored: stored)
+    check("saved exception with an inline ban: the screen shows Stickers & GIFs on", shownOn(screen, .banSendGifs))
+    flip(screen, .banSendPolls)
+    let sent = applied(screen)
+    check("saved exception with an inline ban, Send Polls back on: Apply allows inline bots again", sent == TelegramChatBannedRights(flags: newSupergroupDefaults, untilDate: forever))
+}
+
+do {
+    let stored = TelegramChatBannedRights(flags: newSupergroupDefaults.union([.banSendPolls, .banSendInline]), untilDate: forever)
+    let screen = openException(chatDefaults: newSupergroupDefaults, stored: stored)
+    screen.state.updatedTimeout = 86400
+    let sent = applied(screen)
+    check("saved exception with an inline ban, only Duration changed: Apply allows inline bots again", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: 86400))
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults, basicGroup: true)
+    flip(screen, .banSendPolls)
+    let sent = applied(screen)
+    check("basic group, new exception, Send Polls off: Apply sends the group's defaults and Send Polls only", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: forever))
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults, withParticipant: false)
+    flip(screen, .banSendPolls)
+    let sent = applied(screen)
+    check("Apply without participant data: the group's defaults and Send Polls only", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(.banSendPolls), untilDate: forever))
+}
+
+do {
+    let screen = openException(chatDefaults: newSupergroupDefaults, withParticipant: false)
+    flip(screen, .banSendGifs)
+    let sent = applied(screen)
+    check("Apply without participant data, Stickers & GIFs off: stickers, GIFs, games and inline bots are banned", sent == TelegramChatBannedRights(flags: newSupergroupDefaults.union(stickersGroup), untilDate: forever))
+}
+
+for (name, right) in rows where !newSupergroupDefaults.contains(right) {
+    let screen = openException(chatDefaults: newSupergroupDefaults)
+    flip(screen, right)
+    let sent = applied(screen)
+    check("new exception, \(name) off: the switched right is sent", sent?.flags.contains(right) == true)
+    check("new exception, \(name) off: inline bots follow Stickers & GIFs as shown", inlineMatchesScreen(screen, sent))
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
