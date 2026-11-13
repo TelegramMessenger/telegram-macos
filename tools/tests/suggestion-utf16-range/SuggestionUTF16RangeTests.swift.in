@@ -1,0 +1,420 @@
+import Foundation
+import CoreText
+
+public enum ChatTextInputAttribute: Equatable {
+    case uid(Range<Int>, Int64)
+}
+
+public struct ChatTextInputState {
+    public let inputText: String
+    public let selectionRange: Range<Int>
+    let attributes: [ChatTextInputAttribute]
+
+    init(inputText: String, selectionRange: Range<Int>, attributes: [ChatTextInputAttribute]) {
+        self.inputText = inputText
+        self.selectionRange = selectionRange
+        self.attributes = attributes
+    }
+}
+
+extension String {
+    __GLYPH_COUNT__
+
+    __IS_SINGLE_EMOJI__
+
+    __CONTAINS_EMOJI__
+
+    __CONTAINS_ONLY_EMOJI__
+
+    var fixed: String {
+        return self
+    }
+}
+
+__UNICODE_SCALAR__
+
+__COMMAND_AUTOCOMPLETE__
+
+__QUERY__
+
+enum TextInputAttributes {
+    static let customEmoji = NSAttributedString.Key("Attribute__EmbeddedAnimated")
+}
+
+struct FakeFileId {
+    let id: Int64
+}
+
+struct FakeFile {
+    let fileId: FakeFileId
+    let customEmojiText: String?
+    let stickerText: String?
+}
+
+final class TextInputTextCustomEmojiAttribute: NSObject {
+    let fileId: Int64
+    let emoji: String
+    init(fileId: Int64, file: FakeFile, emoji: String) {
+        self.fileId = fileId
+        self.emoji = emoji
+    }
+}
+
+let clown = "🤡"
+
+extension NSAttributedString {
+    var range: NSRange {
+        return NSMakeRange(0, self.length)
+    }
+
+    static func makeAnimated(_ file: FakeFile, text: String) -> NSAttributedString {
+        let attr = NSMutableAttributedString(string: text)
+        attr.addAttribute(TextInputAttributes.customEmoji, value: TextInputTextCustomEmojiAttribute(fileId: file.fileId.id, file: file, emoji: text), range: attr.range)
+        return attr
+    }
+}
+
+extension NSMutableAttributedString {
+    func append(string: String) -> NSRange {
+        let start = self.length
+        self.append(NSAttributedString(string: string))
+        return NSMakeRange(start, self.length - start)
+    }
+}
+
+enum Source {
+    case emoji(String)
+    case animated(FakeFile)
+}
+
+struct FakePresentation {
+    var effectiveInput: ChatTextInputState
+
+    func withUpdatedEffectiveInputState(_ state: ChatTextInputState) -> FakePresentation {
+        return FakePresentation(effectiveInput: state)
+    }
+}
+
+final class FakeInteraction {
+    var presentation: FakePresentation
+    var problems: [String] = []
+    var calls = 0
+
+    init(_ state: ChatTextInputState) {
+        self.presentation = FakePresentation(effectiveInput: state)
+    }
+
+    func update(_ f: (FakePresentation) -> FakePresentation) {
+        self.presentation = f(self.presentation)
+    }
+
+    @discardableResult func appendText(_ text: NSAttributedString, selectedRange: Range<Int>) -> Range<Int> {
+        self.calls += 1
+        let input = self.presentation.effectiveInput
+        let current = input.inputText as NSString
+        guard selectedRange.lowerBound >= 0, selectedRange.upperBound <= current.length else {
+            self.problems.append("appendText range \(selectedRange) outside 0..<\(current.length), the app would raise NSRangeException")
+            return selectedRange.lowerBound ..< selectedRange.lowerBound + text.length
+        }
+        let updated = current.replacingCharacters(in: NSMakeRange(selectedRange.lowerBound, selectedRange.count), with: text.string)
+        let end = selectedRange.lowerBound + text.length
+        self.presentation = self.presentation.withUpdatedEffectiveInputState(ChatTextInputState(inputText: updated, selectionRange: end ..< end, attributes: input.attributes))
+        return selectedRange.lowerBound ..< end
+    }
+
+    @discardableResult func appendText(_ text: String, selectedRange: Range<Int>) -> Range<Int> {
+        return self.appendText(NSAttributedString(string: text), selectedRange: selectedRange)
+    }
+}
+
+final class FakeOwner {
+    let chatInteraction: FakeInteraction
+    var contextChatInteraction: FakeInteraction {
+        return self.chatInteraction
+    }
+
+    init(_ interaction: FakeInteraction) {
+        self.chatInteraction = interaction
+    }
+}
+
+struct FakeHashtagItem {
+    let hashtag: String
+}
+
+struct FakeInternalId {
+    let value: Int64
+    func _internalGetInt64Value() -> Int64 {
+        return self.value
+    }
+}
+
+struct FakePeerId {
+    let id: FakeInternalId
+}
+
+struct FakePeer {
+    let id: FakePeerId
+    let addressName: String?
+    let compactDisplayTitle: String
+
+    init(_ value: Int64, username: String?, title: String) {
+        self.id = FakePeerId(id: FakeInternalId(value: value))
+        self.addressName = username
+        self.compactDisplayTitle = title
+    }
+}
+
+func helperReturnEmoji(_ chatInteraction: FakeInteraction, _ clue: Source) {
+    let textInputState = chatInteraction.presentation.effectiveInput
+    __HELPER_RETURN_EMOJI__
+}
+
+func helperReturnHashtag(_ chatInteraction: FakeInteraction, _ selectedItem: FakeHashtagItem) {
+    let textInputState = chatInteraction.presentation.effectiveInput
+    __HELPER_RETURN_HASHTAG__
+}
+
+func helperReturnQuickHashtag(_ chatInteraction: FakeInteraction, _ selectedItem: FakeHashtagItem) {
+    let textInputState = chatInteraction.presentation.effectiveInput
+    __HELPER_RETURN_QUICK_HASHTAG__
+}
+
+func helperTabEmoji(_ chatInteraction: FakeInteraction, _ clue: Source) {
+    let textInputState = chatInteraction.presentation.effectiveInput
+    __HELPER_TAB_EMOJI__
+}
+
+func helperTabHashtag(_ chatInteraction: FakeInteraction, _ selectedItem: FakeHashtagItem) {
+    let textInputState = chatInteraction.presentation.effectiveInput
+    __HELPER_TAB_HASHTAG__
+}
+
+func chatMention(_ strongSelf: FakeOwner, _ peer: FakePeer) {
+    let textInputState = strongSelf.chatInteraction.presentation.effectiveInput
+    __CHAT_MENTION__
+}
+
+func previewMentionFirst(_ strongSelf: FakeOwner, _ peer: FakePeer) {
+    let textInputState = strongSelf.contextChatInteraction.presentation.effectiveInput
+    __PREVIEW_MENTION_FIRST__
+}
+
+func previewMentionSecond(_ strongSelf: FakeOwner, _ peer: FakePeer) {
+    let textInputState = strongSelf.contextChatInteraction.presentation.effectiveInput
+    __PREVIEW_MENTION_SECOND__
+}
+
+func shareMention(_ strongSelf: FakeOwner, _ peer: FakePeer) {
+    let textInputState = strongSelf.contextChatInteraction.presentation.effectiveInput
+    __SHARE_MENTION__
+}
+
+var passed = 0
+var failed = 0
+
+func utf16(_ text: String) -> Int {
+    return (text as NSString).length
+}
+
+func show(_ text: String) -> String {
+    return "\"" + text.replacingOccurrences(of: "\n", with: "\\n") + "\""
+}
+
+struct Typed {
+    let before: String
+    let query: String
+    let selected: String
+    let after: String
+
+    var state: ChatTextInputState {
+        let cursor = utf16(self.before + self.query)
+        return ChatTextInputState(inputText: self.before + self.query + self.selected + self.after, selectionRange: cursor ..< cursor + utf16(self.selected), attributes: [])
+    }
+}
+
+func check(_ site: String, _ label: String, typed: Typed, types: PossibleContextQueryTypes, expected: String, cursor: Int, uid: Range<Int>?, run: (FakeInteraction) -> Void) {
+    var errors: [String] = []
+    let state = typed.state
+    if let (_, found, _) = textInputStateContextQueryRangeAndType(state, includeContext: false) {
+        if !found.contains(types) {
+            errors.append("query types \(found.rawValue), expected \(types.rawValue)")
+        }
+    } else {
+        errors.append("no query found in \(show(state.inputText))")
+    }
+    let interaction = FakeInteraction(state)
+    run(interaction)
+    let result = interaction.presentation.effectiveInput
+    errors.append(contentsOf: interaction.problems)
+    if interaction.calls != 1 {
+        errors.append("appendText called \(interaction.calls) times")
+    }
+    if result.inputText != expected {
+        errors.append("field \(show(result.inputText)), expected \(show(expected))")
+    }
+    if result.selectionRange != cursor ..< cursor {
+        errors.append("cursor \(result.selectionRange), expected \(cursor)..<\(cursor)")
+    }
+    let uids = result.attributes.compactMap { attribute -> Range<Int>? in
+        if case let .uid(range, _) = attribute {
+            return range
+        }
+        return nil
+    }
+    if let uid = uid {
+        if uids != [uid] {
+            errors.append("mention attribute \(uids), expected [\(uid)]")
+        }
+    } else if !uids.isEmpty {
+        errors.append("unexpected mention attribute \(uids)")
+    }
+    if errors.isEmpty {
+        passed += 1
+        print("PASS \(site): \(label)")
+    } else {
+        failed += 1
+        print("FAIL \(site): \(label): " + errors.joined(separator: "; "))
+    }
+}
+
+struct HashtagCase {
+    let label: String
+    let before: String
+    let query: String
+    let hashtag: String
+    let after: String
+    var selected: String = ""
+}
+
+let hashtagCases: [HashtagCase] = [
+    HashtagCase(label: "Thai", before: "", query: "#สวั", hashtag: "#สวัสดี", after: ""),
+    HashtagCase(label: "Thai after text with skin tone emoji", before: "👍🏽 ok ", query: "#สวั", hashtag: "#สวัสดี", after: ""),
+    HashtagCase(label: "Thai with text after the cursor", before: "", query: "#สวั", hashtag: "#สวัสดี", after: " ท้าย"),
+    HashtagCase(label: "Hindi", before: "", query: "#किता", hashtag: "#किताब", after: ""),
+    HashtagCase(label: "Bengali", before: "", query: "#নমস্", hashtag: "#নমস্কার", after: ""),
+    HashtagCase(label: "Arabic with vowel marks", before: "", query: "#مَرْحَ", hashtag: "#مَرْحَبًا", after: ""),
+    HashtagCase(label: "Adlam, outside the BMP", before: "", query: "#𞤀𞤣", hashtag: "#𞤀𞤣𞤤𞤢𞤥", after: ""),
+    HashtagCase(label: "Thai with selected text after the query", before: "a ", query: "#สวั", hashtag: "#สวัสดี", after: "", selected: "xyz"),
+    HashtagCase(label: "Latin with a decomposed letter", before: "", query: "#cafe\u{301}", hashtag: "#cafe\u{301}te\u{301}ria", after: ""),
+    HashtagCase(label: "Latin control", before: "", query: "#hel", hashtag: "#hello", after: ""),
+    HashtagCase(label: "Latin after skin tone emoji", before: "👋🏽👍🏿 ", query: "#hel", hashtag: "#hello", after: ""),
+    HashtagCase(label: "Cyrillic control", before: "", query: "#при", hashtag: "#привет", after: ""),
+    HashtagCase(label: "Cyrillic with a decomposed letter", before: "", query: "#и\u{306}о", hashtag: "#и\u{306}ога", after: ""),
+]
+
+struct EmojiCase {
+    let label: String
+    let before: String
+    let query: String
+    let types: PossibleContextQueryTypes
+    let clue: Source
+    let inserted: String
+    var after: String = ""
+}
+
+let animatedSmile = FakeFile(fileId: FakeFileId(id: 7), customEmojiText: "😀", stickerText: nil)
+
+let emojiCases: [EmojiCase] = [
+    EmojiCase(label: "colon Thai", before: "", query: ":สวั", types: [.emoji], clue: .emoji("👋"), inserted: "👋"),
+    EmojiCase(label: "colon Thai, skin tone emoji picked", before: "", query: ":สวั", types: [.emoji], clue: .emoji("👋🏽"), inserted: "👋🏽"),
+    EmojiCase(label: "colon Thai after skin tone emoji", before: "ok 👍🏽 ", query: ":สวั", types: [.emoji], clue: .emoji("👋"), inserted: "👋"),
+    EmojiCase(label: "colon Hindi", before: "", query: ":नमस्", types: [.emoji], clue: .emoji("🙏🏾"), inserted: "🙏🏾"),
+    EmojiCase(label: "colon Arabic with vowel marks", before: "", query: ":مَرْحَ", types: [.emoji], clue: .emoji("👋"), inserted: "👋"),
+    EmojiCase(label: "colon Adlam, outside the BMP", before: "", query: ":𞤀𞤣", types: [.emoji], clue: .emoji("👋"), inserted: "👋"),
+    EmojiCase(label: "colon Thai, custom emoji picked", before: "", query: ":สวั", types: [.emoji], clue: .animated(animatedSmile), inserted: "😀"),
+    EmojiCase(label: "first word Thai", before: "", query: "สวัสดี", types: [.emojiFast], clue: .emoji("👋🏽"), inserted: "👋🏽"),
+    EmojiCase(label: "first word Hindi", before: "", query: "नमस्ते", types: [.emojiFast], clue: .emoji("🙏"), inserted: "🙏"),
+    EmojiCase(label: "colon Thai with text after the cursor", before: "", query: ":สวั", types: [.emoji], clue: .emoji("👋"), inserted: "👋", after: " ท้าย"),
+    EmojiCase(label: "colon Latin with a decomposed letter", before: "", query: ":cafe\u{301}", types: [.emoji], clue: .emoji("☕"), inserted: "☕"),
+    EmojiCase(label: "colon Latin control", before: "", query: ":smi", types: [.emoji], clue: .emoji("😀"), inserted: "😀"),
+    EmojiCase(label: "colon Latin after skin tone emoji", before: "hi 👍🏽 ", query: ":smi", types: [.emoji], clue: .emoji("👋🏿"), inserted: "👋🏿"),
+    EmojiCase(label: "first word Latin control", before: "", query: "hello", types: [.emojiFast], clue: .emoji("👋🏽"), inserted: "👋🏽"),
+]
+
+struct MentionCase {
+    let label: String
+    let before: String
+    let query: String
+    let username: String?
+    let title: String
+    var selected: String = ""
+    var after: String = ""
+}
+
+let mentionCases: [MentionCase] = [
+    MentionCase(label: "Thai, no username", before: "", query: "@สวั", username: nil, title: "สวัสดี"),
+    MentionCase(label: "Thai, username", before: "", query: "@สวั", username: "sawasdee", title: "สวัสดี"),
+    MentionCase(label: "Thai after skin tone emoji, no username", before: "hi 👍🏽 ", query: "@สวั", username: nil, title: "สวัสดี"),
+    MentionCase(label: "Hindi, no username", before: "", query: "@किता", username: nil, title: "किताब"),
+    MentionCase(label: "Bengali, username", before: "", query: "@নমস্", username: "nomoskar", title: "নমস্কার"),
+    MentionCase(label: "Arabic with vowel marks, no username", before: "", query: "@مَرْ", username: nil, title: "مَرْحَبًا"),
+    MentionCase(label: "Adlam outside the BMP, no username", before: "", query: "@𞤀𞤣", username: nil, title: "𞤀𞤣𞤤𞤢𞤥"),
+    MentionCase(label: "Adlam outside the BMP, username", before: "", query: "@𞤀𞤣", username: "adlam", title: "𞤀𞤣𞤤𞤢𞤥"),
+    MentionCase(label: "Thai with text after the cursor, no username", before: "", query: "@สวั", username: nil, title: "สวัสดี", after: " ครับ"),
+    MentionCase(label: "Thai with selected text after the query, username", before: "a ", query: "@สวั", username: "sawasdee", title: "สวัสดี", selected: "xyz"),
+    MentionCase(label: "Cyrillic with a decomposed letter, no username", before: "", query: "@и\u{306}ог", username: nil, title: "и\u{306}ога"),
+    MentionCase(label: "Latin control, no username", before: "", query: "@ale", username: nil, title: "Alex"),
+    MentionCase(label: "Latin control, username", before: "", query: "@ale", username: "alex_test", title: "Alex"),
+    MentionCase(label: "Latin, name with skin tone emoji, no username", before: "👍🏽 ", query: "@ana", username: nil, title: "Ana 👩🏽‍💻"),
+]
+
+let hashtagSites: [(String, (FakeInteraction, FakeHashtagItem) -> Void)] = [
+    ("InputContextHelper Return hashtag", helperReturnHashtag),
+    ("InputContextHelper Return quick hashtag", helperReturnQuickHashtag),
+    ("InputContextHelper Tab hashtag", helperTabHashtag),
+]
+
+let emojiSites: [(String, (FakeInteraction, Source) -> Void)] = [
+    ("InputContextHelper Return emoji", helperReturnEmoji),
+    ("InputContextHelper Tab emoji", helperTabEmoji),
+]
+
+let mentionSites: [(String, (FakeOwner, FakePeer) -> Void)] = [
+    ("ChatController mention", chatMention),
+    ("PreviewSenderController mention (first init)", previewMentionFirst),
+    ("PreviewSenderController mention (second init)", previewMentionSecond),
+    ("ShareModalController mention", shareMention),
+]
+
+for (site, run) in hashtagSites {
+    for item in hashtagCases {
+        let typed = Typed(before: item.before, query: item.query, selected: item.selected, after: item.after)
+        let expected = item.before + item.hashtag + " " + item.after
+        check(site, item.label, typed: typed, types: [.hashtag], expected: expected, cursor: utf16(item.before + item.hashtag + " "), uid: nil) { interaction in
+            run(interaction, FakeHashtagItem(hashtag: item.hashtag))
+        }
+    }
+}
+
+for (site, run) in emojiSites {
+    for item in emojiCases {
+        let typed = Typed(before: item.before, query: item.query, selected: "", after: item.after)
+        let expected = item.before + item.inserted + item.after
+        check(site, item.label, typed: typed, types: item.types, expected: expected, cursor: utf16(item.before + item.inserted), uid: nil) { interaction in
+            run(interaction, item.clue)
+        }
+    }
+}
+
+for (site, run) in mentionSites {
+    for item in mentionCases {
+        let typed = Typed(before: item.before, query: item.query, selected: item.selected, after: item.after)
+        let inserted: String
+        let uid: Range<Int>?
+        if let username = item.username {
+            inserted = "@" + username + " "
+            uid = nil
+        } else {
+            inserted = item.title + " "
+            uid = utf16(item.before) ..< utf16(item.before + item.title)
+        }
+        let expected = item.before + inserted + item.after
+        check(site, item.label, typed: typed, types: [.mention], expected: expected, cursor: utf16(item.before + inserted), uid: uid) { interaction in
+            run(FakeOwner(interaction), FakePeer(42, username: item.username, title: item.title))
+        }
+    }
+}
+
+print("\(passed) passed, \(failed) failed")
+exit(failed == 0 ? 0 : 1)

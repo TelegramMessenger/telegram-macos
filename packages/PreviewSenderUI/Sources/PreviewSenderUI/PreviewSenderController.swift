@@ -3096,7 +3096,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 if let (range, _, _) = textInputStateContextQueryRangeAndType(textInputState, includeContext: false) {
                     let inputText = textInputState.inputText
                     let name: String = peer.addressName ?? peer.compactDisplayTitle
-                    let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                    let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                     let replacementText = name + " "
                     let atLength = peer.addressName != nil ? 0 : 1
                     let range = strongSelf.contextChatInteraction.appendText(replacementText, selectedRange: textInputState.selectionRange.lowerBound - distance - atLength ..< textInputState.selectionRange.upperBound)
@@ -3155,7 +3155,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                     
                     let name:String = peer.addressName ?? peer.compactDisplayTitle
 
-                    let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                    let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                     let replacementText = name + " "
                     
                     let atLength = peer.addressName != nil ? 0 : 1

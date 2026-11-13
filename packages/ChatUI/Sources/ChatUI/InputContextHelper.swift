@@ -504,7 +504,7 @@ public class InputContextViewController : GenericViewController<InputContextView
                     if let (range, _, _) = textInputStateContextQueryRangeAndType(textInputState, includeContext: false) {
                         let inputText = textInputState.inputText
                         
-                        let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                        let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                         
                         let atLength = range.lowerBound > inputText.startIndex && inputText[inputText.index(before: range.lowerBound)] == ":" ? 1 : 0
                         
@@ -528,7 +528,7 @@ public class InputContextViewController : GenericViewController<InputContextView
                 if let (range, _, _) = textInputStateContextQueryRangeAndType(textInputState, includeContext: false) {
                     let inputText = textInputState.inputText
                     
-                    let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                    let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                     let replacementText = selectedItem.hashtag + " "
                     
                     let atLength = 1
@@ -548,7 +548,7 @@ public class InputContextViewController : GenericViewController<InputContextView
                 if let (range, _, _) = textInputStateContextQueryRangeAndType(textInputState, includeContext: false) {
                     let inputText = textInputState.inputText
                     
-                    let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                    let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                     let replacementText = selectedItem.hashtag + " "
                     
                     let atLength = 1
@@ -584,7 +584,7 @@ public class InputContextViewController : GenericViewController<InputContextView
                     if let (range, _, _) = textInputStateContextQueryRangeAndType(textInputState, includeContext: false) {
                         let inputText = textInputState.inputText
                         
-                        let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                        let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                         let atLength = range.lowerBound > inputText.startIndex && inputText[inputText.index(before: range.lowerBound)] == ":" ? 1 : 0
                         
                         switch clue {
@@ -603,7 +603,7 @@ public class InputContextViewController : GenericViewController<InputContextView
                 if let (range, _, _) = textInputStateContextQueryRangeAndType(textInputState, includeContext: false) {
                     let inputText = textInputState.inputText
                     
-                    let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                    let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                     let replacementText = selectedItem.hashtag + " "
                     
                     let atLength = 1
