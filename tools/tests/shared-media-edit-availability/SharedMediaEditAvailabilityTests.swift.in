@@ -1,0 +1,567 @@
+import Foundation
+import XCTest
+
+__MODES__
+
+enum ViewControllerState { case Normal, Edit, Some }
+enum ControlState { case Normal }
+enum ControlEvent { case Click }
+enum SearchState { case None }
+enum KeyHandlerResult { case invoked }
+enum TableScrollState { case upOffset(Bool, Int) }
+enum Curve { case spring }
+enum ContainedViewLayoutTransition { case animated(duration: Double, curve: Curve) }
+enum PeerMediaAnimationDirection { case leftToRight, rightToLeft, interactive }
+final class Context {
+    let peerId = 1
+    let appConfiguration = Configuration()
+}
+final class Configuration {
+    func getGeneralValue(_ key: String, orElse value: Int) -> Int { value }
+}
+struct Strings {
+    let chatContextEdit1 = "Edit"
+    let storyMediaAlbumContextMenuAddFolder = "Add Album"
+    let voiceOverCommonMore = "More"
+}
+func strings() -> Strings { Strings() }
+extension Int { func highlight(color: Int) -> Int { self } }
+struct Icons { var chatActions = 1; var chatActionEdit = 2; var chatSearch = 3 }
+struct Colors { var text = 1 }
+struct Theme { var icons = Icons(); var colors = Colors() }
+var theme = Theme()
+enum MenuAnimation {
+    case menu_edit, menu_add
+    var value: Int { self == .menu_edit ? 1 : 2 }
+}
+class ContextMenuItem {
+    let title: String
+    var handler: (() -> Void)?
+    var isSeparatorItem: Bool { false }
+    var isEnabled = true
+    var submenu: ContextMenu?
+    init(_ title: String, handler: (() -> Void)? = nil, itemImage: Int? = nil) {
+        self.title = title
+        self.handler = handler
+    }
+}
+final class ContextSeparatorItem: ContextMenuItem {
+    override var isSeparatorItem: Bool { true }
+    init() { super.init("") }
+}
+final class ContextMenu {
+    var items: [ContextMenuItem] = []
+    init(betterInside: Bool = false) {}
+    func addItem(_ item: ContextMenuItem) { items.append(item) }
+}
+class View {
+    var frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+    var bounds: NSRect { frame }
+    var needsLayout = false
+    func setFrameSize(_ size: NSSize) { frame.size = size }
+}
+class ImageButton: View {
+    var isHidden = false
+    var handler: ((ImageButton) -> Void)?
+    var contextMenu: (() -> ContextMenu?)?
+    var image: Int?
+    var text = ""
+    var label: String?
+    var shows = 0
+    func set(image: Int, for state: ControlState) { self.image = image }
+    func set(text: String, for state: ControlState) { self.text = text }
+    func set(color: Int, for state: ControlState) {}
+    func removeImage(for state: ControlState) { image = nil }
+    func sizeToFit(_ inset: NSSize, _ size: NSSize, thatFit: Bool) -> NSSize {
+        frame.size = NSSize(width: thatFit ? size.width : CGFloat(text.count * 8) + inset.width, height: size.height)
+        return frame.size
+    }
+    func setSingle(handler: @escaping (ImageButton) -> Void, for event: ControlEvent) { self.handler = handler }
+    func showContextMenu() { if contextMenu?() != nil { shows += 1 } }
+    func setAccessibilityLabel(_ value: String) { label = value }
+    func accessibilityPerformShowMenu() -> Bool { showContextMenu(); return true }
+    func press() { if !isHidden { handler?(self) } }
+}
+typealias TextButton = ImageButton
+final class StackedBarView: View {
+    static let pillHeight: CGFloat = 40
+    func insertButton(at index: Int, image: Int, handler: @escaping () -> Void) -> ImageButton { ImageButton() }
+    func set(hidden: Bool, for button: ImageButton) { button.isHidden = hidden; needsLayout = true }
+    func fit(to width: CGFloat, transition: ContainedViewLayoutTransition) -> CGFloat { width }
+    func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {}
+}
+final class TableView: View {
+    var completions: [(Bool) -> Void] = []
+    func scroll(to state: TableScrollState, completion: @escaping (Bool) -> Void) { completions.append(completion) }
+    func finishScroll() { let pending = completions; completions.removeAll(); pending.forEach { $0(true) } }
+}
+final class TabsView {
+    func index(of id: Int64) -> Int? { Int(id) }
+    func contains(_ id: Int64) -> Bool { true }
+}
+final class ContainerView {
+    let view = ContentView()
+    let tabsView = TabsView()
+    var mainView: View?
+    var mainTable: TableView? { mainView as? TableView }
+    var selecting = false
+    func updateMainView(with view: View, animated: PeerMediaAnimationDirection?) { mainView = view }
+    func changeState(selectState: Bool, animated: Bool) { selecting = selectState }
+    func updateSearchState(_ state: MediaSearchState, updateSearchState: @escaping (Int) -> Void, toggle: @escaping () -> Void) {}
+}
+final class ContentView: View { var contentBounds: NSRect { bounds } }
+final class ValuePromise<T> {
+    var value: T
+    init(_ value: T, ignoreRepeated: Bool = true) { self.value = value }
+    func set(_ value: T) { self.value = value }
+}
+final class Disposable { func set(_ value: Int?) {} }
+struct MediaSearchState {}
+struct Signal<T> {
+    static func single(_ value: T) -> Self { Self() }
+    func start(next: (T) -> Void) -> Int { 0 }
+}
+protocol PeerMediaSearchable: AnyObject {
+    var mediaSearchValue: Signal<MediaSearchState> { get }
+    func setSearchValue(_ value: Signal<Int>)
+    func setExternalSearch(_ result: Int, _ loadMore: () -> Void)
+    func toggleSearch()
+}
+struct ExternalSearchData { let searchResult = 0; let loadMore: () -> Void = {} }
+class ViewController: Equatable {
+    static func == (lhs: ViewController, rhs: ViewController) -> Bool { lhs === rhs }
+    var view: View = TableView()
+    var suppliedMenu: [ContextMenuItem] = []
+    func menuItems() -> [ContextMenuItem] { suppliedMenu }
+    func viewWillAppear(_ animated: Bool) {}
+    func viewDidAppear(_ animated: Bool) {}
+    func viewWillDisappear(_ animated: Bool) {}
+    func viewDidDisappear(_ animated: Bool) {}
+}
+final class PeerMediaPhotosController<C>: ViewController {}
+final class PeerMediaListController<C>: ViewController {}
+protocol StoryParent: AnyObject { func changeState() }
+struct StoryState {
+    var mayAddAlbums = false
+    var folderCount = 0
+    func access(_ peerId: Int) -> Bool { mayAddAlbums }
+}
+final class Atomic<T> {
+    var value: T
+    init(_ value: T) { self.value = value }
+    func with<R>(_ f: (T) -> R) -> R { f(value) }
+}
+final class StoryMediaController<C>: ViewController {
+    let stateValue = Atomic(StoryState())
+    let context = Context()
+    var isArchived = false
+    var selected = false
+    var toggles = 0
+    weak var parentController: StoryParent?
+    var menuItemsUpdated: (() -> Void)?
+    func toggleSelection() { selected.toggle(); toggles += 1 }
+    func addCollection(_ id: Int?) {}
+    __STORY_MENU__
+}
+struct ChatPresentationInterfaceState {
+    enum State { case normal, selecting }
+    var ids: Set<Int>?
+    var state: State { ids == nil ? .normal : .selecting }
+    func withoutSelectionState() -> Self { Self(ids: nil) }
+    func withSelectionState() -> Self { Self(ids: []) }
+}
+final class Interaction {
+    var presentation = ChatPresentationInterfaceState()
+    var observer: ((ChatPresentationInterfaceState, ChatPresentationInterfaceState, Bool) -> Void)?
+    func update(_ f: (ChatPresentationInterfaceState) -> ChatPresentationInterfaceState) {
+        let old = presentation
+        presentation = f(old)
+        observer?(presentation, old, true)
+    }
+}
+class EditableController: ViewController {
+    var editButton: TextButton? = TextButton()
+    let stackedBar = StackedBarView()
+    var rightBarView: StackedBarView? = StackedBarView()
+    let genericView = ContainerView()
+    let doneString = "Done"
+    let someString = "Some"
+    __BASE__
+    func updateEditStateTitles() {}
+    func requestUpdateRightBar() { updateEditStateTitles() }
+    func requestUpdateBackBar() {}
+    func requestUpdateCenterBar() {}
+    func loadView() { editButton?.setSingle(handler: { [weak self] _ in self?.changeState() }, for: .Click) }
+}
+final class PeerMediaController<Context>: EditableController, StoryParent {
+    var mode: PeerMediaCollectionMode?
+    let mediaGrid = PeerMediaPhotosController<Context>()
+    let gifs = PeerMediaPhotosController<Context>()
+    let stories = StoryMediaController<Context>()
+    var archiveStories: StoryMediaController<Context>? = StoryMediaController<Context>()
+    let members = ViewController()
+    var canEditMembers = false
+    func receiveMembersAvailability(_ value: Bool) { __MEMBER_UPDATE__ }
+    let commonGroups = ViewController()
+    let similarChannels = ViewController()
+    let similarBots = ViewController()
+    let saved = ViewController()
+    var savedMessages: ViewController? = ViewController()
+    var gifts: ViewController? = ViewController()
+    var pollsController: ViewController? = ViewController()
+    let listControllers = (0..<6).map { _ in PeerMediaListController<Context>() }
+    var currentController: ViewController?
+    let interactions = Interaction()
+    let editing = ValuePromise(false)
+    var currentMainTableView: ((TableView?, Bool, Bool) -> Void)?
+    var searchBarButton: ImageButton?
+    var externalSearchData: ExternalSearchData?
+    var hasSearch = true
+    let searchValueDisposable = Disposable()
+    var interactiveSwitchMode: PeerMediaCollectionMode?
+    func updateSearchBarVisibility(_ value: Bool) {}
+    func prepareNeighborTabs() {}
+    func searchGroupUsers() {}
+    func toggle(with mode: PeerMediaCollectionMode, animated: Bool) {}
+    __SOURCE__
+    init(_ mode: PeerMediaCollectionMode, memberPermission: Bool = true) {
+        super.init()
+        canEditMembers = memberPermission
+        stories.parentController = self
+        archiveStories?.parentController = self
+        loadView()
+        interactions.observer = { [weak self] value, old, animated in self?.selectionDidChange(value, old, animated: animated) }
+        applyReadyController(mode: mode, animated: false)
+    }
+}
+
+typealias PeerId = Int
+enum GroupParticipant {
+    case creator(id: Int)
+    case admin(id: Int, invitedBy: Int)
+    case member(id: Int, invitedBy: Int)
+    var peerId: Int {
+        switch self {
+        case let .creator(id), let .admin(id, _), let .member(id, _): return id
+        }
+    }
+    var invitedBy: Int? {
+        switch self {
+        case .creator: return nil
+        case let .admin(_, invitedBy), let .member(_, invitedBy): return invitedBy
+        }
+    }
+}
+struct TelegramGroup {
+    enum Role { case creator, admin, member }
+    let role: Role
+}
+struct AdminInfo { let promotedBy: Int }
+enum ChannelParticipant {
+    case creator(id: Int)
+    case member(id: Int, invitedAt: Int, adminInfo: AdminInfo?, banInfo: Int?, rank: String?, subscriptionUntilDate: Int?)
+    var peerId: Int {
+        switch self {
+        case let .creator(id), let .member(id, _, _, _, _, _): return id
+        }
+    }
+}
+struct TelegramChannel {
+    struct Flags: OptionSet { let rawValue: Int; static let isCreator = Flags(rawValue: 1) }
+    enum Permission { case banMembers }
+    let flags: Flags
+    let mayBan: Bool
+    func hasPermission(_ value: Permission) -> Bool { mayBan || flags.contains(.isCreator) }
+}
+__PERMISSIONS__
+struct TestPeer { let id: Int }
+struct RenderedParticipant {
+    let participant: ChannelParticipant
+    var peer: TestPeer { TestPeer(id: participant.peerId) }
+}
+struct MemberAccount { let peerId = 1 }
+struct MemberContext { let peerId = 1; let account = MemberAccount() }
+struct MemberArguments { let context = MemberContext() }
+func basicGroupCanEdit(_ group: TelegramGroup, _ sortedParticipants: [GroupParticipant], disabledPeerIds: Set<Int> = []) -> Bool {
+    let arguments = MemberArguments()
+    var canEdit = false
+    for i in sortedParticipants.indices {
+        let peer = TestPeer(id: sortedParticipants[i].peerId)
+        __GROUP_ELIGIBILITY__
+    }
+    return canEdit
+}
+func channelCanEdit(_ channel: TelegramChannel, _ participants: [ChannelParticipant], disabledPeerIds: Set<Int> = []) -> Bool {
+    let arguments = MemberArguments()
+    let sortedParticipants = participants.map { RenderedParticipant(participant: $0) }
+    var canEdit = false
+    for i in sortedParticipants.indices {
+        __CHANNEL_ELIGIBILITY__
+    }
+    return canEdit
+}
+
+final class SharedMediaEditAvailabilityTests: XCTestCase {
+    let messageModes: [PeerMediaCollectionMode] = [.photoOrVideo, .file, .webpage, .music, .voice, .gifs]
+    let unsupportedModes: [PeerMediaCollectionMode] = [.saved, .polls, .commonGroups, .savedMessages, .similarChannels, .similarBots, .gifts]
+    func actions(_ controller: PeerMediaController<Context>) -> [ContextMenuItem] {
+        controller.editButton?.contextMenu?()?.items.filter { !$0.isSeparatorItem } ?? []
+    }
+    @objc func testUnsupportedMenusAreAbsent() {
+        for mode in unsupportedModes {
+            let controller = PeerMediaController<Context>(mode)
+            XCTAssertTrue(actions(controller).isEmpty, "\(mode)")
+            XCTAssertTrue(controller.editButton!.isHidden, "\(mode)")
+        }
+    }
+    @objc func testUnsupportedEditCannotBeInvoked() {
+        for mode in unsupportedModes {
+            let controller = PeerMediaController<Context>(mode)
+            controller.update(with: .Edit)
+            XCTAssertEqual(controller.state, .Normal, "\(mode)")
+            XCTAssertNil(controller.interactions.presentation.ids, "\(mode)")
+            XCTAssertFalse(controller.genericView.selecting, "\(mode)")
+        }
+    }
+    @objc func testSupportedMenusEnterSelectionAndDoneLeaves() {
+        for mode in messageModes + [.members, .stories, .archiveStories] {
+            let controller = PeerMediaController<Context>(mode)
+            XCTAssertEqual(actions(controller).map(\.title), ["Edit"], "\(mode)")
+            actions(controller).first?.handler?()
+            XCTAssertEqual(controller.state, .Edit, "\(mode)")
+            XCTAssertEqual(controller.editButton?.text, "Done", "\(mode)")
+            XCTAssertEqual(controller.genericView.selecting, messageModes.contains(mode), "\(mode)")
+            controller.editButton?.press()
+            XCTAssertEqual(controller.state, .Normal, "\(mode)")
+            XCTAssertNil(controller.interactions.presentation.ids, "\(mode)")
+            XCTAssertFalse(controller.genericView.selecting, "\(mode)")
+        }
+    }
+    @objc func testUnsupportedTabCancelsSelection() {
+        for mode in unsupportedModes {
+            let controller = PeerMediaController<Context>(.photoOrVideo)
+            controller.update(with: .Edit)
+            controller.interactions.presentation.ids = [7, 11]
+            controller.applyReadyController(mode: mode, animated: true)
+            XCTAssertEqual(controller.state, .Normal, "\(mode)")
+            XCTAssertNil(controller.interactions.presentation.ids, "\(mode)")
+            XCTAssertFalse(controller.genericView.selecting, "\(mode)")
+            XCTAssertTrue(controller.editButton!.isHidden, "\(mode)")
+            controller.applyReadyController(mode: .photoOrVideo, animated: true)
+            XCTAssertFalse(controller.editButton!.isHidden)
+            XCTAssertNil(controller.interactions.presentation.ids)
+        }
+    }
+    @objc func testSharedMessageTabsRetainSelection() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        controller.update(with: .Edit)
+        controller.interactions.presentation.ids = [31]
+        for mode in messageModes {
+            controller.applyReadyController(mode: mode, animated: true)
+            XCTAssertEqual(controller.state, .Edit)
+            XCTAssertEqual(controller.interactions.presentation.ids, [31])
+            XCTAssertTrue(controller.genericView.selecting)
+            XCTAssertEqual(controller.editButton?.text, "Done")
+        }
+    }
+    @objc func testSwitchingSelectionOwnersCancels() {
+        for source in [.members, .stories, .archiveStories] as [PeerMediaCollectionMode] {
+            let controller = PeerMediaController<Context>(source)
+            controller.update(with: .Edit)
+            controller.applyReadyController(mode: .photoOrVideo, animated: true)
+            XCTAssertEqual(controller.state, .Normal)
+            XCTAssertFalse(controller.genericView.selecting)
+            XCTAssertFalse(controller.stories.selected)
+            XCTAssertFalse(controller.archiveStories!.selected)
+            XCTAssertFalse(controller.editing.value)
+        }
+    }
+    @objc func testOnlyActiveStoryControllerToggles() {
+        let controller = PeerMediaController<Context>(.stories)
+        controller.update(with: .Edit)
+        XCTAssertTrue(controller.stories.selected)
+        XCTAssertFalse(controller.archiveStories!.selected)
+        controller.update(with: .Normal)
+        XCTAssertFalse(controller.stories.selected)
+        XCTAssertEqual(controller.archiveStories?.toggles, 0)
+    }
+    @objc func testMessageEditingDoesNotToggleStoryChildren() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        controller.update(with: .Edit)
+        controller.update(with: .Normal)
+        XCTAssertEqual(controller.stories.toggles, 0)
+        XCTAssertEqual(controller.archiveStories?.toggles, 0)
+    }
+    @objc func testDelayedMemberScrollCannotRestoreEditing() {
+        let controller = PeerMediaController<Context>(.members)
+        let table = controller.genericView.mainTable!
+        controller.update(with: .Edit)
+        controller.applyReadyController(mode: .saved, animated: true)
+        table.finishScroll()
+        XCTAssertFalse(controller.editing.value)
+        XCTAssertEqual(controller.state, .Normal)
+    }
+    @objc func testMemberEditingDoesNotAwaitExitScroll() {
+        let controller = PeerMediaController<Context>(.members)
+        controller.update(with: .Edit)
+        controller.genericView.mainTable!.finishScroll()
+        XCTAssertTrue(controller.editing.value)
+        controller.update(with: .Normal)
+        XCTAssertFalse(controller.editing.value)
+    }
+    @objc func testCurrentMemberStateWinsDelayedCompletions() {
+        let controller = PeerMediaController<Context>(.members)
+        controller.update(with: .Edit)
+        controller.update(with: .Normal)
+        controller.update(with: .Edit)
+        controller.genericView.mainTable!.finishScroll()
+        XCTAssertTrue(controller.editing.value)
+    }
+    @objc func testChildMenusArePreservedWithoutFallback() {
+        let controller = PeerMediaController<Context>(.gifts)
+        let item = ContextMenuItem("Filter")
+        controller.gifts!.suppliedMenu = [item, ContextSeparatorItem(), ContextMenuItem("Sort")]
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(actions(controller).map(\.title), ["Filter", "Sort"])
+        XCTAssertFalse(controller.editButton!.isHidden)
+        XCTAssertTrue(actions(controller).first === item)
+    }
+    @objc func testSeparatorOnlyChildDoesNotShowButton() {
+        let controller = PeerMediaController<Context>(.gifts)
+        controller.gifts!.suppliedMenu = [ContextSeparatorItem()]
+        controller.requestUpdateRightBar()
+        XCTAssertTrue(controller.editButton!.isHidden)
+        XCTAssertNil(controller.editButton!.contextMenu?())
+    }
+    @objc func testDoneHasNoEditContextMenu() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        controller.update(with: .Edit)
+        XCTAssertNil(controller.editButton?.contextMenu?())
+        XCTAssertFalse(controller.editButton!.isHidden)
+    }
+    @objc func testSelectionChromeUpdatesWithoutObserver() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        controller.interactions.observer = nil
+        controller.update(with: .Edit)
+        XCTAssertTrue(controller.genericView.selecting)
+        controller.applyReadyController(mode: .saved, animated: false)
+        XCTAssertFalse(controller.genericView.selecting)
+        XCTAssertEqual(controller.state, .Normal)
+    }
+    @objc func testInteractiveTabTransitionRefreshesAvailability() {
+        let controller = PeerMediaController<Context>(.commonGroups)
+        controller.interactiveSwitchMode = .gifs
+        controller.applyReadyController(mode: .gifs, animated: true)
+        XCTAssertFalse(controller.editButton!.isHidden)
+        XCTAssertEqual(actions(controller).map(\.title), ["Edit"])
+        controller.interactiveSwitchMode = .polls
+        controller.applyReadyController(mode: .polls, animated: true)
+        XCTAssertTrue(controller.editButton!.isHidden)
+    }
+    @objc func testSelectionChangedByChildUpdatesDoneAndPanel() {
+        let controller = PeerMediaController<Context>(.file)
+        controller.interactions.update { $0.withSelectionState() }
+        XCTAssertEqual(controller.state, .Edit)
+        XCTAssertEqual(controller.editButton?.text, "Done")
+        XCTAssertTrue(controller.genericView.selecting)
+        controller.interactions.update { $0.withoutSelectionState() }
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertFalse(controller.genericView.selecting)
+    }
+    @objc func testMembersWithoutRemovableRowsHaveNoEdit() {
+        let controller = PeerMediaController<Context>(.members, memberPermission: false)
+        XCTAssertTrue(controller.editButton!.isHidden)
+        XCTAssertTrue(actions(controller).isEmpty)
+        controller.update(with: .Edit)
+        XCTAssertEqual(controller.state, .Normal)
+    }
+    @objc func testMembersPermissionChangesRefreshAndCancelEditing() {
+        let controller = PeerMediaController<Context>(.members, memberPermission: false)
+        controller.receiveMembersAvailability(true)
+        XCTAssertFalse(controller.editButton!.isHidden)
+        controller.update(with: .Edit)
+        controller.genericView.mainTable!.finishScroll()
+        XCTAssertTrue(controller.editing.value)
+        controller.receiveMembersAvailability(false)
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertTrue(controller.editButton!.isHidden)
+        XCTAssertFalse(controller.editing.value)
+        controller.genericView.mainTable!.finishScroll()
+        XCTAssertFalse(controller.editing.value)
+    }
+    @objc func testInactiveMembersPermissionUpdatesDoNotCancelMedia() {
+        let controller = PeerMediaController<Context>(.file)
+        controller.update(with: .Edit)
+        controller.receiveMembersAvailability(false)
+        XCTAssertEqual(controller.state, .Edit)
+        controller.applyReadyController(mode: .members, animated: true)
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertTrue(controller.editButton!.isHidden)
+    }
+    @objc func testBasicGroupUsesExistingRemovalAndInvitationRights() {
+        let member = GroupParticipant.member(id: 2, invitedBy: 3)
+        let invited = GroupParticipant.member(id: 2, invitedBy: 1)
+        let own = GroupParticipant.member(id: 1, invitedBy: 1)
+        let admin = GroupParticipant.admin(id: 2, invitedBy: 3)
+        let creator = GroupParticipant.creator(id: 3)
+        XCTAssertFalse(basicGroupCanEdit(TelegramGroup(role: .member), [member]))
+        XCTAssertTrue(basicGroupCanEdit(TelegramGroup(role: .member), [invited]))
+        XCTAssertFalse(basicGroupCanEdit(TelegramGroup(role: .member), [own]))
+        XCTAssertTrue(basicGroupCanEdit(TelegramGroup(role: .admin), [member]))
+        XCTAssertFalse(basicGroupCanEdit(TelegramGroup(role: .admin), [admin, creator]))
+        XCTAssertTrue(basicGroupCanEdit(TelegramGroup(role: .creator), [admin]))
+        XCTAssertFalse(basicGroupCanEdit(TelegramGroup(role: .creator), [creator]))
+        XCTAssertFalse(basicGroupCanEdit(TelegramGroup(role: .creator), []))
+        XCTAssertFalse(basicGroupCanEdit(TelegramGroup(role: .creator), [member], disabledPeerIds: [2]))
+    }
+    @objc func testChannelUsesActualRemovableParticipantRights() {
+        let member = ChannelParticipant.member(id: 2, invitedAt: 0, adminInfo: nil, banInfo: nil, rank: nil, subscriptionUntilDate: nil)
+        let own = ChannelParticipant.member(id: 1, invitedAt: 0, adminInfo: nil, banInfo: nil, rank: nil, subscriptionUntilDate: nil)
+        let promoted = ChannelParticipant.member(id: 2, invitedAt: 0, adminInfo: AdminInfo(promotedBy: 1), banInfo: nil, rank: nil, subscriptionUntilDate: nil)
+        let otherAdmin = ChannelParticipant.member(id: 2, invitedAt: 0, adminInfo: AdminInfo(promotedBy: 3), banInfo: nil, rank: nil, subscriptionUntilDate: nil)
+        let creator = ChannelParticipant.creator(id: 3)
+        let noBan = TelegramChannel(flags: [], mayBan: false)
+        let ban = TelegramChannel(flags: [], mayBan: true)
+        let owner = TelegramChannel(flags: [.isCreator], mayBan: false)
+        XCTAssertFalse(channelCanEdit(noBan, [member]))
+        XCTAssertTrue(channelCanEdit(ban, [member]))
+        XCTAssertFalse(channelCanEdit(ban, [own, creator, otherAdmin]))
+        XCTAssertTrue(channelCanEdit(noBan, [promoted]))
+        XCTAssertTrue(channelCanEdit(owner, [otherAdmin]))
+        XCTAssertFalse(channelCanEdit(owner, [creator]))
+        XCTAssertFalse(channelCanEdit(owner, []))
+        XCTAssertFalse(channelCanEdit(ban, [member], disabledPeerIds: [2]))
+    }
+    static let allTests = [
+        ("testMembersWithoutRemovableRowsHaveNoEdit", testMembersWithoutRemovableRowsHaveNoEdit),
+        ("testMembersPermissionChangesRefreshAndCancelEditing", testMembersPermissionChangesRefreshAndCancelEditing),
+        ("testInactiveMembersPermissionUpdatesDoNotCancelMedia", testInactiveMembersPermissionUpdatesDoNotCancelMedia),
+        ("testBasicGroupUsesExistingRemovalAndInvitationRights", testBasicGroupUsesExistingRemovalAndInvitationRights),
+        ("testChannelUsesActualRemovableParticipantRights", testChannelUsesActualRemovableParticipantRights),
+        ("testUnsupportedMenusAreAbsent", testUnsupportedMenusAreAbsent),
+        ("testUnsupportedEditCannotBeInvoked", testUnsupportedEditCannotBeInvoked),
+        ("testSupportedMenusEnterSelectionAndDoneLeaves", testSupportedMenusEnterSelectionAndDoneLeaves),
+        ("testUnsupportedTabCancelsSelection", testUnsupportedTabCancelsSelection),
+        ("testSharedMessageTabsRetainSelection", testSharedMessageTabsRetainSelection),
+        ("testSwitchingSelectionOwnersCancels", testSwitchingSelectionOwnersCancels),
+        ("testOnlyActiveStoryControllerToggles", testOnlyActiveStoryControllerToggles),
+        ("testMessageEditingDoesNotToggleStoryChildren", testMessageEditingDoesNotToggleStoryChildren),
+        ("testDelayedMemberScrollCannotRestoreEditing", testDelayedMemberScrollCannotRestoreEditing),
+        ("testMemberEditingDoesNotAwaitExitScroll", testMemberEditingDoesNotAwaitExitScroll),
+        ("testCurrentMemberStateWinsDelayedCompletions", testCurrentMemberStateWinsDelayedCompletions),
+        ("testChildMenusArePreservedWithoutFallback", testChildMenusArePreservedWithoutFallback),
+        ("testSeparatorOnlyChildDoesNotShowButton", testSeparatorOnlyChildDoesNotShowButton),
+        ("testDoneHasNoEditContextMenu", testDoneHasNoEditContextMenu),
+        ("testSelectionChromeUpdatesWithoutObserver", testSelectionChromeUpdatesWithoutObserver),
+        ("testInteractiveTabTransitionRefreshesAvailability", testInteractiveTabTransitionRefreshesAvailability),
+        ("testSelectionChangedByChildUpdatesDoneAndPanel", testSelectionChangedByChildUpdatesDoneAndPanel)
+    ]
+}
+let suite = XCTestSuite(name: "SharedMediaEditAvailabilityTests")
+for (name, _) in SharedMediaEditAvailabilityTests.allTests {
+    suite.addTest(SharedMediaEditAvailabilityTests(selector: NSSelectorFromString(name)))
+}
+suite.run()
+let result = suite.testRun!
+print("Executed \(result.executionCount) tests, with \(result.totalFailureCount) failures")
+exit(result.hasSucceeded ? 0 : 1)

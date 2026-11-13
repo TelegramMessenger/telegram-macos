@@ -1,0 +1,539 @@
+import Foundation
+import XCTest
+
+__MODES__
+
+enum ViewControllerState { case Normal, Edit, Some }
+enum ControlState { case Normal }
+enum ControlEvent { case Down, Up, SingleClick, Click }
+enum SearchState { case None }
+enum KeyHandlerResult { case invoked }
+enum TableScrollState { case upOffset(Bool, Int) }
+enum Curve { case spring }
+enum ContainedViewLayoutTransition { case animated(duration: Double, curve: Curve) }
+enum PeerMediaAnimationDirection { case leftToRight, rightToLeft, interactive }
+final class Context {
+    let peerId = 1
+    let appConfiguration = Configuration()
+}
+final class Configuration {
+    func getGeneralValue(_ key: String, orElse value: Int) -> Int { value }
+}
+struct Strings {
+    let chatContextEdit1 = "Edit"
+    let storyMediaAlbumContextMenuAddFolder = "Add Album"
+    let voiceOverCommonMore = "More"
+}
+func strings() -> Strings { Strings() }
+var lastHighlightColor: Int?
+extension Int {
+    func highlight(color: Int) -> Int { lastHighlightColor = color; return self }
+}
+struct Icons { var chatActions = 1; var chatActionEdit = 2; var chatSearch = 3 }
+struct Colors { var text = 1 }
+struct Theme { var icons = Icons(); var colors = Colors() }
+var theme = Theme()
+enum MenuAnimation {
+    case menu_edit, menu_add
+    var value: Int { self == .menu_edit ? 1 : 2 }
+}
+class ContextMenuItem {
+    let title: String
+    var handler: (() -> Void)?
+    var isSeparatorItem: Bool { false }
+    var isEnabled = true
+    var submenu: ContextMenu?
+    init(_ title: String, handler: (() -> Void)? = nil, itemImage: Int? = nil) {
+        self.title = title
+        self.handler = handler
+    }
+}
+final class ContextSeparatorItem: ContextMenuItem {
+    override var isSeparatorItem: Bool { true }
+    init() { super.init("") }
+}
+final class ContextMenu {
+    var items: [ContextMenuItem] = []
+    init(betterInside: Bool = false) {}
+    func addItem(_ item: ContextMenuItem) { items.append(item) }
+}
+class View {
+    var frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+    var bounds: NSRect { frame }
+    var needsLayout = false
+    func setFrameSize(_ size: NSSize) { frame.size = size }
+}
+class ImageButton: View {
+    var isHidden = false
+    var handler: ((ImageButton) -> Void)?
+    var contextMenu: (() -> ContextMenu?)?
+    var image: Int?
+    var imageTint: Int?
+    var text = ""
+    var label: String?
+    var shows = 0
+    var isEnabled = true
+    var userInteractionEnabled = true
+    var hasHandlers: Bool { handler != nil }
+    func send(event: ControlEvent) { if event == .Click { press() } }
+    __ACCESSIBILITY_PRESS__
+    func set(image: Int, for state: ControlState) {
+        self.image = image
+        self.imageTint = lastHighlightColor
+        lastHighlightColor = nil
+    }
+    func set(text: String, for state: ControlState) { self.text = text }
+    func set(color: Int, for state: ControlState) {}
+    func removeImage(for state: ControlState) { image = nil }
+    func sizeToFit(_ inset: NSSize, _ size: NSSize, thatFit: Bool) -> NSSize {
+        frame.size = NSSize(width: thatFit ? size.width : CGFloat(text.count * 8) + inset.width, height: size.height)
+        return frame.size
+    }
+    func setSingle(handler: @escaping (ImageButton) -> Void, for event: ControlEvent) { self.handler = handler }
+    func showContextMenu() { if contextMenu?() != nil { shows += 1 } }
+    func setAccessibilityLabel(_ value: String) { label = value }
+    func accessibilityPerformShowMenu() -> Bool { showContextMenu(); return true }
+    func press() { if !isHidden { handler?(self) } }
+}
+typealias TextButton = ImageButton
+final class StackedBarView: View {
+    static let pillHeight: CGFloat = 40
+    func insertButton(at index: Int, image: Int, handler: @escaping () -> Void) -> ImageButton { ImageButton() }
+    func set(hidden: Bool, for button: ImageButton) { button.isHidden = hidden; needsLayout = true }
+    func fit(to width: CGFloat, transition: ContainedViewLayoutTransition) -> CGFloat { width }
+    func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {}
+}
+final class TableView: View {
+    var completions: [(Bool) -> Void] = []
+    func scroll(to state: TableScrollState, completion: @escaping (Bool) -> Void) { completions.append(completion) }
+    func finishScroll() { let pending = completions; completions.removeAll(); pending.forEach { $0(true) } }
+}
+final class TabsView {
+    func index(of id: Int64) -> Int? { Int(id) }
+    func contains(_ id: Int64) -> Bool { true }
+}
+final class ContainerView {
+    let view = ContentView()
+    let tabsView = TabsView()
+    var mainView: View?
+    var mainTable: TableView? { mainView as? TableView }
+    var selecting = false
+    func updateMainView(with view: View, animated: PeerMediaAnimationDirection?) { mainView = view }
+    func changeState(selectState: Bool, animated: Bool) { selecting = selectState }
+    func updateSearchState(_ state: MediaSearchState, updateSearchState: @escaping (Int) -> Void, toggle: @escaping () -> Void) {}
+}
+final class ContentView: View { var contentBounds: NSRect { bounds } }
+final class ValuePromise<T> {
+    var value: T
+    init(_ value: T, ignoreRepeated: Bool = true) { self.value = value }
+    func set(_ value: T) { self.value = value }
+}
+final class Disposable { func set(_ value: Int?) {} }
+struct MediaSearchState {}
+struct Signal<T> {
+    static func single(_ value: T) -> Self { Self() }
+    func start(next: (T) -> Void) -> Int { 0 }
+}
+protocol PeerMediaSearchable: AnyObject {
+    var mediaSearchValue: Signal<MediaSearchState> { get }
+    func setSearchValue(_ value: Signal<Int>)
+    func setExternalSearch(_ result: Int, _ loadMore: () -> Void)
+    func toggleSearch()
+}
+struct ExternalSearchData { let searchResult = 0; let loadMore: () -> Void = {} }
+typealias PresentationTheme = Theme
+class ViewController: Equatable {
+    func isLoaded() -> Bool { true }
+    func updateLocalizationAndTheme(theme: PresentationTheme) {}
+    func viewDidResized(_ size: NSSize) {}
+    static func == (lhs: ViewController, rhs: ViewController) -> Bool { lhs === rhs }
+    var view: View = TableView()
+    var suppliedMenu: [ContextMenuItem] = []
+    func menuItems() -> [ContextMenuItem] { suppliedMenu }
+    func viewWillAppear(_ animated: Bool) {}
+    func viewDidAppear(_ animated: Bool) {}
+    func viewWillDisappear(_ animated: Bool) {}
+    func viewDidDisappear(_ animated: Bool) {}
+}
+final class PeerMediaPhotosController<C>: ViewController {}
+final class PeerMediaListController<C>: ViewController {}
+protocol StoryParent: AnyObject { func changeState() }
+struct StoryState {
+    var selected: Set<Int>?
+    var mayAddAlbums = false
+    var folderCount = 0
+    func access(_ peerId: Int) -> Bool { mayAddAlbums }
+}
+final class Atomic<T> {
+    var value: T
+    init(_ value: T) { self.value = value }
+    func with<R>(_ f: (T) -> R) -> R { f(value) }
+}
+final class StoryArguments {}
+struct StoryTransition { let animated = true }
+final class StoryUpdates {
+    var next: (((StoryTransition, StoryState)) -> Void)?
+    func start(next: @escaping ((StoryTransition, StoryState)) -> Void) -> Int { self.next = next; return 0 }
+    func emit(_ state: StoryState) { next?((StoryTransition(), state)) }
+}
+final class StoryDisposables { func add(_ value: Int) {} }
+final class StoryTable { func merge(with transition: StoryTransition) {} }
+final class StoryView {
+    let tableView = StoryTable()
+    func updateState(_ state: StoryState, arguments: StoryArguments, animated: Bool) {}
+}
+final class StoryMediaController<C>: ViewController {
+    let genericView = StoryView()
+    let actionsDisposable = StoryDisposables()
+    let arguments = StoryArguments()
+    let updates = StoryUpdates()
+    var doneButton: ImageButton? = ImageButton()
+    var editButton: ImageButton? = ImageButton()
+    func readyOnce() {}
+    func observeUpdates() {
+        let transition = updates
+        let arguments = self.arguments
+        __STORY_TRANSITION__
+    }
+    func emitUpdates() { updates.emit(stateValue.value) }
+    let stateValue = Atomic(StoryState())
+    let context = Context()
+    var isArchived = false
+    var selected = false
+    var toggles = 0
+    weak var parentController: StoryParent?
+    var menuItemsUpdated: (() -> Void)?
+    func toggleSelection() { selected.toggle(); toggles += 1 }
+    func addCollection(_ id: Int?) {}
+    __STORY_MENU__
+}
+struct ChatPresentationInterfaceState {
+    enum State { case normal, selecting }
+    var ids: Set<Int>?
+    var state: State { ids == nil ? .normal : .selecting }
+    func withoutSelectionState() -> Self { Self(ids: nil) }
+    func withSelectionState() -> Self { Self(ids: []) }
+}
+final class Interaction {
+    var presentation = ChatPresentationInterfaceState()
+    var observer: ((ChatPresentationInterfaceState, ChatPresentationInterfaceState, Bool) -> Void)?
+    func update(_ f: (ChatPresentationInterfaceState) -> ChatPresentationInterfaceState) {
+        let old = presentation
+        presentation = f(old)
+        observer?(presentation, old, true)
+    }
+}
+class EditableController: ViewController {
+    var editButton: TextButton? = TextButton()
+    let stackedBar = StackedBarView()
+    var rightBarView: StackedBarView? = StackedBarView()
+    let genericView = ContainerView()
+    let doneString = "Done"
+    let someString = "Some"
+    __BASE__
+    func updateEditStateTitles() {}
+    func requestUpdateRightBar() { updateEditStateTitles() }
+    override func updateLocalizationAndTheme(theme: PresentationTheme) { requestUpdateRightBar() }
+    func requestUpdateBackBar() {}
+    func requestUpdateCenterBar() {}
+    func loadView() { editButton?.setSingle(handler: { [weak self] _ in self?.changeState() }, for: .Click) }
+}
+final class PeerMediaController<Context>: EditableController, StoryParent {
+    var mode: PeerMediaCollectionMode?
+    let mediaGrid = PeerMediaPhotosController<Context>()
+    let gifs = PeerMediaPhotosController<Context>()
+    let stories = StoryMediaController<Context>()
+    var archiveStories: StoryMediaController<Context>? = StoryMediaController<Context>()
+    let members = ViewController()
+    var canEditMembers = true
+    let commonGroups = ViewController()
+    let similarChannels = ViewController()
+    let similarBots = ViewController()
+    let saved = ViewController()
+    var savedMessages: ViewController? = ViewController()
+    var gifts: ViewController? = ViewController()
+    var pollsController: ViewController? = ViewController()
+    let listControllers = (0..<6).map { _ in PeerMediaListController<Context>() }
+    var currentController: ViewController?
+    let interactions = Interaction()
+    let editing = ValuePromise(false)
+    var currentMainTableView: ((TableView?, Bool, Bool) -> Void)?
+    var searchBarButton: ImageButton?
+    var externalSearchData: ExternalSearchData?
+    var hasSearch = true
+    let searchValueDisposable = Disposable()
+    var interactiveSwitchMode: PeerMediaCollectionMode?
+    func updateSearchBarVisibility(_ value: Bool) {}
+    func prepareNeighborTabs() {}
+    func searchGroupUsers() {}
+    func toggle(with mode: PeerMediaCollectionMode, animated: Bool) {}
+    __SOURCE__
+    init(_ mode: PeerMediaCollectionMode) {
+        super.init()
+        stories.parentController = self
+        archiveStories?.parentController = self
+        stories.observeUpdates()
+        archiveStories?.observeUpdates()
+        loadView()
+        interactions.observer = { [weak self] value, old, animated in self?.selectionDidChange(value, old, animated: animated) }
+        applyReadyController(mode: mode, animated: false)
+    }
+}
+
+final class SharedMediaDirectEditTests: XCTestCase {
+    let supportedModes: [PeerMediaCollectionMode] = [.photoOrVideo, .file, .webpage, .music, .voice, .gifs, .members, .stories, .archiveStories]
+    let unsupportedModes: [PeerMediaCollectionMode] = [.saved, .polls, .commonGroups, .savedMessages, .similarChannels, .similarBots, .gifts]
+    override func setUp() { theme = Theme(); lastHighlightColor = nil }
+    @objc func testSingleEditUsesThemedIcon() {
+        for mode in supportedModes {
+            let controller = PeerMediaController<Context>(mode)
+            XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit, "\(mode)")
+            XCTAssertEqual(controller.editButton?.label, "Edit", "\(mode)")
+            XCTAssertEqual(controller.editButton?.text, "")
+            XCTAssertFalse(controller.editButton!.isHidden)
+        }
+    }
+    @objc func testDirectClickEntersSelectionWithoutMenu() {
+        for mode in supportedModes {
+            let controller = PeerMediaController<Context>(mode)
+            controller.editButton?.press()
+            XCTAssertEqual(controller.state, .Edit, "\(mode)")
+            XCTAssertEqual(controller.editButton?.shows, 0, "\(mode)")
+            XCTAssertEqual(controller.editButton?.text, "Done", "\(mode)")
+            XCTAssertEqual(controller.editButton?.label, "Done", "\(mode)")
+            XCTAssertNil(controller.editButton?.image, "\(mode)")
+        }
+    }
+    @objc func testDoneRestoresDirectEdit() {
+        let controller = PeerMediaController<Context>(.file)
+        controller.update(with: .Edit)
+        controller.editButton?.press()
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        XCTAssertEqual(controller.editButton?.label, "Edit")
+        XCTAssertNil(controller.interactions.presentation.ids)
+        XCTAssertFalse(controller.genericView.selecting)
+    }
+    @objc func testStoryMultiActionMenuRemainsMenu() {
+        let controller = PeerMediaController<Context>(.stories)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        XCTAssertEqual(controller.editButton?.label, "More")
+        controller.editButton?.press()
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertEqual(controller.editButton?.shows, 1)
+        let actions = controller.editButton?.contextMenu?()?.items.filter { !$0.isSeparatorItem }
+        XCTAssertEqual(actions?.map(\.title), ["Edit", "Add Album"])
+        actions?.first?.handler?()
+        XCTAssertEqual(controller.state, .Edit)
+        XCTAssertTrue(controller.stories.selected)
+    }
+    @objc func testSingleNonEditChildActionRemainsMenu() {
+        let controller = PeerMediaController<Context>(.gifts)
+        controller.gifts!.suppliedMenu = [ContextMenuItem("Filter", handler: {})]
+        controller.requestUpdateRightBar()
+        XCTAssertFalse(controller.editButton!.isHidden)
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        controller.editButton?.press()
+        XCTAssertEqual(controller.editButton?.shows, 1)
+        XCTAssertEqual(controller.state, .Normal)
+    }
+    @objc func testUnsupportedTabsStayHidden() {
+        for mode in unsupportedModes {
+            let controller = PeerMediaController<Context>(mode)
+            XCTAssertTrue(controller.editButton!.isHidden, "\(mode)")
+            controller.editButton?.press()
+            XCTAssertEqual(controller.state, .Normal)
+            XCTAssertNil(controller.interactions.presentation.ids)
+        }
+    }
+    @objc func testSeparatorsDoNotCountAsActions() {
+        let controller = PeerMediaController<Context>(.members)
+        controller.members.suppliedMenu = [ContextSeparatorItem(), ContextMenuItem("Edit", handler: { [weak controller] in controller?.update(with: .Edit) }), ContextSeparatorItem()]
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        controller.editButton?.press()
+        XCTAssertEqual(controller.state, .Edit)
+    }
+    @objc func testDisabledEditDoesNotBecomeDirectAction() {
+        let controller = PeerMediaController<Context>(.members)
+        let item = ContextMenuItem("Edit", handler: {})
+        item.isEnabled = false
+        controller.members.suppliedMenu = [item]
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        controller.editButton?.press()
+        XCTAssertEqual(controller.editButton?.shows, 1)
+    }
+    @objc func testMissingHandlerDoesNotBecomeDirectAction() {
+        let controller = PeerMediaController<Context>(.members)
+        controller.members.suppliedMenu = [ContextMenuItem("Edit")]
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+    }
+    @objc func testSubmenuDoesNotBecomeDirectAction() {
+        let controller = PeerMediaController<Context>(.members)
+        let item = ContextMenuItem("Edit", handler: {})
+        item.submenu = ContextMenu()
+        controller.members.suppliedMenu = [item]
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+    }
+    @objc func testAdditionalActionIsNotDropped() {
+        let controller = PeerMediaController<Context>(.members)
+        let edit = ContextMenuItem("Edit", handler: {})
+        let second = ContextMenuItem("Another", handler: {})
+        second.isEnabled = false
+        controller.members.suppliedMenu = [edit, ContextSeparatorItem(), second]
+        controller.requestUpdateRightBar()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        controller.editButton?.press()
+        XCTAssertEqual(controller.editButton?.shows, 1)
+    }
+    @objc func testThemeRefreshChangesDirectIcon() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        theme.icons.chatActionEdit = 42
+        theme.icons.chatActions = 71
+        controller.updateLocalizationAndTheme(theme: theme)
+        XCTAssertEqual(controller.editButton?.image, 42)
+        controller.update(with: .Edit)
+        theme.icons.chatActionEdit = 54
+        controller.updateLocalizationAndTheme(theme: theme)
+        XCTAssertNil(controller.editButton?.image)
+        XCTAssertEqual(controller.editButton?.label, "Done")
+        controller.update(with: .Normal)
+        XCTAssertEqual(controller.editButton?.image, 54)
+    }
+    @objc func testResizeRefreshesCurrentMenuAndSize() {
+        let controller = PeerMediaController<Context>(.stories)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.viewDidResized(NSSize(width: 320, height: 500))
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        controller.stories.stateValue.value.mayAddAlbums = false
+        controller.viewDidResized(NSSize(width: 1200, height: 600))
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        XCTAssertEqual(controller.editButton?.frame.size, NSSize(width: 40, height: 40))
+    }
+    @objc func testTabTransitionsRefreshIconAndVisibility() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.applyReadyController(mode: .stories, animated: true)
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        XCTAssertEqual(controller.editButton?.label, "More")
+        controller.interactiveSwitchMode = .gifs
+        controller.applyReadyController(mode: .gifs, animated: true)
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        controller.applyReadyController(mode: .saved, animated: true)
+        XCTAssertTrue(controller.editButton!.isHidden)
+        controller.applyReadyController(mode: .file, animated: true)
+        XCTAssertFalse(controller.editButton!.isHidden)
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+    }
+    @objc func testClickRechecksChangedChildMenu() {
+        let controller = PeerMediaController<Context>(.stories)
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.editButton?.press()
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertEqual(controller.editButton?.shows, 1)
+    }
+    @objc func testMenuToSingleEditRechecksAtClick() {
+        let controller = PeerMediaController<Context>(.stories)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.requestUpdateRightBar()
+        controller.stories.stateValue.value.mayAddAlbums = false
+        controller.editButton?.press()
+        XCTAssertEqual(controller.state, .Edit)
+        XCTAssertEqual(controller.editButton?.shows, 0)
+    }
+    @objc func testDirectHandlerIdentityIsPreserved() {
+        let controller = PeerMediaController<Context>(.members)
+        var invocations = 0
+        controller.members.suppliedMenu = [ContextMenuItem("Edit", handler: { invocations += 1 })]
+        controller.requestUpdateRightBar()
+        controller.editButton?.press()
+        XCTAssertEqual(invocations, 1)
+        XCTAssertEqual(controller.editButton?.shows, 0)
+    }
+    @objc func testSomeStateKeepsLocalizedTextAndLabel() {
+        let controller = PeerMediaController<Context>(.members)
+        controller.state = .Some
+        XCTAssertEqual(controller.editButton?.text, "Some")
+        XCTAssertEqual(controller.editButton?.label, "Some")
+        XCTAssertNil(controller.editButton?.image)
+    }
+    @objc func testAsynchronousStoryMenuUpdatesRefreshIcon() {
+        let controller = PeerMediaController<Context>(.stories)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.stories.emitUpdates()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActions)
+        XCTAssertEqual(controller.editButton?.label, "More")
+        controller.stories.stateValue.value.folderCount = 16
+        controller.stories.emitUpdates()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        XCTAssertEqual(controller.editButton?.label, "Edit")
+    }
+    @objc func testInactiveStoryUpdatesDoNotChangeCurrentChrome() {
+        let controller = PeerMediaController<Context>(.file)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.stories.emitUpdates()
+        XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+        controller.update(with: .Edit)
+        controller.stories.emitUpdates()
+        XCTAssertEqual(controller.editButton?.text, "Done")
+    }
+    @objc func testAccessibilityPressUsesDirectActionAndDone() {
+        let controller = PeerMediaController<Context>(.photoOrVideo)
+        XCTAssertTrue(controller.editButton!.accessibilityPerformPress())
+        XCTAssertEqual(controller.state, .Edit)
+        XCTAssertEqual(controller.editButton?.shows, 0)
+        XCTAssertEqual(controller.editButton?.label, "Done")
+        XCTAssertTrue(controller.editButton!.accessibilityPerformPress())
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertEqual(controller.editButton?.label, "Edit")
+    }
+    @objc func testAccessibilityMultiActionPressShowsMenu() {
+        let controller = PeerMediaController<Context>(.stories)
+        controller.stories.stateValue.value.mayAddAlbums = true
+        controller.stories.emitUpdates()
+        XCTAssertTrue(controller.editButton!.accessibilityPerformPress())
+        XCTAssertEqual(controller.state, .Normal)
+        XCTAssertEqual(controller.editButton?.shows, 1)
+    }
+    @objc func testEditIconUsesToolbarTextColorAcrossThemes() {
+        let controller = PeerMediaController<Context>(.file)
+        for toolbarTextColor in [11, 91] {
+            theme.colors.text = toolbarTextColor
+            controller.updateLocalizationAndTheme(theme: theme)
+            XCTAssertEqual(controller.editButton?.imageTint, toolbarTextColor)
+            XCTAssertEqual(controller.editButton?.image, theme.icons.chatActionEdit)
+            controller.update(with: .Edit)
+            XCTAssertNil(controller.editButton?.image)
+            controller.update(with: .Normal)
+            XCTAssertEqual(controller.editButton?.imageTint, toolbarTextColor)
+        }
+    }
+    static let allTests = [
+        "testEditIconUsesToolbarTextColorAcrossThemes",
+        "testAsynchronousStoryMenuUpdatesRefreshIcon", "testInactiveStoryUpdatesDoNotChangeCurrentChrome",
+        "testAccessibilityPressUsesDirectActionAndDone", "testAccessibilityMultiActionPressShowsMenu",
+        "testSingleEditUsesThemedIcon", "testDirectClickEntersSelectionWithoutMenu",
+        "testDoneRestoresDirectEdit", "testStoryMultiActionMenuRemainsMenu",
+        "testSingleNonEditChildActionRemainsMenu", "testUnsupportedTabsStayHidden",
+        "testSeparatorsDoNotCountAsActions", "testDisabledEditDoesNotBecomeDirectAction",
+        "testMissingHandlerDoesNotBecomeDirectAction", "testSubmenuDoesNotBecomeDirectAction",
+        "testAdditionalActionIsNotDropped", "testThemeRefreshChangesDirectIcon",
+        "testResizeRefreshesCurrentMenuAndSize", "testTabTransitionsRefreshIconAndVisibility",
+        "testClickRechecksChangedChildMenu", "testMenuToSingleEditRechecksAtClick",
+        "testDirectHandlerIdentityIsPreserved", "testSomeStateKeepsLocalizedTextAndLabel"
+    ]
+}
+let suite = XCTestSuite(name: "SharedMediaDirectEditTests")
+for name in SharedMediaDirectEditTests.allTests {
+    suite.addTest(SharedMediaDirectEditTests(selector: NSSelectorFromString(name)))
+}
+suite.run()
+let result = suite.testRun!
+print("Executed \(result.executionCount) tests, with \(result.totalFailureCount) failures")
+exit(result.hasSucceeded ? 0 : 1)
