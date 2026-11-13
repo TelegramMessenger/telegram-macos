@@ -1,0 +1,202 @@
+import Foundation
+import XCTest
+import Darwin
+
+enum Builtin: String, CaseIterable { case day, dayClassic, dark, nightAccent, system }
+struct Palette {
+    var parent: Builtin
+    var accent: Int = 1
+    var basicAccent: Int = 1
+}
+struct Icons { var chatActions: Int }
+struct Theme {
+    var colors: Palette
+    var cloudTheme: Int?
+    var icons: Icons
+}
+typealias PresentationTheme = Theme
+var theme = Theme(colors: Palette(parent: .system), cloudTheme: nil, icons: Icons(chatActions: 0))
+struct Labels {
+    let appearanceNewTheme = "New Theme"
+    let appearanceExportTheme = "Export Theme"
+    let appearanceThemeShare = "Share Theme"
+    let appearanceReset = "Reset"
+}
+func strings() -> Labels { Labels() }
+enum MenuAnimation: Int {
+    case menu_change_colors, menu_save_as, menu_share, menu_reset
+    var value: Int { rawValue }
+}
+struct ContextMenuItem {
+    let title: String
+    let handler: () -> Void
+    let itemImage: Int
+    init(_ title: String, handler: @escaping () -> Void, itemImage: Int) {
+        self.title = title
+        self.handler = handler
+        self.itemImage = itemImage
+    }
+}
+final class ContextMenu {
+    var items: [ContextMenuItem] = []
+    func addItem(_ item: ContextMenuItem) { items.append(item) }
+}
+final class Layer { var opacity: Float = 1 }
+class BarView {
+    var isHidden = false
+    var layer: Layer? = Layer()
+    func change(opacity: Float, duration: Double, timingFunction: String) { layer?.opacity = opacity }
+}
+enum ControlState { case Normal }
+final class ImageButton {
+    var isHidden = false
+    var image: Int?
+    var contextMenu: (() -> ContextMenu?)?
+    func set(image: Int, for state: ControlState) { self.image = image }
+}
+final class ImageBarView: BarView {
+    let button = ImageButton()
+    init(controller: ViewController, _ image: Int) {
+        super.init()
+        button.set(image: image, for: .Normal)
+    }
+}
+class ViewController {
+    var rightBarView: BarView!
+    func updateLocalizationAndTheme(theme: PresentationTheme) {}
+    func requestUpdateRightBar() {}
+    func requestUpdateBackBar() {}
+    func requestUpdateCenterBar() {}
+}
+final class InputDataView {
+    func updateLocalizationAndTheme(theme: PresentationTheme) {}
+}
+final class AppearanceSignal {
+    var next: ((Int) -> Void)?
+    func start(next: @escaping (Int) -> Void) -> Int {
+        self.next = next
+        next(0)
+        return 0
+    }
+    func emit() { next?(0) }
+}
+final class Disposable {
+    func set(_ token: Int) {}
+}
+let appearanceSignal = AppearanceSignal()
+final class InputDataController: ViewController {
+    let genericView = InputDataView()
+    let appearanceDisposablet = Disposable()
+    var updateRightBarView: ((BarView) -> Void)?
+    let customRightButton: (ViewController) -> BarView?
+    init(customRightButton: @escaping (ViewController) -> BarView?) {
+        self.customRightButton = customRightButton
+    }
+    func loadBar() { rightBarView = customRightButton(self) }
+    func subscribe() {
+        appearanceDisposablet.set(appearanceSignal.start(next: __APPEARANCE_CALLBACK__))
+    }
+    public override func updateLocalizationAndTheme(theme: PresentationTheme) __THEME_UPDATE__
+    public override func requestUpdateRightBar() __RIGHT_UPDATE__
+}
+func makeController() -> InputDataController {
+    let controller = InputDataController(customRightButton: __FACTORY__)
+    controller.updateRightBarView = __UPDATER__
+    controller.loadBar()
+    return controller
+}
+struct AnimationStyle {
+    let duration = 0.2
+    let function = "easeOut"
+}
+func animatedNavigation(_ right: BarView) {
+    let animationStyle = AnimationStyle()
+    __ANIMATION__
+}
+private var scenarios = 0
+private func check(_ value: Bool, _ label: String) { record(label, value) }
+func select(_ parent: Builtin, cloud: Bool = false, customAccent: Bool = false) {
+    theme = Theme(colors: Palette(parent: parent, accent: customAccent ? 2 : 1), cloudTheme: cloud ? 1 : nil, icons: Icons(chatActions: theme.icons.chatActions + 1))
+}
+func verify(_ controller: InputDataController, _ label: String) {
+    scenarios += 1
+    guard let view = controller.rightBarView as? ImageBarView else {
+        check(false, label + "/custom-image-bar")
+        return
+    }
+    let system = theme.colors.parent == .system
+    let visible = !view.isHidden && !view.button.isHidden && (view.layer?.opacity ?? 0) > 0
+    check(visible == !system, label + "/visibility")
+    check(view.button.image == theme.icons.chatActions, label + "/icon-refresh")
+    let menu = view.button.contextMenu?()
+    if system {
+        check(menu == nil, label + "/nil-menu")
+    } else {
+        var expected = [strings().appearanceNewTheme, strings().appearanceExportTheme]
+        var images = [MenuAnimation.menu_change_colors.value, MenuAnimation.menu_save_as.value]
+        if theme.cloudTheme != nil {
+            expected.append(strings().appearanceThemeShare)
+            images.append(MenuAnimation.menu_share.value)
+        }
+        if theme.cloudTheme != nil || theme.colors.accent != theme.colors.basicAccent {
+            expected.append(strings().appearanceReset)
+            images.append(MenuAnimation.menu_reset.value)
+        }
+        check(menu?.items.map(\.title) == expected, label + "/menu-order")
+        check(menu?.items.map(\.itemImage) == images, label + "/menu-icons")
+    }
+}
+
+private var assertions = 0
+private var failures: [String] = []
+private func record(_ name: String, _ value: Bool, file: StaticString = #filePath, line: UInt = #line) {
+    assertions += 1
+    if !value { failures.append(name) }
+    XCTAssertTrue(value, name, file: file, line: line)
+}
+
+final class RegressionTests: XCTestCase {
+    @objc func testRegressionScenarios() {
+        for parent in Builtin.allCases {
+            for cloud in [false, true] {
+                for custom in [false, true] {
+                    select(parent, cloud: cloud, customAccent: custom)
+                    let controller = makeController()
+                    verify(controller, "initial-\(parent.rawValue)-cloud\(cloud)-accent\(custom)")
+                }
+            }
+        }
+        for initial in [Builtin.system, .day] {
+            select(initial)
+            let controller = makeController()
+            let originalBar = controller.rightBarView
+            animatedNavigation(controller.rightBarView)
+            verify(controller, "animated-entry-\(initial.rawValue)")
+            controller.subscribe()
+            for (step, parent) in [Builtin.system, .day, .system, .dayClassic, .dark, .nightAccent, .system, .system, .day].enumerated() {
+                for cloud in [false, true] {
+                    for custom in [false, true] {
+                        select(parent, cloud: cloud, customAccent: custom)
+                        appearanceSignal.emit()
+                        check(controller.rightBarView === originalBar, "live-switch-\(initial.rawValue)-step\(step)-cloud\(cloud)-accent\(custom)/same-bar")
+                        verify(controller, "live-switch-\(initial.rawValue)-step\(step)-to-\(parent.rawValue)-cloud\(cloud)-accent\(custom)")
+                    }
+                }
+            }
+            controller.updateRightBarView?(BarView())
+        }
+    }
+}
+
+let suite = XCTestSuite(forTestCaseClass: RegressionTests.self)
+suite.run()
+let nativeRun = suite.testRun!
+print("RESULT " + String(data: try! JSONSerialization.data(withJSONObject: [
+    "test_cases": nativeRun.executionCount,
+    "scenarios": scenarios,
+    "assertions": assertions,
+    "failed_assertions": failures.count,
+    "failures": failures,
+    "xctest_failures": nativeRun.totalFailureCount
+], options: [.sortedKeys]), encoding: .utf8)!)
+exit(nativeRun.hasSucceeded && failures.isEmpty ? 0 : 1)
