@@ -6243,7 +6243,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     
                     let name:String = peer.addressName ?? peer.compactDisplayTitle
                     
-                    let distance = inputText.distance(from: range.lowerBound, to: range.upperBound)
+                    let distance = inputText.utf16.distance(from: range.lowerBound, to: range.upperBound)
                     let replacementText = name + " "
                     
                     let atLength = peer.addressName != nil ? 0 : 1
