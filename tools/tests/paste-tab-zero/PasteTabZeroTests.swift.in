@@ -1,0 +1,231 @@
+import Cocoa
+
+struct Theme {
+    let fontSize: CGFloat = 13
+}
+
+let theme = Theme()
+
+extension NSFont {
+    static func normal(_ size: CGFloat) -> NSFont {
+        return .systemFont(ofSize: size)
+    }
+    static func bold(_ size: CGFloat) -> NSFont {
+        return .boldSystemFont(ofSize: size)
+    }
+    static func italic(_ size: CGFloat) -> NSFont {
+        return NSFontManager.shared.convert(.systemFont(ofSize: size), toHaveTrait: .italicFontMask)
+    }
+    static func boldItalic(_ size: CGFloat) -> NSFont {
+        return NSFontManager.shared.convert(.boldSystemFont(ofSize: size), toHaveTrait: .italicFontMask)
+    }
+    static func menlo(_ size: CGFloat) -> NSFont {
+        return NSFont(name: "Menlo-Regular", size: size)!
+    }
+}
+
+struct TextInputAttributes {
+    static let textUrl = NSAttributedString.Key(rawValue: "Attribute__TextUrl")
+}
+
+final class TextInputTextUrlAttribute: NSObject {
+    let url: String
+    init(url: String) {
+        self.url = url
+    }
+}
+
+func linkIsSelfReferential(text: String, url: String) -> Bool {
+    return text == url || text + "/" == url
+}
+
+extension String {
+    var nsstring: NSString {
+        return self as NSString
+    }
+    var length: Int {
+        return self.nsstring.length
+    }
+}
+
+extension NSAttributedString {
+    var range: NSRange {
+        return NSMakeRange(0, self.length)
+    }
+
+    var trimNewLines: NSAttributedString {
+        __TRIM_NEW_LINES__
+    }
+
+    __APPLY_RTF__
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func shown(_ text: String) -> String {
+    return text.replacingOccurrences(of: "\t", with: "⇥").replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "⏎").replacingOccurrences(of: "\u{2028}", with: "\\u2028").replacingOccurrences(of: "\u{fffc}", with: "\\ufffc")
+}
+
+func plain(_ text: String) -> NSAttributedString {
+    return NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12)])
+}
+
+func rtf(_ attributed: NSAttributedString) -> Data {
+    return attributed.rtf(from: attributed.range, documentAttributes: [:])!
+}
+
+func pasted(_ data: Data) -> NSAttributedString? {
+    return (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtfd], documentAttributes: nil)) ?? (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))
+}
+
+func list(_ lines: [String], format: NSTextList.MarkerFormat, start: Int) -> NSAttributedString {
+    let textList = NSTextList(markerFormat: format, options: 0)
+    textList.startingItemNumber = start
+    let style = NSMutableParagraphStyle()
+    style.textLists = [textList]
+    return NSAttributedString(string: lines.joined(separator: "\n"), attributes: [.font: NSFont.systemFont(ofSize: 12), .paragraphStyle: style])
+}
+
+func listRtf(start: Int, suffix: String, items: [(String, String)]) -> Data {
+    let header = "{\\rtf1\\ansi\\ansicpg1252\\cocoartf2822\n{\\fonttbl\\f0\\fswiss\\fcharset0 Helvetica;}\n{\\*\\listtable{\\list\\listtemplateid1\\listhybrid{\\listlevel\\levelnfc0\\levelnfcn0\\leveljc0\\leveljcn0\\levelfollow0\\levelstartat\(start)\\levelspace360\\levelindent0{\\*\\levelmarker \\{decimal\\}\(suffix)}{\\leveltext\\leveltemplateid1\\'0\(1 + suffix.count)\\'00\(suffix);}{\\levelnumbers\\'01;}\\fi-360\\li720\\lin720 }{\\listname ;}\\listid1}}\n{\\*\\listoverridetable{\\listoverride\\listid1\\listoverridecount0\\ls1}}\n\\pard\\tx220\\tx720\\pardeftab720\\li720\\fi-720\\partightenfactor0\n\\ls1\\ilvl0\n\\f0\\fs24 \\cf0 "
+    let body = items.map { "{\\listtext\t\($0.0)\t}\($0.1)" }.joined(separator: "\\\n")
+    return (header + body + "}").data(using: .ascii)!
+}
+
+var markersInText = true
+if #available(macOS 26.0, *) {
+    markersInText = NSTextList.includesTextListMarkers
+}
+print("AppKit puts list markers into the text it reads from RTF: \(markersInText ? "yes" : "no")")
+
+let samples = [
+    "a\t0\t0",
+    "\t0x01",
+    "\t0",
+    "x\t0",
+    "\t00",
+    "0\t0",
+    "\t\t0",
+    "\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0",
+    "id\tmin\tmax\nr1\t0\t0\nr2\t0\t10",
+    "static const uint8_t table[] = {\n\t0x01, 0x02,\n\t0x00\n};",
+    "price\t0.50\nqty\t0",
+    "a\t0\u{2028}\t0",
+    "a\t0\r\n\t0",
+    "😀\t0\t0",
+    "\t1\t2",
+]
+
+for sample in samples {
+    let (result, _) = plain(sample).applyRtf()
+    check("pasting \(shown(sample)) keeps it, got \(shown(result.string))", result.string == sample)
+}
+
+for sample in samples {
+    guard let read = pasted(rtf(plain(sample))) else {
+        check("the RTF of \(shown(sample)) reads back", false)
+        continue
+    }
+    let (result, _) = read.applyRtf()
+    check("pasting the RTF of \(shown(sample)) keeps what AppKit read, got \(shown(result.string))", result.string == read.trimNewLines.string)
+}
+
+for sample in ["a\t0\t0", "\t0x01", "id\tmin\tmax\nr1\t0\t0\nr2\t0\t10"] {
+    check("AppKit reads \(shown(sample)) back from RTF as it was written", pasted(rtf(plain(sample)))?.string == sample)
+}
+
+let handWritten = "{\\rtf1\\ansi\\ansicpg1252\\cocoartf2822\n{\\fonttbl\\f0\\fswiss\\fcharset0 Helvetica;}\n\\pard\\tx560\\tx1120\\pardirnatural\\partightenfactor0\n\n\\f0\\fs24 \\cf0 a\t0\t0\\\n\t0x01\\\nb\\tab 0\\tab 0}"
+let handWrittenRead = pasted(handWritten.data(using: .ascii)!)
+check("AppKit reads the hand-written RTF", handWrittenRead?.string == "a\t0\t0\n\t0x01\nb\t0\t0")
+if let handWrittenRead = handWrittenRead {
+    let (result, _) = handWrittenRead.applyRtf()
+    check("pasting hand-written RTF keeps its tabs and zeros, got \(shown(result.string))", result.string == "a\t0\t0\n\t0x01\nb\t0\t0")
+}
+
+let rtfLists: [(String, Int, String, [(String, String)])] = [
+    ("a numbered list", 1, ".", [("1.", "one"), ("2.", "two")]),
+    ("a list that starts at 0", 0, "", [("0", "zero"), ("1", "one")]),
+    ("a list whose items start with 0", 1, ".", [("1.", "0.5 mg"), ("2.", "0.25 mg")]),
+    ("a list whose RTF numbers every item 0", 1, ".", [("0.", "one"), ("0.", "two")]),
+]
+for (name, start, suffix, items) in rtfLists {
+    let expected = items.map { markersInText ? "\t\($0.0)\t\($0.1)" : $0.1 }.joined(separator: "\n")
+    guard let read = pasted(listRtf(start: start, suffix: suffix, items: items)) else {
+        check("AppKit reads \(name) from RTF", false)
+        continue
+    }
+    check("AppKit reads \(name) from RTF as \(shown(expected)), got \(shown(read.trimNewLines.string))", read.trimNewLines.string == expected)
+    let (result, _) = read.applyRtf()
+    check("pasting \(name) keeps what AppKit read, got \(shown(result.string))", result.string == read.trimNewLines.string)
+}
+
+let listCases: [([String], NSTextList.MarkerFormat, Int)] = [
+    (["\t0\tzero", "\t1\tone", "\t2\ttwo"], .decimal, 0),
+    (["\t1.\tone", "\t2.\ttwo"], NSTextList.MarkerFormat(rawValue: "{decimal}."), 1),
+    (["\t1.\t0.5 mg", "\t2.\t0.25 mg"], NSTextList.MarkerFormat(rawValue: "{decimal}."), 1),
+    (["\t•\ta", "\t•\t0"], .disc, 1),
+]
+for (lines, format, start) in listCases {
+    let text = lines.joined(separator: "\n")
+    let (result, _) = list(lines, format: format, start: start).applyRtf()
+    check("pasting the list \(shown(text)) keeps its markers, got \(shown(result.string))", result.string == text)
+}
+
+let rows = (1...8000).map { "row \($0)\t0\t0" }.joined(separator: "\n")
+let started = Date()
+let (large, _) = plain(rows).applyRtf()
+let seconds = Date().timeIntervalSince(started)
+check("pasting 8000 rows with 16000 tab-zeros keeps them", large.string == rows)
+check("pasting 8000 rows with 16000 tab-zeros takes under a second, took \(String(format: "%.2f", seconds)) s", seconds < 1)
+
+let (trimmed, _) = plain("\n\na\tb\n\n").applyRtf()
+check("leading and trailing newlines are still trimmed, got \(shown(trimmed.string))", trimmed.string == "a\tb")
+
+let styled = NSMutableAttributedString()
+styled.append(NSAttributedString(string: "bold", attributes: [.font: NSFont.boldSystemFont(ofSize: 20), .foregroundColor: NSColor.red]))
+styled.append(NSAttributedString(string: " italic", attributes: [.font: NSFont.italic(20)]))
+styled.append(NSAttributedString(string: " both", attributes: [.font: NSFont.boldItalic(20)]))
+styled.append(NSAttributedString(string: " code", attributes: [.font: NSFont(name: "Courier", size: 20)!]))
+styled.append(NSAttributedString(string: " "))
+styled.append(NSAttributedString(string: "link", attributes: [.link: URL(string: "https://example.com/a")!]))
+styled.append(NSAttributedString(string: " "))
+styled.append(NSAttributedString(string: "https://example.com/b", attributes: [.link: URL(string: "https://example.com/b")!]))
+let picture = NSTextAttachment()
+styled.append(NSAttributedString(attachment: picture))
+let (converted, attachments) = styled.applyRtf()
+
+func attribute(_ key: NSAttributedString.Key, at text: String) -> Any? {
+    let location = converted.string.nsstring.range(of: text).location
+    guard location != NSNotFound else {
+        return nil
+    }
+    return converted.attribute(key, at: location, effectiveRange: nil)
+}
+
+func traits(at text: String) -> NSFontDescriptor.SymbolicTraits? {
+    return (attribute(.font, at: text) as? NSFont)?.fontDescriptor.symbolicTraits
+}
+
+check("styled text keeps its characters, got \(shown(converted.string))", converted.string == "bold italic both code link https://example.com/b\u{fffc}")
+check("bold text gets the bold font", traits(at: "bold")?.contains(.bold) == true && (attribute(.font, at: "bold") as? NSFont)?.pointSize == theme.fontSize)
+check("italic text gets the italic font", traits(at: "italic")?.contains(.italic) == true && traits(at: "italic")?.contains(.bold) == false)
+check("bold italic text gets the bold italic font", traits(at: "both")?.contains([.bold, .italic]) == true)
+check("monospaced text gets Menlo", (attribute(.font, at: "code") as? NSFont)?.fontName == "Menlo-Regular")
+check("a link with its own label becomes a text link", (attribute(TextInputAttributes.textUrl, at: "link") as? TextInputTextUrlAttribute)?.url == "https://example.com/a")
+check("a link whose label is its URL becomes plain text", attribute(TextInputAttributes.textUrl, at: "https://example.com/b") == nil && attribute(.link, at: "https://example.com/b") == nil)
+check("other attributes are removed", converted.attribute(.foregroundColor, at: 0, effectiveRange: nil) == nil)
+check("the attachment is returned", attachments.count == 1 && attachments.first === picture)
+check("the attachment is removed from the text", converted.attribute(.attachment, at: converted.length - 1, effectiveRange: nil) == nil)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
