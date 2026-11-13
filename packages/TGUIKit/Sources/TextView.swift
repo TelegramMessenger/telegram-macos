@@ -3180,7 +3180,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
         guard menuDisposable === previousState, previousState?.version == cancelledVersion else { return }
         if let layout = textLayout, userInteractionEnabled, layout.mayItems, mouseInside() {
             let location = convert(event.locationInWindow, from: nil)
-            if !layout.selectedRange.hasSelectText && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
+            if (!layout.selectedRange.hasSelectText || layout.selectedRange.range.length == 0) && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
                 layout.selectWord(at: location)
             }
             self.setNeedsDisplayLayer()

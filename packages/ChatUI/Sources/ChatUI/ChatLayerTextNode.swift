@@ -781,7 +781,7 @@ final class ChatLayerTextNode: ChatLayerNode {
         let cancelledVersion = previousState?.cancel()
         guard menuState === previousState, previousState?.version == cancelledVersion else { return true }
         if let layout = textLayout, let scene, !scene.isHiddenOrHasHiddenAncestor, isVisible, isEffectivelyEnabled, layout.mayItems, layer.bounds.contains(location) {
-            if !layout.selectedRange.hasSelectText && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
+            if (!layout.selectedRange.hasSelectText || layout.selectedRange.range.length == 0) && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
                 layout.selectWord(at: location)
             }
             self.selectionChanged()
