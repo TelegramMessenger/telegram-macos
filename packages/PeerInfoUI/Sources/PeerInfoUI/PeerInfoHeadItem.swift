@@ -206,7 +206,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
                         items.append(ActionItem(text: strings().peerInfoBotPrivacy, color: item.accentColor, image: theme.icons.profile_more, animation: .menu_plus, action: arguments.botPrivacy))
                     }
                 }
-                if peer.id != verifyCodePeerId, botInfo.flags.contains(.canEdit) {
+                if peer.id != verifyCodePeerId, !botInfo.flags.contains(.canEdit) {
                     items.append(ActionItem(text: strings().peerInfoReportBot, color: item.accentColor, image: theme.icons.profile_report, animation: .menu_report, action: arguments.reportBot))
                     markAnalytics(.report)
                 }
