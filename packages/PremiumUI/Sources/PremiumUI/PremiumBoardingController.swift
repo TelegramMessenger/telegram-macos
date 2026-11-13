@@ -679,13 +679,19 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     } else {
         scene = .star
     }
-    
+    let headerViewType: GeneralViewType
+    if case .coin = scene {
+        headerViewType = .singleItem
+    } else {
+        headerViewType = .legacy
+    }
+
     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("header"), equatable: InputDataEquatable(state), comparable: nil, item: { initialSize, stableId in
         
         let status: NSAttributedString
         status = PremiumHooks.shared.applyMessageEntities(state.premiumConfiguration.statusEntities, state.premiumConfiguration.status, arguments.context, 13, arguments.openInfo, nil, theme.colors.isDark, theme.bubbled)
 
-        return PremiumBoardingHeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: arguments.presentation, isPremium: state.isPremium, peer: state.peer?.peer, emojiStatus: state.status, source: state.source, premiumText: status, viewType: .legacy, sceneType: scene, analyticsContext: arguments.analyticsContext)
+        return PremiumBoardingHeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: arguments.presentation, isPremium: state.isPremium, peer: state.peer?.peer, emojiStatus: state.status, source: state.source, premiumText: status, viewType: headerViewType, sceneType: scene, analyticsContext: arguments.analyticsContext)
     }))
     index += 1
     

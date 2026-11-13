@@ -1,0 +1,163 @@
+import AppKit
+import CoreText
+
+func check(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if !condition() {
+        FileHandle.standardError.write(Data(("FAIL: " + message + "\n").utf8))
+        exit(1)
+    }
+}
+
+enum SceneType: CaseIterable {
+    case coin, star, grace, gift
+}
+
+enum GeneralViewItemPosition {
+    case single
+}
+
+enum GeneralViewType {
+    case legacy
+    case modern(position: GeneralViewItemPosition, insets: NSEdgeInsets)
+    var innerInset: NSEdgeInsets { __INNER_INSET__ }
+    static var singleItem: GeneralViewType { __SINGLE_ITEM__ }
+}
+
+func selectedViewType(_ scene: SceneType) -> GeneralViewType {
+    __VIEW_TYPE_SELECTION__
+}
+
+class GeneralRowItem {
+    var width: CGFloat
+    let viewType: GeneralViewType
+    let inset = NSEdgeInsetsMake(0, 20, 0, 20)
+    let fullSize = false
+    init(_ initialSize: NSSize, stableId: Int, viewType: GeneralViewType = .legacy) {
+        self.width = initialSize.width
+        self.viewType = viewType
+    }
+    func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
+        self.width = width
+        return true
+    }
+    var blockWidth: CGFloat { __BLOCK_WIDTH__ }
+    var height: CGFloat { 0 }
+}
+
+final class CoreTextLayoutProbe {
+    let text: NSAttributedString
+    let font: NSFont
+    var constrainedWidth: CGFloat = 0
+    var layoutSize = NSSize.zero
+    var lineCount = 0
+    init(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular) {
+        let font = NSFont.systemFont(ofSize: size, weight: weight)
+        self.font = font
+        self.text = NSAttributedString(string: text, attributes: [.font: font])
+    }
+    func measure(width: CGFloat) {
+        check(width > 0, "positive text width")
+        constrainedWidth = width
+        layoutSize = .zero
+        lineCount = 0
+        let typesetter = CTTypesetterCreateWithAttributedString(text as CFAttributedString)
+        var offset = 0
+        while offset < text.length {
+            let count = CTTypesetterSuggestLineBreak(typesetter, offset, Double(width))
+            check(count > 0, "text measurement advances")
+            let line = CTTypesetterCreateLine(typesetter, CFRange(location: offset, length: count))
+            let lineWidth = CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line)
+            layoutSize.width = max(layoutSize.width, ceil(CGFloat(lineWidth)))
+            lineCount += 1
+            offset += count
+        }
+        let lineHeight = floor(font.ascender - font.descender)
+        layoutSize.height = CGFloat(lineCount) * lineHeight + CGFloat(max(0, lineCount - 1)) * floor(lineHeight * 0.12)
+    }
+}
+
+struct LayoutPeer {
+    let emojiStatus: Int?
+}
+
+final class HeaderLayoutProbe: GeneralRowItem {
+    let titleLayout: CoreTextLayoutProbe
+    let infoLayout: CoreTextLayoutProbe
+    let peer: LayoutPeer? = nil
+    init(width: CGFloat, scene: SceneType, title: String, info: String) {
+        titleLayout = CoreTextLayoutProbe(title, size: __HEADER_FONT_SIZE__, weight: .medium)
+        infoLayout = CoreTextLayoutProbe(info, size: __TEXT_FONT_SIZE__)
+        let initialSize = NSSize(width: width, height: 0)
+        let stableId = 0
+        let viewType = selectedViewType(scene)
+        __SUPER_INIT__
+        _ = makeSize(initialSize.width)
+    }
+    override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool { __MAKE_SIZE__ }
+    override var height: CGFloat { __HEIGHT__ }
+}
+
+final class FrameProbe {
+    var frame: NSRect
+    let parentWidth: CGFloat
+    init(size: NSSize, parentWidth: CGFloat) {
+        frame = NSRect(origin: .zero, size: size)
+        self.parentWidth = parentWidth
+    }
+    func centerX(y: CGFloat) {
+        frame.origin = NSPoint(x: (parentWidth - frame.width) / 2, y: y)
+    }
+}
+
+class RowViewProbe {
+    func layout() {}
+}
+
+final class HeaderViewProbe: RowViewProbe {
+    let premiumView: FrameProbe?
+    let statusView: FrameProbe?
+    let titleView: FrameProbe
+    let infoView: FrameProbe
+    init(_ item: HeaderLayoutProbe, scene: SceneType) {
+        premiumView = scene == .gift ? nil : FrameProbe(size: NSSize(width: item.width, height: 150), parentWidth: item.width)
+        statusView = scene == .gift ? FrameProbe(size: NSSize(width: 100, height: 100), parentWidth: item.width) : nil
+        titleView = FrameProbe(size: item.titleLayout.layoutSize, parentWidth: item.width)
+        infoView = FrameProbe(size: item.infoLayout.layoutSize, parentWidth: item.width)
+    }
+    override func layout() { __VIEW_LAYOUT__ }
+}
+
+let fixtures: [(String, String)] = [
+    (__TITLE__, __PREMIUM_INFO__),
+    (__TITLE__, __NONPREMIUM_INFO__),
+    ("Telegram для бизнеса", "Вы получили дополнительные возможности для бизнеса. Telegram для бизнеса временно входит в подписку Telegram Premium."),
+    (String(repeating: "Telegram für Unternehmen ", count: 3), String(repeating: "Zusätzliche Funktionen für Unternehmen unterstützen ausführliche Informationen zu Standorten, Öffnungszeiten und schnellen Antworten. ", count: 5)),
+    ("ビジネス向けTelegram", String(repeating: "ビジネスの所在地、営業時間、クイック返信について詳しく説明できます。", count: 6))
+]
+
+for (title, info) in fixtures {
+    for scene in SceneType.allCases {
+        let item = HeaderLayoutProbe(width: 1049, scene: scene, title: title, info: info)
+        for width: CGFloat in [1049, 320, 420, 600, 640, 900, 1600, 320, 1049] {
+            _ = item.makeSize(width)
+            let expectedWidth = scene == .coin ? min(600, width - 40) - 28 : width - 40
+            check(item.titleLayout.constrainedWidth == expectedWidth, "\(scene) title width at \(width)")
+            check(item.infoLayout.constrainedWidth == expectedWidth, "\(scene) intro width at \(width)")
+            let view = HeaderViewProbe(item, scene: scene)
+            view.layout()
+            for frame in [view.titleView.frame, view.infoView.frame] {
+                check(frame.width <= expectedWidth + 1, "text stays within column")
+                check(abs(frame.midX - width / 2) < 0.01, "text remains centered")
+            }
+            check(view.infoView.frame.minY == view.titleView.frame.maxY + 10, "title and intro do not overlap")
+            check(item.height - view.infoView.frame.maxY == (scene == .gift ? 10 : 20), "row retains bottom spacing")
+            check(view.premiumView?.frame.minY == -30 || scene == .gift, "scene position is unchanged")
+        }
+    }
+    let wide = HeaderLayoutProbe(width: 1049, scene: .coin, title: title, info: info)
+    let narrow = HeaderLayoutProbe(width: 320, scene: .coin, title: title, info: info)
+    check(wide.infoLayout.lineCount > 1, "wide Business intro wraps")
+    check(narrow.infoLayout.lineCount > wide.infoLayout.lineCount, "narrow Business intro adds lines")
+    check(narrow.height > wide.height, "row grows for wrapped localized text")
+}
+print("PASS: Business header column, resizing, localized wrapping, height, centering, and non-Business layout contracts")
