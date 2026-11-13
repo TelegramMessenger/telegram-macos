@@ -269,6 +269,7 @@ open class Window: NSWindow {
     private var responders:[ResponderObserver] = []
     private var mouseHandlers:[UInt:[MouseObserver]] = [:]
     private var isWindowFrameMouseGesture = false
+    private weak var titlebarControlTrackingView: NSView?
     private var saver:WindowSaver?
     public  var initFromSaver:Bool = false
     public  var copyhandler:(()->Void)? = nil
@@ -814,6 +815,57 @@ open class Window: NSWindow {
     }
     
     
+    private func titlebarControlTarget(for event: NSEvent) -> NSView? {
+        guard let contentView = contentView, let frameView = contentView.superview else {
+            return nil
+        }
+        if event.locationInWindow.y < contentLayoutRect.maxY {
+            return nil
+        }
+        let point = frameView.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+        guard let hit = frameView.hitTest(point), hit === contentView || hit.isDescendant(of: contentView) else {
+            return nil
+        }
+        if hit.acceptsFirstResponder {
+            return nil
+        }
+        if findInteractiveControlAncestor(of: hit) == nil {
+            return nil
+        }
+        return hit
+    }
+
+    private func dispatchTitlebarControlEvent(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown:
+            guard let target = titlebarControlTarget(for: event) else {
+                titlebarControlTrackingView = nil
+                return false
+            }
+            titlebarControlTrackingView = target
+            if !isKeyWindow && canBecomeKey {
+                makeKey()
+            }
+            target.mouseDown(with: event)
+            return true
+        case .leftMouseDragged:
+            guard let target = titlebarControlTrackingView else {
+                return false
+            }
+            target.mouseDragged(with: event)
+            return true
+        case .leftMouseUp:
+            guard let target = titlebarControlTrackingView else {
+                return false
+            }
+            titlebarControlTrackingView = nil
+            target.mouseUp(with: event)
+            return true
+        default:
+            return false
+        }
+    }
+
     private func isWindowFrameEvent(_ event: NSEvent) -> Bool {
         guard let contentView = contentView, let frameView = contentView.superview else {
             return false
@@ -948,6 +1000,9 @@ open class Window: NSWindow {
                 }
             }
 
+            if dispatchTitlebarControlEvent(event) {
+                return
+            }
             super.sendEvent(event)
         } else {
             //super.sendEvent(event)
