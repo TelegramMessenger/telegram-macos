@@ -7,7 +7,7 @@ import SwiftSignalKit
 import TelegramCore
 import ObjcUtils
 
-private let se_markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
+private let se_markdownRegexFormat = "(^|\\s|\\n)((?>`{5,})|````?)([\\s\\S]+?)(\\2)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let se_markdownRegex = try? NSRegularExpression(pattern: se_markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
 
 
@@ -387,8 +387,8 @@ final class SE_TextInputState: Equatable {
                         rawOffset -= match.range(at: 2).length + match.range(at: 4).length
                         newText.append(raw.nsstring.substring(with: match.range(at: 1)) + text + raw.nsstring.substring(with: match.range(at: 5)))
                         attributes.append(.pre(matchIndex + match.range(at: 1).length ..< matchIndex + match.range(at: 1).length + text.length, language))
-                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, 3))
-                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length + text.length + 3, 3))
+                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, match.range(at: 2).length))
+                        offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length + text.length + 3, match.range(at: 4).length))
                     } else {
                         let text = raw.nsstring.substring(with: pre)
                         let entity = raw.nsstring.substring(with: match.range(at: 2))
