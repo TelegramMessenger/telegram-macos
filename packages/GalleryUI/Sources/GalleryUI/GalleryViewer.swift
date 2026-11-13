@@ -1313,15 +1313,19 @@ public class GalleryViewer: NSResponder {
             actionDisposables.add(adminsDisposable)
             messagesActionDisposable.set(actionDisposables)
             
-            actionDisposables.add((adminsPromise.get() |> deliverOnMainQueue).start( next:{ [weak self] admins in
+            actionDisposables.add((adminsPromise.get() |> take(1) |> deliverOnMainQueue).start( next:{ [weak self] admins in
                 guard let `self` = self else {return}
                 
                 var canDelete:Bool = true
                 var canDeleteForEveryone = true
                 var otherCounter:Int32 = 0
+                var _mustDeleteForEveryoneMessage: Bool = true
                 for message in messages {
                     if !canDeleteMessage(message, account: self.context.account, chatLocation: chatLocation, mode: chatMode) {
                         canDelete = false
+                    }
+                    if !mustDeleteForEveryoneMessage(message) {
+                        _mustDeleteForEveryoneMessage = false
                     }
                     if !canDeleteForEveryoneMessage(message, context: self.context) {
                         canDeleteForEveryone = false
@@ -1363,7 +1367,10 @@ public class GalleryViewer: NSResponder {
                             _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: type).start()
                         })
                     } else {
-                        _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer).start()
+                        verifyAlert(for: self.window, header: strings().chatConfirmActionUndonable, information: _mustDeleteForEveryoneMessage ? strings().chatConfirmDeleteForEveryoneOther(messages.count) : strings().chatConfirmDeleteMessages1Other(messages.count), ok: strings().confirmDelete, successHandler: { [weak self] _ in
+                            guard let `self` = self else {return}
+                            _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer).start()
+                        })
                     }
                 }
             }))

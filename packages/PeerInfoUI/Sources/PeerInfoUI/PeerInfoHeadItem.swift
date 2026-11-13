@@ -548,6 +548,13 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         }
     }
     
+    var patternDarkensCover: Bool {
+        if let emojiStatus = peer?.emojiStatus, case .starGift = emojiStatus.content {
+            return false
+        }
+        return nameColor != nil && threadId == nil && !editing
+    }
+    
     var hasBackgroundGradient: Bool {
         if let emojiStatus = peer?.emojiStatus {
             switch emojiStatus.content {
@@ -2725,6 +2732,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
                 addSubview(current, positioned: .above, relativeTo: backgroundView)
             }
             
+            current.darkensCover = item.patternDarkensCover
             current.set(fileId: emoji, color: item.profileEmojiColor, context: item.context, animated: animated)
         } else if let view = self.emojiSpawn {
             performSubviewRemoval(view, animated: animated)

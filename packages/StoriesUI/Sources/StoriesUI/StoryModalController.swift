@@ -2576,7 +2576,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         }
         
         let copyLink:(StoryContentItem)->Void = { [weak self] story in
-            if let peerId = story.peerId, story.sharable {
+            if let peerId = story.peerId, story.canCopyLink {
                 let signal = showModalProgress(signal: context.engine.messages.exportStoryLink(peerId: peerId, id: story.storyItem.id), for: context.window)
                 
                 _ = signal.start(next: { link in
@@ -2589,6 +2589,9 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         }
         
         let repost:(StoryContentItem)->Void = { story in
+            guard story.sharable else {
+                return
+            }
             showModal(with: StoryPrivacyModalController(context: context, presentation: darkAppearance, reason: .share(story)), for: context.window)
         }
 
@@ -3010,7 +3013,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                         copyLink(story)
                     }, itemImage: MenuAnimation.menu_copy_link.value))
                 }
-                if story.sharable && !story.storyItem.isForwardingDisabled {
+                if story.sharable {
                     menu.addItem(ContextMenuItem(strings().storyControlsMenuShare, handler: {
                         share(story)
                     }, itemImage: MenuAnimation.menu_share.value))
@@ -3156,17 +3159,14 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
                 }
                 
                 if story.sharable {
-                    if !story.storyItem.isForwardingDisabled {
-                        menu.addItem(ContextMenuItem(strings().storyMyInputShare, handler: {
-                            self?.arguments?.share(story)
-                        }, itemImage: MenuAnimation.menu_share.value))
-                    }
-                    
-                    if story.canCopyLink {
-                        menu.addItem(ContextMenuItem(strings().storyMyInputCopyLink, handler: {
-                            self?.arguments?.copyLink(story)
-                        }, itemImage: MenuAnimation.menu_copy_link.value))
-                    }
+                    menu.addItem(ContextMenuItem(strings().storyMyInputShare, handler: {
+                        self?.arguments?.share(story)
+                    }, itemImage: MenuAnimation.menu_share.value))
+                }
+                if story.canCopyLink {
+                    menu.addItem(ContextMenuItem(strings().storyMyInputCopyLink, handler: {
+                        self?.arguments?.copyLink(story)
+                    }, itemImage: MenuAnimation.menu_copy_link.value))
                 }
             }
            

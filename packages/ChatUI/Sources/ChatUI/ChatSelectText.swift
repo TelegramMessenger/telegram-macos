@@ -12,6 +12,50 @@ import TelegramUtils
 import Localization
 import HTMLBubbles
 import MessageUtils
+func showCopyRestriction(_ message: Message, chatInteraction: ChatInteraction) -> Bool {
+    guard message.isCopyProtected(cachedData: chatInteraction.presentation.cachedData) else {
+        return false
+    }
+    showProtectedCopyAlert(message, for: chatInteraction.interactionContext.window)
+    return true
+}
+
+func restrictCopying(_ interactions: TextViewInteractions, message: Message, layout: TextViewLayout, chatInteraction: ChatInteraction) {
+    restrictCopying(interactions, message: message, chatInteraction: chatInteraction, isBlocked: { [weak layout] in
+        return layout?.mayItems == false
+    })
+}
+
+func restrictCopying(_ interactions: TextViewInteractions, message: Message, layout: FoldingTextLayout, chatInteraction: ChatInteraction) {
+    restrictCopying(interactions, message: message, chatInteraction: chatInteraction, isBlocked: { [weak layout] in
+        return layout?.blocks.contains(where: { !$0.text.mayItems }) == true
+    })
+}
+
+private func restrictCopying(_ interactions: TextViewInteractions, message: Message, chatInteraction: ChatInteraction, isBlocked: @escaping () -> Bool) {
+    let copy = interactions.copy
+    interactions.copy = { [weak chatInteraction] in
+        guard isBlocked() else {
+            return copy?() ?? false
+        }
+        if let chatInteraction {
+            _ = showCopyRestriction(message, chatInteraction: chatInteraction)
+        }
+        return true
+    }
+    let processURL = interactions.processURL
+    let makeLinkType = interactions.makeLinkType
+    interactions.processURL = { [weak chatInteraction] link in
+        if case .code = makeLinkType((link, "")), isBlocked() {
+            if let chatInteraction {
+                _ = showCopyRestriction(message, chatInteraction: chatInteraction)
+            }
+            return
+        }
+        processURL(link)
+    }
+}
+
 public struct SelectContainer {
     public let text:NSAttributedString
     public let range:NSRange
@@ -47,6 +91,9 @@ func copiedMessageReplyLine(_ message: Message, threadId: Int64?) -> String? {
         author = forwardInfo.authorTitle
     }
     let title = quote != nil ? strings().chatReplyQuotePanelTitle(author) : strings().chatReplyMessagePanelTitle(author)
+    if replied.isCopyProtected(cachedData: nil) {
+        return title
+    }
     let source = quote.map { messageReplyQuoteText($0).text } ?? (pullText(from: replied).string as String)
     let firstLine = source.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
     let snippet = firstLine.count > 100 ? String(firstLine.prefix(100)) + "…" : firstLine
@@ -345,7 +392,16 @@ public class SelectManager : NSResponder {
             if let selectionState = chatInteraction.presentation.selectionState {
                 let timeDifference = chatInteraction.interactionContext.timeDifference
                 let threadId = chatInteraction.chatLocation.threadId
-                _ = chatInteraction.interactionContext.account.postbox.messagesAtIds(Array(selectionState.selectedIds.sorted(by: <))).start(next: { messages in
+                let cachedData = chatInteraction.presentation.cachedData
+                let window = chatInteraction.interactionContext.window
+                _ = (chatInteraction.interactionContext.account.postbox.messagesAtIds(Array(selectionState.selectedIds.sorted(by: <))) |> deliverOnMainQueue).start(next: { messages in
+                    if let blocked = messages.first(where: { $0.isCopyProtected(cachedData: cachedData) }) {
+                        showProtectedCopyAlert(blocked, for: window)
+                    }
+                    let messages = messages.filter { !$0.isCopyProtected(cachedData: cachedData) }
+                    guard !messages.isEmpty else {
+                        return
+                    }
                     var text: String = ""
                     for message in messages {
                         if !text.isEmpty {

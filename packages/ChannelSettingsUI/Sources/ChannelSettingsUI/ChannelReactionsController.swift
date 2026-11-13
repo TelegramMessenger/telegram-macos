@@ -650,7 +650,7 @@ public func ChannelReactionsController<Context: AccountContextProtocol>(context:
     
     controller.validateData = { _ in
         
-        _ = showModalProgress(signal: context.engine.peers.updatePeerReactionSettings(peerId: peerId, reactionSettings: .init(allowedReactions: stateValue.with { $0.allowedReactions }, maxReactionCount: stateValue.with { $0.maxReactionsCount }, starsAllowed: stateValue.with { $0.starsAllowed })), for: context.window).start(error: { error in
+        _ = showModalProgress(signal: context.engine.peers.updatePeerReactionSettings(peerId: peerId, reactionSettings: .init(allowedReactions: stateValue.with { $0.enabled ? $0.allowedReactions : .empty }, maxReactionCount: stateValue.with { $0.maxReactionsCount }, starsAllowed: stateValue.with { $0.enabled ? $0.starsAllowed : false })), for: context.window).start(error: { error in
             
             switch error {
             case .boostRequired:

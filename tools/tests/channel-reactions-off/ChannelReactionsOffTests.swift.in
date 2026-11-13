@@ -1,0 +1,258 @@
+import Foundation
+
+let clown = "🤡"
+
+struct MediaId: Equatable {
+    let id: Int64
+}
+
+struct File: Equatable {
+    let fileId: MediaId
+    func _parse() -> File {
+        return self
+    }
+}
+
+enum MessageReaction {
+    enum Reaction: Equatable {
+        case builtin(String)
+        case custom(Int64)
+        case stars
+        var string: String {
+            switch self {
+            case let .builtin(value):
+                return value
+            case let .custom(fileId):
+                return "\(fileId)"
+            case .stars:
+                return "stars"
+            }
+        }
+    }
+}
+
+enum PeerAllowedReactions: Equatable {
+    case all
+    case limited([MessageReaction.Reaction])
+    case empty
+}
+
+struct PeerReactionSettings: Equatable {
+    let allowedReactions: PeerAllowedReactions
+    let maxReactionCount: Int32?
+    let starsAllowed: Bool?
+}
+
+struct AvailableReactions: Equatable {
+    struct Reaction: Equatable {
+        let value: MessageReaction.Reaction
+        let activateAnimation: File
+        let isEnabled: Bool
+    }
+    let reactions: [Reaction]
+}
+
+struct ChannelBoostStatus: Equatable {
+    let level: Int
+}
+
+struct MyBoostStatus: Equatable {
+}
+
+enum LocalAnimatedSticker {
+    case premium_reaction_6
+    var file: File {
+        return File(fileId: MediaId(id: 990006))
+    }
+}
+
+struct InputText: Equatable {
+    var items: [Int64]
+    init() {
+        self.items = []
+    }
+    init(items: [Int64]) {
+        self.items = items
+    }
+    static func makeAnimated(_ file: File, text: String) -> InputText {
+        return InputText(items: [file.fileId.id])
+    }
+    static func makeAnimated(_ fileId: Int64, text: String) -> InputText {
+        return InputText(items: [fileId])
+    }
+}
+
+enum ChatTextInputAttribute {
+    case bold
+    case animated(Int, String, Int64, Int, Int)
+}
+
+func chatTextAttributes(from text: InputText) -> [ChatTextInputAttribute] {
+    return [.bold] + text.items.map { .animated(0, "", $0, 0, 0) }
+}
+
+struct Updated_ChatTextInputState: Equatable {
+    var inputText: InputText
+    var caret: Int
+    init(inputText: InputText) {
+        self.inputText = inputText
+        self.caret = inputText.items.count
+    }
+}
+
+final class TextView_Interactions {
+    var presentation = Updated_ChatTextInputState(inputText: InputText())
+    func update(_ f: (Updated_ChatTextInputState) -> Updated_ChatTextInputState) {
+        presentation = f(presentation)
+    }
+    func insertText(_ text: InputText, selectedRange: Range<Int>? = nil) -> Updated_ChatTextInputState {
+        let range = selectedRange ?? presentation.caret ..< presentation.caret
+        var items = presentation.inputText.items
+        items.replaceSubrange(range, with: text.items)
+        var updated = Updated_ChatTextInputState(inputText: InputText(items: items))
+        updated.caret = range.lowerBound + text.items.count
+        return updated
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+    init(value: T) {
+        self.value = value
+    }
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(value)
+    }
+    func modify(_ f: (T) -> T) -> T {
+        value = f(value)
+        return value
+    }
+}
+
+__STATE__
+
+func makeScreen(allowedReactions: PeerAllowedReactions?, availableReactions: AvailableReactions, reactionsCount: Int32?, starsAllowed: Bool?) -> State {
+    __INITIAL__
+    return initialState
+}
+
+var stateValue = Atomic(value: makeScreen(allowedReactions: nil, availableReactions: AvailableReactions(reactions: []), reactionsCount: nil, starsAllowed: nil))
+
+func updateState(_ f: (State) -> State) {
+    _ = stateValue.modify(f)
+}
+
+let toggleEnabled: () -> Void = {
+    __TOGGLE__
+}
+
+func saved() -> PeerReactionSettings {
+    return PeerReactionSettings(__SAVED__)
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func reaction(_ value: MessageReaction.Reaction, _ file: Int64) -> AvailableReactions.Reaction {
+    return AvailableReactions.Reaction(value: value, activateAnimation: File(fileId: MediaId(id: file)), isEnabled: true)
+}
+
+let available = AvailableReactions(reactions: [
+    reaction(.builtin("👍"), 1),
+    reaction(.builtin("👎"), 2),
+    reaction(.builtin("❤"), 3),
+])
+let everything = available.reactions.map { $0.value }
+let custom = MessageReaction.Reaction.custom(500)
+
+struct Case {
+    let name: String
+    let allowed: PeerAllowedReactions?
+    let stars: Bool?
+    let count: Int32?
+    let shown: [MessageReaction.Reaction]?
+}
+
+func open(_ item: Case) {
+    stateValue = Atomic(value: makeScreen(allowedReactions: item.allowed, availableReactions: available, reactionsCount: item.count, starsAllowed: item.stars))
+}
+
+func sends(_ settings: PeerReactionSettings, _ shown: [MessageReaction.Reaction]?) -> Bool {
+    guard let shown = shown else {
+        return true
+    }
+    return settings.allowedReactions == .limited(shown)
+}
+
+let on: [Case] = [
+    Case(name: "all reactions", allowed: .all, stars: false, count: nil, shown: everything),
+    Case(name: "all reactions, paid on", allowed: .all, stars: true, count: nil, shown: everything),
+    Case(name: "some reactions with a custom emoji", allowed: .limited([.builtin("👎"), custom]), stars: nil, count: 5, shown: [.builtin("👎"), custom]),
+    Case(name: "one reaction, paid on", allowed: .limited([.builtin("👍")]), stars: true, count: 3, shown: [.builtin("👍")]),
+    Case(name: "settings not loaded", allowed: nil, stars: nil, count: nil, shown: nil),
+]
+
+for item in on {
+    open(item)
+    check("\(item.name): the window opens with reactions on", stateValue.with { $0.enabled })
+    var settings = saved()
+    check("\(item.name): Update with no change sends the reactions shown", sends(settings, item.shown))
+    check("\(item.name): Update with no change keeps paid reactions as they were", settings.starsAllowed == item.stars)
+    check("\(item.name): Update with no change keeps the reaction limit", settings.maxReactionCount == item.count)
+
+    open(item)
+    toggleEnabled()
+    check("\(item.name): the switch turns reactions off", !stateValue.with { $0.enabled })
+    settings = saved()
+    check("\(item.name): Update with reactions off sends no reactions", settings.allowedReactions == .empty)
+    check("\(item.name): Update with reactions off sends paid reactions off", settings.starsAllowed == false)
+    check("\(item.name): Update with reactions off keeps the reaction limit", settings.maxReactionCount == item.count)
+
+    open(item)
+    toggleEnabled()
+    toggleEnabled()
+    settings = saved()
+    check("\(item.name): off and on again sends the reactions shown", sends(settings, item.shown))
+    check("\(item.name): off and on again keeps paid reactions as they were", settings.starsAllowed == item.stars)
+}
+
+let off: [Case] = [
+    Case(name: "reactions off", allowed: .empty, stars: false, count: nil, shown: everything),
+    Case(name: "reactions off, paid unknown", allowed: .empty, stars: nil, count: 7, shown: everything),
+    Case(name: "paid reactions only", allowed: .empty, stars: true, count: nil, shown: everything),
+]
+
+for item in off {
+    open(item)
+    check("\(item.name): the window opens with reactions off", !stateValue.with { $0.enabled })
+    var settings = saved()
+    check("\(item.name): Update with no change sends no reactions", settings.allowedReactions == .empty)
+    check("\(item.name): Update with no change sends paid reactions off", settings.starsAllowed == false)
+    check("\(item.name): Update with no change keeps the reaction limit", settings.maxReactionCount == item.count)
+
+    open(item)
+    toggleEnabled()
+    check("\(item.name): the switch turns reactions on", stateValue.with { $0.enabled })
+    settings = saved()
+    check("\(item.name): switching on offers every available reaction", sends(settings, item.shown))
+    check("\(item.name): switching on leaves paid reactions as they were", settings.starsAllowed == item.stars)
+
+    open(item)
+    toggleEnabled()
+    toggleEnabled()
+    settings = saved()
+    check("\(item.name): on and off again sends no reactions", settings.allowedReactions == .empty)
+    check("\(item.name): on and off again sends paid reactions off", settings.starsAllowed == false)
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
