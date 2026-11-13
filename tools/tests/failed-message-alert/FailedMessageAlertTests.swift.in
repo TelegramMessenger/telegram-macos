@@ -1,0 +1,575 @@
+import Foundation
+
+enum NoError: Error {}
+
+final class Disposable {}
+
+var mainQueue: [() -> Void] = []
+
+func drain() {
+    while !mainQueue.isEmpty {
+        let work = mainQueue.removeFirst()
+        work()
+    }
+}
+
+final class Signal<T, E> {
+    private let generator: (@escaping (T) -> Void) -> Void
+
+    init(_ generator: @escaping (@escaping (T) -> Void) -> Void) {
+        self.generator = generator
+    }
+
+    @discardableResult
+    func start(next: @escaping (T) -> Void = { _ in }) -> Disposable {
+        self.generator(next)
+        return Disposable()
+    }
+
+    @discardableResult
+    func startStandalone() -> Disposable {
+        return self.start()
+    }
+}
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: DefaultPrecedence
+}
+
+infix operator |> : PipeRight
+
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+func deliverOnMainQueue<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
+    return Signal { next in
+        signal.start(next: { value in
+            mainQueue.append { next(value) }
+        })
+    }
+}
+
+func mapToSignal<T, R, E>(_ f: @escaping (T) -> Signal<R, E>) -> (Signal<T, E>) -> Signal<R, E> {
+    return { signal in
+        return Signal { next in
+            signal.start(next: { value in
+                f(value).start(next: next)
+            })
+        }
+    }
+}
+
+struct PeerId: Hashable {
+    let value: Int64
+}
+
+struct MessageId: Hashable, CustomStringConvertible {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+
+    var description: String {
+        return "\(self.namespace):\(self.id)"
+    }
+}
+
+enum Namespaces {
+    enum Message {
+        static let Local: Int32 = 1
+        static let allWelcomeMessages: Set<Int32> = [7]
+        static let allEphemeral: Set<Int32> = [8]
+    }
+}
+
+struct MessageFlags: OptionSet {
+    let rawValue: Int
+    static let Failed = MessageFlags(rawValue: 1 << 0)
+    static let Unsent = MessageFlags(rawValue: 1 << 1)
+}
+
+protocol MessageAttribute {}
+
+protocol Media {}
+
+final class OutgoingMessageInfoAttribute: MessageAttribute {
+    let sendErrorCode: String?
+
+    init(sendErrorCode: String?) {
+        self.sendErrorCode = sendErrorCode
+    }
+}
+
+final class Message {
+    let id: MessageId
+    var flags: MessageFlags
+    let groupingKey: Int64?
+    let authorId: PeerId?
+    var attributes: [MessageAttribute]
+
+    init(id: MessageId, flags: MessageFlags, groupingKey: Int64?, authorId: PeerId?, attributes: [MessageAttribute]) {
+        self.id = id
+        self.flags = flags
+        self.groupingKey = groupingKey
+        self.authorId = authorId
+        self.attributes = attributes
+    }
+}
+
+protocol Peer: AnyObject {
+    var isChannel: Bool { get }
+    var compactDisplayTitle: String { get }
+}
+
+final class TestPeer: Peer {
+    let isChannel: Bool
+    let compactDisplayTitle = "peer"
+
+    init(isChannel: Bool) {
+        self.isChannel = isChannel
+    }
+}
+
+final class Transaction {
+    var messages: [Message] = []
+    var peer: Peer?
+    var deleted: [[MessageId]] = []
+    var nextId: Int32 = 1000
+
+    func getMessage(_ id: MessageId) -> Message? {
+        return self.messages.first(where: { $0.id == id })
+    }
+
+    private func group(_ id: MessageId, limit: Int, initial: (Message) -> Bool, predicate: (Message, Message) -> Bool) -> [Message]? {
+        guard let index = self.messages.firstIndex(where: { $0.id == id }) else {
+            return nil
+        }
+        let central = self.messages[index]
+        if !initial(central) {
+            return nil
+        }
+        if !predicate(central, central) {
+            return [central]
+        }
+        var result: [Message] = []
+        var previous = index - 1
+        while previous >= 0, predicate(self.messages[previous], central) {
+            result.insert(self.messages[previous], at: 0)
+            if result.count == limit {
+                return result
+            }
+            previous -= 1
+        }
+        result.append(central)
+        if result.count == limit {
+            return result
+        }
+        var next = index + 1
+        while next < self.messages.count, predicate(self.messages[next], central) {
+            result.append(self.messages[next])
+            if result.count == limit {
+                return result
+            }
+            next += 1
+        }
+        return result
+    }
+
+    func getMessageGroup(_ id: MessageId) -> [Message]? {
+        return self.group(id, limit: 16, initial: { _ in true }, predicate: { lhs, rhs in
+            guard let lhsKey = lhs.groupingKey, let rhsKey = rhs.groupingKey else {
+                return false
+            }
+            return lhsKey == rhsKey
+        })
+    }
+
+    func getMessageFailedGroup(_ id: MessageId) -> [Message]? {
+        return self.group(id, limit: 100, initial: { $0.flags.contains(.Failed) }, predicate: { lhs, rhs in
+            return lhs.flags.contains(.Failed) && rhs.flags.contains(.Failed) && lhs.authorId == rhs.authorId
+        })
+    }
+
+    func getPeer(_ id: PeerId) -> Peer? {
+        return self.peer
+    }
+
+    func deleteMessages(_ ids: [MessageId], forEachMedia: ((Media) -> Void)?) {
+        self.deleted.append(ids)
+        self.messages.removeAll(where: { ids.contains($0.id) })
+    }
+}
+
+final class Postbox {
+    let transactionValue = Transaction()
+
+    func transaction<T>(_ f: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal { next in
+            next(f(self.transactionValue))
+        }
+    }
+}
+
+final class Account {
+    let postbox = Postbox()
+}
+
+var resentCalls: [[MessageId]] = []
+
+func resendMessages(account: Account, messageIds: [MessageId]) -> Signal<Void, NoError> {
+    return account.postbox.transaction { transaction in
+        resentCalls.append(messageIds.filter { id in transaction.messages.contains(where: { $0.id == id }) })
+        for id in messageIds {
+            guard let index = transaction.messages.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            let old = transaction.messages.remove(at: index)
+            transaction.nextId += 1
+            let copy = Message(id: MessageId(peerId: id.peerId, namespace: id.namespace, id: transaction.nextId), flags: [.Unsent], groupingKey: old.groupingKey, authorId: old.authorId, attributes: [])
+            transaction.messages.append(copy)
+        }
+    }
+}
+
+final class Messages {
+    var retried: [MessageId] = []
+
+    func retryEphemeralOutgoingMessage(messageId: MessageId) -> Signal<Void, NoError> {
+        return Signal { next in
+            self.retried.append(messageId)
+            next(())
+        }
+    }
+}
+
+final class Engine {
+    let messages = Messages()
+}
+
+final class Window {}
+
+final class AccountContext {
+    let account = Account()
+    let engine = Engine()
+    let window = Window()
+}
+
+final class ChatInteraction {
+    let interactionContext: AccountContext
+
+    init(context: AccountContext) {
+        self.interactionContext = context
+    }
+}
+
+@dynamicMemberLookup
+struct Strings {
+    subscript(dynamicMember name: String) -> String {
+        return name
+    }
+
+    subscript(dynamicMember name: String) -> (String) -> String {
+        return { "\(name)(\($0))" }
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+enum ConfirmResult {
+    case thrid
+    case basic
+}
+
+struct ShownAlert {
+    let information: String?
+    let ok: String
+    let option: String?
+    let handler: (ConfirmResult) -> Void
+}
+
+var alerts: [ShownAlert] = []
+
+func verifyAlert_button(for window: Window, header: String, information: String?, ok: String, option: String? = nil, successHandler: @escaping (ConfirmResult) -> Void) {
+    alerts.append(ShownAlert(information: information, ok: ok, option: option, handler: successHandler))
+}
+
+__FAILURE_REASON__
+
+__SEND_FAILURE__
+
+final class ChatRowItem {
+    let context: AccountContext
+    let chatInteraction: ChatInteraction
+    var message: Message?
+
+    init(context: AccountContext, message: Message?) {
+        self.context = context
+        self.chatInteraction = ChatInteraction(context: context)
+        self.message = message
+    }
+
+__RESEND_FAILED__
+__DELETE_MESSAGE__
+}
+
+let peer = PeerId(value: 42)
+let me = PeerId(value: 1)
+
+struct Item {
+    let key: Int64?
+    let failed: Bool
+}
+
+struct Chat {
+    let items: [Item]
+    let code: String?
+}
+
+enum Press {
+    case resend
+    case delete
+    case none
+}
+
+struct Outcome {
+    var alerts: [(ok: String, option: String?, information: String?)] = []
+    var resent: [[MessageId]] = []
+    var deleted: [[MessageId]] = []
+    var retried: [MessageId] = []
+    var before: [MessageId] = []
+    var after: [(id: MessageId, key: Int64?, flags: MessageFlags)] = []
+}
+
+func id(_ value: Int32, namespace: Int32 = Namespaces.Message.Local) -> MessageId {
+    return MessageId(peerId: peer, namespace: namespace, id: value)
+}
+
+func run(_ chat: Chat, click: Int, press: Press, namespace: Int32 = Namespaces.Message.Local, channel: Bool = false, dropItem: Bool = false, beforePress: ((Transaction) -> Void)? = nil) -> Outcome {
+    alerts = []
+    resentCalls = []
+    mainQueue = []
+    let context = AccountContext()
+    let transaction = context.account.postbox.transactionValue
+    transaction.peer = TestPeer(isChannel: channel)
+    for (index, item) in chat.items.enumerated() {
+        let attributes: [MessageAttribute] = item.failed ? [OutgoingMessageInfoAttribute(sendErrorCode: chat.code)] : []
+        transaction.messages.append(Message(id: id(Int32(index + 1), namespace: namespace), flags: item.failed ? [.Failed] : [], groupingKey: item.key, authorId: me, attributes: attributes))
+    }
+    var outcome = Outcome()
+    outcome.before = transaction.messages.map(\.id)
+    var item: ChatRowItem? = ChatRowItem(context: context, message: transaction.messages[click])
+    item?.resendFailed(transaction.messages[click].id)
+    drain()
+    outcome.alerts = alerts.map { ($0.ok, $0.option, $0.information) }
+    if dropItem {
+        item = nil
+    }
+    beforePress?(transaction)
+    if let alert = alerts.first {
+        switch press {
+        case .resend:
+            alert.handler(.basic)
+        case .delete:
+            alert.handler(alert.option == nil ? .basic : .thrid)
+        case .none:
+            break
+        }
+    }
+    drain()
+    _ = item
+    outcome.resent = resentCalls.filter { !$0.isEmpty }
+    outcome.deleted = transaction.deleted.filter { !$0.isEmpty }
+    outcome.retried = context.engine.messages.retried
+    outcome.after = transaction.messages.map { ($0.id, $0.groupingKey, $0.flags) }
+    return outcome
+}
+
+let noRetryCodes: Set<String> = ["CHAT_RESTRICTED", "CHAT_WRITE_FORBIDDEN", "CHANNEL_INVALID", "CHANNEL_PRIVATE", "CHAT_ADMIN_REQUIRED", "CHAT_GUEST_SEND_FORBIDDEN", "CHAT_FORWARDS_RESTRICTED", "TOPIC_CLOSED", "TOPIC_DELETED", "MESSAGE_TOO_LONG", "ENTITIES_TOO_LONG", "USER_IS_BLOCKED", "PREMIUM_ACCOUNT_REQUIRED"]
+
+func allowsRetry(_ code: String?) -> Bool {
+    guard let code else {
+        return true
+    }
+    if noRetryCodes.contains(code) || code.hasPrefix("USER_BANNED_IN_CHANNEL") {
+        return false
+    }
+    return !(code.hasPrefix("CHAT_SEND_") && code.hasSuffix("_FORBIDDEN"))
+}
+
+func album(_ chat: Chat, _ click: Int) -> [Int] {
+    guard let key = chat.items[click].key else {
+        return [click]
+    }
+    var lower = click
+    while lower > 0, chat.items[lower - 1].key == key {
+        lower -= 1
+    }
+    var upper = click
+    while upper + 1 < chat.items.count, chat.items[upper + 1].key == key {
+        upper += 1
+    }
+    return Array(lower ... upper)
+}
+
+func expected(_ chat: Chat, click: Int, press: Press) -> [String] {
+    var problems: [String] = []
+    let outcome = run(chat, click: click, press: press)
+    let ids = outcome.before
+    guard chat.items[click].failed else {
+        if !outcome.alerts.isEmpty || !outcome.resent.isEmpty || !outcome.deleted.isEmpty {
+            problems.append("a message that is not failed got an alert or an action")
+        }
+        return problems
+    }
+    let target = album(chat, click).filter { chat.items[$0].failed }.map { ids[$0] }
+    let rest = ids.filter { !target.contains($0) }
+    guard outcome.alerts.count == 1, let alert = outcome.alerts.first else {
+        return ["\(outcome.alerts.count) alerts"]
+    }
+    let retry = allowsRetry(chat.code)
+    if retry {
+        if alert.ok != "alertSendErrorResend" || alert.option != "alertSendErrorDelete" {
+            problems.append("buttons \(alert.ok)/\(alert.option ?? "-"), expected Resend/Delete")
+        }
+    } else if alert.ok != "alertSendErrorDelete" || alert.option != nil {
+        problems.append("buttons \(alert.ok)/\(alert.option ?? "-"), expected Delete only")
+    }
+    let left = outcome.after.map(\.id)
+    switch press {
+    case .resend where retry:
+        if outcome.resent != [target] {
+            problems.append("Resend sent \(outcome.resent), expected \([target])")
+        }
+        if !outcome.deleted.isEmpty {
+            problems.append("Resend deleted \(outcome.deleted)")
+        }
+        let copies = outcome.after.filter { !ids.contains($0.id) }
+        if left.filter({ ids.contains($0) }) != rest || copies.count != target.count || !copies.allSatisfy({ $0.flags == [.Unsent] && $0.key == chat.items[click].key }) {
+            problems.append("after Resend the chat has \(left), expected \(rest) and \(target.count) new pending copies")
+        }
+    case .delete, .resend:
+        if !outcome.resent.isEmpty {
+            problems.append("Delete sent \(outcome.resent)")
+        }
+        if Set(outcome.deleted.flatMap { $0 }) != Set(target) || outcome.deleted.count != 1 {
+            problems.append("Delete removed \(outcome.deleted), expected \(target)")
+        }
+        if left != rest {
+            problems.append("after Delete the chat has \(left), expected \(rest)")
+        }
+    case .none:
+        if !outcome.resent.isEmpty || !outcome.deleted.isEmpty || outcome.after.map(\.id) != ids {
+            problems.append("closing the alert changed the chat")
+        }
+    }
+    return problems
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ problems: [String]) {
+    cases += 1
+    failures += problems.isEmpty ? 0 : 1
+    print("\(problems.isEmpty ? "PASS" : "FAIL") \(name)\(problems.isEmpty ? "" : ": " + problems.joined(separator: "; "))")
+}
+
+let F = Item(key: nil, failed: true)
+let N = Item(key: nil, failed: false)
+
+func A(_ key: Int64, _ failed: Bool...) -> [Item] {
+    return failed.map { Item(key: key, failed: $0) }
+}
+
+let albumOfThree = Chat(items: A(7, true, true, true), code: "GROUPED_MEDIA_INVALID")
+check("one-failed-message-resend", expected(Chat(items: [F], code: nil), click: 0, press: .resend))
+check("one-failed-message-delete", expected(Chat(items: [F], code: nil), click: 0, press: .delete))
+check("one-failed-message-close", expected(Chat(items: [F], code: nil), click: 0, press: .none))
+check("failed-album-delete-first", expected(albumOfThree, click: 0, press: .delete))
+check("failed-album-delete-middle", expected(albumOfThree, click: 1, press: .delete))
+check("failed-album-delete-last", expected(albumOfThree, click: 2, press: .delete))
+check("failed-album-resend-first", expected(albumOfThree, click: 0, press: .resend))
+check("failed-album-resend-middle", expected(albumOfThree, click: 1, press: .resend))
+check("failed-album-close", expected(albumOfThree, click: 1, press: .none))
+check("failed-album-of-ten-delete", expected(Chat(items: Array(repeating: Item(key: 9, failed: true), count: 10), code: nil), click: 4, press: .delete))
+check("two-failed-messages-delete-second", expected(Chat(items: [F, F], code: nil), click: 1, press: .delete))
+check("two-failed-messages-resend-second", expected(Chat(items: [F, F], code: nil), click: 1, press: .resend))
+check("failed-album-beside-failed-message-delete", expected(Chat(items: [F] + A(7, true, true), code: nil), click: 2, press: .delete))
+check("failed-message-beside-failed-album-delete", expected(Chat(items: A(7, true, true) + [F], code: nil), click: 2, press: .delete))
+check("two-failed-albums-delete-one", expected(Chat(items: A(7, true, true) + A(8, true, true), code: nil), click: 1, press: .delete))
+check("two-failed-albums-resend-one", expected(Chat(items: A(7, true, true) + A(8, true, true), code: nil), click: 2, press: .resend))
+check("partly-failed-album-delete", expected(Chat(items: A(7, false, true, true), code: nil), click: 2, press: .delete))
+check("partly-failed-album-resend", expected(Chat(items: A(7, true, false, true), code: nil), click: 0, press: .resend))
+check("flood-album-delete", expected(Chat(items: A(7, true, true), code: "PEER_FLOOD"), click: 0, press: .delete))
+check("slow-mode-album-delete", expected(Chat(items: A(7, true, true), code: "SLOWMODE_WAIT_30"), click: 0, press: .delete))
+check("write-forbidden-album-delete-only", expected(Chat(items: A(7, true, true), code: "CHAT_WRITE_FORBIDDEN"), click: 1, press: .delete))
+check("media-forbidden-album-delete-only", expected(Chat(items: A(7, true, true), code: "CHAT_SEND_PHOTOS_FORBIDDEN"), click: 0, press: .delete))
+check("message-no-longer-failed", expected(Chat(items: [N], code: nil), click: 0, press: .resend))
+check("album-first-item-not-failed-opens-nothing", expected(Chat(items: A(7, false, true, true), code: nil), click: 0, press: .delete))
+
+let ephemeral = run(Chat(items: [F], code: nil), click: 0, press: .resend, namespace: 8)
+check("ephemeral-message-retries", ephemeral.alerts.isEmpty && ephemeral.retried == [id(1, namespace: 8)] && ephemeral.resent.isEmpty ? [] : ["alerts \(ephemeral.alerts.count), retried \(ephemeral.retried), resent \(ephemeral.resent)"])
+
+let goneResend = run(albumOfThree, click: 1, press: .resend, beforePress: { $0.messages.removeAll() })
+check("album-gone-before-resend", goneResend.resent.isEmpty && goneResend.deleted.isEmpty ? [] : ["resent \(goneResend.resent), deleted \(goneResend.deleted)"])
+let goneDelete = run(albumOfThree, click: 1, press: .delete, beforePress: { $0.messages.removeAll() })
+check("album-gone-before-delete", goneDelete.resent.isEmpty && goneDelete.deleted.isEmpty ? [] : ["resent \(goneDelete.resent), deleted \(goneDelete.deleted)"])
+
+let replacedResend = run(albumOfThree, click: 1, press: .resend, dropItem: true)
+check("row-replaced-before-resend", replacedResend.resent == [[id(1), id(2), id(3)]] ? [] : ["resent \(replacedResend.resent)"])
+let replacedDelete = run(albumOfThree, click: 1, press: .delete, dropItem: true)
+check("row-replaced-before-delete", replacedDelete.resent.isEmpty && Set(replacedDelete.deleted.flatMap { $0 }) == Set([id(1), id(2), id(3)]) ? [] : ["resent \(replacedDelete.resent), deleted \(replacedDelete.deleted)"])
+
+var blocks: [[Item]] = []
+blocks.append([F])
+blocks.append([N])
+for size in 2 ... 3 {
+    for mask in 0 ..< (1 << size) {
+        blocks.append((0 ..< size).map { Item(key: 0, failed: mask & (1 << $0) != 0) })
+    }
+}
+
+var layouts: [[Item]] = []
+func build(_ prefix: [Item], _ depth: Int) {
+    if !prefix.isEmpty {
+        layouts.append(prefix)
+    }
+    if depth == 0 {
+        return
+    }
+    for (index, block) in blocks.enumerated() {
+        let key = Int64(prefix.count * 100 + index + 1)
+        build(prefix + block.map { Item(key: $0.key == nil ? nil : key, failed: $0.failed) }, depth - 1)
+    }
+}
+build([], 3)
+
+let codes: [String?] = [nil, "GROUPED_MEDIA_INVALID", "PEER_FLOOD", "CHAT_WRITE_FORBIDDEN"]
+var sweep = 0
+var sweepFailures = 0
+var samples: [String] = []
+for layout in layouts {
+    for code in codes {
+        let chat = Chat(items: layout, code: code)
+        for click in layout.indices {
+            for press in [Press.resend, Press.delete] {
+                sweep += 1
+                let problems = expected(chat, click: click, press: press)
+                if !problems.isEmpty {
+                    sweepFailures += 1
+                    if samples.count < 6 {
+                        let shape = layout.map { ($0.key == nil ? "m" : "a\($0.key! % 100)") + ($0.failed ? "!" : "") }.joined(separator: " ")
+                        samples.append("[\(shape)] code \(code ?? "nil") click \(click + 1) \(press): \(problems.joined(separator: "; "))")
+                    }
+                }
+            }
+        }
+    }
+}
+check("sweep \(layouts.count) chats x \(codes.count) codes, \(sweep) clicks", sweepFailures == 0 ? [] : ["\(sweepFailures) clicks wrong"] + samples)
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)

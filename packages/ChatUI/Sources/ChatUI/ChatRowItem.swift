@@ -3760,13 +3760,16 @@ public class ChatRowItem: TableRowItem {
                 verifyAlert_button(for: context.window, header: strings().alertSendErrorHeader, information: failure?.text ?? strings().alertSendErrorText, ok: strings().alertSendErrorResend, option: strings().alertSendErrorDelete, successHandler: { result in
                     switch result {
                     case .basic:
-                        self?.resendMessage([messageId])
+                        let _ = (context.account.postbox.transaction { transaction in
+                            return ChatRowItem.failedAlbumMessageIds(messageId, transaction: transaction)
+                        } |> mapToSignal { ids in
+                            return resendMessages(account: context.account, messageIds: ids)
+                        }).start()
                     case .thrid:
-                        if ids.count > 1 {
-                            self?.resendMessage(ids)
-                        } else {
-                            self?.deleteMessage()
-                        }
+                        let _ = context.account.postbox.transaction { transaction in
+                            let ids = ChatRowItem.failedAlbumMessageIds(messageId, transaction: transaction)
+                            transaction.deleteMessages(ids, forEachMedia: { _ in })
+                        }.start()
                     }
                 })
                 
