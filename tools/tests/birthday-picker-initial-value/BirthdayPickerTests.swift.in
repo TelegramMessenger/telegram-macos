@@ -1,0 +1,400 @@
+import AppKit
+import CalendarUtils
+import XCTest
+
+class View {
+    var frame: NSRect
+    var bounds: NSRect { NSRect(origin: .zero, size: frame.size) }
+
+    required init(frame: NSRect = .zero) {
+        self.frame = frame
+    }
+
+    func addSubview(_ view: View) {
+    }
+}
+
+class CalendarMonthView: View {
+    func layout(for month: CalendarMonthStruct) {
+    }
+
+    func updateDayPreviews(animated: Bool) {
+    }
+}
+
+struct NavigationBarStyle {
+    let height: CGFloat
+}
+
+enum Key {
+    case LeftArrow, RightArrow
+}
+
+enum Priority {
+    case modal
+}
+
+enum KeyHandlerResult {
+    case invoked
+}
+
+final class Window {
+    var presented: NavigationViewController?
+
+    func set(handler: @escaping (Int) -> KeyHandlerResult, with object: AnyObject, for key: Key, priority: Priority) {
+    }
+
+    func remove(object: AnyObject, for key: Key) {
+    }
+}
+
+final class Popover {
+    func hide() {
+    }
+}
+
+final class Modal {
+    var closes = 0
+
+    func close() {
+        closes += 1
+    }
+}
+
+class ViewController {
+    var view: View
+    weak var window: Window?
+    weak var navigationController: NavigationViewController?
+    var popover: Popover?
+    var modal: Modal?
+    var bar = NavigationBarStyle(height: 0)
+    var _frameRect = NSRect.zero
+
+    init(frame: NSRect = .zero) {
+        view = View(frame: frame)
+    }
+
+    func isLoaded() -> Bool { true }
+    func viewDidResized(_ size: NSSize) {}
+    func viewDidLoad() {}
+    func viewDidAppear(_ animated: Bool) {}
+    func viewWillDisappear(_ animated: Bool) {}
+    func viewDidDisappear(_ animated: Bool) {}
+    func viewWillAppear(_ animated: Bool) {}
+    func readyOnce() {}
+    func addSubview(_ view: View) {}
+    var isAutoclosePopover: Bool { true }
+}
+
+class GenericViewController<T: View>: ViewController {
+    override init(frame: NSRect = .zero) {
+        super.init(frame: frame)
+        view = T(frame: frame)
+    }
+
+    var genericView: T { view as! T }
+}
+
+enum ViewControllerStyle {
+    case none, push, pop
+}
+
+class NavigationViewController: ViewController {
+    var controller: ViewController
+
+    init(_ controller: ViewController, _ window: Window) {
+        self.controller = controller
+        super.init()
+        self.window = window
+        controller.navigationController = self
+        controller.window = window
+    }
+
+    func push(_ controller: ViewController, style: ViewControllerStyle) {
+        self.controller = controller
+        controller.navigationController = self
+        controller.window = window
+    }
+}
+
+struct TelegramBirthday: Equatable {
+    let day: Int32
+    let month: Int32
+    let year: Int32?
+}
+
+extension TelegramBirthday {
+    __DATE_FOR_PICKER__
+}
+
+__BIRTHDAY__
+__INTERACTIONS__
+__MONTH__
+__MONTH_CONTROLLER__
+__CONTROLLER__
+
+final class SettingsNavigationHooks {
+    static let shared = SettingsNavigationHooks()
+    __HOOK__
+}
+
+func installHooks() {
+    let hooks = SettingsNavigationHooks.shared
+    __INSTALL__
+}
+
+final class GeneralInteractedRowView {
+    var textView: View? = View()
+    let containerView = View()
+}
+
+let _id_birthday = "birthday"
+
+enum InputDataEntryId {
+    case general(String)
+}
+
+final class TableItem {
+    var view: AnyObject? = GeneralInteractedRowView()
+}
+
+final class TableView {
+    let row = TableItem()
+
+    func item(stableId: InputDataEntryId) -> TableItem? {
+        row
+    }
+}
+
+final class EditorController {
+    let tableView = TableView()
+}
+
+struct EditInfoState {
+    var birthday: TelegramBirthday?
+}
+
+final class StateValue {
+    var value: EditInfoState
+
+    init(_ birthday: TelegramBirthday?) {
+        value = EditInfoState(birthday: birthday)
+    }
+
+    func with<T>(_ body: (EditInfoState) -> T) -> T {
+        body(value)
+    }
+}
+
+final class Context {
+    let window = Window()
+}
+
+func showModal(with controller: NavigationViewController, for window: Window, morphSource: (() -> View?)? = nil) {
+    window.presented = controller
+}
+
+final class SettingsHooks {
+    static let shared = SettingsHooks()
+    var submitted: [TelegramBirthday] = []
+
+    func updateBirthday(_ date: Date, _ context: Context) {
+        submitted.append(date.birthday)
+    }
+}
+
+final class Editor {
+    let context = Context()
+    let controller = EditorController()
+    let stateValue: StateValue
+    var submitted: [TelegramBirthday?] = []
+
+    init(_ birthday: TelegramBirthday?) {
+        stateValue = StateValue(birthday)
+    }
+
+    func open() {
+        let context = self.context
+        let stateValue = self.stateValue
+        let getController: (() -> EditorController?)? = { self.controller }
+        let updateBirthday: (TelegramBirthday?) -> Void = { self.submitted.append($0) }
+        let action: () -> Void = __OPEN__
+        action()
+    }
+
+    func openPrivacySetup() {
+        let context = self.context
+        let action: () -> Void = __PRIVACY__
+        action()
+    }
+
+    var calendar: CalendarController {
+        context.window.presented!.controller as! CalendarController
+    }
+}
+
+final class BirthdayPickerTests: XCTestCase {
+    var originalZone: TimeZone!
+
+    override func setUp() {
+        originalZone = NSTimeZone.default
+        NSTimeZone.default = TimeZone(secondsFromGMT: 0)!
+        SettingsHooks.shared.submitted = []
+        installHooks()
+    }
+
+    override func tearDown() {
+        NSTimeZone.default = originalZone
+    }
+
+    func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    func current(_ controller: CalendarController) -> CalendarMonthController {
+        controller.navigation.controller as! CalendarMonthController
+    }
+
+    func assertSelection(_ editor: Editor, _ birthday: TelegramBirthday, file: StaticString = #filePath, line: UInt = #line) {
+        let selected = current(editor.calendar).month
+        XCTAssertEqual(editor.calendar.date.birthday, birthday, file: file, line: line)
+        XCTAssertEqual(selected.components.day, Int(birthday.day), file: file, line: line)
+        XCTAssertEqual(selected.components.month, Int(birthday.month), file: file, line: line)
+        XCTAssertEqual(selected.components.year, birthday.year.map(Int.init) ?? CalendarUtils.yearForNoYear, file: file, line: line)
+        XCTAssertEqual(selected.selectedDay, Int(birthday.day), file: file, line: line)
+        XCTAssertTrue(selected.isDayEnabled(Int(birthday.day)), file: file, line: line)
+    }
+
+    func testSavedBirthdayStartsAtSavedDateAndHighlight() {
+        let birthday = TelegramBirthday(day: 17, month: 6, year: 1992)
+        let editor = Editor(birthday)
+        editor.open()
+        assertSelection(editor, birthday)
+        XCTAssertEqual(editor.stateValue.value.birthday, birthday)
+        XCTAssertTrue(editor.submitted.isEmpty)
+    }
+
+    func testNoYearAndLeapDaySurviveOpeningAcrossTimeZones() {
+        for zone in ["UTC", "America/Los_Angeles", "Pacific/Kiritimati", "Asia/Kathmandu"] {
+            NSTimeZone.default = TimeZone(identifier: zone)!
+            for birthday in [TelegramBirthday(day: 29, month: 2, year: nil), TelegramBirthday(day: 29, month: 2, year: 2000), TelegramBirthday(day: 31, month: 12, year: nil), TelegramBirthday(day: 1, month: 1, year: 1900)] {
+                let editor = Editor(birthday)
+                editor.open()
+                assertSelection(editor, birthday)
+                XCTAssertTrue(editor.submitted.isEmpty)
+            }
+        }
+    }
+
+    func testAbsentBirthdayStillStartsTodayWithoutCreatingBirthday() {
+        let editor = Editor(nil)
+        let before = Date()
+        editor.open()
+        let after = Date()
+        XCTAssertGreaterThanOrEqual(editor.calendar.date, before)
+        XCTAssertLessThanOrEqual(editor.calendar.date, after)
+        XCTAssertEqual(current(editor.calendar).month.selectedDay, Calendar(identifier: .gregorian).component(.day, from: before))
+        XCTAssertNil(editor.stateValue.value.birthday)
+        XCTAssertTrue(editor.submitted.isEmpty)
+    }
+
+    func testInvalidBirthdayFallsBackWithoutNormalizingSavedData() {
+        for birthday in [TelegramBirthday(day: 30, month: 2, year: 2001), TelegramBirthday(day: 5, month: 13, year: nil)] {
+            let editor = Editor(birthday)
+            let before = Date()
+            editor.open()
+            XCTAssertGreaterThanOrEqual(editor.calendar.date, before)
+            XCTAssertLessThanOrEqual(editor.calendar.date, Date())
+            XCTAssertEqual(editor.stateValue.value.birthday, birthday)
+            XCTAssertTrue(editor.submitted.isEmpty)
+        }
+    }
+
+    func testOpenUsesLatestStateOnEachPresentation() {
+        let editor = Editor(TelegramBirthday(day: 10, month: 4, year: 1988))
+        editor.open()
+        let updated = TelegramBirthday(day: 9, month: 8, year: nil)
+        editor.stateValue.value.birthday = updated
+        editor.open()
+        assertSelection(editor, updated)
+        XCTAssertTrue(editor.submitted.isEmpty)
+    }
+
+    func testCancelDoesNotSubmitAndRejectsRetainedDayHandler() {
+        for birthday in [TelegramBirthday(day: 29, month: 2, year: nil), TelegramBirthday(day: 17, month: 6, year: 1992)] {
+            let editor = Editor(birthday)
+            editor.open()
+            let handler = current(editor.calendar).month.dayHandler
+            editor.calendar.viewWillDisappear(false)
+            editor.calendar.viewDidDisappear(false)
+            handler(12)
+            XCTAssertTrue(editor.submitted.isEmpty)
+            XCTAssertEqual(editor.stateValue.value.birthday, birthday)
+        }
+    }
+
+    func testExplicitSelectionPreservesOptionalYearAndSubmitsOnce() {
+        for birthday in [TelegramBirthday(day: 29, month: 2, year: nil), TelegramBirthday(day: 29, month: 2, year: 2000)] {
+            let editor = Editor(birthday)
+            editor.open()
+            let handler = current(editor.calendar).month.dayHandler
+            handler(20)
+            handler(21)
+            XCTAssertEqual(editor.submitted, [TelegramBirthday(day: 20, month: 2, year: birthday.year)])
+            XCTAssertEqual(editor.stateValue.value.birthday, birthday)
+        }
+    }
+
+    func testMonthBrowsingDoesNotSubmitOrLoseSavedSelection() {
+        let birthday = TelegramBirthday(day: 17, month: 6, year: 1992)
+        let editor = Editor(birthday)
+        editor.open()
+        editor.calendar.interactions.nextAction?(current(editor.calendar).month.month)
+        XCTAssertNil(current(editor.calendar).month.selectedDay)
+        editor.calendar.interactions.backAction?(current(editor.calendar).month.month)
+        assertSelection(editor, birthday)
+        XCTAssertTrue(editor.submitted.isEmpty)
+    }
+
+    func testPrivacyAddBirthdayStillStartsToday() {
+        let editor = Editor(nil)
+        let before = Date()
+        editor.openPrivacySetup()
+        XCTAssertGreaterThanOrEqual(editor.calendar.date, before)
+        XCTAssertLessThanOrEqual(editor.calendar.date, Date())
+        XCTAssertTrue(SettingsHooks.shared.submitted.isEmpty)
+    }
+
+    func testNormalCalendarKeepsExplicitDateAndYearRestriction() {
+        let initial = date(2020, 5, 8)
+        var submitted: [Date] = []
+        let calendar = CalendarController(.zero, Window(), current: initial, selectHandler: { submitted.append($0) })
+        XCTAssertEqual(calendar.date, initial)
+        XCTAssertEqual(current(calendar).month.selectedDay, 8)
+        calendar.hideYear()
+        XCTAssertEqual(calendar.date, initial)
+        XCTAssertTrue(submitted.isEmpty)
+    }
+
+    func testFutureAndLimitedCalendarsKeepDayConstraints() {
+        let today = Calendar(identifier: .gregorian).startOfDay(for: Date())
+        let future = CalendarController(.zero, Window(), current: today, onlyFuture: true, selectHandler: { _ in })
+        let day = Calendar(identifier: .gregorian).component(.day, from: today)
+        XCTAssertTrue(current(future).month.isDayEnabled(day, now: today))
+        XCTAssertFalse(current(future).month.isDayEnabled(day - 1, now: today))
+        let limited = CalendarController(.zero, Window(), current: date(2020, 6, 1), limitedBy: date(2020, 6, 10), selectHandler: { _ in })
+        XCTAssertTrue(current(limited).month.isDayEnabled(10))
+        XCTAssertFalse(current(limited).month.isDayEnabled(11))
+    }
+
+    func testRangeSelectionStillDoesNotSubmitSingleDate() {
+        var submitted: [Date] = []
+        let calendar = CalendarController(.zero, Window(), current: date(2020, 6, 15), selectHandler: { submitted.append($0) })
+        calendar.setSelecting(true)
+        current(calendar).month.dayHandler(10)
+        current(calendar).month.dayHandler(14)
+        XCTAssertEqual(calendar.selectedDaysCount, 5)
+        XCTAssertEqual(current(calendar).month.selectedRange, 10 ... 14)
+        XCTAssertTrue(submitted.isEmpty)
+    }
+}

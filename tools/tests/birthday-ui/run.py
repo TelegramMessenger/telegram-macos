@@ -24,7 +24,8 @@ fixture = fixture.replace('__HELPER__', helper)
 fixture = fixture.replace('__GLOBAL__', block(s, 'public func editAccountUpdateBirthday').replace('public ', '').replace('any AccountContextProtocol', 'Context'))
 fixture = fixture.replace('__UPDATE__', block(s, '    let updateBirthday:') if '    let updateBirthday:' in s else '')
 calendar = s[s.index('    }, birthday: {'):]
-calendar = block(calendar, '            let controller = SettingsNavigationHooks.shared.makeBirthdayCalendarController') + ')'
+picker_state = next((line + '\n' for line in calendar.splitlines() if '            let current =' in line), '')
+calendar = picker_state + block(calendar, '            let controller = SettingsNavigationHooks.shared.makeBirthdayCalendarController') + ')'
 fixture = fixture.replace('__CALENDAR__', calendar)
 fixture = fixture.replace('__REMOVE__', block(s, '}, removeBirthday:').split('removeBirthday: ', 1)[1])
 fixture = fixture.replace('__HOOKS__', '\n'.join(block(s, '    controller.' + name + ' =') for name in ['willDisappear', 'willAppear', 'onDeinit']))
@@ -37,4 +38,4 @@ let package = Package(name: "BirthdayUI", platforms: [.macOS(.v10_13)], dependen
 ''')
     (directory / 'Tests').mkdir()
     (directory / 'Tests/BirthdayUITests.swift').write_text(fixture)
-    raise SystemExit(subprocess.run(['swift', 'test', '--package-path', str(directory), '--disable-sandbox', '--jobs', '4']).returncode)
+    raise SystemExit(subprocess.run(['swift', 'test', '--package-path', str(directory), '--disable-sandbox', '--jobs', '2']).returncode)
