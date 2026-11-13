@@ -1164,6 +1164,9 @@ public class PeerListContainerView : Control {
         containerView.addSubview(statusContainer)
         
         containerView.addSubview(searchView)
+
+        NotificationCenter.default.addObserver(self, selector: #selector(updateWindowMaterial), name: systemWindowMaterialDidChange, object: nil)
+        updateWindowMaterial()
         
         
         tableView.getBackgroundColor = {
@@ -1519,11 +1522,7 @@ public class PeerListContainerView : Control {
         self.backgroundColor = .clear
         self.backgroundView.backgroundColor = .clear
 
-        searchView.searchTheme = .init(theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
-            return strings().chatListSearchPlaceholder
-        }, theme.search.textColor, theme.search.placeholderColor)
-        searchView.layer?.borderWidth = 1
-        searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
+        applySearchTheme(theme)
 
         self.containerView.backgroundColor = .clear
 
@@ -1657,7 +1656,7 @@ public class PeerListContainerView : Control {
         let navigationHeight_ = self.navigationHeight
 
         transition.updateFrame(view: self.borderView, frame: CGRect(origin: CGPoint(x: 0, y: navigationHeight_ + windowControlsCenterShift - .borderSize), size: CGSize(width: size.width, height: .borderSize)))
-        transition.updateAlpha(view: borderView, alpha: state.searchState == .Focus ? 0 : 1)
+        transition.updateAlpha(view: borderView, alpha: state.searchState == .Focus || System.windowMaterialActive ? 0 : 1)
 
         forumSeparatorView.isHidden = !mode.isForumLike || displaysFullForumHeader
         transition.updateFrame(view: forumSeparatorView, frame: NSMakeRect(0, 0, .borderSize, size.height))
@@ -1684,8 +1683,13 @@ public class PeerListContainerView : Control {
 
 
         transition.updateFrame(view: searchView, frame: searchRect)
+        if let searchFrost {
+            transition.updateFrame(view: searchFrost, frame: searchRect)
+            searchFrost.layer?.cornerRadius = searchRect.height / 2
+        }
         searchView.updateLayout(size: searchRect.size, transition: transition)
         searchView.isHidden = state.splitState == .minimisize || (mode.isForumLike && !displaysFullForumHeader)
+        searchFrost?.isHidden = searchView.isHidden
         
 
 
@@ -1819,6 +1823,68 @@ public class PeerListContainerView : Control {
         return progress
     }
     
+    private var tableFadeLayer: CAGradientLayer?
+    private var tableFadeListening = false
+    private var searchFrost: SearchFrostView?
+
+    private final class SearchFrostView: NSVisualEffectView {
+        override var isEmphasized: Bool {
+            get { false }
+            set {}
+        }
+    }
+
+    private func applySearchTheme(_ theme: TelegramPresentationTheme) {
+        searchView.searchTheme = .init(searchFrost != nil ? .clear : theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
+            return strings().chatListSearchPlaceholder
+        }, theme.search.textColor, theme.search.placeholderColor)
+        searchView.layer?.borderWidth = searchFrost != nil ? 0 : 1
+        searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
+        searchFrost?.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
+    }
+
+    @objc private func updateWindowMaterial() {
+        if System.windowMaterialActive {
+            if tableFadeLayer == nil {
+                let fade = CAGradientLayer()
+                fade.colors = [NSColor.clear.cgColor, NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
+                fade.startPoint = CGPoint(x: 0.5, y: 0)
+                fade.endPoint = CGPoint(x: 0.5, y: 1)
+                fade.disableActions()
+                tableFadeLayer = fade
+                if !tableFadeListening {
+                    tableFadeListening = true
+                    tableView.addScroll(listener: TableScrollListener(dispatchWhenVisibleRangeUpdated: false, { [weak self] _ in
+                        self?.updateTableFade()
+                    }))
+                }
+            }
+            if searchFrost == nil {
+                let frost = SearchFrostView(frame: searchView.frame)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                if #available(macOS 10.15, *) {
+                    frost.layer?.cornerCurve = .continuous
+                }
+                frost.layer?.masksToBounds = true
+                containerView.addSubview(frost, positioned: .below, relativeTo: searchView)
+                searchFrost = frost
+            }
+            tableView.layer?.mask = tableFadeLayer
+        } else {
+            tableFadeLayer = nil
+            if let searchFrost {
+                searchFrost.removeFromSuperview()
+                self.searchFrost = nil
+            }
+            tableView.layer?.mask = tableMaskLayer
+        }
+        applySearchTheme(theme)
+        needsLayout = true
+    }
+
     private var windowControlsCenterShift: CGFloat {
         guard System.edgeToEdgeSidebar, let window = window, !window.styleMask.contains(.fullScreen), let button = window.standardWindowButton(.closeButton), !button.isHidden, let buttonSuperview = button.superview else {
             return 0
@@ -1910,6 +1976,28 @@ public class PeerListContainerView : Control {
         CATransaction.setDisableActions(true)
         let top = spaceHeight + windowControlsCenterShift
         tableMaskLayer.frame = NSMakeRect(0, top, tableView.bounds.width, max(0, tableHeight - top))
+        tableFadeTop = top
+        tableFadeLayer?.frame = NSMakeRect(0, 0, tableView.bounds.width, tableHeight)
+        updateTableFade()
+        CATransaction.commit()
+    }
+
+    private var tableFadeTop: CGFloat = 0
+
+    private func updateTableFade() {
+        guard let tableFadeLayer else {
+            return
+        }
+        let tableHeight = tableView.frame.height
+        guard tableHeight > 0 else {
+            return
+        }
+        let progress = max(0, min(1, tableView.documentOffset.y / 24))
+        let clearUntil = tableFadeTop + 3 * progress
+        let opaqueFrom = clearUntil + 24 * progress
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        tableFadeLayer.locations = [0, NSNumber(value: Double(max(0, min(1, clearUntil / tableHeight)))), NSNumber(value: Double(max(0, min(1, opaqueFrom / tableHeight)))), 1]
         CATransaction.commit()
     }
     

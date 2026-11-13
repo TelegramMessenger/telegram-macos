@@ -280,6 +280,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         TGUIKitAccessibility.isEnabled = FastSettings.accessibilityTreeEffective
+        System.windowMaterial = FastSettings.windowMaterial
         Analytics.shared.isEnabled = false
         analyticsLaunchStart = Analytics.shared.now
         AnalyticsLifecycle.install()

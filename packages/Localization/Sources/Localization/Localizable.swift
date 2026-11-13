@@ -685,6 +685,8 @@ public final class L10n {
   public static var appearanceSettingsShowLess: String  { return L10n.tr("Localizable", "Appearance.Settings.ShowLess") }
   /// Show More
   public static var appearanceSettingsShowMore: String  { return L10n.tr("Localizable", "Appearance.Settings.ShowMore") }
+  /// Window Material
+  public static var appearanceSettingsWindowMaterial: String  { return L10n.tr("Localizable", "Appearance.Settings.WindowMaterial") }
   /// Accent
   public static var appearanceThemeAccent: String  { return L10n.tr("Localizable", "Appearance.Theme.Accent") }
   /// Edit

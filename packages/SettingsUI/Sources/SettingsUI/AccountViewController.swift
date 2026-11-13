@@ -37,36 +37,74 @@ struct SetupPasswordConfiguration {
 
 private final class AccountSearchBarView: View {
     fileprivate let searchView = SearchView(frame: NSMakeRect(0, 0, 100, 30))
-    
-    
+    private var searchFrost: SearchFrostView?
+
+    private final class SearchFrostView: NSVisualEffectView {
+        override var isEmphasized: Bool {
+            get { false }
+            set {}
+        }
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
-    
+
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(searchView)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateWindowMaterial), name: systemWindowMaterialDidChange, object: nil)
+        updateWindowMaterial()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func updateWindowMaterial() {
+        if System.windowMaterialActive {
+            if searchFrost == nil {
+                let frost = SearchFrostView(frame: searchView.frame)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                if #available(macOS 10.15, *) {
+                    frost.layer?.cornerCurve = .continuous
+                }
+                frost.layer?.masksToBounds = true
+                addSubview(frost, positioned: .below, relativeTo: searchView)
+                searchFrost = frost
+            }
+        } else if let searchFrost {
+            searchFrost.removeFromSuperview()
+            self.searchFrost = nil
+        }
         updateLocalizationAndTheme(theme: theme)
     }
-    
+
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         let theme = theme as! TelegramPresentationTheme
-        searchView.searchTheme = .init(theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
+        searchView.searchTheme = .init(searchFrost != nil ? .clear : theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
             return strings().searchFieldSearch
         }, theme.search.textColor, theme.search.placeholderColor)
-        searchView.layer?.borderWidth = 1
+        searchView.layer?.borderWidth = searchFrost != nil ? 0 : 1
         searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
+        searchFrost?.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
         needsLayout = true
     }
-    
+
     override func layout() {
         super.layout()
         searchView.setFrameSize(NSMakeSize(frame.width - 20, 30))
         searchView.centerY(x: 10)
+        if let searchFrost {
+            searchFrost.frame = searchView.frame
+            searchFrost.layer?.cornerRadius = searchView.frame.height / 2
+        }
     }
-    
+
 }
 
 

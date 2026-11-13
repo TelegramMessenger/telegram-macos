@@ -304,6 +304,7 @@ private final class AppAppearanceViewArguments {
     public let toggleRevealThemes:()->Void
     public let userNameColor:()->Void
     public let selectAppIcon:(TelegramApplicationIcons.Icon)->Void
+    public var toggleWindowMaterial:()->Void = {}
     public init(context: any AccountContextProtocol, togglePalette: @escaping(InstallThemeSource)->Void, toggleBubbles: @escaping(Bool)->Void, toggleFontSize: @escaping(CGFloat)->Void, selectAccentColor: @escaping(AppearanceAccentColor?)->Void, selectChatBackground:@escaping()->Void, openAutoNightSettings:@escaping()->Void, removeTheme:@escaping(TelegramTheme)->Void, editTheme: @escaping(TelegramTheme)->Void, shareTheme:@escaping(TelegramTheme)->Void, shareLocal:@escaping(ColorPalette)->Void, toggleDarkMode: @escaping(Bool)->Void, toggleRevealThemes:@escaping()->Void, userNameColor:@escaping()->Void, selectAppIcon:@escaping(TelegramApplicationIcons.Icon)->Void) {
         self.context = context
         self.togglePalette = togglePalette
@@ -332,6 +333,7 @@ private let _id_theme_wallpaper1 = InputDataIdentifier("_id_theme_wallpaper")
 private let _id_theme_text_size = InputDataIdentifier("_id_theme_text_size")
 private let _id_theme_auto_night = InputDataIdentifier("_id_theme_auto_night")
 private let _id_theme_night_mode = InputDataIdentifier("_id_theme_night_mode")
+private let _id_theme_window_material = InputDataIdentifier("_id_theme_window_material")
 
 private let _id_cloud_themes = InputDataIdentifier("_id_cloud_themes")
 
@@ -492,6 +494,13 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
         arguments.toggleDarkMode(!appearance.presentation.dark)
     })))
     index += 1
+
+    if System.windowMaterialAvailable {
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_theme_window_material, data: InputDataGeneralData(name: strings().appearanceSettingsWindowMaterial, color: appearance.presentation.colors.text, type: .switchable(state.windowMaterial), viewType: .innerItem, action: {
+            arguments.toggleWindowMaterial()
+        })))
+        index += 1
+    }
     
    
     
@@ -582,6 +591,7 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
 private struct State : Equatable {
     public var revealed: Bool
     public var myPeer: TelegramUser?
+    public var windowMaterial: Bool = System.windowMaterial
 }
 
 public func AppAppearanceViewController(context: any AccountContextProtocol, focusOnItemTag: ThemeSettingsEntryTag? = nil) -> InputDataController {
@@ -795,6 +805,17 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
             }
     } |> deliverOnMainQueue
     
+    arguments.toggleWindowMaterial = {
+        let value = !System.windowMaterial
+        FastSettings.windowMaterial = value
+        System.windowMaterial = value
+        updateState { current in
+            var current = current
+            current.windowMaterial = System.windowMaterial
+            return current
+        }
+    }
+
     let signal:Signal<InputDataSignalValue, NoError> = combineLatest(queue: prepareQueue, themeUnmodifiedSettings(accountManager: context.sharedContext.accountManager), SettingsHooks.shared.cloudThemes(context), nightSettings, appearanceSignal, animatedEmojiStickers, statePromise.get(), context.engine.resources.applicationIcons(), dockSettings(accountManager: context.sharedContext.accountManager)) |> map { themeSettings, themes, autoNightSettings, appearance, animatedEmojiStickers, state, dockIcons, dockSettings in
         return appAppearanceEntries(appearance: appearance, state: state, settings: themeSettings, cloudThemes: themes.themes.reversed(), generated: themes, autoNightSettings: autoNightSettings, animatedEmojiStickers: animatedEmojiStickers, dockIcons: dockIcons, dockSettings: dockSettings, arguments: arguments)
     }
