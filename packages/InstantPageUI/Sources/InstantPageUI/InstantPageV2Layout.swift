@@ -1869,6 +1869,13 @@ private func instantPageRichTextContainsRTL(_ text: RichText) -> Bool {
     return instantPageStringContainsRTL(text.plainText)
 }
 
+private func instantPageV2IsList(_ block: InstantPageBlock?) -> Bool {
+    if case .list = block {
+        return true
+    }
+    return false
+}
+
 private func layoutListV2(
     _ listItems: [InstantPageListItem],
     ordered: Bool,
@@ -2011,7 +2018,16 @@ private func layoutListV2(
                     return false
                 }) ? .unsupported : subBlock
                 let subLocalMaxY: CGFloat = subItems.map { $0.frame.maxY }.max() ?? 0.0
-                let spacing: CGFloat = (previousSubBlock != nil && subLocalMaxY > 0.0) ? spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth) : 0.0
+                let spacing: CGFloat
+                if previousSubBlock == nil || subLocalMaxY <= 0.0 {
+                    spacing = 0.0
+                } else if context.fitToWidth, instantPageV2IsList(previousSubBlock) || instantPageV2IsList(effectiveSubBlock) {
+                    // A list nested in a list item keeps the item spacing, as in Telegram Desktop, where
+                    // a list inside a message list item is separated by blockSkips.paragraph (4px).
+                    spacing = 4.0
+                } else {
+                    spacing = spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth)
+                }
                 let offsetY = subContentHeight + spacing
                 let translated = subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) }
 
