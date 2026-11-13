@@ -912,6 +912,7 @@ private final class HeaderItem : GeneralRowItem {
 
     fileprivate let variansLayout: TextViewLayout?
     fileprivate let onSaleLayout: TextViewLayout?
+    fileprivate let giftMessage: GiftMessage?
 
     fileprivate var patterns:[TelegramMediaFile] = []
     fileprivate var backdrops:[StarGift.UniqueGift.Attribute] = []
@@ -998,7 +999,27 @@ private final class HeaderItem : GeneralRowItem {
         } else {
             self.variansLayout = nil
             self.onSaleLayout = nil
-            self.info = .init(.initialize(string: state.headerInfo, color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text)), alignment: .center)
+            if let sender = state.headerGiftMessage?.sender {
+                let senderName = sender._asPeer().displayTitle
+                let attr = NSMutableAttributedString()
+                attr.append(string: strings().chatServiceStarGiftFrom(senderName), color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text))
+                let senderRange = attr.string.nsstring.range(of: senderName, options: .backwards)
+                if senderRange.location != NSNotFound {
+                    attr.addAttribute(.foregroundColor, value: NSColor.white, range: senderRange)
+                    attr.addAttribute(.font, value: NSFont.medium(.text), range: senderRange)
+                }
+                self.info = .init(attr, maximumNumberOfLines: 1, alignment: .center)
+            } else {
+                self.info = .init(.initialize(string: state.headerInfo, color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text)), alignment: .center)
+            }
+        }
+
+        if let message = state.headerGiftMessage {
+            let attr = StarsHooks.shared.applyMessageEntities(message.entities ?? [], message.text, context, 13, { _, _, _, _ in }, .white, true, true).mutableCopy() as! NSMutableAttributedString
+            InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: message.entities ?? [], isPremium: context.isPremium)
+            self.giftMessage = GiftMessage(peer: message.sender, text: TextViewLayout(attr))
+        } else {
+            self.giftMessage = nil
         }
 
         self.title = .init(state.headerTitle)
@@ -1084,6 +1105,7 @@ private final class HeaderItem : GeneralRowItem {
 
         self.title.measure(width: width - 40)
         self.info?.measure(width: width - 40)
+        self.giftMessage?.makeSize(width: width - 80)
 
         if state.author != nil, case .preview = state.source {
             self.info?.generateAutoBlock(backgroundColor: patternColor.withAlphaComponent(0.4))
@@ -1107,6 +1129,10 @@ private final class HeaderItem : GeneralRowItem {
         height += 5
         height += 20//info.layoutSize.height
         height += 10
+
+        if let giftMessage {
+            height += giftMessage.height
+        }
 
         if !actions.isEmpty {
             height += 70
@@ -1155,6 +1181,7 @@ private final class HeaderView : GeneralRowView {
     private var variantsGlass: LiquidGlassView?
     private var onSaleView: InteractiveTextView?
     private var onSaleGlass: LiquidGlassView?
+    private var messageView: GiftMessageView?
 
     private let buttonsContainer = View()
     private weak var tableView: TableView?
@@ -1519,7 +1546,32 @@ private final class HeaderView : GeneralRowView {
         textView.update(item.title)
         infoView.update(item.info)
 
-        if let author = item.state.author {
+        if let giftMessage = item.giftMessage {
+            let current: GiftMessageView
+            if let view = self.messageView {
+                current = view
+            } else {
+                current = GiftMessageView(frame: giftMessage.size.bounds)
+                addSubview(current)
+                self.messageView = current
+            }
+            current.setFrameSize(giftMessage.size)
+            let sender = item.state.headerGiftMessage?.sender
+            current.set(message: giftMessage, context: item.context, animated: animated, openPeer: sender.map { sender in
+                { [weak item] in
+                    item?.arguments.openPeer(sender, false)
+                }
+            })
+        } else if let view = self.messageView {
+            performSubviewRemoval(view, animated: animated)
+            self.messageView = nil
+        }
+
+        if let sender = item.state.headerGiftMessage?.sender {
+            infoView.setSingle(handler: { [weak item] _ in
+                item?.arguments.openPeer(sender, false)
+            }, for: .Click)
+        } else if let author = item.state.author {
             let context = item.context
             
             infoView.setSingle(handler: { [weak item] view in
@@ -1681,14 +1733,20 @@ private final class HeaderView : GeneralRowView {
             }
         }
 
+        let messageHeight = (item as? HeaderItem)?.giftMessage?.height ?? 0
+
         if let ownerActions {
-            infoView.centerX(y: ownerActions.frame.minY - 20 - 15)
+            infoView.centerX(y: ownerActions.frame.minY - 20 - 15 - messageHeight)
             variantsView?.centerX(y: ownerActions.frame.minY - 20 - 10)
-            onSaleView?.centerX(y: ownerActions.frame.minY - 20 - 15)
+            onSaleView?.centerX(y: ownerActions.frame.minY - 20 - 15 - messageHeight)
         } else {
-            infoView.centerX(y: size.height - 20 - 20)
+            infoView.centerX(y: size.height - 20 - 20 - messageHeight)
             variantsView?.centerX(y: size.height - 20 - 15)
-            onSaleView?.centerX(y: size.height - 20 - 15)
+            onSaleView?.centerX(y: size.height - 20 - 15 - messageHeight)
+        }
+
+        if let messageView {
+            messageView.centerX(y: infoView.frame.minY + 20 + GiftMessage.topSpacing)
         }
         
         transition.updateFrame(view: backgroundView, frame: size.bounds)
@@ -2136,7 +2194,20 @@ private struct State : Equatable {
             }
         }
     }
-    
+
+    public var headerGiftMessage: (text: String, entities: [MessageTextEntity]?, sender: EnginePeer?)? {
+        guard case .quickLook = source, gift.unique != nil, case let .starGift(_, _, text?, entities, nameHidden, _, _, _, _, _, _, _, _, sender, _, _, _, _, _, _, _, _, _, _)? = purpose, !text.isEmpty else {
+            return nil
+        }
+        if nameHidden {
+            return (text, entities, nil)
+        } else if let sender {
+            return (text, entities, sender)
+        } else {
+            return nil
+        }
+    }
+
     public var closeOnOk: Bool {
         switch source {
         case .preview:
@@ -2494,7 +2565,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 break
             }
 
-            if let text = state.purpose?.giftText, !text.isEmpty {
+            if state.headerGiftMessage == nil, let text = state.purpose?.giftText, !text.isEmpty {
                 let entities = state.purpose?.giftEntities
                 let attr = StarsHooks.shared.applyMessageEntities(entities ?? [], text, arguments.context, theme.fontSize, { _, _, _, _ in }, theme.colors.text, theme.colors.isDark, true).mutableCopy() as! NSMutableAttributedString
                 InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: entities ?? [], isPremium: arguments.context.isPremium)
@@ -2692,6 +2763,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
     let initialState = State(source: source, gift: gift, ignoreUpgradeGifts: Set(), transaction: transaction, converted: source.isQuickLook, purpose: purpose, attributes: source.attributes, accountPeerId: context.peerId, pinnedInfo: pinnedInfo)
     
     var close:(()->Void)? = nil
+    var closeWithoutMorph:(()->Void)? = nil
     
     
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
@@ -3265,7 +3337,7 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
             showModalText(for: window, text: !pinnedInfo.pinnedInfo ? strings().giftTooltipPinned : strings().giftTooltipUnpinned)
         }
     }, openPeer: { peer, toChat in
-        close?()
+        closeWithoutMorph?()
         if toChat {
             StarsHooks.shared.openChat(context, peer.id, nil)
         } else {
@@ -3869,6 +3941,10 @@ public func StarGift_Nft_Controller(context: (any AccountContextProtocol), gift:
 
     close = { [weak modalController] in
         modalController?.modal?.close()
+    }
+
+    closeWithoutMorph = { [weak modalController] in
+        modalController?.modal?.close(animationType: .noMorph)
     }
 
     return modalController
