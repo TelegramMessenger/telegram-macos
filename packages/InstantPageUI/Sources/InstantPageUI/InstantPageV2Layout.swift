@@ -1869,6 +1869,13 @@ private func instantPageRichTextContainsRTL(_ text: RichText) -> Bool {
     return instantPageStringContainsRTL(text.plainText)
 }
 
+private func instantPageV2IsList(_ block: InstantPageBlock?) -> Bool {
+    if case .list = block {
+        return true
+    }
+    return false
+}
+
 private func layoutListV2(
     _ listItems: [InstantPageListItem],
     ordered: Bool,
@@ -1898,7 +1905,12 @@ private func layoutListV2(
             break
         }
     }
-    let indexSpacing: CGFloat = ordered ? (hasTaskItem ? 10.0 : 8.0) : (hasTaskItem ? 12.0 : 10.0)
+    // Marker metrics of Telegram Desktop's message lists (defaultMarkdownList in iv/iv.style): a marker
+    // column at least 22pt wide, 8pt between the column and the text, and 2pt-radius bullets centered
+    // where a one-digit number would be, so bullets, numbers and nested lists share one text edge.
+    let markerColumnMinimumWidth: CGFloat = 22.0
+    let markerSkip: CGFloat = 8.0
+    let bulletSize: CGFloat = 4.0
     let checklistMarkerSize: CGFloat = 18.0
     for (i, _) in listItems.enumerated() {
         if ordered {
@@ -1925,7 +1937,10 @@ private func layoutListV2(
         if case let .text(text, _, _) = item { return instantPageRichTextContainsRTL(text) }
         return false
     })
-    let markerColumnWidth = maxIndexWidth + indexSpacing
+    let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
+    let markerColumnWidth = markerWidth + markerSkip
+    let singleDigitWidth = ceil(attributedStringForRichText(.plain("8."), styleStack: indexStack).size().width)
+    let bulletInset = markerWidth - floor((singleDigitWidth + 1.0) / 2.0) - bulletSize / 2.0
     var items: [InstantPageV2LaidOutItem] = []
     var contentHeight: CGFloat = 0.0
     let textOriginX = rtl ? horizontalInset : (horizontalInset + markerColumnWidth)
@@ -2003,16 +2018,35 @@ private func layoutListV2(
                     return false
                 }) ? .unsupported : subBlock
                 let subLocalMaxY: CGFloat = subItems.map { $0.frame.maxY }.max() ?? 0.0
-                let spacing: CGFloat = (previousSubBlock != nil && subLocalMaxY > 0.0) ? spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth) : 0.0
+                let spacing: CGFloat
+                if previousSubBlock == nil || subLocalMaxY <= 0.0 {
+                    spacing = 0.0
+                } else if context.fitToWidth, instantPageV2IsList(previousSubBlock) || instantPageV2IsList(effectiveSubBlock) {
+                    // A list nested in a list item keeps the item spacing, as in Telegram Desktop, where
+                    // a list inside a message list item is separated by blockSkips.paragraph (4px).
+                    spacing = 4.0
+                } else {
+                    spacing = spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth)
+                }
                 let offsetY = subContentHeight + spacing
                 let translated = subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) }
 
-                if firstBlockLineMidY == nil {
-                    for ti in translated {
-                        if case let .text(tv) = ti, let firstLine = tv.textItem.lines.first {
-                            firstBlockLineMidY = tv.frame.minY + firstLine.frame.midY
-                            break
-                        }
+                // Only the first block can place the marker, and only when it opens with text: in an item
+                // that starts with a photo (even one with a caption), the marker stays at the item's top
+                // edge, as in Telegram Desktop.
+                if previousSubBlock == nil,
+                   let firstText = translated.lazy.compactMap({ item -> InstantPageV2TextItem? in
+                       if case let .text(textItem) = item { return textItem }
+                       return nil
+                   }).first,
+                   let firstLine = firstText.textItem.lines.first {
+                    let lineTop = firstText.frame.minY + firstLine.frame.minY
+                    let somethingAboveText = translated.contains(where: { item in
+                        if case .text = item { return false }
+                        return item.frame.maxY <= lineTop
+                    })
+                    if !somethingAboveText {
+                        firstBlockLineMidY = firstText.frame.minY + firstLine.frame.midY
                     }
                 }
 
@@ -2051,13 +2085,20 @@ private func layoutListV2(
         let markerKind: InstantPageV2ListMarkerKind
         let markerFrame: CGRect
 
+        // Every marker centers on the item's first text line. Items carried as nested blocks (all Bot API
+        // rich-message items and everything the rich editor sends) take it from their first block; when that
+        // block does not open with text (an image, for example), the marker falls back to the item's top edge.
+        let markerLineMidY: CGFloat? = nestedBlocks.isEmpty ? lineMidY : firstBlockLineMidY
+        func markerOriginY(height: CGFloat) -> CGFloat {
+            return markerLineMidY.map { floor($0 - height / 2.0) } ?? originY
+        }
+
         if let checked = taskChecked {
             markerKind = .checklist(checked: checked, colors: checkboxColors)
             let boxSize: CGFloat = 18.0
-            let centerY = nestedBlocks.isEmpty ? lineMidY : (firstBlockLineMidY ?? (originY + boxSize / 2.0))
-            let markerY = floor(centerY - boxSize / 2.0)
+            let markerY = markerOriginY(height: boxSize)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - boxSize) : (horizontalInset + maxIndexWidth - boxSize),
+                x: rtl ? (boundingWidth - horizontalInset - boxSize) : horizontalInset,
                 y: markerY,
                 width: boxSize,
                 height: boxSize
@@ -2065,22 +2106,21 @@ private func layoutListV2(
             let boxBottom = markerY + boxSize - contentHeight
             itemContentHeight = max(itemContentHeight, boxBottom)
         } else if ordered, let indexItem = indexLayouts[i] {
-            let markerWidth = indexItem.lines.first?.frame.width ?? indexItem.frame.width
+            let numberWidth = indexItem.lines.first?.frame.width ?? indexItem.frame.width
             let numberHeight: CGFloat = 20.0
             markerKind = .number(indexItem.attributedString.string)
-            let markerY: CGFloat = nestedBlocks.isEmpty ? floor(lineMidY - numberHeight / 2.0) : originY
+            let markerY = markerOriginY(height: numberHeight)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - markerWidth) : (horizontalInset + (maxIndexWidth - markerWidth)),
+                x: rtl ? (boundingWidth - horizontalInset - markerWidth) : (horizontalInset + (markerWidth - numberWidth)),
                 y: markerY,
-                width: markerWidth,
+                width: numberWidth,
                 height: numberHeight
             )
         } else {
             markerKind = .bullet
-            let bulletSize: CGFloat = 5.0
-            let markerY: CGFloat = nestedBlocks.isEmpty ? floor(lineMidY - bulletSize / 2.0) : originY
+            let markerY = markerOriginY(height: bulletSize)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - bulletSize) : horizontalInset,
+                x: rtl ? (boundingWidth - horizontalInset - bulletInset - bulletSize) : (horizontalInset + bulletInset),
                 y: markerY,
                 width: bulletSize,
                 height: bulletSize
