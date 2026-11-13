@@ -1,0 +1,346 @@
+import Foundation
+
+var events: [String] = []
+
+struct PeerId: Hashable, CustomStringConvertible {
+    let id: Int64
+    var description: String { "\(id)" }
+}
+
+struct ThreadData {
+    let peerId: PeerId
+    let threadId: Int64
+}
+
+enum ChatLocation {
+    case peer(PeerId)
+    case thread(ThreadData)
+    var peerId: PeerId {
+        switch self {
+        case let .peer(id): return id
+        case let .thread(data): return data.peerId
+        }
+    }
+    var threadId: Int64? {
+        switch self {
+        case .peer: return nil
+        case let .thread(data): return data.threadId
+        }
+    }
+}
+
+enum MonoforumUIState {
+    case vertical
+    case horizontal
+    case sidebar
+}
+
+struct Presentation {
+    var monoforumState: MonoforumUIState?
+}
+
+enum AlertResult {
+    case basic
+    case thrid
+}
+
+final class Started {
+    func start() -> Started { self }
+}
+
+final class Peers {
+    func removeForumChannelThread(id: PeerId, threadId: Int64) -> Started {
+        events.append("remove \(id) \(threadId)")
+        return Started()
+    }
+    func removeForumChannelThreads(id: PeerId, threadIds: [Int64]) -> Started {
+        events.append("remove \(id) \(threadIds)")
+        return Started()
+    }
+}
+
+final class Engine {
+    let peers = Peers()
+}
+
+final class Account {
+    let id = 7
+}
+
+class ViewController {}
+
+final class ChatInteraction {
+    var presentation: Presentation
+    var chatLocation: ChatLocation
+    var updateChatLocationThread: (Int64?) -> Void = { _ in }
+    init(topics: MonoforumUIState?, chatLocation: ChatLocation) {
+        self.presentation = Presentation(monoforumState: topics)
+        self.chatLocation = chatLocation
+        self.updateChatLocationThread = { [unowned self] threadId in
+            events.append("move \(threadId.map { "\($0)" } ?? "nil")")
+            if let threadId {
+                self.chatLocation = .thread(ThreadData(peerId: self.chatLocation.peerId, threadId: threadId))
+            } else {
+                self.chatLocation = .peer(self.chatLocation.peerId)
+            }
+        }
+    }
+}
+
+protocol ChatControllerKind: ViewController {
+    var chatInteraction: ChatInteraction { get }
+}
+
+final class ChatController: ViewController, ChatControllerKind {
+    let chatInteraction: ChatInteraction
+    init(topics: MonoforumUIState?, chatLocation: ChatLocation) {
+        self.chatInteraction = ChatInteraction(topics: topics, chatLocation: chatLocation)
+    }
+}
+
+final class OtherController: ViewController {}
+
+final class Navigation {
+    var controller: ViewController?
+    func close() {
+        events.append("close")
+        controller = nil
+    }
+}
+
+final class Bindings {
+    let navigation = Navigation()
+    func rootNavigation() -> Navigation { navigation }
+}
+
+final class Context {
+    let engine = Engine()
+    let account = Account()
+    let bindings = Bindings()
+    let peerId = PeerId(id: 1)
+    var isFrozen = false
+}
+
+final class SavedChatControllerRegistry {
+    static let shared = SavedChatControllerRegistry()
+    func remove(accountId: Int, peerId: PeerId, threadId: Int64) {
+        events.append("saved \(peerId) \(threadId)")
+    }
+}
+
+struct Peer {
+    let isBot = false
+}
+
+func scheduleChatRemoval(context: Context, peer: Peer, peerId: PeerId, deleteGloballyIfPossible: Bool, blockBot: Bool) {
+    events.append("schedule \(peerId)")
+}
+
+func confirmedRemoval(context: Context, peer: Peer, peerId: PeerId, threadId: Int64?, forceRemoveGlobally: Bool, result: AlertResult?, location: ChatLocation?) -> Bool {
+    let body: (AlertResult?, ChatLocation?) -> Bool = { result, location -> Bool in
+__DIALOG__
+    }
+    return body(result, location)
+}
+
+final class Row {
+    struct Mode {
+        let threadId: Int64?
+    }
+    let mode: Mode
+    let canDeleteTopic: Bool
+    init(_ threadId: Int64, canDelete: Bool = true) {
+        self.mode = Mode(threadId: threadId)
+        self.canDeleteTopic = canDelete
+    }
+}
+
+struct ParentPeer {
+    let peerId: PeerId
+}
+
+final class SidebarRows {
+    let context = Context()
+    var selectedRows: [Row] = []
+    var content: (items: [Int64], selectedThreadId: Int64?, kind: Int, parentPeer: ParentPeer)?
+    var onSelect: (Int64?, Any?) -> Void = { threadId, _ in
+        events.append("select \(threadId.map { "\($0)" } ?? "nil")")
+    }
+    func setSelecting(_ selecting: Bool) {
+        events.append("selecting \(selecting)")
+    }
+    func confirmDelete(ids: [Int64], peerId: PeerId) {
+        let successHandler: (Int) -> Void = { [weak self] _ in
+__SIDEBAR__
+        }
+        successHandler(0)
+    }
+}
+
+var failures = 0
+var checks = 0
+
+func check(_ name: String, _ actual: [String], _ expected: [String]) {
+    checks += 1
+    if actual != expected {
+        failures += 1
+        print("FAIL \(name): \(actual) != \(expected)")
+    }
+}
+
+func checkTrue(_ name: String, _ value: Bool) {
+    checks += 1
+    if !value {
+        failures += 1
+        print("FAIL \(name)")
+    }
+}
+
+let forum = PeerId(id: 100)
+let otherForum = PeerId(id: 200)
+
+func sidebar(open: Int64?, selected: [Int64], deleting: [Int64], frozen: Bool = false, canDelete: Bool = true) -> [String] {
+    events = []
+    let rows = SidebarRows()
+    rows.context.isFrozen = frozen
+    rows.selectedRows = selected.map { Row($0, canDelete: canDelete) }
+    rows.content = (items: [1, 5, 6, 7], selectedThreadId: open, kind: 0, parentPeer: ParentPeer(peerId: forum))
+    rows.confirmDelete(ids: deleting, peerId: forum)
+    return events
+}
+
+check("sidebar: the open topic deleted alone moves to All Messages first", sidebar(open: 5, selected: [5], deleting: [5]), ["select nil", "remove 100 [5]", "selecting false"])
+check("sidebar: the open topic among several moves to All Messages first", sidebar(open: 6, selected: [5, 6, 7], deleting: [5, 6, 7]), ["select nil", "remove 100 [5, 6, 7]", "selecting false"])
+check("sidebar: the open topic last in the list", sidebar(open: 7, selected: [5, 7], deleting: [5, 7]), ["select nil", "remove 100 [5, 7]", "selecting false"])
+check("sidebar: another topic deleted keeps the open one", sidebar(open: 6, selected: [5], deleting: [5]), ["remove 100 [5]", "selecting false"])
+check("sidebar: All Messages open stays", sidebar(open: nil, selected: [5, 6], deleting: [5, 6]), ["remove 100 [5, 6]", "selecting false"])
+check("sidebar: selection changed while the alert was open deletes nothing", sidebar(open: 5, selected: [5, 6], deleting: [5]), [])
+check("sidebar: frozen account deletes nothing", sidebar(open: 5, selected: [5], deleting: [5], frozen: true), [])
+check("sidebar: a row that can't be deleted deletes nothing", sidebar(open: 5, selected: [5], deleting: [5], canDelete: false), [])
+
+do {
+    events = []
+    let rows = SidebarRows()
+    rows.selectedRows = [Row(5), Row(6)]
+    rows.content = (items: [1, 5, 6], selectedThreadId: 5, kind: 0, parentPeer: ParentPeer(peerId: forum))
+    rows.onSelect = { threadId, _ in
+        events.append("select \(threadId.map { "\($0)" } ?? "nil")")
+        rows.content?.selectedThreadId = threadId
+    }
+    rows.confirmDelete(ids: [5, 6], peerId: forum)
+    check("sidebar: the move rebuilding the rows still deletes the confirmed ids", events, ["select nil", "remove 100 [5, 6]", "selecting false"])
+}
+
+func dialog(root: ViewController?, threadId: Int64?, peerId: PeerId = forum, location: ChatLocation?) -> ([String], Bool, ChatLocation?) {
+    events = []
+    let context = Context()
+    context.bindings.navigation.controller = root
+    let value = confirmedRemoval(context: context, peer: Peer(), peerId: peerId, threadId: threadId, forceRemoveGlobally: false, result: .basic, location: location)
+    return (events, value, (root as? ChatControllerKind)?.chatInteraction.chatLocation)
+}
+
+func topic(_ peerId: PeerId, _ threadId: Int64) -> ChatLocation {
+    .thread(ThreadData(peerId: peerId, threadId: threadId))
+}
+
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(forum, 5))
+    let (log, value, location) = dialog(root: chat, threadId: 5, location: .peer(forum))
+    check("menu delete: Sidebar chat on the deleted topic moves to All Messages", log, ["remove 100 5", "move nil"])
+    checkTrue("menu delete: the chat ends on All Messages", location?.threadId == nil && location?.peerId == forum)
+    checkTrue("menu delete: the signal says removed", value)
+}
+do {
+    let chat = ChatController(topics: .horizontal, chatLocation: topic(forum, 5))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: .peer(forum))
+    check("menu delete: Tabs chat on the deleted topic moves to All Messages", log, ["remove 100 5", "move nil"])
+    checkTrue("menu delete: Tabs chat ends on All Messages", location?.threadId == nil)
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(forum, 5))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: topic(forum, 5))
+    check("menu delete: topic opened from a notification or search moves instead of closing", log, ["remove 100 5", "move nil"])
+    checkTrue("menu delete: that chat stays open on All Messages", location?.threadId == nil)
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(forum, 6))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: topic(forum, 5))
+    check("menu delete: an older topic deleted after switching away doesn't close the forum", log, ["remove 100 5"])
+    checkTrue("menu delete: still on topic 6 after the older topic is deleted", location?.threadId == 6)
+}
+do {
+    let chat = ChatController(topics: .horizontal, chatLocation: .peer(forum))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: topic(forum, 5))
+    check("menu delete: All Messages open with an older location doesn't close the forum", log, ["remove 100 5"])
+    checkTrue("menu delete: still on All Messages", location?.threadId == nil)
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(forum, 6))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: .peer(forum))
+    check("menu delete: another topic deleted keeps the open one", log, ["remove 100 5"])
+    checkTrue("menu delete: still on topic 6", location?.threadId == 6)
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: .peer(forum))
+    let (log, _, _) = dialog(root: chat, threadId: 5, location: .peer(forum))
+    check("menu delete: All Messages open stays", log, ["remove 100 5"])
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(otherForum, 5))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: .peer(otherForum))
+    check("menu delete: the same topic id in another forum stays", log, ["remove 100 5"])
+    checkTrue("menu delete: other forum still on its topic", location?.threadId == 5)
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(otherForum, 5))
+    let (log, _, _) = dialog(root: chat, threadId: 5, location: topic(forum, 5))
+    check("menu delete: another forum on top keeps the old close for this forum's location", log, ["remove 100 5", "close"])
+}
+do {
+    let chat = ChatController(topics: nil, chatLocation: topic(forum, 5))
+    let (log, _, location) = dialog(root: chat, threadId: 5, location: topic(forum, 5))
+    check("menu delete: List layout topic chat still closes", log, ["remove 100 5", "close"])
+    checkTrue("menu delete: List layout chat not switched", location?.threadId == 5)
+}
+do {
+    let chat = ChatController(topics: nil, chatLocation: topic(forum, 6))
+    let (log, _, _) = dialog(root: chat, threadId: 5, location: topic(forum, 6))
+    check("menu delete: List layout chat of another topic stays", log, ["remove 100 5"])
+}
+do {
+    let channel = PeerId(id: 300)
+    let chat = ChatController(topics: .vertical, chatLocation: topic(channel, 4242))
+    let (log, _, location) = dialog(root: chat, threadId: 4242, peerId: channel, location: .peer(channel))
+    check("menu delete: channel direct messages chat on the deleted thread moves to all chats", log, ["remove 300 4242", "move nil"])
+    checkTrue("menu delete: direct messages end on the channel", location?.threadId == nil && location?.peerId == channel)
+}
+do {
+    let bot = PeerId(id: 400)
+    let chat = ChatController(topics: .vertical, chatLocation: topic(bot, 3))
+    let (log, _, location) = dialog(root: chat, threadId: 3, peerId: bot, location: .peer(bot))
+    check("menu delete: bot forum chat on the deleted thread moves to the bot's root chat", log, ["remove 400 3", "move nil"])
+    checkTrue("menu delete: bot chat ends on its root", location?.threadId == nil)
+}
+do {
+    let (log, _, _) = dialog(root: OtherController(), threadId: 5, location: topic(forum, 5))
+    check("menu delete: no chat on top keeps the old close", log, ["remove 100 5", "close"])
+}
+do {
+    let (log, _, _) = dialog(root: nil, threadId: 5, location: .peer(forum))
+    check("menu delete: empty navigation does nothing more", log, ["remove 100 5"])
+}
+do {
+    let chat = ChatController(topics: .sidebar, chatLocation: .peer(forum))
+    let (log, _, _) = dialog(root: chat, threadId: nil, location: .peer(forum))
+    check("chat delete: deleting the whole chat still closes it", log, ["schedule 100", "close"])
+}
+do {
+    let saved = PeerId(id: 1)
+    let chat = ChatController(topics: .sidebar, chatLocation: topic(saved, 9))
+    let (log, _, location) = dialog(root: chat, threadId: 9, peerId: saved, location: .peer(saved))
+    check("saved messages: a saved chat removal keeps its own path", log, ["remove 1 9", "saved 1 9"])
+    checkTrue("saved messages: chat not switched", location?.threadId == 9)
+}
+
+print("\(checks - failures)/\(checks) passed")
+exit(failures == 0 ? 0 : 1)
