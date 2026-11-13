@@ -890,6 +890,7 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
 
     
     public var parentToggleSelection: (()->Void)?
+    public var menuItemsUpdated: (()->Void)?
 
     private func updateState(_ f:(State) -> State) {
         statePromise.set(stateValue.modify (f))
@@ -1809,7 +1810,8 @@ public final class StoryMediaController<Context: AccountContextProtocol> : Teleg
             self?.genericView.updateState(state, arguments: arguments, animated: transition.animated)
             self?.doneButton?.isHidden = state.selected == nil
             self?.editButton?.isHidden = state.selected != nil
-            
+            self?.menuItemsUpdated?()
+
         }))
         
     }

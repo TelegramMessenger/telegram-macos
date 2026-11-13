@@ -1204,21 +1204,36 @@
          rightBarView?.needsLayout = true
      }
 
+     private var directEditItem: ContextMenuItem? {
+         guard supportsEditing else {
+             return nil
+         }
+         let items = menuItems().filter { !$0.isSeparatorItem }
+         guard items.count == 1, let item = items.first, item.title == strings().chatContextEdit1, item.isEnabled, item.handler != nil, item.submenu == nil else {
+             return nil
+         }
+         return item
+     }
+
      public override func updateEditStateTitles() {
          guard let editButton else { return }
          let pillHeight = StackedBarView.pillHeight
          switch state {
          case .Normal:
-             editButton.set(image: theme.icons.chatActions, for: .Normal)
+             let isDirectEdit = directEditItem != nil
+             editButton.set(image: isDirectEdit ? theme.icons.chatActionEdit.highlight(color: theme.colors.text) : theme.icons.chatActions, for: .Normal)
+             editButton.setAccessibilityLabel(isDirectEdit ? strings().chatContextEdit1 : strings().voiceOverCommonMore)
              editButton.set(text: "", for: .Normal)
              _ = editButton.sizeToFit(.zero, NSMakeSize(pillHeight, pillHeight), thatFit: true)
          case .Edit:
              editButton.removeImage(for: .Normal)
              editButton.set(text: doneString, for: .Normal)
+             editButton.setAccessibilityLabel(doneString)
              _ = editButton.sizeToFit(NSMakeSize(20, 0), NSMakeSize(.greatestFiniteMagnitude, pillHeight), thatFit: false)
          case .Some:
              editButton.removeImage(for: .Normal)
              editButton.set(text: someString, for: .Normal)
+             editButton.setAccessibilityLabel(someString)
              _ = editButton.sizeToFit(NSMakeSize(20, 0), NSMakeSize(.greatestFiniteMagnitude, pillHeight), thatFit: false)
          }
      }
@@ -1243,11 +1258,27 @@
          }
          self.searchBarButton = searchBtn
 
+         for controller in [stories, archiveStories].compactMap({ $0 }) {
+             controller.menuItemsUpdated = { [weak self, weak controller] in
+                 guard let self, let controller, self.currentController === controller else {
+                     return
+                 }
+                 self.requestUpdateRightBar()
+             }
+         }
+
          editButton?.setSingle(handler: { [weak self] control in
-             if self?.state == .Normal {
-                 control.showContextMenu()
+             guard let self else {
+                 return
+             }
+             if self.state == .Normal {
+                 if let item = self.directEditItem {
+                     item.handler?()
+                 } else {
+                     _ = control.accessibilityPerformShowMenu()
+                 }
              } else {
-                 self?.changeState()
+                 self.changeState()
              }
          }, for: .Click)
 
@@ -2054,6 +2085,7 @@
      
      public override func viewDidResized(_ size: NSSize) {
          super.viewDidResized(size)
+         requestUpdateRightBar()
      }
     
     
