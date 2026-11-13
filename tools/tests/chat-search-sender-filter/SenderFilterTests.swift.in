@@ -1,0 +1,292 @@
+import AppKit
+import XCTest
+
+__TOKEN_ENUM__
+__STATE__
+
+class SearchView: NSObject {
+    let input = TextInput()
+    let window: Window? = Window()
+    var state: SearchFieldState = .Focus
+    var query: String { input.string }
+    var isEmpty: Bool { query.isEmpty }
+    var needsLayout = false
+    var tags: [SearchTag] = []
+    var tagsInfo: [SearchTag] = []
+    var customSearchControl: CustomSearchControl?
+    let _searchValue = ValuePromise<SearchState>()
+    var searchInteractions: SearchInteractions?
+
+    func change(state: SearchFieldState, _ animated: Bool) {
+        self.state = state
+        searchInteractions?.stateModified(SearchState(state: state, request: query, responder: true), animated)
+    }
+
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool { false }
+
+    @objc func deleteBackward(_ sender: Any?) {
+    }
+
+    __BASE_SET_STRING__
+    __BASE_CANCEL__
+    __BASE_TEXT_CHANGE__
+}
+
+final class ChatSearchView: SearchView {
+    var context: (any AccountContextProtocol)?
+
+    func updateClearButton() {
+    }
+
+    __TOKEN_PUBLICATION__
+    __VIEW_ACTIONS__
+}
+
+final class SearchHeader {
+    let searchView = ChatSearchView()
+    let inputInteraction = CSearchInteraction()
+    let parentInteractions = ChatInteraction()
+    let chatInteraction = ChatInteraction()
+    let interactions = ChatSearchInteractions()
+    let query = ValuePromise<SearchStateQuery>()
+    let disposable = MetaDisposable()
+    let tokenDisposable = MetaDisposable()
+    let context = Context()
+
+    init() {
+        let context = self.context
+        let chatInteraction = self.chatInteraction
+        interactions.searchRequest = __ENGINE_REQUEST__
+        __MOVE_PEER__
+        __TOKEN_SUBSCRIPTION__
+        __SEARCH_INTERACTIONS__
+        __APPLY__
+    }
+
+    func updateSearchState() {
+    }
+
+    __REMOVE__
+
+    func drain() {
+        Queue.mainQueue().drain()
+    }
+
+    func choose(_ id: PeerId = 10, name: String = "Alice") {
+        chatInteraction.movePeerToInput(Peer(id: id, compactDisplayTitle: name))
+    }
+
+    deinit {
+        disposable.dispose()
+        tokenDisposable.dispose()
+    }
+}
+
+final class SenderFilterTests: XCTestCase {
+    override func setUp() {
+        Queue.mainQueue().drain()
+    }
+
+    func selectedHeader(thread: Bool = false) -> SearchHeader {
+        let header = SearchHeader()
+        if thread {
+            header.chatInteraction.chatLocation = .thread(ThreadData(peerId: 100, threadId: 77))
+        }
+        header.searchView.initToken()
+        header.choose()
+        header.searchView.setString("needle")
+        header.drain()
+        return header
+    }
+
+    func testRemovingTokenClearsSenderWithoutLosingQueryOrOtherState() {
+        let message = Message(id: 8, author: 10, text: "needle")
+        let state = CSearchContextState(inputQueryResult: ChatPresentationInputQueryResult(value: 4), messages: ([message], SearchMessagesState(page: 2)), totalCount: 12, selectedIndex: 0, searchState: SearchState(state: .Focus, request: "needle", responder: true), tokenState: .from(query: "Alice", complete: true), peerId: 10)
+        let removed = state.updatedTokenState(.none)
+        XCTAssertNil(removed.peerId)
+        XCTAssertEqual(removed.searchState, state.searchState)
+        XCTAssertEqual(removed.messages.0.map(\.id), [8])
+        XCTAssertEqual(removed.messages.1, state.messages.1)
+        XCTAssertEqual(removed.totalCount, 12)
+        XCTAssertEqual(removed.selectedIndex, 0)
+        XCTAssertEqual(removed.inputQueryResult, state.inputQueryResult)
+        XCTAssertEqual(state.peerId, 10)
+    }
+
+    func testEditingSenderAndEmojiReplacementClearPeer() {
+        let state = CSearchContextState(searchState: SearchState(state: .Focus, request: "needle"), tokenState: .from(query: "Alice", complete: true), peerId: 10)
+        for token in [TokenSearchState.from(query: "", complete: false), .from(query: "Bo", complete: false), .emojiTag(tag: EmojiTag(reaction: 1)), .none] {
+            let next = state.updatedTokenState(token)
+            XCTAssertNil(next.peerId)
+            XCTAssertEqual(next.searchState.request, "needle")
+        }
+    }
+
+    func testCompletedSenderSurvivesTextResultAndResponderUpdates() {
+        let state = CSearchContextState(tokenState: .from(query: "Alice", complete: true), peerId: 10)
+        let next = state.updatedTokenState(.from(query: "Alice", complete: true)).updatedSearchState(SearchState(state: .Focus, request: "needle", responder: true)).updatedMessages(([], nil)).updatedSelectedIndex(-1)
+        XCTAssertEqual(next.peerId, 10)
+        XCTAssertEqual(next.tokenState, .from(query: "Alice", complete: true))
+        XCTAssertEqual(next.searchState.request, "needle")
+    }
+
+    func testPeerOnlyChangeNotifiesObserversIncludingSameDisplayName() {
+        let interaction = CSearchInteraction()
+        interaction.update { $0.updatedTokenState(.from(query: "Same name", complete: true)).updatedPeerId(10) }
+        let oldChanges = interaction.changes
+        let old = interaction.state
+        interaction.update { $0.updatedPeerId(20) }
+        XCTAssertNotEqual(old, interaction.state)
+        XCTAssertEqual(interaction.changes, oldChanges + 1)
+        interaction.update { $0.updatedPeerId(20) }
+        XCTAssertEqual(interaction.changes, oldChanges + 1)
+    }
+
+    func testVisibleTokenRemovalRefreshesBothAuthorsAndPreservesQuery() {
+        for thread in [false, true] {
+            let header = selectedHeader(thread: thread)
+            XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1])
+            let requests = header.context.engine.messages.requests.count
+            header.searchView.tokenState = .none
+            XCTAssertEqual(header.searchView.query, "needle")
+            XCTAssertNil(header.inputInteraction.state.peerId)
+            header.drain()
+            XCTAssertGreaterThan(header.context.engine.messages.requests.count, requests)
+            XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1, 2])
+            XCTAssertEqual(header.parentInteractions.results.query, "needle")
+            XCTAssertNil(header.context.engine.messages.requests.last?.location.fromId)
+            XCTAssertEqual(header.context.engine.messages.requests.last?.location.threadId, thread ? 77 : nil)
+            XCTAssertNil(header.context.engine.messages.requests.last?.state)
+        }
+    }
+
+    func testBackspaceRemovalCannotLeaveHiddenSenderOnNextQuery() {
+        let header = selectedHeader()
+        header.searchView.setString("")
+        let textView = NSTextView()
+        XCTAssertTrue(header.searchView.textView(textView, doCommandBy: #selector(SearchView.deleteBackward(_:))))
+        XCTAssertEqual(header.searchView.tokenState, .from(query: "", complete: false))
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        XCTAssertTrue(header.searchView.textView(textView, doCommandBy: #selector(SearchView.deleteBackward(_:))))
+        XCTAssertEqual(header.searchView.tokenState, .none)
+        header.searchView.setString("needle")
+        header.drain()
+        XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1, 2])
+        XCTAssertNil(header.context.engine.messages.requests.last?.location.fromId)
+    }
+
+    func testClearButtonKeepsValidSenderUntilTokenIsActuallyEdited() {
+        let header = selectedHeader()
+        header.searchView.cancelSearch()
+        XCTAssertEqual(header.searchView.query, "")
+        XCTAssertEqual(header.inputInteraction.state.peerId, 10)
+        XCTAssertEqual(header.searchView.tokenState, .from(query: "Alice", complete: true))
+        header.drain()
+        XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1, 3])
+        header.searchView.cancelSearch()
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        XCTAssertEqual(header.searchView.tokenState, .from(query: "", complete: false))
+        header.searchView.cancelSearch()
+        XCTAssertEqual(header.searchView.tokenState, .none)
+        header.searchView.setString("needle")
+        header.drain()
+        XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1, 2])
+    }
+
+    func testSenderEditingCancelsDebouncedFilteredRequest() {
+        let header = SearchHeader()
+        header.searchView.initToken()
+        header.choose()
+        header.searchView.setString("needle")
+        header.searchView.tokenState = .from(query: "Bob", complete: false)
+        XCTAssertEqual(header.searchView.query, "needle")
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        header.drain()
+        XCTAssertTrue(header.context.engine.messages.requests.isEmpty)
+        XCTAssertTrue(header.parentInteractions.results.messages.isEmpty)
+        XCTAssertFalse(header.parentInteractions.loadingMessage.value)
+    }
+
+    func testSenderEditingCancelsInFlightResponse() {
+        let header = SearchHeader()
+        header.context.engine.messages.deferResponses = true
+        header.searchView.initToken()
+        header.choose()
+        header.searchView.setString("needle")
+        header.drain()
+        XCTAssertEqual(header.context.engine.messages.requests.count, 1)
+        header.searchView.tokenState = .from(query: "", complete: false)
+        header.context.engine.messages.respond()
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        XCTAssertTrue(header.parentInteractions.results.messages.isEmpty)
+        XCTAssertFalse(header.parentInteractions.loadingMessage.value)
+    }
+
+    func testChoosingReplacementSenderAndSameNameUsesNewPeer() {
+        let header = selectedHeader()
+        header.searchView.initToken()
+        header.searchView.setString("Bo")
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        header.choose(20, name: "Alice")
+        header.searchView.setString("needle")
+        header.drain()
+        XCTAssertEqual(header.inputInteraction.state.peerId, 20)
+        XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [2])
+        header.choose(10, name: "Alice")
+        header.searchView.setString("needle")
+        header.drain()
+        XCTAssertEqual(header.inputInteraction.state.peerId, 10)
+        XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1])
+    }
+
+    func testEmojiReplacementAndRemovalDoNotInheritSender() {
+        let header = selectedHeader()
+        header.searchView.completeEmojiToken(EmojiTag(reaction: 7), context: header.context)
+        header.drain()
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        XCTAssertEqual(header.searchView.query, "needle")
+        XCTAssertEqual(header.parentInteractions.results.messages.map(\.id), [1, 2])
+        header.searchView.cancelEmojiToken(animated: false)
+        header.drain()
+        XCTAssertEqual(header.searchView.query, "needle")
+        XCTAssertNil(header.context.engine.messages.requests.last?.location.fromId)
+    }
+
+    func testHeaderResetClearsSenderAndExistingResultState() {
+        let header = selectedHeader()
+        header.remove(animated: false)
+        XCTAssertNil(header.inputInteraction.state.peerId)
+        XCTAssertEqual(header.inputInteraction.state.tokenState, .none)
+        XCTAssertEqual(header.inputInteraction.state.searchState.request, "")
+        XCTAssertEqual(header.inputInteraction.state.selectedIndex, -1)
+        XCTAssertTrue(header.inputInteraction.state.messages.0.isEmpty)
+        XCTAssertTrue(header.parentInteractions.results.messages.isEmpty)
+    }
+
+    func testPaginationAfterRemovalUsesNoSenderAndFreshFirstPage() {
+        let header = selectedHeader()
+        header.query.set(SearchStateQuery("needle", SearchMessagesState(page: 4)))
+        header.drain()
+        XCTAssertEqual(header.context.engine.messages.requests.last?.state?.page, 4)
+        header.searchView.tokenState = .none
+        header.drain()
+        XCTAssertNil(header.context.engine.messages.requests.last?.state)
+        XCTAssertNil(header.context.engine.messages.requests.last?.location.fromId)
+        header.query.set(SearchStateQuery("needle", SearchMessagesState(page: 2)))
+        XCTAssertNil(header.context.engine.messages.requests.last?.location.fromId)
+        XCTAssertEqual(header.context.engine.messages.requests.last?.state?.page, 2)
+    }
+
+    func testInitialSenderAndPlainSearchRemainSupported() {
+        let initial = SearchHeader()
+        initial.choose()
+        initial.drain()
+        XCTAssertEqual(initial.inputInteraction.state.peerId, 10)
+        XCTAssertEqual(initial.parentInteractions.results.messages.map(\.id), [1, 3])
+        let plain = SearchHeader()
+        plain.searchView.setString("needle")
+        plain.drain()
+        XCTAssertEqual(plain.parentInteractions.results.messages.map(\.id), [1, 2])
+        XCTAssertNil(plain.context.engine.messages.requests.last?.location.fromId)
+    }
+}

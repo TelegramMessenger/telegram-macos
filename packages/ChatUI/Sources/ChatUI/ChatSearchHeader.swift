@@ -38,7 +38,13 @@ private final class CSearchContextState : Equatable {
         return CSearchContextState(inputQueryResult: f(self.inputQueryResult), messages: self.messages, totalCount: self.totalCount, selectedIndex: self.selectedIndex, searchState: self.searchState, tokenState: self.tokenState, peerId: self.peerId)
     }
     func updatedTokenState(_ token: TokenSearchState) -> CSearchContextState {
-        return CSearchContextState(inputQueryResult: self.inputQueryResult, messages: self.messages, totalCount: self.totalCount, selectedIndex: self.selectedIndex, searchState: self.searchState, tokenState: token, peerId: self.peerId)
+        let peerId: PeerId?
+        if case .from(_, true) = token {
+            peerId = self.peerId
+        } else {
+            peerId = nil
+        }
+        return CSearchContextState(inputQueryResult: self.inputQueryResult, messages: self.messages, totalCount: self.totalCount, selectedIndex: self.selectedIndex, searchState: self.searchState, tokenState: token, peerId: peerId)
     }
     func updatedPeerId(_ peerId: PeerId?) -> CSearchContextState {
         return CSearchContextState(inputQueryResult: self.inputQueryResult, messages: self.messages, totalCount: self.totalCount, selectedIndex: self.selectedIndex, searchState: self.searchState, tokenState: self.tokenState, peerId: peerId)
@@ -64,7 +70,7 @@ private func ==(lhs: CSearchContextState, rhs: CSearchContextState) -> Bool {
             }
         }
     }
-    return lhs.inputQueryResult == rhs.inputQueryResult && lhs.tokenState == rhs.tokenState && lhs.selectedIndex == rhs.selectedIndex && lhs.totalCount == rhs.totalCount && lhs.searchState == rhs.searchState && lhs.messages.1 == rhs.messages.1
+    return lhs.inputQueryResult == rhs.inputQueryResult && lhs.tokenState == rhs.tokenState && lhs.peerId == rhs.peerId && lhs.selectedIndex == rhs.selectedIndex && lhs.totalCount == rhs.totalCount && lhs.searchState == rhs.searchState && lhs.messages.1 == rhs.messages.1
 }
 
 private final class CSearchInteraction : InterfaceObserver {
@@ -764,8 +770,8 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
         }
 
         self.chatInteraction.movePeerToInput = { [weak self] peer in
-            self?.searchView.completeToken(peer.compactDisplayTitle)
             self?.inputInteraction.update({$0.updatedPeerId(peer.id)})
+            self?.searchView.completeToken(peer.compactDisplayTitle)
         }
         
         
@@ -1007,7 +1013,12 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
     private func initialize(_ state: ChatHeaderState) {
         
         self.tokenDisposable.set(self.searchView.tokenPromise.get().start(next: { [weak self] state in
-            self?.inputInteraction.update({$0.updatedTokenState(state)})
+            guard let self else { return }
+            let peerId = self.inputInteraction.state.peerId
+            self.inputInteraction.update({$0.updatedTokenState(state)})
+            if peerId != self.inputInteraction.state.peerId {
+                self.searchView.searchInteractions?.textModified(.init(state: self.searchView.state, request: self.searchView.query, responder: true))
+            }
         }))
         
      
@@ -1041,6 +1052,10 @@ class ChatSearchHeader : View, Notifable, ChatHeaderProtocol {
                     self.parentInteractions.updateSearchRequest(SearchMessagesResultState(state.request, []))
                     self.parentInteractions.loadingMessage.set(.single(true))
                     self.query.set(SearchStateQuery(state.request, nil))
+                } else {
+                    self.parentInteractions.updateSearchRequest(SearchMessagesResultState(state.request, []))
+                    self.parentInteractions.loadingMessage.set(.single(false))
+                    self.query.set(SearchStateQuery(nil, nil))
                 }
             case .emojiTag:
                 self.parentInteractions.updateSearchRequest(SearchMessagesResultState(state.request, []))

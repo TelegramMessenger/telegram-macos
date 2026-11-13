@@ -1,0 +1,384 @@
+import AppKit
+
+protocol Disposable {
+    func dispose()
+}
+
+final class ActionDisposable: Disposable {
+    private var action: (() -> Void)?
+
+    init(_ action: @escaping () -> Void = {}) {
+        self.action = action
+    }
+
+    func dispose() {
+        let action = self.action
+        self.action = nil
+        action?()
+    }
+}
+
+final class MetaDisposable: Disposable {
+    private var current: Disposable?
+
+    func set(_ disposable: Disposable?) {
+        current?.dispose()
+        current = disposable
+    }
+
+    func dispose() {
+        set(nil)
+    }
+}
+
+enum NoError: Error {
+}
+
+struct Signal<Value, Failure> {
+    let subscribe: (@escaping (Value) -> Void) -> Disposable
+
+    func start(next: @escaping (Value) -> Void) -> Disposable {
+        subscribe(next)
+    }
+
+    static func single(_ value: Value) -> Signal {
+        Signal { next in
+            next(value)
+            return ActionDisposable()
+        }
+    }
+
+    static func never() -> Signal {
+        Signal { _ in ActionDisposable() }
+    }
+}
+
+infix operator |> : AdditionPrecedence
+
+func |> <T, U>(value: T, transform: (T) -> U) -> U {
+    transform(value)
+}
+
+func map<T, U, E>(_ transform: @escaping (T) -> U) -> (Signal<T, E>) -> Signal<U, E> {
+    { signal in
+        Signal { next in signal.start(next: { next(transform($0)) }) }
+    }
+}
+
+func mapToSignal<T, U, E>(_ transform: @escaping (T) -> Signal<U, E>) -> (Signal<T, E>) -> Signal<U, E> {
+    { signal in
+        Signal { next in
+            let inner = MetaDisposable()
+            let outer = signal.start(next: { value in
+                inner.set(nil)
+                inner.set(transform(value).start(next: next))
+            })
+            return ActionDisposable {
+                outer.dispose()
+                inner.dispose()
+            }
+        }
+    }
+}
+
+final class Queue {
+    static let main = Queue()
+    var tasks: [() -> Void] = []
+
+    static func mainQueue() -> Queue { main }
+
+    func drain() {
+        while !tasks.isEmpty {
+            tasks.removeFirst()()
+        }
+    }
+}
+
+final class Cancellation {
+    var cancelled = false
+}
+
+func delay<T, E>(_ seconds: Double, queue: Queue) -> (Signal<T, E>) -> Signal<T, E> {
+    { signal in
+        Signal { next in
+            let cancellation = Cancellation()
+            let disposable = signal.start(next: { value in
+                queue.tasks.append {
+                    if !cancellation.cancelled {
+                        next(value)
+                    }
+                }
+            })
+            return ActionDisposable {
+                cancellation.cancelled = true
+                disposable.dispose()
+            }
+        }
+    }
+}
+
+func deliverOnMainQueue<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> { signal }
+
+final class ValuePromise<Value: Equatable> {
+    private var value: Value?
+    private let ignoreRepeated: Bool
+    private var observers: [UUID: (Value) -> Void] = [:]
+
+    init(ignoreRepeated: Bool = false) {
+        self.value = nil
+        self.ignoreRepeated = ignoreRepeated
+    }
+
+    init(_ value: Value, ignoreRepeated: Bool = false) {
+        self.value = value
+        self.ignoreRepeated = ignoreRepeated
+    }
+
+    func set(_ value: Value) {
+        if ignoreRepeated && self.value == value {
+            return
+        }
+        self.value = value
+        for observer in Array(observers.values) {
+            observer(value)
+        }
+    }
+
+    func get() -> Signal<Value, NoError> {
+        Signal { next in
+            let id = UUID()
+            self.observers[id] = next
+            if let value = self.value {
+                next(value)
+            }
+            return ActionDisposable { self.observers.removeValue(forKey: id) }
+        }
+    }
+}
+
+class InterfaceObserver {
+    var changes = 0
+
+    func notifyObservers(value: Any, oldValue: Any, animated: Bool) {
+        changes += 1
+    }
+}
+
+typealias PeerId = Int
+
+struct SearchMessagesState: Equatable {
+    let page: Int
+}
+
+struct ChatPresentationInputQueryResult: Equatable {
+    let value: Int
+}
+
+struct EmojiTag: Equatable {
+    let reaction: Int
+    var tag: EmojiTag { self }
+}
+
+struct Message {
+    let id: Int
+    let author: PeerId
+    let text: String
+    var extendedMedia: Any? = nil
+}
+
+func isEqualMessages(_ lhs: Message, _ rhs: Message) -> Bool {
+    lhs.id == rhs.id && lhs.author == rhs.author && lhs.text == rhs.text
+}
+
+final class TelegramMediaAction {
+}
+
+enum SearchFieldState: Equatable {
+    case None, Focus
+}
+
+struct SearchState: Equatable {
+    let state: SearchFieldState
+    let request: String
+    var responder: Bool = false
+}
+
+struct SearchInteractions {
+    let stateModified: (SearchState, Bool) -> Void
+    let textModified: (SearchState) -> Void
+    let responderModified: (SearchState) -> Void
+
+    init(_ stateModified: @escaping (SearchState, Bool) -> Void, _ textModified: @escaping (SearchState) -> Void, responderModified: @escaping (SearchState) -> Void) {
+        self.stateModified = stateModified
+        self.textModified = textModified
+        self.responderModified = responderModified
+    }
+}
+
+struct Strings {
+    let chatSearchFrom = "From"
+}
+
+func strings() -> Strings { Strings() }
+
+extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+}
+
+final class TextInput: NSObject {
+    var string = ""
+}
+
+final class Window {
+    var firstResponder: TextInput?
+}
+
+struct SearchTag {
+    var isTextTied = false
+}
+
+final class CustomSearchControl {
+    func deleteTag(_ index: Int) {}
+}
+
+struct Peer {
+    let id: PeerId
+    let compactDisplayTitle: String
+    var isGroup = true
+    var isSupergroup = false
+}
+
+struct Presentation {
+    var peer: Peer? = Peer(id: 100, compactDisplayTitle: "Group")
+}
+
+struct ThreadData {
+    let peerId: PeerId
+    let threadId: Int64
+}
+
+enum ChatLocation {
+    case peer(PeerId)
+    case thread(ThreadData)
+
+    var threadId: Int64? {
+        if case let .thread(data) = self { return data.threadId }
+        return nil
+    }
+}
+
+struct ChatMode {
+    var tagMask: Int? = nil
+}
+
+struct SearchMessagesResultState {
+    let query: String
+    let messages: [Message]
+
+    init(_ query: String, _ messages: [Message]) {
+        self.query = query
+        self.messages = messages
+    }
+}
+
+final class LoadingMessage {
+    var value = false
+
+    func set(_ signal: Signal<Bool, NoError>) {
+        _ = signal.start(next: { self.value = $0 })
+    }
+}
+
+final class ChatInteraction {
+    var movePeerToInput: (Peer) -> Void = { _ in }
+    var presentation = Presentation()
+    var chatLocation: ChatLocation = .peer(100)
+    var mode = ChatMode()
+    let loadingMessage = LoadingMessage()
+    var results = SearchMessagesResultState("", [])
+
+    func updateSearchRequest(_ results: SearchMessagesResultState) {
+        self.results = results
+    }
+
+    func setLocationTag(_ tag: Int?) {}
+}
+
+enum SearchMessagesLocation {
+    case peer(peerId: PeerId, fromId: PeerId?, tags: Int?, reactions: [Int], threadId: Int64?, minDate: Int?, maxDate: Int?)
+
+    var fromId: PeerId? {
+        switch self {
+        case let .peer(_, fromId, _, _, _, _, _):
+            return fromId
+        }
+    }
+
+    var threadId: Int64? {
+        switch self {
+        case let .peer(_, _, _, _, threadId, _, _):
+            return threadId
+        }
+    }
+}
+
+struct EngineSearchResult {
+    let messages: [Message]
+    let totalCount: Int
+}
+
+struct SearchRequest {
+    let location: SearchMessagesLocation
+    let query: String
+    let state: SearchMessagesState?
+}
+
+final class EngineMessages {
+    var requests: [SearchRequest] = []
+    var deferResponses = false
+    var pending: [() -> Void] = []
+    let fixtures = [Message(id: 1, author: 10, text: "shared needle"), Message(id: 2, author: 20, text: "shared needle"), Message(id: 3, author: 10, text: "different")]
+
+    func searchMessages(location: SearchMessagesLocation, query: String, state: SearchMessagesState?) -> Signal<(EngineSearchResult, SearchMessagesState?), NoError> {
+        Signal { next in
+            let cancellation = Cancellation()
+            self.requests.append(SearchRequest(location: location, query: query, state: state))
+            let messages = self.fixtures.filter { message in
+                (location.fromId == nil || location.fromId == message.author) && (query.isEmpty || message.text.contains(query))
+            }
+            let respond = {
+                if !cancellation.cancelled {
+                    next((EngineSearchResult(messages: messages, totalCount: messages.count), SearchMessagesState(page: 1)))
+                }
+            }
+            if self.deferResponses {
+                self.pending.append(respond)
+            } else {
+                respond()
+            }
+            return ActionDisposable { cancellation.cancelled = true }
+        }
+    }
+
+    func respond() {
+        let pending = self.pending
+        self.pending.removeAll()
+        pending.forEach { $0() }
+    }
+}
+
+struct Engine {
+    let messages = EngineMessages()
+}
+
+protocol AccountContextProtocol: AnyObject {
+}
+
+final class Context: AccountContextProtocol {
+    let engine = Engine()
+}
+
+final class ChatSearchInteractions {
+    var searchRequest: (String, PeerId?, SearchMessagesState?, [EmojiTag]) -> Signal<([Message], SearchMessagesState?, Int), NoError> = { _, _, _, _ in .never() }
+    var jump: (Message) -> Void = { _ in }
+}
