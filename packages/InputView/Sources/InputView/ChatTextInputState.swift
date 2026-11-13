@@ -628,10 +628,18 @@ public final class ChatTextInputState: Codable, Equatable {
                 let multiline = code.rangeOfCharacter(from: CharacterSet(charactersIn: "\n\u{2028}")) != nil
                 let opening = symbols + language + (language.isEmpty && !multiline && code.unicodeScalars.first != "`" ? "" : "\n")
 
+                var fenceAttributes: [NSAttributedString.Key: Any] = [:]
+                var quoteRange = NSRange()
+                if !pre.isEmpty, let quote = string.attribute(TextInputAttributes.quote, at: pre.lowerBound + offset, longestEffectiveRange: &quoteRange, in: NSMakeRange(0, string.length)), NSMaxRange(quoteRange) >= pre.upperBound + offset {
+                    fenceAttributes[TextInputAttributes.quote] = quote
+                }
+
                 string.insert(.initialize(string: opening), at: pre.lowerBound + offset)
+                string.addAttributes(fenceAttributes, range: NSMakeRange(pre.lowerBound + offset, opening.length))
                 offset += opening.length
 
                 string.insert(.initialize(string: symbols), at: pre.upperBound + offset)
+                string.addAttributes(fenceAttributes, range: NSMakeRange(pre.upperBound + offset, symbols.length))
                 offset += symbols.count
             }
         }
@@ -664,6 +672,7 @@ public final class ChatTextInputState: Codable, Equatable {
         var attributes:[ChatTextInputAttribute] = []
 
         var offsetRanges:[NSRange] = []
+        var removals:[(range: NSRange, length: Int)] = []
         var enclosedCodeAttributes: Set<Int> = []
         if let regex = markdownRegex {
 
@@ -681,6 +690,8 @@ public final class ChatTextInputState: Codable, Equatable {
                             let closing = match.range(at: 4)
                             if case .pre = attr, body.location != NSNotFound, attrRange.location >= body.location, NSMaxRange(attrRange) <= NSMaxRange(closing) {
                                 enclosed.insert(attributeIndex)
+                            } else if case .quote = attr, body.location != NSNotFound, attrRange.location <= match.range(at: 2).location, NSMaxRange(attrRange) >= NSMaxRange(closing) {
+                                continue
                             } else {
                                 skipIndexes.insert(index)
                             }
@@ -735,6 +746,8 @@ public final class ChatTextInputState: Codable, Equatable {
                         rawOffset -= match.range(at: 2).length + match.range(at: 4).length
                         newText.append(raw.nsstring.substring(with: match.range(at: 1)) + text + raw.nsstring.substring(with: match.range(at: 5)))
                         attributes.append(.pre(matchIndex + match.range(at: 1).length ..< matchIndex + match.range(at: 1).length + text.length, language))
+                        let fences = NSMakeRange(subText.length - raw.length + match.range(at: 2).location, NSMaxRange(match.range(at: 4)) - match.range(at: 2).location)
+                        removals.append((fences, fences.length - text.length))
                         offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length, match.range(at: 2).length))
                         offsetRanges.append(NSMakeRange(matchIndex + match.range(at: 1).length + text.length + 3, match.range(at: 4).length))
                     } else {
@@ -772,6 +785,7 @@ public final class ChatTextInputState: Codable, Equatable {
 
                         offsetRanges.append(NSMakeRange(matchIndex + left.length, entity.length))
                         offsetRanges.append(NSMakeRange(matchIndex + left.length + text.length, entity.length))
+                        removals.append((NSMakeRange(subText.length - raw.length + match.range(at: 7).location, text.length + entity.length * 2), entity.length * 2))
 
                         rawOffset -= match.range(at: 7).length * 2
                     } else {
@@ -825,7 +839,8 @@ public final class ChatTextInputState: Codable, Equatable {
                 case let .url(_, url):
                     attributes.append(.url(newRange.min ..< newRange.max, url))
                 case let .quote(_, collapsed):
-                    attributes.append(.quote(newRange.min ..< newRange.max, collapsed))
+                    let removed = removals.filter { attr.range.lowerBound <= $0.range.location && NSMaxRange($0.range) <= attr.range.upperBound }.reduce(0) { $0 + $1.length }
+                    attributes.append(.quote(newRange.min ..< newRange.max - removed, collapsed))
                 case let .animated(_, id, fileId, file, itemId):
                     attributes.append(.animated(newRange.min ..< newRange.max, id, fileId, file, itemId))
                 case let .date(_, date):
