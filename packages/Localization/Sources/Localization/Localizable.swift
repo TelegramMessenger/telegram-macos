@@ -10767,6 +10767,8 @@ public final class L10n {
   public static var locationPreviewTitle: String  { return L10n.tr("Localizable", "LocationPreview.Title") }
   /// Restart your app to start collecting logs
   public static var logRestartInfo: String  { return L10n.tr("Localizable", "Log.Restart.Info") }
+  /// Collectible Numbers
+  public static var loginAnonymousNumbers: String  { return L10n.tr("Localizable", "Login.AnonymousNumbers") }
   /// code
   public static var loginCodePlaceholder: String  { return L10n.tr("Localizable", "Login.codePlaceholder") }
   /// Continue in English

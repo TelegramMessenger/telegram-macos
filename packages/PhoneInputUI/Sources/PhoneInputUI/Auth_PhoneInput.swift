@@ -54,12 +54,41 @@ private func formatNumber(_ number: String, country: Country) -> String {
     return formatted
 }
 
+private func localizedCountryName(_ country: Country) -> String {
+    if country.countryCodes.first?.code == "999" {
+        return country.name
+    }
+    if country.id == "FT" {
+        return strings().loginAnonymousNumbers
+    }
+    return appAppearance.locale.localizedString(forRegionCode: country.id) ?? country.name
+}
+
+private func countryTitle(_ country: Country) -> String {
+    let name = localizedCountryName(country)
+    let flag = emojiFlagForISOCountryCode(country.id)
+    return flag.isEmpty ? name : flag + " " + name
+}
+
+private func countryMenuTitle(_ country: Country) -> String {
+    if let code = country.countryCodes.first {
+        return countryTitle(country) + " +\(code.code)"
+    } else {
+        return countryTitle(country)
+    }
+}
+
 public final class Auth_CountryManager {
     public let list: [Country]
+    public let displayList: [Country]
     public init(_ countries:[Country]) {
         self.list = (countries).sorted(by: { lhs, rhs in
             return lhs.name < rhs.name
         })
+        let locale = appAppearance.locale
+        self.displayList = self.list.map { (localizedCountryName($0), $0) }.sorted(by: { lhs, rhs in
+            return lhs.0.compare(rhs.0, options: [.caseInsensitive, .diacriticInsensitive], locale: locale) == .orderedAscending
+        }).map { $0.1 }
     }
     
     private let global: Country = .init(id: "TG", name: "Test", localizedName: "Test", countryCodes: [.init(code: "999", prefixes: [], patterns: ["XXXX X XX"])], hidden: false)
@@ -153,6 +182,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             if !manager.list.isEmpty, selected == nil {
                 let code = NSLocale.current.regionCode ?? "US"
                 update(selected: manager.item(bySmallCountryName: code), update: true)
+            } else if let selected = selected {
+                update(selected: selected, update: false, updateCode: false)
             }
         }
     }
@@ -229,8 +260,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                 return nil
             }
             var items:[ContextMenuItem] = []
-            for country in manager.list where !country.hidden {
-                let item = ContextMenuItem(country.fullName, handler: { [weak self] in
+            for country in manager.displayList where !country.hidden {
+                let item = ContextMenuItem(countryMenuTitle(country), handler: { [weak self] in
                     self?.update(selected: country, update: true)
                 })
                 items.append(item)
@@ -320,11 +351,11 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     public func update(selected:Country?, update:Bool, updateCode:Bool = true) -> Void {
         self.selected = selected
         if let selected = selected {
-            country.set(text: selected.emojiName , for: .Normal)
+            country.set(text: countryTitle(selected), for: .Normal)
         } else {
             country.set(text: strings().loginInvalidCountryCode, for: .Normal)
         }
-        country_overlay.setAccessibilityValue(selected?.emojiName ?? strings().loginInvalidCountryCode)
+        country_overlay.setAccessibilityValue(selected.flatMap(countryTitle) ?? strings().loginInvalidCountryCode)
         country.sizeToFit()
         if updateCode {
             codeText.stringValue = selected != nil ? "+\(selected!.countryCodes[0].code)" : "+"
