@@ -1,0 +1,133 @@
+import Foundation
+import XCTest
+
+private struct ItemCollectionId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+private enum Namespaces {
+    enum ItemCollection {
+        static let CloudStickerPacks: Int32 = 1
+    }
+}
+private enum PostboxViewKey: Hashable {
+    case itemCollectionIds(namespaces: [Int32])
+}
+private struct CombinedView {
+    let views: [PostboxViewKey: Any]
+}
+private struct ItemCollectionIdsView {
+    let idsByNamespace: [Int32: Set<ItemCollectionId>]
+}
+private struct StickerPackCollectionInfo: Equatable {
+    let id: ItemCollectionId
+    let count: Int32
+}
+private struct StickerPackItem: Equatable {
+    let id: Int32
+}
+private struct ArchivedStickerPackItem: Equatable {
+    let info: StickerPackCollectionInfo
+    let topItems: [StickerPackItem]
+}
+public enum GeneralViewType: Equatable {
+    case textTopItem, singleItem, firstItem, lastItem, innerItem
+}
+private enum ArchivedStickerPacksEntry: Equatable {
+    case section(sectionId: Int32)
+    case info(sectionId: Int32, String, GeneralViewType)
+    case pack(sectionId: Int32, Int32, StickerPackCollectionInfo, StickerPackItem?, Int32, Bool, ItemListStickerPackItemEditing, GeneralViewType)
+    case loading(Bool)
+}
+private struct LocalizedStrings {
+    let archivedStickersDescription = __DESCRIPTION__
+}
+private func strings() -> LocalizedStrings { LocalizedStrings() }
+
+__EDITING__
+
+__STATE__
+
+__HELPER__
+
+__ENTRIES__
+
+private let a = ArchivedStickerPackItem(info: .init(id: .init(namespace: 1, id: 10), count: 5), topItems: [.init(id: 101), .init(id: 102)])
+private let b = ArchivedStickerPackItem(info: .init(id: .init(namespace: 1, id: 20), count: 7), topItems: [])
+private let c = ArchivedStickerPackItem(info: .init(id: .init(namespace: 1, id: 30), count: 9), topItems: [.init(id: 301)])
+private let viewKey = PostboxViewKey.itemCollectionIds(namespaces: [Namespaces.ItemCollection.CloudStickerPacks])
+
+private func installed(_ ids: Set<ItemCollectionId>) -> CombinedView {
+    CombinedView(views: [viewKey: ItemCollectionIdsView(idsByNamespace: [Namespaces.ItemCollection.CloudStickerPacks: ids])])
+}
+private func expected(_ packs: [ArchivedStickerPackItem], editing: Bool = false, removing: Set<ItemCollectionId> = []) -> [ArchivedStickerPacksEntry] {
+    var result: [ArchivedStickerPacksEntry] = [.section(sectionId: 1), .info(sectionId: 2, strings().archivedStickersDescription, .textTopItem)]
+    for (index, pack) in packs.enumerated() {
+        let position: GeneralViewType
+        if packs.count == 1 {
+            position = .singleItem
+        } else if index == 0 {
+            position = .firstItem
+        } else if index == packs.count - 1 {
+            position = .lastItem
+        } else {
+            position = .innerItem
+        }
+        result.append(.pack(sectionId: 2, Int32(index), pack.info, pack.topItems.first, pack.info.count, !removing.contains(pack.info.id), .init(editable: true, editing: editing), position))
+    }
+    result.append(.section(sectionId: 2))
+    return result
+}
+private func check(_ name: String, _ packs: [ArchivedStickerPackItem]?, _ view: CombinedView?, _ expected: [ArchivedStickerPacksEntry], editing: Bool = false, removing: Set<ItemCollectionId> = []) {
+    let originalPacks = packs
+    let state = ArchivedStickerPacksControllerState(editing: editing, removingPackIds: removing)
+    let actual = archivedStickerPacksControllerEntries(state: state, packs: packs, installedView: view)
+    record(name, actual == expected && packs == originalPacks)
+}
+
+private var assertions = 0
+private var failures: [String] = []
+private func record(_ name: String, _ value: Bool, file: StaticString = #filePath, line: UInt = #line) {
+    assertions += 1
+    if !value { failures.append(name) }
+    XCTAssertTrue(value, name, file: file, line: line)
+}
+
+final class RegressionTests: XCTestCase {
+    @objc func testRegressionScenarios() {
+        check("loading nil", nil, nil, [.loading(true)])
+        check("loading nil with installed IDs", nil, installed([a.info.id]), [.loading(true)])
+        check("loaded empty", [], nil, [.loading(false)])
+        check("loaded empty with installed IDs", [], installed([a.info.id]), [.loading(false)])
+        check("single archived pack", [a], nil, expected([a]))
+        check("three packs and row corners", [a, b, c], installed([]), expected([a, b, c]))
+        check("missing view key", [a], CombinedView(views: [:]), expected([a]))
+        check("wrong view type", [a], CombinedView(views: [viewKey: "unavailable"]), expected([a]))
+        check("missing namespace", [a], CombinedView(views: [viewKey: ItemCollectionIdsView(idsByNamespace: [:])]), expected([a]))
+        check("middle pack restored", [a, b, c], installed([b.info.id]), expected([a, c]))
+        check("one remaining gets singleItem", [a, b, c], installed([a.info.id, c.info.id]), expected([b]))
+        check("last pack restored becomes empty", [a], installed([a.info.id]), [.loading(false)])
+        check("all packs restored become empty", [a, b, c], installed([a.info.id, b.info.id, c.info.id]), [.loading(false)])
+        check("archive state remains available", [a], installed([]), expected([a]))
+        check("same numeric ID in another namespace", [a], installed([.init(namespace: 2, id: a.info.id.id)]), expected([a]))
+        check("editing and removing state preserved", [a, b, c], installed([b.info.id]), expected([a, c], editing: true, removing: [a.info.id]), editing: true, removing: [a.info.id])
+        check("removing only pack stays disabled", [a], nil, expected([a], removing: [a.info.id]), removing: [a.info.id])
+        check("no top item", [b], nil, expected([b]))
+        check("first restore in sequence", [a, b, c], installed([a.info.id]), expected([b, c]))
+        check("second restore in sequence", [a, b, c], installed([a.info.id, b.info.id]), expected([c]))
+        check("final restore in sequence", [a, b, c], installed([a.info.id, b.info.id, c.info.id]), [.loading(false)])
+    }
+}
+
+let suite = XCTestSuite(forTestCaseClass: RegressionTests.self)
+suite.run()
+let nativeRun = suite.testRun!
+print("RESULT " + String(data: try! JSONSerialization.data(withJSONObject: [
+    "test_cases": nativeRun.executionCount,
+    "scenarios": assertions,
+    "assertions": assertions,
+    "failed_assertions": failures.count,
+    "failures": failures,
+    "xctest_failures": nativeRun.totalFailureCount
+], options: [.sortedKeys]), encoding: .utf8)!)
+exit(nativeRun.hasSucceeded && failures.isEmpty ? 0 : 1)
