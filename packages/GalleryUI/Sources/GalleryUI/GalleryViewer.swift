@@ -617,8 +617,10 @@ public class GalleryViewer: NSResponder {
                 } else if let file = media as? TelegramMediaFile {
                     if file.isVideo && file.isAnimated {
                         inserted.append((i, MGalleryGIFItem(context, .media(media, i, parent), pagerSize)))
-                    } else if file.isVideo {
+                    } else if file.isVideo || file.isVideoFile {
                         inserted.append((i, MGalleryVideoItem(context, .media(media, i, parent), pagerSize)))
+                    } else if file.isGraphicFile {
+                        inserted.append((i, MGalleryPhotoItem(context, .media(media, i, parent), pagerSize)))
                     }
                 }
             }
