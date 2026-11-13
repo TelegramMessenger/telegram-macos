@@ -667,6 +667,7 @@ private func layoutBlockSequenceV2(
     var detailsIndices: [Int] = []
     var pullQuoteRanges: [(range: Range<Int>, pillWidth: CGFloat)] = []
     var directCodeBlockIndices: [Int] = []
+    var directDividerIndices: [Int] = []
     var contentHeight: CGFloat = 0.0
     var previousBlock: InstantPageBlock?
 
@@ -715,6 +716,9 @@ private func layoutBlockSequenceV2(
                 }
             }
         }
+        if case .divider = block {
+            directDividerIndices.append(contentsOf: blockStartIndex ..< items.count)
+        }
         if case .pullQuote = block {
             let pillWidth = localItems.reduce(CGFloat(0)) { acc, item in
                 if case let .shape(s) = item { return max(acc, s.frame.width) }
@@ -759,6 +763,14 @@ private func layoutBlockSequenceV2(
                 for i in range {
                     items[i] = items[i].offsetBy(CGPoint(x: dx, y: 0.0))
                 }
+            }
+        }
+        // Dividers are centered on the full bounding width; recenter them on the fitted width.
+        for i in directDividerIndices {
+            if case var .divider(divider) = items[i] {
+                let availableWidth = contentSize.width - horizontalInset * 2.0
+                divider.frame.origin.x = horizontalInset + floor(max(0.0, availableWidth - divider.frame.width) / 2.0)
+                items[i] = .divider(divider)
             }
         }
         for i in directCodeBlockIndices {
