@@ -1282,6 +1282,10 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             
             
             let availableReactions: Signal<AvailableReactions?, NoError> = context.reactions.stateValue
+
+            let globalNotificationSettings: Signal<GlobalNotificationSettings, NoError> = context.account.postbox.preferencesView(keys: [PreferencesKeys.globalNotifications]) |> map { view in
+                return view.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings
+            }
             
             
             let threadData: Signal<MessageHistoryThreadData?, NoError>
@@ -1301,11 +1305,11 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             
             
             
-            return combineLatest(queue: prepareQueue, context.account.viewTracker.peerView(peerId, updateData: true), arguments.statePromise, appearanceSignal, inputActivityState.get(), channelMembersPromise.get(), mediaTabsData, mediaReady, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, storiesSignal, personalChannelSignal, revenueState, tonRevenueState, webAppPermissionsState(context: context, peerId: peerId), savedMuicProfileState)
-            |> mapToQueue { view, state, appearance, inputActivities, channelMembers, mediaTabsData, _, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, stories, personalChannel, revenueState, tonRevenueState, webAppPermissionsState, savedMuicProfileState -> Signal<(PeerView, TableUpdateTransition, MessageHistoryThreadData?, EnginePeer?), NoError> in
+            return combineLatest(queue: prepareQueue, context.account.viewTracker.peerView(peerId, updateData: true), arguments.statePromise, appearanceSignal, inputActivityState.get(), channelMembersPromise.get(), mediaTabsData, mediaReady, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, storiesSignal, personalChannelSignal, revenueState, tonRevenueState, webAppPermissionsState(context: context, peerId: peerId), savedMuicProfileState, globalNotificationSettings)
+            |> mapToQueue { view, state, appearance, inputActivities, channelMembers, mediaTabsData, _, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, stories, personalChannel, revenueState, tonRevenueState, webAppPermissionsState, savedMuicProfileState, globalNotificationSettings -> Signal<(PeerView, TableUpdateTransition, MessageHistoryThreadData?, EnginePeer?), NoError> in
                     
                     
-                let entries:[AppearanceWrapperEntry<PeerInfoSortableEntry>] = peerInfoEntries(view: view, threadData: threadData, threadPeer: threadPeer, arguments: arguments, inputActivities: inputActivities, channelMembers: channelMembers, mediaTabsData: mediaTabsData, inviteLinksCount: inviteLinksCount, joinRequestsCount: joinRequestsCount, availableReactions: availableReactions, source: source, stories: stories, personalChannel: personalChannel, revenueState: revenueState, tonRevenueState: tonRevenueState, webAppPermissionsState: webAppPermissionsState, savedMuicProfileState: savedMuicProfileState).map({PeerInfoSortableEntry(entry: $0)}).map({AppearanceWrapperEntry(entry: $0, appearance: appearance)})
+                let entries:[AppearanceWrapperEntry<PeerInfoSortableEntry>] = peerInfoEntries(view: view, threadData: threadData, threadPeer: threadPeer, arguments: arguments, inputActivities: inputActivities, channelMembers: channelMembers, mediaTabsData: mediaTabsData, inviteLinksCount: inviteLinksCount, joinRequestsCount: joinRequestsCount, availableReactions: availableReactions, source: source, stories: stories, personalChannel: personalChannel, revenueState: revenueState, tonRevenueState: tonRevenueState, webAppPermissionsState: webAppPermissionsState, savedMuicProfileState: savedMuicProfileState, globalNotificationSettings: globalNotificationSettings).map({PeerInfoSortableEntry(entry: $0)}).map({AppearanceWrapperEntry(entry: $0, appearance: appearance)})
                     let previous = previousEntries.swap(entries)
                     return prepareEntries(from: previous, to: entries, account: context.account, initialSize: initialSize.modify({$0}), peerId: peerId, arguments:arguments, animated: previous != nil) |> runOn(onMainQueue.swap(false) ? .mainQueue() : prepareQueue) |> map { (view, $0, threadData, threadPeer) }
                     

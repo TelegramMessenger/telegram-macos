@@ -9319,7 +9319,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
         }
 
-        peerDisposable.set(combineLatest(queue: .mainQueue(), topPinnedMessage, peerView.get(), titlePeerView, availableGroupCall, attach, threadInfo, stateValue.get(), tagsAndFiles, getPeerView(peerId: context.peerId, postbox: context.account.postbox), savedChatsAsTopics, shortcuts, connectedBot, updaterPromise.get(), ApplicationSpecificNotice.playedMessageEffects(accountManager: context.sharedContext.accountManager), adMessages, context.starsContext.state, monoforumTopics.get()).start(next: { [weak self] pinnedMsg, postboxView, titlePeerView, groupCallData, attachItems, threadInfo, uiState, savedMessageTags, accountPeer, displaySavedChatsAsTopics, shortcuts, connectedBot, _, playedMessageEffects, adMessages, starsState, monoforumTopics in
+        let globalNotificationSettings: Signal<GlobalNotificationSettings, NoError> = context.account.postbox.preferencesView(keys: [PreferencesKeys.globalNotifications]) |> map { view in
+            return view.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings
+        }
+
+        peerDisposable.set(combineLatest(queue: .mainQueue(), topPinnedMessage, peerView.get(), titlePeerView, availableGroupCall, attach, threadInfo, stateValue.get(), tagsAndFiles, getPeerView(peerId: context.peerId, postbox: context.account.postbox), savedChatsAsTopics, shortcuts, connectedBot, updaterPromise.get(), ApplicationSpecificNotice.playedMessageEffects(accountManager: context.sharedContext.accountManager), adMessages, context.starsContext.state, monoforumTopics.get(), globalNotificationSettings).start(next: { [weak self] pinnedMsg, postboxView, titlePeerView, groupCallData, attachItems, threadInfo, uiState, savedMessageTags, accountPeer, displaySavedChatsAsTopics, shortcuts, connectedBot, _, playedMessageEffects, adMessages, starsState, monoforumTopics, globalNotificationSettings in
             
             
             let firstTime = isFirst.swap(false)
@@ -9520,7 +9524,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                         
                         if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings {
-                            present = present.updatedNotificationSettings(notificationSettings)
+                            present = present.updatedNotificationSettings(notificationSettings, mutedByDefault: !globalNotificationSettings.postboxAccessor.defaultIncludePeer(peer))
                         }
                         present = present.withUpdatedPeerStatusSettings(contactStatus)
                         present = present.withUpdatedInviteRequestsPending(inviteRequestsPending)
@@ -10930,9 +10934,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
                 if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings, !self.isAdChat {
                     if chatInteraction.peerId != context.peerId && chatSidebarKind(chatInteraction.presentation) == nil {
-                        items.append(ContextMenuItem(!notificationSettings.isMuted ? strings().chatContextEnableNotifications : strings().chatContextDisableNotifications, handler: { [weak self] in
-                            self?.chatInteraction.toggleNotifications(notificationSettings.isMuted)
-                        }, itemImage: notificationSettings.isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
+                        let isMuted = notificationSettings.isRemovedFromTotalUnreadCount(default: chatInteraction.presentation.mutedByDefault)
+                        items.append(ContextMenuItem(!isMuted ? strings().chatContextEnableNotifications : strings().chatContextDisableNotifications, handler: { [weak self] in
+                            self?.chatInteraction.toggleNotifications(isMuted)
+                        }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
                     }
                 }
 
@@ -11687,7 +11692,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         guard !context.isFrozen, let kind = chatSidebarKind(state), let peerView = currentPeerView,
               let channel = peerViewMainPeer(peerView) as? TelegramChannel else { return [] }
         let peerId = channel.id
-        let isMuted = (peerView.notificationSettings as? TelegramPeerNotificationSettings)?.isMuted == true
+        let isMuted = (peerView.notificationSettings as? TelegramPeerNotificationSettings)?.isRemovedFromTotalUnreadCount(default: state.mutedByDefault) == true
         let actions = ForumSidebarMenuPolicy.actions(kind: kind, canCreateTopics: channel.hasPermission(.createTopics), canInviteMembers: channel.hasPermission(.inviteMembers))
         let items = actions.map { action -> ContextMenuItem in
             switch action {
