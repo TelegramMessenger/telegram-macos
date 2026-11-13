@@ -71,7 +71,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     
     
     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_header, equatable: .init(state), comparable: nil, item: { initialSize, stableId in
-        return Affiliate_HeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: theme, peer: arguments.context.myPeer, title: strings().affiliateSetupTitleNew, info: strings().affiliateSetupHeaderInfo, detectBold: false, viewType: .legacy)
+        return Affiliate_HeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: theme, peer: arguments.context.myPeer, title: strings().affiliateSetupTitleNew, info: strings().affiliateSetupHeaderInfo, detectBold: false, viewType: .singleItem)
     }))
   
     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_promo, equatable: .init(state), comparable: nil, item: { initialSize, stableId in
