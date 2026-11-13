@@ -1,0 +1,320 @@
+import AppKit
+import XCTest
+
+protocol AccountContextProtocol {}
+struct Context: AccountContextProtocol {}
+struct ChatInteraction {}
+struct Theme {}
+let theme = Theme()
+struct Presentation {
+    static func make(theme: Theme) -> Presentation { Presentation() }
+}
+struct AutoplayMediaPreferences {
+    static let defaultSettings = AutoplayMediaPreferences()
+}
+class Media {}
+struct Dimensions {
+    var size: CGSize
+    init(_ size: CGSize) { self.size = size }
+}
+typealias PixelDimensions = Dimensions
+struct Representation { let dimensions: Dimensions }
+class TelegramMediaImage: Media {
+    let representations: [Representation]
+    init(_ dimensions: CGSize) {
+        self.representations = [Representation(dimensions: Dimensions(dimensions))]
+    }
+    func representationForDisplayAtSize(_ size: Dimensions) -> Representation? { representations.last }
+}
+class TelegramMediaFile: Media {
+    let isVideo: Bool
+    let dimensions: Dimensions?
+    init(video: Bool = false, dimensions: CGSize? = nil) {
+        isVideo = video
+        self.dimensions = dimensions.map(Dimensions.init)
+    }
+}
+class TelegramMediaMap: Media {
+    let latitude = 0.0
+    let longitude = 0.0
+}
+struct MapSnapshotMediaResource {
+    init(latitude: Double, longitude: Double, width: Int32, height: Int32, zoom: Int) {}
+}
+class ChatMediaLayoutParameters {
+    var forceSpoiler = false
+    var fillContent: Bool?
+    var labelWidth: CGFloat = 0
+    init(presentation: Presentation, media: Media) {}
+    static func layout(for file: TelegramMediaFile, isWebpage: Bool, chatInteraction: ChatInteraction, presentation: Presentation, automaticDownload: Bool, isIncoming: Bool, autoplayMedia: AutoplayMediaPreferences) -> ChatMediaLayoutParameters {
+        ChatMediaLayoutParameters(presentation: presentation, media: file)
+    }
+    func makeLabelsForWidth(_ width: CGFloat) { labelWidth = width }
+}
+class ChatMediaMapLayoutParameters: ChatMediaLayoutParameters {
+    init(map: TelegramMediaMap, resource: MapSnapshotMediaResource, presentation: Presentation, automaticDownload: Bool, execute: () -> Void, imageSize: CGSize) {
+        super.init(presentation: presentation, media: map)
+    }
+}
+struct Message { var groupingKey: Int? }
+enum ContainedViewLayoutTransition { case immediate }
+enum ResizeMode { case blurBackground, none }
+struct TransformImageArguments {
+    let corners: Int
+    let imageSize: CGSize
+    let boundingSize: CGSize
+    let intrinsicInsets: NSEdgeInsets
+    let resizeMode: ResizeMode
+}
+func mediaCorners(_ flags: Int?, _ parameters: ChatMediaLayoutParameters?) -> Int { 0 }
+final class ImageRecorder {
+    var arguments: TransformImageArguments?
+    var frame: CGRect = .zero
+    var requests = 0
+    let isFullyLoaded = false
+    func set(arguments: TransformImageArguments) {
+        self.arguments = arguments
+        requests += 1
+    }
+    func updateFrame(_ frame: CGRect, transition: ContainedViewLayoutTransition) { self.frame = frame }
+}
+class ChatMediaContentView: NSView {
+    var media: Media?
+    var parent: Message?
+    var parameters: ChatMediaLayoutParameters?
+    required override init(frame: NSRect) { super.init(frame: frame) }
+    required init?(coder: NSCoder) { fatalError() }
+    __BASE_LAYOUT__
+    func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {}
+    func update(size: NSSize) {}
+    func update(with media: Media, size: NSSize, context: any AccountContextProtocol, parent: Message?, table: Any?, parameters: ChatMediaLayoutParameters?, animated: Bool) {
+        self.media = media
+        self.parent = parent
+        self.parameters = parameters
+        self.frame.size = size
+    }
+}
+class ChatInteractiveContentView: ChatMediaContentView {
+    var appliedCorners = 0
+    var positionFlags: Int?
+    let image = ImageRecorder()
+    __PHOTO_LAYOUT__
+    __PHOTO_UPDATE_SIZE__
+    __BLUR_BACKGROUND__
+    override func update(with media: Media, size: NSSize, context: any AccountContextProtocol, parent: Message?, table: Any?, parameters: ChatMediaLayoutParameters?, animated: Bool) {
+        super.update(with: media, size: size, context: context, parent: parent, table: table, parameters: parameters, animated: animated)
+        update(size: size)
+    }
+}
+extension CGSize {
+    __ASPECT_FITTED__
+    __ASPECT_FILLED__
+}
+struct ChatLayoutUtils {
+    static func contentNode(for media: Media) -> ChatMediaContentView.Type {
+        if media is TelegramMediaImage { return ChatInteractiveContentView.self }
+        if let file = media as? TelegramMediaFile, file.isVideo { return ChatInteractiveContentView.self }
+        return ChatMediaContentView.self
+    }
+    static func contentSize(for media: Media, with width: CGFloat) -> CGSize { CGSize(width: width, height: 40) }
+}
+struct RichTextEditorCoordinator {
+    __FACTORY__
+}
+__EDITOR_PHOTO_CLASS__
+
+struct BlockID { let rawValue: String }
+enum MediaKind: String { case image, video, file, audio, map }
+enum CanvasMetrics { static let maxMediaHeight: CGFloat = __MAX_HEIGHT__ }
+class MediaBlockBox {
+    let id: BlockID
+    let kind: MediaKind
+    let mediaID = "fixture-media"
+    var spoiler = false
+    var contentMargin: CGFloat = 16
+    var frame: CGRect
+    var hostHeight: CGFloat?
+    static let placeholderHeight: CGFloat = 60
+    var mediaBleeds: Bool { kind == .image || kind == .video }
+    var mediaOrigin: CGPoint { CGPoint(x: frame.minX, y: frame.minY + 8) }
+    __MEDIA_HEIGHT__
+    init(kind: MediaKind = .image, width: CGFloat = 800, x: CGFloat = 16, y: CGFloat = 35) {
+        self.id = BlockID(rawValue: "fixture-block")
+        self.kind = kind
+        self.frame = CGRect(x: x, y: y, width: width - 32, height: 400)
+    }
+}
+class MediaInteractionOverlayView: NSView {
+    var onMouseDown: (() -> Void)?
+}
+__HOSTED_MEDIA__
+class DocumentCanvasView {
+    var boxes: [Any] = []
+    var mediaBlockViews: [String: HostedMediaBlock] = [:]
+    let mediaBlockHost = NSView()
+    var mediaBlockViewProvider: (String, String, Bool, CGFloat) -> NSView? = { _, _, _, _ in nil }
+    var mediaBlockViewWillRemove: ((NSView) -> Void)?
+    var needsLayout = false
+    func selectMediaBlock(id: BlockID) {}
+    func cullMediaBlockViews() {}
+    __SYNC_MEDIA__
+}
+
+final class RichEditorPhotoAspectTests: XCTestCase {
+    func makePhoto(_ dimensions: CGSize, width: CGFloat = 800, spoiler: Bool = false) -> ChatInteractiveContentView {
+        RichTextEditorCoordinator.makeMediaContentView(media: TelegramMediaImage(dimensions), width: width, spoiler: spoiler, context: Context(), interaction: ChatInteraction()) as! ChatInteractiveContentView
+    }
+    func verifyTransform(_ view: ChatInteractiveContentView, _ dimensions: CGSize, file: StaticString = #filePath, line: UInt = #line) {
+        guard let arguments = view.image.arguments else { return XCTFail("Missing transform", file: file, line: line) }
+        XCTAssertEqual(arguments.boundingSize, view.frame.size, "Transform must match actual editor frame", file: file, line: line)
+        XCTAssertEqual(arguments.imageSize, dimensions.aspectFitted(view.frame.size), "Fit natural image into capped frame", file: file, line: line)
+        XCTAssertEqual(view.image.frame, view.bounds, file: file, line: line)
+    }
+    @objc func testLandscapeCapRecomputesTransform() {
+        let source = CGSize(width: 1200, height: 800)
+        let view = makePhoto(source)
+        view.frame.size.height = 320
+        view.layout()
+        verifyTransform(view, source)
+    }
+    @objc func testPortraitAndSquareCaps() {
+        for source in [CGSize(width: 800, height: 1600), CGSize(width: 900, height: 900)] {
+            let view = makePhoto(source)
+            view.frame.size.height = 320
+            view.layout()
+            verifyTransform(view, source)
+        }
+    }
+    @objc func testPanoramaWithoutCapUnchanged() {
+        let source = CGSize(width: 2400, height: 400)
+        let view = makePhoto(source)
+        let original = view.frame.size
+        view.layout()
+        XCTAssertEqual(view.frame.size, original)
+        verifyTransform(view, source)
+    }
+    @objc func testNativeCanvasSyncKeepsCaptionAndOverlayGeometry() {
+        let source = CGSize(width: 1000, height: 1000)
+        let canvas = DocumentCanvasView()
+        let box = MediaBlockBox()
+        canvas.boxes = [box]
+        canvas.mediaBlockViewProvider = { _, _, spoiler, width in self.makePhoto(source, width: width, spoiler: spoiler) }
+        for _ in 0..<3 {
+            canvas.syncMediaBlockViews()
+            (canvas.mediaBlockViews[box.id.rawValue]!.view as! ChatInteractiveContentView).layout()
+        }
+        let hosted = canvas.mediaBlockViews[box.id.rawValue]!
+        let view = hosted.view as! ChatInteractiveContentView
+        XCTAssertEqual(view.frame, CGRect(x: 0, y: 43, width: 800, height: 320))
+        XCTAssertEqual(hosted.interactionView?.frame, view.frame)
+        XCTAssertEqual(hosted.canvasFrame, view.frame)
+        XCTAssertEqual(box.mediaAreaHeight, 320)
+        verifyTransform(view, source)
+        canvas.boxes = []
+        canvas.syncMediaBlockViews()
+        XCTAssertTrue(canvas.mediaBlockViews.isEmpty)
+        XCTAssertTrue(canvas.mediaBlockHost.subviews.isEmpty)
+    }
+    @objc func testRepeatedLayoutDoesNotRequestDuplicateTransform() {
+        let view = makePhoto(CGSize(width: 900, height: 900))
+        view.frame.size.height = 320
+        view.layout()
+        let count = view.image.requests
+        for _ in 0..<20 { view.layout() }
+        XCTAssertEqual(view.image.requests, count)
+    }
+    @objc func testReflowAcrossWidthsAndHeights() {
+        let source = CGSize(width: 1280, height: 960)
+        let view = makePhoto(source)
+        for size in [CGSize(width: 320, height: 240), CGSize(width: 800, height: 320), CGSize(width: 500, height: 300), CGSize(width: 800, height: 320)] {
+            view.frame.size = size
+            view.layout()
+            verifyTransform(view, source)
+        }
+    }
+    @objc func testOriginOnlyMovementDoesNotRequestTransform() {
+        let view = makePhoto(CGSize(width: 1000, height: 500))
+        view.frame.size.height = 320
+        view.layout()
+        let count = view.image.requests
+        view.frame.origin = CGPoint(x: 50, y: 120)
+        view.layout()
+        XCTAssertEqual(view.image.requests, count)
+    }
+    @objc func testPreMediaAndZeroFramesDoNotPoisonLaterLayout() {
+        let imageType = type(of: makePhoto(CGSize(width: 100, height: 100)))
+        let view = imageType.init(frame: CGRect(x: 0, y: 0, width: 800, height: 320))
+        view.layout()
+        XCTAssertEqual(view.image.requests, 0)
+        let source = CGSize(width: 800, height: 800)
+        view.update(with: TelegramMediaImage(source), size: source, context: Context(), parent: nil, table: nil, parameters: ChatMediaLayoutParameters(presentation: Presentation(), media: Media()), animated: false)
+        view.frame.size = .zero
+        let count = view.image.requests
+        view.layout()
+        XCTAssertEqual(view.image.requests, count)
+        view.frame.size = CGSize(width: 800, height: 320)
+        view.layout()
+        verifyTransform(view, source)
+    }
+    @objc func testMediaPayloadAndSpoilerRemainUnchanged() {
+        let source = CGSize(width: 1500, height: 900)
+        let media = TelegramMediaImage(source)
+        let view = RichTextEditorCoordinator.makeMediaContentView(media: media, width: 800, spoiler: true, context: Context(), interaction: ChatInteraction()) as! ChatInteractiveContentView
+        view.frame.size.height = 320
+        view.layout()
+        XCTAssertTrue(view.media === media)
+        XCTAssertEqual(media.representations.last!.dimensions.size, source)
+        XCTAssertEqual(view.parameters?.forceSpoiler, true)
+        XCTAssertNil(view.parent)
+        verifyTransform(view, source)
+    }
+    @objc func testOtherMediaUseExistingNodes() {
+        for media in [TelegramMediaFile(), TelegramMediaFile(video: true, dimensions: CGSize(width: 800, height: 600)), TelegramMediaMap(), Media()] {
+            let view = RichTextEditorCoordinator.makeMediaContentView(media: media, width: 500, context: Context(), interaction: ChatInteraction()) as! ChatMediaContentView
+            XCTAssertTrue(type(of: view) == ChatLayoutUtils.contentNode(for: media))
+            XCTAssertTrue(view.media === media)
+        }
+    }
+    @objc func testOrdinaryChatPhotoNodeRemainsUnchanged() {
+        let source = CGSize(width: 1000, height: 1000)
+        let media = TelegramMediaImage(source)
+        let view = ChatLayoutUtils.contentNode(for: media).init(frame: CGRect(origin: .zero, size: source)) as! ChatInteractiveContentView
+        view.update(with: media, size: source, context: Context(), parent: nil, table: nil, parameters: nil, animated: false)
+        view.frame.size.height = 320
+        let count = view.image.requests
+        view.layout()
+        XCTAssertEqual(view.image.requests, count)
+    }
+    @objc func testDimensionMatrixMatchesFinalFrame() {
+        for width: CGFloat in [300, 800, 1400] {
+            for source in [CGSize(width: 100, height: 400), CGSize(width: 512, height: 512), CGSize(width: 1200, height: 700), CGSize(width: 2000, height: 200)] {
+                let view = makePhoto(source, width: width)
+                view.frame.size.height = min(view.frame.height, 320)
+                view.layout()
+                verifyTransform(view, source)
+            }
+        }
+    }
+    static let allTests = [
+        ("testLandscapeCapRecomputesTransform", testLandscapeCapRecomputesTransform),
+        ("testPortraitAndSquareCaps", testPortraitAndSquareCaps),
+        ("testPanoramaWithoutCapUnchanged", testPanoramaWithoutCapUnchanged),
+        ("testNativeCanvasSyncKeepsCaptionAndOverlayGeometry", testNativeCanvasSyncKeepsCaptionAndOverlayGeometry),
+        ("testRepeatedLayoutDoesNotRequestDuplicateTransform", testRepeatedLayoutDoesNotRequestDuplicateTransform),
+        ("testReflowAcrossWidthsAndHeights", testReflowAcrossWidthsAndHeights),
+        ("testOriginOnlyMovementDoesNotRequestTransform", testOriginOnlyMovementDoesNotRequestTransform),
+        ("testPreMediaAndZeroFramesDoNotPoisonLaterLayout", testPreMediaAndZeroFramesDoNotPoisonLaterLayout),
+        ("testMediaPayloadAndSpoilerRemainUnchanged", testMediaPayloadAndSpoilerRemainUnchanged),
+        ("testOtherMediaUseExistingNodes", testOtherMediaUseExistingNodes),
+        ("testOrdinaryChatPhotoNodeRemainsUnchanged", testOrdinaryChatPhotoNodeRemainsUnchanged),
+        ("testDimensionMatrixMatchesFinalFrame", testDimensionMatrixMatchesFinalFrame),
+    ]
+}
+let suite = XCTestSuite(name: "RichEditorPhotoAspectTests")
+for (name, _) in RichEditorPhotoAspectTests.allTests {
+    suite.addTest(RichEditorPhotoAspectTests(selector: NSSelectorFromString(name)))
+}
+suite.run()
+let result = suite.testRun!
+print("Executed \(result.executionCount) tests, with \(result.totalFailureCount) failures")
+exit(result.hasSucceeded ? 0 : 1)

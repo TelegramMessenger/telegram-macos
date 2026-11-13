@@ -1599,7 +1599,12 @@ public final class RichTextEditorCoordinator {
         }
         parameters.makeLabelsForWidth(width)
         parameters.forceSpoiler = spoiler
-        let view = ChatLayoutUtils.contentNode(for: media).init(frame: NSRect(origin: .zero, size: size))
+        let view: ChatMediaContentView
+        if media is TelegramMediaImage {
+            view = RichTextEditorImageContentView(frame: NSRect(origin: .zero, size: size))
+        } else {
+            view = ChatLayoutUtils.contentNode(for: media).init(frame: NSRect(origin: .zero, size: size))
+        }
         view.update(with: media, size: size, context: context, parent: nil, table: nil, parameters: parameters, animated: false)
         return view
     }
@@ -2721,6 +2726,18 @@ public final class EditorToolbarView: NSView {
 
         centerPill.frame = NSRect(x: leadingEdge + gap, y: pillY, width: centerW, height: pillHeight)
         layoutButtons(centerButtons, in: centerPill.frame)
+    }
+}
+
+private final class RichTextEditorImageContentView: ChatInteractiveContentView {
+    private var appliedImageSize: NSSize?
+
+    override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        super.updateLayout(size: size, transition: transition)
+        if media != nil, size.width > 0, size.height > 0, appliedImageSize != size {
+            appliedImageSize = size
+            update(size: size)
+        }
     }
 }
 
