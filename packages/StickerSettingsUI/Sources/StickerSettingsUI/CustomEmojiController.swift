@@ -110,7 +110,7 @@ public func CustomEmojiController(context: any AccountContextProtocol) -> InputD
         showModal(with: StickerSettingsHooks.shared.makeStickerPackPreview(context, nil, [.emoji(.name(info.shortName))]), for: context.window)
     }, removePack: { id in
         
-        verifyAlert_button(for: context.window, information: strings().installedStickersRemoveDescription, ok: strings().installedStickersRemoveDelete, successHandler: { result in
+        verifyAlert_button(for: context.window, information: strings().customEmojiRemoveConfirm, ok: strings().installedStickersRemoveDelete, successHandler: { result in
             switch result {
             case .basic:
                 _ = context.engine.stickers.removeStickerPackInteractively(id: id, option: .delete).start()
