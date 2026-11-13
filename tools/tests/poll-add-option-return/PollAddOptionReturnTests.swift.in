@@ -1,0 +1,686 @@
+import Foundation
+
+struct InputDataIdentifier: Hashable {
+    let identifier: String
+    init(_ identifier: String) {
+        self.identifier = identifier
+    }
+}
+
+enum InputDataReturnResult {
+    case `default`
+    case nextResponder
+    case invokeEvent
+    case nothing
+}
+
+enum KeyHandlerResult {
+    case invoked
+    case rejected
+    case invokeNext
+}
+
+enum InputDataValidation {
+    case none
+}
+
+enum InputDataDeleteResult {
+    case `default`
+    case invoked
+}
+
+struct MessageTextEntity: Equatable {
+    let text: String
+}
+
+struct ChatTextInputState {
+    let text: String
+    func messageTextEntities() -> [MessageTextEntity] {
+        return text.isEmpty ? [] : [MessageTextEntity(text: text)]
+    }
+}
+
+struct Updated_ChatTextInputState: Equatable {
+    let inputText: NSAttributedString
+    init() {
+        self.inputText = NSAttributedString()
+    }
+    init(_ text: String) {
+        self.inputText = NSAttributedString(string: text)
+    }
+    var string: String {
+        return inputText.string
+    }
+    func textInputState() -> ChatTextInputState {
+        return ChatTextInputState(text: inputText.string)
+    }
+}
+
+typealias Media = String
+
+struct NewPollMedia: Equatable {
+    let path: String
+    var media: Media? {
+        return path
+    }
+}
+
+struct MessageId: Equatable {
+    let id: Int32
+}
+
+struct PeerId: Equatable {
+    let id: Int64
+}
+
+struct TelegramMediaPollOption {
+    let text: String
+    let entities: [MessageTextEntity]
+    let opaqueIdentifier: Data
+    let media: Media?
+    let date: Int32?
+    let addedBy: PeerId?
+}
+
+enum TelegramMediaPollPublicity {
+    case anonymous
+    case `public`
+}
+
+enum TelegramMediaPollKind {
+    case poll(multipleAnswers: Bool)
+    case quiz(multipleAnswers: Bool)
+}
+
+struct SentPoll: Equatable {
+    let title: String
+    let options: [String]
+}
+
+struct AppConfiguration {
+    func getGeneralValue(_ key: String, orElse: Int32) -> Int32 {
+        return orElse
+    }
+}
+
+final class ModalWindow {}
+
+final class Context {
+    let timestamp: Int32 = 1_800_000_000
+    let peerId = PeerId(id: 7)
+    let window = ModalWindow()
+    let appConfiguration = AppConfiguration()
+}
+
+final class Recorder {
+    var polls: [SentPoll] = []
+    var added: [(messageId: MessageId, option: TelegramMediaPollOption)] = []
+    var closed = 0
+    var toasts: [String] = []
+    var tooltips = 0
+    var validations = 0
+    var passedOn = 0
+    var focusMoves = 0
+}
+
+var recorder = Recorder()
+
+func showModalText(for window: ModalWindow, text: String) {
+    recorder.toasts.append(text)
+}
+
+struct Strings {
+    let newPollAdd = "Add"
+    let modalSend = "Send"
+    let newPollMediaUploading = "Please wait until the media has finished uploading."
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+final class ChatInteraction {
+    let pollContext = Context()
+    func sendPollMedias(_ medias: [SentPoll], _ caption: ChatTextInputState, _ isCollage: Bool, _ additionText: ChatTextInputState?, _ silent: Bool, _ atDate: Int?, _ isSpoiler: Bool, _ messageEffect: Int?, _ leadingText: Bool) {
+        recorder.polls.append(contentsOf: medias)
+    }
+    func appendPollOption(_ messageId: MessageId, _ option: TelegramMediaPollOption) {
+        recorder.added.append((messageId, option))
+    }
+}
+
+final class ModalInteractions {
+    let acceptTitle: String
+    let accept: (() -> Void)?
+    var contentFlowsBehind = false
+    init(acceptTitle: String, accept: (() -> Void)? = nil, singleButton: Bool = false) {
+        self.acceptTitle = acceptTitle
+        self.accept = accept
+    }
+}
+
+final class ValuePromise<T> {
+    init(_ value: T, ignoreRepeated: Bool = false) {}
+    func set(_ value: T) {}
+}
+
+final class Atomic<T> {
+    private var value: T
+    init(value: T) {
+        self.value = value
+    }
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(value)
+    }
+    func modify(_ f: (T) -> T) -> T {
+        value = f(value)
+        return value
+    }
+}
+
+final class FocusController {
+    var currentFirstResponderIdentifier: InputDataIdentifier?
+}
+
+final class ArgumentsStub {
+    let deleteOption: (InputDataIdentifier) -> Void
+    init(deleteOption: @escaping (InputDataIdentifier) -> Void) {
+        self.deleteOption = deleteOption
+    }
+}
+
+struct NSEvent {
+    let keyCode: UInt16
+    let modifierFlags: UInt
+}
+
+let returnKeyCode: UInt16 = 0x24
+let keypadEnterKeyCode: UInt16 = 0x4C
+let tabKeyCode: UInt16 = 0x30
+let deleteKeyCode: UInt16 = 0x33
+let capsLockFlag: UInt = 1 << 16
+let shiftFlag: UInt = 1 << 17
+let controlFlag: UInt = 1 << 18
+let optionFlag: UInt = 1 << 19
+let commandFlag: UInt = 1 << 20
+let numericPadFlag: UInt = 1 << 21
+let deviceIndependentMask: UInt = 0xffff0000
+
+func isEnterEventObjc(_ event: NSEvent) -> Bool {
+    return event.keyCode == 0x24 || event.keyCode == 0x4C
+}
+
+func isEnterAccessObjc(_ event: NSEvent, _ byCmdEnter: Bool) -> Bool {
+    if isEnterEventObjc(event) {
+        let flags = event.modifierFlags & deviceIndependentMask
+        return !byCmdEnter ? flags == 0 || flags == 65536 || flags == 2097152 : (event.modifierFlags & commandFlag) > 0
+    }
+    return false
+}
+
+enum SendingType {
+    case enter
+    case cmdEnter
+}
+
+enum FastSettings {
+    static var sendingType: SendingType = .enter
+    static func checkSendingAbility(for event: NSEvent) -> Bool {
+        return isEnterAccessObjc(event, sendingType == .cmdEnter)
+    }
+}
+
+extension String {
+    __TRIMMED__
+}
+
+var optionCounter = 0
+func _id_input_option() -> InputDataIdentifier {
+    optionCounter += 1
+    return InputDataIdentifier("_id_input_option_\(optionCounter)")
+}
+let _id_input_title = InputDataIdentifier("_id_input_title")
+let _id_input_add_option = InputDataIdentifier("_id_input_add_option")
+let _id_description = InputDataIdentifier("_id_description")
+
+__POLL_OPTION__
+
+__POLL_MODE__
+
+__POLL_SOURCE__
+
+struct NewPollState {
+    var options: [NewPollOption]
+    var mode: NewPollMode
+    var isQuiz: Bool?
+    var textState: Updated_ChatTextInputState
+    var descriptionState = Updated_ChatTextInputState()
+    var uploadingMedia: Set<String> = []
+    var isAddOption: Bool = false
+
+    init(options: [NewPollOption], random: UInt32, mode: NewPollMode, isQuiz: Bool?, quizExplanation: NSAttributedString, textState: Updated_ChatTextInputState) {
+        self.options = options
+        self.mode = mode
+        self.isQuiz = isQuiz
+        self.textState = textState
+    }
+
+    func copy(options: [NewPollOption]? = nil) -> NewPollState {
+        var state = self
+        if let options = options {
+            state.options = options
+        }
+        return state
+    }
+
+    func media(_ context: Context) -> SentPoll {
+        return SentPoll(title: title.trimmed, options: options.map { $0.text.trimmed }.filter { !$0.isEmpty })
+    }
+
+    __STATE_MEMBERS__
+}
+
+final class PollWindow {
+    var state: () -> NewPollState = { fatalError() }
+    var typeTitle: (String) -> Void = { _ in }
+    var typeOption: (Int, String) -> Void = { _, _ in }
+    var typeField: (String) -> Void = { _ in }
+    var attachToField: (String) -> Void = { _ in }
+    var focusTitle: () -> Void = {}
+    var focusOption: (Int) -> Void = { _ in }
+    var focusField: () -> Void = {}
+    var unfocus: () -> Void = {}
+    var press: (NSEvent) -> Void = { _ in }
+    var buttonEnabled: () -> Bool = { false }
+    var clickButton: () -> Void = {}
+    var setUploading: (Bool) -> Void = { _ in }
+    var buttonTitle = ""
+}
+
+func openWindow(_ source: NewPollSource, isQuiz: Bool? = nil) -> PollWindow {
+    let chatInteraction = ChatInteraction()
+    let context = chatInteraction.pollContext
+
+    __SETUP__
+
+    var showTooltipForQuiz: (() -> Void)? = nil
+
+    __HANDLERS__
+
+    close = {
+        recorder.closed += 1
+    }
+    showTooltipForQuiz = {
+        recorder.tooltips += 1
+    }
+
+    let typeTitleState: (Updated_ChatTextInputState) -> Void = __UPDATE_TITLE__
+    let typeOptionState: (InputDataIdentifier, Updated_ChatTextInputState) -> Void = __UPDATE_OPTION__
+    let returnKeyInvocation: (InputDataIdentifier?, NSEvent) -> InputDataReturnResult = __RETURN_KEY__
+    let controller = FocusController()
+    let tabHandler: (NSEvent) -> KeyHandlerResult = __TAB__
+    let arguments = ArgumentsStub(deleteOption: __DELETE_OPTION__)
+    let deleteKeyInvocation: (InputDataIdentifier?) -> InputDataDeleteResult = __DELETE_KEY__
+    let fields: () -> [InputDataIdentifier] = {
+        let options = stateValue.with { $0.options }
+        if case .addOption = source {
+            return [options[__VISIBLE__].identifier]
+        }
+        return [_id_input_title, _id_description] + options.map { $0.identifier }
+    }
+
+    let window = PollWindow()
+    window.state = {
+        return stateValue.with { $0 }
+    }
+    window.typeTitle = { text in
+        typeTitleState(Updated_ChatTextInputState(text))
+    }
+    window.typeOption = { index, text in
+        let option = stateValue.with { $0.options[index] }
+        typeOptionState(option.identifier, Updated_ChatTextInputState(text))
+    }
+    window.typeField = { text in
+        let option = stateValue.with { $0.options[__VISIBLE__] }
+        typeOptionState(option.identifier, Updated_ChatTextInputState(text))
+    }
+    window.attachToField = { path in
+        updateState { state in
+            var state = state
+            state.options[__VISIBLE__] = state.options[__VISIBLE__].withUpdatedMedia(NewPollMedia(path: path))
+            return state
+        }
+    }
+    window.focusTitle = {
+        controller.currentFirstResponderIdentifier = _id_input_title
+    }
+    window.focusOption = { index in
+        controller.currentFirstResponderIdentifier = stateValue.with { $0.options[index].identifier }
+    }
+    window.unfocus = {
+        controller.currentFirstResponderIdentifier = nil
+    }
+    window.focusField = {
+        controller.currentFirstResponderIdentifier = stateValue.with { $0.options[__VISIBLE__].identifier }
+    }
+    window.press = { event in
+        if event.keyCode == tabKeyCode {
+            if tabHandler(event) == .rejected {
+                recorder.focusMoves += 1
+                let order = fields()
+                if let current = controller.currentFirstResponderIdentifier, let index = order.firstIndex(of: current), index + 1 < order.count {
+                    controller.currentFirstResponderIdentifier = order[index + 1]
+                }
+            }
+            return
+        }
+        if event.keyCode == deleteKeyCode {
+            if deleteKeyInvocation(controller.currentFirstResponderIdentifier) == .default {
+                recorder.passedOn += 1
+            }
+            return
+        }
+        switch returnKeyInvocation(controller.currentFirstResponderIdentifier, event) {
+        case .default:
+            if FastSettings.checkSendingAbility(for: event) {
+                recorder.validations += 1
+            } else {
+                recorder.passedOn += 1
+            }
+        case .nextResponder:
+            recorder.focusMoves += 1
+        case .nothing:
+            break
+        case .invokeEvent:
+            recorder.passedOn += 1
+        }
+    }
+    window.buttonEnabled = {
+        return stateValue.with { $0.isEnabled }
+    }
+    window.clickButton = {
+        if window.buttonEnabled() {
+            interactions.accept?()
+        }
+    }
+    window.setUploading = { uploading in
+        updateState { state in
+            var state = state
+            state.uploadingMedia = uploading ? ["option"] : []
+            return state
+        }
+    }
+    window.buttonTitle = interactions.acceptTitle
+    return window
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func opaque(_ option: TelegramMediaPollOption?) -> String? {
+    return option.flatMap { String(data: $0.opaqueIdentifier, encoding: .utf8) }
+}
+
+func same(_ lhs: (messageId: MessageId, option: TelegramMediaPollOption)?, _ rhs: (messageId: MessageId, option: TelegramMediaPollOption)?) -> Bool {
+    guard let lhs = lhs, let rhs = rhs else {
+        return false
+    }
+    return lhs.messageId == rhs.messageId && lhs.option.text == rhs.option.text && lhs.option.entities == rhs.option.entities && lhs.option.opaqueIdentifier == rhs.option.opaqueIdentifier && lhs.option.media == rhs.option.media && lhs.option.date == rhs.option.date && lhs.option.addedBy == rhs.option.addedBy
+}
+
+let poll = MessageId(id: 42)
+let existing = ["Red", "Green"]
+
+let plainReturn = NSEvent(keyCode: returnKeyCode, modifierFlags: 0)
+let capsReturn = NSEvent(keyCode: returnKeyCode, modifierFlags: capsLockFlag)
+let padEnter = NSEvent(keyCode: keypadEnterKeyCode, modifierFlags: numericPadFlag)
+let shiftReturn = NSEvent(keyCode: returnKeyCode, modifierFlags: shiftFlag)
+let optionReturn = NSEvent(keyCode: returnKeyCode, modifierFlags: optionFlag)
+let commandReturn = NSEvent(keyCode: returnKeyCode, modifierFlags: commandFlag)
+let controlReturn = NSEvent(keyCode: returnKeyCode, modifierFlags: controlFlag)
+let capsPadEnter = NSEvent(keyCode: keypadEnterKeyCode, modifierFlags: capsLockFlag | numericPadFlag)
+let commandPadEnter = NSEvent(keyCode: keypadEnterKeyCode, modifierFlags: commandFlag | numericPadFlag)
+let tab = NSEvent(keyCode: tabKeyCode, modifierFlags: 0)
+let delete = NSEvent(keyCode: deleteKeyCode, modifierFlags: 0)
+
+func addWindow() -> PollWindow {
+    recorder = Recorder()
+    let window = openWindow(.addOption(messageId: poll, existingOptions: existing))
+    window.focusField()
+    return window
+}
+
+func newWindow(quiz: Bool? = nil) -> PollWindow {
+    recorder = Recorder()
+    return openWindow(.new, isQuiz: quiz)
+}
+
+func addedText() -> String? {
+    return recorder.added.count == 1 ? recorder.added[0].option.text : nil
+}
+
+FastSettings.sendingType = .enter
+
+var window = addWindow()
+check("Add an Option opens with one field", window.state().options.count == 1)
+check("Add an Option: the button says Add", window.buttonTitle == "Add")
+check("Add an Option: Add is off while the field is empty", !window.buttonEnabled())
+window.typeField("Blue")
+check("Add an Option: Add turns on after typing", window.buttonEnabled())
+window.clickButton()
+let reference = recorder.added.first
+check("Add adds the typed option to the poll", addedText() == "Blue" && reference?.messageId == poll)
+check("Add gives the option the next index", opaque(reference?.option) == "\(existing.count)")
+check("Add marks the option as added by the account, now", reference?.option.date == Context().timestamp && reference?.option.addedBy == Context().peerId)
+check("Add sends no poll and closes the window", recorder.polls.isEmpty && recorder.closed == 1)
+
+for (name, event) in [("Return", plainReturn), ("Return with Caps Lock on", capsReturn), ("Enter on the keypad", padEnter)] {
+    window = addWindow()
+    window.typeField("Blue")
+    window.press(event)
+    check("Add an Option, \(name): adds the typed option", addedText() == "Blue")
+    check("Add an Option, \(name): adds the same option as Add", same(recorder.added.first, reference))
+    check("Add an Option, \(name): sends no new poll", recorder.polls.isEmpty)
+    check("Add an Option, \(name): closes the window", recorder.closed == 1)
+    check("Add an Option, \(name): doesn't run the New Poll checks", recorder.validations == 0)
+}
+
+window = addWindow()
+window.typeField("  Blue  ")
+window.clickButton()
+let trimmedReference = recorder.added.first
+window = addWindow()
+window.typeField("  Blue  ")
+window.press(plainReturn)
+check("Add an Option, Return: trims the text like Add", addedText() == "Blue" && same(recorder.added.first, trimmedReference))
+
+window = addWindow()
+window.typeField("Blue")
+window.attachToField("photo.jpg")
+window.clickButton()
+let mediaReference = recorder.added.first
+window = addWindow()
+window.typeField("Blue")
+window.attachToField("photo.jpg")
+window.press(plainReturn)
+check("Add an Option, Return: sends the attached media like Add", recorder.added.first?.option.media == "photo.jpg" && same(recorder.added.first, mediaReference))
+
+for (name, text) in [("an empty", ""), ("a blank", "   ")] {
+    window = addWindow()
+    window.typeField(text)
+    window.press(plainReturn)
+    check("Add an Option, Return on \(name) field: adds nothing", recorder.added.isEmpty)
+    check("Add an Option, Return on \(name) field: sends no poll", recorder.polls.isEmpty)
+    check("Add an Option, Return on \(name) field: the window stays open", recorder.closed == 0)
+}
+
+window = addWindow()
+window.typeField("Blue")
+window.setUploading(true)
+window.clickButton()
+let uploadToasts = recorder.toasts
+check("Add while the media uploads shows the wait message", uploadToasts == [strings().newPollMediaUploading] && recorder.added.isEmpty)
+window = addWindow()
+window.typeField("Blue")
+window.setUploading(true)
+window.press(plainReturn)
+check("Add an Option, Return while the media uploads: shows the wait message like Add", recorder.toasts == uploadToasts)
+check("Add an Option, Return while the media uploads: adds nothing yet", recorder.added.isEmpty)
+check("Add an Option, Return while the media uploads: sends no poll", recorder.polls.isEmpty)
+check("Add an Option, Return while the media uploads: the window stays open", recorder.closed == 0)
+window.setUploading(false)
+window.press(plainReturn)
+check("Add an Option, Return after the upload: adds the option", addedText() == "Blue" && recorder.polls.isEmpty)
+
+for (name, event) in [("Shift+Return", shiftReturn), ("Option+Return", optionReturn), ("Cmd+Return", commandReturn), ("Control+Return", controlReturn), ("Enter on the keypad with Caps Lock on", capsPadEnter)] {
+    window = addWindow()
+    window.typeField("Blue")
+    window.press(event)
+    check("Add an Option, \(name): sends no poll", recorder.polls.isEmpty)
+    check("Add an Option, \(name): adds nothing", recorder.added.isEmpty)
+    check("Add an Option, \(name): the window stays open", recorder.closed == 0)
+    check("Add an Option, \(name): the window keeps one option", window.state().options.count == 1)
+    check("Add an Option, \(name): Add stays on", window.buttonEnabled())
+    check("Add an Option, \(name): the key stays in the window", recorder.passedOn == 0)
+    window.press(plainReturn)
+    check("Add an Option, \(name) then Return: adds the typed option", addedText() == "Blue" && recorder.polls.isEmpty)
+}
+
+window = addWindow()
+window.typeField("Blue")
+window.press(tab)
+check("Add an Option, Tab: the window keeps one option", window.state().options.count == 1)
+check("Add an Option, Tab: Add stays on", window.buttonEnabled())
+window.clickButton()
+check("Add an Option, Tab then Add: adds the typed option", addedText() == "Blue" && recorder.polls.isEmpty)
+window = addWindow()
+window.typeField("Blue")
+window.press(tab)
+window.press(plainReturn)
+check("Add an Option, Tab then Return: adds the typed option", addedText() == "Blue" && recorder.polls.isEmpty)
+window = addWindow()
+window.typeField("Blue")
+window.press(tab)
+check("Add an Option, Tab: the field keeps the focus", recorder.focusMoves == 1 && window.state().options.count == 1)
+
+window = addWindow()
+window.press(delete)
+check("Add an Option, Delete on the empty field: the window keeps its field", window.state().options.count == 1 && recorder.passedOn == 0)
+window.typeField("Blue")
+window.press(plainReturn)
+check("Add an Option, Delete on the empty field, then type and Return: adds the option", addedText() == "Blue" && recorder.polls.isEmpty)
+
+window = addWindow()
+window.typeField("Blue")
+window.unfocus()
+window.press(plainReturn)
+check("Add an Option, Return with no field focused: adds the typed option", addedText() == "Blue" && recorder.polls.isEmpty)
+
+FastSettings.sendingType = .cmdEnter
+window = addWindow()
+window.typeField("Blue")
+window.press(commandReturn)
+check("Add an Option with Cmd+Enter to send, Cmd+Return: adds the typed option", addedText() == "Blue" && same(recorder.added.first, reference))
+check("Add an Option with Cmd+Enter to send, Cmd+Return: sends no poll", recorder.polls.isEmpty)
+check("Add an Option with Cmd+Enter to send, Cmd+Return: closes the window", recorder.closed == 1)
+window = addWindow()
+window.typeField("Blue")
+window.press(plainReturn)
+check("Add an Option with Cmd+Enter to send, Return: sends no poll and adds nothing", recorder.polls.isEmpty && recorder.added.isEmpty && recorder.closed == 0)
+check("Add an Option with Cmd+Enter to send, Return: the window keeps one option", window.state().options.count == 1)
+check("Add an Option with Cmd+Enter to send, Return: Add stays on", window.buttonEnabled())
+check("Add an Option with Cmd+Enter to send, Return: the key stays in the window", recorder.passedOn == 0)
+window.press(commandReturn)
+check("Add an Option with Cmd+Enter to send, Return then Cmd+Return: adds the typed option", addedText() == "Blue" && recorder.polls.isEmpty)
+window = addWindow()
+window.typeField("Blue")
+window.press(padEnter)
+check("Add an Option with Cmd+Enter to send, Enter on the keypad: adds nothing and the window keeps one option", recorder.added.isEmpty && recorder.polls.isEmpty && window.state().options.count == 1 && window.buttonEnabled())
+window.press(commandPadEnter)
+check("Add an Option with Cmd+Enter to send, Cmd+Enter on the keypad: adds the typed option", addedText() == "Blue" && recorder.polls.isEmpty)
+FastSettings.sendingType = .enter
+
+let lunch = SentPoll(title: "Lunch?", options: ["Pizza", "Soup"])
+
+func filledNewWindow() -> PollWindow {
+    let window = newWindow()
+    window.typeTitle("Lunch?")
+    window.typeOption(0, "Pizza")
+    window.typeOption(1, "Soup")
+    window.focusOption(1)
+    return window
+}
+
+window = newWindow()
+check("New Poll opens with two option fields", window.state().options.count == 2)
+check("New Poll: the button says Send", window.buttonTitle == "Send")
+
+window = filledNewWindow()
+window.press(plainReturn)
+check("New Poll, Return: sends the poll", recorder.polls == [lunch])
+check("New Poll, Return: closes the window", recorder.closed == 1)
+check("New Poll, Return: adds no option to another poll", recorder.added.isEmpty)
+check("New Poll, Return: then runs the window's own checks, as before", recorder.validations == 1)
+
+window = filledNewWindow()
+window.clickButton()
+check("New Poll, Send: sends the poll", recorder.polls == [lunch] && recorder.closed == 1)
+
+window = filledNewWindow()
+window.setUploading(true)
+window.clickButton()
+check("New Poll, Send while a media uploads: shows the wait message", recorder.toasts == [strings().newPollMediaUploading] && recorder.polls.isEmpty)
+window = filledNewWindow()
+window.setUploading(true)
+window.press(plainReturn)
+check("New Poll, Return while a media uploads: still sends at once, as before (Return there has no upload check, only Send has)", recorder.polls == [lunch] && recorder.toasts.isEmpty)
+
+window = newWindow()
+window.typeOption(0, "Pizza")
+window.typeOption(1, "Soup")
+window.focusOption(1)
+window.press(plainReturn)
+check("New Poll, Return with no question: sends nothing and stays open", recorder.polls.isEmpty && recorder.closed == 0)
+
+window = filledNewWindow()
+window.press(shiftReturn)
+check("New Poll, Shift+Return on the last option: adds an option field", window.state().options.count == 3 && recorder.polls.isEmpty)
+window.focusOption(0)
+window.press(shiftReturn)
+check("New Poll, Shift+Return on an option above: moves to the next field", recorder.focusMoves == 1 && window.state().options.count == 3)
+
+window = filledNewWindow()
+window.press(tab)
+check("New Poll, Tab on the last filled option: adds an option field", window.state().options.count == 3 && recorder.polls.isEmpty)
+window = filledNewWindow()
+window.focusTitle()
+window.press(tab)
+check("New Poll, Tab on the question: moves to the next field and adds no option", recorder.focusMoves == 1 && window.state().options.count == 2)
+
+window = newWindow(quiz: true)
+window.typeTitle("2 + 2?")
+window.typeOption(0, "4")
+window.typeOption(1, "5")
+window.focusOption(1)
+window.press(plainReturn)
+check("New Quiz, Return without a correct answer: shows the hint and sends nothing", recorder.tooltips == 1 && recorder.polls.isEmpty)
+
+FastSettings.sendingType = .cmdEnter
+window = filledNewWindow()
+window.press(plainReturn)
+check("New Poll with Cmd+Enter to send, Return on the last option: adds an option field", window.state().options.count == 3 && recorder.polls.isEmpty)
+window.press(commandReturn)
+check("New Poll with Cmd+Enter to send, Cmd+Return: sends the poll", recorder.polls == [lunch])
+FastSettings.sendingType = .enter
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

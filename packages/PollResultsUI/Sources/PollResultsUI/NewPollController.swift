@@ -1499,7 +1499,7 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
         isAddOption = false
     }
 
-    let interactions = ModalInteractions(acceptTitle: isAddOption ? strings().newPollAdd : strings().modalSend, accept: {
+    let accept: () -> Void = {
         let state = stateValue.with { $0 }
         if !state.uploadingMedia.isEmpty {
             showModalText(for: context.window, text: strings().newPollMediaUploading)
@@ -1517,7 +1517,9 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
         } else {
             checkAndSend()
         }
-    }, singleButton: true)
+    }
+
+    let interactions = ModalInteractions(acceptTitle: isAddOption ? strings().newPollAdd : strings().modalSend, accept: accept, singleButton: true)
     interactions.contentFlowsBehind = true
 
 
@@ -1732,6 +1734,13 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
         
     }, returnKeyInvocation: { identifier, event in
         
+        if isAddOption {
+            if FastSettings.checkSendingAbility(for: event) {
+                accept()
+            }
+            return .nothing
+        }
+
         if FastSettings.checkSendingAbility(for: event) {
             checkAndSend()
             return .default
@@ -1821,7 +1830,7 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
     
     
     chatInteraction.pollContext.window.set(handler: { [weak controller] _ -> KeyHandlerResult in
-        if let controller = controller {
+        if let controller = controller, !isAddOption {
             let state = stateValue.with {$0}
             
             let id = controller.currentFirstResponderIdentifier
