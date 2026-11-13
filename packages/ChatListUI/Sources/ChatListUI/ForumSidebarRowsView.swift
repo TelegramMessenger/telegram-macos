@@ -138,6 +138,9 @@ public final class ForumSidebarRowsView<Context: AccountContextProtocol>: View, 
                 guard let self, !self.context.isFrozen else { return }
                 let current = self.selectedRows
                 guard Set(current.compactMap { $0.mode.threadId }) == Set(ids), current.allSatisfy({ $0.canDeleteTopic }) else { return }
+                if let selectedThreadId = self.content?.selectedThreadId, ids.contains(selectedThreadId) {
+                    self.onSelect(nil, nil)
+                }
                 _ = self.context.engine.peers.removeForumChannelThreads(id: peerId, threadIds: ids).start()
                 self.setSelecting(false)
             })
