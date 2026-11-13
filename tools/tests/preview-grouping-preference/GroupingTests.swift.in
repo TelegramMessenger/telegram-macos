@@ -1,0 +1,149 @@
+import Foundation
+import XCTest
+
+enum AnalyticsMediaJourney {
+    enum Spec { enum MediaMode { case media, file, archive } }
+}
+__STATE__
+
+enum FastSettings {
+    static let suite = "PreviewGroupingPreferenceTests." + UUID().uuidString
+    static let defaults = UserDefaults(suiteName: suite)!
+    static let kNeedCollage = "needCollage"
+    __PREFERENCE__
+}
+enum PreviewOptions { case media, file }
+var supportsAlbums = true
+func canCollagesFromUrl(_ urls: [URL]) -> Bool { !urls.isEmpty && supportsAlbums }
+struct Presentation { var slowMode: Bool? }
+struct Interaction { var presentation: Presentation }
+final class Controller {
+    let urls: [URL]
+    let options: [PreviewOptions]
+    let chatInteraction: Interaction
+    init(count: Int, options: [PreviewOptions], slow: Bool) {
+        self.urls = (0..<count).map { URL(fileURLWithPath: "/test/\($0).png") }
+        self.options = options
+        self.chatInteraction = Interaction(presentation: Presentation(slowMode: slow ? true : nil))
+    }
+    func cachedSenderOptions(_ urls: [URL]) -> [PreviewOptions] { options }
+    func initial(asMedia: Bool) -> PreviewSendingState {
+        __INITIAL__
+        return state
+    }
+}
+final class Journey {
+    enum Step { case selectGrouped, selectUngrouped }
+    func step(_ step: Step) {}
+}
+final class MenuOwner {
+    var state: PreviewSendingState
+    let analyticsMediaJourney: Journey? = Journey()
+    var controller: MenuOwner? { self }
+    init(_ state: PreviewSendingState) { self.state = state }
+    func chooseGrouped() {
+        let updateValue: ((PreviewSendingState) -> PreviewSendingState) -> Void = { self.state = $0(self.state) }
+        __GROUPED__
+    }
+    func chooseUngrouped() {
+        let updateValue: ((PreviewSendingState) -> PreviewSendingState) -> Void = { self.state = $0(self.state) }
+        __UNGROUPED__
+    }
+}
+final class GroupingTests: XCTestCase {
+    override func setUp() {
+        FastSettings.defaults.removePersistentDomain(forName: FastSettings.suite)
+        supportsAlbums = true
+    }
+    override func tearDown() { FastSettings.defaults.removePersistentDomain(forName: FastSettings.suite) }
+
+    func testUnsetPreferenceKeepsDefaultGrouping() {
+        XCTAssertTrue(FastSettings.isNeedCollage)
+        let state = Controller(count: 2, options: [.media], slow: false).initial(asMedia: true)
+        XCTAssertEqual(state.state, .media)
+        XCTAssertTrue(state.isCollage)
+    }
+
+    func testSavedUngroupedPreferenceForMedia() {
+        FastSettings.isNeedCollage = false
+        for count in [2, 10, 11, 21] {
+            let state = Controller(count: count, options: [.media], slow: false).initial(asMedia: true)
+            XCTAssertFalse(state.isCollage)
+            XCTAssertEqual(state.state, .media)
+        }
+    }
+
+    func testSavedUngroupedPreferenceForFiles() {
+        FastSettings.isNeedCollage = false
+        let state = Controller(count: 2, options: [.file], slow: false).initial(asMedia: false)
+        XCTAssertFalse(state.isCollage)
+        XCTAssertEqual(state.state, .file)
+    }
+
+    func testSavedGroupedPreferenceRemainsGrouped() {
+        FastSettings.isNeedCollage = true
+        for asMedia in [false, true] {
+            XCTAssertTrue(Controller(count: 2, options: [.media], slow: false).initial(asMedia: asMedia).isCollage)
+        }
+    }
+
+    func testUnsupportedAttachmentsNeverGroup() {
+        supportsAlbums = false
+        for preference in [false, true] {
+            FastSettings.isNeedCollage = preference
+            let state = Controller(count: 2, options: [.media], slow: false).initial(asMedia: true)
+            XCTAssertFalse(state.isCollage)
+            XCTAssertEqual(state.state, .media)
+            XCTAssertEqual(FastSettings.isNeedCollage, preference)
+        }
+    }
+
+    func testSlowModeKeepsCompatibleAlbumWithoutChangingPreference() {
+        FastSettings.isNeedCollage = false
+        for asMedia in [false, true] {
+            let state = Controller(count: 2, options: [.media], slow: true).initial(asMedia: asMedia)
+            XCTAssertTrue(state.isCollage)
+            XCTAssertEqual(state.state, asMedia ? .media : .file)
+            XCTAssertFalse(FastSettings.isNeedCollage)
+        }
+        XCTAssertFalse(Controller(count: 2, options: [.media], slow: false).initial(asMedia: true).isCollage)
+    }
+
+    func testSlowModeKeepsUnsupportedMultiFileArchiveFallback() {
+        supportsAlbums = false
+        for preference in [false, true] {
+            FastSettings.isNeedCollage = preference
+            let state = Controller(count: 2, options: [.file], slow: true).initial(asMedia: false)
+            XCTAssertEqual(state.state, .archive)
+            XCTAssertFalse(state.isCollage)
+            XCTAssertEqual(FastSettings.isNeedCollage, preference)
+        }
+    }
+
+    func testSingleUnsupportedFileDoesNotBecomeArchive() {
+        supportsAlbums = false
+        let state = Controller(count: 1, options: [.file], slow: true).initial(asMedia: false)
+        XCTAssertEqual(state.state, .file)
+        XCTAssertFalse(state.isCollage)
+    }
+
+    func testMixedOptionsKeepFileMode() {
+        FastSettings.isNeedCollage = false
+        let state = Controller(count: 2, options: [.media, .file], slow: false).initial(asMedia: true)
+        XCTAssertEqual(state.state, .file)
+        XCTAssertFalse(state.isCollage)
+    }
+
+    func testMenuPreferenceSurvivesReopeningInBothDirections() {
+        let controller = Controller(count: 2, options: [.media], slow: false)
+        let owner = MenuOwner(controller.initial(asMedia: true))
+        owner.chooseUngrouped()
+        XCTAssertFalse(owner.state.isCollage)
+        XCTAssertFalse(FastSettings.isNeedCollage)
+        XCTAssertFalse(controller.initial(asMedia: true).isCollage)
+        owner.chooseGrouped()
+        XCTAssertTrue(owner.state.isCollage)
+        XCTAssertTrue(FastSettings.isNeedCollage)
+        XCTAssertTrue(controller.initial(asMedia: true).isCollage)
+    }
+}

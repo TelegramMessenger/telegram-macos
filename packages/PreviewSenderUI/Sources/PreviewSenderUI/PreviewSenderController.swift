@@ -2296,7 +2296,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
         default:
             break
         }
-        var state: PreviewSendingState = .init(state: mediaState, isCollage: canCollage, isSpoiler: false, sort: .down, payAmount: nil)
+        var state: PreviewSendingState = .init(state: mediaState, isCollage: canCollage && (FastSettings.isNeedCollage || chatInteraction.presentation.slowMode != nil), isSpoiler: false, sort: .down, payAmount: nil)
         if let _ = chatInteraction.presentation.slowMode {
             if state.state != .archive && self.urls.count > 1, !state.isCollage {
                 state = .init(state: .archive, isCollage: false, isSpoiler: false, sort: .down, payAmount: nil)
