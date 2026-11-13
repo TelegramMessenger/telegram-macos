@@ -1,0 +1,205 @@
+import AppKit
+import CoreText
+
+var assertions = 0
+var failures = 0
+func check(_ condition: @autoclosure () -> Bool, _ message: String) {
+    assertions += 1
+    if !condition() {
+        failures += 1
+        if failures <= 12 { print("FAIL: \(message)") }
+    }
+}
+
+enum GeneralViewItemPosition { case single }
+enum GeneralViewType {
+    case legacy
+    case modern(position: GeneralViewItemPosition, insets: NSEdgeInsets)
+    var innerInset: NSEdgeInsets { __INNER_INSET__ }
+    static var singleItem: GeneralViewType { __SINGLE_ITEM__ }
+}
+
+class GeneralRowItem {
+    var width: CGFloat
+    let viewType: GeneralViewType
+    let inset = NSEdgeInsetsMake(0, 20, 0, 20)
+    let fullSize = false
+    init(_ initialSize: NSSize, stableId: Int, viewType: GeneralViewType = .legacy) {
+        width = initialSize.width
+        self.viewType = viewType
+    }
+    func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
+        self.width = width
+        return true
+    }
+    var blockWidth: CGFloat { __BLOCK_WIDTH__ }
+    var height: CGFloat { 0 }
+}
+
+final class TextProbe {
+    let attributedString: NSAttributedString
+    let font: NSFont
+    var constrainedWidth: CGFloat = 0
+    var layoutSize = NSSize.zero
+    var lineCount = 0
+    init(_ text: String, size: CGFloat = __TEXT_FONT__, weight: NSFont.Weight = .regular, detectBold: Bool = false) {
+        font = NSFont.systemFont(ofSize: size, weight: weight)
+        let result = NSMutableAttributedString(string: text, attributes: [.font: font])
+        if detectBold {
+            let expression = try! NSRegularExpression(pattern: "\\*\\*(.*?)\\*\\*")
+            for match in expression.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)).reversed() {
+                let value = (text as NSString).substring(with: match.range(at: 1))
+                result.replaceCharacters(in: match.range, with: NSAttributedString(string: value, attributes: [.font: NSFont.systemFont(ofSize: size, weight: .medium)]))
+            }
+        }
+        attributedString = result
+    }
+    func measure(width: CGFloat) {
+        precondition(width > 0)
+        constrainedWidth = width
+        layoutSize = .zero
+        lineCount = 0
+        let typesetter = CTTypesetterCreateWithAttributedString(attributedString as CFAttributedString)
+        var offset = 0
+        while offset < attributedString.length {
+            let count = CTTypesetterSuggestLineBreak(typesetter, offset, Double(width))
+            precondition(count > 0)
+            let line = CTTypesetterCreateLine(typesetter, CFRange(location: offset, length: count))
+            let lineWidth = CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line)
+            layoutSize.width = max(layoutSize.width, ceil(CGFloat(lineWidth)))
+            lineCount += 1
+            offset += count
+        }
+        let lineHeight = floor(font.ascender - font.descender)
+        layoutSize.height = CGFloat(lineCount) * lineHeight + CGFloat(max(0, lineCount - 1)) * floor(lineHeight * 0.12)
+    }
+}
+
+final class Header: GeneralRowItem {
+    let titleLayout: TextProbe
+    let infoLayout: TextProbe
+    init(width: CGFloat, viewType: GeneralViewType, title: String, info: String) {
+        titleLayout = TextProbe(title, size: __HEADER_FONT__, weight: .medium)
+        infoLayout = TextProbe(info, detectBold: true)
+        let initialSize = NSSize(width: width, height: 0)
+        let stableId = 0
+        __HEADER_SUPER__
+        _ = makeSize(width)
+    }
+    override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool { __HEADER_SIZE__ }
+    override var height: CGFloat { __HEADER_HEIGHT__ }
+}
+
+final class OptionsListView {
+    final class Option {
+        let header: TextProbe
+        let text: TextProbe
+        let textInset: CGFloat = 40
+        let widthInset: CGFloat = __WIDTH_INSET__
+        var width: CGFloat = 0
+        init(_ title: String, _ info: String) {
+            header = TextProbe(title, weight: .medium)
+            text = TextProbe(info)
+        }
+        func makeSize(width: CGFloat) { __OPTION_SIZE__ }
+        var size: NSSize { __OPTION_FRAME_SIZE__ }
+    }
+    static func contentSize(options: [Option], spacing: CGFloat) -> NSSize { __CONTENT_SIZE__ }
+    static func height(options: [Option], spacing: CGFloat) -> CGFloat { __OPTIONS_HEIGHT__ }
+}
+
+final class Promo: GeneralRowItem {
+    let options: [OptionsListView.Option]
+    init(width: CGFloat, pairs: [(String, String)]) {
+        options = pairs.map { OptionsListView.Option($0.0, $0.1) }
+        super.init(NSSize(width: width, height: 0), stableId: 0, viewType: .singleItem)
+        _ = makeSize(width)
+    }
+    override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool { __PROMO_SIZE__ }
+    override var height: CGFloat { __PROMO_HEIGHT__ }
+}
+
+final class FrameProbe {
+    var frame: NSRect
+    let parentWidth: CGFloat
+    init(_ size: NSSize, parentWidth: CGFloat) {
+        frame = NSRect(origin: .zero, size: size)
+        self.parentWidth = parentWidth
+    }
+    func setFrameOrigin(_ point: NSPoint) { frame.origin = point }
+    func centerX(y: CGFloat) { frame.origin = NSPoint(x: CGFloat(roundf(Float((parentWidth - frame.width) / 2))), y: y) }
+}
+class ViewProbe { func layout() {} }
+final class HeaderView: ViewProbe {
+    let premiumView: FrameProbe?
+    let titleView: FrameProbe
+    let infoView: FrameProbe
+    init(_ item: Header) {
+        premiumView = FrameProbe(NSSize(width: item.width, height: 150), parentWidth: item.width)
+        titleView = FrameProbe(item.titleLayout.layoutSize, parentWidth: item.width)
+        infoView = FrameProbe(item.infoLayout.layoutSize, parentWidth: item.width)
+    }
+    override func layout() { __HEADER_LAYOUT__ }
+}
+final class OptionView: ViewProbe {
+    let titleView: FrameProbe
+    let infoView: FrameProbe
+    let infoImageView: FrameProbe? = nil
+    init(_ option: OptionsListView.Option) {
+        titleView = FrameProbe(option.header.layoutSize, parentWidth: option.size.width)
+        infoView = FrameProbe(option.text.layoutSize, parentWidth: option.size.width)
+    }
+    override func layout() { __OPTION_LAYOUT__ }
+}
+
+var fixtures: [(String, String, [(String, String)])] = [
+    __ENGLISH_FIXTURES__
+]
+for (title, text) in [
+    ("Партнёрские программы", "Комиссия зачисляется каждый раз, когда пользователь, впервые открывший мини-приложение по Вашей ссылке, тратит в нём звёзды."),
+    ("Partnerprogramme", String(repeating: "Ausführliche Informationen zu Partnerprogrammen und ihren Funktionen. ", count: 4)),
+    ("アフィリエイトプログラム", String(repeating: "紹介されたユーザーとプログラムについての詳しい説明です。", count: 5))
+] {
+    fixtures.append((title, text, [(title, text), (title, text + text), (title, text)]))
+}
+let callerTypes: [GeneralViewType] = [__CALLER_TYPES__]
+for viewType in callerTypes {
+    for (title, text, pairs) in fixtures {
+        let header = Header(width: 1048, viewType: viewType, title: title, info: text)
+        let promo = Promo(width: 1048, pairs: pairs)
+        for width: CGFloat in [1048, 320, 420, 600, 640, 900, 1600, 320, 1048] {
+            _ = header.makeSize(width)
+            _ = promo.makeSize(width)
+            let contentWidth = min(600, width - 40) - 28
+            check(header.titleLayout.constrainedWidth == contentWidth, "header title column at \(width)")
+            check(header.infoLayout.constrainedWidth == contentWidth, "header introduction column at \(width)")
+            let headerView = HeaderView(header)
+            headerView.layout()
+            check(abs(headerView.infoView.frame.midX - width / 2) <= 0.5, "centered introduction")
+            check(headerView.infoView.frame.maxY <= header.height - 10, "wrapped header fits row height")
+            let size = OptionsListView.contentSize(options: promo.options, spacing: 15)
+            check(size.width == contentWidth, "options use standard content insets")
+            check(promo.height == size.height + 30, "promo height includes wrapped option content")
+            let listX = (promo.blockWidth - size.width) / 2
+            var y: CGFloat = 15
+            for option in promo.options {
+                let optionX = (size.width - option.size.width) / 2
+                check(listX + optionX == 14, "icon aligned to standard left inset")
+                check(option.header.constrainedWidth <= option.size.width - 40, "title measured inside option bounds")
+                check(option.text.constrainedWidth <= option.size.width - 40, "description measured inside option bounds")
+                let optionView = OptionView(option)
+                optionView.layout()
+                check(optionView.titleView.frame.maxX <= option.size.width + 1, "title not clipped")
+                check(optionView.infoView.frame.maxX <= option.size.width + 1, "description not clipped")
+                check(optionView.infoView.frame.minY == optionView.titleView.frame.maxY + 5, "description follows title")
+                check(optionView.infoView.frame.maxY == option.size.height, "option includes full description height")
+                check(y + option.size.height <= promo.height - 15, "option stays above bottom padding")
+                y += option.size.height + 15
+            }
+        }
+    }
+}
+let empty = Promo(width: 320, pairs: [])
+check(empty.height == 30, "empty options retain padding")
+print("Assertions: \(assertions), failures: \(failures)")
+exit(failures == 0 ? 0 : 1)
