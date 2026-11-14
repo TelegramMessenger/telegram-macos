@@ -287,7 +287,7 @@ public func cancelResetAccountController(context: any AccountContextProtocol, ph
     }
     nextTypeDisposable.set(resendCode.start())
     
-    let controller = InputDataController(dataSignal: signal, title: strings().cancelResetAccountTitle, validateData: { data in
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().cancelResetAccountTitle, validateData: { data in
         
         return checkCode(stateValue.with { $0.code })
     }, updateDatas: { data in

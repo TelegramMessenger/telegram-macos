@@ -373,7 +373,7 @@ public func SessionModalController(context: any AccountContextProtocol, session:
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: strings().sessionPreviewTitle)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().sessionPreviewTitle)
     controller.analyticsScreen = .settingsDevicesSession
     controller.onDeinit = {
         locationDisposable.dispose()

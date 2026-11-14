@@ -740,7 +740,7 @@ public func twoStepVerificationUnlockController(context: any AccountContextProto
     }
     
     
-    let controller = InputDataController(dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: strings().privacySettingsTwoStepVerification, validateData: { validateData -> InputDataValidation in
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: strings().privacySettingsTwoStepVerification, validateData: { validateData -> InputDataValidation in
         
         let data = stateValue.with {$0.data}
         let loading = stateValue.with {$0.checking}
@@ -1004,7 +1004,7 @@ private func twoStepVerificationResetPasswordController(context: any AccountCont
         })
     }
     
-    let controller = InputDataController(dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: strings().twoStepAuthRecoveryTitle, validateData: { data in
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: strings().twoStepAuthRecoveryTitle, validateData: { data in
         
         let code = stateValue.with {$0.code}
         let loading = stateValue.with {$0.checking}
@@ -1290,7 +1290,7 @@ public func twoStepVerificationPasswordEntryController(context: any AccountConte
     }
 
 
-    let controller = InputDataController(dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: "", validateData: { data -> InputDataValidation in
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: "", validateData: { data -> InputDataValidation in
         
         var stage: PasswordEntryStage?
         var allowPerform: Bool = true

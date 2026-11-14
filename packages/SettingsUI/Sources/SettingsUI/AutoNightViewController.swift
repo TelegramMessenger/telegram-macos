@@ -306,7 +306,7 @@ public func AutoNightSettingsController(context: any AccountContextProtocol) -> 
         autoNightEntries(appearance: $0, settings: $1, cloudThemes: $2, arguments: arguments)
     }
     
-    let controller = InputDataController(dataSignal: signal |> map { InputDataSignalValue(entries: $0, animated: false) },
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal |> map { InputDataSignalValue(entries: $0, animated: false) },
         title: strings().autoNightSettingsTitle,
         afterDisappear: {
             updateDisposable.dispose()

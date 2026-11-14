@@ -126,6 +126,8 @@ private final class ThemePreviewRowView : TableRowView {
     }
     
     public override func set(item: TableRowItem, animated: Bool = false) {
+    
+        containerView.applySettingsCorners(item)
         super.set(item: item, animated: animated)
         
         guard let item = item as? ThemePreviewRowItem else {

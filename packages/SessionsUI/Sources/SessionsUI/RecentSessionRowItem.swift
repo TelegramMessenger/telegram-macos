@@ -30,36 +30,38 @@ public class RecentSessionRowItem: GeneralRowItem {
         self.session = session
         self.handler = handler
         self.icon = icon
-        headerLayout = TextViewLayout(.initialize(string: deviceModel ?? session.deviceModel, color: theme.colors.text, font: .normal(.title)), maximumNumberOfLines: 1)
+        headerLayout = TextViewLayout(.initialize(string: deviceModel ?? session.deviceModel, color: theme.colors.text, font: .normal(SettingsRowMetrics.titleSize)), maximumNumberOfLines: 1)
         
         let attr = NSMutableAttributedString()
         
                 
-        _ = attr.append(string: (session.appName + " " + session.appVersion.prefixWithDots(30) + ", " + session.platform + " " + session.systemVersion).trimmed, color: theme.colors.text, font: .normal(.text))
+        _ = attr.append(string: (session.appName + " " + session.appVersion.prefixWithDots(30) + ", " + session.platform + " " + session.systemVersion).trimmed, color: theme.colors.grayText, font: .normal(SettingsRowMetrics.subtitleSize))
         
         _ = attr.append(string: "\n")
         
-        _ = attr.append(string: (session.ip + " " + session.country).trimmed, color: theme.colors.grayText, font: .normal(.text))
+        _ = attr.append(string: (session.ip + " " + session.country).trimmed, color: theme.colors.grayText, font: .normal(SettingsRowMetrics.subtitleSize))
         
-        descLayout = TextViewLayout(attr, maximumNumberOfLines: 0, lineSpacing: 2)
+        descLayout = TextViewLayout(attr, maximumNumberOfLines: 0, lineSpacing: SettingsRowMetrics.subtitleGap)
     
-        dateLayout = TextViewLayout(.initialize(string: session.isCurrent ? strings().peerStatusOnline : DateUtils.string(forMessageListDate: session.activityDate), color: session.isCurrent ? theme.colors.accent : theme.colors.grayText, font: .normal(.text)))
+        dateLayout = TextViewLayout(.initialize(string: session.isCurrent ? strings().peerStatusOnline : DateUtils.string(forMessageListDate: session.activityDate), color: session.isCurrent ? theme.colors.accent : theme.colors.grayText, font: .normal(SettingsRowMetrics.titleSize)))
         
-        super.init(initialSize, stableId: stableId, viewType: viewType)
+        super.init(initialSize, stableId: stableId, viewType: viewType.withUpdatedInsets(NSEdgeInsets(top: SettingsRowMetrics.verticalInset, left: SettingsRowMetrics.contentInset, bottom: SettingsRowMetrics.verticalInset, right: SettingsRowMetrics.contentInset)))
         
         _ = makeSize(initialSize.width, oldWidth: initialSize.width)
     }
     
     public override func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool {
         let success = super.makeSize(width, oldWidth: oldWidth)
-        headerLayout.measure(width: blockWidth - 90 - (icon.0 != nil ? 38 : 0))
-        descLayout.measure(width: blockWidth - 40 - (icon.0 != nil ? 38 : 0))
         dateLayout.measure(width: .greatestFiniteMagnitude)
+        let textInset = icon.0 != nil ? SettingsRowMetrics.deviceIconSize + SettingsRowMetrics.iconGap : 0
+        let textWidth = blockWidth - viewType.innerInset.left - viewType.innerInset.right - textInset
+        headerLayout.measure(width: max(1, textWidth - dateLayout.layoutSize.width - SettingsRowMetrics.iconGap))
+        descLayout.measure(width: max(1, textWidth))
         return success
     }
     
     public override var height: CGFloat {
-        return max(75, headerLayout.layoutSize.height + descLayout.layoutSize.height + viewType.innerInset.top + viewType.innerInset.bottom + 4)
+        return max(54, headerLayout.layoutSize.height + SettingsRowMetrics.subtitleGap + descLayout.layoutSize.height + viewType.innerInset.top + viewType.innerInset.bottom)
     }
     
     public override func viewClass() -> AnyClass {
@@ -163,7 +165,7 @@ public class RecentSessionRowView : GeneralContainableRowView {
                 scrambleLayout = nil
             }
             self.iconView.image = item.icon.0
-            self.iconView.sizeToFit()
+            self.iconView.setFrameSize(SettingsRowMetrics.deviceIconSize, SettingsRowMetrics.deviceIconSize)
         }
         
         self.needsLayout = true
@@ -176,9 +178,9 @@ public class RecentSessionRowView : GeneralContainableRowView {
         }
         let insets = item.viewType.innerInset
         self.iconView.setFrameOrigin(NSMakePoint(insets.left, insets.top))
-        let left: CGFloat = (item.icon.0 != nil ? 38 : 0)
-        self.headerTextView.update(scrambleLayout ?? item.headerLayout, origin: NSMakePoint(left + insets.left, insets.top - 2))
-        self.descTextView.update(item.descLayout, origin: NSMakePoint(left + insets.left, headerTextView.frame.maxY + 4))
+        let left: CGFloat = (item.icon.0 != nil ? SettingsRowMetrics.deviceIconSize + SettingsRowMetrics.iconGap : 0)
+        self.headerTextView.update(scrambleLayout ?? item.headerLayout, origin: NSMakePoint(left + insets.left, insets.top))
+        self.descTextView.update(item.descLayout, origin: NSMakePoint(left + insets.left, headerTextView.frame.maxY + SettingsRowMetrics.subtitleGap))
         self.dateTextView.update(item.dateLayout, origin: NSMakePoint(self.containerView.frame.width - insets.right - item.dateLayout.layoutSize.width, insets.top))
 
     }

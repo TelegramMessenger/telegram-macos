@@ -37,7 +37,7 @@ public class PeerMediaDateItem: TableStickItem {
         
         let text = DateSelectorUtil.mediaDate.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp)))
 
-        textLayout = TextViewLayout(.initialize(string: text.uppercased(), color: theme.colors.listGrayText, font: .normal(.short)))
+        textLayout = TextViewLayout(.initialize(string: text, color: theme.colors.text, font: .bold(SettingsRowMetrics.titleSize)))
         let yearSeparator = text.range(of: " ", options: .backwards)
         let month = yearSeparator.map { String(text[..<$0.lowerBound]) } ?? text
         let year = yearSeparator.map { String(text[$0.upperBound...]) } ?? ""
@@ -126,7 +126,7 @@ fileprivate class PeerMediaDateView : TableStickView {
            self.containerView.frame = NSMakeRect(floorToScreenPixels(backingScaleFactor, (frame.width - blockWidth) / 2), item.inset.top, blockWidth, frame.height - item.inset.bottom - item.inset.top)
            self.containerView.setCorners([])
            
-           textView.centerY(x: item.viewType.innerInset.left + 12)
+           textView.centerY(x: item.viewType.innerInset.left + SettingsRowMetrics.contentInset)
        }
        
        override func set(item: TableRowItem, animated: Bool = false) {

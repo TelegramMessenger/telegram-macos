@@ -104,7 +104,7 @@ public func GroupsInCommonViewController(context: any AccountContextProtocol, pe
         return InputDataSignalValue(entries: commonGroupsEntries(state: $0, arguments: arguments, standalone: standalone))
     }
     
-    let controller = InputDataController(dataSignal: dataSignal, title: !standalone ? "" : strings().peerInfoGroupsInCommon, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: dataSignal, title: !standalone ? "" : strings().peerInfoGroupsInCommon, hasDone: false)
     controller.analyticsContext = origin
     controller.bar = .init(height: standalone ? 50 : 0)
     if standalone {

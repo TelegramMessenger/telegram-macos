@@ -313,7 +313,8 @@ final class InputDataTableBasedItemView: TableRowView {
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(container)
-        container.layer?.cornerRadius = 20
+        container.layer?.cornerRadius = SettingsRowMetrics.cardCornerRadius
+        container.layer?.cornerCurve = .continuous
         container.layer?.borderWidth = .borderSize
     }
     

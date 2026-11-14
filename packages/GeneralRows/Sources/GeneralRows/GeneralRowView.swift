@@ -74,6 +74,7 @@ open class GeneralContainableRowView : TableRowView {
     open override func layout() {
         super.layout()
         self.updateLayout(size: self.frame.size, transition: .immediate)
+        applySettingsTextSmoothing((item as? GeneralRowItem)?.settingsPresentation != nil)
     }
     
     open override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
@@ -87,7 +88,7 @@ open class GeneralContainableRowView : TableRowView {
         let rect = NSMakeRect(floorToScreenPixels(backingScaleFactor, (size.width - blockWidth) / 2), item.inset.top, blockWidth, size.height - item.inset.bottom - item.inset.top)
         transition.updateFrame(view: self.containerView, frame: rect)
 
-        self.containerView.setCorners(item.viewType.corners, animated: transition.isAnimated, frame: rect)
+        self.containerView.setCorners(item.settingsPresentation == .sidebar ? .all : item.viewType.corners, animated: transition.isAnimated, frame: rect)
 
         transition.updateFrame(layer: borderView, frame: NSMakeRect(item.viewType.innerInset.left + additionBorderInset, containerView.frame.height - .borderSize, containerView.frame.width - item.viewType.innerInset.left - item.viewType.innerInset.right - additionBorderInset, .borderSize))
     }
@@ -103,7 +104,8 @@ open class GeneralContainableRowView : TableRowView {
             return
         }
         
-        borderView.isHidden = !item.hasBorder
+        containerView.applySettingsCorners(item)
+        borderView.isHidden = !item.hasBorder || item.settingsPresentation == .sidebar
     }
     
     public required init?(coder: NSCoder) {
@@ -125,9 +127,21 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
     }
 
 
-    open var cornerRadius: CGFloat = 20
+    open var cornerRadius: CGFloat = SettingsRowMetrics.cardCornerRadius
+    public var settingsCornerRadius: CGFloat?
+
+    public func applySettingsCorners(_ item: TableRowItem) {
+        switch (item as? GeneralRowItem)?.settingsPresentation {
+        case .sidebar:
+            settingsCornerRadius = SettingsRowMetrics.sidebarCornerRadius
+        case .some:
+            settingsCornerRadius = SettingsRowMetrics.cardCornerRadius
+        case nil:
+            settingsCornerRadius = (item as? GeneralRowItem)?.usesSettingsCorners == true ? SettingsRowMetrics.cardCornerRadius : nil
+        }
+    }
     // The visible rounding is drawn by `maskLayer`, not `layer.cornerRadius`, so report it for the morph.
-    public var morphCornerRadius: CGFloat { return cornerRadius }
+    public var morphCornerRadius: CGFloat { return settingsCornerRadius ?? cornerRadius }
     // The row's layer is geometry-flipped (min-Y is the visual top, as createMask's arc order assumes), so a
     // visual top corner maps to a min-Y corner mask and a visual bottom corner to a max-Y one.
     public var morphCorners: CACornerMask {
@@ -182,45 +196,13 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
         self.corners = corners
     }
     private func createMask(for corners: GeneralViewItemCorners, frame: NSRect) -> CGPath {
-
-        if corners.contains(.topLeft) && corners.contains(.topRight) && corners.contains(.bottomLeft) && corners.contains(.bottomRight) {
-            let radius = min(frame.height / 2, 20)
-            return CGPath(roundedRect: CGRect(origin: .zero, size: frame.size), cornerWidth: radius, cornerHeight: radius, transform: nil)
-        }
-
-        let path = CGMutablePath()
-
-        let minx:CGFloat = 0, midx = frame.width/2.0, maxx = frame.width
-        let miny:CGFloat = 0, midy = frame.height/2.0, maxy = frame.height
-
-        path.move(to: NSMakePoint(minx, midy))
-
-        var topLeftRadius: CGFloat = 0
-        var bottomLeftRadius: CGFloat = 0
-        var topRightRadius: CGFloat = 0
-        var bottomRightRadius: CGFloat = 0
-
-
-        if corners.contains(.topLeft)  {
-            bottomLeftRadius = cornerRadius
-        }
-        if corners.contains(.topRight) {
-            bottomRightRadius = cornerRadius
-        }
-        if corners.contains(.bottomLeft) {
-            topLeftRadius = cornerRadius
-        }
-        if corners.contains(.bottomRight) {
-            topRightRadius = cornerRadius
-        }
-
-        path.addArc(tangent1End: NSMakePoint(minx, miny), tangent2End: NSMakePoint(midx, miny), radius: bottomLeftRadius)
-        path.addArc(tangent1End: NSMakePoint(maxx, miny), tangent2End: NSMakePoint(maxx, midy), radius: bottomRightRadius)
-        path.addArc(tangent1End: NSMakePoint(maxx, maxy), tangent2End: NSMakePoint(midx, maxy), radius: topRightRadius)
-        path.addArc(tangent1End: NSMakePoint(minx, maxy), tangent2End: NSMakePoint(minx, midy), radius: topLeftRadius)
-
-
-        return path
+        let radius = min(frame.height / 2, settingsCornerRadius ?? cornerRadius)
+        let topLeft = corners.contains(.topLeft) ? radius : 0
+        let topRight = corners.contains(.topRight) ? radius : 0
+        let bottomLeft = corners.contains(.bottomLeft) ? radius : 0
+        let bottomRight = corners.contains(.bottomRight) ? radius : 0
+        let smoothing = continuousCornerSmoothing(size: frame.size, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, limit: SettingsRowMetrics.cornerSmoothing)
+        return CGPath.continuousRoundedRect(CGRect(origin: .zero, size: frame.size), topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, smoothing: smoothing)
     }
     
     open override func setFrameSize(_ newSize: NSSize) {
@@ -325,6 +307,7 @@ open class GeneralRowView: TableRowView,ViewDisplayDelegate {
     open override func layout() {
         
         guard let item = item as? GeneralRowItem else {return}
+        applySettingsTextSmoothing(item.settingsPresentation != nil)
 
         let minX = (frame.width - item.blockWidth) / 2
         
@@ -355,4 +338,15 @@ open class GeneralRowView: TableRowView,ViewDisplayDelegate {
         }
     }
     
+}
+
+extension NSView {
+    func applySettingsTextSmoothing(_ enabled: Bool) {
+        for subview in subviews {
+            if let textView = subview as? TextView {
+                textView.smoothFonts = enabled
+            }
+            subview.applySettingsTextSmoothing(enabled)
+        }
+    }
 }

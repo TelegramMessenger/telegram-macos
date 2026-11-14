@@ -161,7 +161,7 @@ private func shortcutEntires() -> [InputDataEntry] {
 
 public func ShortcutListController(context: any AccountContextProtocol) -> ViewController {
     
-    let controller = InputDataController(dataSignal: .single(InputDataSignalValue(entries: shortcutEntires())), title: strings().shortcutsControllerTitle, validateData: { data in
+    let controller = InputDataController(settingsLayout: true, dataSignal: .single(InputDataSignalValue(entries: shortcutEntires())), title: strings().shortcutsControllerTitle, validateData: { data in
         return .fail(.none)
     }, removeAfterDisappear: true, hasDone: false, identifier: "shortcuts")
     controller.analyticsScreen = .settingsShortcuts

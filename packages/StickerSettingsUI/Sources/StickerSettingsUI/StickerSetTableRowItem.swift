@@ -239,6 +239,8 @@ public class StickerSetTableRowView : TableRowView, ViewDisplayDelegate {
     }
     
     public override func set(item: TableRowItem, animated: Bool) {
+    
+        containerView.applySettingsCorners(item)
         super.set(item: item, animated: animated)
         self.updateMouse(animated: animated)
         self.contentView.userInteractionEnabled = false

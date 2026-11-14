@@ -150,7 +150,7 @@ private let actionStyle:ControlStyle = blueActionButton
 
 fileprivate func prepareTransition(left:[AppearanceWrapperEntry<PasscodeEntry>], right: [AppearanceWrapperEntry<PasscodeEntry>], initialSize:NSSize, arguments:PasscodeSettingsArguments) -> TableUpdateTransition {
     
-    let (removed, inserted, updated) = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
+    func passcodeItem(_ entry: AppearanceWrapperEntry<PasscodeEntry>, initialSize: NSSize, arguments: PasscodeSettingsArguments) -> TableRowItem {
         switch entry.entry {
         case .section:
             return GeneralRowItem(initialSize, height: 20, stableId: entry.stableId, viewType: .separator)
@@ -207,6 +207,10 @@ fileprivate func prepareTransition(left:[AppearanceWrapperEntry<PasscodeEntry>],
                 arguments.ifAway()
             })
         }
+    }
+
+    let (removed, inserted, updated) = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
+        return passcodeItem(entry, initialSize: initialSize, arguments: arguments).settingsRow()
     }
     
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)

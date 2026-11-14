@@ -23,9 +23,9 @@ public final class StorageUsageClearButtonItem : GeneralRowItem {
     public init(_ initialSize: NSSize, stableId: AnyHashable, text: String, sizeText: String? = nil, enabled: Bool, viewType: GeneralViewType, action:@escaping()->Void) {
         self.text = text
         self.sizeText = sizeText
-        super.init(initialSize, height: 40 + viewType.innerInset.top + viewType.innerInset.bottom, stableId: stableId, viewType: viewType, action: action, enabled: enabled)
+        super.init(initialSize, height: 42, stableId: stableId, viewType: viewType, action: action, enabled: enabled)
     }
-    
+
     public override var accessibilityLabel: String? {
         return [text, sizeText].compactMap { $0 }.joined(separator: " ")
     }
@@ -57,65 +57,68 @@ public final class StorageUsageClearButtonItem : GeneralRowItem {
 
 
 private final class StorageUsageClearButtonView: GeneralContainableRowView {
-    private let button = ImageButton()
+    private static let buttonHeight: CGFloat = 24
+    private static let buttonPadding: CGFloat = 12
+    private static let buttonRadius: CGFloat = 7
+
+    private let button = Control()
     private let titleView = TextView()
     private let sizeView = TextView()
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         button.scaleOnClick = true
-        button.autohighlight = false
-        button.disableActions()
-        button.setGlassEffect(tintColor: theme.colors.accent)
-        button.set(background: .clear, for: .Normal)
-        button.set(background: .clear, for: .Highlight)
-        addSubview(button)
+        button.layer?.cornerRadius = StorageUsageClearButtonView.buttonRadius
+        button.layer?.cornerCurve = .continuous
+        containerView.addSubview(button)
+        containerView.addSubview(sizeView)
         for view in [titleView, sizeView] {
             view.userInteractionEnabled = false
             view.isSelectable = false
             view.isAccessibilityDecorative = true
-            button.addSubview(view)
         }
-        
+        button.addSubview(titleView)
+
         button.set(handler: { [weak self] _ in
             if let item = self?.item as? GeneralRowItem, item.enabled {
                 item.action()
             }
         }, for: .Click)
     }
-    
+
     public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     public override func layout() {
         super.layout()
-        button.center()
-        let spacing: CGFloat = sizeView.isHidden ? 0 : 4
-        let width = titleView.frame.width + (sizeView.isHidden ? 0 : sizeView.frame.width) + spacing
-        titleView.setFrameOrigin(NSMakePoint(floorToScreenPixels((button.frame.width - width) / 2), floorToScreenPixels((button.frame.height - titleView.frame.height) / 2)))
-        sizeView.setFrameOrigin(NSMakePoint(titleView.frame.maxX + spacing, floorToScreenPixels((button.frame.height - sizeView.frame.height) / 2)))
-    }
-    
-    public override func set(item: TableRowItem, animated: Bool = false) {
-        super.set(item: item, animated: animated)
-        
         guard let item = item as? StorageUsageClearButtonItem else {
             return
         }
-        
-        button.glassTintColor = theme.colors.accent
+        button.centerY(x: containerView.frame.width - button.frame.width - item.viewType.innerInset.right)
+        titleView.center()
+        sizeView.centerY(x: item.viewType.innerInset.left)
+    }
+
+    public override func set(item: TableRowItem, animated: Bool = false) {
+        super.set(item: item, animated: animated)
+
+        guard let item = item as? StorageUsageClearButtonItem else {
+            return
+        }
+
         button.isEnabled = item.enabled
-        button.setFrameSize(NSMakeSize(item.blockWidth - item.viewType.innerInset.left - item.viewType.innerInset.right, 40))
-        let foreground = theme.colors.accent.lightness > 0.8 ? NSColor.black : NSColor.white
-        let titleLayout = TextViewLayout(.initialize(string: item.text, color: foreground, font: .medium(.title)), maximumNumberOfLines: 1)
-        let sizeLayout = TextViewLayout(.initialize(string: item.sizeText ?? "", color: foreground.withAlphaComponent(0.6), font: .medium(.title)), maximumNumberOfLines: 1)
-        sizeLayout.measure(width: max(0, button.frame.width - 32))
-        titleLayout.measure(width: max(0, button.frame.width - 32 - (item.sizeText == nil ? 0 : sizeLayout.layoutSize.width + 4)))
+        button.backgroundColor = theme.colors.text.withAlphaComponent(0.12)
+        let titleLayout = TextViewLayout(.initialize(string: item.text, color: theme.colors.text, font: .normal(SettingsRowMetrics.titleSize)), maximumNumberOfLines: 1)
+        titleLayout.measure(width: max(0, item.blockWidth / 2))
         titleView.update(titleLayout)
+        button.setFrameSize(NSMakeSize(titleLayout.layoutSize.width + StorageUsageClearButtonView.buttonPadding * 2, StorageUsageClearButtonView.buttonHeight))
+
+        let sizeLayout = TextViewLayout(.initialize(string: item.sizeText.map { strings().storageUsageClearButtonItemSelected($0) } ?? "", color: theme.colors.grayText, font: .normal(SettingsRowMetrics.titleSize)), maximumNumberOfLines: 1)
+        sizeLayout.measure(width: max(0, item.blockWidth - button.frame.width - item.viewType.innerInset.left - item.viewType.innerInset.right - 16))
         sizeView.update(sizeLayout)
         sizeView.isHidden = item.sizeText == nil
+
         titleView.alphaValue = item.enabled ? 1 : 0.5
-        sizeView.alphaValue = item.enabled ? 1 : 0.5
         needsLayout = true
     }
 }

@@ -280,6 +280,7 @@ public class PeerMediaFileRowView : PeerMediaRowView {
         
         statusDisposable.set(nil)
         if let item = item as? PeerMediaFileRowItem {
+            imageView.applyPeerMediaThumbCorners(item, fallback: 0)
             
 
             

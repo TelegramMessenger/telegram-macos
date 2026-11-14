@@ -125,7 +125,7 @@ private final class QuickReactionRowView : GeneralContainableRowView {
         imageView.image = theme.icons.installed_stickers_reactions
         imageView.sizeToFit()
         
-        let textLayout = TextViewLayout.init(.initialize(string: strings().reactionSettingsQuickTitle, color: theme.colors.text, font: .normal(.title)))
+        let textLayout = TextViewLayout.init(.initialize(string: strings().reactionSettingsQuickTitle, color: theme.colors.text, font: item.settingsPresentation != nil ? .normal(SettingsRowMetrics.titleSize) : .normal(.title)))
         textLayout.measure(width: .greatestFiniteMagnitude)
         
         self.textView.update(textLayout)

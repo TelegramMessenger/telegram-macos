@@ -259,6 +259,8 @@ private final class ProxyListRowView : TableRowView, ViewDisplayDelegate {
     }
     
     override func set(item: TableRowItem, animated: Bool) {
+    
+        containerView.applySettingsCorners(item)
         super.set(item: item, animated: animated)
         
         guard let item = item as? ProxyListRowItem else {return}

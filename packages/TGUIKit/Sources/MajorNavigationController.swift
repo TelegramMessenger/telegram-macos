@@ -52,6 +52,7 @@ open class MajorNavigationController: NavigationViewController {
         }
 
         controller.navigationController = self
+        inheritSettingsScreen(controller)
 
         var offset: CGFloat = 0
         if let header = header, header.isShown {

@@ -352,6 +352,9 @@ open class GeneralRowItem: TableRowItem {
     
     private let _inset: NSEdgeInsets
     open var inset:NSEdgeInsets {
+        if settingsPresentation == .sidebar {
+            return NSEdgeInsets(left: SettingsRowMetrics.sidebarInset, right: SettingsRowMetrics.sidebarInset)
+        }
         return _inset
     }
     
@@ -366,8 +369,28 @@ open class GeneralRowItem: TableRowItem {
     
     
     open private(set) var viewType: GeneralViewType
+    public private(set) var settingsPresentation: SettingsRowPresentation?
+    public var usesSettingsCorners: Bool = false
+
+    @discardableResult
+    open func withSettingsLayout(_ presentation: SettingsRowPresentation = .content) -> Self {
+        if Swift.type(of: self) == GeneralRowItem.self, _height > 0, _height <= 20 {
+            _height = SettingsRowMetrics.cardGap
+        }
+        guard case let .modern(position, insets) = viewType else { return self }
+        settingsPresentation = presentation
+        let horizontal = presentation == .sidebar ? SettingsRowMetrics.sidebarContentInset : SettingsRowMetrics.contentInset
+        viewType = .modern(position: position, insets: NSEdgeInsets(top: insets.top, left: horizontal, bottom: insets.bottom, right: horizontal))
+        _ = makeSize(width, oldWidth: 0)
+        return self
+    }
 
     
+    public func setSettingsInsets(_ insets: NSEdgeInsets) {
+        guard settingsPresentation != nil else { return }
+        viewType = viewType.withUpdatedInsets(insets)
+    }
+
     public let customTheme: Theme?
 
     open override var backdorColor: NSColor {
@@ -458,4 +481,13 @@ open class GeneralRowItem: TableRowItem {
         }
     }
     
+}
+
+extension TableRowItem {
+    public func settingsRow(_ presentation: SettingsRowPresentation = .content) -> TableRowItem {
+        if let item = self as? GeneralRowItem {
+            return item.withSettingsLayout(presentation)
+        }
+        return self
+    }
 }

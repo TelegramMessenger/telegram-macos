@@ -48,7 +48,12 @@ public class AccountInfoItem: GeneralRowItem {
     
     public let avatarStoryIndicator: AvatarStoryIndicatorComponent?
     public let openStory:(StoryInitialIndex?)->Void
-    public init(_ initialSize:NSSize, stableId:AnyHashable, viewType: GeneralViewType, inset: NSEdgeInsets = NSEdgeInsets(left: 20, right: 20), context: any AccountContextProtocol, peer: TelegramUser, storyStats: EngineStorySubscriptions.Item?, action: @escaping()->Void, setStatus: @escaping(Control, TelegramUser)->Void, openStory:@escaping(StoryInitialIndex?)->Void) {
+    fileprivate let compact: Bool
+    fileprivate var avatarSize: CGFloat {
+        return compact ? 40 : 60
+    }
+    public init(_ initialSize:NSSize, stableId:AnyHashable, viewType: GeneralViewType, inset: NSEdgeInsets = NSEdgeInsets(left: 20, right: 20), context: any AccountContextProtocol, peer: TelegramUser, storyStats: EngineStorySubscriptions.Item?, compact: Bool = false, action: @escaping()->Void, setStatus: @escaping(Control, TelegramUser)->Void, openStory:@escaping(StoryInitialIndex?)->Void) {
+        self.compact = compact
         self.context = context
         self.peer = peer
         self.storyStats = storyStats
@@ -63,16 +68,22 @@ public class AccountInfoItem: GeneralRowItem {
         }
         
         let titleAttr: NSMutableAttributedString = NSMutableAttributedString()
-        _ = titleAttr.append(string: peer.displayTitle, color: theme.colors.text, font: .medium(.title))
+        _ = titleAttr.append(string: peer.displayTitle, color: theme.colors.text, font: compact ? .semibold(SettingsRowMetrics.titleSize) : .medium(.title))
         self.titleLayout = .init(titleAttr, maximumNumberOfLines: 1)
         let activeTitle = titleAttr.mutableCopy() as! NSMutableAttributedString
         activeTitle.addAttribute(.foregroundColor, value: theme.colors.underSelectedColor, range: titleAttr.range)
         self.titleActiveLayout = .init(activeTitle, maximumNumberOfLines: 1)
         
-        if let phone = peer.phone {
+        if compact {
+            if let username = peer.username, !username.isEmpty {
+                _ = attr.append(string: "@\(username)", color: theme.colors.grayText, font: .normal(SettingsRowMetrics.subtitleSize))
+            } else if let phone = peer.phone {
+                _ = attr.append(string: SettingsHooks.shared.formatPhoneNumber(context, phone), color: theme.colors.grayText, font: .normal(SettingsRowMetrics.subtitleSize))
+            }
+        } else if let phone = peer.phone {
             _ = attr.append(string: SettingsHooks.shared.formatPhoneNumber(context, phone), color: theme.colors.grayText, font: .normal(.text))
         }
-        if let username = peer.username, !username.isEmpty {
+        if !compact, let username = peer.username, !username.isEmpty {
             if !attr.string.isEmpty {
                 _ = attr.append(string: "\n")
             }
@@ -84,7 +95,7 @@ public class AccountInfoItem: GeneralRowItem {
         let active = attr.mutableCopy() as! NSMutableAttributedString
         active.addAttribute(.foregroundColor, value: theme.colors.underSelectedColor, range: active.range)
         activeTextlayout = TextViewLayout(active, maximumNumberOfLines: 4)
-        super.init(initialSize, height: 90, stableId: stableId, viewType: viewType, action: action, inset: inset)
+        super.init(initialSize, height: compact ? 56 : 90, stableId: stableId, viewType: viewType, action: action, inset: inset)
         
         self.photos = syncPeerPhotos(peerId: peer.id).map { $0.value }
         let signal = peerPhotos(context: context, peerId: peer.id) |> deliverOnMainQueue
@@ -114,13 +125,14 @@ public class AccountInfoItem: GeneralRowItem {
     }
     public override func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool {
         let success = super.makeSize(width, oldWidth: oldWidth)
-        textLayout.measure(width: width - 140)
-        activeTextlayout.measure(width: width - 140)
+        let reserved: CGFloat = compact ? 100 : 140
+        textLayout.measure(width: width - reserved)
+        activeTextlayout.measure(width: width - reserved)
         
         let hasControl = PremiumStatusControl.hasControl(peer, left: false)
         
-        self.titleLayout.measure(width: width - 140 - (hasControl ? 45 : 0))
-        self.titleActiveLayout.measure(width: width - 140 - (hasControl ? 45 : 0))
+        self.titleLayout.measure(width: width - reserved - (hasControl ? (compact ? 24 : 45) : 0))
+        self.titleActiveLayout.measure(width: width - reserved - (hasControl ? (compact ? 24 : 45) : 0))
         return success
     }
     
@@ -232,6 +244,9 @@ private class AccountInfoView : GeneralContainableRowView {
     
   
     public override var backdorColor: NSColor {
+        if let item = item as? GeneralRowItem, item.settingsPresentation == .sidebar {
+            return isSelect ? theme.colors.accent : .clear
+        }
         return isSelect ? theme.colors.accentSelect : theme.colors.background
     }
         
@@ -357,7 +372,7 @@ private class AccountInfoView : GeneralContainableRowView {
                 self.statusControl = nil
             }
             
-            let control = PremiumStatusControl.control(item.peer, account: item.context.account, inlinePacksContext: item.context.inlinePacksContext, left: false, isSelected: item.isSelected, isBig: true, cached: self.statusControl, animated: animated)
+            let control = PremiumStatusControl.control(item.peer, account: item.context.account, inlinePacksContext: item.context.inlinePacksContext, left: false, isSelected: item.isSelected, isBig: !item.compact, cached: self.statusControl, animated: animated)
                         
             if let control = control {
                 self.statusControl = control
@@ -386,7 +401,7 @@ private class AccountInfoView : GeneralContainableRowView {
             
             titleView.update(isSelect ? item.titleActiveLayout : item.titleLayout)
             
-            actionView.image = item.isSelected ? nil : theme.icons.generalNext
+            actionView.image = item.isSelected || item.compact ? nil : theme.icons.generalNext
             actionView.sizeToFit()
             avatarView.setPeer(account: item.context.account, peer: item.peer)
             textView.update(isSelect ? item.activeTextlayout : item.textLayout)
@@ -440,19 +455,19 @@ private class AccountInfoView : GeneralContainableRowView {
                     current = view
                     isNew = false
                 } else {
-                    current = AvatarStoryIndicatorComponent.IndicatorView(frame: NSMakeRect(0, 0, 60, 60))
+                    current = AvatarStoryIndicatorComponent.IndicatorView(frame: NSMakeRect(0, 0, item.avatarSize, item.avatarSize))
                     self.storyStateView = current
                     avatarContainer.addSubview(current)
                     isNew = true
                 }
-                current.update(component: component, availableSize: NSMakeSize(54, 54), transition: .immediate)
+                current.update(component: component, availableSize: NSMakeSize(item.avatarSize - 6, item.avatarSize - 6), transition: .immediate)
                 
                 if animated, isNew {
                     current.layer?.animateScaleSpring(from: 0.1, to: 1, duration: 0.2, bounce: false)
                     current.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
                 }
-                self.avatarView._change(size: NSMakeSize(54, 54), animated: animated)
-                self.photoVideoView?._change(size: NSMakeSize(54, 54), animated: animated)
+                self.avatarView._change(size: NSMakeSize(item.avatarSize - 6, item.avatarSize - 6), animated: animated)
+                self.photoVideoView?._change(size: NSMakeSize(item.avatarSize - 6, item.avatarSize - 6), animated: animated)
                                 
                 
                 if let photoVideoView = photoVideoView {
@@ -467,8 +482,8 @@ private class AccountInfoView : GeneralContainableRowView {
                 performSubviewRemoval(view, animated: animated, scale: true)
                 self.storyStateView = nil
                 
-                self.avatarView._change(size: NSMakeSize(60, 60), animated: animated)
-                self.photoVideoView?._change(size: NSMakeSize(60, 60), animated: animated)
+                self.avatarView._change(size: NSMakeSize(item.avatarSize, item.avatarSize), animated: animated)
+                self.photoVideoView?._change(size: NSMakeSize(item.avatarSize, item.avatarSize), animated: animated)
                 
                 self.avatarView._change(pos: .zero, animated: animated)
                 self.photoVideoView?._change(pos: .zero, animated: animated)
@@ -492,20 +507,29 @@ private class AccountInfoView : GeneralContainableRowView {
     
     public override func layout() {
         super.layout()
-        avatarContainer.setFrameSize(NSMakeSize(60, 60))
-        avatarContainer.centerY(x:16)
+        let compact = (item as? AccountInfoItem)?.compact ?? false
+        let avatarSize: CGFloat = compact ? 40 : 60
+        avatarContainer.setFrameSize(NSMakeSize(avatarSize, avatarSize))
+        avatarContainer.centerY(x: compact ? SettingsRowMetrics.sidebarContentInset : 16)
+        if storyStateView == nil, avatarView.frame.size != avatarContainer.frame.size {
+            avatarView.frame = avatarContainer.bounds
+        }
         
-        let h: CGFloat = statusControl != nil ? 6 : 0
+        let h: CGFloat = statusControl != nil && !compact ? 6 : 0
         
-        container.setFrameSize(NSMakeSize(max(titleView.frame.width, textView.frame.width + (statusControl != nil ? 40 : 0)), titleView.frame.height + textView.frame.height + 2 + h))
+        container.setFrameSize(NSMakeSize(max(titleView.frame.width + (compact && statusControl != nil ? 24 : 0), textView.frame.width + (statusControl != nil && !compact ? 40 : 0)), titleView.frame.height + textView.frame.height + 2 + h))
         
         titleView.setFrameOrigin(0, h)
         textView.setFrameOrigin(0, titleView.frame.maxY + 2)
         
-        container.centerY(x: avatarView.frame.maxX + 25)
+        container.centerY(x: avatarContainer.frame.minX + avatarSize + (compact ? 10 : 25 - (avatarContainer.frame.minX + avatarSize - avatarView.frame.maxX)))
         
         if let statusControl = statusControl {
-            statusControl.setFrameOrigin(titleView.frame.maxX + 3, 3)
+            if compact {
+                statusControl.setFrameOrigin(titleView.frame.maxX + 3, floorToScreenPixels(backingScaleFactor, titleView.frame.midY - statusControl.frame.height / 2))
+            } else {
+                statusControl.setFrameOrigin(titleView.frame.maxX + 3, 3)
+            }
         }
         
         actionView.centerY(x: containerView.frame.width - actionView.frame.width - 15)

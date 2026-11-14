@@ -706,7 +706,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
                 entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_category(item.category.hashValue), equatable: InputDataEquatable(item), comparable: nil, item: { initialSize, stableId in
                     
                     let nameAttr: NSMutableAttributedString = .init()
-                    _ = nameAttr.append(string: item.name, color: theme.colors.text, font: .normal(.title))
+                    _ = nameAttr.append(string: item.name, color: theme.colors.text, font: .normal(SettingsRowMetrics.titleSize))
                     
                     if item.selected {
                         _ = nameAttr.append(string: " ")
@@ -716,11 +716,11 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
                         if percent < 0.1 {
                             formatted = "<0.1%"
                         }
-                        _ = nameAttr.append(string: formatted, color: theme.colors.grayText, font: .normal(.title))
+                        _ = nameAttr.append(string: formatted, color: theme.colors.grayText, font: .normal(SettingsRowMetrics.titleSize))
                     }
                     
                     
-                    let subAttr: NSAttributedString = .initialize(string: String.prettySized(with: item.categoryData.size, round: true), color: theme.colors.grayText, font: .normal(.title))
+                    let subAttr: NSAttributedString = .initialize(string: String.prettySized(with: item.categoryData.size, round: true), color: theme.colors.grayText, font: .normal(SettingsRowMetrics.titleSize))
                     
                     let canToggle: Bool = true
                     return StorageUsageCategoryItem(initialSize, stableId: stableId, category: item.category, name: nameAttr, subString: subAttr, color: item.color, selected: item.selected, itemCategory: item.categoryItem, viewType: item.viewType, action: { action in
@@ -924,7 +924,7 @@ private func storageUsageControllerEntries<Context: AccountContextProtocol>(stat
         
         for item in items {
             entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_peer(item.peer.peer.id), equatable: .init(item), comparable: nil, item: { initialSize, stableId in
-                return ShortPeerRowItem(initialSize, peer: item.peer.peer, account: arguments.context.account, context: arguments.context, stableId: stableId, height: 42, photoSize: NSMakeSize(30, 30), isLookSavedMessage: true, inset: NSEdgeInsets(left: 20, right: 20), generalType: .context(item.count), viewType: item.viewType, action: {
+                return ShortPeerRowItem(initialSize, peer: item.peer.peer, account: arguments.context.account, context: arguments.context, stableId: stableId, height: 30 + SettingsRowMetrics.contentInset * 2, photoSize: NSMakeSize(30, 30), titleStyle: ControlStyle(font: .normal(SettingsRowMetrics.titleSize), foregroundColor: theme.colors.text, highlightColor: .white), isLookSavedMessage: true, inset: NSEdgeInsets(left: 20, right: 20), generalType: .context(item.count), viewType: item.viewType, action: {
                     arguments.openPeerMedia(item.peer.peer.id)
                 })
             }))
@@ -1465,7 +1465,7 @@ open class StorageUsageController<Context: AccountContextProtocol>: EditableView
             let entries = storageUsageControllerEntries(state: state, arguments: arguments).map {
                 AppearanceWrapperEntry(entry: $0, appearance: state.appearance)
             }
-            return prepareInputDataTransition(left: previous.swap(entries), right: entries, animated: true, searchState: nil, initialSize: initialSize.with { $0 }, arguments: inputArguments, onMainQueue: false)
+            return prepareInputDataTransition(left: previous.swap(entries), right: entries, animated: true, searchState: nil, initialSize: initialSize.with { $0 }, arguments: inputArguments, onMainQueue: false, settingsLayout: true)
         } |> deliverOnMainQueue
         
         let first = Atomic(value: true)
