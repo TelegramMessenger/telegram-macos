@@ -629,6 +629,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     private let measurementTextContainer: ChatInputTextContainer
     private let measurementTextStorage: NSTextStorage
     private let measurementLayoutManager: NSLayoutManager
+    private let writingDirectionSelection = WritingDirectionSelection()
     
     private var blockQuotes: [Int: QuoteBackgroundView] = [:]
     private var collapseQuotes: [Int : Control] = [:]
@@ -686,6 +687,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         
         self.customTextStorage.delegate = self
         self.measurementTextStorage.delegate = self
+        self.writingDirectionSelection.attach(to: self)
         
         self.updateTextElements()
     }

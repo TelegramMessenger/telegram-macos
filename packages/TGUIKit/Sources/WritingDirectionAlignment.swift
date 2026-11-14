@@ -14,16 +14,7 @@ public extension NSTextStorage {
             guard enclosingRange.length > 0 else {
                 return
             }
-            let currentStyle = self.attribute(.paragraphStyle, at: enclosingRange.location, effectiveRange: nil) as? NSParagraphStyle ?? NSParagraphStyle.default
-            let isRightToLeft: Bool
-            switch currentStyle.baseWritingDirection {
-            case .rightToLeft:
-                isRightToLeft = true
-            case .leftToRight:
-                isRightToLeft = false
-            default:
-                isRightToLeft = WritingDirectionDetection.resolvedBaseDirectionIsRightToLeft(string.substring(with: substringRange))
-            }
+            let isRightToLeft = self.paragraphIsRightToLeft(contentsRange: substringRange, styleLocation: enclosingRange.location)
             let targetAlignment: NSTextAlignment = isRightToLeft ? .right : .natural
 
             self.enumerateAttribute(.paragraphStyle, in: enclosingRange, options: []) { value, range, _ in
@@ -36,6 +27,117 @@ public extension NSTextStorage {
                 self.addAttribute(.paragraphStyle, value: updated, range: range)
             }
         }
+    }
+}
+
+extension NSTextStorage {
+    func paragraphIsRightToLeft(contentsRange: NSRange, styleLocation: Int) -> Bool {
+        let style = attribute(.paragraphStyle, at: styleLocation, effectiveRange: nil) as? NSParagraphStyle ?? NSParagraphStyle.default
+        switch style.baseWritingDirection {
+        case .rightToLeft:
+            return true
+        case .leftToRight:
+            return false
+        default:
+            return WritingDirectionDetection.resolvedBaseDirectionIsRightToLeft((string as NSString).substring(with: contentsRange))
+        }
+    }
+
+    func paragraphIsRightToLeft(containing index: Int) -> Bool? {
+        let string = self.string as NSString
+        guard index >= 0, index <= string.length else {
+            return nil
+        }
+        var start = 0
+        var end = 0
+        var contentsEnd = 0
+        string.getParagraphStart(&start, end: &end, contentsEnd: &contentsEnd, for: NSMakeRange(index, 0))
+        guard end > start else {
+            return nil
+        }
+        return paragraphIsRightToLeft(contentsRange: NSMakeRange(start, contentsEnd - start), styleLocation: start)
+    }
+}
+
+public final class WritingDirectionSelection {
+    private var dataSource: AnyObject?
+
+    public init() {
+    }
+
+    public func attach(to textView: NSTextView) {
+        #if compiler(>=6.4)
+        if #available(macOS 27.0, *) {
+            guard let manager = textView.textSelectionManager, let base = manager.textSelectionDataSource, !(base is WritingDirectionResolvingSelectionDataSource), let textStorage = textView.textStorage else {
+                return
+            }
+            let resolving = WritingDirectionResolvingSelectionDataSource(base: base, textStorage: textStorage)
+            dataSource = resolving
+            manager.textSelectionDataSource = resolving
+        }
+        #endif
+    }
+}
+
+@available(macOS 12.0, *)
+final class WritingDirectionResolvingSelectionDataSource: NSObject, NSTextSelectionDataSource {
+    private let base: NSTextSelectionDataSource
+    private weak var textStorage: NSTextStorage?
+
+    init(base: NSTextSelectionDataSource, textStorage: NSTextStorage) {
+        self.base = base
+        self.textStorage = textStorage
+    }
+
+    var documentRange: NSTextRange {
+        return base.documentRange
+    }
+
+    func baseWritingDirection(at location: NSTextLocation) -> NSTextSelectionNavigation.WritingDirection {
+        let index = base.offset(from: base.documentRange.location, to: location)
+        guard let isRightToLeft = textStorage?.paragraphIsRightToLeft(containing: index) else {
+            return base.baseWritingDirection(at: location)
+        }
+        return isRightToLeft ? .rightToLeft : .leftToRight
+    }
+
+    func enumerateSubstrings(from location: NSTextLocation, options: NSString.EnumerationOptions = [], using block: (String?, NSTextRange, NSTextRange?, UnsafeMutablePointer<ObjCBool>) -> Void) {
+        base.enumerateSubstrings(from: location, options: options, using: block)
+    }
+
+    func textRange(for selectionGranularity: NSTextSelection.Granularity, enclosing location: NSTextLocation) -> NSTextRange? {
+        return base.textRange(for: selectionGranularity, enclosing: location)
+    }
+
+    func location(_ location: NSTextLocation, offsetBy offset: Int) -> NSTextLocation? {
+        return base.location(location, offsetBy: offset)
+    }
+
+    func offset(from: NSTextLocation, to: NSTextLocation) -> Int {
+        return base.offset(from: from, to: to)
+    }
+
+    func enumerateCaretOffsetsInLineFragment(at location: NSTextLocation, using block: (CGFloat, NSTextLocation, Bool, UnsafeMutablePointer<ObjCBool>) -> Void) {
+        base.enumerateCaretOffsetsInLineFragment(at: location, using: block)
+    }
+
+    func lineFragmentRange(for point: CGPoint, inContainerAt location: NSTextLocation) -> NSTextRange? {
+        return base.lineFragmentRange(for: point, inContainerAt: location)
+    }
+
+    func enumerateContainerBoundaries(from location: NSTextLocation, reverse: Bool, using block: (NSTextLocation, UnsafeMutablePointer<ObjCBool>) -> Void) {
+        base.enumerateContainerBoundaries?(from: location, reverse: reverse, using: block)
+    }
+
+    func textLayoutOrientation(at location: NSTextLocation) -> NSTextSelectionNavigation.LayoutOrientation {
+        return base.textLayoutOrientation?(at: location) ?? .horizontal
+    }
+
+    override func responds(to selector: Selector!) -> Bool {
+        if selector == #selector(NSTextSelectionDataSource.enumerateContainerBoundaries(from:reverse:using:)) || selector == #selector(NSTextSelectionDataSource.textLayoutOrientation(at:)) {
+            return base.responds(to: selector)
+        }
+        return super.responds(to: selector)
     }
 }
 

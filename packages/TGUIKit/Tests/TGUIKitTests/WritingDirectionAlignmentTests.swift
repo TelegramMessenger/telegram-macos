@@ -176,6 +176,72 @@ final class WritingDirectionAlignmentTests: XCTestCase {
         XCTAssertEqual(alignment(makeStorage("😀 \"hello\""), at: 0), .natural)
     }
 
+    private func makeTextKit1View(width: CGFloat) -> (NSTextView, WritingDirectionSelection) {
+        let container = NSTextContainer(size: CGSize(width: width, height: 1000))
+        container.widthTracksTextView = false
+        let layoutManager = NSLayoutManager()
+        let storage = NSTextStorage()
+        storage.delegate = alignmentDelegate
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 100), textContainer: container)
+        textView.textContainerInset = .zero
+        textView.typingAttributes = [.font: NSFont.systemFont(ofSize: 13)]
+        let selection = WritingDirectionSelection()
+        selection.attach(to: textView)
+        return (textView, selection)
+    }
+
+    private func clickedOffsets(in textView: NSTextView, atX xs: [CGFloat], y: CGFloat) throws -> [Int] {
+        #if compiler(>=6.4)
+        if #available(macOS 27.0, *) {
+            let dataSource = try XCTUnwrap(textView.textSelectionManager?.textSelectionDataSource)
+            XCTAssertTrue(dataSource is WritingDirectionResolvingSelectionDataSource)
+            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+            let navigation = NSTextSelectionNavigation(dataSource: dataSource)
+            let start = dataSource.documentRange.location
+            return xs.map { x in
+                let selections = navigation.textSelections(interactingAt: CGPoint(x: x, y: y), inContainerAt: start, anchors: [], modifiers: [], selecting: false, bounds: .zero)
+                return selections.first?.textRanges.first.map { dataSource.offset(from: start, to: $0.location) } ?? -1
+            }
+        }
+        #endif
+        throw XCTSkip("Text selection manager requires macOS 27")
+    }
+
+    func testClickBesideRightToLeftLinePlacesCaretByLineDirection() throws {
+        let (textView, selection) = makeTextKit1View(width: 300)
+        textView.insertText("سلام دنیا", replacementRange: NSRange(location: 0, length: 0))
+        let offsets = try clickedOffsets(in: textView, atX: [5, 295], y: 5)
+        XCTAssertEqual(offsets, [9, 0])
+        withExtendedLifetime(selection) {}
+    }
+
+    func testClickBesideLeftToRightLineIsUnchanged() throws {
+        let (textView, selection) = makeTextKit1View(width: 300)
+        textView.insertText("hello world", replacementRange: NSRange(location: 0, length: 0))
+        let offsets = try clickedOffsets(in: textView, atX: [0, 295], y: 5)
+        XCTAssertEqual(offsets, [0, 11])
+        withExtendedLifetime(selection) {}
+    }
+
+    func testClickFollowsEachParagraphDirection() throws {
+        let (textView, selection) = makeTextKit1View(width: 300)
+        textView.insertText("سلام\nhello\nدنیا", replacementRange: NSRange(location: 0, length: 0))
+        let lineHeight = textView.layoutManager!.defaultLineHeight(for: NSFont.systemFont(ofSize: 13))
+        let leftClicks = try [0.5, 1.5, 2.5].map { try clickedOffsets(in: textView, atX: [5], y: lineHeight * $0)[0] }
+        XCTAssertEqual(leftClicks, [4, 5, 15])
+        withExtendedLifetime(selection) {}
+    }
+
+    func testSearchTextFieldClickBesideRightToLeftQuery() throws {
+        let field = SearchTextField()
+        field.frame = NSRect(x: 0, y: 0, width: 200, height: 22)
+        field.insertText("سلام", replacementRange: NSRange(location: 0, length: 0))
+        let offsets = try clickedOffsets(in: field, atX: [5], y: 5)
+        XCTAssertEqual(offsets, [4])
+    }
+
     func testSearchTextFieldAlignsRightToLeftQuery() {
         let field = SearchTextField()
         field.frame = NSRect(x: 0, y: 0, width: 200, height: 22)
