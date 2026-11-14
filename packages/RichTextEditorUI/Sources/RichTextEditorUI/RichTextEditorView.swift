@@ -536,6 +536,12 @@ public final class RichTextEditorView: NSView {
         _ = window?.makeFirstResponder(canvas)
     }
 
+    public func handleKeyDuringComposition(_ event: NSEvent) -> Bool {
+        guard canvas.hasMarkedText() else { return false }
+        canvas.keyDown(with: event)
+        return true
+    }
+
     /// Scrolls the editor's enclosing scroller so the caret is visible. When the editor doesn't scroll
     /// internally it sits inside the host's scroll view, so scrolling `self`'s caret rect into view drives
     /// the host. Deferred to the next runloop so a content-height change (new line/paragraph) has re-laid
