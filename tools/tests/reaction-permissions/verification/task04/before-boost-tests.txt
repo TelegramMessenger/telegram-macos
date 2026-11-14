@@ -1,0 +1,3 @@
+FAIL: boost exemption required=Optional(2) applied=Optional(2)
+FAIL: boost exemption required=Optional(2) applied=Optional(3)
+38/40 reaction permission checks passed

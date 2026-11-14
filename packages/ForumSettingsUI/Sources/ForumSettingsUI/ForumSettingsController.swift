@@ -14,21 +14,22 @@ import AlertsUI
 import InAppSettings
 import LocalAnimations
 import SidebarUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
     public let toggleForum: ()->Void
-    public let toggleMonoforum: (Bool)->Void
-    public init(context: any AccountContextProtocol, toggleForum: @escaping()->Void, toggleMonoforum: @escaping(Bool)->Void) {
+    public let selectMode: (ForumDisplayMode)->Void
+    public init(context: any AccountContextProtocol, toggleForum: @escaping()->Void, selectMode: @escaping(ForumDisplayMode)->Void) {
         self.context = context
         self.toggleForum = toggleForum
-        self.toggleMonoforum = toggleMonoforum
+        self.selectMode = selectMode
     }
 }
 
 private struct State : Equatable {
     public var isForum: Bool = false
-    public var isMonoforum: Bool = false
+    public var mode: ForumDisplayMode = .tabs
 }
 
 private let _id_header = InputDataIdentifier("_id_header")
@@ -63,7 +64,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
         index += 1
         
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_monoforum, equatable: .init(state), comparable: nil, item: { initialSize, stableId in
-            return ChatListFilterVisibilityItem(initialSize, images: ForumSettingsHooks.shared.sidebarImage, stableId: stableId, sidebar: !state.isMonoforum, viewType: .singleItem, source: .forum, toggle: arguments.toggleMonoforum)
+            return ForumDisplayModeItem(initialSize, stableId: stableId, mode: state.mode, select: arguments.selectMode)
         }))
         
         entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().forumSettingsDisplayAsInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
@@ -104,7 +105,13 @@ public func ForumSettingsController(context: any AccountContextProtocol, peerId:
                 updateState { current in
                     var current = current
                     current.isForum = channel.flags.contains(.isForum)
-                    current.isMonoforum = channel.flags.contains(.displayForumAsTabs)
+                    if channel.flags.contains(.displayForumAsSidebar) {
+                        current.mode = .sidebar
+                    } else if channel.flags.contains(.displayForumAsTabs) {
+                        current.mode = .tabs
+                    } else {
+                        current.mode = .list
+                    }
                     return current
                 }
             default:
@@ -115,7 +122,7 @@ public func ForumSettingsController(context: any AccountContextProtocol, peerId:
     
     let update:()->Void = {
         let state = stateValue.with { $0 }
-        _ = showModalProgress(signal: context.engine.peers.setChannelForumMode(id: peerId, isForum: state.isForum, displayForumAsTabs: state.isMonoforum), for: context.window).start()
+        _ = showModalProgress(signal: context.engine.peers.setChannelForumMode(id: peerId, isForum: state.isForum, displayForumAsTabs: state.mode != .list, displayForumAsSidebar: state.isForum && state.mode == .sidebar), for: context.window).start()
     }
 
     let arguments = Arguments(context: context, toggleForum: {
@@ -125,10 +132,10 @@ public func ForumSettingsController(context: any AccountContextProtocol, peerId:
             return current
         }
         update()
-    }, toggleMonoforum: { value in
+    }, selectMode: { mode in
         updateState { current in
             var current = current
-            current.isMonoforum = !value
+            current.mode = mode
             return current
         }
         update()
@@ -139,6 +146,7 @@ public func ForumSettingsController(context: any AccountContextProtocol, peerId:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().forumSettingsTitle, hasDone: false)
+    controller.analyticsScreen = .peerInfoTopics
     
     controller.afterDisappear = {
     }

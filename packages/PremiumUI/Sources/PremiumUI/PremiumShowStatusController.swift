@@ -21,6 +21,7 @@ import SceneEffects
 import InAppPurchaseManager
 import InlineStickers
 import ObjcUtils
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     fileprivate let source: PremiumShowStatusSource
@@ -328,6 +329,7 @@ public func PremiumShowStatusController(context: (any AccountContextProtocol), p
     }
     
     let controller = InputDataController(dataSignal: signal, title: source.title)
+    controller.analyticsScreen = .premiumPrivacyUpsell
     
     controller.onDeinit = {
         actionsDisposable.dispose()

@@ -45,6 +45,7 @@ typedef NS_ENUM(NSInteger, TGTextInputTagId) {
 -(BOOL)textViewIsTypingEnabled;
 
 @optional
+- (BOOL)textViewAllowsReplacementText:(NSString * _Nonnull)replacementText;
 - (void)textViewNeedClose:(id __nonnull)textView;
 - (BOOL)canTransformInputText;
 - (BOOL)supportContinuityCamera;

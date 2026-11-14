@@ -1,0 +1,73 @@
+from pathlib import Path
+import json
+import subprocess
+import tempfile
+
+root = Path(__file__).resolve().parents[3]
+fixture = Path(__file__).with_name('DeleteActionsTests.swift').read_text()
+analytics = root / 'packages/AppAnalytics/Sources/AppAnalytics'
+fixture = fixture.replace('__POLICY__', (analytics / 'AnalyticsScope.swift').read_text().replace('public ', ''))
+source = (analytics / 'AnalyticsContext.swift').read_text()
+a = source.index('public final class AnalyticsContext {')
+b = source.index('\nextension AnalyticsPrivacy', a)
+fixture = fixture.replace('__CONTEXT__', source[a:b].replace('public ', ''))
+a = source.index('    func captureContext(owner:')
+b = source.index('\n    func excludedContext()', a)
+fixture = fixture.replace('__CAPTURE__', source[a:b])
+source = (root / 'packages/ChatUI/Sources/ChatUI/DeleteGroupMessagesController.swift').read_text()
+a = source.index('private struct State : Equatable {')
+b = source.index('    var isEmpty:', a)
+fixture = fixture.replace('__STATE__', source[a:b].replace('private struct State : Equatable', 'struct DeleteState') + '}')
+a = source.index('    let inherited =', source.index('public func DeleteGroupMessagesController'))
+b = source.index('    let actionsDisposable =', a)
+fixture = fixture.replace('__ADMISSION__', source[a:b])
+a = source.index('    let updateState:')
+b = source.index('    var close:', a)
+fixture = fixture.replace('__UPDATE__', source[a:b].replace('State', 'DeleteState').replace('updateDeleteState', 'updateState'))
+a = source.index('            let peerIds =', source.index('if let communityId ='))
+b = source.index('            if joinedChats.creatorChatIds.isEmpty', a)
+fixture = fixture.replace('__COMMUNITY_ADMISSION__', source[a:b])
+a = source.index('    let signal = analyticsOrigin.preservingPresentation(')
+b = source.index('    let controllerTitle:', a)
+fixture = fixture.replace('__RENDER__', source[a:b].replace('entries(state, arguments: arguments)', 'entries(state)'))
+a = source.index('    controller.validateData =')
+b = source.index('    let modalInteractions =', a)
+fixture = fixture.replace('__SUBMIT__', source[a:b])
+a = source.index('    close = { [weak modalController] in')
+b = source.index('    return modalController', a)
+fixture = fixture.replace('__CLOSE__', source[a:b])
+for name in ['controller', 'modalController']:
+    line = next(line for line in source.splitlines() if line.strip() == name + '.analyticsContext = analyticsOrigin')
+    fixture = fixture.replace('__' + name.upper() + '_CONTEXT__', line)
+source = (root / 'packages/ChatUI/Sources/ChatUI/MessageReadMenuItem.swift').read_text()
+a = source.index('        let inherited =', source.index('public final class ReactionPeerMenu'))
+b = source.index('        self.reaction =', a)
+fixture = fixture.replace('__ITEM_ADMISSION__', source[a:b])
+a = source.index('                guard let self, let message = self.message else { return }', b)
+b = source.index('            }, itemMode:', a)
+fixture = fixture.replace('__ITEM_DELETE__', source[a:b])
+source = (root / 'packages/ChatUI/Sources/ChatUI/ChatReactionsView.swift').read_text()
+line = next(line for line in source.splitlines() if 'message: message, canDelete: canDeleteReactions' in line)
+fixture = fixture.replace('__ITEM_HANDOFF__', line.split('analyticsContext: ')[1].removesuffix(')'))
+source = (root / 'packages/ChatUI/Sources/ChatUI/ChatController.swift').read_text()
+a = source.index('                        let deliveredOrigin =', source.index('chatInteraction.deleteMessages ='))
+b = source.index('                        var canDelete:', a)
+fixture = fixture.replace('__CHAT_DELIVERY__', source[a:b])
+a = source.index('                let channelAdmin:Promise', source.index('chatInteraction.deleteMessages ='))
+b = source.index('                self?.messagesActionDisposable.set(', a)
+fixture = fixture.replace('__ADMIN_LOOKUP__', source[a:b])
+a = source.index('analyticsOrigin.preservingPresentation(combineLatest(', b)
+b = source.index('.start(', a)
+fixture = fixture.replace('__ADMIN_SIGNAL__', source[a:b].replace('context.account.postbox.messagesAtIds(messageIds)', 'Probe.messagesAtIds(messageIds)'))
+
+assert '__' not in fixture
+with tempfile.TemporaryDirectory(prefix='delete-actions-context-') as directory:
+    directory = Path(directory)
+    dependency = json.dumps(str(root / 'submodules/telegram-ios/submodules/SSignalKit'))
+    (directory / 'Package.swift').write_text('''// swift-tools-version:5.9
+import PackageDescription
+let package = Package(name: "DeleteActions", platforms: [.macOS(.v10_13)], dependencies: [.package(path: ''' + dependency + ''')], targets: [.testTarget(name: "DeleteActionsTests", dependencies: [.product(name: "SwiftSignalKit", package: "SSignalKit")], path: "Tests")])
+''')
+    (directory / 'Tests').mkdir()
+    (directory / 'Tests/DeleteActionsTests.swift').write_text(fixture)
+    raise SystemExit(subprocess.run(['swift', 'test', '--package-path', str(directory), '--disable-sandbox', '--jobs', '4']).returncode)

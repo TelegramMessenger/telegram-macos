@@ -567,6 +567,7 @@ public class ChatServiceItem: ChatRowItem {
         }
     }
     public struct StoryData {
+        public let isLoading: Bool
         public let media: TelegramMediaStory
         public let storyItem: Stories.StoredItem
         public let text: TextViewLayout
@@ -574,10 +575,11 @@ public class ChatServiceItem: ChatRowItem {
         public let avatar: AvatarStoryIndicatorComponent?
         public let context: any AccountContextProtocol
         public let peer: PeerReference
-        public init(context: any AccountContextProtocol, peer: PeerReference, maxReadId: Int32?, media: TelegramMediaStory, storyItem: Stories.StoredItem, text: TextViewLayout, theme: TelegramPresentationTheme, isIncoming: Bool) {
+        public init(context: any AccountContextProtocol, peer: PeerReference, maxReadId: Int32?, media: TelegramMediaStory, storyItem: Stories.StoredItem, text: TextViewLayout, theme: TelegramPresentationTheme, isIncoming: Bool, isLoading: Bool = false) {
             self.media = media
             self.context = context
             self.storyItem = storyItem
+            self.isLoading = isLoading
             self.text = text
             self.peer = peer
             self.isIncoming = isIncoming
@@ -3008,8 +3010,10 @@ public class ChatServiceItem: ChatRowItem {
                 _ = attributedString.append(string:  isPhoto ? strings().serviceMessageDesturctingPhoto(authorName) : strings().serviceMessageDesturctingVideo(authorName), color: grayTextColor, font: .normal(theme.fontSize))
             }
         } else if let story = message.media.first as? TelegramMediaStory {
-            
-            if message.isExpiredStory {
+            let referencesPending = context.account.viewTracker.pendingMessageReferences.hasLoadingReferences(messageId: message.id)
+            let isLoadingStory = message.associatedStories[story.storyId] == nil && referencesPending
+            let storedStory = message.associatedStories[story.storyId]?.get(Stories.StoredItem.self) ?? (isLoadingStory ? Stories.StoredItem.placeholder(Stories.Placeholder(id: story.storyId.id, timestamp: message.timestamp, expirationTimestamp: Int32.max, isCloseFriends: false, isLiveItem: false)) : nil)
+            if message.isExpiredStory && !isLoadingStory {
                 if isIncoming {
                     _ = attributedString.append(string:  strings().chatServiceStoryExpiredMentionTextIncoming, color: grayTextColor, font: .normal(theme.fontSize))
                 } else {
@@ -3026,7 +3030,7 @@ public class ChatServiceItem: ChatRowItem {
                 attributedString.addAttribute(TextInputAttributes.embedded, value: InlineStickerItem(source: .attribute(.init(fileId: file.fileId.id, file: file, emoji: clown))), range: NSMakeRange(0, 2))
 
                 
-            } else if let item = message.associatedStories[story.storyId]?.get(Stories.StoredItem.self), let peer = message.author, let peerReference = PeerReference(peer) {
+            } else if let item = storedStory, let peer = message.author, let peerReference = PeerReference(peer) {
                 let info = NSMutableAttributedString()
                 
                 let text: String
@@ -3045,7 +3049,7 @@ public class ChatServiceItem: ChatRowItem {
                 _ = info.append(string: text, color: grayTextColor, font: .normal(theme.fontSize))
                 info.detectBoldColorInString(with: .medium(theme.fontSize))
                 
-                self.storydata = .init(context: context, peer: peerReference, maxReadId: entry.additionalData.storyReadMaxId, media: story, storyItem: item, text: TextViewLayout(info, alignment: .center), theme: theme, isIncoming: isIncoming)
+                self.storydata = .init(context: context, peer: peerReference, maxReadId: isLoadingStory ? nil : entry.additionalData.storyReadMaxId, media: story, storyItem: item, text: TextViewLayout(info, alignment: .center), theme: theme, isIncoming: isIncoming, isLoading: isLoadingStory)
             }
         }
         
@@ -6034,6 +6038,7 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
     }
 
     private class _StoryView : Control {
+        private var loadingPlaceholder: ShimmerView?
 
         private let disposable = MetaDisposable()
         fileprivate let mediaView: TransformImageView = TransformImageView(frame: NSMakeSize(74, 74).bounds)
@@ -6067,6 +6072,26 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
                 return
             }
             let context = item.context
+            userInteractionEnabled = !data.isLoading
+            setAccessibilityLabel(data.isLoading ? strings().messagesReplyLoadingLoading : data.text.attributedString.string)
+            if data.isLoading {
+                let placeholder: ShimmerView
+                if let current = loadingPlaceholder { placeholder = current } else {
+                    placeholder = ShimmerView()
+                    placeholder.isEventLess = true
+                    placeholder.layer?.cornerRadius = mediaView.frame.width / 2
+                    placeholder.layer?.masksToBounds = true
+                    addSubview(placeholder)
+                    loadingPlaceholder = placeholder
+                }
+                placeholder.frame = mediaView.frame
+                placeholder.backgroundColor = item.presentation.colors.grayForeground
+                placeholder.update(backgroundColor: .clear, data: nil, size: mediaView.frame.size, imageSize: mediaView.frame.size)
+                placeholder.updateAbsoluteRect(mediaView.bounds, within: mediaView.frame.size)
+            } else {
+                loadingPlaceholder?.removeFromSuperview()
+                loadingPlaceholder = nil
+            }
                     
             switch data.storyItem {
             case let .item(storyItem):
@@ -6151,6 +6176,7 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
 
             transition.updateFrame(view: mediaView, frame: mediaView.centerFrameX(y: 13))
             transition.updateFrame(view: avatar, frame: avatar.centerFrameX(y: 13))
+            if let loadingPlaceholder { transition.updateFrame(view: loadingPlaceholder, frame: mediaView.frame) }
 
             transition.updateFrame(view: textView, frame: textView.centerFrameX(y: statusView.frame.maxY + 10))
         }
@@ -6476,7 +6502,7 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
                 let open: (Control)->Void = { [weak self] _ in
                     if let item = self?.item as? ChatServiceItem, let message = item.message {
                         if !data.isIncoming {
-                            showChatGallery(context: item.context, message: message, item.table, type: .alone, chatMode: item.chatInteraction.mode, chatLocation: item.chatInteraction.chatLocation, cachedPeerData: item.chatInteraction.presentation.cachedData)
+                            showChatGallery(context: item.context, message: message, item.table, type: .alone, chatMode: item.chatInteraction.mode, chatLocation: item.chatInteraction.chatLocation, cachedPeerData: item.chatInteraction.presentation.cachedData, analyticsContext: item.chatInteraction.captureAnalyticsContext())
                         } else {
                             item.openPhotoEditor(data.image)
                         }
@@ -6903,7 +6929,7 @@ public class ChatServiceRowView: TableRowView, RevealTableView {
                         view = current
                     } else {
                         self.inlineStickerItemViews[id]?.removeFromSuperlayer()
-                        view = InlineStickerItemLayer(account: context.account, inlinePacksContext: context.inlinePacksContext, emoji: emoji, size: rect.size, textColor: textColor)
+                        view = InlineStickerItemLayer(account: context.account, inlinePacksContext: context.inlinePacksContext, emoji: emoji, size: rect.size, playPolicy: .framesCount(1), textColor: textColor)
                         self.inlineStickerItemViews[id] = view
                         view.superview = textView
                         textView.addEmbeddedLayer(view)

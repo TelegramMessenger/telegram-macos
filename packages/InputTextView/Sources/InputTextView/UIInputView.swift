@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import Cocoa
 import TGUIKit
 import InputView
@@ -297,8 +298,11 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
     public func inputTextTranslateSelected() {
         guard let context = self.context, let window = _window else { return }
 
+        let analyticsContext = captureInputAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         if !context.isPremium {
-            InputTextViewHooks.shared.showPremiumBoardingObserved(context, window)
+            InputTextViewHooks.shared.showPremiumBoardingObserved(context, window, analyticsContext: analyticsContext)
             return
         }
 
@@ -310,12 +314,18 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
         let selectedText = selected.string
         let selectedDraft = ChatTextInputState(attributedText: selected, selectionRange: 0 ..< 0)
 
+        let inheritedAnalyticsExclusion = selectedDraft.hasExcludedAnalytics
+
         let language = Translate.detectLanguage(for: selectedText)
 
-        InputTextViewHooks.shared.showTranslateObserved(context, window, language, selectedDraft, onUse: { [weak self] translated in
+        InputTextViewHooks.shared.showTranslateObserved(context, window, language, selectedDraft, analyticsContext: analyticsContext, onUse: { [weak self] translated in
             guard let self else { return }
+            let currentOrigin = self.captureInputAnalyticsContext(inherited: analyticsContext)
+            let presentation = currentOrigin.beginPresentation()
+            defer { presentation.end() }
+            let excludeResult = inheritedAnalyticsExclusion || currentOrigin.isExcluded || currentOrigin.scope?.isValid != true
             self.interactions.update { current in
-                return chatTextInputReplaceSelectedText(current, selectionRange: textRange.min..<textRange.max, text: translated)
+                return chatTextInputReplaceSelectedText(current, selectionRange: textRange.min..<textRange.max, text: translated, inheritedAnalyticsExclusion: excludeResult)
             }
         })
     }
@@ -338,6 +348,7 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
             }
             
             let text = self.interactions.presentation.inputText.attributedSubstring(from: textRange)
+            let inheritedAnalyticsExclusion = ChatTextInputState(attributedText: text, selectionRange: 0..<0).hasExcludedAnalytics
             var link: String?
             text.enumerateAttributes(in: NSMakeRange(0, text.length)) { attributes, _, _ in
                 if let linkAttribute = attributes[TextInputAttributes.textUrl] as? TextInputTextUrlAttribute {
@@ -350,7 +361,7 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
                 self?.interactions.update { current in
                     var current = current
                     if let url = url {
-                        current = chatTextInputAddLinkAttribute(current, selectionRange: textRange.min ..< textRange.max, url: url, text: text)
+                        current = chatTextInputAddLinkAttribute(current, selectionRange: textRange.min ..< textRange.max, url: url, text: text, inheritedAnalyticsExclusion: inheritedAnalyticsExclusion)
                     } else {
                         current = chatTextInputClearFormattingAttributes(current, targetKey: TextInputAttributes.textUrl)
                     }
@@ -454,6 +465,18 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
     
     public var context: (any AccountContextProtocol)?
     public var isSecretChat: Bool = false
+    public var analyticsContextProvider: (() -> AnalyticsContext)?
+
+    private func captureInputAnalyticsContext(inherited: AnalyticsContext? = nil) -> AnalyticsContext {
+        guard let context, !isSecretChat, !ChatTextInputState(attributedText: interactions.presentation.inputText, selectionRange: 0..<0).hasExcludedAnalytics else {
+            return Analytics.shared.unresolvedContext()
+        }
+        let current = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContextProvider?() ?? Analytics.shared.unresolvedContext())
+        guard let inherited else { return current }
+        guard !current.isExcluded, current.scope?.isValid == true else { return Analytics.shared.unresolvedContext() }
+        return Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: inherited)
+    }
+
     public required init(frame frameRect: NSRect, interactions: TextView_Interactions) {
         self.view = ChatInputTextView(frame: frameRect.size.bounds)
         self.interactions = interactions
@@ -553,6 +576,11 @@ public final class UITextView : View, Notifable, ChatInputTextViewDelegate {
 
     }
     
+    public var textAnchorHeight: CGFloat? {
+        get { view.textAnchorHeight }
+        set { view.textAnchorHeight = newValue }
+    }
+
     public func updateLayout(size: NSSize, textHeight: CGFloat, transition: ContainedViewLayoutTransition) {
         transition.updateFrame(view: self.view, frame: size.bounds)
         self.view.updateLayout(size: size, textHeight: textHeight, transition: transition)

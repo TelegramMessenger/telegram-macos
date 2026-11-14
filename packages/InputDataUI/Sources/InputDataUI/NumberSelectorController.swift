@@ -5,6 +5,7 @@ import TelegramTheme
 import TelegramContext
 import TelegramUtils
 import GeneralRows
+import AppAnalytics
 
 private struct NumberValueState : Equatable {
     public var value: Int?
@@ -85,6 +86,7 @@ public func NumberSelectorController(base: Int?, title: String, placeholder: Str
     }, afterDisappear: {
         disposable.dispose()
     }, hasDone: true)
+    controller.analyticsScreen = .appNumberInput
     
     controller.validateData = { data in
         updated(stateValue.with { $0.value })

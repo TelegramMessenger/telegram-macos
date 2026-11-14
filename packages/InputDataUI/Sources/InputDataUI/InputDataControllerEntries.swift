@@ -69,17 +69,19 @@ public struct InputDataInputPlaceholder : Equatable {
     public let action: (()-> Void)?
     public let hasLimitationText: Bool
     public let insets: NSEdgeInsets
-    public init(_ placeholder: String? = nil, icon: CGImage? = nil, drawBorderAfterPlaceholder: Bool = false, hasLimitationText: Bool = false, insets: NSEdgeInsets = NSEdgeInsets(), action: (()-> Void)? = nil) {
+    public let centersIconVertically: Bool
+    public init(_ placeholder: String? = nil, icon: CGImage? = nil, drawBorderAfterPlaceholder: Bool = false, hasLimitationText: Bool = false, insets: NSEdgeInsets = NSEdgeInsets(), centersIconVertically: Bool = false, action: (()-> Void)? = nil) {
         self.drawBorderAfterPlaceholder = drawBorderAfterPlaceholder
         self.hasLimitationText = hasLimitationText
         self.placeholder = placeholder
         self.icon = icon
         self.action = action
         self.insets = insets
+        self.centersIconVertically = centersIconVertically
     }
     
     public static func ==(lhs: InputDataInputPlaceholder, rhs: InputDataInputPlaceholder) -> Bool {
-        return lhs.placeholder == rhs.placeholder && lhs.icon === rhs.icon && lhs.drawBorderAfterPlaceholder == rhs.drawBorderAfterPlaceholder && lhs.insets == rhs.insets
+        return lhs.placeholder == rhs.placeholder && lhs.icon === rhs.icon && lhs.drawBorderAfterPlaceholder == rhs.drawBorderAfterPlaceholder && lhs.insets == rhs.insets && lhs.centersIconVertically == rhs.centersIconVertically
     }
 }
 
@@ -186,18 +188,22 @@ public final class InputDataRowData : Equatable {
     public let pasteFilter:((String)->(Bool, String))?
     public let maxBlockWidth: CGFloat?
     public let canMakeTransformations: Bool
+    public let allowsReplacementText: ((String) -> Bool)?
+    public let shouldShakeOnFilterCorrection: ((String) -> Bool)?
     public let customTheme: GeneralRowItem.Theme?
-    public init(viewType: GeneralViewType = .legacy, rightItem: InputDataRightItem? = nil, defaultText: String? = nil, maxBlockWidth: CGFloat? = nil, canMakeTransformations: Bool = false, pasteFilter:((String)->(Bool, String))? = nil, customTheme: GeneralRowItem.Theme? = nil) {
+    public init(viewType: GeneralViewType = .legacy, rightItem: InputDataRightItem? = nil, defaultText: String? = nil, maxBlockWidth: CGFloat? = nil, canMakeTransformations: Bool = false, pasteFilter:((String)->(Bool, String))? = nil, allowsReplacementText: ((String) -> Bool)? = nil, shouldShakeOnFilterCorrection: ((String) -> Bool)? = nil, customTheme: GeneralRowItem.Theme? = nil) {
         self.viewType = viewType
         self.rightItem = rightItem
         self.defaultText = defaultText
         self.pasteFilter = pasteFilter
         self.maxBlockWidth = maxBlockWidth
         self.canMakeTransformations = canMakeTransformations
+        self.allowsReplacementText = allowsReplacementText
+        self.shouldShakeOnFilterCorrection = shouldShakeOnFilterCorrection
         self.customTheme = customTheme
     }
     public static func ==(lhs: InputDataRowData, rhs: InputDataRowData) -> Bool {
-        return lhs.viewType == rhs.viewType && lhs.rightItem == rhs.rightItem && lhs.defaultText == rhs.defaultText && lhs.maxBlockWidth == rhs.maxBlockWidth && lhs.canMakeTransformations == rhs.canMakeTransformations && lhs.customTheme == rhs.customTheme
+        return lhs.viewType == rhs.viewType && lhs.rightItem == rhs.rightItem && lhs.defaultText == rhs.defaultText && lhs.maxBlockWidth == rhs.maxBlockWidth && lhs.canMakeTransformations == rhs.canMakeTransformations && (lhs.allowsReplacementText == nil) == (rhs.allowsReplacementText == nil) && (lhs.shouldShakeOnFilterCorrection == nil) == (rhs.shouldShakeOnFilterCorrection == nil) && lhs.customTheme == rhs.customTheme
     }
 }
 
@@ -353,7 +359,7 @@ public enum InputDataEntry : Identifiable, Comparable {
         case let .input(_, _, value, error, _, mode, data, placeholder, inputPlaceholder, filter, limit: limit):
             return InputDataRowItem(initialSize, stableId: stableId, mode: mode, error: error, viewType: data.viewType, currentText: value.stringValue ?? "", currentAttributedText: value.attributedString, placeholder: placeholder, inputPlaceholder: inputPlaceholder, defaultText: data.defaultText, rightItem: data.rightItem, canMakeTransformations: data.canMakeTransformations, maxBlockWidth: data.maxBlockWidth, filter: filter, updated: { _ in
                 arguments.dataUpdated()
-            }, pasteFilter: data.pasteFilter, limit: limit, customTheme: data.customTheme)
+            }, pasteFilter: data.pasteFilter, limit: limit, allowsReplacementText: data.allowsReplacementText, shouldShakeOnFilterCorrection: data.shouldShakeOnFilterCorrection, customTheme: data.customTheme)
         case .loading:
             return InputDataUIHooks.shared.makeLoadingRow(initialSize, AnyHashable(stableId))
         case let .search(_, _, _, _, update):

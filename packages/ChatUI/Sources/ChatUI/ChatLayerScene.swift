@@ -472,8 +472,8 @@ class ChatLayerSceneView: View {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        guard hasLayerContent else { return }
-        let needsTracking = tracksPointer && window != nil && !visibleRect.isEmpty
+        guard hasLayerContent, window != nil || !tracksPointer else { return }
+        let needsTracking = tracksPointer && !visibleRect.isEmpty
         guard needsTracking != (pointerArea != nil) else { return }
         if let pointerArea {
             removeTrackingArea(pointerArea)
@@ -484,6 +484,14 @@ class ChatLayerSceneView: View {
         addTrackingArea(area)
         pointerArea = area
     }
+
+    #if DEBUG
+    var debugPointerTracking: (needed: Bool, installed: Bool) {
+        let needed = hasLayerContent && tracksPointer && window != nil && !visibleRect.isEmpty
+        let installed = storedState?.pointerArea.map { area in trackingAreas.contains { $0 === area } } ?? false
+        return (needed, installed)
+    }
+    #endif
 
     func invalidateHitIndex() {
         guard hasLayerContent else { return }

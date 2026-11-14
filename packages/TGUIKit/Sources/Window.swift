@@ -388,6 +388,8 @@ open class Window: NSWindow {
         }
     }
 
+    public weak var modalPresentationParent: Window?
+    weak var modalOverlayPresentation: ModalOverlayPresentation?
     open var modalInset: CGFloat = 0
 
     private let isKeyWindowValue: ValuePromise<Bool> = ValuePromise(false, ignoreRepeated: true)

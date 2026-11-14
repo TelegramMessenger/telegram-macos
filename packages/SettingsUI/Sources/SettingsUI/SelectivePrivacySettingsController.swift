@@ -18,6 +18,7 @@ import ShortPeerRow
 import FilePanels
 import TelegramMediaUtils
 import AvatarEditorUI
+import AppAnalytics
 
 public enum SelectivePrivacySettingsKind {
     case presence
@@ -688,6 +689,64 @@ fileprivate func prepareTransition(left:[SelectivePrivacySettingsEntry], right: 
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
 }
 
+private func recordExceptionSteps(_ flow: AnalyticsFlow<AnalyticsFlows.SettingsPrivacyRule>, before: Set<PeerId>, after: Set<PeerId>) {
+    if !after.subtracting(before).isEmpty {
+        flow.step(.addException)
+    }
+    if !before.subtracting(after).isEmpty {
+        flow.step(.removeException)
+    }
+}
+
+private func analyticsSettingChange(kind: SelectivePrivacySettingsKind, setting: SelectivePrivacySettingType) -> AnalyticsSettingChange? {
+    switch kind {
+    case .presence:
+        switch setting {
+        case .everybody: return .privacyLastSeen(.everybody)
+        case .contacts: return .privacyLastSeen(.contacts)
+        case .nobody: return .privacyLastSeen(.nobody)
+        }
+    case .phoneNumber:
+        switch setting {
+        case .everybody: return .privacyPhoneNumber(.everybody)
+        case .contacts: return .privacyPhoneNumber(.contacts)
+        case .nobody: return .privacyPhoneNumber(.nobody)
+        }
+    case .profilePhoto:
+        switch setting {
+        case .everybody: return .privacyProfilePhoto(.everybody)
+        case .contacts: return .privacyProfilePhoto(.contacts)
+        case .nobody: return .privacyProfilePhoto(.nobody)
+        }
+    case .forwards:
+        switch setting {
+        case .everybody: return .privacyForwards(.everybody)
+        case .contacts: return .privacyForwards(.contacts)
+        case .nobody: return .privacyForwards(.nobody)
+        }
+    case .voiceCalls:
+        switch setting {
+        case .everybody: return .privacyCalls(.everybody)
+        case .contacts: return .privacyCalls(.contacts)
+        case .nobody: return .privacyCalls(.nobody)
+        }
+    case .groupInvitations:
+        switch setting {
+        case .everybody: return .privacyGroups(.everybody)
+        case .contacts: return .privacyGroups(.contacts)
+        case .nobody: return .privacyGroups(.nobody)
+        }
+    case .voiceMessages:
+        switch setting {
+        case .everybody: return .privacyVoiceMessages(.everybody)
+        case .contacts: return .privacyVoiceMessages(.contacts)
+        case .nobody: return .privacyVoiceMessages(.nobody)
+        }
+    case .bio, .birthday, .gifts, .savedMusic:
+        return nil
+    }
+}
+
 open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: TableViewController<Context> {
     private let kind: SelectivePrivacySettingsKind
     private let current: SelectivePrivacySettings
@@ -696,6 +755,7 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
     private let callSettings: SelectivePrivacySettings?
     private let phoneDiscoveryEnabled: Bool?
     private let globalSettings: GlobalPrivacySettings?
+    private let flow: AnalyticsFlow<AnalyticsFlows.SettingsPrivacyRule>
     open override var defaultBarTitle: String {
         return localizedString("Telegram.SelectivePrivacySettingsController")
     }
@@ -707,9 +767,47 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
         self.phoneDiscoveryEnabled = phoneDiscoveryEnabled
         self.callSettings = callSettings
         self.globalSettings = globalSettings
+        self.flow = AnalyticsFlow(engine: context.engine)
         super.init(context)
+        switch kind {
+        case .presence:
+            self.analyticsScreen = .settingsPrivacyLastSeen
+            self.flow.set(rule: .lastSeen)
+        case .groupInvitations:
+            self.analyticsScreen = .settingsPrivacyGroups
+            self.flow.set(rule: .groups)
+        case .voiceCalls:
+            self.analyticsScreen = .settingsPrivacyCalls
+            self.flow.set(rule: .calls)
+        case .profilePhoto:
+            self.analyticsScreen = .settingsPrivacyProfilePhoto
+            self.flow.set(rule: .profilePhoto)
+        case .forwards:
+            self.analyticsScreen = .settingsPrivacyForwards
+            self.flow.set(rule: .forwards)
+        case .phoneNumber:
+            self.analyticsScreen = .settingsPrivacyPhoneNumber
+            self.flow.set(rule: .phoneNumber)
+        case .voiceMessages:
+            self.analyticsScreen = .settingsPrivacyVoiceMessages
+            self.flow.set(rule: .voiceMessages)
+        case .bio:
+            self.analyticsScreen = .settingsPrivacyBio
+            self.flow.set(rule: .bio)
+        case .birthday:
+            self.analyticsScreen = .settingsPrivacyBirthday
+            self.flow.set(rule: .birthday)
+        case .gifts:
+            self.analyticsScreen = .settingsPrivacyGifts
+            self.flow.set(rule: .gifts)
+        case .savedMusic:
+            self.analyticsScreen = .settingsPrivacySavedMusic
+        }
     }
 
+    deinit {
+        flow.finish(.abandoned)
+    }
 
 
 
@@ -720,6 +818,9 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
         let kind = self.kind
         let current = self.current
         let updated = self.updated
+        let flow = self.flow
+        let initialCallSettings = self.callSettings
+        let initialPhoneDiscoveryEnabled = self.phoneDiscoveryEnabled
 
         let initialSize = self.atomicSize
         let previous:Atomic<[SelectivePrivacySettingsEntry]> = Atomic(value: [])
@@ -979,6 +1080,14 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
                 })
                 return
             }
+            switch type {
+            case .everybody:
+                flow.step(.selectEverybody)
+            case .contacts:
+                flow.step(.selectContacts)
+            case .nobody:
+                flow.step(.selectNobody)
+            }
             updateState { current in
                 var current = current
                 current.setting = type
@@ -1020,8 +1129,10 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
                 }
                 return state
             }
+            flow.step(.openAlwaysAllow)
             let isMain = target == .main
             pushControllerImpl?(SelectivePrivacySettingsPeersController(context, title: title, initialPeers: peerIds, premiumUsers: isMain && kind == .groupInvitations ? stateValue.with { $0.enableForPremium } : nil, enableForBots: isMain && kind == .gifts ? stateValue.with { $0.enableForBots } : nil, updated: { updatedPeerIds in
+                recordExceptionSteps(flow, before: Set(peerIds.keys), after: Set(updatedPeerIds.keys.filter { $0.namespace._internalGetInt32Value() != ChatListFilterPeerCategories.Namespace }))
                 updateState { current in
                     var current = current
                     switch target {
@@ -1083,7 +1194,9 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
                 }
                 return state
             }
+            flow.step(.openNeverAllow)
             pushControllerImpl?(SelectivePrivacySettingsPeersController(context, title: title, initialPeers: peerIds, premiumUsers: nil, enableForBots: nil, updated: { updatedPeerIds in
+                recordExceptionSteps(flow, before: Set(peerIds.keys), after: Set(updatedPeerIds.keys))
                 updateState { current in
                     var current = current
                     switch target {
@@ -1289,6 +1402,10 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
 
             if settingsChanged || callSettingsChanged || phoneDiscoveryChanged || globalSettingsChanged {
                 updated(settings, callSettingsChanged ? callSettings : nil, phoneDiscoveryEnabled, globalSettingsChanged ? updatedGlobalSettings : nil)
+                if settingsChanged, let change = analyticsSettingChange(kind: kind, setting: state.setting) {
+                    Analytics.shared.send(AnalyticsEvents.settingsChange(change))
+                }
+                flow.finish(.success)
             }
         }
 

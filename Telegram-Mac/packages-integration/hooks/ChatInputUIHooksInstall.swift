@@ -9,7 +9,9 @@ import RichTextEditorCore
 import ChatUI
 import WalletUI
 import WalletContext
+import AppAnalytics
 import InputDataUI
+import InAppSettings
 
 extension ChatControllerView: @retroactive ChatInputControllerView {
 
@@ -40,7 +42,7 @@ private func makeChatInputWalletHooks() -> Any? {
     if #available(macOS 10.15, *) {
         var hooks = ChatInputWalletHooks(walletContext: { context in
             return (context as! AccountContext).walletContext
-        }, makeWalletSendController: { context, walletContext, peer, handlers in
+        }, makeWalletSendController: { context, walletContext, recipient, handlers in
             let transferAnimation: WalletSendTransferAnimation? = handlers.transferAnimation.map { transferAnimation in
                 return { (id: String, source: WalletSendTransferAnimationSource?) -> Bool in
                     return transferAnimation(id, source.flatMap { source in
@@ -48,12 +50,22 @@ private func makeChatInputWalletHooks() -> Any? {
                     })
                 }
             }
-            return WalletSendController(context: context as! AccountContext, walletContext: walletContext as! WalletContext, peer: peer, transferAnimation: transferAnimation, transferAnimationWillStart: handlers.transferAnimationWillStart, completed: handlers.completed)
+            switch recipient {
+            case let .peer(peer):
+                return WalletSendController(context: context as! AccountContext, walletContext: walletContext as! WalletContext, peer: peer, transferAnimation: transferAnimation, transferAnimationWillStart: handlers.transferAnimationWillStart, completed: handlers.completed)
+            case let .address(address):
+                return WalletSendController(context: context as! AccountContext, walletContext: walletContext as! WalletContext, initialAddress: address)
+            }
         })
+        hooks.normalizeTransferAddress = { address in
+            WalletContext.transferAddress(from: address, preserveBounce: true)
+        }
         let makeController = hooks.makeWalletSendController
-        hooks.makeWalletSendControllerWithContext = { context, walletContext, peer, handlers in
+        hooks.makeWalletSendControllerWithContext = { context, walletContext, peer, handlers, analyticsContext in
             let controller = makeController(context, walletContext, peer, handlers)
+            controller.analyticsContext = analyticsContext
             if let controller = controller as? InputDataModalController {
+                controller.current.analyticsContext = analyticsContext
             }
             return controller
         }
@@ -66,6 +78,7 @@ func installChatInputUIHooks() {
     var hooks = ChatInputUIHooks(makeEntertainmentsPopover: { chatInteraction in
         if chatInteraction.presentation.state == .editing || chatInteraction.mode.customChatLink != nil {
             let emoji = EmojiesController(chatInteraction.context)
+            emoji.analyticsScreen = .chatInputEmoji
             emoji.showsGlassSurface = true
             if let interactions = chatInteraction.context.bindings.entertainmentViewController.interactions {
                 emoji.update(with: interactions, chatInteraction: chatInteraction)
@@ -123,6 +136,7 @@ func installChatInputUIHooks() {
     }, makeEmojiPicker: { context, sendAnimatedEmoji, sendEmoji in
         let context = context as! AccountContext
         let emojis = EmojiesController(context, ignorePremium: true)
+        emojis.analyticsScreen = .appEmojiPicker
         emojis.showsGlassSurface = true
         emojis._frameRect = NSMakeRect(0, 0, 350, 300)
         let interactions = EntertainmentInteractions(.emoji, peerId: context.peerId)
@@ -140,7 +154,7 @@ func installChatInputUIHooks() {
         return result
     }, updateEntertainmentSidebar: { animated in
         appDelegate?.enumerateApplicationContexts { applicationContext in
-            applicationContext.updateEntertainmentSidebar(animated: animated)
+            applicationContext.focusEntertainmentSidebar(FastSettings.sidebarShown, animated: animated)
         }
     }, isEntertainmentSidebarVisible: { window in
         var result = false
@@ -151,19 +165,25 @@ func installChatInputUIHooks() {
         }
         return result
     })
-    hooks.makeTranslateModalWithContext = { context, from, toLang, draft, onUse, onSend in
-        TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: onUse, onSend: onSend)
+    hooks.makeTranslateModalWithContext = { context, from, toLang, draft, alwaysUsePeerId, analyticsContext, onUse, onSend in
+        TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: onUse, onSend: onSend, alwaysUsePeerId: alwaysUsePeerId, analyticsContext: analyticsContext)
     }
-    hooks.makeRichTranslateModalWithContext = { context, from, toLang, text, entities, blocks, onUse in
-        TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, entities: entities, richBlocks: blocks, onUseRich: onUse)
+    hooks.makeRichTranslateModalWithContext = { context, from, toLang, text, entities, blocks, analyticsContext, onUse in
+        TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: text, entities: entities, richBlocks: blocks, onUseRich: onUse, analyticsContext: analyticsContext)
     }
-    hooks.makeEmojiPickerWithContext = { context, sendAnimatedEmoji, sendEmoji in
+    hooks.makeEmojiPickerWithContext = { context, analyticsContext, sendAnimatedEmoji, sendEmoji in
         let context = context as! AccountContext
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let emojis = EmojiesController(context, ignorePremium: true)
+        emojis.analyticsContext = origin
+        emojis.analyticsScreen = .appEmojiPicker
         emojis.showsGlassSurface = true
         emojis._frameRect = NSMakeRect(0, 0, 350, 300)
         let interactions = EntertainmentInteractions(.emoji, peerId: context.peerId)
         let chatInteraction = ChatInteraction(chatLocation: .peer(context.peerId), context: context)
+        chatInteraction.inheritedAnalyticsContext = origin
         emojis.update(with: interactions, chatInteraction: chatInteraction)
         interactions.sendAnimatedEmoji = sendAnimatedEmoji
         interactions.sendEmoji = sendEmoji

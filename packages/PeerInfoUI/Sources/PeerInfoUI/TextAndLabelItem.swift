@@ -303,7 +303,7 @@ class TextAndLabelRowView: GeneralRowView {
     }
     
     override func mouseUp(with event: NSEvent) {
-        if mouseInside() {
+        if mouseInside(), containerView.frame.contains(convert(event.locationInWindow, from: nil)) {
             if let item = item as? TextAndLabelItem {
                 item.action()
             }

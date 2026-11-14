@@ -15,6 +15,7 @@ import FoundationUtils
 import LocalAnimations
 import Translate
 import Postbox
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -86,6 +87,7 @@ public func LocalizationPreviewModalController(_ context: any AccountContextProt
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().applyLanguageChangeLanguageTitle, hasDone: false)
+    controller.analyticsScreen = .settingsLanguagePreview
 
     controller.onDeinit = {
         actionsDisposable.dispose()

@@ -3,6 +3,8 @@ import SwiftSignalKit
 import AVFoundation
 import Foundation
 
+private let tableRowPressureConfiguration = NSPressureConfiguration(pressureBehavior: .primaryDeepClick)
+
 open class TableRowView: NSTableRowView, CALayerDelegate {
     
     private var animatedView: RowAnimateView?
@@ -64,7 +66,7 @@ open class TableRowView: NSTableRowView, CALayerDelegate {
         autoresizingMask = []
       //  self.layer?.delegate = self
         autoresizesSubviews = false
-        pressureConfiguration = NSPressureConfiguration(pressureBehavior: .primaryDeepClick)
+        pressureConfiguration = tableRowPressureConfiguration
         appearance = presentation.appearance
     }
     
@@ -361,7 +363,6 @@ open class TableRowView: NSTableRowView, CALayerDelegate {
     }
     
     open override func rightMouseDown(with event: NSEvent) {
-        super.rightMouseDown(with: event)
         if mouseInside() {
             showContextMenu(event)
         }
@@ -453,7 +454,7 @@ open class TableRowView: NSTableRowView, CALayerDelegate {
     }
 
     open override func menu(for event: NSEvent) -> NSMenu? {
-        return NSMenu()
+        return nil
     }
     
     

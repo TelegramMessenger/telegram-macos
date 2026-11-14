@@ -51,6 +51,9 @@ open class PeerInfoSpawnEmojiView : View {
 
     open var _alpha: CGFloat? = nil
 
+    /// Like the iOS cover of a coloured profile: the shapes are black at up to 60% fading towards the edge, in the overlay blend mode, so they read as a darker shade of the cover.
+    open var darkensCover: Bool = false
+
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         self.wantsLayer = true
@@ -63,6 +66,7 @@ open class PeerInfoSpawnEmojiView : View {
     }
 
     open func set(fileId: Int64, color: NSColor, context: any AccountContextProtocol, inlinePacksContext: InlineStickersContext, animated: Bool) {
+        let color: NSColor = self.darkensCover ? .black : color
         self.patternColor = color
         if patternTarget?.fileId != fileId || patternTarget?.textColor != color {
             let patternTarget:InlineStickerItemLayer = .init(account: context.account, inlinePacksContext: inlinePacksContext, emoji: .init(fileId: fileId, file: nil, emoji: clown), size: NSMakeSize(64, 64), playPolicy: .loop, textColor: color, contentDidUpdate: { [weak self] content in
@@ -125,7 +129,14 @@ open class PeerInfoSpawnEmojiView : View {
 
                 itemLayer.frame = itemFrame
                 itemLayer.layerTintColor = patternColor.cgColor
-                transition.updateAlpha(layer: itemLayer, alpha: _alpha ?? (1.0 - CGFloat(row) / 5.0) * (1.0 - itemScaleFraction))
+                if self.darkensCover {
+                    let ellipse = hypot(itemPosition.x / 190.0, itemPosition.y / 90.0)
+                    itemLayer.compositingFilter = "overlayBlendMode"
+                    transition.updateAlpha(layer: itemLayer, alpha: 0.6 * max(0.0, 1.0 - ellipse / sqrt(2.0)) * (1.0 - itemScaleFraction))
+                } else {
+                    itemLayer.compositingFilter = nil
+                    transition.updateAlpha(layer: itemLayer, alpha: _alpha ?? (1.0 - CGFloat(row) / 5.0) * (1.0 - itemScaleFraction))
+                }
 
                 avatarBackgroundPatternLayerCount += 1
             }

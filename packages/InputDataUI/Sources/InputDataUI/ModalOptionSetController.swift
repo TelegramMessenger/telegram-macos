@@ -5,6 +5,7 @@ import TelegramTheme
 import TelegramContext
 import TelegramUtils
 import GeneralRows
+import AppAnalytics
 
 private final class ModalOptionsArguments {
     public let context: any AccountContextProtocol
@@ -153,6 +154,7 @@ public func ModalOptionSetController(context: any AccountContextProtocol, option
     }, afterDisappear: {
         actionsDisposable.dispose()
     })
+    controller.analyticsScreen = .appOptionPicker
     
     let modalInteractions: ModalInteractions = ModalInteractions(acceptTitle: actionText.0, accept: { [weak controller] in
         controller?.validateInputValues()

@@ -15,6 +15,7 @@ import AlertsUI
 import LocalAnimations
 import SceneEffects
 import ObjcUtils
+import AppAnalytics
 
 
 private final class HeaderItem : GeneralRowItem {
@@ -429,6 +430,7 @@ public func Affiliate_LinkPreview(context: (any AccountContextProtocol), program
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .affiliateLink
     
     controller.didLoad = { controller, _ in
         controller.tableView.getBackgroundColor = {

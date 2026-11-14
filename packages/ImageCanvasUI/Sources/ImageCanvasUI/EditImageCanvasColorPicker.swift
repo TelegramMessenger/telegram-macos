@@ -489,7 +489,7 @@ final class EditImageCanvasColorPickerView: View {
         eyedropper.set(handler: { [weak self] _ in
             self?.onEyedropper?()
         }, for: .Click)
-        eyedropper.setAccessibilityLabel("Pick Color from Image") //TODOLANG
+        eyedropper.setAccessibilityLabel(strings().editImageCanvasColorPickerPickFromImage)
 
         grid.onChange = { [weak self] color in
             self?.apply(color)

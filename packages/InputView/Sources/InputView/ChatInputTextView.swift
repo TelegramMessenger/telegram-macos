@@ -417,18 +417,25 @@ open class ChatInputTextView: ScrollView, NSTextViewDelegate {
         super.setFrameSize(newSize)
     }
     
+    public var textAnchorHeight: CGFloat?
+
+    static func textFrame(in size: CGSize, textHeight: CGFloat, anchor: CGFloat?) -> NSRect {
+        guard textHeight < size.height else {
+            return CGRect(origin: .zero, size: NSMakeSize(size.width, max(textHeight, size.height)))
+        }
+        if let anchor, anchor < size.height {
+            return NSMakeSize(size.width, max(anchor, textHeight)).bounds.focus(NSMakeSize(size.width, textHeight))
+        }
+        return size.bounds.focus(NSMakeSize(size.width, textHeight))
+    }
+
     public func updateLayout(size: CGSize, textHeight: CGFloat, transition: ContainedViewLayoutTransition) {
         
         let immediate = ContainedViewLayoutTransition.immediate
         let contentRect = CGRect(origin: .zero, size: NSMakeSize(size.width, max(textHeight, size.height)))
         immediate.updateFrame(view: self.containerView, frame: contentRect)
         
-        let textRect: NSRect
-        if textHeight < size.height {
-            textRect = size.bounds.focus(NSMakeSize(size.width, textHeight))
-        } else {
-            textRect = contentRect
-        }
+        let textRect = ChatInputTextView.textFrame(in: size, textHeight: textHeight, anchor: textAnchorHeight)
         immediate.updateFrame(view: self.textView, frame: textRect)
 
         immediate.updateFrame(view: emojiContent, frame: textRect)

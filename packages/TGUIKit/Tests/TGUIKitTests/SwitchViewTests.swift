@@ -42,6 +42,30 @@ final class SwitchViewTests: XCTestCase {
         XCTAssertFalse(view.isSettling, file: file, line: line)
     }
 
+    func testQuickSecondClickTogglesAgainWhenTheOwnerReappliesTheCommittedState() {
+        let view = makeSwitch(motion: true)
+        var calls = 0
+        view.stateChanged = {
+            calls += 1
+            let value = view.isOn
+            DispatchQueue.main.async {
+                view.setIsOn(value)
+            }
+        }
+        view.beginInteraction(at: CGPoint(x: 22, y: 12))
+        view.endInteraction(at: CGPoint(x: 22, y: 12))
+        XCTAssertTrue(view.isSettling)
+        view.beginInteraction(at: CGPoint(x: 22, y: 12))
+        XCTAssertTrue(view.isOn)
+        XCTAssertEqual(calls, 1)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertTrue(view.isTracking)
+        view.endInteraction(at: CGPoint(x: 22, y: 12))
+        waitUntilRest(view)
+        XCTAssertFalse(view.isOn)
+        XCTAssertEqual(calls, 2)
+    }
+
     func testClickCommitsOnlyAfterSettling() {
         let view = makeSwitch(motion: true)
         var calls = 0
@@ -49,7 +73,7 @@ final class SwitchViewTests: XCTestCase {
             calls += 1
             XCTAssertTrue(view.isOn)
             XCTAssertFalse(view.isSettling)
-            XCTAssertEqual(view.currentThumbFrame.size, CGSize(width: 20, height: 13))
+            XCTAssertEqual(view.currentThumbFrame.size, CGSize(width: 26, height: 16))
         }
         view.beginInteraction(at: CGPoint(x: 6, y: 10))
         XCTAssertFalse(view.isOn)
@@ -60,6 +84,25 @@ final class SwitchViewTests: XCTestCase {
         waitUntilRest(view)
         XCTAssertTrue(view.isOn)
         XCTAssertEqual(calls, 1)
+    }
+
+    func testFinishingPendingChangeBeforeDismissalCommitsExactlyOnce() {
+        for initial in [false, true] {
+            let view = makeSwitch(on: initial, motion: true)
+            var changes: [Bool] = []
+            view.stateChanged = { [unowned view] in changes.append(view.isOn) }
+            view.performToggle()
+            XCTAssertTrue(view.isSettling)
+            XCTAssertEqual(changes, [])
+
+            view.finishPendingChange()
+            view.finishPendingChange()
+            view.removeFromSuperview()
+
+            XCTAssertFalse(view.isSettling)
+            XCTAssertEqual(view.isOn, !initial)
+            XCTAssertEqual(changes, [!initial])
+        }
     }
 
     func testPointerJitterIsAClick() {
@@ -107,8 +150,8 @@ final class SwitchViewTests: XCTestCase {
             let view = makeSwitch(on: initial)
             var calls = 0
             view.stateChanged = { calls += 1 }
-            view.beginInteraction(at: CGPoint(x: 18, y: 10))
-            view.endInteraction(at: CGPoint(x: initial ? 11.5 : 24.5, y: 10))
+            view.beginInteraction(at: CGPoint(x: 22, y: 12))
+            view.endInteraction(at: CGPoint(x: initial ? 15 : 29, y: 12))
             XCTAssertEqual(view.isOn, initial)
             XCTAssertEqual(calls, 0)
         }
@@ -119,12 +162,12 @@ final class SwitchViewTests: XCTestCase {
         view.beginInteraction(at: CGPoint(x: 18, y: 10))
         view.dragInteraction(to: CGPoint(x: 500, y: 500))
         XCTAssertEqual(view.visualPosition, 1)
-        XCTAssertGreaterThan(view.currentThumbFrame.midX, 27)
-        XCTAssertLessThan(view.currentThumbFrame.midX, 27.5)
-        XCTAssertEqual(view.currentThumbFrame.midY, 10)
+        XCTAssertGreaterThan(view.currentThumbFrame.midX, 31.5)
+        XCTAssertLessThan(view.currentThumbFrame.midX, 32)
+        XCTAssertEqual(view.currentThumbFrame.midY, 12)
         view.endInteraction(at: CGPoint(x: 500, y: 500))
         XCTAssertTrue(view.isOn)
-        XCTAssertEqual(view.currentThumbFrame, CGRect(x: 14.5, y: 3.5, width: 20, height: 13))
+        XCTAssertEqual(view.currentThumbFrame, CGRect(x: 16, y: 4, width: 26, height: 16))
     }
 
     func testDraggingSnapsBetweenEndpointsBeforeReleaseWithoutCommitting() {
@@ -132,14 +175,14 @@ final class SwitchViewTests: XCTestCase {
             let view = makeSwitch(on: initial)
             var calls = 0
             view.stateChanged = { calls += 1 }
-            view.beginInteraction(at: CGPoint(x: 18, y: 10))
-            for x in stride(from: CGFloat(-20), through: 56, by: 0.5) {
+            view.beginInteraction(at: CGPoint(x: 22, y: 12))
+            for x in stride(from: CGFloat(-20), through: 64, by: 0.5) {
                 view.dragInteraction(to: CGPoint(x: x, y: 18))
-                let position = (initial ? 1.0 : 0.0) + (x - 18) / 13
+                let position = (initial ? 1.0 : 0.0) + (x - 22) / 14
                 let expected: CGFloat = position == 0.5 ? (initial ? 1 : 0) : (position > 0.5 ? 1 : 0)
                 XCTAssertEqual(view.visualPosition, expected)
-                XCTAssertLessThan(abs(view.currentThumbFrame.midX - (11.5 + 13 * expected)), 3)
-                XCTAssertEqual(view.currentThumbFrame.midY, 10)
+                XCTAssertLessThan(abs(view.currentThumbFrame.midX - (15 + 14 * expected)), 3)
+                XCTAssertEqual(view.currentThumbFrame.midY, 12)
                 XCTAssertEqual(view.isOn, initial)
                 XCTAssertEqual(calls, 0)
             }
@@ -153,8 +196,8 @@ final class SwitchViewTests: XCTestCase {
         let view = makeSwitch()
         var calls = 0
         view.stateChanged = { calls += 1 }
-        view.beginInteraction(at: CGPoint(x: 35, y: 10))
-        view.endInteraction(at: CGPoint(x: 37, y: 10))
+        view.beginInteraction(at: CGPoint(x: 43, y: 12))
+        view.endInteraction(at: CGPoint(x: 45, y: 12))
         XCTAssertFalse(view.isOn)
         XCTAssertEqual(calls, 0)
     }
@@ -273,10 +316,10 @@ final class SwitchViewTests: XCTestCase {
 
     func testGeometryScalesWithBoundsAndKeepsCapsuleThumb() {
         let view = makeSwitch(on: true)
-        view.setFrameSize(CGSize(width: 72, height: 40))
-        XCTAssertEqual(view.trackLayer.frame.size, CGSize(width: 72, height: 32))
-        XCTAssertEqual(view.currentThumbFrame.size, CGSize(width: 40, height: 26))
-        XCTAssertEqual(view.currentThumbFrame.minX, 29)
+        view.setFrameSize(CGSize(width: 88, height: 48))
+        XCTAssertEqual(view.trackLayer.frame.size, CGSize(width: 88, height: 40))
+        XCTAssertEqual(view.currentThumbFrame.size, CGSize(width: 52, height: 32))
+        XCTAssertEqual(view.currentThumbFrame.minX, 32)
     }
 
     func testLensFailureKeepsTheOpaqueThumbAndControlHitTarget() {
@@ -358,8 +401,8 @@ final class SwitchViewTests: XCTestCase {
             XCTAssertEqual(animation.duration, reference.settlingDuration, accuracy: 0.0000001)
             for time in stride(from: 0.0, through: 0.9, by: 0.05) {
                 let sample = try XCTUnwrap(SwitchMotion.sample(animation, elapsed: time))
-                XCTAssertEqual(sample.position.x, reference.value(target: 13.0, time: time), accuracy: 0.000001)
-                XCTAssertEqual(sample.velocity.x, reference.velocity(target: 13.0, time: time), accuracy: 0.000001)
+                XCTAssertEqual(sample.position.x, reference.value(target: 14.0, time: time), accuracy: 0.000001)
+                XCTAssertEqual(sample.velocity.x, reference.velocity(target: 14.0, time: time), accuracy: 0.000001)
             }
         }
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
@@ -376,8 +419,8 @@ final class SwitchViewTests: XCTestCase {
         let spring = try XCTUnwrap(view.positionAnimation)
         view.dragInteraction(to: CGPoint(x: 35, y: 10))
         XCTAssertTrue(try XCTUnwrap(view.positionAnimation).isEqual(spring))
-        XCTAssertGreaterThan(view.currentThumbFrame.midX, 24.5)
-        XCTAssertLessThan(view.currentThumbFrame.midX, 27.5)
+        XCTAssertGreaterThan(view.currentThumbFrame.midX, 29)
+        XCTAssertLessThan(view.currentThumbFrame.midX, 32)
         XCTAssertFalse(view.isOn)
     }
 

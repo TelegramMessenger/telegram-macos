@@ -245,7 +245,7 @@ public class ChatMediaItem: ChatRowItem {
                 if self.chatInteraction.mode.isThreadMode, self.chatInteraction.chatLocation.peerId == message.id.peerId {
                     type = .messages([message])
                 }
-                showChatGallery(context: context, message: message, self.table, self.parameters, type: type, chatMode: self.chatInteraction.mode, chatLocation: self.chatInteraction.chatLocation, contextHolder: self.chatInteraction.contextHolder(), cachedPeerData: self.chatInteraction.presentation.cachedData)
+                showChatGallery(context: context, message: message, self.table, self.parameters, type: type, chatMode: self.chatInteraction.mode, chatLocation: self.chatInteraction.chatLocation, contextHolder: self.chatInteraction.contextHolder(), cachedPeerData: self.chatInteraction.presentation.cachedData, analyticsContext: self.chatInteraction.captureAnalyticsContext())
             }
         }, showMessage: { [weak self] message in
             self?.chatInteraction.focusMessageId(nil, .init(messageId: message.id, string: nil), .CenterEmpty)
@@ -361,6 +361,7 @@ public class ChatMediaItem: ChatRowItem {
                 return self?.menuAdditionView ?? .single(nil)
             }
             if let layout = self.captionLayouts.first {
+                restrictCopying(interactions, message: layout.message, layout: layout.layout, chatInteraction: self.chatInteraction)
                 interactions.menuItems = { [weak self, weak layout] type in
                     if let interactions = self?.chatInteraction, let entry = self?.entry, let layout {
                         return chatMenuItems(for: layout.message, entry: entry, textLayout: (layout.layout.merged, type), chatInteraction: interactions)
@@ -588,16 +589,20 @@ public class ChatMediaView: ChatRowView, ModalPreviewRowViewProtocol {
     public override func set(item:TableRowItem, animated:Bool = false) {
         super.set(item: item, animated: animated)
         if let item:ChatMediaItem = item as? ChatMediaItem {
-            if contentNode == nil || !contentNode!.isKind(of: item.contentNode()) || contentNode?.parent?.stableId != item.message?.stableId  {
+            if contentNode == nil || !contentNode!.isKind(of: item.contentNode()) || (contentNode?.parent?.stableId != item.message?.stableId && ChatRowView.debugMediaReuse == false) {
                 if let view = self.contentNode {
                     performSubviewRemoval(view, animated: animated)
                 }
                 let node = item.contentNode()
-                self.contentNode = node.init(frame: item.contentSize.bounds)
-                self.addSubview(self.contentNode!)
+                bindStep("mediaCreate") {
+                    self.contentNode = node.init(frame: item.contentSize.bounds)
+                    self.addSubview(self.contentNode!)
+                }
             }
            
-            self.contentNode?.update(with: item.media, size: item.contentSize, context: item.context, parent:item.message, table:item.table, parameters:item.parameters, animated: animated, positionFlags: item.positionFlags, approximateSynchronousValue: item.approximateSynchronousValue)
+            bindStep("mediaUpdate") {
+                self.contentNode?.update(with: item.media, size: item.contentSize, context: item.context, parent:item.message, table:item.table, parameters:item.parameters, animated: animated, positionFlags: item.positionFlags, approximateSynchronousValue: item.approximateSynchronousValue)
+            }
             
             
             let transition: ContainedViewLayoutTransition

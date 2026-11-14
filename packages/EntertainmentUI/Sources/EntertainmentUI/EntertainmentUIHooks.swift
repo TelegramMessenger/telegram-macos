@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import InputView
 import TGUIKit
 import TelegramCore
@@ -56,10 +57,13 @@ public struct EntertainmentStickerImage {
 public struct EntertainmentUIHooks {
     public let makePreviewSender: (TelegramMediaFile, any ChatInteractionProtocol) -> ModalViewController
     public let shareLink: (any AccountContextProtocol, String) -> Void
-    public var shareLinkWithContext: ((any AccountContextProtocol, String) -> Void)?
-    public func shareLinkObserved(_ context: any AccountContextProtocol, _ link: String) {
+    public var shareLinkWithContext: ((any AccountContextProtocol, String, AnalyticsContext) -> Void)?
+    public func shareLinkObserved(_ context: any AccountContextProtocol, _ link: String, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let shareLinkWithContext {
-            shareLinkWithContext(context, link)
+            shareLinkWithContext(context, link, origin)
         } else {
             shareLink(context, link)
         }
@@ -74,41 +78,81 @@ public struct EntertainmentUIHooks {
     public let makeContextMediaRowItem: (NSSize, InputMediaContextRow, Int64, any AccountContextProtocol, EntertainmentMediaArguments, ChatContextResultCollection?, AnyHashable) -> TableRowItem
     public let launchSendFlight: (any ChatInteractionProtocol, NSView, NSRect, CALayer?) -> Void
     public let makeStickerImage: (any AccountContextProtocol, Window, ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, @escaping (EntertainmentStickerImage) -> Void) -> Void
-    public var makeStickerImageWithContext: ((any AccountContextProtocol, Window, ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, @escaping (EntertainmentStickerImage) -> Void) -> Void)?
+    public var makeStickerImageWithContext: ((any AccountContextProtocol, Window, AnalyticsContext, ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, @escaping (EntertainmentStickerImage) -> Void) -> Void)?
+    public var makeStickerImageWithJourney: ((any AccountContextProtocol, Window, AnalyticsContext, AnalyticsStickerJourney?, ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, @escaping (EntertainmentStickerImage) -> Void) -> Void)?
 
+    public func makeStickerImageObserved(_ context: any AccountContextProtocol, _ window: Window, analyticsContext: AnalyticsContext, journey: AnalyticsStickerJourney?, doneMenu: ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, completion: @escaping (EntertainmentStickerImage) -> Void) {
+        if let makeStickerImageWithJourney {
+            makeStickerImageWithJourney(context, window, analyticsContext, journey, doneMenu, completion)
+        } else {
+            journey?.discard()
+            makeStickerImageObserved(context, window, analyticsContext: analyticsContext, doneMenu: doneMenu, completion: completion)
+        }
+    }
 
-    public func makeStickerImageObserved(_ context: any AccountContextProtocol, _ window: Window, doneMenu: ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, completion: @escaping (EntertainmentStickerImage) -> Void) {
+    public func makeStickerImageObserved(_ context: any AccountContextProtocol, _ window: Window, analyticsContext: AnalyticsContext, doneMenu: ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])?, completion: @escaping (EntertainmentStickerImage) -> Void) {
         if let makeStickerImageWithContext {
-            makeStickerImageWithContext(context, window, doneMenu, completion)
+            makeStickerImageWithContext(context, window, analyticsContext, doneMenu, completion)
         } else {
-            makeStickerImage(context, window, doneMenu, completion)
+            let presentation = analyticsContext.beginPresentation()
+            let menu: ((EntertainmentStickerImage, @escaping () -> Void) -> [ContextMenuItem])? = doneMenu.map { doneMenu in
+                return { image, close in
+                    withExtendedLifetime(presentation) { doneMenu(image, close) }
+                }
+            }
+            makeStickerImage(context, window, menu, { image in
+                withExtendedLifetime(presentation) { completion(image) }
+            })
         }
     }
-    public var appendPackEmojiWithContext: ((any ChatInteractionProtocol, NSAttributedString) -> Void)?
-    public func appendPackEmojiObserved(_ interaction: any ChatInteractionProtocol, text: NSAttributedString) {
+    public var appendPackEmojiWithContext: ((any ChatInteractionProtocol, NSAttributedString, AnalyticsContext) -> Void)?
+    public func appendPackEmojiObserved(_ interaction: any ChatInteractionProtocol, text: NSAttributedString, analyticsContext: AnalyticsContext) {
+        var origin = Analytics.shared.captureContext(engine: interaction.interactionContext.engine, peerId: interaction.peerId, inherited: analyticsContext)
+        if let peer = interaction.peer { origin = origin.restricting(peerId: peer.id) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let appendPackEmojiWithContext {
-            appendPackEmojiWithContext(interaction, text)
+            appendPackEmojiWithContext(interaction, text, origin)
         } else {
-            _ = interaction.appendText(text, selectedRange: nil)
+            _ = interaction.appendText(chatInputTextExcludingAnalytics(text), selectedRange: nil)
         }
     }
 
-    public var sendPackStickerWithContext: ((any ChatInteractionProtocol, TelegramMediaFile, Bool, Bool) -> Void)?
-    public func sendPackStickerObserved(_ interaction: any ChatInteractionProtocol, file: TelegramMediaFile, silent: Bool, scheduled: Bool) {
+    public var sendPackStickerWithContext: ((any ChatInteractionProtocol, TelegramMediaFile, Bool, Bool, AnalyticsContext) -> Void)?
+    public func sendPackStickerObserved(_ interaction: any ChatInteractionProtocol, file: TelegramMediaFile, silent: Bool, scheduled: Bool, analyticsContext: AnalyticsContext) {
+        var origin = Analytics.shared.captureContext(engine: interaction.interactionContext.engine, peerId: interaction.peerId, inherited: analyticsContext)
+        if let peer = interaction.peer { origin = origin.restricting(peerId: peer.id) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let sendPackStickerWithContext {
-            sendPackStickerWithContext(interaction, file, silent, scheduled)
+            sendPackStickerWithContext(interaction, file, silent, scheduled, origin)
         } else {
             interaction.sendFile(file, silent: silent, query: nil, scheduled: scheduled, collectionId: nil)
         }
     }
 
+    public var sendCreatedStickerWithAnalytics: ((any ChatInteractionProtocol, TelegramMediaFile, AnalyticsContext, AnalyticsStickerSendRequest?) -> Void)?
 
+    public func sendCreatedStickerObserved(_ interaction: any ChatInteractionProtocol, file: TelegramMediaFile, analyticsContext: AnalyticsContext, request: AnalyticsStickerSendRequest?) {
+        if let sendCreatedStickerWithAnalytics {
+            sendCreatedStickerWithAnalytics(interaction, file, analyticsContext, request)
+        } else {
+            request?.end()
+            let presentation = analyticsContext.beginPresentation()
+            withExtendedLifetime(presentation) {
+                interaction.sendFile(file, silent: false, query: nil, scheduled: false, collectionId: nil)
+            }
+        }
+    }
 
     public let openStickersBot: (any AccountContextProtocol) -> Void
-    public var openStickersBotWithContext: ((any AccountContextProtocol) -> Void)?
-    public func openStickersBotObserved(_ context: any AccountContextProtocol) {
+    public var openStickersBotWithContext: ((any AccountContextProtocol, AnalyticsContext) -> Void)?
+    public func openStickersBotObserved(_ context: any AccountContextProtocol, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let openStickersBotWithContext {
-            openStickersBotWithContext(context)
+            openStickersBotWithContext(context, origin)
         } else {
             openStickersBot(context)
         }

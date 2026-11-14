@@ -12,6 +12,7 @@ import GeneralRows
 import ShortPeerRow
 import InputDataUI
 import LocalAnimations
+import AppAnalytics
 
 private final class EmptyChannelRow : GeneralRowItem {
     let layout: TextViewLayout
@@ -244,6 +245,7 @@ public func PersonalChannelController(context: any AccountContextProtocol) -> In
     }
     
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsScreen = .settingsAccountPersonalChannel
     
     controller.onDeinit = {
         actionsDisposable.dispose()

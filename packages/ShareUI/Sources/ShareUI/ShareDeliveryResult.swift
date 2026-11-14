@@ -1,3 +1,4 @@
+import AppAnalytics
 import InputView
 import TelegramCore
 import Postbox
@@ -42,9 +43,11 @@ enum ShareDeliveryStatus: Equatable {
 struct ShareDeliveryPart: Equatable {
     let expectedCount: Int
     let acceptedCount: Int?
+    let messageIds: [MessageId]
 
     init(expectedCount: Int, result: [MessageId?]?) {
         self.expectedCount = expectedCount
+        self.messageIds = result?.compactMap { $0 } ?? []
         if expectedCount > 0, let result, result.count == expectedCount {
             self.acceptedCount = result.compactMap { $0 }.count
         } else {
@@ -94,7 +97,8 @@ func shareFirstResult<Value, Failure>(_ signal: Signal<Value, Failure>, or fallb
 protocol ShareDeliveryProviding: AnyObject {
     var messagesCount: Int { get }
     func outgoingMessageCount(comment: ChatTextInputState?) -> Int
-    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount]) -> Signal<[ShareRecipientDelivery], String>
+    func sharingAnalyticsContext(_ inherited: AnalyticsContext?) -> AnalyticsContext
+    func performWithResults(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext?) -> Signal<[ShareRecipientDelivery], String>
 }
 
 extension ShareDeliveryProviding {
