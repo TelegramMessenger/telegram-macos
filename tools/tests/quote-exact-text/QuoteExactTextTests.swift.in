@@ -1,0 +1,545 @@
+import AppKit
+
+enum TextInputAttributes {
+    static let bold = NSAttributedString.Key("Attribute__Bold")
+    static let quote = NSAttributedString.Key("Attribute__Blockquote")
+    static let customEmoji = NSAttributedString.Key("Attribute__CustomEmoji")
+    static let formattedDate = NSAttributedString.Key("Attribute__FormattedDate")
+    static let allAttributes = [bold, quote, customEmoji, formattedDate]
+}
+
+final class TextViewBlockQuoteData: NSObject {
+    let id: Int
+    init(id: Int) {
+        self.id = id
+        super.init()
+    }
+    override func isEqual(_ object: Any?) -> Bool {
+        return (object as? TextViewBlockQuoteData)?.id == self.id
+    }
+    override var hash: Int {
+        return self.id
+    }
+}
+
+final class TextViewFormattedDateData {
+}
+
+final class TextInputTextCustomEmojiAttribute: NSObject {
+    let fileId: Int64
+    let emoji: String
+    init(fileId: Int64, emoji: String) {
+        self.fileId = fileId
+        self.emoji = emoji
+        super.init()
+    }
+    override func isEqual(_ object: Any?) -> Bool {
+        return self === (object as? TextInputTextCustomEmojiAttribute)
+    }
+}
+
+extension NSRange {
+    var min: Int {
+        return self.location
+    }
+    var max: Int {
+        return self.location + self.length
+    }
+}
+
+extension String {
+    var length: Int {
+        return (self as NSString).length
+    }
+    var nsstring: NSString {
+        return self as NSString
+    }
+}
+
+extension NSAttributedString {
+    static func initialize(string: String?) -> NSAttributedString {
+        return NSAttributedString(string: string ?? "")
+    }
+    var range: NSRange {
+        return NSRange(location: 0, length: self.length)
+    }
+    __TRIMMED__
+}
+
+extension NSMutableAttributedString {
+    __REMOVE_WHITESPACE__
+}
+
+enum MessageTextEntityType: Equatable {
+    enum DateTimeFormat: Equatable {
+        case relative
+        case full
+    }
+    case Bold
+    case Italic
+    case Strikethrough
+    case Underline
+    case Spoiler
+    case Code
+    case Pre(language: String?)
+    case BlockQuote(isCollapsed: Bool)
+    case CustomEmoji(stickerPack: Int?, fileId: Int64)
+    case FormattedDate(format: DateTimeFormat?, date: Int32)
+}
+
+struct MessageTextEntity: Equatable {
+    var range: Range<Int>
+    var type: MessageTextEntityType
+    init(range: Range<Int>, type: MessageTextEntityType) {
+        self.range = range
+        self.type = type
+    }
+}
+
+struct TextEntitiesMessageAttribute {
+    let entities: [MessageTextEntity]
+}
+
+func formatDateTimeEntity(format: MessageTextEntityType.DateTimeFormat, date: Int32) -> String {
+    return "11/14/26, 5:00 PM"
+}
+
+__RESOLVE_DATES__
+
+__ENTITIES_IN_RANGE__
+
+__TRIM_WITH_ENTITIES__
+
+__ENTITIES_FOR_TEXT__
+
+struct MessageId: Equatable {
+    let id: Int32
+}
+
+final class Message {
+    let id = MessageId(id: 1)
+    let text: String
+    let textEntities: TextEntitiesMessageAttribute?
+    let media: [Int] = []
+    init(_ text: String, _ entities: [MessageTextEntity]) {
+        self.text = text
+        self.textEntities = entities.isEmpty ? nil : TextEntitiesMessageAttribute(entities: entities)
+    }
+}
+
+struct EngineMessageReplyQuote {
+    let text: String
+    let offset: Int?
+    let entities: [MessageTextEntity]
+    let media: Int?
+}
+
+struct ReplySubject {
+    let quote: EngineMessageReplyQuote?
+    init(messageId: MessageId, quote: EngineMessageReplyQuote?, innerSubject: Int?) {
+        self.quote = quote
+    }
+}
+
+struct ChatTextInputState {
+    let attributedText: NSAttributedString
+    init(attributedText: NSAttributedString, selectionRange: Range<Int>) {
+        self.attributedText = attributedText
+    }
+    func messageTextEntities() -> [MessageTextEntity] {
+        var result: [MessageTextEntity] = []
+        self.attributedText.enumerateAttributes(in: self.attributedText.range, options: []) { attributes, range, _ in
+            if attributes[TextInputAttributes.bold] != nil {
+                result.append(MessageTextEntity(range: range.location ..< NSMaxRange(range), type: .Bold))
+            }
+            if let emoji = attributes[TextInputAttributes.customEmoji] as? TextInputTextCustomEmojiAttribute {
+                result.append(MessageTextEntity(range: range.location ..< NSMaxRange(range), type: .CustomEmoji(stickerPack: nil, fileId: emoji.fileId)))
+            }
+        }
+        return result
+    }
+}
+
+var captured: EngineMessageReplyQuote?
+var replied = false
+var alerted = false
+
+final class ChatInteraction {
+    func setupReplyMessage(_ message: Message, _ subject: ReplySubject) {
+        replied = true
+        captured = subject.quote
+    }
+}
+
+struct AppConfiguration {
+    func getGeneralValue(_ key: String, orElse defaultValue: Int32) -> Int32 {
+        return defaultValue
+    }
+}
+
+struct Context {
+    let appConfiguration = AppConfiguration()
+    let window = 0
+}
+
+struct Strings {
+    let chatMessageContextQuoteLimitExceed = "limit"
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+func alert(for window: Int, info: String) {
+    alerted = true
+}
+
+let context = Context()
+let chatInteraction = ChatInteraction()
+
+struct TextSelectedRange {
+    var range: NSRange = NSMakeRange(NSNotFound, 0)
+}
+
+final class TextViewLayout {
+    private(set) var attributedString: NSAttributedString
+    var selectedRange = TextSelectedRange()
+    var lines: [Int] = []
+    var string: String {
+        return self.attributedString.string
+    }
+    init(_ attributedString: NSAttributedString) {
+        self.attributedString = attributedString
+    }
+    func setAttributedString(_ string: NSAttributedString) {
+        self.attributedString = string
+    }
+}
+
+final class FoldingTextLayout {
+    struct ViewLayout {
+        let text: TextViewLayout
+    }
+
+    var blocks: [ViewLayout]
+    let blockRanges: [NSRange]
+    let attributedString: NSAttributedString
+
+    init(attributedString: NSAttributedString, blocks: [TextViewLayout], blockRanges: [NSRange]) {
+        self.attributedString = attributedString
+        self.blocks = blocks.map { ViewLayout(text: $0) }
+        self.blockRanges = blockRanges
+    }
+
+    __MERGED__
+
+    __BREAK_STRING__
+
+    static func make(_ string: NSAttributedString) -> FoldingTextLayout {
+        let blockRanges = FoldingTextLayout.breakString(string)
+        return FoldingTextLayout(attributedString: string, blocks: blockRanges.map { TextViewLayout(string.attributedSubstring(from: $0)) }, blockRanges: blockRanges)
+    }
+}
+
+__MESSAGE_TEXT_RANGE__
+
+func quote(_ layout: TextViewLayout, _ message: Message) -> EngineMessageReplyQuote? {
+    captured = nil
+    replied = false
+    alerted = false
+    let selectedRange = layout.selectedRange.range
+    let selectedString = layout.attributedString.attributedSubstring(from: selectedRange)
+    let handler: () -> Void = {
+        __HANDLER__
+    }
+    handler()
+    return captured
+}
+
+func embedCustomEmoji(_ string: NSMutableAttributedString) {
+    var emoji: [NSRange] = []
+    string.enumerateAttribute(TextInputAttributes.customEmoji, in: string.range, options: []) { value, range, _ in
+        if value is TextInputTextCustomEmojiAttribute {
+            emoji.append(range)
+        }
+    }
+    for range in emoji.reversed() {
+        string.replaceCharacters(in: range, with: NSAttributedString(string: "🤡", attributes: string.attributes(at: range.location, effectiveRange: nil)))
+    }
+}
+
+func shown(_ message: Message, caption: Bool = false) -> NSMutableAttributedString {
+    let (text, entities) = resolveFormattedDateEntities(message.text, entities: message.textEntities?.entities ?? [])
+    let string = NSMutableAttributedString(string: text)
+    for (index, entity) in entities.enumerated() {
+        let range = NSRange(location: entity.range.lowerBound, length: entity.range.count)
+        switch entity.type {
+        case .BlockQuote, .Pre:
+            string.addAttribute(TextInputAttributes.quote, value: TextViewBlockQuoteData(id: index + 1), range: range)
+        case .FormattedDate:
+            string.addAttribute(TextInputAttributes.formattedDate, value: TextViewFormattedDateData(), range: range)
+        case let .CustomEmoji(_, fileId):
+            string.addAttribute(TextInputAttributes.customEmoji, value: TextInputTextCustomEmojiAttribute(fileId: fileId, emoji: string.attributedSubstring(from: range).string), range: range)
+        case .Bold:
+            string.addAttribute(TextInputAttributes.bold, value: true as NSNumber, range: range)
+        default:
+            break
+        }
+    }
+    if caption {
+        string.removeWhitespaceFromQuoteAttribute()
+        embedCustomEmoji(string)
+    } else {
+        embedCustomEmoji(string)
+        string.removeWhitespaceFromQuoteAttribute()
+    }
+    return string
+}
+
+func select(_ layout: FoldingTextLayout, from start: Int, to end: Int) {
+    for (block, range) in zip(layout.blocks, layout.blockRanges) {
+        let lower = Swift.max(start, range.location)
+        let upper = Swift.min(end, NSMaxRange(range))
+        block.text.selectedRange.range = lower < upper ? NSMakeRange(lower - range.location, upper - lower) : NSMakeRange(NSNotFound, 0)
+    }
+}
+
+var total = 0
+var failed = 0
+
+func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String) {
+    total += 1
+    if !condition {
+        failed += 1
+        print("FAIL \(name): \(detail())")
+    }
+}
+
+func checkAtOffset(_ name: String, _ result: EngineMessageReplyQuote?, _ text: String) {
+    guard let result, let offset = result.offset, !result.text.isEmpty else {
+        return
+    }
+    let at = NSRange(location: offset, length: (result.text as NSString).length)
+    let found = offset >= 0 && NSMaxRange(at) <= (text as NSString).length ? (text as NSString).substring(with: at) : "<past the end>"
+    check("\(name) is at its offset", found == result.text, "the message has \(found.debugDescription) at offset \(offset)")
+}
+
+struct Selection {
+    let from: String
+    let to: String
+    let text: String
+    let offset: Int
+    var entities: [MessageTextEntity]? = nil
+}
+
+struct Case {
+    let name: String
+    let text: String
+    let entities: [MessageTextEntity]
+    let selections: [Selection]
+}
+
+func entity(_ lower: Int, _ upper: Int, _ type: MessageTextEntityType) -> MessageTextEntity {
+    return MessageTextEntity(range: lower ..< upper, type: type)
+}
+
+let date = MessageTextEntityType.FormattedDate(format: .full, date: 1794675600)
+
+let cases: [Case] = [
+    Case(name: "across the end of a quote", text: "Intro\nQuoted line\nOutro", entities: [entity(6, 17, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "line", to: "Out", text: "line\nOut", offset: 13),
+        Selection(from: "tro", to: "Quo", text: "tro\nQuo", offset: 2),
+        Selection(from: "Quoted", to: "line", text: "Quoted line", offset: 6),
+    ]),
+    Case(name: "across the end of a code block typed with fences", text: "Hi\n\nlet x = 1\n\nBye", entities: [entity(3, 14, .Pre(language: nil))], selections: [
+        Selection(from: "1", to: "By", text: "1\n\nBy", offset: 12),
+        Selection(from: "Hi", to: "let", text: "Hi\n\nlet", offset: 0),
+        Selection(from: "Bye", to: "Bye", text: "Bye", offset: 15),
+    ]),
+    Case(name: "quote with line breaks at its edges", text: "Intro\n\nQuoted\n\nOutro", entities: [entity(6, 14, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "ted", to: "Out", text: "ted\n\nOut", offset: 10),
+        Selection(from: "Outro", to: "Outro", text: "Outro", offset: 15),
+    ]),
+    Case(name: "quote inside a line", text: "before quoted after", entities: [entity(7, 13, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "quoted", to: "aft", text: "quoted aft", offset: 7),
+        Selection(from: "fore", to: "quo", text: "fore quo", offset: 2),
+    ]),
+    Case(name: "two quotes in a row", text: "A\nB\nC", entities: [entity(0, 1, .BlockQuote(isCollapsed: false)), entity(2, 3, .BlockQuote(isCollapsed: false)), entity(4, 5, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "A", to: "C", text: "A\nB\nC", offset: 0),
+        Selection(from: "C", to: "C", text: "C", offset: 4),
+    ]),
+    Case(name: "formatted date", text: "Call at 5 please", entities: [entity(8, 9, date)], selections: [
+        Selection(from: "11/14/26, 5:00 PM", to: "11/14/26, 5:00 PM", text: "5", offset: 8),
+        Selection(from: "at", to: "ple", text: "at 5 ple", offset: 5),
+        Selection(from: "5:00", to: "ple", text: "5 ple", offset: 8),
+        Selection(from: "Call", to: "14", text: "Call at 5", offset: 0),
+        Selection(from: "please", to: "please", text: "please", offset: 10),
+    ]),
+    Case(name: "custom emoji one unit long", text: "Done ✅ now", entities: [entity(5, 6, .CustomEmoji(stickerPack: nil, fileId: 1))], selections: [
+        Selection(from: "now", to: "now", text: "now", offset: 7),
+        Selection(from: "Done", to: "now", text: "Done ✅ now", offset: 0, entities: [entity(5, 6, .CustomEmoji(stickerPack: nil, fileId: 1))]),
+    ]),
+    Case(name: "custom emoji four units long", text: "👍🏻 ok 👍🏻 fine", entities: [entity(0, 4, .CustomEmoji(stickerPack: nil, fileId: 2)), entity(8, 12, .CustomEmoji(stickerPack: nil, fileId: 2))], selections: [
+        Selection(from: "ok", to: "ok", text: "ok", offset: 5),
+        Selection(from: "ok", to: "fine", text: "ok 👍🏻 fine", offset: 5, entities: [entity(3, 7, .CustomEmoji(stickerPack: nil, fileId: 2))]),
+    ]),
+    Case(name: "custom emoji next to each other", text: "go ✅✅ now", entities: [entity(3, 4, .CustomEmoji(stickerPack: nil, fileId: 1)), entity(4, 5, .CustomEmoji(stickerPack: nil, fileId: 1))], selections: [
+        Selection(from: "go", to: "now", text: "go ✅✅ now", offset: 0, entities: [entity(3, 4, .CustomEmoji(stickerPack: nil, fileId: 1)), entity(4, 5, .CustomEmoji(stickerPack: nil, fileId: 1))]),
+        Selection(from: "now", to: "now", text: "now", offset: 6),
+    ]),
+    Case(name: "bold before a quote", text: "Intro bold\nQuoted\nOutro", entities: [entity(6, 10, .Bold), entity(11, 17, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "bold", to: "Quo", text: "bold\nQuo", offset: 6, entities: [entity(0, 4, .Bold)]),
+    ]),
+    Case(name: "repeated text after a code block", text: "same\n\ncode\n\nsame", entities: [entity(5, 11, .Pre(language: nil))], selections: [
+        Selection(from: "code\nsame", to: "code\nsame", text: "code\n\nsame", offset: 6),
+    ]),
+    Case(name: "quote ending in a CR LF", text: "Intro\r\nQuoted\r\nOutro", entities: [entity(7, 15, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "ted", to: "Out", text: "ted\r\nOut", offset: 10),
+    ]),
+    Case(name: "quote with line separators at its edges", text: "Intro\u{2028}Quoted\u{2028}Outro", entities: [entity(5, 13, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "ted", to: "Out", text: "ted\u{2028}Out", offset: 9),
+    ]),
+    Case(name: "custom emoji inside a quote", text: "Intro\n\nsay ✅ and 👍🏻\n\nOutro", entities: [entity(6, 23, .BlockQuote(isCollapsed: false)), entity(11, 12, .CustomEmoji(stickerPack: nil, fileId: 1)), entity(17, 21, .CustomEmoji(stickerPack: nil, fileId: 2))], selections: [
+        Selection(from: "and", to: "Out", text: "and 👍🏻\n\nOut", offset: 13, entities: [entity(4, 8, .CustomEmoji(stickerPack: nil, fileId: 2))]),
+    ]),
+    Case(name: "plain text", text: "hello world", entities: [], selections: [
+        Selection(from: "world", to: "world", text: "world", offset: 6),
+        Selection(from: " world", to: " world", text: "world", offset: 6),
+        Selection(from: "o w", to: "o w", text: "o w", offset: 4),
+        Selection(from: "hello ", to: "hello ", text: "hello", offset: 0),
+    ]),
+    Case(name: "repeated text after spaces", text: "ab    ab", entities: [], selections: [
+        Selection(from: "    ab", to: "    ab", text: "ab", offset: 6),
+    ]),
+    Case(name: "line breaks before the selection", text: "first\n\nsecond", entities: [], selections: [
+        Selection(from: "\n\nsec", to: "\n\nsec", text: "sec", offset: 7),
+        Selection(from: "t\n\n", to: "t\n\n", text: "t", offset: 4),
+    ]),
+    Case(name: "a line break the message has before a quote", text: "Intro\n\nQuoted\n\nOutro", entities: [entity(6, 14, .BlockQuote(isCollapsed: false))], selections: [
+        Selection(from: "\nQuo", to: "\nQuo", text: "Quo", offset: 7),
+    ]),
+    Case(name: "spaces before an emoji", text: "👍 hi   🙂 there", entities: [], selections: [
+        Selection(from: "   🙂", to: "the", text: "🙂 the", offset: 8),
+    ]),
+    Case(name: "spaces and a line break before text outside the BMP", text: "𝒳𝒳 \n 𝒴 end", entities: [], selections: [
+        Selection(from: " \n 𝒴", to: "𝒴 e", text: "𝒴 e", offset: 7),
+        Selection(from: "𝒳 \n", to: "𝒳 \n", text: "𝒳", offset: 2),
+    ]),
+    Case(name: "spaces before a custom emoji", text: "go  ✅ now", entities: [entity(4, 5, .CustomEmoji(stickerPack: nil, fileId: 1))], selections: [
+        Selection(from: " 🤡", to: "now", text: "✅ now", offset: 4, entities: [entity(0, 1, .CustomEmoji(stickerPack: nil, fileId: 1))]),
+    ]),
+]
+
+for (item, caption) in cases.flatMap({ item in [(item, false), (item, true)] }) {
+    let message = Message(item.text, item.entities)
+    let string = shown(message, caption: caption)
+    let layout = FoldingTextLayout.make(string)
+    let shownText = string.string as NSString
+    for selection in item.selections {
+        let name = "\(item.name)\(caption ? " (caption)" : ""): \(selection.text.debugDescription)"
+        let start = shownText.range(of: selection.from)
+        let end = start.location == NSNotFound ? start : shownText.range(of: selection.to, options: [], range: NSRange(location: start.location, length: shownText.length - start.location))
+        guard start.location != NSNotFound, end.location != NSNotFound else {
+            check(name, false, "the selection from \(selection.from.debugDescription) to \(selection.to.debugDescription) is not in the shown text \(string.string.debugDescription)")
+            continue
+        }
+        select(layout, from: start.location, to: NSMaxRange(end))
+        guard let result = quote(layout.merged, message) else {
+            check(name, false, "Quote set up no reply")
+            continue
+        }
+        check("\(name) text", result.text == selection.text, "quoted \(result.text.debugDescription)")
+        check("\(name) is in the message", (item.text as NSString).range(of: result.text).location != NSNotFound, "quoted \(result.text.debugDescription), not a part of \(item.text.debugDescription)")
+        check("\(name) offset", result.offset == selection.offset, "offset \(result.offset.map(String.init) ?? "nil"), the quote starts at \(selection.offset) in the message")
+        if let offset = result.offset, !result.text.isEmpty {
+            let at = NSRange(location: offset, length: (result.text as NSString).length)
+            let found = NSMaxRange(at) <= (item.text as NSString).length ? (item.text as NSString).substring(with: at) : "<past the end>"
+            check("\(name) is at its offset", found == result.text, "the message has \(found.debugDescription) at offset \(offset)")
+        }
+        if let entities = selection.entities {
+            check("\(name) entities", result.entities == entities, "entities \(result.entities)")
+        }
+    }
+}
+
+do {
+    let message = Message("Done ✅ now", [entity(5, 6, .CustomEmoji(stickerPack: nil, fileId: 1))])
+    let string = shown(message)
+    let layout = FoldingTextLayout.make(string)
+    select(layout, from: 6, to: string.length)
+    let result = quote(layout.merged, message)
+    check("a selection that starts inside a custom emoji takes the whole emoji", result?.text == "✅ now" && result?.offset == 5, "quoted \(result?.text.debugDescription ?? "nothing") at \(result?.offset.map(String.init) ?? "nil")")
+    checkAtOffset("a selection that starts inside a custom emoji", result, message.text)
+}
+
+do {
+    let message = Message("Intro\nQuoted\nat 5 please", [entity(6, 12, .BlockQuote(isCollapsed: false)), entity(16, 17, .FormattedDate(format: .relative, date: 1794675600))])
+    let string = shown(message)
+    let layout = FoldingTextLayout.make(string)
+    let last = layout.blocks[layout.blocks.count - 1].text
+    let updated = NSMutableAttributedString(attributedString: last.attributedString)
+    var run = NSRange()
+    _ = updated.attribute(TextInputAttributes.formattedDate, at: 3, longestEffectiveRange: &run, in: updated.range)
+    updated.replaceCharacters(in: run, with: NSAttributedString(string: "in 1 minute", attributes: updated.attributes(at: run.location, effectiveRange: nil)))
+    last.setAttributedString(updated)
+    for block in layout.blocks {
+        block.text.selectedRange.range = NSMakeRange(NSNotFound, 0)
+    }
+    layout.blocks[1].text.selectedRange.range = NSMakeRange(3, 3)
+    last.selectedRange.range = NSMakeRange(0, (updated.string as NSString).range(of: "ple").location + 3)
+    let result = quote(layout.merged, message)
+    check("a relative date updated after layout", result?.text == "ted\nat 5 ple" && result?.offset == 9, "quoted \(result?.text.debugDescription ?? "nothing") at \(result?.offset.map(String.init) ?? "nil")")
+    checkAtOffset("a relative date updated after layout", result, message.text)
+}
+
+do {
+    let message = Message("a   b", [])
+    let string = shown(message)
+    let layout = FoldingTextLayout.make(string)
+    select(layout, from: 1, to: 4)
+    let result = quote(layout.merged, message)
+    check("a selection of spaces only: a reply without a quote", replied && result == nil, "replied \(replied), quoted \(result?.text.debugDescription ?? "nothing")")
+}
+
+do {
+    let message = Message("a \u{94D}k", [])
+    let string = shown(message)
+    let layout = FoldingTextLayout.make(string)
+    select(layout, from: 1, to: 4)
+    let result = quote(layout.merged, message)
+    check("a combining mark after a space", result?.text == "\u{94D}k" && result?.offset == 2, "quoted \(result?.text.debugDescription ?? "nothing") at \(result?.offset.map(String.init) ?? "nil")")
+    checkAtOffset("a combining mark after a space", result, message.text)
+}
+
+do {
+    let message = Message("Original text", [])
+    let layout = TextViewLayout(NSAttributedString(string: "A summary"))
+    layout.selectedRange.range = NSMakeRange(2, 7)
+    let result = quote(layout, message)
+    check("text that is not the message's: Quote keeps working", result?.text == "summary", "quoted \(result?.text.debugDescription ?? "nothing")")
+}
+
+do {
+    let message = Message("Call at 5", [entity(8, 12, date)])
+    let string = shown(message)
+    let layout = FoldingTextLayout.make(string)
+    select(layout, from: 0, to: string.length)
+    let result = quote(layout.merged, message)
+    check("a date entity past the end of the text: Quote keeps working", result != nil, "Quote set up no reply")
+}
+
+do {
+    let message = Message("abcdefghij", [])
+    let layout = TextViewLayout(NSAttributedString(string: message.text))
+    layout.selectedRange.range = NSMakeRange(0, 10)
+    _ = quote(layout, message)
+    check("limit: a short quote passes", !alerted, "alerted")
+    let long = String(repeating: "a", count: 1025)
+    let longLayout = TextViewLayout(NSAttributedString(string: long))
+    longLayout.selectedRange.range = NSMakeRange(0, 1025)
+    let result = quote(longLayout, Message(long, []))
+    check("limit: a quote over quote_length_max alerts", alerted && result == nil, "no alert for 1025 characters")
+}
+
+print("\(total - failed)/\(total) checks passed")
+exit(failed == 0 ? 0 : 1)
