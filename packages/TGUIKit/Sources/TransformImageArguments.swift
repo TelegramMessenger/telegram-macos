@@ -50,19 +50,22 @@ public struct ImageCorners: Equatable {
     public let topRight: ImageCorner
     public let bottomLeft: ImageCorner
     public let bottomRight: ImageCorner
+    public let smoothing: CGFloat
     
-    public init(radius: CGFloat) {
+    public init(radius: CGFloat, smoothing: CGFloat = 0.0) {
         self.topLeft = .Corner(radius)
         self.topRight = .Corner(radius)
         self.bottomLeft = .Corner(radius)
         self.bottomRight = .Corner(radius)
+        self.smoothing = smoothing
     }
     
-    public init(topLeft: ImageCorner, topRight: ImageCorner, bottomLeft: ImageCorner, bottomRight: ImageCorner) {
+    public init(topLeft: ImageCorner, topRight: ImageCorner, bottomLeft: ImageCorner, bottomRight: ImageCorner, smoothing: CGFloat = 0.0) {
         self.topLeft = topLeft
         self.topRight = topRight
         self.bottomLeft = bottomLeft
         self.bottomRight = bottomRight
+        self.smoothing = smoothing
     }
     
     public init() {
@@ -78,7 +81,7 @@ public struct ImageCorners: Equatable {
 }
 
 public func ==(lhs: ImageCorners, rhs: ImageCorners) -> Bool {
-    return lhs.topLeft == rhs.topLeft && lhs.topRight == rhs.topRight && lhs.bottomLeft == rhs.bottomLeft && lhs.bottomRight == rhs.bottomRight
+    return lhs.topLeft == rhs.topLeft && lhs.topRight == rhs.topRight && lhs.bottomLeft == rhs.bottomLeft && lhs.bottomRight == rhs.bottomRight && lhs.smoothing == rhs.smoothing
 }
 
 public enum TransformImageResizeMode : Hashable {
@@ -128,6 +131,7 @@ public struct TransformImageArguments: Equatable, Hashable {
         hasher.combine(corners.topRight)
         hasher.combine(corners.bottomLeft)
         hasher.combine(corners.bottomRight)
+        hasher.combine(corners.smoothing)
     }
     
     public var drawingSize: CGSize {

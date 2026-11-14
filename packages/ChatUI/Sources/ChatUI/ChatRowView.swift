@@ -376,6 +376,10 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     
     public let bubbleView = ChatMessageBubbleBackdrop()
 
+    private weak var wallpaperMaterialBackground: BackgroundView?
+    private var wallpaperMaterialMode: TableBackgroundMode?
+    private var wallpaperMaterialSample: (rect: NSRect, sample: ChatBubbleWallpaperMaterialRenderer.Sample)?
+
     private var cutBandViews: [NSView] = []
     
     private var authorVerificationControl: PremiumStatusControl?
@@ -446,7 +450,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         let oldOrigin = self.frame.origin
         super.setFrameOrigin(newOrigin)
         
-        if oldOrigin != newOrigin, oldOrigin == .zero {
+        if oldOrigin != newOrigin, oldOrigin == .zero || (self.item as? ChatRowItem)?.isWallpaperGlass == true {
             updateBackground(animated: false, item: self.item)
         }
     }
@@ -512,6 +516,61 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.2, curve: .easeOut) : .immediate
 
         bubbleView.update(rect: rect.offsetBy(dx: self.bubbleView.frame.minX, dy: inset), within: size, transition: transition, rotated: rotated)
+        if let item = self.item as? ChatRowItem {
+            updateWallpaperMaterial(item)
+        }
+    }
+
+    private func enclosingWallpaperView() -> BackgroundView? {
+        var current: NSView? = self
+        while let view = current {
+            if let chat = view as? ChatControllerView {
+                return chat.backgroundView
+            }
+            current = view.superview
+        }
+        return nil
+    }
+
+    private func updateWallpaperMaterial(_ item: ChatRowItem) {
+        guard item.isWallpaperGlass, let background = enclosingWallpaperView() else {
+            clearWallpaperMaterial()
+            return
+        }
+        let rect = bubbleView.convert(bubbleView.bounds, to: background)
+        guard rect.width > 0, rect.height > 0 else {
+            return
+        }
+        if wallpaperMaterialBackground !== background || wallpaperMaterialMode != background.backgroundMode {
+            wallpaperMaterialBackground = background
+            wallpaperMaterialMode = background.backgroundMode
+            wallpaperMaterialSample = nil
+        }
+        let sample: ChatBubbleWallpaperMaterialRenderer.Sample
+        if let cached = wallpaperMaterialSample, abs(cached.rect.minX - rect.minX) < 8, abs(cached.rect.minY - rect.minY) < 8, abs(cached.rect.width - rect.width) < 1, abs(cached.rect.height - rect.height) < 1 {
+            sample = cached.sample
+        } else if let fresh = ChatBubbleWallpaperMaterialRenderer.shared.sample(for: background, rect: rect) {
+            wallpaperMaterialSample = (rect, fresh)
+            sample = fresh
+        } else {
+            return
+        }
+        let colors = item.presentation.colors
+        let style: ChatBubbleWallpaperMaterial.Style
+        if item.isIncoming {
+            style = ChatBubbleWallpaperMaterial.incomingStyle(colors)
+        } else {
+            style = .outgoing(tint: ChatBubbleWallpaperMaterial.quantized(bubbleView.gradientColor() ?? colors.blendedOutgoingColors))
+        }
+        let luminance = (CGFloat(sample.luminance) * 64).rounded() / 64
+        bubbleView.setWallpaperGlass(ChatBubbleWallpaperMaterial.matrix(style: style, luminance: luminance))
+    }
+
+    private func clearWallpaperMaterial() {
+        bubbleView.setWallpaperGlass(nil)
+        wallpaperMaterialBackground = nil
+        wallpaperMaterialMode = nil
+        wallpaperMaterialSample = nil
     }
       
     var textSelectionSources: ChatTextSelectionSources {
@@ -686,7 +745,8 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             captionView.view.backgroundColor = contentColor
         }
         replyMarkupView?.backgroundColor = backdorColor
-        bubbleView.background = item.presentation.chat.bubbleBackgroundColor(item.isIncoming, item.hasBubble)
+        bubbleView.fill = item.presentation.chat.bubbleBackgroundColor(item.isIncoming, item.hasBubble)
+        updateWallpaperMaterial(item)
 
         if let control = channelCommentsBubbleControl {
             control.set(background: .clear, for: .Normal)
@@ -1970,6 +2030,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         let size = NSMakeSize(26, 26)
         control.setFrameSize(NSMakeSize(floorToScreenPixels(backingScaleFactor, (size.width + 4) * 1.05), floorToScreenPixels(backingScaleFactor, (size.height + 4) * 1.05)))
         control.set(cornerRadius: .half, for: .Normal)
+        updateShareGlass(item, control: control)
 
         control.removeAllHandlers()
         control.set(handler: { [weak item] _ in
@@ -1983,6 +2044,54 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         }, for: .Click)
     }
     
+    private static let shareGlassName = "chat-share-glass"
+
+    private func updateShareGlass(_ item: ChatRowItem, control: ImageButton) {
+        guard let layer = control.layer else {
+            return
+        }
+        let existing = layer.sublayers?.first(where: { $0.name == ChatRowView.shareGlassName })
+        guard item.isWallpaperGlass, let background = enclosingWallpaperView() else {
+            if existing != nil {
+                existing?.removeFromSuperlayer()
+                layer.borderWidth = 0
+            }
+            return
+        }
+        let rect = control.convert(control.bounds, to: background)
+        guard let sample = ChatBubbleWallpaperMaterialRenderer.shared.sample(for: background, rect: rect) else {
+            return
+        }
+        let colors = item.presentation.colors
+        let style = ChatBubbleWallpaperMaterial.incomingStyle(colors)
+        let matrix = ChatBubbleWallpaperMaterial.matrix(style: style, luminance: (CGFloat(sample.luminance) * 64).rounded() / 64)
+        let glass: CALayer
+        if let existing {
+            glass = existing
+        } else {
+            guard let created = ChatBubbleWallpaperMaterial.makeGlassLayer() else {
+                return
+            }
+            created.name = ChatRowView.shareGlassName
+            layer.insertSublayer(created, at: 0)
+            glass = created
+        }
+        control.blurBackground = nil
+        control.set(background: .clear, for: .Normal)
+        control.backgroundColor = .clear
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        glass.frame = control.bounds
+        layer.cornerRadius = control.bounds.height / 2
+        layer.masksToBounds = true
+        layer.borderWidth = 1
+        layer.borderColor = ChatBubbleWallpaperMaterial.incomingOutlineColor(dark: colors.isDark).cgColor
+        CATransaction.commit()
+        ChatBubbleWallpaperMaterial.applyGlassMatrix(matrix, to: glass)
+        let icon = item.hasSource ? item.presentation.chat.chat_goto_message_bubble(theme: item.presentation) : item.presentation.chat.chat_share_bubble(theme: item.presentation)
+        control.set(image: ChatBubbleWallpaperMaterial.tinted(icon, ChatBubbleWallpaperMaterial.glassGlyphColor(dark: colors.isDark)), for: .Normal)
+    }
+
     public func fillReactions(_ item: ChatRowItem, animated: Bool) {
         if let reactionsLayout = item.reactionsLayout  {
             if reactionsView == nil {
@@ -2131,7 +2240,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
                     }
                 }
                 if usesAdminBadgeNode(item) {
-                    (rowView as? ChatLayerRowView)?.updateAdminBadge(item.adminBadge, origin: adminBadgePoint(item), background: item.adminBadgeIsRank ? item.adminBadgeColor : nil, backgroundFrame: adminBadgeBgRect(item), interactive: item.adminBadgeAuthorId != nil, animated: animated, action: { [weak item, weak self] in
+                    (rowView as? ChatLayerRowView)?.updateAdminBadge(item.adminBadge, origin: adminBadgePoint(item), background: item.adminBadgeIsRank ? item.adminBadgeColor.map { item.isWallpaperGlass && item.isIncoming ? ChatBubbleWallpaperMaterial.frostedFill($0) : $0.withAlphaComponent(0.2) } : nil, backgroundFrame: adminBadgeBgRect(item), interactive: item.adminBadgeAuthorId != nil, animated: animated, action: { [weak item, weak self] in
                         guard let self else { return }
                         item?.adminBadgeInteraction(self.rowView)
                     })
@@ -2278,7 +2387,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
     
     private func renderLayoutType(_ item: ChatRowItem, animated: Bool) {
         if item.isBubbled, item.hasBubble {
-            bubbleView.setType(image: item.bubbleImage, border: nil, background: item.isIncoming ? item.presentation.icons.chatGradientBubble_incoming : item.presentation.icons.chatGradientBubble_outgoing)
+            bubbleView.setType(image: item.bubbleImage, border: item.wallpaperGlassBorder, background: item.isIncoming ? item.presentation.icons.chatGradientBubble_incoming : item.presentation.icons.chatGradientBubble_outgoing)
         } else {
             bubbleView.setType(image: nil, border: nil, background: item.isIncoming ? item.presentation.icons.chatGradientBubble_incoming : item.presentation.icons.chatGradientBubble_outgoing)
         }
@@ -2837,6 +2946,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         updateInteractionObserver(window == nil ? nil : (item as? ChatRowItem)?.chatInteraction)
         if window != nil {
             replyHost?.imageLayer?.hostDidMoveToWindow()
+            if let item = item as? ChatRowItem, item.isWallpaperGlass {
+                updateBackground(animated: false, item: item)
+            }
         }
 
     }

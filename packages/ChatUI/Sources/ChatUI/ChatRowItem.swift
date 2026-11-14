@@ -197,9 +197,9 @@ public class ChatRowItem: TableRowItem {
             if message.adAttribute != nil, let author = message.author {
                 nameColor = context.peerNameColors.get(author.namePeerColor ?? .blue).main
             }
-            return nameColor
+            return wallpaperGlassLegible(nameColor)
         }
-        return presentation.chat.linkColor(isIncoming, entry.renderType == .bubble)
+        return wallpaperGlassLegible(presentation.chat.linkColor(isIncoming, entry.renderType == .bubble))
     }
     
     public var forwardNameColor: NSColor {
@@ -217,9 +217,9 @@ public class ChatRowItem: TableRowItem {
             if message.adAttribute != nil, let author = message.author {
                 nameColor = context.peerNameColors.get(author.namePeerColor ?? .blue).main
             }
-            return nameColor
+            return wallpaperGlassLegible(nameColor)
         }
-        return presentation.chat.linkColor(isIncoming, entry.renderType == .bubble)
+        return wallpaperGlassLegible(presentation.chat.linkColor(isIncoming, entry.renderType == .bubble))
     }
 
 
@@ -1594,11 +1594,44 @@ public class ChatRowItem: TableRowItem {
         return messageBubbleCorners(incoming: isIncoming, neighbors: neighbors, inset: inset)
     }
 
+    private var bubbleShapeSize: CGSize? {
+        return bubbleFrame.size
+    }
+
     public var bubbleImage:(CGImage, NSEdgeInsets)? {
         guard let neighbors = bubbleNeighbors else {
             return nil
         }
-        return messageBubbleMaskImage(incoming: isIncoming, neighbors: neighbors)
+        return messageBubbleMaskImage(incoming: isIncoming, neighbors: neighbors, fitting: bubbleShapeSize)
+    }
+
+    var isWallpaperGlass: Bool {
+        return isBubbled && ChatBubbleWallpaperMaterial.isActive(presentation, hasBubble: hasBubble, liteGlass: context.isLite(.glassBubbles))
+    }
+
+    var isDarkWallpaperGlass: Bool {
+        return isWallpaperGlass && presentation.colors.isDark
+    }
+
+    var wallpaperGlassBorder: (CGImage, NSEdgeInsets)? {
+        guard isIncoming, isWallpaperGlass, let neighbors = bubbleNeighbors else {
+            return nil
+        }
+        return messageBubbleImageModern(incoming: true, fillColor: .clear, strokeColor: ChatBubbleWallpaperMaterial.incomingOutlineColor(dark: presentation.colors.isDark), neighbors: neighbors, fitting: bubbleShapeSize)
+    }
+
+    func wallpaperGlassReplyColors(_ colors: PeerNameColors.Colors) -> PeerNameColors.Colors {
+        guard isDarkWallpaperGlass else {
+            return colors
+        }
+        return PeerNameColors.Colors(main: wallpaperGlassLegible(colors.main), secondary: colors.secondary, tertiary: colors.tertiary)
+    }
+
+    func wallpaperGlassLegible(_ color: NSColor) -> NSColor {
+        guard isIncoming, isDarkWallpaperGlass else {
+            return color
+        }
+        return ChatBubbleWallpaperMaterial.legible(color, on: ChatBubbleWallpaperMaterial.incomingGlassReference)
     }
 
     public let downloadSettings: AutomaticMediaDownloadSettings
@@ -1883,7 +1916,7 @@ public class ChatRowItem: TableRowItem {
             let reactionMessageAction = self.reactionMessageAction
             let origin = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : chatInteraction.captureAnalyticsContext(sourcePeerId: message.id.peerId)
             if let reactions = reactions, !reactions.reactions.isEmpty, let available = context.reactions.available {
-                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), canSendReactions: reactionPermission, sendStars: {
+                let layout = ChatReactionsLayout(context: chatInteraction.interactionContext, message: message, available: available, peerAllowed: chatInteraction.presentation.allowedReactions, savedMessageTags: entry.additionalData.savedMessageTags, engine: chatInteraction.interactionContext.reactions, theme: presentation, renderType: renderType, currentTag: currentTag, isIncoming: isIncoming, isOutOfBounds: isBubbleFullFilled && (self.captionLayouts.isEmpty || invertMedia) && (commentsBubbleData == nil || !invertMedia), hasWallpaper: presentation.hasWallpaper, frosted: isDarkWallpaperGlass, stateOverlayTextColor: isStateOverlayLayout ? stateOverlayTextColor : (!hasBubble ? presentation.colors.grayText : presentation.chat.grayText(isIncoming, entry.renderType == .bubble)), canSendReactions: reactionPermission, sendStars: {
                     reactionMessageAction { current in
                         context.reactions.sendStarsReaction(current.id, count: 1)
                     }
@@ -2547,7 +2580,7 @@ public class ChatRowItem: TableRowItem {
                             case .none:
                                 badgeColor = !hasBubble ? theme.colors.grayText : theme.chat.grayText(isIncoming, object.renderType == .bubble)
                             }
-                            badge = .initialize(string: " " + rank, color: badgeColor, font: .normal(.short))
+                            badge = .initialize(string: " " + rank, color: isIncoming && theme.colors.isDark && ChatBubbleWallpaperMaterial.isActive(theme, hasBubble: isBubbled && hasBubble, liteGlass: context.isLite(.glassBubbles)) ? ChatBubbleWallpaperMaterial.legible(badgeColor, on: ChatBubbleWallpaperMaterial.incomingGlassReference) : badgeColor, font: .normal(.short))
                             self.adminBadgeIsRank = rankType != .none
                             self.adminBadgeRankType = rankType
                             self.adminBadgeColor = rankType != .none ? badgeColor : nil
@@ -2809,7 +2842,7 @@ public class ChatRowItem: TableRowItem {
                 let formatterEdited = DateSelectorUtil.chatFullDateFormatter
                 fullDate = "\(fullDate) (\(formatterEdited.string(from: Date(timeIntervalSince1970: TimeInterval(forwardInfo.date)))))"
             }
-            let replyPresentation = { [self] in ChatAccessoryPresentation(background: hasBubble ? theme.chat.backgroundColor(isIncoming, object.renderType == .bubble) : isBubbled ?  theme.colors.grayForeground : theme.colors.background, colors: theme.chat.replyTitle(self), enabledText: theme.chat.replyText(self), disabledText: theme.chat.replyDisabledText(self), quoteIcon: theme.chat.replyQuote(self), pattern: theme.chat.replyPattern(self), giftEmojiFileId: theme.chat.replyGiftEmojiId(self), app: theme) }
+            let replyPresentation = { [self] in ChatAccessoryPresentation(background: hasBubble ? theme.chat.backgroundColor(isIncoming, object.renderType == .bubble) : isBubbled ?  theme.colors.grayForeground : theme.colors.background, colors: self.wallpaperGlassReplyColors(theme.chat.replyTitle(self)), enabledText: theme.chat.replyText(self), disabledText: theme.chat.replyDisabledText(self), quoteIcon: theme.chat.replyQuote(self), pattern: theme.chat.replyPattern(self), giftEmojiFileId: theme.chat.replyGiftEmojiId(self), app: theme, frosted: self.isIncoming && self.isDarkWallpaperGlass) }
 
             let referencesPending = context.account.viewTracker.pendingMessageReferences.hasLoadingReferences(messageId: message.id)
             for attribute in message.attributes {

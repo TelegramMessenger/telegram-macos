@@ -425,7 +425,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
     private var appliedCorners: ImageCorners?
 
     private func mediaCorners(_ positionFlags: LayoutPositionFlags?, _ parameters: ChatMediaLayoutParameters?) -> ImageCorners {
-        return .chatMedia(positionFlags, bubble: parameters?.bubbleCorners(), inner: squareCorners ? 0 : .cornerRadius)
+        return .chatMedia(positionFlags, bubble: parameters?.bubbleCorners(), inner: squareCorners ? 0 : .cornerRadius, flat: parameters?.flatSides ?? [])
     }
 
     private lazy var image = ChatMediaImageHost(owner: self)
