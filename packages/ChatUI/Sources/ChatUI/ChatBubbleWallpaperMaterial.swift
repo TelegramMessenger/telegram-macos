@@ -105,8 +105,8 @@ final class ChatBubbleWallpaperMaterial {
         return context.makeImage() ?? image
     }
 
-    static func isActive(_ presentation: TelegramPresentationTheme, hasBubble: Bool, liteBlur: Bool) -> Bool {
-        return isSupported && hasBubble && presentation.bubbled && presentation.liquidGlass && !liteBlur && presentation.hasWallpaper
+    static func isActive(_ presentation: TelegramPresentationTheme, hasBubble: Bool, liteGlass: Bool) -> Bool {
+        return isSupported && hasBubble && presentation.bubbled && presentation.liquidGlass && !liteGlass && presentation.hasWallpaper
     }
 
 

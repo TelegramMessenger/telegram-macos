@@ -1606,7 +1606,7 @@ public class ChatRowItem: TableRowItem {
     }
 
     var isWallpaperGlass: Bool {
-        return isBubbled && ChatBubbleWallpaperMaterial.isActive(presentation, hasBubble: hasBubble, liteBlur: context.isLite(.blur) || context.isLite(.glassBubbles))
+        return isBubbled && ChatBubbleWallpaperMaterial.isActive(presentation, hasBubble: hasBubble, liteGlass: context.isLite(.glassBubbles))
     }
 
     var isDarkWallpaperGlass: Bool {
@@ -2580,7 +2580,7 @@ public class ChatRowItem: TableRowItem {
                             case .none:
                                 badgeColor = !hasBubble ? theme.colors.grayText : theme.chat.grayText(isIncoming, object.renderType == .bubble)
                             }
-                            badge = .initialize(string: " " + rank, color: isIncoming && theme.colors.isDark && ChatBubbleWallpaperMaterial.isActive(theme, hasBubble: isBubbled && hasBubble, liteBlur: context.isLite(.blur) || context.isLite(.glassBubbles)) ? ChatBubbleWallpaperMaterial.legible(badgeColor, on: ChatBubbleWallpaperMaterial.incomingGlassReference) : badgeColor, font: .normal(.short))
+                            badge = .initialize(string: " " + rank, color: isIncoming && theme.colors.isDark && ChatBubbleWallpaperMaterial.isActive(theme, hasBubble: isBubbled && hasBubble, liteGlass: context.isLite(.glassBubbles)) ? ChatBubbleWallpaperMaterial.legible(badgeColor, on: ChatBubbleWallpaperMaterial.incomingGlassReference) : badgeColor, font: .normal(.short))
                             self.adminBadgeIsRank = rankType != .none
                             self.adminBadgeRankType = rankType
                             self.adminBadgeColor = rankType != .none ? badgeColor : nil
