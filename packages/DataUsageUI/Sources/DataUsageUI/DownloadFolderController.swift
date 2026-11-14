@@ -77,7 +77,9 @@ func DownloadFolderController(context: any AccountContextProtocol, settings: Aut
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
-    let controller = InputDataController(dataSignal: signal, title: strings().dataAndStorageDownloadFolder)
+    let controller = InputDataController(dataSignal: signal, title: strings().dataAndStorageDownloadFolder, validateData: { _ in
+        return .success(.navigationBack)
+    })
     getController = { [weak controller] in
         return controller
     }
