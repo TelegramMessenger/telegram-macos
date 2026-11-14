@@ -1,0 +1,288 @@
+import AppKit
+
+__INPUT_ATTRIBUTES__
+
+final class TextInputTextQuoteAttribute: NSObject {}
+
+__UNDO_ITEM__
+
+__ENTER__
+
+protocol ChatInputTextViewDelegate: AnyObject {
+    func inputViewIsEnabled(_ event: NSEvent) -> Bool
+    func inputViewProcessEnter(_ theEvent: NSEvent) -> Bool
+    func inputViewMaybeClosed() -> Bool
+    func chatInputTextViewDidUpdateText()
+}
+
+__LISTS__
+
+final class InputTextView: NSTextView {
+    weak var customDelegate: ChatInputTextViewDelegate?
+__PROPERTIES__
+    var isAutomaticBulletListEnabled = true
+    var isAutomaticNumberedListEnabled = true
+    var isAutomaticDashConversionEnabled = true
+    var shouldUpdateLayout: (() -> Void)?
+
+    func updateTextContainerInset() {}
+
+    __ADD_UNDO__
+
+    __REMOVE_UNDO__
+
+    __TYPING__
+}
+
+final class Composer: NSObject, NSTextViewDelegate, ChatInputTextViewDelegate {
+    let textView: InputTextView
+    weak var delegate: ChatInputTextViewDelegate?
+    var selectionChangedForEditedText = false
+    var sent = 0
+
+    init(window: NSWindow) {
+        let storage = NSTextStorage()
+        let layout = NSLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(size: CGSize(width: 400, height: 100000))
+        layout.addTextContainer(container)
+        self.textView = InputTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        super.init()
+        self.textView.isRichText = false
+        self.textView.allowsUndo = true
+        self.textView.isAutomaticDashSubstitutionEnabled = false
+        self.textView.isAutomaticQuoteSubstitutionEnabled = false
+        self.textView.isAutomaticTextReplacementEnabled = false
+        self.textView.isAutomaticSpellingCorrectionEnabled = false
+        self.textView.isContinuousSpellCheckingEnabled = false
+        self.textView.delegate = self
+        self.textView.customDelegate = self
+        self.delegate = self
+        window.contentView?.subviews.forEach { $0.removeFromSuperview() }
+        window.contentView?.addSubview(self.textView)
+        window.makeFirstResponder(self.textView)
+    }
+
+    func updatePlaceholder(animated: Bool) {}
+
+    __TEXT_DID_CHANGE__
+
+    func inputViewIsEnabled(_ event: NSEvent) -> Bool { true }
+    func inputViewProcessEnter(_ theEvent: NSEvent) -> Bool {
+        if theEvent.modifierFlags.contains(.shift) {
+            return false
+        }
+        self.sent += 1
+        return true
+    }
+    func inputViewMaybeClosed() -> Bool { false }
+    func chatInputTextViewDidUpdateText() {}
+
+    var text: String { self.textView.string }
+
+    func set(_ text: NSAttributedString) {
+        self.textView.textStorage?.setAttributedString(text)
+        self.textView.setSelectedRange(NSMakeRange(text.length, 0))
+    }
+
+    func key(_ characters: String, code: UInt16, shift: Bool = false) {
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: self.textView.window?.windowNumber ?? 0, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!
+        self.textView.keyDown(with: event)
+    }
+
+    func type(_ text: String) {
+        for character in text {
+            switch character {
+            case "\n":
+                self.key("\r", code: 36, shift: true)
+            case "⌫":
+                self.key("\u{7f}", code: 51)
+            default:
+                let string = String(character)
+                let code = keyCodes[Character(string.lowercased())] ?? 0
+                self.key(string, code: code, shift: string != string.lowercased())
+            }
+        }
+    }
+
+    func insert(_ text: String) {
+        self.textView.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    func keys(in range: NSRange) -> Set<NSAttributedString.Key> {
+        var keys = Set<NSAttributedString.Key>()
+        guard let storage = self.textView.textStorage, range.length > 0, NSMaxRange(range) <= storage.length else {
+            return keys
+        }
+        storage.enumerateAttributes(in: range, options: []) { attributes, _, _ in
+            for key in attributes.keys where key.rawValue.hasPrefix("Attribute__") {
+                keys.insert(key)
+            }
+        }
+        return keys
+    }
+}
+
+let keyCodes: [Character: UInt16] = [
+    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
+    "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+    "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35, "l": 37, "j": 38, "'": 39, "k": 40, ";": 41, "\\": 42, ",": 43,
+    "/": 44, "n": 45, "m": 46, ".": 47, " ": 49, "`": 50, ":": 41
+]
+
+func styled(_ parts: [(String, [NSAttributedString.Key: Any])]) -> NSAttributedString {
+    let result = NSMutableAttributedString()
+    for (text, attributes) in parts {
+        result.append(NSAttributedString(string: text, attributes: attributes))
+    }
+    return result
+}
+
+struct Case {
+    let name: String
+    let run: (Composer) -> String?
+}
+
+func typed(_ name: String, _ input: String, _ expected: String) -> Case {
+    return Case(name: name) { composer in
+        composer.type(input)
+        return composer.text == expected ? nil : "expected \(expected.debugDescription), got \(composer.text.debugDescription)"
+    }
+}
+
+func continued(_ name: String, _ parts: [(String, [NSAttributedString.Key: Any])], then input: String, expected: String, carries: Set<NSAttributedString.Key>) -> Case {
+    return Case(name: name) { composer in
+        let start = styled(parts)
+        composer.set(start)
+        composer.type(input)
+        guard composer.text == expected else {
+            return "expected \(expected.debugDescription), got \(composer.text.debugDescription)"
+        }
+        let added = composer.keys(in: NSMakeRange(start.length, (composer.text as NSString).length - start.length))
+        return added == carries ? nil : "the new item has \(added.map(\.rawValue).sorted()), expected \(carries.map(\.rawValue).sorted())"
+    }
+}
+
+let link = [TextInputAttributes.textUrl: "https://example.com" as NSString] as [NSAttributedString.Key: Any]
+let codeBlock = "```\nnpm install --save-dev typescript\n- item\n```"
+
+let cases: [Case] = [
+    typed("plain text: -- still becomes a dash", "a -- b", "a — b"),
+    typed("plain text: - at a line start still becomes a bullet", "- item", "• item"),
+    typed("plain text: --- becomes a dash and a hyphen", "a---b", "a—-b"),
+    typed("plain text: a hyphen inside a line stays", "a - b", "a - b"),
+    typed("plain text: a bullet list continues on shift-return", "- one\ntwo", "• one\n• two"),
+    typed("plain text: a numbered list continues on shift-return", "1. one\ntwo", "1. one\n2. two"),
+    typed("plain text: an empty bullet ends the list", "- one\n\nafter", "• one\nafter"),
+    typed("code block: the typed block keeps -- and - item", codeBlock, codeBlock),
+    typed("code block with a language keeps --", "```bash\nnpm i --save-dev x\n```", "```bash\nnpm i --save-dev x\n```"),
+    typed("code block opened with four backticks keeps --", "````\na --b", "````\na --b"),
+    typed("code block: a numbered line does not continue", "```\n1. step\n2. next\n```", "```\n1. step\n2. next\n```"),
+    typed("code block: a line with one backtick stays in the block", "```\na ` b\nc --d", "```\na ` b\nc --d"),
+    typed("code block opened on a later line keeps --", "x\n```\na --b", "x\n```\na --b"),
+    typed("code block opened after a tab keeps --", "a\t```\nb --c", "a\t```\nb --c"),
+    typed("a list item that opens a block does not continue into it", "- ```\ncode -- x", "• ```\ncode -- x"),
+    typed("after a closed block -- becomes a dash again", "```x```\na -- b", "```x```\na — b"),
+    typed("a backtick inside a closed block does not open inline code", "```a `b``` c -- d", "```a `b``` c — d"),
+    typed("after a closed block a list works again", "```x```\n- a\nb", "```x```\n• a\n• b"),
+    typed("inline code keeps --, text after it gets a dash", "run `npm i --save-dev x` now -- ok", "run `npm i --save-dev x` now — ok"),
+    typed("inline code ends at a line break", "`a\nb -- c", "`a\nb — c"),
+    Case(name: "inline code ends at a pasted line separator") { composer in
+        composer.set(NSAttributedString(string: "`a\u{2028}"))
+        composer.type("b -- c")
+        return composer.text == "`a\u{2028}b — c" ? nil : "got \(composer.text.debugDescription)"
+    },
+    typed("a backtick inside a word does not open code", "it`s -- ok", "it`s — ok"),
+    typed("backticks inside a word do not open a block", "x```y --z", "x```y —z"),
+    Case(name: "inline code attribute keeps --") { composer in
+        composer.textView.typingAttributes[TextInputAttributes.monospace] = true as NSNumber
+        composer.type("a--b")
+        return composer.text == "a--b" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "code block attribute keeps -- and - ") { composer in
+        composer.set(styled([("x\n", [TextInputAttributes.code: "" as NSString])]))
+        composer.textView.typingAttributes[TextInputAttributes.code] = "" as NSString
+        composer.type("a--b\n- c")
+        return composer.text == "x\na--b\n- c" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "code block attribute: a list line does not continue") { composer in
+        composer.set(styled([("- a", [TextInputAttributes.code: "" as NSString])]))
+        composer.type("\nb")
+        return composer.text == "- a\nb" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "deleting after a pasted a--b leaves a--") { composer in
+        composer.set(NSAttributedString(string: "a--b"))
+        composer.type("⌫")
+        return composer.text == "a--" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "deleting after a pasted - x leaves - ") { composer in
+        composer.set(NSAttributedString(string: "- x"))
+        composer.type("⌫")
+        return composer.text == "- " ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "deleting inside a code block leaves --") { composer in
+        composer.set(NSAttributedString(string: "```\nnpm i --x"))
+        composer.type("⌫")
+        return composer.text == "```\nnpm i --" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "a hyphen typed earlier does not make a later Delete convert") { composer in
+        composer.type("x-")
+        composer.set(NSAttributedString(string: "a--b"))
+        composer.type("⌫")
+        return composer.text == "a--" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "a hyphen inserted as attributed text still converts") { composer in
+        composer.type("a-")
+        composer.textView.insertText(NSAttributedString(string: "-"), replacementRange: NSRange(location: NSNotFound, length: 0))
+        return composer.text == "a—" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "a hyphen committed from marked text still converts") { composer in
+        composer.type("a-")
+        composer.textView.setMarkedText("-", selectedRange: NSMakeRange(1, 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        composer.textView.insertText("-", replacementRange: NSRange(location: NSNotFound, length: 0))
+        return composer.text == "a—" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "a hyphen typed over a selection still converts") { composer in
+        composer.set(NSAttributedString(string: "a-x"))
+        composer.textView.setSelectedRange(NSMakeRange(2, 1))
+        composer.type("-")
+        return composer.text == "a—" ? nil : "got \(composer.text.debugDescription)"
+    },
+    Case(name: "inserting several characters at once does not convert") { composer in
+        composer.insert("a --")
+        return composer.text == "a --" ? nil : "got \(composer.text.debugDescription)"
+    },
+    continued("a link at the end of an item stays in that item", [("• see ", [:]), ("site", link)], then: "\nnext", expected: "• see site\n• next", carries: []),
+    continued("a mention at the end of an item stays in that item", [("• ask ", [:]), ("Bob", [TextInputAttributes.textMention: NSObject()])], then: "\nnext", expected: "• ask Bob\n• next", carries: []),
+    continued("a spoiler at the end of an item stays in that item", [("• ", [:]), ("secret", [TextInputAttributes.spoiler: true as NSNumber])], then: "\nnext", expected: "• secret\n• next", carries: []),
+    continued("a custom emoji at the end of an item stays in that item", [("• ok ", [:]), ("🙂", [TextInputAttributes.customEmoji: NSObject()])], then: "\nnext", expected: "• ok 🙂\n• next", carries: []),
+    continued("a date at the end of an item stays in that item", [("• on ", [:]), ("May 5", [TextInputAttributes.formattedDate: NSObject()])], then: "\nnext", expected: "• on May 5\n• next", carries: []),
+    continued("inline code at the end of an item stays in that item", [("• run ", [:]), ("npm", [TextInputAttributes.monospace: true as NSNumber])], then: "\nnext\nlast", expected: "• run npm\n• next\n• last", carries: []),
+    continued("a code block attribute at the end of an item stays in that item", [("• run ", [:]), ("x", [TextInputAttributes.code: "" as NSString])], then: "\nnext", expected: "• run x\n• next", carries: []),
+    continued("a link at the end of a numbered item stays in that item", [("1. see ", [:]), ("site", link)], then: "\nnext", expected: "1. see site\n2. next", carries: []),
+    continued("a link at the end of a - item stays in that item", [("- see ", [:]), ("site", link)], then: "\nnext", expected: "- see site\n- next", carries: []),
+    continued("bold at the end of an item still carries on", [("• ", [:]), ("bold", [TextInputAttributes.bold: true as NSNumber])], then: "\n", expected: "• bold\n• ", carries: [TextInputAttributes.bold]),
+    continued("a quote still carries on to the next item", [("• in quote", [TextInputAttributes.quote: TextInputTextQuoteAttribute()])], then: "\n", expected: "• in quote\n• ", carries: [TextInputAttributes.quote]),
+]
+
+_ = NSApplication.shared
+NSApp.setActivationPolicy(.prohibited)
+let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+let show = __SHOW__
+
+var failed = 0
+for item in cases {
+    let composer = Composer(window: window)
+    let failure = item.run(composer)
+    if let failure = failure {
+        failed += 1
+        print("FAIL \(item.name): \(failure)")
+    } else {
+        print("PASS \(item.name)")
+    }
+    if show {
+        print("     text: \(composer.text.debugDescription), sent: \(composer.sent)")
+    }
+}
+print("\(cases.count - failed)/\(cases.count) passed")
+exit(failed == 0 ? 0 : 1)
