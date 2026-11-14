@@ -1,0 +1,143 @@
+final class TestDisposable {
+    private var action: (() -> Void)?
+    init(_ action: @escaping () -> Void = {}) { self.action = action }
+    func dispose() { let action = self.action; self.action = nil; action?() }
+}
+final class MetaDisposable {
+    private var current: TestDisposable?
+    private var disposed = false
+    func set(_ value: TestDisposable) { if disposed { value.dispose() } else { current?.dispose(); current = value } }
+    func dispose() { disposed = true; current?.dispose(); current = nil }
+}
+enum NoError: Error {}
+struct Signal<Value, Failure: Error> {
+    let subscribe: (@escaping (Value) -> Void) -> TestDisposable
+    static func single(_ value: Value) -> Self { Self { next in next(value); return TestDisposable() } }
+    func start(next: @escaping (Value) -> Void) -> TestDisposable { subscribe(next) }
+}
+infix operator |> : AdditionPrecedence
+func |> <A, B>(value: A, transform: (A) -> B) -> B { transform(value) }
+func map<A, B, E>(_ f: @escaping (A) -> B) -> (Signal<A, E>) -> Signal<B, E> { { signal in Signal { next in signal.start { next(f($0)) } } } }
+func mapToSignal<A, B, E>(_ f: @escaping (A) -> Signal<B, E>) -> (Signal<A, E>) -> Signal<B, E> {
+    { signal in Signal { next in
+        var current: TestDisposable?
+        var generation = 0
+        let outer = signal.start { value in
+            generation += 1
+            let expected = generation
+            current?.dispose()
+            current = f(value).start { value in if generation == expected { next(value) } }
+        }
+        return TestDisposable { generation += 1; current?.dispose(); outer.dispose() }
+    } }
+}
+func take<A, E>(_ count: Int) -> (Signal<A, E>) -> Signal<A, E> {
+    { signal in Signal { next in
+        var remaining = count
+        var disposable: TestDisposable?
+        disposable = signal.start { value in
+            guard remaining > 0 else { return }
+            remaining -= 1; next(value)
+            if remaining == 0 { disposable?.dispose() }
+        }
+        if remaining == 0 { disposable?.dispose() }
+        return disposable!
+    } }
+}
+func then<A, E>(_ nextSignal: Signal<A, E>) -> (Signal<A, E>) -> Signal<A, E> {
+    { signal in Signal { next in
+        let first = signal.start(next: next)
+        let second = nextSignal.start(next: next)
+        return TestDisposable { first.dispose(); second.dispose() }
+    } }
+}
+func combineLatest<A, B, E>(_ first: Signal<A, E>, _ second: Signal<B, E>) -> Signal<(A, B), E> {
+    Signal { next in
+        var a: A?; var b: B?
+        let one = first.start { value in a = value; if let b { next((value, b)) } }
+        let two = second.start { value in b = value; if let a { next((a, value)) } }
+        return TestDisposable { one.dispose(); two.dispose() }
+    }
+}
+func deliverOnMainQueue<A, E>(_ signal: Signal<A, E>) -> Signal<A, E> { signal }
+class Atomic<T> { var value: T; init(value: T) { self.value = value }; func swap(_ value: T) -> T { let old = self.value; self.value = value; return old }; func with<R>(_ f: (T) -> R) -> R { f(value) } }
+struct Snapshot { let peer: Peer; let folders: SearchPeerFolderState }
+enum PeerViewComponents { case groupId }
+enum PreferencesKeys: Hashable { case globalNotifications, chatListFilters }
+enum PostboxViewKey {
+    case peer(peerId: PeerId, components: [PeerViewComponents])
+    case chatListIndex(id: PeerId)
+    case combinedReadState(peerId: PeerId, handleThreads: Bool)
+    case historyTagSummaryView(tag: Tag, peerId: PeerId, threadId: Int?, namespace: Int, customTag: Int?)
+    case pendingMessageActionsSummary(type: PendingMessageActionType, peerId: PeerId, namespace: Int)
+    case preferences(keys: Set<PreferencesKeys>)
+}
+enum PeerChatListInclusion: Equatable {
+    case notIncluded
+    case ifHasMessagesOrOneOf(groupId: PeerGroupId, pinningIndex: UInt16?, minTimestamp: Int32?)
+}
+enum OperationLogTags { static let SynchronizeGroupedPeers = 1 }
+enum OperationIndex { case automatic }
+struct SynchronizeGroupedPeersOperation { let peerId: PeerId; let groupId: PeerGroupId }
+final class Transaction {
+    var peers: [PeerId: Peer] = [:]
+    var inclusions: [PeerId: PeerChatListInclusion] = [:]
+    var changes: [(PeerId, PeerChatListInclusion)] = []
+    var operations: [SynchronizeGroupedPeersOperation] = []
+    func getPeer(_ id: PeerId) -> Peer? { peers[id] }
+    func getPeerChatListInclusion(_ id: PeerId) -> PeerChatListInclusion { inclusions[id] ?? .notIncluded }
+    func updatePeerChatListInclusion(_ id: PeerId, inclusion: PeerChatListInclusion) { inclusions[id] = inclusion; changes.append((id, inclusion)) }
+    func operationLogAddEntry(peerId: PeerId, tag: Int, tagLocalIndex: OperationIndex, tagMergedIndex: OperationIndex, contents: SynchronizeGroupedPeersOperation) { operations.append(contents) }
+}
+public final class TestPostbox {
+    weak var context: Context?
+    let store = Transaction()
+    var beforeTransaction: (() -> Void)?
+    var combinedRequests = 0
+    var emitInitial = true
+    var holdSnapshots = false
+    var snapshotRequests = 0
+    var observers: [UUID: (Int) -> Void] = [:]
+    var pendingSnapshots: [UUID: () -> Void] = [:]
+    func combinedView(keys: [PostboxViewKey]) -> Signal<Int, NoError> {
+        combinedRequests += 1
+        return Signal { [self] next in
+            let id = UUID(); observers[id] = next
+            if emitInitial { next(0) }
+            return TestDisposable { [weak self] in self?.observers.removeValue(forKey: id) }
+        }
+    }
+    func emit() { for next in Array(observers.values) { next(0) } }
+    func flushSnapshots() { let callbacks = Array(pendingSnapshots.values); pendingSnapshots.removeAll(); callbacks.forEach { $0() } }
+    func transaction<T>(_ f: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        Signal { [self] next in beforeTransaction?(); next(f(store)); return TestDisposable() }
+    }
+}
+public class Account { let postbox = TestPostbox() }
+public struct Limits { var dialog_filters_chats_limit_default = 2; var dialog_filters_chats_limit_premium = 4 }
+public protocol AccountContextProtocol: AnyObject { var account: Account { get }; var isFrozen: Bool { get }; var isPremium: Bool { get }; var premiumLimits: Limits { get }; var engine: Engine { get }; var window: Int { get } }
+final class Context: AccountContextProtocol {
+    let account = Account(); var isFrozen = false; var isPremium = false; var premiumLimits = Limits(); let engine = Engine(); var window = 0
+    var state = SearchPeerFolderState(groupId: .root, isMuted: false, isUnread: false, isContact: false, hasUnreadMention: false, communityCategories: [:]) { didSet { account.postbox.emit() } }
+    init() { account.postbox.context = self; engine.peers.changed = { [weak self] in self?.account.postbox.emit() } }
+}
+public class Engine { let peers = EnginePeers() }
+class EnginePeers {
+    var list: [ChatListFilter] = [] { didSet { changed?() } }
+    var updates = 0; var beforeUpdate: (() -> Void)?; var changed: (() -> Void)?
+    func currentChatListFilters() -> Signal<[ChatListFilter], NoError> { .single(list) }
+    func updateChatListFiltersInteractively(_ update: @escaping ([ChatListFilter]) -> [ChatListFilter]) -> Signal<[ChatListFilter], NoError> {
+        Signal { [self] next in beforeUpdate?(); let result = update(list); if result != list { updates += 1 }; list = result; next(result); return TestDisposable() }
+    }
+}
+func searchPeerContextMenuSnapshot(peer: Peer, context: any AccountContextProtocol, canPin: Bool) -> Signal<Snapshot, NoError> {
+    Signal { next in
+        let postbox = context.account.postbox
+        postbox.snapshotRequests += 1
+        let snapshot = Snapshot(peer: postbox.store.peers[peer.id] ?? peer, folders: (context as! Context).state)
+        let id = UUID()
+        if postbox.holdSnapshots { postbox.pendingSnapshots[id] = { next(snapshot) } } else { next(snapshot) }
+        return TestDisposable { postbox.pendingSnapshots.removeValue(forKey: id) }
+    }
+}
+func communityFilterCategories(account: Account) -> Signal<[PeerId: ChatListFilterPeerCategories], NoError> { .single(account.postbox.context?.state.communityCategories ?? [:]) }

@@ -1,0 +1,309 @@
+import Foundation
+import CoreGraphics
+import QuartzCore
+
+public struct PeerId: Hashable { public let namespace: Int; public let value: Int; init(_ value: Int, _ namespace: Int = 1) { self.value = value; self.namespace = namespace } }
+__PEER_GROUP_ID__
+public enum Namespaces { enum Peer { static let SecretChat = 9 }; enum PeerGroup { static let archive = PeerGroupId(rawValue: 1) }; enum Message { static let Cloud = 0 } }
+public protocol Peer { var id: PeerId { get }; var associatedPeerId: PeerId? { get }; var associatedPeerOverridesIdentity: Bool { get } }
+extension Peer { public var associatedPeerId: PeerId? { nil }; public var associatedPeerOverridesIdentity: Bool { false } }
+public struct TelegramUser: Peer { public let id: PeerId; let botInfo: Bool?; init(_ id: Int, bot: Bool = false) { self.id = PeerId(id); botInfo = bot ? true : nil } }
+public struct TelegramGroup: Peer { public let id: PeerId }
+public struct TelegramCommunity: Peer { public let id: PeerId }
+public struct TelegramSecretChat: Peer { public let id: PeerId }
+public struct TelegramChannel: Peer { enum Info { case group, broadcast }; public let id: PeerId; let info: Info }
+public enum PeerNameColor: Hashable { case blue }
+public struct ChatListMessageTagSummaryResultCalculation { init(addCount: ChatListMessageTagSummaryResultComponent, subtractCount: ChatListMessageTagActionsSummaryResultComponent) {} }
+public enum Tag { case unseenPersonalMessage }
+public struct ChatListMessageTagSummaryResultComponent { init(tag: Tag, namespace: Int) {} }
+public struct ChatListMessageTagActionsSummaryResultComponent { init(type: PendingMessageActionType, namespace: Int) {} }
+public enum PendingMessageActionType { case consumeUnseenPersonalMessage }
+public struct ChatListFilter: Equatable { let id: Int32; let data: ChatListFilterData?; static let allChats = ChatListFilter(id: 0, data: nil); func withUpdatedData(_ data: ChatListFilterData) -> Self { Self(id: id, data: data) } }
+
+public struct NSDragOperation: OptionSet { public let rawValue: Int; public init(rawValue: Int) { self.rawValue = rawValue }; static let copy = Self(rawValue: 1); static let move = Self(rawValue: 2) }
+public enum NSDraggingContext { case withinApplication, outsideApplication }
+public class NSDraggingSession { var animatesToStartingPositionsOnCancelOrFail = true; var draggingLocation = NSPoint.zero; func enumerateDraggingItems(options: [Int], for view: NSView?, classes: [AnyClass], searchOptions: [String: String], using: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {} }
+class NSWorkspace { static let shared = NSWorkspace(); var accessibilityDisplayShouldReduceMotion = false }
+struct Color { let alpha: CGFloat; init(_ alpha: CGFloat = 1) { self.alpha = alpha }; func withAlphaComponent(_ alpha: CGFloat) -> Self { Self(alpha) }; var cgColor: CGColor { CGColor(gray: 0.5, alpha: alpha) } }
+struct Theme { struct Colors { let accent = Color(); let text = Color(); let background = Color() }; let colors = Colors() }
+let theme = Theme()
+extension CALayer {
+    func animateAlpha(from: CGFloat, to: CGFloat, duration: Double) { let animation = CABasicAnimation(keyPath: "opacity"); animation.fromValue = from; animation.toValue = to; animation.duration = duration; add(animation, forKey: "testAlpha") }
+    func animateScaleSpring(from: CGFloat, to: CGFloat, duration: Double) { let animation = CABasicAnimation(keyPath: "transform.scale"); animation.fromValue = from; animation.toValue = to; animation.duration = duration; add(animation, forKey: "testScale") }
+}
+class Window { var isVisible = true; var mouseLocationOutsideOfEventStream = NSPoint(x: 30, y: 30); func convertToScreen(_ rect: NSRect) -> NSRect { rect } }
+class PreviewPanel { func close() {} }
+final class ChatListFolderDragPresentation { var animationId = 0; var playback: Int?; var previewLayer: CALayer?; var dragFrame = NSRect.zero; let origin: NSView; var hiddenViews: [(NSView, CGFloat)]; var invalidated = false; var completed: ((Bool) -> Void)?; var timeout: Foundation.Timer?; var animationTimer: Foundation.Timer?; var panel: PreviewPanel?; var results: [Bool] = []; var deferCompletion = false; var deferredCompletion: (() -> Void)?; init(origin: NSView, decorations: [NSView]) { self.origin = origin; hiddenViews = ([origin] + decorations).map { ($0, $0.alphaValue) } }; var draggingImage: String { "avatar" }; func move(to: NSPoint) {}; func ended(at: NSPoint) { origin.alphaValue = 1 }; func accept(destination: (() -> NSView?)?) {}; func complete(added: Bool, completed: @escaping (Bool) -> Void) { results.append(added); origin.alphaValue = 1; if deferCompletion { deferredCompletion = { completed(added) } } else { completed(added) } }
+__PRESENTATION__
+}
+public protocol NSDraggingSource: AnyObject {}
+public class NSPasteboard { public struct PasteboardType: Hashable { let value: String; public init(_ value: String) { self.value = value } }; var values: [PasteboardType: String] = [:]; func string(forType type: PasteboardType) -> String? { values[type] } }
+public class NSPasteboardItem: NSPasteboard { @discardableResult func setString(_ value: String, forType type: PasteboardType) -> Bool { values[type] = value; return true } }
+public protocol NSDraggingInfo { var draggingSource: AnyObject? { get }; var draggingSourceOperationMask: NSDragOperation { get }; var draggingPasteboard: NSPasteboard { get }; var draggingLocation: NSPoint { get } }
+public class NSDraggingItem { var draggingFrame = NSRect.zero; let writer: NSPasteboardItem; init(pasteboardWriter: NSPasteboardItem) { writer = pasteboardWriter }; func setDraggingFrame(_ frame: NSRect, contents: String) {} }
+final class DragInfo: NSDraggingInfo { var draggingSource: AnyObject?; var draggingSourceOperationMask: NSDragOperation = .copy; let draggingPasteboard = NSPasteboard(); var draggingLocation = NSPoint(x: 30, y: 30) }
+public class NSEvent { static var pressedMouseButtons: Int = 1; public struct ModifierFlags: OptionSet { public let rawValue: Int; public init(rawValue: Int) { self.rawValue = rawValue }; static let control = Self(rawValue: 1); static let command = Self(rawValue: 2); static let shift = Self(rawValue: 4); static let option = Self(rawValue: 8) }; var locationInWindow: NSPoint; var timestamp: TimeInterval; var clickCount: Int; var modifierFlags: ModifierFlags; init(_ x: Double = 30, _ y: Double = 30, time: Double = 0, clicks: Int = 1, flags: ModifierFlags = []) { locationInWindow = NSPoint(x: x, y: y); timestamp = time; clickCount = clicks; modifierFlags = flags } }
+public class NSView { enum Position { case above }; var wantsLayer = false; var children: [NSView] = []; init() {}; init(frame: NSRect) { self.frame = frame }; func setAccessibilityElement(_ value: Bool) {}; func addSubview(_ view: NSView, positioned: Position, relativeTo: NSView?) { view.superview = self; children.append(view); if let layer = view.layer { self.layer?.addSublayer(layer) } }; func removeFromSuperview() { superview?.children.removeAll(where: { $0 === self }); layer?.removeFromSuperlayer(); superview = nil }; var alphaValue: CGFloat = 1; var window: Window? = Window(); var layer: CALayer? = CALayer(); var isHiddenOrHasHiddenAncestor: Bool { isHidden || (superview?.isHiddenOrHasHiddenAncestor ?? false) }; func convert(_ point: NSPoint, to view: NSView?) -> NSPoint { NSPoint(x: point.x + origin.x - (view?.origin.x ?? 0), y: point.y + origin.y - (view?.origin.y ?? 0)) }; var frame = NSRect(x: 0, y: 0, width: 300, height: 70) { didSet { layer?.frame = frame } }; var bounds: NSRect { NSRect(origin: .zero, size: frame.size) }; var simulatedVisibleRect: NSRect?; var visibleRect: NSRect { simulatedVisibleRect ?? bounds }; var isHidden = false; weak var superview: NSView?; var origin: NSPoint { NSPoint(x: frame.minX + (superview?.origin.x ?? 0), y: frame.minY + (superview?.origin.y ?? 0)) }; func convert(_ point: NSPoint, from view: NSView?) -> NSPoint { NSPoint(x: point.x + (view?.origin.x ?? 0) - origin.x, y: point.y + (view?.origin.y ?? 0) - origin.y) }; func convert(_ rect: NSRect, to view: NSView?) -> NSRect { NSRect(origin: convert(rect.origin, to: view), size: rect.size) }; func convert(_ rect: NSRect, from view: NSView?) -> NSRect { NSRect(origin: convert(rect.origin, from: view), size: rect.size) }; var events: [String] = []; var userInteractionEnabled = false; var snapshot: String { "avatar" }; var sessions: [(NSDraggingItem, NSDraggingSource)] = []; var forwardDown: ((NSEvent) -> Void)?; public func mouseDown(with event: NSEvent) { events.append("down"); forwardDown?(event) }; public func mouseDragged(with event: NSEvent) { events.append("dragged") }; public func mouseUp(with event: NSEvent) { events.append("up") }; public func scrollWheel(with event: NSEvent) { events.append("scroll") }; public func hitTest(_ point: NSPoint) -> NSView? { self }; public func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { [] }; public func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }; public func performDragOperation(_ sender: NSDraggingInfo) -> Bool { false }; @discardableResult func beginDraggingSession(with items: [NSDraggingItem], event: NSEvent, source: NSDraggingSource) -> NSDraggingSession { sessions.append((items[0], source)); return NSDraggingSession() } }
+class RowBase: NSView { var item: AnyObject?; var isResorting = false }
+class ChatListRowItem { enum Mode { case chat, topic }; var mode: Mode = .chat; var peer: Peer?; let context: Context; var isGroup = false; var isAd = false; var isSecret = false; var hideContent = false; var sidebarSelection: Bool?; init(_ context: Context, _ peer: Peer) { self.context = context; self.peer = peer } }
+final class Row: RowBase { let photo = NSView(); var isRevealActive = false; var activeImage: NSView?; var starBadgeView: NSView?; var communityHiddenView: NSView?; var groupActivityView: NSView?; var avatarTimerBadge: NSView?
+__ROW__
+    func visibilityChanged() { __VISIBILITY_CALL__ }
+}
+public class ScrollableSegmentItem { var contentView: NSView? { view }; var contentViews: [NSView] { view.map { [$0] } ?? [] }; let uniqueId: Int64; let view: NSView?; init(_ id: Int64, _ view: NSView) { uniqueId = id; self.view = view } }
+class ClipView: NSView { var offset = NSPoint.zero; var documentRect = NSRect(x: 0, y: 0, width: 600, height: 600); override var bounds: NSRect { NSRect(origin: offset, size: frame.size) }; func scroll(to point: NSPoint) { offset = point } }
+public class NSScrollView: NSView { let contentView = ClipView(); var scrollChanges = 0; func reflectScrolledClipView(_ clip: ClipView) { scrollChanges += 1 } }
+typealias ScrollView = NSScrollView
+class Segment: NSView { let scrollView = ScrollView(); var items: [ScrollableSegmentItem] = []
+__SEGMENT__
+}
+class ChatListRevealItem { var context: (any AccountContextProtocol)?; var tabs: [ChatListFilter] = [] }
+class Top: RowBase { let segmentView = Segment()
+__TOP__
+}
+class LeftSidebarFolderItem { let folder: ChatListFilter; let environment: Environment; init(_ folder: ChatListFilter, _ environment: Environment) { self.folder = folder; self.environment = environment } }
+class Side: RowBase {
+__SIDE__
+}
+class Environment { let context: Context; init(_ context: Context) { self.context = context }; func validateFolderDrop(_ sender: NSDraggingInfo, filter: ChatListFilter) -> NSDragOperation { if __FEATURE__ { return validateDrop(sender, context, filter) }; return [] }; func performFolderDrop(_ sender: NSDraggingInfo, filter: ChatListFilter) -> Bool { if __FEATURE__ { return performDrop(sender, context, filter) }; return false } }
+__STATE_BOUNDARY__
+struct ChatListUIHooks { static let shared = Self(); func chatListFilterId(_ filter: ChatListFilter) -> Int32 { filter.id } }
+var alerts = 0
+func alert(for window: Int, info: String) { alerts += 1 }
+struct Strings { let chatListFilterIncludeLimitReached = "limit" }
+func strings() -> Strings { Strings() }
+struct FeatureNavigationHooks { enum Limit { case chatInFolders }; static let shared = Self(); func showPremiumLimit(_ context: any AccountContextProtocol, _ limit: Limit) { alerts += 1 } }
+
+__PRODUCTION__
+
+var total = 0
+var failures = 0
+func check(_ value: Bool, _ name: String) { total += 1; if !value { failures += 1; print("FAIL \(name)") } }
+func folder(_ id: Int32 = 1, includes: [PeerId] = [], excludes: [PeerId] = [], categories: ChatListFilterPeerCategories = [], shared: Bool = false, muted: Bool = false, read: Bool = false, archived: Bool = false) -> ChatListFilter { var peers = ChatListFilterIncludePeers(); peers.setPeers(includes); return ChatListFilter(id: id, data: ChatListFilterData(isShared: shared, hasSharedLinks: shared, categories: categories, excludeMuted: muted, excludeRead: read, excludeArchived: archived, includePeers: peers, excludePeers: excludes, color: .blue)) }
+func info(_ context: Context, _ peer: Peer) -> DragInfo { let result = DragInfo(); result.draggingSource = __SOURCE__; return result }
+func validateDrop(_ sender: NSDraggingInfo, _ context: Context, _ filter: ChatListFilter) -> NSDragOperation { __VALIDATE__ }
+func performDrop(_ sender: NSDraggingInfo, _ context: Context, _ filter: ChatListFilter) -> Bool { __PERFORM__ }
+
+func featureChecks() {
+    let peer = TelegramUser(1)
+    let other = PeerId(2)
+    let context = Context()
+    let base = folder(includes: [other], excludes: [peer.id], muted: true, read: true, archived: true)
+    context.engine.peers.list = [.allChats, base, folder(2, includes: [peer.id])]
+    func drag(_ target: ChatListFilter = base, _ current: Context = context, _ draggedPeer: Peer = peer) -> DragInfo { let sender = info(current, draggedPeer); let source = sender.draggingSource as! ChatListFolderDragSource; sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = source.token; return sender }
+    let first = drag()
+    check(ChatListFolderDrop.validate(first, context: context, filter: base) == .copy, "valid local copy")
+    check(ChatListFolderDrop.perform(first, context: context, filter: base), "drop accepted")
+    let added = context.engine.peers.list[1].data!
+    check(added.includePeers.peers.contains(peer.id) && added.excludePeers.isEmpty, "explicit exclusion resolved")
+    check(added.excludeMuted && added.excludeRead && added.excludeArchived && added.color == .blue, "category exclusions and color retained")
+    check(context.engine.peers.list[2] == folder(2, includes: [peer.id]), "other folder unchanged")
+    check(!ChatListFolderDrop.perform(first, context: context, filter: base), "replayed session rejected")
+    let count = context.engine.peers.updates
+    check(!ChatListFolderDrop.perform(drag(), context: context, filter: base), "duplicate is not an eligible drop")
+    check(context.engine.peers.updates == count, "duplicate is no-op")
+    for kind in 0..<7 {
+        let sender = drag()
+        var target = base
+        let targetContext = kind == 1 ? Context() : context
+        if kind == 0 { sender.draggingSource = NSObject() }
+        if kind == 2 { sender.draggingPasteboard.values.removeAll() }
+        if kind == 3 { sender.draggingSourceOperationMask = .move }
+        if kind == 4 { (sender.draggingSource as! ChatListFolderDragSource).draggingSession(NSDraggingSession(), endedAt: .zero, operation: []) }
+        if kind == 5 { target = .allChats }
+        if kind == 6 { context.isFrozen = true }
+        check(ChatListFolderDrop.validate(sender, context: targetContext, filter: target).isEmpty, "reject source \(kind)")
+        check(!ChatListFolderDrop.perform(sender, context: targetContext, filter: target), "reject perform \(kind)")
+        context.isFrozen = false
+    }
+    let forged = drag(); forged.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = UUID().uuidString
+    check(!ChatListFolderDrop.perform(forged, context: context, filter: base), "forged token rejected")
+    let source = ChatListFolderDragSource(context: context, peer: peer)
+    check(source.draggingSession(NSDraggingSession(), sourceOperationMaskFor: .outsideApplication).isEmpty, "no external export")
+    check(source.draggingSession(NSDraggingSession(), sourceOperationMaskFor: .withinApplication) == .copy && source.ignoreModifierKeys(for: NSDraggingSession()), "copy only ignores modifiers")
+    let state = context.state
+    let group = TelegramGroup(id: PeerId(3))
+    let channel = TelegramChannel(id: PeerId(4), info: .broadcast)
+    let community = TelegramCommunity(id: PeerId(5))
+    let secret = TelegramSecretChat(id: PeerId(6, 9))
+    for candidate: Peer in [peer, group, channel, TelegramUser(7, bot: true), community] {
+        if case .updated = chatListFolderDropUpdate(folder(), peer: candidate, state: state, limit: 2) { check(true, "eligible peer") } else { check(false, "eligible peer") }
+    }
+    check(chatListFolderDropUpdate(folder(), peer: secret, state: state, limit: 2) == .unchanged, "secret rejected")
+    check(ChatListFolderDrop.validate(drag(base, context, secret), context: context, filter: base).isEmpty, "secret validation")
+    check(chatListFolderDropUpdate(folder(shared: true), peer: community, state: state, limit: 2) == .unchanged, "community not shared-folder input peer")
+    if case let .updated(data) = chatListFolderDropUpdate(folder(shared: true), peer: group, state: state, limit: 2) { check(data.isShared && data.hasSharedLinks && data.categories.isEmpty, "shared metadata retained") } else { check(false, "shared folder accepts group") }
+    check(chatListFolderDropUpdate(folder(categories: [.nonContacts]), peer: peer, state: state, limit: 0) == .unchanged, "implicit member no-op at limit")
+    var pinned = folder(includes: [peer.id, other]).data!
+    _ = pinned.includePeers.addPinnedPeer(peer.id)
+    check(chatListFolderDropUpdate(folder().withUpdatedData(pinned), peer: peer, state: state, limit: 0) == .unchanged, "pinned member unchanged")
+    let overlap = folder(includes: [peer.id], excludes: [peer.id])
+    check(chatListFolderDropUpdate(overlap, peer: peer, state: state, limit: 0) == .unchanged, "explicit duplicate never removes existing exclusion")
+    for flags in 0..<8 {
+        let filtered = folder(categories: [.nonContacts], muted: flags & 1 != 0, read: flags & 2 != 0, archived: flags & 4 != 0)
+        let excludedState = SearchPeerFolderState(groupId: Namespaces.PeerGroup.archive, isMuted: true, isUnread: false, isContact: false, hasUnreadMention: false, communityCategories: [:])
+        let result = chatListFolderDropUpdate(filtered, peer: peer, state: excludedState, limit: 2)
+        if flags == 0 { check(result == .unchanged, "category member stays implicit") }
+        else if case let .updated(data) = result { check(data.includePeers.peers == [peer.id] && data.categories == filtered.data!.categories && data.excludeMuted == filtered.data!.excludeMuted && data.excludeRead == filtered.data!.excludeRead && data.excludeArchived == filtered.data!.excludeArchived, "category exception \(flags)") }
+        else { check(false, "category exception \(flags)") }
+    }
+    let withoutSlot = folder(includes: [other], excludes: [peer.id], categories: [.nonContacts])
+    if case let .updated(data) = chatListFolderDropUpdate(withoutSlot, peer: peer, state: state, limit: 1) { check(data.excludePeers.isEmpty && data.includePeers.peers == [other], "remove explicit exclusion at limit without spending slot") } else { check(false, "remove explicit exclusion at limit") }
+    let absent = SearchPeerFolderState(groupId: nil, isMuted: false, isUnread: false, isContact: false, hasUnreadMention: false, communityCategories: [:])
+    check(chatListFolderDropUpdate(folder(), peer: peer, state: absent, limit: 2) == .unchanged, "removed chat no-op")
+    for premium in [false, true] {
+        context.isPremium = premium
+        let limit = premium ? 4 : 2
+        let full = folder(includes: (10..<(10 + limit)).map { PeerId($0) }, excludes: [peer.id])
+        context.engine.peers.list = [full]
+        let beforeAlerts = alerts
+        check(ChatListFolderDrop.perform(drag(full), context: context, filter: full), "full accepted for limit feedback")
+        check(context.engine.peers.list == [full] && alerts == beforeAlerts + 1, "configured \(limit) limit atomic and reported")
+    }
+    context.engine.peers.list = [base]
+    context.engine.peers.beforeUpdate = { context.engine.peers.list = [] }
+    check(ChatListFolderDrop.perform(drag(), context: context, filter: base), "deleted destination handled")
+    check(context.engine.peers.list.isEmpty, "deleted destination not recreated")
+    context.engine.peers.beforeUpdate = nil
+    context.engine.peers.list = [base]
+    let concurrent = folder(includes: [other, PeerId(3)])
+    context.isPremium = false
+    context.engine.peers.beforeUpdate = { context.engine.peers.list = [concurrent] }
+    check(ChatListFolderDrop.perform(drag(), context: context, filter: base), "stale target dispatched")
+    check(context.engine.peers.list == [concurrent], "current transaction limit prevents overwriting concurrent edit")
+    context.engine.peers.beforeUpdate = nil
+    for elapsed in [0.0, 0.29, 0.3, 1.0] {
+        let gesture = ChatListAvatarDragGesture(location: .zero, timestamp: 10)
+        check(gesture.action(location: NSPoint(x: 3, y: 0), timestamp: 10 + elapsed) == .pending, "jitter \(elapsed)")
+        check(gesture.action(location: NSPoint(x: 12, y: 0), timestamp: 10 + elapsed) == .drag, "movement only threshold \(elapsed)")
+    }
+    for avatar in [false, true] {
+        let row = Row(); row.item = ChatListRowItem(context, peer); row.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50); row.photo.userInteractionEnabled = avatar
+        row.mouseDown(with: NSEvent()); row.mouseUp(with: NSEvent(time: 0.1))
+        check((avatar ? row.photo.events : row.events) == ["down", "up"], "normal click \(avatar)")
+        row.events = []; row.photo.events = []
+        row.mouseDown(with: NSEvent()); row.mouseDragged(with: NSEvent(45, time: 0.5)); row.mouseUp(with: NSEvent(45, time: 0.6))
+        check(row.sessions.count == 1 && row.events.isEmpty && row.photo.events.isEmpty, "held avatar owns drag not click \(avatar)")
+        row.mouseDown(with: NSEvent()); row.mouseDragged(with: NSEvent(45, time: 0.1)); row.mouseUp(with: NSEvent(45, time: 0.2))
+        check(row.photo.events.isEmpty && row.events.isEmpty && row.sessions.count == 2, "quick avatar movement starts drag \(avatar)")
+        row.events = []; row.photo.events = []
+        row.mouseDown(with: NSEvent()); row.scrollWheel(with: NSEvent()); row.mouseUp(with: NSEvent())
+        check(row.events == ["scroll"] && row.photo.events.isEmpty, "scroll cancels pending click \(avatar)")
+    }
+    let row = Row(); row.item = ChatListRowItem(context, peer); row.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+    for event in [NSEvent(100), NSEvent(flags: .control), NSEvent(flags: .shift), NSEvent(clicks: 2)] { row.events = []; row.mouseDown(with: event); row.mouseDragged(with: NSEvent(100, time: 1)); row.mouseUp(with: event); check(row.sessions.isEmpty && row.events == ["down", "dragged", "up"], "non-avatar modified double click routes") }
+    let frozenRow = Row(); frozenRow.item = ChatListRowItem(context, peer); frozenRow.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+    frozenRow.mouseDown(with: NSEvent()); context.isFrozen = true; frozenRow.mouseUp(with: NSEvent()); context.isFrozen = false
+    check(frozenRow.events.isEmpty && frozenRow.sessions.isEmpty, "freeze cancels deferred click")
+    let recursive = Row(); recursive.item = ChatListRowItem(context, peer); recursive.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50); recursive.photo.userInteractionEnabled = true
+    recursive.photo.forwardDown = { [weak recursive] event in recursive?.mouseDown(with: event) }
+    recursive.mouseDown(with: NSEvent(flags: .control))
+    check(recursive.events == ["down"] && recursive.photo.events == ["down"], "control click forwards through responder chain once")
+    for kind in 0..<9 {
+        let row = Row(); let item = ChatListRowItem(context, peer); row.item = item; row.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+        if kind == 0 { item.mode = .topic }; if kind == 1 { item.isGroup = true }; if kind == 2 { item.isAd = true }; if kind == 3 { item.isSecret = true }; if kind == 4 { item.hideContent = true }; if kind == 5 { item.sidebarSelection = false }; if kind == 6 { row.isRevealActive = true }; if kind == 7 { row.isResorting = true }; if kind == 8 { row.photo.isHidden = true }
+        row.mouseDown(with: NSEvent()); row.mouseDragged(with: NSEvent(60, time: 0.5))
+        check(row.sessions.isEmpty, "ineligible row \(kind)")
+    }
+    let root = NSView(); let offsetRow = Row(); offsetRow.superview = root; offsetRow.frame.origin.y = 100; offsetRow.item = ChatListRowItem(context, peer); offsetRow.photo.superview = offsetRow; offsetRow.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+    check(offsetRow.hitTest(NSPoint(x: 30, y: 130)) === offsetRow, "avatar hit test converts row offset")
+    let top = Top(); let item = ChatListRevealItem(); item.context = context; item.tabs = [.allChats, base]; top.item = item
+    top.segmentView.scrollView.contentView.frame = NSRect(x: 0, y: 0, width: 160, height: 70)
+    for (id, x) in [(Int64(0), 0), (Int64(1), 60), (Int64(2), 180)] { let v = NSView(); v.frame = NSRect(x: x, y: 0, width: 50, height: 70); top.segmentView.items.append(ScrollableSegmentItem(id, v)) }
+    context.engine.peers.list = [base]
+    top.configure(context)
+    let targetDrag = drag(); targetDrag.draggingLocation = NSPoint(x: 75, y: 20)
+    check(top.draggingEntered(targetDrag) == .copy && top.performDragOperation(targetDrag), "top target uses real segment and dispatch")
+    for x in [25, 55, 175, 190, 350] { let sender = drag(); sender.draggingLocation = NSPoint(x: x, y: 20); check(top.draggingUpdated(sender).isEmpty && !top.performDragOperation(sender), "top rejects all/gap/clipped/offscreen \(x)") }
+    context.engine.peers.list = [base]
+    let side = Side(); side.item = LeftSidebarFolderItem(base, Environment(context)); side.configure(context); let sender = drag()
+    check(side.draggingEntered(sender) == .copy && side.performDragOperation(sender), "sidebar target dispatch")
+    side.isResorting = true
+    check(side.draggingUpdated(drag()).isEmpty && !side.performDragOperation(drag()), "sidebar reorder not drop target")
+    side.isResorting = false
+    let outside = drag(); outside.draggingLocation = NSPoint(x: 500, y: 100)
+    check(side.draggingUpdated(outside).isEmpty && !side.performDragOperation(outside), "sidebar outside rejected")
+    side.item = LeftSidebarFolderItem(.allChats, Environment(context))
+    check(side.draggingUpdated(drag()).isEmpty && !side.performDragOperation(drag()), "sidebar all chats rejected")
+}
+func refinementChecks() {
+    let hidden = Row(); hidden.item = ChatListRowItem(Context(), TelegramUser(1)); hidden.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+    hidden.mouseDown(with: NSEvent()); hidden.mouseDragged(with: NSEvent(50, time: 0.01)); hidden.isHidden = true
+    check(hidden.photo.alphaValue == 1, "hidden source restores avatar")
+    let original = NSView(); let badge = NSView(); badge.alphaValue = 0.6
+    let presentation = ChatListFolderDragPresentation(origin: original, decorations: [badge]); presentation.lift()
+    check(original.alphaValue == 0 && badge.alphaValue == 0, "source and decoration leave empty slot")
+    presentation.invalidate()
+    check(original.alphaValue == 1 && badge.alphaValue == 0.6, "invalidation restores exact original opacity")
+    original.alphaValue = 0.4; presentation.invalidate()
+    check(original.alphaValue == 0.4, "late completion cannot change recycled avatar")
+    let reused = Row(); let rowContext = Context(); reused.item = ChatListRowItem(rowContext, TelegramUser(1)); reused.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+    reused.mouseDown(with: NSEvent()); reused.mouseDragged(with: NSEvent(50, time: 0.01)); check(reused.photo.alphaValue == 0, "quick drag hides source")
+    reused.visibilityChanged(); check(reused.photo.alphaValue == 0, "visible source stays lifted")
+    reused.simulatedVisibleRect = .zero; reused.visibilityChanged(); check(reused.photo.alphaValue == 1, "disappearance restores source")
+    reused.simulatedVisibleRect = nil; reused.mouseDown(with: NSEvent()); reused.mouseDragged(with: NSEvent(50, time: 0.01)); reused.window = nil; reused.visibilityChanged()
+    check(reused.photo.alphaValue == 1, "detached source restores avatar")
+    for success in [false, true] {
+        for completionFirst in [false, true] {
+            var state = ChatListFolderDragCompletion(); state.accept()
+            if completionFirst { state.complete(added: success) } else { state.end() }
+            check(state.finish() == nil, "await both session and mutation")
+            if completionFirst { state.end() } else { state.complete(added: success) }
+            check(state.finish() == success && state.finish() == nil, "completion delivered once")
+        }
+    }
+    var cancelled = ChatListFolderDragCompletion(); cancelled.end()
+    check(cancelled.finish() == false, "unaccepted end returns")
+    var timeout = ChatListFolderDragCompletion(); timeout.accept(); timeout.end(); timeout.complete(added: false); timeout.complete(added: true)
+    check(timeout.finish() == false, "timeout does not later land")
+    for position: CGFloat in [-1, 0, 9, 18, 35, 36, 100, 264, 282, 299, 300, 301] {
+        let offset = chatListFolderDropScrollOffset(position: position, length: 300, offset: 100, contentLength: 600)
+        check(abs(offset - 100) <= 8 && offset >= 0 && offset <= 300, "bounded edge rate \(position)")
+        if position >= 36 && position <= 264 || position < 0 || position > 300 { check(offset == 100, "center or outside stationary") }
+    }
+    check(chatListFolderDropScrollOffset(position: 0, length: 300, offset: 0, contentLength: 600) == 0, "leading clamp")
+    check(chatListFolderDropScrollOffset(position: 300, length: 300, offset: 300, contentLength: 600) == 300, "trailing clamp")
+    check(chatListFolderDropScrollOffset(position: 0, length: 300, offset: 0, contentLength: 200) == 0, "no scroll short content")
+    let context = Context(); let peer = TelegramUser(1); let filter = folder(); context.engine.peers.list = [filter]
+    func drag() -> DragInfo { let sender = info(context, peer); let source = sender.draggingSource as! ChatListFolderDragSource; sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = source.token; return sender }
+    for horizontal in [false, true] {
+        let scroll = ScrollView(); scroll.frame = NSRect(x: 0, y: 0, width: 300, height: 300); scroll.contentView.frame = scroll.frame
+        let view = NSView(); var resolutions = 0
+        let target = ChatListFolderDropTarget(context: context, scrollView: scroll, horizontal: horizontal, target: { _ in resolutions += 1; return (filter, view) })
+        let sender = drag(); sender.draggingLocation = NSPoint(x: 299, y: 299); scroll.window!.mouseLocationOutsideOfEventStream = sender.draggingLocation
+        check(target.update(sender) == .copy, "edge validated \(horizontal)")
+        target.tick(); target.tick()
+        check(scroll.scrollChanges == 2 && resolutions == 3, "continuous scroll recomputes target \(horizontal)")
+        check((horizontal ? scroll.contentView.offset.x : scroll.contentView.offset.y) > 0, "correct axis \(horizontal)")
+        target.exit(); target.tick(); check(scroll.scrollChanges == 2, "exit stops timer \(horizontal)")
+        _ = target.update(drag()); scroll.isHidden = true; target.tick(); scroll.isHidden = false; target.tick(); check(scroll.scrollChanges == 2, "hide stops timer \(horizontal)")
+        _ = target.update(drag()); NSEvent.pressedMouseButtons = 0; target.tick(); NSEvent.pressedMouseButtons = 1; target.tick(); check(scroll.scrollChanges == 2, "release stops timer \(horizontal)")
+    }
+    let scroll = ScrollView(); let view = NSView(); view.window = scroll.window
+    let content = NSView(); content.frame = NSRect(x: 120, y: 10, width: 32, height: 32); content.superview = view
+    let target = ChatListFolderDropTarget(context: context, scrollView: scroll, horizontal: true, target: { _ in (filter, view) }__IMPACT_TARGETS__)
+    check(target.perform(drag()), "successful mutation dispatched")
+    check((view.layer!.sublayers?.contains { $0.animation(forKey: "chatFolderDropPlate") is CAKeyframeAnimation } ?? false) && content.layer!.animation(forKey: "chatFolderDrop") == nil, "horizontal success pulses plate without scaling text")
+    target.exit()
+    view.layer?.removeAllAnimations()
+    check(!target.perform(drag()) && content.layer!.animationKeys() == nil && view.layer!.animationKeys() == nil, "duplicate is ineligible and has no pulse")
+    context.engine.peers.list = [folder(includes: [PeerId(8), PeerId(9)])]
+    check(target.perform(drag()) && content.layer!.animationKeys() == nil && view.layer!.animationKeys() == nil, "limit has no pulse")
+    context.engine.peers.list = [filter]; NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    check(target.perform(drag()) && content.layer!.animationKeys() == nil, "reduce motion never scales success")
+    check((view.layer!.sublayers?.contains { $0.animation(forKey: "chatFolderDropPlate") != nil } ?? false), "reduce motion fades success plate")
+    target.exit()
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
+}
+featureChecks()
+refinementChecks()
+__MEMBERSHIP_CHECKS__
+__DOCK__
+__PRESENTATION_CHECKS__
+__WIRING__
+let baselineContext = Context()
+let baselineRow = Row(); baselineRow.item = ChatListRowItem(baselineContext, TelegramUser(1)); baselineRow.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+baselineRow.mouseDown(with: NSEvent()); baselineRow.mouseDragged(with: NSEvent(60, time: 0.5))
+check(!baselineRow.sessions.isEmpty, "held avatar must initiate native folder drag")
+print("checks=\(total) failures=\(failures)")
+exit(failures == 0 ? 0 : 1)

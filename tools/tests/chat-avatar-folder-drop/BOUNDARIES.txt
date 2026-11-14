@@ -1,0 +1,126 @@
+Run with python3 -I tools/tests/chat-avatar-folder-drop/run.py.
+An optional --revision extracts tracked source from that revision without changing refs.
+An optional --source-root reads production files from an integrated source tree while
+keeping the feature worktree's Git objects/pinned core as the extraction authority.
+This is mutually exclusive with --revision; the integrated tree's Git HEAD may be historical.
+An optional --before-root reads saved pre-refinement changed files from a partial
+mirror; unchanged files fall back to --source-root or the feature worktree. New
+presentation/target files are absent rather than borrowed from the refined source.
+An optional --output requires a new directory with no symlink ancestors. Without it,
+the owned temporary directory, compiler cache and executable are removed on exit.
+The runner strips inherited GIT_* variables and invokes swiftc -j2 sequentially,
+using owned TMPDIR, CLANG_MODULE_CACHE_PATH and SWIFT_MODULECACHE_PATH directories.
+An optional --sdk-typecheck typechecks the actual presentation/target classes and
+actual generic segment content/visible-geometry accessors against the installed
+AppKit/QuartzCore SDK. It never runs them or starts an NSApplication. SDKBoundary.swift.in
+stubs only application models/hooks and TGUIKit image/animation helpers. It is not
+an SDK typecheck of the complete sidebar/controller classes or an app/package build.
+
+Production source compiled:
+- ChatListFolderDrop.swift, including add-only update, drag identity/token checks,
+  native source callbacks and perform-drop signal/transaction handler, unchanged.
+- SearchPeerFolderState, SearchPeerFolderUpdate, searchPeerFolderContains and
+  searchPeerFolderUpdate from SearchPeerContextMenu.swift, unchanged.
+- Avatar hit testing, mouse down/drag/up and scroll handlers from ChatListRowView.
+- Top-strip target/visible-content lookup and drag entry/update/perform handlers.
+- Sidebar drag entry/update/perform handlers; table enumeration remains a boundary.
+- ScrollableSegmentView.item(at:) and visibleItems geometry filtering.
+- ChatListFilterPeerCategories, ChatListFilterIncludePeers, local-only predicate,
+  ChatListFilterData and ChatListFilterPredicate from pinned TelegramCore/Postbox
+  Git objects; no submodule checkout or materialized build is used.
+- The application's chatListFilterPredicate category/exclusion implementation.
+- ChatListFolderDragCompletion and presentation lift/restore/invalidate methods.
+- The source row's private visibility cleanup helper, called from its existing
+  updateAnimatableContent hook. Structural checks verify the real superclass
+  method and wiring; the fixture does not invent updateIsVisible on TableRowView.
+- The full ChatListFolderDropTarget, feedback/plate classes, geometry, impact
+  keyframes and edge-offset calculation. tick() access is widened for direct
+  deterministic driving and Foundation.Timer is replaced with TestTimer.
+- ChatListFolderDragMotion geometry/interpolation, unchanged.
+- The complete ChatListFolderDragPresentation in a separate extracted class:
+  renamed ExtractedDragPresentation to coexist with the synchronous transaction
+  boundary double; Foundation.Timer becomes TestTimer and origin.snapshot becomes
+  an inert NSImage sized to the origin. The preview CALayer constructor becomes
+  TestMotionLayer, a CALayer subclass that retains real CAAnimationGroup/keyframes
+  and simulates their interpolation/delegate completion at deterministic times.
+  All lifecycle/motion bodies are unchanged.
+
+Boundary doubles:
+- AppKit views, events, drag info/source/session/pasteboard, image and panel are
+  inert in-memory types. Geometry uses Foundation/CoreGraphics. CALayer,
+  CATransform3D, CABasicAnimation and CAKeyframeAnimation are real QuartzCore types;
+  tests inspect their values, model transforms and removal, not screen rendering.
+- AppKit conversion is modeled as translation; frame/visible-rect/window values
+  are supplied inputs. TestMotionLayer interpolates the real generated keyframe
+  arrays and invokes the actual delegate callback through TestTimer. This checks
+  visual-frame continuity, model endpoints and stable panel frame during travel,
+  but does not render a real compositor, screen or image. No real NSApplication,
+  window, native pasteboard, drag session, snapshot or screenshot is created.
+- TestTimer and CACurrentMediaTime are deterministic boundary clocks. Native
+  run-loop scheduling, real display refresh and Core Animation presentation-layer
+  interpolation are not exercised. The former NSAnimationContext is simulated
+  with smoothstep interpolation of queued animator writes and timed completion;
+  this approximates easeInEaseOut but is not the system Bezier implementation.
+  Before-control assertions concern visibility, overshoot, late shrink and cleanup,
+  not pixel-exact system interpolation; no output is treated as a visual recording.
+- The first presentation double in Checks.swift.in delivers local mutation results
+  synchronously, or holds its callback for overlap tests. The full extracted
+  presentation in PresentationChecks.swift.in tests ordering, timeout/late results,
+  source reuse, window/target invalidation, Reduce Motion changes, current source
+  geometry, preview continuity, shallow continuous return without squash/bounce,
+  a single smooth125percent source pop and source-before-panel handoff.
+  Real CA interpolation/display timing and image orientation require manual review.
+- Target checks cover active-only accent fill/outline, subdued uncolored sidebar
+  neighbors and stronger140percent sidebar scale fitted through presentation-only
+  translation. Horizontal live feedback never transforms text/counters/neighbors:
+  only the active plate fades/pulses. Generic fitting helpers are tested separately.
+- Return duration is0.30–0.45seconds based on distance, with a shallow arc capped12pt
+  and continuous deceleration without a separate contact or vertical hop. CoreAnimation
+  owns position/bounds/opacity curves;30Hzsafety checks only retarget/cancel when needed,
+  never drive ordinary per-frame window writes. A fixed panel encloses the curve.
+- Successful attraction still hides the source until destination disappearance, then
+  source reappearance follows one smooth4percent→125percent→100percent curve over0.40s.
+  ReducedMotion uses static fades. Tests check sequencing, exact size/opacity handoff,
+  source reuse, changed geometry, disappearance, callback identity and timer cleanup.
+- PeerGroupId is extracted from pinned real Postbox/PeerGroup.swift (root/group only);
+  archive is Namespaces.PeerGroup.archive, never an invented PeerGroupId.archive.
+  Other peers/IDs and filter wrapper carry only fields required by the extracted code.
+- Context/account identity, premium configuration and engine are in-memory values.
+- Snapshot acquisition returns a supplied peer/unread/contact/mute/archive state.
+  The real Postbox snapshot implementation is NOT executed in this harness.
+- StateBoundary.swift.in provides small synchronous reactive signals/disposables,
+  switch-latest delivery, an event-driven combinedView and optionally held snapshot
+  delivery. It tests source loading/refresh/cancellation without running Postbox.
+  then() models the production single(nil)-then-state sequence, not general signal
+  completion semantics. Current-filter/peer state is supplied by the fixture.
+- The interactive filter-update boundary executes the real closure with latest list
+  and a pre-update edit. The unarchive transaction runs the real archive-only helper
+  against inert peer/inclusion/operation-log stores; it checks preserved minTimestamp,
+  cleared archive pin, explicit root target, one sync operation and atomic no-op races.
+  Actual storage, network synchronization and background queue scheduling are NOT run.
+- Alerts/premium navigation increment a counter. Sidebar/app-bridge registration,
+  explicit geometry wiring and the existing visibility hook have structural checks.
+
+Negative control: --before-root against the exact last-user-tested sources compiles
+and fails new Dock/motion/cleanup assertions. Missing new APIs skip only tests that
+cannot compile against them and produce an explicit failed capability assertion;
+the real older presentation still executes the shared lifecycle tests. Original
+--revision baseline checks remain available. Compilation failures are reported as
+COMPILE_ERROR_NOT_A_REGRESSION_RESULT, never counted as regression evidence.
+
+Limits: this is not a full build, GUI reproduction or manual acceptance. Actual
+AppKit animation appearance, opaque-child overlay visibility, retina rendering,
+real timer-driven edge scroll, native image-to-panel transition, Escape/outside-
+window cancellation, accessibility, light/dark themes and arbitrary animated
+emoji still need the parent full build and user's manual-client check.
+No folder selection/reorder/auto-open behavior is added. Layout and hit bounds
+are unchanged: content-only presentation animations and eventless row/tab plates.
+Success is a changed local filter or archive-group transaction, not server ACK.
+Existing explicit/pinned/implicit members have no eligible feedback. AllChats only
+accepts archived supported sources; it never changes custom filters or toggles archive.
+Duplicate/failed/
+limit/no-op/late results never trigger impact; destination identity and visibility
+are checked during travel and rebound. After the 0.8-second timeout the avatar
+returns safely even if a local transaction later completes. Shared flags, pins,
+limits, account/token/session guards and add-only membership remain preserved.
+No application, account, database, Keychain, network or payment activity is performed.

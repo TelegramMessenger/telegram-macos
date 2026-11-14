@@ -85,7 +85,7 @@ func searchPeerFolderUpdate(_ filter: ChatListFilter, peer: Peer, state: SearchP
     return .updated(data)
 }
 
-private struct SearchPeerContextMenuSnapshot {
+struct SearchPeerContextMenuSnapshot {
     let peer: Peer
     let state: SearchPeerMenuState
     let notificationPeerId: PeerId
@@ -163,29 +163,10 @@ func searchSavedPeerMenuItems(profileTitle: String?, isPinned: Bool, openProfile
     return items
 }
 
-func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol, target: SearchControllerTarget? = nil, canPin: Bool = false, remove: ContextMenuItem? = nil, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
-    if case let .savedMessages(savedPeerId)? = target {
-        let threadId = peer.id.toInt64()
-        return context.account.postbox.transaction { transaction in
-            transaction.getPeerPinnedThreads(peerId: savedPeerId).contains(threadId)
-        } |> deliverOnMainQueue |> map { isPinned in
-            searchSavedPeerMenuItems(profileTitle: peer.id == context.peerId ? nil : (peer is TelegramUser ? strings().exportedInvitationContextOpenProfile : strings().chatContextPeerOpenInfo), isPinned: isPinned, openProfile: {
-                ChatListUIHooks.shared.pushPeerInfo(context.bindings.rootNavigation(), context, peer.id)
-            }, togglePin: {
-                _ = (context.engine.peers.toggleForumChannelTopicPinned(id: savedPeerId, threadId: threadId) |> deliverOnMainQueue).start(error: { error in
-                    switch error {
-                    case let .limitReached(count):
-                        alert(for: context.window, info: strings().chatListContextPinErrorTopicsOther(count))
-                    default:
-                        alert(for: context.window, info: strings().unknownError)
-                    }
-                })
-            })
-        }
-    }
+func searchPeerContextMenuSnapshot(peer: Peer, context: any AccountContextProtocol, canPin: Bool) -> Signal<SearchPeerContextMenuSnapshot, NoError> {
     let peerId = peer.id
     let categories: Signal<[PeerId: ChatListFilterPeerCategories], NoError> = peer is TelegramCommunity ? (communityFilterCategories(account: context.account) |> take(1)) : .single([:])
-    let snapshotSignal = combineLatest(context.engine.data.get(TelegramEngine.EngineData.Item.Messages.PeerReadCounters(id: peerId)), categories)
+    return combineLatest(context.engine.data.get(TelegramEngine.EngineData.Item.Messages.PeerReadCounters(id: peerId)), categories)
     |> mapToSignal { readCounters, communityCategories in
         context.account.postbox.transaction { transaction -> SearchPeerContextMenuSnapshot in
             let currentPeer = transaction.getPeer(peerId) ?? peer
@@ -219,6 +200,30 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
             return SearchPeerContextMenuSnapshot(peer: currentPeer, state: state, notificationPeerId: notificationPeerId, folders: folders)
         }
     }
+}
+
+func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol, target: SearchControllerTarget? = nil, canPin: Bool = false, remove: ContextMenuItem? = nil, adPeer: AdPeer? = nil) -> Signal<[ContextMenuItem], NoError> {
+    if case let .savedMessages(savedPeerId)? = target {
+        let threadId = peer.id.toInt64()
+        return context.account.postbox.transaction { transaction in
+            transaction.getPeerPinnedThreads(peerId: savedPeerId).contains(threadId)
+        } |> deliverOnMainQueue |> map { isPinned in
+            searchSavedPeerMenuItems(profileTitle: peer.id == context.peerId ? nil : (peer is TelegramUser ? strings().exportedInvitationContextOpenProfile : strings().chatContextPeerOpenInfo), isPinned: isPinned, openProfile: {
+                ChatListUIHooks.shared.pushPeerInfo(context.bindings.rootNavigation(), context, peer.id)
+            }, togglePin: {
+                _ = (context.engine.peers.toggleForumChannelTopicPinned(id: savedPeerId, threadId: threadId) |> deliverOnMainQueue).start(error: { error in
+                    switch error {
+                    case let .limitReached(count):
+                        alert(for: context.window, info: strings().chatListContextPinErrorTopicsOther(count))
+                    default:
+                        alert(for: context.window, info: strings().unknownError)
+                    }
+                })
+            })
+        }
+    }
+    let peerId = peer.id
+    let snapshotSignal = searchPeerContextMenuSnapshot(peer: peer, context: context, canPin: canPin)
     let readItem = searchPeerReadMenuItem(context: context, peerId: peerId, target: target ?? .common(.root))
     return combineLatest(snapshotSignal, chatListFilterPreferences(engine: context.engine), readItem)
     |> take(1)

@@ -152,6 +152,14 @@ public final class ScrollableSegmentItem : Equatable, Comparable, Identifiable {
         return lhs.index == rhs.index && lhs.title == rhs.title && lhs.uniqueId == rhs.uniqueId && lhs.selected == rhs.selected && lhs.theme == rhs.theme && lhs.insets == rhs.insets && lhs.equatable == rhs.equatable
     }
     
+    public var contentView: NSView? {
+        return view
+    }
+
+    public var contentViews: [NSView] {
+        return view?.contentViews ?? []
+    }
+
     fileprivate weak var view:SegmentItemView?
 }
 
@@ -167,6 +175,10 @@ private final class SegmentItemView : Control {
     private var imageView: ImageView?
     private var textView: TextView?
     private var customTextView: NSView?
+    var contentViews: [NSView] {
+        return [customTextView ?? textView, imageView].compactMap { $0 }
+    }
+
     private let callback: (ScrollableSegmentItem)->Void
     private let menuItems:(ScrollableSegmentItem)->Signal<[ContextMenuItem], NoError>
     private let startDraggingIfNeeded: (ScrollableSegmentItem, Control)->Void
@@ -703,7 +715,26 @@ public class ScrollableSegmentView: View {
     }
     
     public func index(_ id: Int32) -> Int? {
-        return self.items.firstIndex(where: { $0.uniqueId == id }) 
+        return self.items.firstIndex(where: { $0.uniqueId == id })
+    }
+
+    public var visibleItems: [ScrollableSegmentItem] {
+        return items.filter { item in
+            guard let view = item.view, !view.isHiddenOrHasHiddenAncestor else { return false }
+            return !scrollView.contentView.bounds.intersection(view.convert(view.bounds, to: scrollView.contentView)).isEmpty
+        }
+    }
+
+    public func item(at point: NSPoint) -> ScrollableSegmentItem? {
+        guard bounds.contains(point), scrollView.contentView.bounds.contains(scrollView.contentView.convert(point, from: self)) else {
+            return nil
+        }
+        return items.first(where: { item in
+            guard let view = item.view, !view.isHidden else {
+                return false
+            }
+            return view.bounds.contains(view.convert(point, from: self))
+        })
     }
     
     private func applyResort() {

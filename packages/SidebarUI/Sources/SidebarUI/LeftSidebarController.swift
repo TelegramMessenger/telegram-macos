@@ -89,7 +89,57 @@ private final class LeftSidebarArguments {
 
 public final class LeftSidebarView: LiquidGlassView {
     fileprivate let tableView = TableView()
-    fileprivate var environment: SidebarUIEnvironment?
+    private var folderDrop: (any SidebarFolderDropTarget)?
+    fileprivate var environment: SidebarUIEnvironment? {
+        didSet {
+            folderDrop?.exit()
+            unregisterDraggedTypes()
+            folderDrop = environment?.makeFolderDropTarget(scrollView: tableView, target: { [weak self] point in
+                guard let self, let documentView = self.tableView.documentView else { return nil }
+                let row = self.tableView.row(at: documentView.convert(point, from: nil))
+                guard self.tableView.optionalItem(at: row) != nil else { return nil }
+                return (self.tableView.viewNecessary(at: row) as? LeftSidebarFolderView)?.folderDropTarget
+            }, visibleTargets: { [weak self] in
+                var targets: [(ChatListFilter, NSView, [NSView])] = []
+                self?.tableView.enumerateVisibleViews(with: { view in
+                    if let view = view as? LeftSidebarFolderView, let (filter, host) = view.folderDropTarget {
+                        targets.append((filter, host, view.folderDropContentViews))
+                    }
+                })
+                return targets
+            })
+            registerForDraggedTypes(environment?.folderDropTypes ?? [])
+        }
+    }
+
+    public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return folderDrop?.update(sender) ?? []
+    }
+
+    public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return folderDrop?.update(sender) ?? []
+    }
+
+    public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return folderDrop?.perform(sender) ?? false
+    }
+
+    public override func draggingExited(_ sender: NSDraggingInfo?) {
+        folderDrop?.exit()
+    }
+
+    public override func draggingEnded(_ sender: NSDraggingInfo) {
+        folderDrop?.exit()
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { folderDrop?.exit() }
+    }
+
+    public override var isHidden: Bool {
+        didSet { if isHidden { folderDrop?.exit() } }
+    }
     fileprivate let edit = ImageButton()
 
     /// 20pt on macOS 26+ to match the liquid-glass look (on macOS 27 the

@@ -1620,10 +1620,152 @@ public class ChatListRowView: TableRowView {
     }
     
     
-    public override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
+    private var avatarMouseDown: NSEvent?
+    private var avatarMouseTarget: Bool = false
+    private var avatarDragConsumed: Bool = false
+    private var forwardingAvatarEvent: Bool = false
+    private var folderDragSource: ChatListFolderDragSource?
+
+    private func forwardAvatarEvent(_ action: () -> Void) {
+        forwardingAvatarEvent = true
+        action()
+        forwardingAvatarEvent = false
     }
-    
+
+    private var canDragAvatar: Bool {
+        guard let item = item as? ChatListRowItem, case .chat = item.mode, let peer = item.peer else {
+            return false
+        }
+        return !item.isGroup && !item.isAd && !item.isSecret && !item.hideContent && item.sidebarSelection == nil && !item.context.isFrozen && !isRevealActive && !isResorting && !photo.isHidden && peer.id.namespace != Namespaces.Peer.SecretChat
+    }
+
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        let view = super.hitTest(point)
+        if view != nil, canDragAvatar, let superview = superview, photo.bounds.contains(photo.convert(point, from: superview)) {
+            return self
+        }
+        return view
+    }
+
+    public override func mouseDown(with event: NSEvent) {
+        if forwardingAvatarEvent {
+            super.mouseDown(with: event)
+            return
+        }
+        avatarMouseDown = nil
+        avatarDragConsumed = false
+        folderDragSource?.consume()
+        folderDragSource = nil
+        avatarMouseTarget = canDragAvatar && photo.userInteractionEnabled && photo.bounds.contains(photo.convert(event.locationInWindow, from: nil))
+        if canDragAvatar, event.clickCount == 1, event.modifierFlags.intersection([.control, .command, .shift, .option]).isEmpty, photo.bounds.contains(photo.convert(event.locationInWindow, from: nil)) {
+            avatarMouseDown = event
+        } else if avatarMouseTarget {
+            forwardAvatarEvent { photo.mouseDown(with: event) }
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
+
+    public override func mouseDragged(with event: NSEvent) {
+        if forwardingAvatarEvent {
+            super.mouseDragged(with: event)
+            return
+        }
+        guard !avatarDragConsumed else {
+            return
+        }
+        if let initial = avatarMouseDown {
+            let gesture = ChatListAvatarDragGesture(location: initial.locationInWindow, timestamp: initial.timestamp)
+            switch gesture.action(location: event.locationInWindow, timestamp: event.timestamp) {
+            case .pending:
+                return
+            case .drag:
+                avatarMouseDown = nil
+                avatarDragConsumed = true
+                guard canDragAvatar, let item = item as? ChatListRowItem, let peer = item.peer else {
+                    return
+                }
+                let source = ChatListFolderDragSource(context: item.context, peer: peer)
+                let decorations: [NSView?] = [activeImage, starBadgeView, communityHiddenView, groupActivityView, avatarTimerBadge]
+                let presentation = ChatListFolderDragPresentation(origin: photo, decorations: decorations.compactMap { $0 })
+                source.presentation = presentation
+                folderDragSource = source
+                let pasteboardItem = NSPasteboardItem()
+                pasteboardItem.setString(source.token, forType: ChatListFolderDrop.pasteboardType)
+                let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+                let avatarFrame = convert(photo.bounds, from: photo)
+                let inset: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 8 : 11
+                draggingItem.setDraggingFrame(avatarFrame.insetBy(dx: -inset, dy: -inset), contents: presentation.draggingImage)
+                presentation.lift()
+                let session = beginDraggingSession(with: [draggingItem], event: event, source: source)
+                session.animatesToStartingPositionsOnCancelOrFail = false
+                return
+            case .forward:
+                avatarMouseDown = nil
+                if avatarMouseTarget {
+                    forwardAvatarEvent { photo.mouseDown(with: initial) }
+                } else {
+                    super.mouseDown(with: initial)
+                }
+            }
+        }
+        if avatarMouseTarget {
+            forwardAvatarEvent { photo.mouseDragged(with: event) }
+        } else {
+            super.mouseDragged(with: event)
+        }
+    }
+
+    public override func mouseUp(with event: NSEvent) {
+        if forwardingAvatarEvent {
+            super.mouseUp(with: event)
+            return
+        }
+        guard !avatarDragConsumed else {
+            return
+        }
+        if let initial = avatarMouseDown {
+            avatarMouseDown = nil
+            guard canDragAvatar else {
+                return
+            }
+            if avatarMouseTarget {
+                forwardAvatarEvent { photo.mouseDown(with: initial) }
+            } else {
+                super.mouseDown(with: initial)
+            }
+        }
+        if avatarMouseTarget {
+            forwardAvatarEvent { photo.mouseUp(with: event) }
+        } else {
+            super.mouseUp(with: event)
+        }
+    }
+
+    public override var isHidden: Bool {
+        didSet {
+            if isHidden {
+                folderDragSource?.consume()
+                folderDragSource = nil
+            }
+        }
+    }
+
+    private func updateFolderDragVisibility() {
+        if window == nil || visibleRect.isEmpty {
+            folderDragSource?.consume()
+            folderDragSource = nil
+        }
+    }
+
+    public override func scrollWheel(with event: NSEvent) {
+        if avatarMouseDown != nil {
+            avatarMouseDown = nil
+            avatarDragConsumed = true
+        }
+        super.scrollWheel(with: event)
+    }
+
     override public func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         needsDisplay = true
         animateSelectionChange = true
@@ -1713,6 +1855,7 @@ public class ChatListRowView: TableRowView {
     }
     
     public override func updateAnimatableContent() -> Void {
+        updateFolderDragVisibility()
         let isLite = self.isEmojiLite
         let checkValue:(InlineStickerItemLayer)->Void = { value in
             if let superview = value.superview {
@@ -1756,6 +1899,11 @@ public class ChatListRowView: TableRowView {
         defer { animateSelectionChange = false }
 
         if previousStableId != item.stableId {
+            if avatarMouseDown != nil {
+                avatarMouseDown = nil
+                avatarDragConsumed = true
+            }
+            folderDragSource?.consume()
             closeRevealOnUpdate = false
             reveal.reset()
         }
@@ -2859,6 +3007,8 @@ public class ChatListRowView: TableRowView {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
+            folderDragSource?.consume()
+            folderDragSource = nil
             closeRevealOnUpdate = false
             reveal.reset()
         }
