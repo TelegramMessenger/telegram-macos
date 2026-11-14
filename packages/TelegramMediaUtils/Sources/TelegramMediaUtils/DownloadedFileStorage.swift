@@ -7,8 +7,15 @@ public enum DownloadedFileStorage {
             .appendingPathComponent("temp-downloads", isDirectory: true).path
     }
 
+    private static let lock = NSLock()
+    private static var closedDirectories = Set<String>()
+
     public static func removeTemporaryDirectory(mediaBoxPath: String) {
-        try? FileManager.default.removeItem(atPath: temporaryDirectory(mediaBoxPath: mediaBoxPath))
+        let directory = temporaryDirectory(mediaBoxPath: mediaBoxPath)
+        lock.lock()
+        closedDirectories.insert(directory)
+        try? FileManager.default.removeItem(atPath: directory)
+        lock.unlock()
     }
 
     static func existingPath(_ path: String, size: Int64, lastModified: Int32, in directory: String) -> String? {
@@ -26,7 +33,12 @@ public enum DownloadedFileStorage {
     }
 
     static func copy(from source: String, to destination: String) throws -> String {
+        lock.lock()
+        defer { lock.unlock() }
         let url = URL(fileURLWithPath: destination)
+        if closedDirectories.contains(url.deletingLastPathComponent().standardizedFileURL.path) {
+            throw CocoaError(.fileWriteNoPermission)
+        }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
         let base = url.deletingPathExtension().path
         let suffix = url.pathExtension.isEmpty ? "" : "." + url.pathExtension
