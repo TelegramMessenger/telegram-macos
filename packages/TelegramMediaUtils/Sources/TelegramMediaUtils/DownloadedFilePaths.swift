@@ -18,6 +18,9 @@ public func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAny
         guard let adopted = try? DownloadedFileStorage.copy(from: boxPath, to: destination) else {
             return .single(nil)
         }
+        guard FileManager.default.fileExists(atPath: adopted) else {
+            return .single(nil)
+        }
         let lastModified = FileManager.default.modificationDateForFileAtPath(path: adopted)?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
         let size = fileSize(adopted) ?? file.size ?? 0
         let path = DownloadedPath(id: file.fileId, downloadedPath: adopted, size: Int64(size), lastModified: Int32(lastModified))
