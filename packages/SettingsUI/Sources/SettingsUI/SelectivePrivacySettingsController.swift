@@ -119,6 +119,8 @@ private func stringForUserCount(_ count: Int, enableForPremium: Bool = false, en
 
 private enum SelectivePrivacySettingsEntry: TableItemListNodeEntry {
     case settingHeader(Int32, String, GeneralViewType)
+    case settingSelector(Int32, String, SelectivePrivacySettingType, Bool, Bool, GeneralViewType)
+    case p2pSelector(Int32, SelectivePrivacySettingType, GeneralViewType)
     case birthdayHeader(Int32, String, GeneralViewType)
     case showGiftButton(Int32, Bool, Bool, GeneralViewType)
     case showGiftButtonInfo(Int32, GeneralViewType)
@@ -160,6 +162,8 @@ private enum SelectivePrivacySettingsEntry: TableItemListNodeEntry {
     var stableId: Int32 {
         switch self {
         case .settingHeader: return 0
+        case .settingSelector: return 4
+        case .p2pSelector: return 12
         case .birthdayHeader: return 1
         case .showGiftButton: return 2
         case .showGiftButtonInfo: return 3
@@ -203,6 +207,8 @@ private enum SelectivePrivacySettingsEntry: TableItemListNodeEntry {
     var index:Int32 {
         switch self {
         case .settingHeader(let sectionId, _, _): return (sectionId * 1000) + stableId
+        case .settingSelector(let sectionId, _, _, _, _, _): return (sectionId * 1000) + stableId
+        case .p2pSelector(let sectionId, _, _): return (sectionId * 1000) + stableId
         case .birthdayHeader(let sectionId, _, _): return (sectionId * 1000) + stableId
         case .showGiftButton(let sectionId, _, _, _): return (sectionId * 1000) + stableId
         case .showGiftButtonInfo(let sectionId, _): return (sectionId * 1000) + stableId
@@ -252,6 +258,24 @@ private enum SelectivePrivacySettingsEntry: TableItemListNodeEntry {
         switch self {
         case let .settingHeader(_, text, viewType):
             return GeneralTextRowItem(initialSize, stableId: stableId, text: text, viewType: viewType)
+        case let .settingSelector(_, title, current, locked, enabled, viewType):
+            let options: [(SelectivePrivacySettingType, String)] = [(.everybody, strings().privacySettingsControllerEverbody), (.contacts, strings().privacySettingsControllerMyContacts), (.nobody, strings().privacySettingsControllerNobody)]
+            let items = options.map { option in
+                ContextMenuItem(option.1, handler: {
+                    arguments.updateType(option.0)
+                }, locked: locked && option.0 != .everybody)
+            }
+            let value = options.first(where: { $0.0 == current })?.1 ?? options[0].1
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title.settingsSentenceCase, type: .contextSelector(value, items), viewType: viewType, enabled: enabled)
+        case let .p2pSelector(_, current, viewType):
+            let options: [(SelectivePrivacySettingType, String)] = [(.everybody, strings().privacySettingsControllerP2pAlways), (.contacts, strings().privacySettingsControllerP2pContacts), (.nobody, strings().privacySettingsControllerP2pNever)]
+            let items = options.map { option in
+                ContextMenuItem(option.1, handler: {
+                    arguments.p2pMode(option.0)
+                })
+            }
+            let value = options.first(where: { $0.0 == current })?.1 ?? options[0].1
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().privacySettingsControllerP2pHeader.settingsSentenceCase, type: .contextSelector(value, items), viewType: viewType)
         case let .birthdayHeader(_, text, viewType):
             return GeneralTextRowItem(initialSize, stableId: stableId, text: .markdown(text, linkHandler: { _ in
                 arguments.setupBirthday()
@@ -323,9 +347,14 @@ private enum SelectivePrivacySettingsEntry: TableItemListNodeEntry {
         case let .phoneDiscoveryHeader(_, title, viewType):
             return GeneralTextRowItem(initialSize, stableId: stableId, text: title, viewType: viewType)
         case let .phoneDiscoveryEverybody(_, title, selected, viewType):
-            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title, type: .selectable(selected), viewType: viewType, action: {
+            let everybody = strings().privacySettingsControllerEverbody
+            let contacts = strings().privacySettingsControllerMyContacts
+            let items = [ContextMenuItem(everybody, handler: {
                 arguments.updatePhoneDiscovery(true)
-            })
+            }), ContextMenuItem(contacts, handler: {
+                arguments.updatePhoneDiscovery(false)
+            })]
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title.settingsSentenceCase, type: .contextSelector(selected ? everybody : contacts, items), viewType: viewType)
         case let .phoneDiscoveryMyContacts(_, title, selected, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: title, type: .selectable(selected), viewType: viewType, action: {
                 arguments.updatePhoneDiscovery(false)
@@ -557,12 +586,7 @@ private func selectivePrivacySettingsControllerEntries(context: any AccountConte
     let enabledSettings: Bool = !(kind == .gifts && state.gifts == .All)
 
 
-    entries.append(.settingHeader(sectionId, settingTitle, .textTopItem))
-
-    entries.append(.everybody(sectionId, state.setting == .everybody, enabledSettings, .firstItem))
-    
-    entries.append(.contacts(sectionId, state.setting == .contacts, kind == .voiceMessages && !context.isPremium, enabledSettings, .innerItem))
-    entries.append(.nobody(sectionId, state.setting == .nobody, kind == .voiceMessages && !context.isPremium, enabledSettings, .lastItem))
+    entries.append(.settingSelector(sectionId, settingTitle, state.setting, kind == .voiceMessages && !context.isPremium, enabledSettings, .singleItem))
 
     if let settingInfoText = settingInfoText {
         entries.append(.settingInfo(sectionId, settingInfoText, .textBottomItem))
@@ -574,9 +598,7 @@ private func selectivePrivacySettingsControllerEntries(context: any AccountConte
     
   
     if case .phoneNumber = kind, state.setting == .nobody {
-        entries.append(.phoneDiscoveryHeader(sectionId, strings().privacyPhoneNumberSettingsDiscoveryHeader, .textTopItem))
-        entries.append(.phoneDiscoveryEverybody(sectionId, strings().privacySettingsControllerEverbody, state.phoneDiscoveryEnabled != false, .firstItem))
-        entries.append(.phoneDiscoveryMyContacts(sectionId, strings().privacySettingsControllerMyContacts, state.phoneDiscoveryEnabled == false, .lastItem))
+        entries.append(.phoneDiscoveryEverybody(sectionId, strings().privacyPhoneNumberSettingsDiscoveryHeader, state.phoneDiscoveryEnabled != false, .singleItem))
         entries.append(.phoneDiscoveryInfo(sectionId, strings().privacyPhoneNumberSettingsCustomDisabledHelp, .textBottomItem))
         
         entries.append(.section(sectionId))
@@ -604,10 +626,7 @@ private func selectivePrivacySettingsControllerEntries(context: any AccountConte
         case .voiceCalls:
             entries.append(.section(sectionId))
             sectionId += 1
-            entries.append(.p2pHeader(sectionId, strings().privacySettingsControllerP2pHeader, .textTopItem))
-            entries.append(.p2pAlways(sectionId, callSettings == .everybody, .firstItem))
-            entries.append(.p2pContacts(sectionId, callSettings == .contacts, .innerItem))
-            entries.append(.p2pNever(sectionId, callSettings == .nobody, .lastItem))
+            entries.append(.p2pSelector(sectionId, callSettings, .singleItem))
             entries.append(.p2pDesc(sectionId, strings().privacySettingsControllerP2pDesc, .textBottomItem))
 
             entries.append(.section(sectionId))
@@ -683,7 +702,7 @@ private func selectivePrivacySettingsControllerEntries(context: any AccountConte
 fileprivate func prepareTransition(left:[SelectivePrivacySettingsEntry], right: [SelectivePrivacySettingsEntry], initialSize:NSSize, arguments:SelectivePrivacySettingsControllerArguments) -> TableUpdateTransition {
 
     let (removed, inserted, updated) = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
-        return entry.item(arguments, initialSize: initialSize)
+        return entry.item(arguments, initialSize: initialSize).settingsRow()
     }
 
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)

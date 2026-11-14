@@ -879,6 +879,8 @@ open class InputDataRowView : GeneralRowView, TGModernGrowingDelegate, NSTextFie
     }
     
     open override func set(item: TableRowItem, animated: Bool) {
+    
+        containerView.applySettingsCorners(item)
         
         guard let item = item as? InputDataRowItem else {return}
         

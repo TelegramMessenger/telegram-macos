@@ -370,7 +370,7 @@ public func EditThemeController(context: any AccountContextProtocol, telegramThe
         }))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: strings().editThemeTitle, validateData: { data in
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().editThemeTitle, validateData: { data in
         
         return save()
         

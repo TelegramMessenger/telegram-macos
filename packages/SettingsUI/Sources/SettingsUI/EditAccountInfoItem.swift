@@ -160,6 +160,8 @@ private final class EditAccountInfoItemView : TableRowView, TGModernGrowingDeleg
     }
     
     public override func set(item: TableRowItem, animated: Bool) {
+    
+        containerView.applySettingsCorners(item)
         
         guard let item = item as? EditAccountInfoItem else {return}
 

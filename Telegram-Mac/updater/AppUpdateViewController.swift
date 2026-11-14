@@ -243,7 +243,7 @@ func AppUpdateViewController() -> InputDataController {
     } |> map { InputDataSignalValue(entries: $0) }
     
 
-    return InputDataController(dataSignal: signal, title: strings().appUpdateTitle, validateData: { data in
+    return InputDataController(settingsLayout: true, dataSignal: signal, title: strings().appUpdateTitle, validateData: { data in
         
         if let _ = data[_id_download_update] {
             driver?.downloadUpdate()

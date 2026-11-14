@@ -144,7 +144,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
             }
             
             entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_exception(item.peer.peer.id), equatable: InputDataEquatable(tuple), comparable: nil, item: { initialSize, stableId in
-                return ShortPeerRowItem(initialSize, peer: item.peer.peer, account: arguments.context.account, context: arguments.context, stableId: stableId, height: 42, photoSize: NSMakeSize(30, 30), inset: NSEdgeInsets(left: 20, right: 20), interactionType: interactionType, generalType: .nextContext(stringForKeepMediaTimeout(item.value)), viewType: tuple.viewType, contextMenuItems: {
+                return ShortPeerRowItem(initialSize, peer: item.peer.peer, account: arguments.context.account, context: arguments.context, stableId: stableId, height: 30 + SettingsRowMetrics.contentInset * 2, photoSize: NSMakeSize(30, 30), titleStyle: ControlStyle(font: .normal(SettingsRowMetrics.titleSize), foregroundColor: theme.colors.text, highlightColor: .white), inset: NSEdgeInsets(left: 20, right: 20), interactionType: interactionType, generalType: .nextContext(stringForKeepMediaTimeout(item.value)), viewType: tuple.viewType, contextMenuItems: {
                     return .single(menuItems)
                 })
             }))
@@ -269,7 +269,7 @@ func DataStorageExceptions(context: any AccountContextProtocol, category: CacheS
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: category.titleString, hasDone: true)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: category.titleString, hasDone: true)
     controller.analyticsScreen = .settingsStorageUsageExceptions
     controller.updateDoneValue = { data in
         return { f in

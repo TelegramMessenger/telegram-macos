@@ -86,37 +86,21 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
     
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error:  nil, identifier: _id_enabled, data: .init(name: strings().liteModeEnableText, color: theme.colors.text, type: .switchable(state.liteMode.enabled), viewType: .singleItem, action: arguments.toggleEnabled)))
-    index += 1
-    
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().liteModeInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error:  nil, identifier: _id_enabled, data: .init(name: strings().liteModeEnableText, color: theme.colors.text, type: .switchable(state.liteMode.enabled), viewType: .firstItem, description: strings().liteModeInfo, action: arguments.toggleEnabled)))
     index += 1
 
-    
-    // entries
-    
-    entries.append(.sectionId(sectionId, type: .normal))
-    sectionId += 1
-    
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().liteModeLowPower), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
-    index += 1
-
-    
     entries.append(InputDataEntry.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_low_power, equatable: InputDataEquatable(state.liteMode), comparable: nil, item: { initialSize, stableId in
-        let sizes:[Int32] = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-        return SelectSizeRowItem(initialSize, stableId: stableId, current: state.liteMode.lowBatteryPercent, sizes: sizes, hasMarkers: false, viewType: .singleItem, selectAction: { index in
+        let sizes:[Int32] = [10, 40, 70, 100]
+        let offTitle = strings().liteModeControllerOff
+        let titles = sizes.map { $0 == 100 ? offTitle : "\($0)%" }
+        let title = strings().liteModeControllerTurnOnAutomatically
+        let stored = state.liteMode.lowBatteryPercent
+        let percent = sizes.min(by: { abs($0 - stored) < abs($1 - stored) }) ?? stored
+        let subtitle = percent == 100 ? offTitle : strings().liteModeControllerBatteryBelow("\(percent)%")
+        return SelectSizeRowItem(initialSize, stableId: stableId, current: percent, sizes: sizes, hasMarkers: false, titles: titles, title: title, subtitle: subtitle, viewType: .lastItem, selectAction: { index in
             arguments.toggleLowPower(sizes[index])
         })
     }))
-    index += 1
-    
-    let lowPowerText: String
-    if state.liteMode.lowBatteryPercent == 100 {
-        lowPowerText = strings().liteModeLowPowerInfoFull
-    } else {
-        lowPowerText = strings().liteModeLowPowerInfo("\(state.liteMode.lowBatteryPercent)")
-    }
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(lowPowerText), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
     index += 1
     
     // Standalone "Enable Liquid Glass" toggle — own section + .desc so the
@@ -230,7 +214,7 @@ public func LiteModeController(context: any AccountContextProtocol) -> InputData
         }
     }))
     
-    let controller = InputDataController(dataSignal: signal, title: strings().liteModeTitle, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().liteModeTitle, hasDone: false)
     controller.analyticsScreen = .settingsPowerSaving
     
     controller.onDeinit = {

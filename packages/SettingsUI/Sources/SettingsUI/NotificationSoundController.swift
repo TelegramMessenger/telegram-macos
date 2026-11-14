@@ -241,7 +241,7 @@ public func NotificationSoundController(context: any AccountContextProtocol, ton
         }
     }))
     
-    let controller = InputDataController(dataSignal: signal, title: strings().notificationSoundTitle, removeAfterDisappear: false, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().notificationSoundTitle, removeAfterDisappear: false, hasDone: false)
     controller.analyticsScreen = .settingsNotificationsSound
     controller.onDeinit = {
         actionsDisposable.dispose()

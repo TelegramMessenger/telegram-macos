@@ -233,13 +233,13 @@ fileprivate func preparedMediaTransition(from fromView:[AppearanceWrapperEntry<P
         case let .messageEntry(message, _, _, viewType):
             let rowInset = NSEdgeInsets(left: 0, right: 0)
             if tags == .file, message.anyMedia is TelegramMediaFile {
-                return PeerMediaFileRowItem(initialSize, interaction, entry.entry, gallery: arguments.gallery, viewType: viewType, inset: rowInset)
+                return PeerMediaFileRowItem(initialSize, interaction, entry.entry, gallery: arguments.gallery, viewType: viewType, inset: rowInset).peerMediaSettingsRow()
             } else if tags == .webPage {
-                return PeerMediaWebpageRowItem(initialSize,interaction, entry.entry, gallery: arguments.gallery, viewType: viewType, inset: rowInset)
+                return PeerMediaWebpageRowItem(initialSize,interaction, entry.entry, gallery: arguments.gallery, viewType: viewType, inset: rowInset).peerMediaSettingsRow()
             } else if tags == .music, message.anyMedia is TelegramMediaFile {
-                return PeerMediaMusicRowItem(initialSize, interaction, entry.entry, gallery: arguments.gallery, music: arguments.music, viewType: viewType, inset: rowInset)
+                return PeerMediaMusicRowItem(initialSize, interaction, entry.entry, gallery: arguments.gallery, music: arguments.music, viewType: viewType, inset: rowInset).peerMediaSettingsRow()
             } else if tags == .voiceOrInstantVideo, message.anyMedia is TelegramMediaFile {
-                return PeerMediaVoiceRowItem(initialSize,interaction, entry.entry, gallery: arguments.gallery, music: arguments.music, viewType: viewType, inset: rowInset)
+                return PeerMediaVoiceRowItem(initialSize,interaction, entry.entry, gallery: arguments.gallery, music: arguments.music, viewType: viewType, inset: rowInset).peerMediaSettingsRow()
             } else {
                 return GeneralRowItem(initialSize, height: 1, stableId: entry.stableId)
             }
@@ -615,3 +615,12 @@ open class PeerMediaListController<Context: AccountContextProtocol>: TableViewCo
     
 }
 
+
+private extension GeneralRowItem {
+    func peerMediaSettingsRow() -> TableRowItem {
+        withSettingsLayout()
+        let inset = SettingsRowMetrics.contentInset
+        setSettingsInsets(NSEdgeInsets(left: inset, right: inset, top: inset, bottom: inset))
+        return self
+    }
+}

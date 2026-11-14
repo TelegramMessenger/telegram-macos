@@ -18,6 +18,7 @@ public final class LiquidGlassLensView: NSView {
         let lensedTintColor: NSColor?
         let unlensedTintColor: NSColor?
         let lensedScale: CGFloat
+        let magnifies: Bool
     }
 
     private struct State: Equatable {
@@ -117,7 +118,7 @@ public final class LiquidGlassLensView: NSView {
                 root = parent
             }
             let rootFrame = root.convert(root.bounds, to: contentView)
-            return SourceState(identifier: ObjectIdentifier(view), layerIdentifier: view.layer.map(ObjectIdentifier.init), frame: view.convert(view.bounds, to: contentView), bounds: view.bounds, magnificationCenter: source.magnificationCenter ?? CGPoint(x: rootFrame.midX, y: rootFrame.midY), isHidden: view.isHiddenOrHasHiddenAncestor, lensedTintColor: source.lensedTintColor?.usingColorSpace(.sRGB), unlensedTintColor: source.unlensedTintColor?.usingColorSpace(.sRGB), lensedScale: source.lensedScale)
+            return SourceState(identifier: ObjectIdentifier(view), layerIdentifier: view.layer.map(ObjectIdentifier.init), frame: view.convert(view.bounds, to: contentView), bounds: view.bounds, magnificationCenter: source.magnificationCenter ?? CGPoint(x: rootFrame.midX, y: rootFrame.midY), isHidden: view.isHiddenOrHasHiddenAncestor, lensedTintColor: source.lensedTintColor?.usingColorSpace(.sRGB), unlensedTintColor: source.unlensedTintColor?.usingColorSpace(.sRGB), lensedScale: source.lensedScale, magnifies: source.magnifies)
         }
         let next = State(
             frame: lensFrame,
@@ -139,7 +140,7 @@ public final class LiquidGlassLensView: NSView {
             guard !state.isHidden, let layer = source.view.layer else {
                 return nil
             }
-            return LensContentSource(layer: layer, frame: state.frame, bounds: state.bounds, magnificationCenter: state.magnificationCenter, lensedTintColor: state.lensedTintColor, unlensedTintColor: state.unlensedTintColor, lensedScale: state.lensedScale)
+            return LensContentSource(layer: layer, frame: state.frame, bounds: state.bounds, magnificationCenter: state.magnificationCenter, lensedTintColor: state.lensedTintColor, unlensedTintColor: state.unlensedTintColor, lensedScale: state.lensedScale, magnifies: state.magnifies)
         }
         generation += 1
         cleanup?.cancel()

@@ -58,7 +58,7 @@ public final class ActionButton : Control {
             if let existing = self.glassView {
                 glass = existing
             } else {
-                glass = LiquidGlassView(frame: bounds, cornerRadius: 20, hasShadow: true, hasBorder: true, forceAppearance: .forceLight)
+                glass = LiquidGlassView(frame: bounds, cornerRadius: SettingsRowMetrics.cardCornerRadius, hasShadow: true, hasBorder: true, forceAppearance: .forceLight)
                 self.glassView = glass
                 addSubview(glass, positioned: .below, relativeTo: imageView)
             }
@@ -74,7 +74,8 @@ public final class ActionButton : Control {
             }
             self.stretchReferenceView = nil
             self.backgroundColor = bgColor
-            self.layer?.cornerRadius = 20
+            self.layer?.cornerRadius = SettingsRowMetrics.cardCornerRadius
+            self.layer?.cornerCurve = .continuous
         }
 
 

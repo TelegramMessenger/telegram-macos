@@ -147,7 +147,7 @@ public func LogoutViewController<Context: AccountContextProtocol>(context: Conte
         return logoutEntries(state: state, activeAccounts: activeAccounts, arguments: arguments)
     }
     
-    let controller = InputDataController(dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: strings().logoutOptionsTitle, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal |> map { InputDataSignalValue(entries: $0) }, title: strings().logoutOptionsTitle, hasDone: false)
     controller.analyticsScreen = .settingsLogout
 
     controller.onDeinit = {

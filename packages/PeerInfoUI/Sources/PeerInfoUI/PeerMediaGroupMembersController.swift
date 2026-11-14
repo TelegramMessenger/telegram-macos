@@ -145,7 +145,7 @@ private func groupPeersEntries<Context: AccountContextProtocol>(state: GroupPeer
                         generalType = .context(label)
                     }
 
-                    return ShortPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: stableId, enabled: enabled, height: 36 + 16, photoSize: NSMakeSize(36, 36), titleStyle: ControlStyle(font: .medium(12.5), foregroundColor: theme.colors.text), statusStyle: ControlStyle(font: NSFont.normal(12.5), foregroundColor:color), status: string, inset: NSEdgeInsets(left: 0, right: 0), drawSeparatorIgnoringInset: true, interactionType: interactionType, generalType: generalType, viewType: viewType, action:{
+                    return ShortPeerRowItem(initialSize, peer: peer, account: arguments.context.account, context: arguments.context, stableId: stableId, enabled: enabled, height: 36 + SettingsRowMetrics.contentInset * 2, photoSize: NSMakeSize(36, 36), titleStyle: ControlStyle(font: .normal(SettingsRowMetrics.titleSize), foregroundColor: theme.colors.text), statusStyle: ControlStyle(font: NSFont.normal(SettingsRowMetrics.subtitleSize), foregroundColor:color), status: string, inset: NSEdgeInsets(left: 0, right: 0), drawSeparatorIgnoringInset: false, interactionType: interactionType, generalType: generalType, viewType: viewType, action:{
                         arguments.peerInfo(peer.id)
                     }, contextMenuItems: {
                         return .single(menuItems)
@@ -645,7 +645,7 @@ func PeerMediaGroupMembersController<Context: AccountContextProtocol>(context: C
         return InputDataSignalValue(entries: groupPeersEntries(state: $0, isEditing: $4, viewAndStories: $1, inputActivities: $3, memberListState: $2, arguments: arguments))
     }
     
-    let controller = InputDataController(dataSignal: dataSignal, title: "")
+    let controller = InputDataController(settingsLayout: true, dataSignal: dataSignal, title: "")
     controller.analyticsContext = origin
     controller.analyticsScreen = .peerInfoMediaMembers
     controller.bar = .init(height: 0)

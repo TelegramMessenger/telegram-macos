@@ -40,6 +40,8 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
     case sendLargePhotos(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case acceptSecretChats(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case forceTouchReply(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
+    case forceClick(sectionId:Int, action: ForceTouchAction, viewType: GeneralViewType)
+    case sendWith(sectionId:Int, enter: Bool, viewType: GeneralViewType)
     case forceTouchEdit(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case forceTouchForward(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case forceTouchReact(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
@@ -84,6 +86,10 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
             return 15
         case .forceTouchReply:
             return 16
+        case .forceClick:
+            return 27
+        case .sendWith:
+            return 28
         case .forceTouchEdit:
             return 17
         case .forceTouchForward:
@@ -144,6 +150,10 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
         case let .enterBehavior(sectionId, _, _):
             return (sectionId * 1000) + stableId
         case let .cmdEnterBehavior(sectionId, _, _):
+            return (sectionId * 1000) + stableId
+        case let .forceClick(sectionId, _, _):
+            return (sectionId * 1000) + stableId
+        case let .sendWith(sectionId, _, _):
             return (sectionId * 1000) + stableId
         case let .forceTouchReply(sectionId, _, _):
             return (sectionId * 1000) + stableId
@@ -246,6 +256,24 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
             return GeneralInteractedRowItem(initialSize, name: strings().generalSettingsForceTouchEdit, type: .selectable(enabled), viewType: viewType, action: {
                 arguments.toggleForceTouchAction(.edit)
             })
+        case let .forceClick(sectionId: _, action, viewType):
+            let options: [(ForceTouchAction, String)] = [(.reply, strings().generalSettingsViewControllerForceClickReply), (.edit, strings().generalSettingsViewControllerForceClickEdit), (.forward, strings().generalSettingsViewControllerForceClickForward), (.react, strings().generalSettingsForceTouchReact)]
+            let current = options.first(where: { $0.0 == action })?.1 ?? options[0].1
+            let items = options.map { option in
+                ContextMenuItem(option.1, handler: {
+                    arguments.toggleForceTouchAction(option.0)
+                })
+            }
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsViewControllerForceClick, type: .contextSelector(current, items), viewType: viewType)
+        case let .sendWith(sectionId: _, enter, viewType):
+            let enterTitle = strings().generalSettingsViewControllerSendWithReturn
+            let cmdTitle = strings().generalSettingsViewControllerSendWithCmdReturn
+            let items = [ContextMenuItem(enterTitle, handler: {
+                arguments.toggleInput(.enter)
+            }), ContextMenuItem(cmdTitle, handler: {
+                arguments.toggleInput(.cmdEnter)
+            })]
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsViewControllerSendWith, type: .contextSelector(enter ? enterTitle : cmdTitle, items), viewType: viewType)
         case let .forceTouchReply(sectionId: _, enabled, viewType):
             return GeneralInteractedRowItem(initialSize, name: strings().generalSettingsForceTouchReply, type: .selectable(enabled), viewType: viewType, action: {
                arguments.toggleForceTouchAction(.reply)
@@ -407,21 +435,11 @@ private func generalSettingsEntries(arguments:GeneralSettingsArguments, baseSett
     entries.append(.section(sectionId: sectionId))
     sectionId += 1
     
-    entries.append(.header(sectionId: sectionId, uniqueId: headerUnique, text: strings().generalSettingsForceTouchHeader))
+    entries.append(.header(sectionId: sectionId, uniqueId: headerUnique, text: strings().generalSettingsViewControllerMessagesHeader))
     headerUnique -= 1
     
-    entries.append(.forceTouchReply(sectionId: sectionId, enabled: FastSettings.forceTouchAction == .reply, viewType: .firstItem))
-    entries.append(.forceTouchEdit(sectionId: sectionId, enabled: FastSettings.forceTouchAction == .edit, viewType: .innerItem))
-    entries.append(.forceTouchForward(sectionId: sectionId, enabled: FastSettings.forceTouchAction == .forward, viewType: .innerItem))
-    entries.append(.forceTouchReact(sectionId: sectionId, enabled: FastSettings.forceTouchAction == .react, viewType: .lastItem))
-
-    entries.append(.section(sectionId: sectionId))
-    sectionId += 1
-    
-    entries.append(.header(sectionId: sectionId, uniqueId: headerUnique, text: strings().generalSettingsInputSettings))
-    headerUnique -= 1
-    entries.append(.enterBehavior(sectionId: sectionId, enabled: FastSettings.sendingType == .enter, viewType: .firstItem))
-    entries.append(.cmdEnterBehavior(sectionId: sectionId, enabled: FastSettings.sendingType == .cmdEnter, viewType: .lastItem))
+    entries.append(.forceClick(sectionId: sectionId, action: FastSettings.forceTouchAction, viewType: .firstItem))
+    entries.append(.sendWith(sectionId: sectionId, enter: FastSettings.sendingType == .enter, viewType: .lastItem))
     
     entries.append(.section(sectionId: sectionId))
     sectionId += 1
@@ -446,7 +464,7 @@ private func generalSettingsEntries(arguments:GeneralSettingsArguments, baseSett
 
 private func prepareEntries(left: [AppearanceWrapperEntry<GeneralSettingsEntry>], right: [AppearanceWrapperEntry<GeneralSettingsEntry>], arguments: GeneralSettingsArguments, initialSize: NSSize) -> TableUpdateTransition {
     let (removed, inserted, updated)  = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
-        return entry.entry.item(arguments, initialSize: initialSize)
+        return entry.entry.item(arguments, initialSize: initialSize).settingsRow()
     }
     
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
