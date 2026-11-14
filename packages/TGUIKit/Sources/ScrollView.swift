@@ -269,3 +269,9 @@ open class ScrollView: NSScrollView{
     }
     
 }
+
+public extension NSScrollView {
+    func additionalBottomScrollerInset(for minimumClearance: CGFloat) -> CGFloat {
+        return max(0, minimumClearance - contentInsets.bottom)
+    }
+}

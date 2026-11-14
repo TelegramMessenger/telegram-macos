@@ -12,6 +12,7 @@ import GeneralRows
 import ShortPeerRow
 import AlertsUI
 import SelectPeersUI
+import AppAnalytics
 
 
 
@@ -410,6 +411,11 @@ open class ChannelBlacklistViewController<Context: AccountContextProtocol>: Edit
         self.disposable.set(signal.start(next: { [weak self] transition, peerView in
             guard let `self` = self else {
                 return
+            }
+            if peerViewMainPeer(peerView)?.isCommunity == true {
+                self.analyticsScreen = .communityRemovedUsers
+            } else {
+                self.analyticsScreen = .peerInfoRemovedUsers
             }
             self.genericView.merge(with: transition)
             self.readyOnce()

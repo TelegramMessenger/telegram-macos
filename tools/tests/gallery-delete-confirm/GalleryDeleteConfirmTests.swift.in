@@ -1,0 +1,611 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Peer {
+        static let CloudUser: Int32 = 0
+        static let CloudGroup: Int32 = 1
+        static let CloudChannel: Int32 = 2
+        static let SecretChat: Int32 = 3
+    }
+}
+
+struct MessageId: Hashable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+}
+
+class Peer {
+    let id: PeerId
+    init(id: PeerId) {
+        self.id = id
+    }
+    var isUser: Bool {
+        return false
+    }
+    var compactDisplayTitle: String {
+        return "Chat"
+    }
+}
+
+final class TelegramUser: Peer {
+    let name: String
+    let isBot: Bool
+    init(id: PeerId, name: String, isBot: Bool = false) {
+        self.name = name
+        self.isBot = isBot
+        super.init(id: id)
+    }
+    override var isUser: Bool {
+        return true
+    }
+    override var compactDisplayTitle: String {
+        return name
+    }
+}
+
+enum TelegramGroupRole {
+    case creator
+    case admin
+    case member
+}
+
+final class TelegramGroup: Peer {
+    let role: TelegramGroupRole
+    init(id: PeerId, role: TelegramGroupRole) {
+        self.role = role
+        super.init(id: id)
+    }
+}
+
+enum TelegramChannelInfo {
+    case broadcast
+    case group
+}
+
+struct TelegramChannelFlags: OptionSet {
+    let rawValue: Int32
+    static let isCreator = TelegramChannelFlags(rawValue: 1 << 0)
+}
+
+enum TelegramChannelPermission {
+    case deleteAllMessages
+}
+
+final class TelegramChannel: Peer {
+    let info: TelegramChannelInfo
+    let flags: TelegramChannelFlags
+    let permissions: Set<TelegramChannelPermission>
+    init(id: PeerId, info: TelegramChannelInfo, flags: TelegramChannelFlags = [], permissions: Set<TelegramChannelPermission> = []) {
+        self.info = info
+        self.flags = flags
+        self.permissions = permissions
+        super.init(id: id)
+    }
+    func hasPermission(_ permission: TelegramChannelPermission) -> Bool {
+        return flags.contains(.isCreator) || permissions.contains(permission)
+    }
+}
+
+final class TelegramSecretChat: Peer {}
+
+class Media {}
+final class TelegramMediaImage: Media {}
+final class TelegramMediaDice: Media {}
+final class TelegramMediaAction: Media {}
+
+struct MessageFlags: OptionSet {
+    let rawValue: Int32
+    static let Incoming = MessageFlags(rawValue: 1 << 0)
+}
+
+final class Message {
+    let id: MessageId
+    let peers: [PeerId: Peer]
+    let author: Peer?
+    let flags: MessageFlags
+    let timestamp: Int32
+    let anyMedia: Media? = TelegramMediaImage()
+    let extendedMedia: Media? = TelegramMediaImage()
+    let adAttribute: AnyObject? = nil
+    init(id: MessageId, peers: [PeerId: Peer], author: Peer?, flags: MessageFlags, timestamp: Int32) {
+        self.id = id
+        self.peers = peers
+        self.author = author
+        self.flags = flags
+        self.timestamp = timestamp
+    }
+    var effectiveAuthor: Peer? {
+        return author
+    }
+    func effectivelyIncoming(_ accountPeerId: PeerId) -> Bool {
+        return flags.contains(.Incoming)
+    }
+}
+
+final class CustomChatContents {
+    enum Kind {
+        case searchHashtag
+        case other
+    }
+    let kind: Kind = .other
+}
+
+enum ChatMode: Equatable {
+    case history
+    case scheduled
+    var customChatContents: CustomChatContents? {
+        return nil
+    }
+    var isSavedMode: Bool {
+        return false
+    }
+}
+
+enum ChatLocation {
+    case peer(PeerId)
+    var peerId: PeerId {
+        switch self {
+        case let .peer(peerId):
+            return peerId
+        }
+    }
+    var threadMsgId: MessageId? {
+        return nil
+    }
+}
+
+enum CachedChannelAdminRank {
+    case owner
+    case admin
+}
+
+struct CachedChannelAdminRanks {
+    let ranks: [PeerId: CachedChannelAdminRank]
+}
+
+final class Account {
+    let peerId: PeerId
+    init(peerId: PeerId) {
+        self.peerId = peerId
+    }
+}
+
+struct LimitsConfiguration {
+    var maxMessageEditingInterval: Int32
+    var canRemoveIncomingMessagesInPrivateChats: Bool
+}
+
+protocol AccountContextProtocol: AnyObject {
+    var account: Account { get }
+    var peerId: PeerId { get }
+    var timestamp: Int32 { get }
+    var limitConfiguration: LimitsConfiguration { get }
+}
+
+struct TelegramUtilsHooks {
+    static let shared = TelegramUtilsHooks()
+    func repliesPeerId() -> PeerId {
+        return PeerId(namespace: Namespaces.Peer.CloudUser, id: 708513)
+    }
+}
+
+protocol Disposable: AnyObject {
+    func dispose()
+}
+
+final class ActionDisposable: Disposable {
+    private var action: (() -> Void)?
+    init(action: @escaping () -> Void) {
+        self.action = action
+    }
+    func dispose() {
+        let action = self.action
+        self.action = nil
+        action?()
+    }
+}
+
+final class DisposableSet: Disposable {
+    private var disposables: [Disposable] = []
+    private var disposed = false
+    func add(_ disposable: Disposable) {
+        if disposed {
+            disposable.dispose()
+        } else {
+            disposables.append(disposable)
+        }
+    }
+    func dispose() {
+        disposed = true
+        let disposables = self.disposables
+        self.disposables = []
+        disposables.forEach { $0.dispose() }
+    }
+}
+
+final class MetaDisposable: Disposable {
+    private var current: Disposable?
+    private var disposed = false
+    func set(_ disposable: Disposable?) {
+        if disposed {
+            disposable?.dispose()
+            return
+        }
+        let previous = current
+        current = disposable
+        if previous !== disposable {
+            previous?.dispose()
+        }
+    }
+    func dispose() {
+        disposed = true
+        let current = self.current
+        self.current = nil
+        current?.dispose()
+    }
+}
+
+final class Signal<T> {
+    private let generator: (@escaping (T) -> Void, @escaping () -> Void) -> Disposable
+    init(_ generator: @escaping (@escaping (T) -> Void, @escaping () -> Void) -> Disposable) {
+        self.generator = generator
+    }
+    func start(next: @escaping (T) -> Void = { _ in }, completed: @escaping () -> Void = {}) -> Disposable {
+        return generator(next, completed)
+    }
+}
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: DefaultPrecedence
+}
+
+infix operator |> : PipeRight
+
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+func take<T>(_ count: Int) -> (Signal<T>) -> Signal<T> {
+    return { signal in
+        return Signal { next, completed in
+            var taken = 0
+            var finished = false
+            let source = MetaDisposable()
+            if count <= 0 {
+                finished = true
+                completed()
+                return source
+            }
+            let disposable = signal.start(next: { value in
+                if finished {
+                    return
+                }
+                taken += 1
+                next(value)
+                if taken >= count {
+                    finished = true
+                    completed()
+                    source.dispose()
+                }
+            }, completed: {
+                if !finished {
+                    finished = true
+                    completed()
+                }
+            })
+            source.set(disposable)
+            return source
+        }
+    }
+}
+
+func deliverOnMainQueue<T>(_ signal: Signal<T>) -> Signal<T> {
+    return signal
+}
+
+final class ValuePromise<T> {
+    private var value: T
+    private var subscribers: [Int: (T) -> Void] = [:]
+    private var nextIndex = 0
+    init(_ value: T) {
+        self.value = value
+    }
+    func set(_ value: T) {
+        self.value = value
+        for index in subscribers.keys.sorted() {
+            subscribers[index]?(value)
+        }
+    }
+    func get() -> Signal<T> {
+        return Signal { next, _ in
+            let index = self.nextIndex
+            self.nextIndex += 1
+            self.subscribers[index] = next
+            next(self.value)
+            return ActionDisposable {
+                self.subscribers[index] = nil
+            }
+        }
+    }
+}
+
+struct RenderedChannelParticipant {
+    let peer: Peer
+}
+
+enum ChannelMemberListLoadingState {
+    case loading(initial: Bool)
+    case ready(hasMore: Bool)
+}
+
+struct ChannelMemberListState {
+    var list: [RenderedChannelParticipant]
+    var loadingState: ChannelMemberListLoadingState
+}
+
+final class PeerChannelMemberCategoriesContextsManager {
+    private var subscribers: [Int: (ChannelMemberListState) -> Void] = [:]
+    private var nextIndex = 0
+    func admins(peerId: PeerId, searchQuery: String? = nil, updated: @escaping (ChannelMemberListState) -> Void) -> (Disposable, Int?) {
+        let index = nextIndex
+        nextIndex += 1
+        subscribers[index] = updated
+        updated(ChannelMemberListState(list: [], loadingState: .loading(initial: true)))
+        return (ActionDisposable { [weak self] in
+            self?.subscribers[index] = nil
+        }, nil)
+    }
+    func report(_ state: ChannelMemberListState) {
+        for index in subscribers.keys.sorted() {
+            subscribers[index]?(state)
+        }
+    }
+}
+
+enum InteractiveMessagesDeletionType: Equatable {
+    case forLocalPeer
+    case forEveryone
+}
+
+struct Deletion: Equatable {
+    let ids: [MessageId]
+    let type: InteractiveMessagesDeletionType
+}
+
+var deletions: [Deletion] = []
+
+final class EngineMessages {
+    func deleteMessagesInteractively(messageIds: [MessageId], type: InteractiveMessagesDeletionType, deleteAllInGroup: Bool = false) -> Signal<Void> {
+        return Signal { _, completed in
+            deletions.append(Deletion(ids: messageIds, type: type))
+            completed()
+            return ActionDisposable {}
+        }
+    }
+}
+
+final class TelegramEngine {
+    let messages = EngineMessages()
+}
+
+final class AccountContext: AccountContextProtocol {
+    let account: Account
+    let timestamp: Int32
+    let limitConfiguration: LimitsConfiguration
+    let engine = TelegramEngine()
+    let peerChannelMemberCategoriesContextsManager = PeerChannelMemberCategoriesContextsManager()
+    init(account: Account, timestamp: Int32, limitConfiguration: LimitsConfiguration) {
+        self.account = account
+        self.timestamp = timestamp
+        self.limitConfiguration = limitConfiguration
+    }
+    var peerId: PeerId {
+        return account.peerId
+    }
+}
+
+struct Strings {
+    var confirmDelete: String { return "Delete" }
+    var alertOK: String { return "OK" }
+    var alertCancel: String { return "Cancel" }
+    var chatConfirmActionUndonable: String { return "This action can't be undone" }
+    var chatConfirmDeleteMessagesForEveryone: String { return "Delete for Everyone" }
+    func chatConfirmDeleteMessages1Other(_ count: Int) -> String { return "Delete selected messages? (\(count))" }
+    func chatConfirmDeleteForEveryoneOther(_ count: Int) -> String { return "Are you sure you want to delete these messages for everyone? (\(count))" }
+    func chatMessageDeleteForMeAndPerson(_ name: String) -> String { return "Delete for Me and \(name)" }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+let appName = "Telegram"
+
+final class Window {}
+
+enum ConfirmResult {
+    case basic
+    case thrid
+}
+
+struct Alert {
+    let window: Window
+    let header: String
+    let information: String?
+    let ok: String
+    let cancel: String
+    let option: String?
+    let answer: (ConfirmResult) -> Void
+    let cancelled: () -> Void
+}
+
+var alerts: [Alert] = []
+
+func verifyAlert(for window: Window, header: String = appName, information: String? = nil, ok: String = strings().alertOK, cancel: String = strings().alertCancel, option: String? = nil, optionIsSelected: Bool? = true, successHandler: @escaping (ConfirmResult) -> Void, cancelHandler: @escaping () -> Void = {}) {
+    alerts.append(Alert(window: window, header: header, information: information, ok: ok, cancel: cancel, option: option, answer: successHandler, cancelled: cancelHandler))
+}
+
+func coreMessageMainPeer(_ message: Message) -> Peer? {
+    return message.peers[message.id.peerId]
+}
+
+__HELPERS__
+
+final class GalleryViewer {
+    let context: AccountContext
+    let window = Window()
+    let chatMode: ChatMode?
+    let chatLocation: ChatLocation?
+    private let messagesActionDisposable = MetaDisposable()
+
+    init(context: AccountContext, chatMode: ChatMode?, chatLocation: ChatLocation?) {
+        self.context = context
+        self.chatMode = chatMode
+        self.chatLocation = chatLocation
+    }
+
+__DELETE_MESSAGES__
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+let me = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: 1), name: "Me")
+let friend = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: 2), name: "Alice")
+let bot = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: 3), name: "Helper", isBot: true)
+let now = Int32(Date().timeIntervalSince1970)
+let recently = now - 60
+let longAgo = now - 7 * 24 * 60 * 60
+let loadedAdmins = ChannelMemberListState(list: [RenderedChannelParticipant(peer: me)], loadingState: .ready(hasMore: false))
+
+var nextMessageId: Int32 = 100
+
+func message(in chat: Peer, from author: Peer?, incoming: Bool, at timestamp: Int32 = longAgo) -> Message {
+    nextMessageId += 1
+    return Message(id: MessageId(peerId: chat.id, namespace: 0, id: nextMessageId), peers: [chat.id: chat], author: author, flags: incoming ? [.Incoming] : [], timestamp: timestamp)
+}
+
+func album(in chat: Peer, from author: Peer?, incoming: Bool) -> [Message] {
+    return [message(in: chat, from: author, incoming: incoming), message(in: chat, from: author, incoming: incoming)]
+}
+
+final class Opened {
+    let context: AccountContext
+    let viewer: GalleryViewer
+    init(context: AccountContext, viewer: GalleryViewer) {
+        self.context = context
+        self.viewer = viewer
+    }
+    func adminsReport() {
+        context.peerChannelMemberCategoriesContextsManager.report(loadedAdmins)
+    }
+}
+
+func pressDelete(_ messages: [Message]) -> Opened {
+    alerts = []
+    deletions = []
+    let context = AccountContext(account: Account(peerId: me.id), timestamp: now, limitConfiguration: LimitsConfiguration(maxMessageEditingInterval: 48 * 60 * 60, canRemoveIncomingMessagesInPrivateChats: true))
+    let viewer = GalleryViewer(context: context, chatMode: .history, chatLocation: .peer(messages[0].id.peerId))
+    viewer.deleteMessages(messages)
+    return Opened(context: context, viewer: viewer)
+}
+
+func checkAsks(_ name: String, _ messages: [Message], information: String) {
+    let ids = messages.map { $0.id }
+
+    let opened = pressDelete(messages)
+    check("\(name): Delete asks first", alerts.count == 1)
+    check("\(name): nothing is deleted before the answer", deletions.isEmpty)
+    let alert = alerts.first
+    check("\(name): the alert opens over the viewer", alert?.window === opened.viewer.window)
+    check("\(name): the header says it can't be undone, like the chat", alert?.header == strings().chatConfirmActionUndonable)
+    check("\(name): the text is \"\(information)\", like the chat", alert?.information == information)
+    check("\(name): the buttons are Delete and Cancel", alert?.ok == strings().confirmDelete && alert?.cancel == strings().alertCancel)
+    check("\(name): no second delete option", alert != nil && alert?.option == nil)
+    opened.adminsReport()
+    opened.adminsReport()
+    check("\(name): the alert doesn't come back when the admins list loads", alerts.count == 1)
+    check("\(name): still nothing deleted while it waits", deletions.isEmpty)
+    alerts.first?.answer(.basic)
+    check("\(name): Delete removes these messages once, as the chat does", deletions == [Deletion(ids: ids, type: .forLocalPeer)])
+    opened.adminsReport()
+    check("\(name): nothing more after the answer", alerts.count == 1 && deletions.count == 1)
+
+    let cancelled = pressDelete(messages)
+    check("\(name): Delete asks again", alerts.count == 1)
+    alerts.first?.cancelled()
+    cancelled.adminsReport()
+    cancelled.adminsReport()
+    check("\(name): Cancel keeps the messages", deletions.isEmpty)
+    check("\(name): after Cancel the alert doesn't open again by itself", alerts.count == 1)
+}
+
+func checkOffersBoth(_ name: String, _ messages: [Message], option: String) {
+    let ids = messages.map { $0.id }
+    let answers: [(ConfirmResult, InteractiveMessagesDeletionType)] = [(.basic, .forLocalPeer), (.thrid, .forEveryone)]
+    for (answer, type) in answers {
+        let opened = pressDelete(messages)
+        check("\(name): Delete asks first", alerts.count == 1 && deletions.isEmpty)
+        let alert = alerts.first
+        check("\(name): the alert is the same as before", alert?.header == strings().chatConfirmDeleteMessages1Other(messages.count) && alert?.information == nil && alert?.ok == strings().confirmDelete)
+        check("\(name): the second option is \"\(option)\"", alert?.option == option)
+        opened.adminsReport()
+        opened.adminsReport()
+        check("\(name): the alert doesn't come back when the admins list loads", alerts.count == 1)
+        alerts.first?.answer(answer)
+        check("\(name): \(answer) deletes \(type)", deletions == [Deletion(ids: ids, type: type)])
+    }
+}
+
+func checkNothing(_ name: String, _ messages: [Message]) {
+    let opened = pressDelete(messages)
+    opened.adminsReport()
+    check("\(name): no alert and nothing deleted", alerts.isEmpty && deletions.isEmpty)
+}
+
+let channel = TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: 10), info: .broadcast, flags: [.isCreator])
+let channelWithDeleteRight = TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: 11), info: .broadcast, permissions: [.deleteAllMessages])
+let channelSubscribed = TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: 12), info: .broadcast)
+let supergroup = TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: 13), info: .group)
+let supergroupWithDeleteRight = TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: 14), info: .group, permissions: [.deleteAllMessages])
+let group = TelegramGroup(id: PeerId(namespace: Namespaces.Peer.CloudGroup, id: 15), role: .member)
+let groupAsAdmin = TelegramGroup(id: PeerId(namespace: Namespaces.Peer.CloudGroup, id: 16), role: .admin)
+let secret = TelegramSecretChat(id: PeerId(namespace: Namespaces.Peer.SecretChat, id: 17))
+
+let forEveryone = strings().chatConfirmDeleteForEveryoneOther(1)
+let forMe = strings().chatConfirmDeleteMessages1Other(1)
+
+checkAsks("channel post, owner", [message(in: channel, from: channel, incoming: false)], information: forEveryone)
+checkAsks("channel post, admin with the delete right", [message(in: channelWithDeleteRight, from: channelWithDeleteRight, incoming: true)], information: forEveryone)
+checkAsks("channel album, both photos", album(in: channel, from: channel, incoming: false), information: strings().chatConfirmDeleteForEveryoneOther(2))
+checkAsks("supergroup, own photo", [message(in: supergroup, from: me, incoming: false, at: recently)], information: forEveryone)
+checkAsks("supergroup admin, a member's photo", [message(in: supergroupWithDeleteRight, from: friend, incoming: true)], information: forEveryone)
+checkAsks("basic group, someone else's photo", [message(in: group, from: friend, incoming: true)], information: forMe)
+checkAsks("basic group, own photo after the edit window", [message(in: group, from: me, incoming: false, at: longAgo)], information: forMe)
+checkAsks("bot chat", [message(in: bot, from: bot, incoming: true)], information: forMe)
+checkAsks("secret chat", [message(in: secret, from: friend, incoming: true)], information: forEveryone)
+
+checkOffersBoth("basic group, own recent photo", [message(in: group, from: me, incoming: false, at: recently)], option: strings().chatConfirmDeleteMessagesForEveryone)
+checkOffersBoth("basic group admin, someone else's photo", [message(in: groupAsAdmin, from: friend, incoming: true)], option: strings().chatConfirmDeleteMessagesForEveryone)
+checkOffersBoth("private chat", [message(in: friend, from: friend, incoming: true)], option: strings().chatMessageDeleteForMeAndPerson("Alice"))
+
+checkNothing("channel subscriber without the delete right", [message(in: channelSubscribed, from: channelSubscribed, incoming: true)])
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

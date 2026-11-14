@@ -1,0 +1,150 @@
+import Cocoa
+import SwiftSignalKit
+
+struct InputDataIdentifier: Equatable {
+    let value: String
+    init(_ value: String) { self.value = value }
+}
+struct InputDataEquatable {
+    init<T: Equatable>(_ value: T) {}
+}
+enum InputDataValue { case none }
+struct InputDataEntry {
+    let identifier: InputDataIdentifier
+    let index: Int32
+    let item: (NSSize, AnyHashable) -> AnyObject
+    static func custom(sectionId: Int32, index: Int32, value: InputDataValue, identifier: InputDataIdentifier, equatable: InputDataEquatable?, comparable: Int?, item: @escaping (NSSize, AnyHashable) -> AnyObject) -> InputDataEntry {
+        InputDataEntry(identifier: identifier, index: index, item: item)
+    }
+    func makeItem() -> AnyObject { item(NSMakeSize(350, 500), AnyHashable(identifier.value)) }
+}
+final class EStickItem {
+    let segmentName: String
+    let clearCallback: (() -> Void)?
+    init(_ size: NSSize, stableId: AnyHashable, segmentName: String, clearCallback: (() -> Void)? = nil) {
+        self.segmentName = segmentName
+        self.clearCallback = clearCallback
+    }
+}
+final class EmojiStatusStatusRowItem {
+    enum ViewType { case textTopItem }
+    let status: String
+    init(_ size: NSSize, stableId: AnyHashable, status: String, viewType: ViewType) { self.status = status }
+}
+struct SectionContext {
+    let account = Account()
+    var isPremium = false
+    let timestamp: Int32 = 100
+}
+struct SectionArguments {
+    let mode: PickerMode
+    var context = SectionContext()
+    let sendEmoji: (String, NSRect) -> Void = { _, _ in }
+    let dragEmoji: Int? = nil
+    let send: Int? = nil
+    let sendLarge: Int? = nil
+    let drag: Int? = nil
+    var ignorePremium = false
+    var clearRecent: () -> Void = {}
+    var showAllItems: (Int64) -> Void = { _ in }
+    var staticEmojiFilter: ((String) -> Bool)? = nil
+}
+struct SectionPeer {
+    struct Status { let expirationDate: Int32? }
+    struct Peer {
+        var isPremium = false
+        var emojiStatus: Status? = nil
+    }
+    var peer = Peer()
+}
+struct RecentMediaItem { let media: TelegramMediaFile }
+struct MessageReaction {
+    enum Reaction: Equatable {
+        case builtin(String), custom(Int64), stars
+        var emojiString: String {
+            if case let .builtin(value) = self { return value }
+            return ""
+        }
+    }
+}
+struct RecentReactionItem {
+    enum Content {
+        case builtin(String), custom(TelegramMediaFile), stars
+    }
+    let content: Content
+    var id: MediaId {
+        switch content {
+        case let .builtin(value): return .init(namespace: 0, id: Int64(value.unicodeScalars.first?.value ?? 0))
+        case let .custom(file): return file.fileId
+        case .stars: return .init(namespace: 0, id: -1)
+        }
+    }
+    init(_ content: Content) { self.content = content }
+}
+struct AvailableReactions {
+    struct Reaction {
+        let value: MessageReaction.Reaction
+        let selectAnimation: TelegramMediaFile
+        let activateAnimation: TelegramMediaFile
+        var isEnabled = true
+    }
+    let reactions: [Reaction]
+    var enabled: [Reaction] { reactions.filter(\.isEnabled) }
+}
+struct SectionState {
+    var recent: RecentUsedEmoji
+    var selectedItems: [EmojiesSectionRowItem.SelectedItem] = []
+    var color: NSColor? = nil
+    var itemsDict: [MediaId: StickerPackItem] = [:]
+    var peer: SectionPeer? = nil
+    var availableReactions: AvailableReactions? = nil
+    var reactions: AvailableReactions? = nil
+    var topReactionsItems: [RecentReactionItem] = []
+    var recentReactionsItems: [RecentReactionItem] = []
+    var recentStatusItems: [RecentMediaItem] = []
+    var featuredStatusItems: [RecentMediaItem] = []
+    var iconStatusEmoji: [TelegramMediaFile] = []
+    var revealed: [Int64: Bool] = [:]
+    var forumTopicItems: [StickerPackItem] = []
+    var externalTopic: (title: String, iconColor: Int32) = ("Topic", 0)
+}
+struct SectionTheme {
+    struct Colors { let text = NSColor.labelColor }
+    let colors = Colors()
+}
+extension SectionTheme.Colors {
+    var accent: NSColor { text }
+}
+let theme = SectionTheme()
+struct LocalBundleResource: Equatable {
+    let name: String
+    let ext: String
+    let color: NSColor
+}
+struct EntertainmentUIHooks {
+    static let shared = EntertainmentUIHooks()
+    func makeTopicIconFile(_ title: String, _ color: Int32, _ isGeneral: Bool) -> TelegramMediaFile {
+        TelegramMediaFile(fileId: .init(namespace: 0, id: -100))
+    }
+}
+func isDefaultStatusesPackId(_ reference: Int?) -> Bool { reference == 1 }
+func timeIntervalString(_ value: Int) -> String { "\(value)" }
+func emojiSelectionKey(_ value: String) -> String { value.strippedEmoji }
+func _id_emoji_segment(_ value: Int) -> InputDataIdentifier { .init("segment_\(value)") }
+func _id_emoji_block(_ value: Int) -> InputDataIdentifier { .init("block_\(value)") }
+
+func emojiSectionEntries(state: SectionState, arguments: SectionArguments, rendered: [EmojiSegment: [[NSAttributedString]]]? = nil) -> [InputDataEntry] {
+    let emojiesInstance: [EmojiSegment: [String]] = [.People: ["😁"]]
+    __PREPARE_SEGMENTS__
+    return emojiSectionEntries(rendered ?? seg, state: state, arguments: arguments)
+}
+
+func emojiSectionEntries(_ seg: [EmojiSegment: [[NSAttributedString]]], state: SectionState, arguments: SectionArguments) -> [InputDataEntry] {
+    var entries: [InputDataEntry] = []
+    let sectionId: Int32 = 0
+    var index: Int32 = 0
+    let seglist = recentSegmentList(seg, state: SegmentState(recent: state.recent), arguments: SegmentArguments(mode: arguments.mode))
+    __PREPARE_RECENTS__
+    __SECTION_ROWS__
+    return entries
+}

@@ -1,0 +1,21 @@
+Test Suite 'Selected tests' started at 2026-10-26 1:32:35.580 PM.
+Test Suite 'TwidgetRendererTests.xctest' started at 2026-10-26 1:32:35.588 PM.
+Test Suite 'SwipeWidgetRegressionTests' started at 2026-10-26 1:32:35.588 PM.
+Test Case '-[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets]' started.
+/Users/akhmedovgg/Developer/telegrammacos/third-party/twidget/Tests/TwidgetRendererTests/SwipeWidgetRegressionTests.swift:74: error: -[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets] : XCTAssertTrue failed - The background view must publish a wheel routing region for vertical
+/Users/akhmedovgg/Developer/telegrammacos/third-party/twidget/Tests/TwidgetRendererTests/SwipeWidgetRegressionTests.swift:85: error: -[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets] : XCTAssertGreaterThan failed: ("0.0") is not greater than ("0.0")
+/Users/akhmedovgg/Developer/telegrammacos/third-party/twidget/Tests/TwidgetRendererTests/SwipeWidgetRegressionTests.swift:87: error: -[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets] : XCTAssertGreaterThan failed: ("0.0") is not greater than ("0.0") - The HTML scroll event must observe the native offset
+/Users/akhmedovgg/Developer/telegrammacos/third-party/twidget/Tests/TwidgetRendererTests/SwipeWidgetRegressionTests.swift:74: error: -[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets] : XCTAssertTrue failed - The background view must publish a wheel routing region for horizontal
+/Users/akhmedovgg/Developer/telegrammacos/third-party/twidget/Tests/TwidgetRendererTests/SwipeWidgetRegressionTests.swift:85: error: -[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets] : XCTAssertGreaterThan failed: ("0.0") is not greater than ("0.0")
+/Users/akhmedovgg/Developer/telegrammacos/third-party/twidget/Tests/TwidgetRendererTests/SwipeWidgetRegressionTests.swift:87: error: -[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets] : XCTAssertGreaterThan failed: ("0.0") is not greater than ("0.0") - The HTML scroll event must observe the native offset
+Test Case '-[TwidgetRendererTests.SwipeWidgetRegressionTests testProductionWidgetRoutesBothWheelAxesAndReportsJavaScriptOffsets]' failed (1.992 seconds).
+Test Suite 'SwipeWidgetRegressionTests' failed at 2026-10-26 1:32:37.581 PM.
+	 Executed 1 test, with 6 failures (0 unexpected) in 1.992 (1.993) seconds
+Test Suite 'TwidgetRendererTests.xctest' failed at 2026-10-26 1:32:37.581 PM.
+	 Executed 1 test, with 6 failures (0 unexpected) in 1.992 (1.993) seconds
+Test Suite 'Selected tests' failed at 2026-10-26 1:32:37.581 PM.
+	 Executed 1 test, with 6 failures (0 unexpected) in 1.992 (2.002) seconds
+SWIPE BEFORE vertical overflow=hidden/hidden viewport=(12.0, 38.0, 336.0, 170.0) regions=[]
+SWIPE AFTER vertical offset=(0.0, 0.0) JS=Vertical offset: 0 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false
+SWIPE BEFORE horizontal overflow=hidden/hidden viewport=(12.0, 266.0, 336.0, 105.0) regions=[]
+SWIPE AFTER horizontal offset=(0.0, 0.0) JS=Horizontal offset: 0 detached=true preparing=false held=0 throttle-ms=0 tiles=12 trimmed=false flushScheduled=false gridFails=0 size=(360.0, 403.0) scale=2.0 doc=true h=403 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false

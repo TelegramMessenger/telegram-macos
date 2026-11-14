@@ -1,3 +1,4 @@
+import AppAnalytics
 import InputDataUI
 import Localization
 import SceneEffects
@@ -6,11 +7,13 @@ import TelegramContext
 import TelegramCore
 import TGUIKit
 
-func premiumInvoiceCheckout(context: any AccountContextProtocol, slug: String, paid: @escaping () -> Void) {
+func premiumInvoiceCheckout(context: any AccountContextProtocol, slug: String, analyticsContext: AnalyticsContext, paid: @escaping () -> Void) {
+    let presentation = analyticsContext.beginPresentation()
+    defer { presentation.end() }
     let signal = showModalProgress(signal: context.engine.payments.fetchBotPaymentInvoice(source: .slug(slug)) |> take(1) |> deliverOnMainQueue, for: context.window)
-    _ = (signal).start(next: { invoice in
+    _ = analyticsContext.preservingPresentation(signal).start(next: { invoice in
         var completed = false
-        if let controller = FeatureNavigationHooks.shared.makePaymentsCheckoutObserved(context, .slug(slug), invoice, completion: { status in
+        if let controller = FeatureNavigationHooks.shared.makePaymentsCheckoutObserved(context, .slug(slug), invoice, analyticsContext: analyticsContext, completion: { status in
             guard !completed else { return }
             completed = true
             if case .paid = status {

@@ -14,6 +14,7 @@ import LocalAnimations
 import DateUtils
 import TelegramIconsTheme
 import Postbox
+import AppAnalytics
 
 private final class CodeEntryRow : GeneralRowItem {
     fileprivate let count: Int
@@ -248,6 +249,7 @@ public func SetupEmailController(context: any AccountContextProtocol, pattern: S
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().loginEnterNewEmailTitle)
+    controller.analyticsScreen = .settingsPrivacyLoginEmail
     
     getController = { [weak controller] in
         return controller
@@ -383,6 +385,10 @@ public func SetupEmailController(context: any AccountContextProtocol, pattern: S
             }
         case .code:
             controller.centerModalHeader = .init(title: strings().loginHeaderCode)
+            if controller.analyticsScreen != .settingsPrivacyLoginEmailCode {
+                controller.analyticsScreen = .settingsPrivacyLoginEmailCode
+                Analytics.shared.screens.show(ObjectIdentifier(controller), screen: .settingsPrivacyLoginEmailCode)
+            }
         }
         modalController?.updateLocalizationAndTheme(theme: theme)
     }

@@ -32,13 +32,13 @@ final class Request<T,E> {
 }
 final class AccountData {
     var requests: [Request<Never,Failure>] = []; var gifts: [Int64] = []; var onSubscribe: ((Request<Never,Failure>) -> Void)?
-    func requestStarGiftStatus(starGift: StarGift.UniqueGift, expirationDate: Int32?) -> Signal<Never,Failure> {
+    func setStarGiftStatusWithResult(starGift: StarGift.UniqueGift, expirationDate: Int32?) -> Signal<Never,Failure> {
         Signal { subscriber in
             let request = Request(subscriber); self.requests.append(request); self.gifts.append(starGift.id); self.onSubscribe?(request)
             return ActionDisposable { request.dispose() }
         }
     }
-    func setStarGiftStatus(starGift: StarGift.UniqueGift, expirationDate: Int32?) -> Signal<Never,NoError> { requestStarGiftStatus(starGift: starGift, expirationDate: expirationDate) |> `catch` { _ in .complete() } }
+    func setStarGiftStatus(starGift: StarGift.UniqueGift, expirationDate: Int32?) -> Signal<Never,NoError> { setStarGiftStatusWithResult(starGift: starGift, expirationDate: expirationDate) |> `catch` { _ in .complete() } }
 }
 final class Peers {
     var requests: [Request<Never,Failure>] = []; var targets: [Int] = []; var gifts: [Int64] = []
@@ -119,6 +119,7 @@ final class Screen {
 final class GiftWearTests: XCTestCase {
     override func tearDown() { Progress.reset(); Queue.main.drain(); ModalMorphContextSource.current = 42 }
     func testAccountWaitsForAcceptance() { let s = Screen(); s.apply(); XCTAssertTrue(s.preview); XCTAssertFalse(s.converted); XCTAssertEqual(s.context.window.confetti,0); s.pending!.complete(); XCTAssertFalse(s.preview); XCTAssertTrue(s.converted); XCTAssertEqual(s.context.window.confetti,1) }
+    func testAccountFailureKeepsPreviewAndReportsError() { let s = Screen(); s.apply(); s.pending!.reject(.generic); XCTAssertTrue(s.preview); XCTAssertFalse(s.converted); XCTAssertEqual(s.context.window.confetti,0); XCTAssertEqual(s.context.window.messages,["Error"]) }
     func testChannelWaitsAndUsesChannelApi() { let s = Screen(peer:TelegramChannel(20)); s.apply(); XCTAssertEqual(s.context.engine.peers.targets,[20]); XCTAssertTrue(s.context.engine.accountData.requests.isEmpty); XCTAssertTrue(s.preview); s.pending!.complete(); XCTAssertFalse(s.preview); XCTAssertEqual(s.context.window.confetti,1) }
     func testChannelFailureDoesNotCelebrate() { let s = Screen(peer:TelegramChannel(20)); s.apply(); s.pending!.reject(.generic); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.confetti,0); XCTAssertEqual(s.context.window.messages,["Error"]) }
     func testMissingOwnerCannotFallBackToAccount() { let s = Screen(); s.mutate { $0.owner = nil }; s.apply(); XCTAssertNil(s.pending); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.confetti,0) }
@@ -132,7 +133,7 @@ final class GiftWearTests: XCTestCase {
     func testUnhostedExternalGiftCannotBeWorn() { let s = Screen(gift:.init(owner:.address("wallet"))); s.apply(); XCTAssertNil(s.pending); XCTAssertEqual(s.context.window.messages,["Error"]) }
     func testWearDoesNotRequireLoadedStarsBalance() { let s = Screen(); s.mutate { $0.starsState = nil }; s.apply(); XCTAssertNotNil(s.pending) }
     func testDuplicateClicksCoalesce() { let s = Screen(); s.apply(); s.apply(); XCTAssertEqual(s.context.engine.accountData.requests.count,1) }
-    func testChannelFailureAllowsRetry() { let s = Screen(peer: TelegramChannel(20)); s.apply(); s.pending!.reject(.generic); s.apply(); XCTAssertEqual(s.context.engine.peers.requests.count,2); s.pending!.complete(); XCTAssertEqual(s.context.window.confetti,1) }
+    func testFailureAllowsRetry() { let s = Screen(); s.apply(); s.pending!.reject(.generic); s.apply(); XCTAssertEqual(s.context.engine.accountData.requests.count,2); s.pending!.complete(); XCTAssertEqual(s.context.window.confetti,1) }
     func testProgressCancelIsSilentAndRetryable() { let s = Screen(); s.apply(); Progress.pending.first?.dispose(); Queue.main.drain(); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.confetti,0); XCTAssertTrue(s.context.window.messages.isEmpty); s.apply(); XCTAssertEqual(s.context.engine.accountData.requests.count,2) }
     func testCloseCancelsAndSuppressesFeedback() { let s = Screen(); s.apply(); let q = s.pending!; s.controller!.close(); XCTAssertTrue(q.disposed); q.complete(); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.confetti,0) }
     func testClosedScreenCannotStartNewRequest() { let s = Screen(); s.controller!.close(); s.apply(); XCTAssertNil(s.pending) }
@@ -144,8 +145,9 @@ final class GiftWearTests: XCTestCase {
     func testWindowChangeSuppressesFeedback() { let s = Screen(); s.apply(); let new = Window(); s.controller!.view.window = new; s.pending!.complete(); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.confetti,0); XCTAssertEqual(new.confetti,0) }
     func testControllerReleaseCancelsAndDoesNotLeak() { let s = Screen(); weak var weakController = s.controller; s.apply(); let q = s.pending!; s.controller = nil; XCTAssertNil(weakController); XCTAssertTrue(q.disposed); q.complete(); XCTAssertEqual(s.context.window.confetti,0) }
     func testScreenReleaseReleasesContext() { var s: Screen? = Screen(); let engine = s!.context.engine; weak var context = s!.context; weak var controller = s!.controller; s!.apply(); s = nil; XCTAssertNil(controller); XCTAssertNil(context); XCTAssertTrue(engine.accountData.requests[0].disposed) }
-    func testOldCleanupDoesNotCancelNewRetry() { let s = Screen(peer: TelegramChannel(20)); s.apply(); s.pending!.reject(.generic); s.apply(); Queue.main.drain(); s.apply(); XCTAssertEqual(s.context.engine.peers.requests.count,2); XCTAssertFalse(s.pending!.disposed) }
+    func testOldCleanupDoesNotCancelNewRetry() { let s = Screen(); s.apply(); s.pending!.reject(.generic); s.apply(); Queue.main.drain(); s.apply(); XCTAssertEqual(s.context.engine.accountData.requests.count,2); XCTAssertFalse(s.pending!.disposed) }
     func testSynchronousAcceptanceStillDisposes() { let s = Screen(); s.context.engine.accountData.onSubscribe = { $0.complete() }; s.apply(); XCTAssertTrue(s.converted); XCTAssertEqual(s.context.window.confetti,1); XCTAssertTrue(s.pending!.disposed) }
+    func testSynchronousRejectionKeepsPreview() { let s = Screen(); s.context.engine.accountData.onSubscribe = { $0.reject(.generic) }; s.apply(); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.messages,["Error"]) }
     func testDuplicateTerminalDoesNotRepeatConfetti() { let s = Screen(); s.apply(); let q = s.pending!; q.complete(); q.complete(); q.reject(.generic); XCTAssertEqual(s.context.window.confetti,1); XCTAssertTrue(s.context.window.messages.isEmpty) }
     func testCloseDuringDisposalSuppressesSuccess() { let s = Screen(); s.apply(); s.pending!.onDispose = { [weak s] in s?.controller?.close() }; s.pending!.complete(); XCTAssertTrue(s.preview); XCTAssertEqual(s.context.window.confetti,0) }
     func testCloseDuringStateUpdateSuppressesConfetti() { let s = Screen(); s.apply(); s.observer.onUpdate = { [weak s] in s?.controller?.close() }; s.pending!.complete(); XCTAssertTrue(s.converted); XCTAssertEqual(s.context.window.confetti,0) }

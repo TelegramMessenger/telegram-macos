@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import AppKit
 import ImageIO
 import TGUIKit
@@ -18,13 +19,13 @@ func qrStudioWriteTemporaryImage(_ image: CGImage, name: String = "qr-code.jpg")
     return url
 }
 
-func qrStudioSaveImage(_ image: CGImage, window: NSWindow, suggestedName: String, completion: @escaping (Bool) -> Void) {
+func qrStudioSaveImage(_ image: CGImage, window: NSWindow, suggestedName: String, analyticsContext: AnalyticsContext, completion: @escaping (Bool) -> Void) {
     guard let window = window as? Window, let url = qrStudioWriteTemporaryImage(image) else {
         completion(false)
         return
     }
     let name = (suggestedName as NSString).pathExtension.isEmpty ? suggestedName + ".jpg" : suggestedName
-    savePanel(file: url.path, ext: "jpg", for: window, defaultName: name, completion: { path in
+    savePanel(file: url.path, ext: "jpg", for: window, defaultName: name, analyticsContext: analyticsContext, completion: { path in
         guard let path = path else {
             return
         }

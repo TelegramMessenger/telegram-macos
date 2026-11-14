@@ -20,6 +20,7 @@ import DateUtils
 import TelegramIconsTheme
 import TelegramMediaUtils
 import MessageTextUtils
+import AppAnalytics
 
 private func statsEntries(_ state: GroupStatsContextState, uiState: UIStatsState, peers: [PeerId : Peer]?, updateIsLoading: @escaping(InputDataIdentifier, Bool)->Void, revealSection: @escaping(UIStatsState.RevealSection)->Void, context: GroupStatsContext, accountContext: any AccountContextProtocol, openPeerInfo: @escaping(PeerId)->Void, detailedDisposable: DisposableDict<InputDataIdentifier>) -> [InputDataEntry] {
     var entries: [InputDataEntry] = []
@@ -379,7 +380,10 @@ private func statsEntries(_ state: GroupStatsContextState, uiState: UIStatsState
 }
 
 
-public func GroupStatsViewController(_ context: any AccountContextProtocol, peerId: PeerId) -> ViewController {
+public func GroupStatsViewController(_ context: any AccountContextProtocol, peerId: PeerId, analyticsContext: AnalyticsContext? = nil) -> ViewController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let lifetime = origin.beginPresentation()
+    defer { lifetime.end() }
     
     let initialState = UIStatsState(loading: [])
     
@@ -390,7 +394,7 @@ public func GroupStatsViewController(_ context: any AccountContextProtocol, peer
     }
     
     let openPeerInfo:(PeerId)->Void = { peerId in
-        StatisticsHooks.shared.openPeerInfoObserved(context, peerId)
+        StatisticsHooks.shared.openPeerInfoObserved(context, peerId, analyticsContext: origin)
     }
     
     let statsContext = GroupStatsContext(postbox: context.account.postbox, network: context.account.network, accountPeerId: context.peerId, peerId: peerId)
@@ -444,6 +448,8 @@ public func GroupStatsViewController(_ context: any AccountContextProtocol, peer
     
     
     let controller = InputDataController(dataSignal: signal, title: strings().groupStatsTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoStats
     
     controller.contextObject = statsContext
     controller.didLoad = { controller, _ in

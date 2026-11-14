@@ -12,19 +12,26 @@ public final class PrecieSliderRowItem : GeneralRowItem {
     fileprivate let magnit: [CGFloat]
     fileprivate let markers: [String]
     fileprivate let showValue: String?
+    fileprivate let valueDetail: String?
+    fileprivate let editValue: (() -> Void)?
     fileprivate let minValue: CGFloat
-    public init(_ initialSize: NSSize, stableId: AnyHashable, current: CGFloat, minValue: CGFloat = 0, magnit: [CGFloat] = [], markers: [String] = [], showValue: String? = nil, update: @escaping(CGFloat)->Void, viewType: GeneralViewType, customTheme: GeneralRowItem.Theme? = nil) {
+    public init(_ initialSize: NSSize, stableId: AnyHashable, current: CGFloat, minValue: CGFloat = 0, magnit: [CGFloat] = [], markers: [String] = [], showValue: String? = nil, valueDetail: String? = nil, editValue: (() -> Void)? = nil, update: @escaping(CGFloat)->Void, viewType: GeneralViewType, customTheme: GeneralRowItem.Theme? = nil) {
         self.markers = markers
         self.current = current
         self.magnit = magnit
         self.update = update
         self.showValue = showValue
+        self.valueDetail = valueDetail
+        self.editValue = editValue
         self.minValue = minValue
         super.init(initialSize, stableId: stableId, viewType: viewType, customTheme: customTheme)
     }
     
     
     public override var height: CGFloat {
+        if editValue != nil {
+            return 68
+        }
         return markers.isEmpty && showValue == nil ? 40 : 40 + 20
     }
     
@@ -65,7 +72,7 @@ public final class PrecieSliderRowItem : GeneralRowItem {
     }
 
     public override var accessibilityCustomActions: [NSAccessibilityCustomAction]? {
-        return [
+        var actions = [
             NSAccessibilityCustomAction(name: strings().voiceOverCommonUp, handler: { [weak self] in
                 return self?.accessibilityStep(0.1) ?? false
             }),
@@ -73,21 +80,36 @@ public final class PrecieSliderRowItem : GeneralRowItem {
                 return self?.accessibilityStep(-0.1) ?? false
             })
         ]
+        if editValue != nil {
+            actions.append(NSAccessibilityCustomAction(name: strings().voiceOverCommonSetPrice, handler: { [weak self] in
+                return self?.accessibilityPerformPress() ?? false
+            }))
+        }
+        return actions
     }
 
     public override func accessibilityPerformPress() -> Bool {
-        return false
+        guard let editValue else {
+            return false
+        }
+        editValue()
+        return true
     }
 }
 
 private final class PrecieSliderRowView : GeneralContainableRowView {
     private let slider = LinearProgressControl(progressHeight: 3)
+    private let valueButton = Control(frame: .zero)
     private var leftMarker: TextView?
     private var rightMarker: TextView?
     private var currentValue: TextView?
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(slider)
+        valueButton.isHidden = true
+        valueButton.scaleOnClick = true
+        valueButton.layer?.cornerRadius = 8
+        addSubview(valueButton)
         
         
     }
@@ -121,7 +143,7 @@ private final class PrecieSliderRowView : GeneralContainableRowView {
             ctx.setFillColor(theme.borderColor.cgColor)
             ctx.fillEllipse(in: size.bounds)
 
-            ctx.setFillColor(theme.backgroundColor.cgColor)
+            ctx.setFillColor((item.editValue == nil ? theme.backgroundColor : NSColor.white).cgColor)
             ctx.fillEllipse(in: size.bounds.insetBy(dx: 1, dy: 1))
 
             
@@ -191,6 +213,14 @@ private final class PrecieSliderRowView : GeneralContainableRowView {
             }
         }
         
+        valueButton.isHidden = item.editValue == nil || item.showValue == nil
+        valueButton.removeAllHandlers()
+        if let editValue = item.editValue {
+            valueButton.set(background: theme.accentColor.withAlphaComponent(0.12), for: .Normal)
+            valueButton.set(background: theme.accentColor.withAlphaComponent(0.20), for: .Hover)
+            valueButton.set(handler: { _ in editValue() }, for: .Click)
+        }
+
         if let showValue = item.showValue {
             do {
                 let current: TextView
@@ -200,11 +230,20 @@ private final class PrecieSliderRowView : GeneralContainableRowView {
                     current = TextView()
                     current.isSelectable = false
                     current.userInteractionEnabled = false
-                    self.addSubview(current)
+                    current.isEventLess = true
                     self.currentValue = current
-                    
                 }
-                let layout = TextViewLayout(.initialize(string: showValue, color: theme.textColor, font: .normal(.title)))
+                let parent = valueButton.isHidden ? containerView as NSView : valueButton
+                if current.superview !== parent {
+                    current.removeFromSuperview()
+                    parent.addSubview(current)
+                }
+                let title = NSMutableAttributedString()
+                title.append(string: showValue, color: valueButton.isHidden ? theme.textColor : theme.accentColor, font: .normal(.title))
+                if let valueDetail = item.valueDetail {
+                    title.append(string: "  " + valueDetail, color: theme.accentColor.withAlphaComponent(0.72), font: .normal(.text))
+                }
+                let layout = TextViewLayout(title, maximumNumberOfLines: 1, truncationType: .end)
                 layout.measure(width: .greatestFiniteMagnitude)
                 current.update(layout)
             }
@@ -232,14 +271,32 @@ private final class PrecieSliderRowView : GeneralContainableRowView {
             rect.origin.y = containerView.frame.height - rect.height - 10
         }
         
-        if let leftMarker, let rightMarker {
+        let headerCenterY = (containerView.bounds.minY + rect.minY) / 2
+        if !valueButton.isHidden {
+            if let leftMarker {
+                leftMarker.setFrameOrigin(rect.minX, headerCenterY - leftMarker.frame.height / 2)
+            }
+            if let rightMarker {
+                rightMarker.setFrameOrigin(rect.maxX - rightMarker.frame.width, headerCenterY - rightMarker.frame.height / 2)
+            }
+        } else if let leftMarker, let rightMarker {
             leftMarker.setFrameOrigin(NSMakePoint(rect.minX, rect.minY - leftMarker.frame.height - 5))
             rightMarker.setFrameOrigin(NSMakePoint(rect.maxX - rightMarker.frame.width, rect.minY - rightMarker.frame.height - 5))
         }
         
         
-        if let currentValue = currentValue {
-            currentValue.centerX(y: rect.minY - currentValue.frame.height - 5)
+        if let currentValue {
+            if valueButton.isHidden {
+                currentValue.centerX(y: rect.minY - currentValue.frame.height - 5)
+            } else if let layout = currentValue.textLayout {
+                let markerWidth = max(leftMarker?.frame.width ?? 0, rightMarker?.frame.width ?? 0)
+                let horizontalPadding: CGFloat = 8
+                layout.measure(width: max(1, rect.width - 2 * (markerWidth + 8 + horizontalPadding)))
+                currentValue.update(layout)
+                let size = NSSize(width: layout.layoutSize.width + 2 * horizontalPadding, height: 24)
+                valueButton.frame = NSRect(x: (containerView.bounds.width - size.width) / 2, y: headerCenterY - size.height / 2, width: size.width, height: size.height)
+                currentValue.center()
+            }
         }
         
         slider.frame = rect

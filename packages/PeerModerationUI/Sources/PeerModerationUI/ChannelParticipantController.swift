@@ -14,6 +14,8 @@ import InputDataUI
 import AlertsUI
 import ChatHistoryModel
 import ChatUI
+import AppAnalytics
+import LocalAnimations
 
 private let _id_tag_preview = InputDataIdentifier("_id_tag_preview")
 private let _id_tag_header = InputDataIdentifier("_id_tag_header")
@@ -62,6 +64,7 @@ private final class TagPreviewRowItem: GeneralRowItem {
         let groupPeer = TelegramGroup(id: groupPeerId, title: "", photo: [], participantCount: 0, role: .member, membership: .Member, flags: [], defaultBannedRights: nil, migrationReference: nil, creationDate: 0, version: 0)
 
         let chatInteraction = ChatInteraction(chatLocation: .peer(groupPeerId), context: context, isLogInteraction: true, disableSelectAbility: true)
+        chatInteraction.inheritedAnalyticsContext = Analytics.shared.unresolvedContext()
 
         let fromUser = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(peer.id.id._internalGetInt64Value() % 7 * 100)), accessHash: nil, firstName: peer.compactDisplayTitle, lastName: "", username: nil, phone: nil, photo: peer.profileImageRepresentations, botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: peer.emojiStatus, usernames: [], storiesHidden: nil, nameColor: peer.nameColor, backgroundEmojiId: peer.backgroundEmojiId, profileColor: peer.profileColor, profileBackgroundEmojiId: peer.profileBackgroundEmojiId, subscriberCount: nil, verificationIconFileId: nil)
 
@@ -276,7 +279,10 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func ChannelParticipantController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, participant: RenderedChannelParticipant) -> InputDataModalController {
+public func ChannelParticipantController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, participant: RenderedChannelParticipant, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: participant.peer.id).restricting(peerId: participant.participant.peerId)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
 
@@ -318,23 +324,37 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     let openRestrictions: (ChannelParticipant) -> Void = { participant in
+        let targetOrigin = origin.restricting(peerId: participant.peerId)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
         close?()
         showModal(with: RestrictedModalController(context, peerId: peerId, memberId: participant.peerId, initialParticipant: participant, updated: { updatedRights in
+            let presentation = targetOrigin.beginPresentation()
+            defer { presentation.end() }
             let signal = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: participant.peerId, bannedRights: updatedRights)
-            _ = (signal).start()
-        }), for: context.window)
+            _ = targetOrigin.preservingPresentation(signal).start()
+        }, analyticsContext: targetOrigin), for: context.window)
     }
 
     let arguments = Arguments(context: context, peerId: peerId, promote: { participant in
+        let targetOrigin = origin.restricting(peerId: participant.peerId)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
         close?()
-        if let controller = FeatureNavigationHooks.shared.makeChannelAdminControllerObserved(context, peerId, participant.peerId, participant, { _ in }, { _, _ in }) { showModal(with: controller, for: context.window) }
+        if let controller = FeatureNavigationHooks.shared.makeChannelAdminControllerObserved(context, peerId, participant.peerId, participant, { _ in }, { _, _ in }, analyticsContext: targetOrigin) { showModal(with: controller, for: context.window) }
     }, restrict: { participant in
         openRestrictions(participant)
     }, remove: { channelParticipant in
+        let targetOrigin = origin.restricting(peerId: channelParticipant.peerId)
+        let presentation = targetOrigin.beginPresentation()
         verifyAlert_button(for: context.window, information: strings().peerInfoConfirmRemovePeer(participant.peer._asPeer().compactDisplayTitle), ok: strings().modalRemove, successHandler: { _ in
+            let delivery = targetOrigin.beginPresentation()
+            defer { delivery.end() }
             let signal = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: channelParticipant.peerId, bannedRights: TelegramChatBannedRights(flags: [.banReadMessages], untilDate: 0))
-            actionsDisposable.add((signal).start())
+            actionsDisposable.add(targetOrigin.preservingPresentation(signal).start())
             close?()
+        }, onDeinit: {
+            presentation.end()
         })
     }, updateTag: { tag in
         updateState { state in
@@ -351,6 +371,8 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().channelParticipantMember)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoMember
 
     controller.updateDatas = { data in
         updateState { state in
@@ -364,11 +386,13 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     controller.validateData = { _ in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let state = stateValue.with { $0 }
         let tag = state.tag.trimmingCharacters(in: .whitespacesAndNewlines)
         if tag != state.initialTag {
             let signal = showModalProgress(signal: context.peerChannelMemberCategoriesContextsManager.updateChatRank(peerId: peerId, memberId: participant.peer.id, rank: tag.isEmpty ? nil : tag, participant: participant), for: context.window) |> deliverOnMainQueue
-            actionsDisposable.add((signal).start(error: { _ in
+            actionsDisposable.add(origin.preservingPresentation(signal).start(error: { _ in
                 showModalText(for: context.window, text: strings().channelParticipantTagUpdateError)
             }, completed: {
                 close?()
@@ -405,6 +429,7 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(350, 350))
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()
@@ -417,4 +442,92 @@ public func ChannelParticipantController<Context: AccountContextProtocol>(contex
     }
 
     return modalController
+}
+
+private func channelParticipantHasBannedRights(_ participant: ChannelParticipant?, rights: TelegramChatBannedRights) -> Bool {
+    guard case let .member(_, _, _, banInfo, _, _)? = participant else {
+        return false
+    }
+    var expectedFlags = rights.flags
+    expectedFlags.remove(.banSendMedia)
+    expectedFlags.remove(TelegramChatBannedRightsFlags(rawValue: 1 << 1))
+    guard let banInfo = banInfo else {
+        return expectedFlags.isEmpty
+    }
+    let expectedUntilDate = rights.untilDate == 0 ? Int32.max : rights.untilDate
+    let actualUntilDate = banInfo.rights.untilDate == 0 ? Int32.max : banInfo.rights.untilDate
+    if rights.flags.contains(.banReadMessages) {
+        return banInfo.rights.flags.contains(.banReadMessages) && actualUntilDate == expectedUntilDate
+    }
+    return banInfo.rights.flags == expectedFlags && (expectedFlags.isEmpty || actualUntilDate == expectedUntilDate)
+}
+
+private enum ChannelParticipantModerationResult {
+    case unauthorized
+    case verified
+    case unverified
+}
+
+public func channelParticipantModerationMenuItems(context: any AccountContextProtocol, channel: TelegramChannel, member: Peer, participant: ChannelParticipant? = nil) -> [ContextMenuItem] {
+    let peerId = channel.id
+    let currentParticipant = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+    |> mapToSignal { peer -> Signal<(TelegramChannel?, ChannelParticipant?), NoError> in
+        guard let channel = peer?._asPeer() as? TelegramChannel, !channel.isChannel, channel.hasPermission(.banMembers) else {
+            return .single((nil, nil))
+        }
+        return context.engine.peers.fetchChannelParticipant(peerId: peerId, participantId: member.id)
+        |> map { (channel, $0) }
+    }
+    let moderationMenu = ChannelParticipantModerationMenu(accountPeerId: context.peerId, member: member, participant: currentParticipant)
+    let authorizedParticipant = moderationMenu.authorizedParticipant
+
+    let updateRights: (TelegramChatBannedRights) -> Void = { rights in
+        let update = authorizedParticipant |> mapToSignal { participant -> Signal<ChannelParticipantModerationResult, NoError> in
+            guard participant != nil else {
+                return .single(.unauthorized)
+            }
+            return Signal { subscriber in
+                let update = context.peerChannelMemberCategoriesContextsManager.updateMemberBannedRights(peerId: peerId, memberId: member.id, bannedRights: rights)
+                |> then(.single(()))
+                |> mapToSignal { _ in
+                    return context.engine.peers.fetchChannelParticipant(peerId: peerId, participantId: member.id)
+                    |> take(1)
+                    |> timeout(10.0, queue: .mainQueue(), alternate: .single(nil))
+                    |> map { participant -> ChannelParticipantModerationResult in
+                        return channelParticipantHasBannedRights(participant, rights: rights) ? .verified : .unverified
+                    }
+                }
+                _ = update.startStandalone(next: { success in
+                    subscriber.putNext(success)
+                }, completed: {
+                    subscriber.putCompletion()
+                })
+                return EmptyDisposable
+            }
+        }
+        |> deliverOnMainQueue
+
+        _ = showModalProgress(signal: update, for: context.window).startStandalone(next: { result in
+            switch result {
+            case .verified:
+                _ = showModalSuccess(for: context.window, icon: theme.icons.successModalProgress, delay: 3.0).startStandalone()
+            case .unauthorized:
+                alert(for: context.window, info: strings().unknownError)
+            case .unverified:
+                alert(for: context.window, info: strings().channelParticipantControllerPermissionsUnverified)
+            }
+        })
+    }
+
+    return moderationMenu.items(channel: channel, participant: participant, restrict: {
+        _ = showModalProgress(signal: authorizedParticipant, for: context.window).startStandalone(next: { participant in
+            guard let participant = participant else {
+                alert(for: context.window, info: strings().unknownError)
+                return
+            }
+            showModal(with: RestrictedModalController(context, peerId: peerId, memberId: member.id, initialParticipant: participant, updated: updateRights), for: context.window)
+        })
+    }, ban: {
+        updateRights(TelegramChatBannedRights(flags: [.banReadMessages], untilDate: Int32.max))
+    })
 }

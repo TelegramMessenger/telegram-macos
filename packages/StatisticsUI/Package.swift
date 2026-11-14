@@ -22,7 +22,7 @@ let deps: [(String, String)] = [
     ("BoostUI", "../BoostUI"),
     ("InviteLinksUI", "../InviteLinksUI"),
     ("GraphCore", "../../submodules/telegram-ios/submodules/GraphCore"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

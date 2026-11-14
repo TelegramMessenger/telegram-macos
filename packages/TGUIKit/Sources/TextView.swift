@@ -1197,6 +1197,34 @@ public final class TextViewLayout : Equatable {
                     rightOffset = ceil(secondaryRightOffset)
                 }
                 
+                var glyphExtent: (minX: CGFloat, maxX: CGFloat)?
+                for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                    let runRange = CTRunGetStringRange(run)
+                    let glyphCount = CTRunGetGlyphCount(run)
+                    guard glyphCount > 0, runRange.location < endIndex, runRange.location + runRange.length > startIndex else {
+                        continue
+                    }
+                    var indices = [CFIndex](repeating: 0, count: glyphCount)
+                    var positions = [CGPoint](repeating: .zero, count: glyphCount)
+                    var advances = [CGSize](repeating: .zero, count: glyphCount)
+                    CTRunGetStringIndices(run, CFRange(location: 0, length: glyphCount), &indices)
+                    CTRunGetPositions(run, CFRange(location: 0, length: glyphCount), &positions)
+                    CTRunGetAdvances(run, CFRange(location: 0, length: glyphCount), &advances)
+                    for index in 0 ..< glyphCount where indices[index] >= startIndex && indices[index] < endIndex {
+                        let minX = positions[index].x
+                        let maxX = positions[index].x + advances[index].width
+                        if let current = glyphExtent {
+                            glyphExtent = (min(current.minX, minX), max(current.maxX, maxX))
+                        } else {
+                            glyphExtent = (minX, maxX)
+                        }
+                    }
+                }
+                if let glyphExtent = glyphExtent {
+                    leftOffset = floor(glyphExtent.minX)
+                    rightOffset = ceil(glyphExtent.maxX)
+                }
+
                 let lineRange = NSMakeRange(CTLineGetStringRange(line).location, CTLineGetStringRange(line).length)
                 let range = NSMakeRange(startIndex, endIndex - startIndex)
                                 
@@ -3146,7 +3174,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
         AppMenu.show(menu: menu, event: event, for: self)
     }
 
-    public override func rightMouseDown(with event: NSEvent) {
+    open override func rightMouseDown(with event: NSEvent) {
         let previousState = menuDisposable
         let cancelledVersion = previousState?.cancel()
         guard menuDisposable === previousState, previousState?.version == cancelledVersion else { return }
@@ -3600,7 +3628,9 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                 return
             }
             if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }) {
-                if let string = layout.blockQuoteText(startingWith: blockHeader.1) {
+                if !layout.mayItems {
+                    _ = layout.interactions.copy?()
+                } else if let string = layout.blockQuoteText(startingWith: blockHeader.1) {
                     _ = layout.interactions.copyToClipboard?(string)
                     showModalText(for: window, text: localizedString("Share.Link.Copied"))
                 }
@@ -3969,7 +3999,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
     @objc public func copy(_ sender:Any) -> Void {
         if let layout = textLayout {
             if let copy = layout.interactions.copy {
-                if !copy() && layout.selectedRange.range.location != NSNotFound {
+                if !copy() && layout.mayItems && layout.selectedRange.range.location != NSNotFound {
                     if !layout.interactions.copyAttributedString(layout.attributedString.attributedSubstring(from: layout.selectedRange.range)) {
                         let pb = NSPasteboard.general
                         pb.clearContents()
@@ -3977,7 +4007,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                         pb.setString(layout.attributedString.string.nsstring.substring(with: layout.selectedRange.range), forType: .string)
                     }
                 }
-            } else if layout.selectedRange.range.location != NSNotFound {
+            } else if layout.mayItems, layout.selectedRange.range.location != NSNotFound {
                 if !layout.interactions.copyAttributedString(layout.attributedString.attributedSubstring(from: layout.selectedRange.range)) {
                     let pb = NSPasteboard.general
                     pb.clearContents()

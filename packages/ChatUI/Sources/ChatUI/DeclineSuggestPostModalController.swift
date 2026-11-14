@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -89,6 +90,7 @@ public func DeclineSuggestPostModalController(context: any AccountContextProtoco
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     let controller = InputDataController(dataSignal: signal, title: strings().declineSuggestPostTitle)
+    controller.analyticsScreen = .chatSuggestedPostRejection
 
     getController = { [weak controller] in
         return controller

@@ -68,6 +68,76 @@ final class TableRowResizeAnchorTests: XCTestCase {
         table.layoutSubtreeIfNeeded()
     }
 
+    func testChatBottomUsesDocumentOrientation() {
+        withChat { table, _ in
+            scroll(table, to: 0)
+            XCTAssertTrue(table.isFlipped)
+            XCTAssertFalse(table.documentView!.isFlipped)
+            XCTAssertTrue(table.isAtBottom)
+            scroll(table, to: 60)
+            XCTAssertFalse(table.isAtBottom)
+        }
+    }
+
+    func testReactionAtBottomKeepsLatestMessageInPlace() {
+        withChat { table, _ in
+            scroll(table, to: 0)
+            let latestBottom = screenBottom(table, 0)
+            for height: CGFloat in [100, 60, 120, 60] {
+                let sticksToBottom = table.isAtBottom
+                resize(table, id: 1, to: height, animated: true) { previous in
+                    sticksToBottom ? .bottom(oldHeight: previous.height, newHeight: height) : .top
+                }
+                XCTAssertEqual(offset(table), 0, accuracy: 0.5)
+                XCTAssertEqual(screenBottom(table, 0), latestBottom, accuracy: 0.5)
+            }
+        }
+    }
+
+    func testReactionWhileReadingOlderMessagesKeepsMessageTop() {
+        withChat { table, _ in
+            scroll(table, to: 600)
+            let top = screenTop(table, 12)
+            let sticksToBottom = table.isAtBottom
+            resize(table, id: 12, to: 100, animated: true) { previous in
+                sticksToBottom ? .bottom(oldHeight: previous.height, newHeight: 100) : .top
+            }
+            XCTAssertEqual(screenTop(table, 12), top, accuracy: 0.5)
+            XCTAssertFalse(table.isAtBottom)
+        }
+    }
+
+    func testFlippedDocumentBottomIsItsMaximumOffset() {
+        withChat { table, _ in
+            table.setIsFlipped(true)
+            scroll(table, to: 0)
+            XCTAssertFalse(table.isAtBottom)
+            scroll(table, to: table.documentSize.height - table.clipView.bounds.height)
+            XCTAssertTrue(table.isAtBottom)
+        }
+    }
+
+    func testBottomCheckFollowsAnimatedScrollDestination() {
+        withChat { table, _ in
+            scroll(table, to: 0)
+            table.clipView.scroll(to: NSMakePoint(0, 300), animated: true)
+            XCTAssertFalse(table.isAtBottom)
+            table.clipView.updateBounds(to: NSMakePoint(0, 300), cancel: true)
+            table.clipView.scroll(to: .zero, animated: true)
+            XCTAssertTrue(table.isAtBottom)
+        }
+    }
+
+    func testShortHistoryIsAlreadyAtBottomInEitherOrientation() {
+        withChat(count: 2) { table, _ in
+            scroll(table, to: 0)
+            XCTAssertTrue(table.isAtBottom)
+            table.setIsFlipped(true)
+            scroll(table, to: 0)
+            XCTAssertTrue(table.isAtBottom)
+        }
+    }
+
     func testTopAnchorKeepsRowTopWhenGrowing() {
         withChat { table, _ in
             scroll(table, to: 600)
@@ -169,6 +239,39 @@ final class TableRowResizeAnchorTests: XCTestCase {
             let before = offset(table)
             _ = table.merge(with: TableUpdateTransition(deleted: [], inserted: [], updated: [(12, SizedItem(id: 12, height: 260))], animated: true))
             XCTAssertEqual(offset(table), before, accuracy: 0.5)
+        }
+    }
+
+    func testLiveScrollResizeKeepsTheRowStillWithoutAnimatingIt() {
+        withChat { table, window in
+            window.orderFront(nil)
+            defer { window.orderOut(nil) }
+            scroll(table, to: 600)
+            table.scrollWillStartLiveScrolling()
+            defer { table.scrollDidEndLiveScrolling() }
+            let top = screenTop(table, 12)
+            resize(table, id: 12, to: 260, animated: true) { _ in .top }
+            XCTAssertEqual(screenTop(table, 12), top, accuracy: 0.5)
+            let view = table.item(stableId: AnyHashable(12))?.view
+            XCTAssertNotNil(view?.layer)
+            XCTAssertNil(view?.layer?.animation(forKey: "tableRowResize.bounds"))
+            XCTAssertNil(view?.layer?.animation(forKey: "tableRowResize.position"))
+            scroll(table, to: offset(table) + 40)
+            XCTAssertEqual(screenTop(table, 12), top - 40, accuracy: 0.5)
+        }
+    }
+
+    func testSaveVisibleResizeKeepsTheMessageStillDuringLiveScroll() {
+        withChat { table, window in
+            window.orderFront(nil)
+            defer { window.orderOut(nil) }
+            scroll(table, to: 600)
+            table.scrollWillStartLiveScrolling()
+            defer { table.scrollDidEndLiveScrolling() }
+            let top = screenTop(table, 12)
+            let item = SizedItem(id: 12, height: 260, anchor: { _ in .top })
+            table.merge(with: TableUpdateTransition(deleted: [], inserted: [], updated: [(12, item)], animated: false, state: .saveVisible(.upper, false)))
+            XCTAssertEqual(screenTop(table, 12), top, accuracy: 0.5)
         }
     }
 

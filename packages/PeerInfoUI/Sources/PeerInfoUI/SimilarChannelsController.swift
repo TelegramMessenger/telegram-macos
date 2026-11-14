@@ -17,6 +17,7 @@ import AvatarUI
 import ShortPeerRow
 import PremiumUI
 import TelegramMedia
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -91,7 +92,10 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func SimilarChannelsController(context: any AccountContextProtocol, peerId: PeerId, recommendedChannels: RecommendedChannels?) -> InputDataController {
+public func SimilarChannelsController(context: any AccountContextProtocol, peerId: PeerId, recommendedChannels: RecommendedChannels?, analyticsContext: AnalyticsContext? = nil) -> InputDataController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
     
@@ -120,9 +124,16 @@ public func SimilarChannelsController(context: any AccountContextProtocol, peerI
     
 
     let arguments = Arguments(context: context, openInfo: { selectedPeerId in
-        SimilarPeersHooks.shared.openChatObserved(context, selectedPeerId)
+        let targetOrigin = Analytics.shared.captureContext(engine: context.engine, peerId: selectedPeerId, inherited: origin)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
+        Analytics.shared.send(AnalyticsEvents.peerInfoRecommendationSelect(kind: .channel, selection: .peer), scope: targetOrigin.scope)
+        SimilarPeersHooks.shared.openChatObserved(context, selectedPeerId, analyticsContext: targetOrigin)
     }, premium: {
-        prem(with: PremiumBoardingController(context: context, source: .recommended_channels), for: context.window)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        Analytics.shared.send(AnalyticsEvents.peerInfoRecommendationSelect(kind: .channel, selection: .premium), scope: origin.scope)
+        prem(with: PremiumBoardingController(context: context, source: .recommended_channels, analyticsContext: origin), for: context.window)
     })
 
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
@@ -130,6 +141,8 @@ public func SimilarChannelsController(context: any AccountContextProtocol, peerI
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().peerMediaSimilarChannels)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoMediaSimilarChannels
     
     controller.onDeinit = {
         actionsDisposable.dispose()

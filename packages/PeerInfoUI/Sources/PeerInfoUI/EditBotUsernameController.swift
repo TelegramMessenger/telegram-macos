@@ -13,6 +13,7 @@ import TelegramTheme
 import ColorPalette
 import AlertsUI
 import InAppSettings
+import AppAnalytics
 
 
 private let _id_username = InputDataIdentifier("_id_username")
@@ -168,6 +169,7 @@ public func EditBotUsernameController(context: any AccountContextProtocol, peerI
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().botUsernameTitle)
+    controller.analyticsScreen = .peerInfoBotUsernames
     
     
     controller.updateDoneValue = { data in

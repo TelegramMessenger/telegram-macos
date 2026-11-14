@@ -21,6 +21,7 @@ let package = Package(
         .package(name: "InputDataUI", path: "../InputDataUI"),
         .package(name: "PremiumStatusUI", path: "../PremiumStatusUI"),
         .package(name: "AvatarUI", path: "../AvatarUI"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
     ],
     targets: [
         .target(
@@ -38,6 +39,7 @@ let package = Package(
                 .product(name: "InputDataUI", package: "InputDataUI", condition: nil),
                 .product(name: "PremiumStatusUI", package: "PremiumStatusUI", condition: nil),
                 .product(name: "AvatarUI", package: "AvatarUI", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
             ],
             path: "Sources/AlertsUI"),
     ]

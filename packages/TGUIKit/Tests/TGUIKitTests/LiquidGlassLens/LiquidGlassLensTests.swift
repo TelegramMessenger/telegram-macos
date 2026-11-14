@@ -135,6 +135,23 @@ final class LiquidGlassLensTests: XCTestCase {
         XCTAssertEqual(lensed.position.x, 101.9, accuracy: 0.001)
     }
 
+    func testExplicitMagnificationCenterOverridesTheRootControl() throws {
+        let lens = try makeLens()
+        let control = addContent(to: lens)
+        control.layer?.backgroundColor = nil
+        let badge = NSView(frame: CGRect(x: 60, y: 5, width: 18, height: 18))
+        badge.wantsLayer = true
+        control.addSubview(badge)
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: badge, magnificationCenter: CGPoint(x: 73, y: 30))])
+        let copies = portals(in: try XCTUnwrap(lens.layer), source: try XCTUnwrap(badge.layer))
+        let lensed = try XCTUnwrap(copies.first { $0.superlayer?.name != "lensUnlensedContent" })
+        XCTAssertEqual(lensed.position.x, 79, accuracy: 0.001)
+        XCTAssertEqual(lensed.position.y, 34, accuracy: 0.001)
+        XCTAssertEqual(lensed.transform.m11, 1.1, accuracy: 0.001)
+        update(lens, progress: 1, contentSources: [LiquidGlassLensContentSource(view: badge, magnificationCenter: CGPoint(x: CGFloat.nan, y: 30))])
+        XCTAssertEqual(lensed.position.x, 81.9, accuracy: 0.001)
+    }
+
     func testSourceTintVisibilityAndOrderRefreshWithoutChangingTheLensFrame() throws {
         let lens = try makeLens()
         let first = addContent(to: lens)

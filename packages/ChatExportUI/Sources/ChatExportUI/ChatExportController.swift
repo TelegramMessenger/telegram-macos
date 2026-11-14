@@ -14,6 +14,7 @@ import MessageTextUtils
 import TelegramUtils
 import GeneralRows
 import ColorPalette
+import AppAnalytics
 
 private func exportString(_ key: String) -> String {
     switch key {
@@ -251,7 +252,8 @@ public final class ChatExportSession {
             switch update {
             case let .completed(url):
                 self.finish(url)
-            case .failed:
+            case let .failed(reason):
+                showModalText(for: context.window, text: reason)
                 self.finish(nil)
             default:
                 break
@@ -431,6 +433,7 @@ private func chatExportProgressModal(session: ChatExportSession) -> InputDataMod
     }
 
     let controller = InputDataController(dataSignal: signal, title: exportString("ExportingTitle"), hasDone: false)
+    controller.analyticsScreen = .exportChatProgress
 
     controller.onDeinit = {
         disposable.dispose()
@@ -767,6 +770,7 @@ public func ChatExportController(context: any AccountContextProtocol, peerId: Pe
     }
 
     let controller = InputDataController(dataSignal: signal, title: exportString("Title"), hasDone: false)
+    controller.analyticsScreen = .exportChat
 
     getController = { [weak controller] in
         return controller
@@ -1220,6 +1224,7 @@ private func fullExportProgressModal(session: FullExportSession) -> InputDataMod
     }
 
     let controller = InputDataController(dataSignal: signal, title: fullExportString("ExportingTitle"), hasDone: false)
+    controller.analyticsScreen = .exportAccountProgress
 
     controller.onDeinit = {
         disposable.dispose()
@@ -1568,6 +1573,7 @@ public func FullExportController(context: any AccountContextProtocol) -> InputDa
     }
 
     let controller = InputDataController(dataSignal: signal, title: fullExportString("Title"), hasDone: false)
+    controller.analyticsScreen = .exportAccount
 
     controller.validateData = { _ in
         let state = stateValue.with { $0 }

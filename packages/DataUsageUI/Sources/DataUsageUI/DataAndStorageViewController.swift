@@ -18,6 +18,7 @@ import FoundationUtils
 import TelegramIconsTheme
 import ProxyUtils
 import GraphCore
+import AppAnalytics
 
 
 public enum DataAndStorageEntryTag : ItemListItemTag {
@@ -658,10 +659,12 @@ open class DataAndStorageViewController<Context: AccountContextProtocol>: TableV
             _ = updateAutoplayMediaSettingsInteractively(postbox: context.account.postbox, {
                 return $0.withUpdatedAutoplayGifs(enable)
             }).start()
+            Analytics.shared.send(AnalyticsEvents.settingsChange(.dataAutoplayGifs(enable ? .enabled : .disabled)))
         }, toggleAutoplayVideos: { enable in
             _ = updateAutoplayMediaSettingsInteractively(postbox: context.account.postbox, {
                 return $0.withUpdatedAutoplayVideos(enable)
             }).start()
+            Analytics.shared.send(AnalyticsEvents.settingsChange(.dataAutoplayVideos(enable ? .enabled : .disabled)))
         }, toggleAutoplaySoundOnHover: { enable in
             _ = updateAutoplayMediaSettingsInteractively(postbox: context.account.postbox, {
                 return $0.withUpdatedAutoplaySoundOnHover(enable)

@@ -1,109 +1,88 @@
 import Cocoa
 import TGUIKit
-import TelegramCore
-import Postbox
 import TelegramTheme
 import TelegramContext
-import Localization
 
 final class ChatVoiceTranscriptionView: View {
     enum Action {
         case edit
-        case send
         case cancel
     }
 
-    private static let rightInset: CGFloat = 14
-    private static let leftInset: CGFloat = 60
-    private static let maxBubbleWidth: CGFloat = 480
-    private static let minBubbleWidth: CGFloat = 220
-    private static let contentInsets = NSEdgeInsets(top: 7, left: 12, bottom: 7, right: 16)
-    private static let markupGap: CGFloat = 4
-    private static let ringWidth: CGFloat = 2
-    private static let editData = MemoryBuffer(data: "transcription.edit".data(using: .utf8)!)
-    private static let sendData = MemoryBuffer(data: "transcription.send".data(using: .utf8)!)
-    private static let cancelData = MemoryBuffer(data: "transcription.cancel".data(using: .utf8)!)
-
     private let context: any AccountContextProtocol
-
-    private let bubbleContainer = View()
-    private let bubble = ChatMessageBubbleBackdrop()
-    private let textView = TextView()
-    private let metaView = TextView()
-    private let shimmerHost = CALayer()
-    private let shimmer = CAGradientLayer()
-    private let shimmerMask = CAShapeLayer()
-    private let glowView = ChatVoiceTranscriptionGlowView()
-    private let halo = ChatBubbleSliceLayer()
-    private let ringMask = ChatBubbleSliceLayer()
-    private let ringHost = SimpleLayer()
-    private let ring = CAGradientLayer()
-    private let markupView = View()
-    private var markup: ReplyMarkupNode?
-    private var markupWidth: CGFloat = 0
-
-    private var text: String = ""
-    private var stableText: String = ""
-    private var language: String?
-    private var textLayout: TextViewLayout?
-    private var metaLayout: TextViewLayout?
+    private let aura = CALayer()
+    private let exterior = CAShapeLayer()
+    private let glows = (0 ..< 4).map { _ in CAGradientLayer() }
+    private let ribbon = CAGradientLayer()
+    private let filament = CAGradientLayer()
+    private let glowMasks = (0 ..< 4).map { _ in CAShapeLayer() }
+    private let ripples = (0 ..< 4).map { _ in CAGradientLayer() }
+    private let rippleMasks = (0 ..< 4).map { _ in CAShapeLayer() }
+    private let ribbonMask = CAShapeLayer()
+    private let filamentMask = CAShapeLayer()
+    private var animator: ConstantDisplayLinkAnimator?
+    private var targetLevel: CGFloat = 0
+    private var audioLevel: CGFloat = 0
+    private var animationTime: Double = 0
     private var isListening = false
-    private var level: CGFloat = 0
-    private(set) var contentHeight: CGFloat = 0
-    private var bubbleSize: NSSize = .zero
+    private var pulses: [ChatDictationAuraPulse] = []
+    private var emissionClock: CGFloat = 0.36
 
-    var onAction: ((Action) -> Void)?
-    var languageMenu: (() -> ContextMenu?)?
-    var gradientRect: (() -> (rect: NSRect, size: NSSize))?
+    private var gradients: [CAGradientLayer] {
+        return glows + ripples + [ribbon, filament]
+    }
 
-    init(frame frameRect: NSRect, context: any AccountContextProtocol) {
+    private var masks: [CAShapeLayer] {
+        return glowMasks + rippleMasks + [ribbonMask, filamentMask]
+    }
+
+    static var composerTransition: ContainedViewLayoutTransition {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ? .immediate
+            : .animated(duration: 0.22, curve: .easeOut)
+    }
+
+    init(context: any AccountContextProtocol) {
         self.context = context
-        super.init(frame: frameRect)
+        super.init(frame: .zero)
+        isEventLess = true
+        layer?.opacity = 0
         layer?.masksToBounds = false
-
-        bubbleContainer.layer?.masksToBounds = false
-        addSubview(bubbleContainer)
-
-        let glow = glowView.layer!
-        glow.masksToBounds = false
-        glow.opacity = 0
-        halo.shadowOffset = .zero
-        halo.shadowRadius = 12
-        halo.shadowOpacity = 0.45
-        glow.addSublayer(halo)
-
-        if #available(macOS 10.14, *) {
-            ring.type = .conic
+        layer?.addSublayer(aura)
+        aura.mask = exterior
+        exterior.fillRule = .evenOdd
+        exterior.fillColor = NSColor.white.cgColor
+        for (gradient, mask) in zip(gradients, masks) {
+            if #available(macOS 10.14, *) {
+                gradient.type = .conic
+            }
+            gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+            gradient.endPoint = CGPoint(x: 1, y: 0.5)
+            gradient.mask = mask
+            mask.fillColor = nil
+            mask.strokeColor = NSColor.white.cgColor
+            mask.lineCap = .round
+            mask.lineJoin = .round
+            mask.contentsScale = 2
+            aura.addSublayer(gradient)
         }
-        ring.startPoint = CGPoint(x: 0.5, y: 0.5)
-        ring.endPoint = CGPoint(x: 0.5, y: 0)
-        ringHost.addSublayer(ring)
-        ringHost.mask = ringMask
-        glow.addSublayer(ringHost)
-
-        bubbleContainer.addSubview(glowView)
-        bubbleContainer.addSubview(bubble)
-
-        textView.userInteractionEnabled = false
-        textView.isSelectable = false
-        bubbleContainer.addSubview(textView)
-
-        metaView.userInteractionEnabled = false
-        metaView.isSelectable = false
-        bubbleContainer.addSubview(metaView)
-
-        shimmer.startPoint = CGPoint(x: 0, y: 0.5)
-        shimmer.endPoint = CGPoint(x: 1, y: 0.5)
-        shimmer.locations = [0, 0.15, 0.3]
-        shimmerHost.mask = shimmerMask
-        shimmerHost.addSublayer(shimmer)
-        shimmerHost.opacity = 0
-        textView.layer?.addSublayer(shimmerHost)
-
-        markupView.layer?.masksToBounds = false
-        addSubview(markupView)
-
-        rebuildMarkup()
+        ribbonMask.lineWidth = 1.8
+        filamentMask.lineWidth = 1
+        filament.opacity = 0.12
+        for ripple in ripples {
+            ripple.opacity = 0
+            if !context.isLite(.blur), !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+               let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: 0.8]) {
+                ripple.filters = [blur]
+            }
+        }
+        for (index, glow) in glows.enumerated() {
+            if context.isLite(.blur) || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+                glow.isHidden = true
+            } else if index < 2, let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: index == 0 ? 3 : 1.5]) {
+                glow.filters = [blur]
+            }
+        }
         updateLocalizationAndTheme(theme: theme)
     }
 
@@ -115,218 +94,64 @@ final class ChatVoiceTranscriptionView: View {
         fatalError("init(frame:) has not been implemented")
     }
 
-    override func updateLocalizationAndTheme(theme: PresentationTheme) {
-        super.updateLocalizationAndTheme(theme: theme)
-        let theme = theme as! TelegramPresentationTheme
-        let form = messageBubbleImageModern(incoming: false, fillColor: .black, strokeColor: .clear, neighbors: .none)
-        bubble.setType(image: form, border: nil, background: theme.icons.chatGradientBubble_outgoing)
-
-        let accent = theme.colors.accent
-        halo.data = messageBubbleImageModern(incoming: false, fillColor: accent, strokeColor: .clear, neighbors: .none)
-        halo.shadowColor = accent.cgColor
-        ringMask.data = ChatVoiceTranscriptionView.outline(form, width: ChatVoiceTranscriptionView.ringWidth)
-        ring.colors = [accent.cgColor, accent.lighter(amount: 0.45).cgColor, accent.withAlphaComponent(0.15).cgColor, accent.withAlphaComponent(0.6).cgColor, accent.cgColor]
-        shimmer.colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.withAlphaComponent(0.55).cgColor, NSColor.white.withAlphaComponent(0).cgColor]
-        rebuildMarkup()
-        relayoutText()
-        needsLayout = true
-    }
-
-    private func rebuildMarkup() {
-        let rows: [ReplyMarkupRow] = [
-            ReplyMarkupRow(buttons: [
-                ReplyMarkupButton(title: strings().chatTranscriptionEdit, titleWhenForwarded: nil, action: .callback(requiresPassword: false, data: ChatVoiceTranscriptionView.editData), style: nil),
-                ReplyMarkupButton(title: strings().chatTranscriptionSend, titleWhenForwarded: nil, action: .callback(requiresPassword: false, data: ChatVoiceTranscriptionView.sendData), style: nil)
-            ]),
-            ReplyMarkupRow(buttons: [
-                ReplyMarkupButton(title: strings().chatTranscriptionCancel, titleWhenForwarded: nil, action: .callback(requiresPassword: false, data: ChatVoiceTranscriptionView.cancelData), style: nil)
-            ])
-        ]
-        let interactions = ReplyMarkupInteractions(context: context, proccess: { [weak self] button, _ in
-            guard case let .callback(_, data) = button.action else {
-                return
-            }
-            if data == ChatVoiceTranscriptionView.editData {
-                self?.onAction?(.edit)
-            } else if data == ChatVoiceTranscriptionView.sendData {
-                self?.onAction?(.send)
-            } else if data == ChatVoiceTranscriptionView.cancelData {
-                self?.onAction?(.cancel)
-            }
-        })
-        let theme = theme
-        let node = ReplyMarkupNode(rows, [], interactions, theme, markupView, false, outerCornerRadius: theme.bubbled ? 12 : 0, roundsTopCorners: false)
-        node.view = markupView
-        markup = node
-        markupWidth = 0
-        if bubbleSize.width > 0 {
-            applyMarkup(width: bubbleSize.width)
-        }
-    }
-
-    func update(text: String, language: String?, isListening: Bool, width: CGFloat) {
-        let previous = self.text
-        self.stableText = isListening ? ChatInputDictationText.stablePrefix(previous: previous, current: text) : text
-        self.text = text
-        self.language = language
-        self.isListening = isListening
-        relayoutText(width: width)
-    }
-
-    private func relayoutText(width: CGFloat? = nil) {
-        let theme = theme
-        let width = width ?? frame.width
-        let insets = ChatVoiceTranscriptionView.contentInsets
-        let maxBubble = max(ChatVoiceTranscriptionView.minBubbleWidth, min(ChatVoiceTranscriptionView.maxBubbleWidth, width - ChatVoiceTranscriptionView.leftInset - ChatVoiceTranscriptionView.rightInset))
-        let textColor = theme.chat.textColor(false, true)
-        let grayColor = theme.chat.grayText(false, true)
-        let font = NSFont.normal(theme.fontSize)
-
-        let attributed = NSMutableAttributedString()
-        if text.isEmpty {
-            _ = attributed.append(string: strings().chatTranscriptionListening, color: grayColor, font: font)
-        } else {
-            let stableLength = min((stableText as NSString).length, (text as NSString).length)
-            _ = attributed.append(string: text, color: textColor, font: font)
-            if stableLength < attributed.length {
-                attributed.addAttribute(.foregroundColor, value: textColor.withAlphaComponent(0.55), range: NSMakeRange(stableLength, attributed.length - stableLength))
-            }
-        }
-        let layout = TextViewLayout(attributed, alwaysStaticItems: true)
-        layout.measure(width: maxBubble - insets.left - insets.right)
-        textLayout = layout
-
-        let meta = TextViewLayout(.initialize(string: language ?? "", color: grayColor, font: .normal(.small)), maximumNumberOfLines: 1)
-        meta.measure(width: .greatestFiniteMagnitude)
-        metaLayout = meta
-
-        let metaWidth = language == nil ? 0 : meta.layoutSize.width + 8
-        let lastLine = layout.lines.last?.frame.width ?? layout.layoutSize.width
-        var contentWidth = max(layout.layoutSize.width, lastLine + metaWidth)
-        var textHeight = layout.layoutSize.height
-        if contentWidth > maxBubble - insets.left - insets.right {
-            contentWidth = layout.layoutSize.width
-            textHeight += meta.layoutSize.height
-        }
-        let bubbleWidth = max(ChatVoiceTranscriptionView.minBubbleWidth, min(maxBubble, contentWidth + insets.left + insets.right))
-        bubbleSize = NSMakeSize(bubbleWidth, textHeight + insets.top + insets.bottom)
-
-        applyMarkup(width: bubbleWidth)
-
-        let markupHeight = markup?.size.height ?? 0
-        contentHeight = bubbleSize.height + ChatVoiceTranscriptionView.markupGap + markupHeight
-    }
-
-    private func applyMarkup(width: CGFloat) {
-        guard let markup, width != markupWidth else {
-            return
-        }
-        markupWidth = width
-        markup.measureSize(width)
-        markup.redraw()
-        markup.layout()
-    }
-
-    private static func outline(_ form: (CGImage, NSEdgeInsets), width: CGFloat) -> (CGImage, NSEdgeInsets) {
-        let scale = System.backingScale
-        let formSize = form.0.backingSize
-        let size = NSMakeSize(formSize.width + width * 2, formSize.height + width * 2)
-        let formRect = CGRect(x: width, y: width, width: formSize.width, height: formSize.height)
-        let image = generateImage(size, contextGenerator: { size, context in
-            let bounds = size.bounds
-            context.clear(bounds)
-            let steps = 24
-            for ring in [width / 2, width] {
-                for step in 0 ..< steps {
-                    let angle = CGFloat(step) * .pi * 2 / CGFloat(steps)
-                    context.saveGState()
-                    context.clip(to: formRect.offsetBy(dx: cos(angle) * ring, dy: sin(angle) * ring), mask: form.0)
-                    context.setFillColor(NSColor.black.cgColor)
-                    context.fill(bounds)
-                    context.restoreGState()
-                }
-            }
-            context.saveGState()
-            context.clip(to: formRect, mask: form.0)
-            context.setBlendMode(.copy)
-            context.setFillColor(NSColor.clear.cgColor)
-            context.fill(bounds)
-            context.restoreGState()
-        }, scale: scale)!
-        let insets = form.1
-        return (image, NSEdgeInsetsMake(insets.top + width, insets.left + width, insets.bottom + width, insets.right + width))
+    deinit {
+        animator?.invalidate()
     }
 
     private var reduceMotion: Bool {
-        return NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || context.isLite(.animations)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || context.isLite(.animations)
+    }
+
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        let accent = theme.colors.accent.usingColorSpace(.deviceRGB) ?? NSColor(calibratedRed: 0.2, green: 0.5, blue: 1, alpha: 1)
+        let dark = theme.colors.isDark
+        let highlight = accent.blended(withFraction: dark ? 0.42 : 0.18, of: .white) ?? accent
+        let shadow = accent.blended(withFraction: dark ? 0.04 : 0.2, of: .black) ?? accent
+        let hue = accent.hueComponent
+        let saturation = accent.saturationComponent
+        let brightness = max(dark ? 0.5 : 0.25, accent.brightnessComponent)
+        let cool = NSColor(calibratedHue: (hue - 0.035 + 1).truncatingRemainder(dividingBy: 1), saturation: saturation * 0.9, brightness: brightness, alpha: 1)
+        let warm = NSColor(calibratedHue: (hue + 0.035).truncatingRemainder(dividingBy: 1), saturation: saturation * 0.9, brightness: brightness, alpha: 1)
+        let colors = [shadow.cgColor, cool.cgColor, accent.cgColor, highlight.cgColor, warm.cgColor, shadow.cgColor]
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for gradient in gradients {
+            gradient.removeAnimation(forKey: "auroraFlow")
+            gradient.colors = colors
+        }
+        CATransaction.commit()
+        updateAnimation()
     }
 
     func setListening(_ listening: Bool, animated: Bool) {
-        let glow = glowView.layer!
-        let from = CGFloat(glow.presentation()?.opacity ?? glow.opacity)
-        glow.opacity = listening ? 1 : 0
-        if animated {
-            glow.animateAlpha(from: from, to: listening ? 1 : 0, duration: listening ? 0.3 : 0.5)
+        isListening = listening
+        let transition: ContainedViewLayoutTransition = animated && !reduceMotion
+            ? .animated(duration: 0.22, curve: .easeOut)
+            : .immediate
+        transition.updateAlpha(view: self, alpha: listening ? 1 : 0)
+        if !listening {
+            targetLevel = 0
+            audioLevel = 0
+            pulses.removeAll()
+            emissionClock = 0.36
         }
-        if listening {
-            if ring.animation(forKey: "rotation") == nil, !reduceMotion {
-                let rotation = CABasicAnimation(keyPath: "transform.rotation.z")
-                rotation.fromValue = 0
-                rotation.toValue = -CGFloat.pi * 2
-                rotation.duration = 3.2
-                rotation.repeatCount = .infinity
-                rotation.isRemovedOnCompletion = false
-                ring.add(rotation, forKey: "rotation")
-            }
-            if shimmer.animation(forKey: "shimmer") == nil, !reduceMotion {
-                let animation = CABasicAnimation(keyPath: "locations")
-                animation.fromValue = [-0.3, -0.15, 0]
-                animation.toValue = [1, 1.15, 1.3]
-                animation.duration = 1.4
-                animation.repeatCount = .infinity
-                animation.isRemovedOnCompletion = false
-                shimmer.add(animation, forKey: "shimmer")
-            }
-            shimmerHost.opacity = 1
-        } else {
-            shimmerHost.opacity = 0
-            if !animated {
-                ring.removeAnimation(forKey: "rotation")
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: { [weak self] in
-                    guard let self, !self.isListening else {
-                        return
-                    }
-                    self.ring.removeAnimation(forKey: "rotation")
-                    self.shimmer.removeAnimation(forKey: "shimmer")
-                })
-            }
-        }
+        updateAnimation()
+        renderAura()
     }
 
     func updateLevel(_ level: CGFloat) {
-        let level = max(0, min(1, level))
-        guard abs(level - self.level) > 0.02 else {
-            return
+        guard isListening else { return }
+        targetLevel = pow(max(0, min(1, level.isFinite ? level : 0)), 0.65)
+        if animator?.isPaused != false {
+            audioLevel = targetLevel
+            renderAura()
         }
-        self.level = level
-        let opacity = Float(0.35 + level * 0.55)
-        let radius = 10 + level * 12
-        let opacityAnimation = CABasicAnimation(keyPath: "shadowOpacity")
-        opacityAnimation.fromValue = halo.presentation()?.shadowOpacity ?? halo.shadowOpacity
-        opacityAnimation.toValue = opacity
-        opacityAnimation.duration = 0.12
-        let radiusAnimation = CABasicAnimation(keyPath: "shadowRadius")
-        radiusAnimation.fromValue = halo.presentation()?.shadowRadius ?? halo.shadowRadius
-        radiusAnimation.toValue = radius
-        radiusAnimation.duration = 0.12
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        halo.shadowOpacity = opacity
-        halo.shadowRadius = radius
-        CATransaction.commit()
-        halo.add(opacityAnimation, forKey: "shadowOpacity")
-        halo.add(radiusAnimation, forKey: "shadowRadius")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateAnimation()
     }
 
     override func layout() {
@@ -334,122 +159,122 @@ final class ChatVoiceTranscriptionView: View {
         updateLayout(size: frame.size, transition: .immediate)
     }
 
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        for mask in masks {
+            mask.contentsScale = window?.backingScaleFactor ?? 2
+        }
+    }
+
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        let insets = ChatVoiceTranscriptionView.contentInsets
-        let bubbleFrame = NSMakeRect(size.width - ChatVoiceTranscriptionView.rightInset - bubbleSize.width, 0, bubbleSize.width, bubbleSize.height)
-        transition.updateFrame(view: bubbleContainer, frame: bubbleFrame)
-        transition.updateFrame(view: glowView, frame: bubbleFrame.size.bounds)
-        transition.updateFrame(view: bubble, frame: bubbleFrame.size.bounds)
-        bubble.updateLayout(size: bubbleFrame.size, transition: transition)
-        if let gradient = gradientRect?(), gradient.size.width > 0, gradient.size.height > 0 {
-            let inHost = bubbleContainer.convert(bubbleContainer.bounds, to: superview)
-            bubble.update(rect: NSMakeRect(inHost.minX, gradient.size.height - (gradient.rect.height - inHost.minY) - 30, inHost.width, inHost.height), within: gradient.size, transition: .immediate)
-        }
-
-        if let textLayout {
-            textView.update(textLayout)
-        }
-        transition.updateFrame(view: textView, frame: NSMakeRect(insets.left, insets.top, textLayout?.layoutSize.width ?? 0, textLayout?.layoutSize.height ?? 0))
-        if let metaLayout {
-            metaView.update(metaLayout)
-        }
-        let metaSize = metaLayout?.layoutSize ?? .zero
-        transition.updateFrame(view: metaView, frame: NSMakeRect(bubbleFrame.width - insets.right - metaSize.width, bubbleFrame.height - insets.bottom - metaSize.height + 1, metaSize.width, metaSize.height))
-
-        updateGlow(size: bubbleFrame.size, transition: transition)
-        updateShimmer()
-
-        let markupHeight = markup?.size.height ?? 0
-        transition.updateFrame(view: markupView, frame: NSMakeRect(bubbleFrame.minX, bubbleFrame.maxY + ChatVoiceTranscriptionView.markupGap, bubbleFrame.width, markupHeight))
-    }
-
-    private func updateGlow(size: NSSize, transition: ContainedViewLayoutTransition) {
-        let rect = size.bounds
-        let ringRect = rect.insetBy(dx: -ChatVoiceTranscriptionView.ringWidth, dy: -ChatVoiceTranscriptionView.ringWidth)
-        transition.updateFrame(layer: halo, frame: rect)
-        transition.updateFrame(layer: ringHost, frame: ringRect)
-        transition.updateFrame(layer: ringMask, frame: ringRect.size.bounds)
+        let padding = ChatDictationAura.padding
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let side = ceil(sqrt(ringRect.width * ringRect.width + ringRect.height * ringRect.height))
-        ring.bounds = CGRect(x: 0, y: 0, width: side, height: side)
-        ring.position = CGPoint(x: ringRect.width / 2, y: ringRect.height / 2)
+        aura.frame = size.bounds.insetBy(dx: -padding, dy: -padding)
+        for gradient in gradients {
+            gradient.frame = aura.bounds
+            gradient.mask?.frame = aura.bounds
+        }
+        exterior.frame = aura.bounds
+        let cutout = CGMutablePath()
+        cutout.addRect(aura.bounds)
+        let field = CGRect(x: padding, y: padding, width: size.width, height: size.height)
+        let radius = min(20, min(size.width, size.height) / 2)
+        if radius > 0 {
+            cutout.addRoundedRect(in: field, cornerWidth: radius, cornerHeight: radius)
+        }
+        exterior.path = cutout
         CATransaction.commit()
+        renderAura()
     }
 
-    private func updateShimmer() {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        shimmerHost.frame = textView.bounds
-        shimmer.frame = textView.bounds
-        shimmerMask.frame = textView.bounds
-        let path = CGMutablePath()
-        if let textLayout, isListening, !text.isEmpty {
-            let stableLength = min((stableText as NSString).length, (text as NSString).length)
-            let length = (text as NSString).length - stableLength
-            if length > 0 {
-                for (rect, _) in textLayout.rects(NSMakeRange(stableLength, length)) {
-                    path.addRect(rect)
+    private func updateAnimation() {
+        let running = isListening && window != nil && !reduceMotion
+        if running, animator == nil {
+            animator = ConstantDisplayLinkAnimator(framesPerSecond: .fps(30), update: { [weak self] duration in
+                self?.advance(by: duration)
+            })
+        }
+        animator?.isPaused = !running
+        for gradient in gradients {
+            if running, gradient.animation(forKey: "auroraFlow") == nil, let colors = gradient.colors {
+                let flow = CAKeyframeAnimation(keyPath: "colors")
+                let count = colors.count - 1
+                flow.values = (0 ... count).map { offset in
+                    let shifted = (0 ..< count).map { colors[($0 + offset) % count] }
+                    return shifted + [shifted[0]]
                 }
+                flow.duration = 9
+                flow.repeatCount = .infinity
+                gradient.add(flow, forKey: "auroraFlow")
+            } else if !running {
+                gradient.removeAnimation(forKey: "auroraFlow")
             }
         }
-        shimmerMask.path = path
+    }
+
+    private func advance(by duration: CGFloat) {
+        guard isListening, window != nil, !reduceMotion else {
+            updateAnimation()
+            return
+        }
+        let delta = max(0, min(0.05, duration))
+        animationTime += Double(delta)
+        let rate: CGFloat = targetLevel > audioLevel ? 22 : 8
+        audioLevel += (targetLevel - audioLevel) * (1 - exp(-delta * rate))
+        pulses.removeAll(where: { animationTime - $0.born >= ChatDictationAuraPulse.lifetime })
+        emissionClock += delta
+        if targetLevel > 0.12, audioLevel > 0.18, emissionClock >= 0.36 {
+            emissionClock = 0
+            if pulses.count == ripples.count {
+                pulses.removeFirst()
+            }
+            pulses.append(ChatDictationAuraPulse(born: animationTime, energy: audioLevel))
+        }
+        renderAura()
+    }
+
+    private func renderAura() {
+        let padding = ChatDictationAura.padding
+        let field = CGRect(x: padding, y: padding, width: frame.width, height: frame.height)
+        let radius = min(20, min(field.width, field.height) / 2)
+        let path = CGPath(roundedRect: field, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let echo = ChatDictationAura.path(around: field, level: audioLevel, time: animationTime, band: 1, motion: !reduceMotion)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let widths: [CGFloat] = [20, 13, 8, 4]
+        let expansion: [CGFloat] = [6, 5, 3, 1]
+        let opacity: [Float] = [0.05, 0.09, 0.18, 0.32]
+        for index in glows.indices {
+            glowMasks[index].path = path
+            glowMasks[index].lineWidth = widths[index] + audioLevel * expansion[index]
+            glows[index].opacity = opacity[index] * Float(0.7 + audioLevel * 0.7)
+        }
+        ribbonMask.path = path
+        filamentMask.path = echo
+        filament.opacity = Float(0.12 + audioLevel * 0.08)
+        ribbonMask.lineWidth = 1.8 + audioLevel * 0.5
+        for index in ripples.indices {
+            guard !reduceMotion, index < pulses.count else {
+                ripples[index].opacity = 0
+                continue
+            }
+            let pulse = pulses[index]
+            let progress = pulse.progress(at: animationTime)
+            rippleMasks[index].path = ChatDictationAura.path(around: field, level: pulse.energy * (1 - progress) * 0.35, time: animationTime, band: pulse.energy * 0.8, motion: true, expansion: pulse.expansion(at: animationTime))
+            rippleMasks[index].lineWidth = 1.5 + (1 - progress) * 1.5
+            ripples[index].opacity = pulse.opacity(at: animationTime) * 0.65
+        }
         CATransaction.commit()
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        if NSPointInRect(convert(event.locationInWindow, from: nil), bubbleContainer.frame), let menu = languageMenu?() {
-            AppMenu.show(menu: menu, event: event, for: self)
-            return
-        }
-        super.rightMouseDown(with: event)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.control), NSPointInRect(convert(event.locationInWindow, from: nil), bubbleContainer.frame), let menu = languageMenu?() {
-            AppMenu.show(menu: menu, event: event, for: self)
-            return
-        }
-        super.mouseDown(with: event)
-    }
-
-    func animateIn() {
-        guard let layer = bubbleContainer.layer, let markupLayer = markupView.layer else {
-            return
-        }
-        let offset = contentHeight + 20
-        for layer in [layer, markupLayer] {
-            layer.animatePosition(from: NSMakePoint(0, offset), to: .zero, duration: 0.35, timingFunction: .spring, additive: true)
-            layer.animateAlpha(from: 0, to: 1, duration: 0.2)
-        }
-        layer.animateScaleSpring(from: 0.85, to: 1, duration: 0.4, bounce: true)
     }
 
     func animateOut(completion: @escaping () -> Void) {
-        guard let layer = self.layer else {
+        let opacity = layer?.presentation()?.opacity ?? layer?.opacity ?? 0
+        setListening(false, animated: false)
+        guard !reduceMotion, window != nil, let layer else {
             completion()
             return
         }
-        layer.animateAlpha(from: 1, to: 0, duration: 0.2, removeOnCompletion: false, completion: { _ in
-            completion()
-        })
-        bubbleContainer.layer?.animateScaleSpring(from: 1, to: 0.85, duration: 0.25, removeOnCompletion: false, bounce: false)
-    }
-}
-
-private final class ChatVoiceTranscriptionGlowView: NSView {
-    init() {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.masksToBounds = false
-        layer?.disableActions()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
+        layer.animateAlpha(from: CGFloat(opacity), to: 0, duration: 0.22, completion: { _ in completion() })
     }
 }

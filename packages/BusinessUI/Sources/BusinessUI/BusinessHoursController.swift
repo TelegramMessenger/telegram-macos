@@ -21,6 +21,7 @@ import ChatModeTypes
 import MapKit
 import FoundationUtils
 import MessageTextUtils
+import AppAnalytics
 
 private func wrappedMinuteRange(range: Range<Int>, dayIndexOffset: Int = 0) -> IndexSet {
     let mappedRange = (range.lowerBound + dayIndexOffset * 24 * 60) ..< (range.upperBound + dayIndexOffset * 24 * 60)
@@ -584,6 +585,7 @@ public func BusinessHoursController(context: (any AccountContextProtocol)) -> In
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessHoursTitle, removeAfterDisappear: false, hasDone: true, identifier: "business_hours")
+    controller.analyticsScreen = .settingsBusinessHours
     
     controller.validateData = { _ in
         let state = stateValue.with { $0 }
@@ -630,6 +632,7 @@ private func BusinessdayHoursController(context: (any AccountContextProtocol), s
     }
     
     let controller = InputDataController(dataSignal: signal, title: day.title, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .settingsBusinessHoursDay
     
     return controller
     
