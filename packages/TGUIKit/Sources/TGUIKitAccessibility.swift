@@ -52,6 +52,13 @@ public enum AccessibilityAudit {
         return issues
     }
 
+    public static func elements(_ window: NSWindow) -> [NSAccessibilityProtocol] {
+        guard let contentView = window.contentView else {
+            return []
+        }
+        return elements(contentView)
+    }
+
     public static func elements(_ root: NSView) -> [NSAccessibilityProtocol] {
         var result: [NSAccessibilityProtocol] = []
         var visited = Set<ObjectIdentifier>()
