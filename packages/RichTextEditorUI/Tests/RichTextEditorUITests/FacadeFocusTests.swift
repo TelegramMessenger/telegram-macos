@@ -50,6 +50,19 @@ final class FacadeFocusTests: AppKitTestCase {
         XCTAssertFalse(editor.canvas.hasMarkedText())
     }
 
+    func test_escapeLeftUnhandledByTheInputMethodCancelsTheComposition() throws {
+        let (editor, win) = hostedEditor("prefix")
+        defer { win.orderOut(nil) }
+        editor.canvas.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let escape = try keyEvent("\u{1b}", keyCode: 53, window: win)
+        XCTAssertTrue(editor.handleKeyDuringComposition(escape),
+                      "while composing, Escape must be consumed by the editor instead of the host")
+        XCTAssertFalse(editor.canvas.hasMarkedText(),
+                       "an input method that leaves Escape to the client must not keep the composition open")
+        XCTAssertEqual(editor.canvas.markedRange().location, NSNotFound)
+        XCTAssertEqual(editor.canvas.text(inGlobalRange: 0, editor.canvas.documentSizeValue), "prefix")
+    }
+
     func test_canvasDoesNotInheritATableAccessibilityParent() {
         let editor = RichTextEditorView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
 
