@@ -1014,6 +1014,56 @@ public func convertMarkdownToAttributes(_ text: NSAttributedString) -> NSAttribu
 
 private let numberedListRegex = try? NSRegularExpression(pattern: "^(\\d+)\\. ", options: [])
 
+func isInsideCode(_ text: NSAttributedString, range: NSRange) -> Bool {
+    var hasCodeAttribute = false
+    text.enumerateAttributes(in: range, options: []) { attributes, _, stop in
+        if attributes[TextInputAttributes.code] != nil || attributes[TextInputAttributes.monospace] != nil {
+            hasCodeAttribute = true
+            stop.pointee = true
+        }
+    }
+    if hasCodeAttribute {
+        return true
+    }
+    let string = text.string as NSString
+    var insideBlock = false
+    var insideInline = false
+    var index = 0
+    while index < range.location {
+        let character = string.character(at: index)
+        if character == 0x0a || character == 0x2028 {
+            insideInline = false
+        }
+        guard character == 0x60 else {
+            index += 1
+            continue
+        }
+        var end = index + 1
+        while end < range.location && string.character(at: end) == 0x60 {
+            end += 1
+        }
+        let previous = index > 0 ? UnicodeScalar(string.character(at: index - 1)) : nil
+        let opens = index == 0 || previous.map { CharacterSet.whitespacesAndNewlines.contains($0) } == true
+        if end - index >= 3 {
+            if insideBlock || opens {
+                insideBlock.toggle()
+            }
+        } else if end - index == 1, !insideBlock, insideInline || opens {
+            insideInline.toggle()
+        }
+        index = end
+    }
+    return insideBlock || insideInline
+}
+
+private func listContinuationAttributes(_ text: NSAttributedString, at index: Int) -> [NSAttributedString.Key: Any] {
+    var attributes = text.attributes(at: index, effectiveRange: nil)
+    for key in [TextInputAttributes.textUrl, TextInputAttributes.textMention, TextInputAttributes.customEmoji, TextInputAttributes.spoiler, TextInputAttributes.formattedDate, TextInputAttributes.monospace, TextInputAttributes.code] {
+        attributes[key] = nil
+    }
+    return attributes
+}
+
 public func continueBulletListIfNeeded(text: NSAttributedString, insertionPoint: Int, bulletEnabled: Bool = true, numberedEnabled: Bool = true) -> (NSAttributedString, Int)? {
     let string = text.string as NSString
 
@@ -1028,7 +1078,11 @@ public func continueBulletListIfNeeded(text: NSAttributedString, insertionPoint:
     let lineRange = string.lineRange(for: NSMakeRange(insertionPoint - 1, 0))
     let lineContent = string.substring(with: lineRange)
 
-    if bulletEnabled, lineContent.hasPrefix("• ") {
+    let insideCode = {
+        isInsideCode(text, range: NSMakeRange(lineRange.location, 1)) || isInsideCode(text, range: NSMakeRange(insertionPoint, 0))
+    }
+
+    if bulletEnabled, lineContent.hasPrefix("• "), !insideCode() {
         let trimmed = lineContent.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed == "•" {
             let result = NSMutableAttributedString(attributedString: text)
@@ -1037,13 +1091,13 @@ public func continueBulletListIfNeeded(text: NSAttributedString, insertionPoint:
             return (result, lineRange.location)
         } else {
             let result = NSMutableAttributedString(attributedString: text)
-            let attrs = result.attributes(at: max(0, insertionPoint - 1), effectiveRange: nil)
+            let attrs = listContinuationAttributes(result, at: max(0, insertionPoint - 1))
             result.insert(NSAttributedString(string: "\n• ", attributes: attrs), at: insertionPoint)
             return (result, insertionPoint + 3)
         }
     }
 
-    if bulletEnabled, lineContent.hasPrefix("- ") {
+    if bulletEnabled, lineContent.hasPrefix("- "), !insideCode() {
         let trimmed = lineContent.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed == "-" {
             let result = NSMutableAttributedString(attributedString: text)
@@ -1052,14 +1106,14 @@ public func continueBulletListIfNeeded(text: NSAttributedString, insertionPoint:
             return (result, lineRange.location)
         } else {
             let result = NSMutableAttributedString(attributedString: text)
-            let attrs = result.attributes(at: max(0, insertionPoint - 1), effectiveRange: nil)
+            let attrs = listContinuationAttributes(result, at: max(0, insertionPoint - 1))
             result.insert(NSAttributedString(string: "\n- ", attributes: attrs), at: insertionPoint)
             return (result, insertionPoint + 3)
         }
     }
 
     if numberedEnabled, let regex = numberedListRegex,
-       let match = regex.firstMatch(in: lineContent, options: [], range: NSMakeRange(0, lineContent.count)) {
+       let match = regex.firstMatch(in: lineContent, options: [], range: NSMakeRange(0, lineContent.count)), !insideCode() {
         let numberRange = match.range(at: 1)
         let numberStr = (lineContent as NSString).substring(with: numberRange)
         if let currentNumber = Int(numberStr) {
@@ -1074,7 +1128,7 @@ public func continueBulletListIfNeeded(text: NSAttributedString, insertionPoint:
                 let nextNumber = currentNumber + 1
                 let nextPrefix = "\n\(nextNumber). "
                 let result = NSMutableAttributedString(attributedString: text)
-                let attrs = result.attributes(at: max(0, insertionPoint - 1), effectiveRange: nil)
+                let attrs = listContinuationAttributes(result, at: max(0, insertionPoint - 1))
                 result.insert(NSAttributedString(string: nextPrefix, attributes: attrs), at: insertionPoint)
                 return (result, insertionPoint + nextPrefix.count)
             }
