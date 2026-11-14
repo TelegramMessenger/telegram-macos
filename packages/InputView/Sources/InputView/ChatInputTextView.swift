@@ -1390,6 +1390,33 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         }
     }
 
+    public override func moveLeft(_ sender: Any?) {
+        moveCrossingParagraphsInTextOrder {
+            super.moveLeft(sender)
+        }
+    }
+
+    public override func moveRight(_ sender: Any?) {
+        moveCrossingParagraphsInTextOrder {
+            super.moveRight(sender)
+        }
+    }
+
+    private func moveCrossingParagraphsInTextOrder(_ move: () -> Void) {
+        let before = self.selectedRange()
+        move()
+        let after = self.selectedRange()
+        guard before.length == 0, after.length == 0 else {
+            return
+        }
+        let paragraph = (self.string as NSString).paragraphRange(for: NSRange(location: before.location, length: 0))
+        if after.location < paragraph.location {
+            self.setSelectedRange(NSRange(location: paragraph.location - 1, length: 0))
+        } else if after.location >= NSMaxRange(paragraph), NSMaxRange(paragraph) > before.location {
+            self.setSelectedRange(NSRange(location: NSMaxRange(paragraph), length: 0))
+        }
+    }
+
     private func quoteToContinueOnNewLine() -> TextInputTextQuoteAttribute? {
         let range = self.selectedRange()
         guard range.length == 0, range.location > 0, let textStorage = self.textStorage else {
