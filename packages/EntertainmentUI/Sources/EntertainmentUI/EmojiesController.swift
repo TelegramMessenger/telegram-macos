@@ -1,4 +1,5 @@
 import Foundation
+import CoreImage
 import TGUIKit
 import SwiftSignalKit
 import TelegramCore
@@ -3236,8 +3237,8 @@ final class PickerFrostView: NSVisualEffectView {
 }
 
 final class PickerHeaderBlur {
-    private var filter: NSObject?
-    private var maskKey: NSSize?
+    private var filter: CIFilter?
+    private var maskKey: NSRect?
 
     func update(_ view: NSView, enabled: Bool, height: CGFloat) -> Bool {
         guard #available(macOS 26.0, *), enabled, let layer = view.layer else {
@@ -3249,20 +3250,23 @@ final class PickerHeaderBlur {
             return false
         }
         if filter == nil {
-            guard let created = ee2_makeVariableBlurFilter() else {
+            guard let created = CIFilter(name: "CIMaskedVariableBlur") else {
                 return false
             }
-            created.setValue(14, forKey: "inputRadius")
-            created.setValue(false, forKey: "inputNormalizeEdges")
+            created.setDefaults()
+            created.setValue(14, forKey: kCIInputRadiusKey)
+            view.layerUsesCoreImageFilters = true
             filter = created
         }
         guard let filter else {
             return false
         }
-        let key = NSMakeSize(floor(max(0, height)), floor(layer.bounds.height))
-        if key != maskKey, key.height > 0 {
+        let size = NSMakeSize(floor(layer.bounds.width), floor(layer.bounds.height))
+        let blurHeight = floor(max(0, height))
+        let key = NSMakeRect(0, blurHeight, size.width, size.height)
+        if key != maskKey, size.width > 0, size.height > 0 {
             maskKey = key
-            filter.setValue(PickerHeaderBlur.mask(blurHeight: key.width, height: key.height), forKey: "inputMaskImage")
+            filter.setValue(PickerHeaderBlur.mask(blurHeight: blurHeight, size: size), forKey: "inputMask")
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer.filters = [filter]
@@ -3271,15 +3275,10 @@ final class PickerHeaderBlur {
         return true
     }
 
-    private static func mask(blurHeight: CGFloat, height: CGFloat) -> CGImage? {
-        let scale = System.backingScale
-        let pixelHeight = Int(min(2048, height * scale))
-        let unit = CGFloat(pixelHeight) / height
-        guard pixelHeight > 0, let context = CGContext(data: nil, width: 1, height: pixelHeight, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-            return nil
-        }
-        context.setFillColor(NSColor.black.cgColor)
-        context.fill(CGRect(x: 0, y: CGFloat(pixelHeight) - blurHeight * unit, width: 1, height: blurHeight * unit))
-        return context.makeImage()
+    private static func mask(blurHeight: CGFloat, size: NSSize) -> CIImage {
+        let bounds = CGRect(origin: .zero, size: size)
+        let clear = CIImage(color: CIColor.black).cropped(to: bounds)
+        let blurred = CIImage(color: CIColor.white).cropped(to: CGRect(x: 0, y: 0, width: size.width, height: min(blurHeight, size.height)))
+        return blurred.composited(over: clear)
     }
 }
