@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import AlertsUI
+import TelegramMediaUtils
 import Strings
 
 private final class TermsView : View {
@@ -120,6 +121,7 @@ public class TermsModalController: ModalViewController {
                     _ = showModalProgress(signal: context.engine.auth.deleteAccount(reason: "GDPR", password: nil), for: context.window).start(error: { _ in
                         showModalText(for: context.window, text: strings().unknownError)
                     }, completed: {
+                        DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: context.account.postbox.mediaBox.basePath)
                         _ = logoutFromAccount(id: context.account.id, accountManager: context.sharedContext.accountManager, alreadyLoggedOutRemotely: true).start()
                     })
                 })

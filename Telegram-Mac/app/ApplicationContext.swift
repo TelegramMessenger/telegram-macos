@@ -644,6 +644,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 alert.beginSheetModal(for: window, completionHandler: { result in
                     Analytics.shared.screens.hideStandalone(owner: alert)
                     if result.rawValue == 1000 && text.isDropAuth {
+                        DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: context.account.postbox.mediaBox.basePath)
                         let _ = logoutFromAccount(id: context.account.id, accountManager: context.sharedContext.accountManager, alreadyLoggedOutRemotely: false).start()
                     }
                 })
