@@ -1871,16 +1871,17 @@ private func layoutBlockQuoteBlocksV2(
 }
 
 
-public func instantPageStringContainsRTL(_ string: String) -> Bool {
-    for scalar in string.unicodeScalars {
-        switch scalar.value {
-        case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x1_0800...0x1_0FFF, 0x1_E800...0x1_EFFF:
-            return true
-        default:
-            break
-        }
+private func instantPageScalarIsRTL(_ scalar: Unicode.Scalar) -> Bool {
+    switch scalar.value {
+    case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x1_0800...0x1_0FFF, 0x1_E800...0x1_EFFF:
+        return true
+    default:
+        return false
     }
-    return false
+}
+
+public func instantPageStringContainsRTL(_ string: String) -> Bool {
+    return string.unicodeScalars.contains(where: instantPageScalarIsRTL)
 }
 
 private func instantPageRichTextContainsRTL(_ text: RichText) -> Bool {
@@ -1892,6 +1893,16 @@ private func instantPageV2IsList(_ block: InstantPageBlock?) -> Bool {
         return true
     }
     return false
+}
+
+// The direction of the first letter, as in rule P2 of the Unicode bidi algorithm: punctuation,
+// digits and spaces are neutral. Swift exposes no bidi class, so "letter" is approximated by the
+// Alphabetic property. Returns nil when the text has no letter.
+private func instantPageFirstStrongDirectionIsRTL(_ string: String) -> Bool? {
+    guard let scalar = string.unicodeScalars.first(where: { $0.properties.isAlphabetic }) else {
+        return nil
+    }
+    return instantPageScalarIsRTL(scalar)
 }
 
 private func layoutListV2(
@@ -1974,16 +1985,18 @@ private func layoutListV2(
         }
     }
 
-    let rtl = context.rtl || listItems.contains(where: { item in
+    // The list takes the direction of its first letter across items, like a paragraph does, so an
+    // Arabic comma or a quoted Hebrew word inside an English list doesn't flip the markers.
+    let rtl = context.rtl || (listItems.lazy.compactMap { item -> Bool? in
         switch item {
         case let .text(text, _, _):
-            return instantPageRichTextContainsRTL(text)
+            return instantPageFirstStrongDirectionIsRTL(text.plainText)
         case let .blocks(blocks, _, _):
-            return instantPageRichTextContainsRTL(instantPageRichTextFromBlocks(blocks))
+            return instantPageFirstStrongDirectionIsRTL(instantPageRichTextFromBlocks(blocks).plainText)
         case .unknown:
-            return false
+            return nil
         }
-    })
+    }.first ?? false)
     let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
     let markerColumnWidth = markerWidth + markerSkip
     let singleDigitWidth = ceil(attributedStringForRichText(.plain("8."), styleStack: indexStack).size().width)
