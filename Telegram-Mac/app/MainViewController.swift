@@ -302,7 +302,21 @@ final class UpdateTabController: GenericViewController<UpdateTabView> {
 final class MainController_View: View {
     private let bgView: View = View()
     private let contentView = View()
-    private let glassView: LiquidGlassView
+    private let glassView: LiquidGlassView?
+    private let trailingSeparator: View?
+
+    static var splitInsets: NSEdgeInsets {
+        if System.edgeToEdgeSidebar {
+            return NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        }
+        return NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+    }
+
+    var showsTrailingSeparator: Bool = false {
+        didSet {
+            trailingSeparator?.isHidden = !showsTrailingSeparator
+        }
+    }
 
     /// 20pt on macOS 26+ to match the liquid-glass aesthetic (on macOS 27
     /// the window radius is raised to 28pt through private API, keeping
@@ -326,7 +340,7 @@ final class MainController_View: View {
     }
 
     private var currentCornerRadius: CGFloat {
-        if compactCorners {
+        if compactCorners || System.edgeToEdgeSidebar {
             return 0
         }
         return MainController_View.containerCornerRadius
@@ -336,12 +350,53 @@ final class MainController_View: View {
         let radius = currentCornerRadius
         bgView.layer?.cornerRadius = radius
         contentView.layer?.cornerRadius = radius
-        glassView.cornerRadius = radius
+        glassView?.cornerRadius = radius
+        materialView?.cornerRadius = radius
+    }
+
+    private var materialView: SidebarMaterialView?
+
+    var materialOverWallpaper = false {
+        didSet {
+            if materialOverWallpaper != oldValue {
+                updateWindowMaterial()
+            }
+        }
+    }
+    private var appliedOverWallpaper = false
+
+    @objc private func updateWindowMaterial() {
+        let overWallpaper = materialOverWallpaper
+        if let materialView, !System.windowMaterialActive || overWallpaper != appliedOverWallpaper {
+            materialView.removeFromSuperview()
+            self.materialView = nil
+        }
+        if System.windowMaterialActive, materialView == nil {
+            let view = SidebarMaterialView(frame: bounds, material: overWallpaper ? .sidebar : nil)
+            view.tintColor = presentation.colors.background
+            view.cornerRadius = currentCornerRadius
+            addSubview(view, positioned: .below, relativeTo: contentView)
+            materialView = view
+            appliedOverWallpaper = overWallpaper
+        }
+        bgView.isHidden = System.windowMaterialActive
+        glassView?.isHidden = System.windowMaterialActive
+        needsLayout = true
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     required init(frame frameRect: NSRect) {
-        let cornerRadius = MainController_View.containerCornerRadius
-        glassView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0, customTint: presentation.colors.background, forceBlur: true)
+        let cornerRadius = System.edgeToEdgeSidebar ? 0 : MainController_View.containerCornerRadius
+        if System.edgeToEdgeSidebar {
+            glassView = nil
+            trailingSeparator = View()
+        } else {
+            glassView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0, customTint: presentation.colors.background, forceBlur: true)
+            trailingSeparator = nil
+        }
         super.init(frame: frameRect)
 
         self.layer?.masksToBounds = false
@@ -356,8 +411,18 @@ final class MainController_View: View {
         contentView.layer?.masksToBounds = true
 
         addSubview(bgView)
-        addSubview(glassView)
+        if let glassView {
+            addSubview(glassView)
+        }
         addSubview(contentView)
+        if let trailingSeparator {
+            trailingSeparator.backgroundColor = presentation.colors.border
+            trailingSeparator.isEventLess = true
+            trailingSeparator.isHidden = !showsTrailingSeparator
+            addSubview(trailingSeparator)
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(updateWindowMaterial), name: systemWindowMaterialDidChange, object: nil)
+        updateWindowMaterial()
     }
 
     func addContentView(_ view: NSView) {
@@ -371,7 +436,9 @@ final class MainController_View: View {
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         bgView.backgroundColor = theme.colors.background
-        glassView.customTint = theme.colors.background
+        glassView?.customTint = theme.colors.background
+        materialView?.tintColor = theme.colors.background
+        trailingSeparator?.backgroundColor = theme.colors.border
     }
 
     override func layout() {
@@ -381,9 +448,20 @@ final class MainController_View: View {
 
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         transition.updateFrame(view: bgView, frame: CGRect(origin: .zero, size: size))
+        if let materialView {
+            transition.updateFrame(view: materialView, frame: CGRect(origin: .zero, size: size))
+        }
         transition.updateFrame(view: contentView, frame: CGRect(origin: .zero, size: size))
-        transition.updateFrame(view: glassView, frame: CGRect(origin: .zero, size: size))
-        glassView.updateLayout(size: size, transition: transition)
+        if let glassView {
+            transition.updateFrame(view: glassView, frame: CGRect(origin: .zero, size: size))
+            glassView.updateLayout(size: size, transition: transition)
+        }
+        if let trailingSeparator {
+            if subviews.last !== trailingSeparator {
+                addSubview(trailingSeparator)
+            }
+            transition.updateFrame(view: trailingSeparator, frame: CGRect(x: size.width - .borderSize, y: 0, width: .borderSize, height: size.height))
+        }
     }
 }
 

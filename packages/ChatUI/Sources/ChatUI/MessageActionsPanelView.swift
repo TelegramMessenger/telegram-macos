@@ -102,7 +102,7 @@ public class MessageActionsPanelView: Control, Notifable {
     }
 
     public func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        let edge: CGFloat = 12
+        let edge: CGFloat = ChatInputView.inputEdgeInset
         let gap: CGFloat = 10
         let contentHeight = size.height - ChatInputView.inputBottomInset
 

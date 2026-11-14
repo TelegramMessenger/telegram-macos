@@ -128,7 +128,25 @@ public class NavigationBarView: View {
     }
     
     
-    private static let edgeInset: CGFloat = 12
+    public var usesWindowEdgeInsets: Bool = false {
+        didSet {
+            if usesWindowEdgeInsets != oldValue {
+                needsLayout = true
+            }
+        }
+    }
+
+    private var appliesWindowEdgeInsets: Bool {
+        return usesWindowEdgeInsets
+    }
+
+    private var edgeInset: CGFloat {
+        return appliesWindowEdgeInsets ? System.windowEdgeInset : 12
+    }
+
+    private var itemsTopShift: CGFloat {
+        return appliesWindowEdgeInsets ? System.windowEdgeInset - 12 : 0
+    }
     public static let contentTopInset: NSEdgeInsets = NSEdgeInsets(top: 50)
 
     func layout(left: BarView, center: BarView, right: BarView, force: Bool = false, animated: Bool = false) -> Void {
@@ -137,16 +155,16 @@ public class NavigationBarView: View {
 
             let transition: ContainedViewLayoutTransition = animated && !inLiveResize ? .animated(duration: 0.2, curve: .easeOut) : .immediate
 
-            let edge = NavigationBarView.edgeInset
+            let edge = edgeInset
             let width = max(0, frame.width - startPosition - edge * 2)
 
             let rightWidth = right.fit(to: width / 2, transition: transition)
             let leftWidth = left.fit(to: width / 2, transition: transition)
             
 
-            transition.updateFrame(view: left, frame: NSMakeRect(startPosition + edge, 0, leftWidth, frame.height))
+            transition.updateFrame(view: left, frame: NSMakeRect(startPosition + edge, itemsTopShift, leftWidth, frame.height))
             transition.updateFrame(view: center, frame: NSMakeRect(0, 0, frame.width, frame.height))
-            transition.updateFrame(view: right, frame: NSMakeRect(frame.width - rightWidth - edge, 0, rightWidth, frame.height))
+            transition.updateFrame(view: right, frame: NSMakeRect(frame.width - rightWidth - edge, itemsTopShift, rightWidth, frame.height))
 
             left.updateLayout(size: NSMakeSize(leftWidth, frame.height), transition: transition)
             center.updateLayout(size: NSMakeSize(frame.width, frame.height), transition: transition)

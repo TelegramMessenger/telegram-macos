@@ -37,36 +37,74 @@ struct SetupPasswordConfiguration {
 
 private final class AccountSearchBarView: View {
     fileprivate let searchView = SearchView(frame: NSMakeRect(0, 0, 100, 30))
-    
-    
+    private var searchFrost: SearchFrostView?
+
+    private final class SearchFrostView: NSVisualEffectView {
+        override var isEmphasized: Bool {
+            get { false }
+            set {}
+        }
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
-    
+
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(searchView)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateWindowMaterial), name: systemWindowMaterialDidChange, object: nil)
+        updateWindowMaterial()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func updateWindowMaterial() {
+        if System.windowMaterialActive {
+            if searchFrost == nil {
+                let frost = SearchFrostView(frame: searchView.frame)
+                frost.wantsLayer = true
+                frost.material = .selection
+                frost.blendingMode = .withinWindow
+                frost.state = .active
+                if #available(macOS 10.15, *) {
+                    frost.layer?.cornerCurve = .continuous
+                }
+                frost.layer?.masksToBounds = true
+                addSubview(frost, positioned: .below, relativeTo: searchView)
+                searchFrost = frost
+            }
+        } else if let searchFrost {
+            searchFrost.removeFromSuperview()
+            self.searchFrost = nil
+        }
         updateLocalizationAndTheme(theme: theme)
     }
-    
+
     override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         let theme = theme as! TelegramPresentationTheme
-        searchView.searchTheme = .init(theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
+        searchView.searchTheme = .init(searchFrost != nil ? .clear : theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
             return strings().searchFieldSearch
         }, theme.search.textColor, theme.search.placeholderColor)
-        searchView.layer?.borderWidth = 1
+        searchView.layer?.borderWidth = searchFrost != nil ? 0 : 1
         searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
+        searchFrost?.appearance = NSAppearance(named: theme.colors.isDark ? .darkAqua : .aqua)
         needsLayout = true
     }
-    
+
     override func layout() {
         super.layout()
         searchView.setFrameSize(NSMakeSize(frame.width - 20, 30))
         searchView.centerY(x: 10)
+        if let searchFrost {
+            searchFrost.frame = searchView.frame
+            searchFrost.layer?.cornerRadius = searchView.frame.height / 2
+        }
     }
-    
+
 }
 
 
@@ -796,12 +834,35 @@ public final class AccountControllerView : Control {
         needsLayout = true
     }
     
+    private var windowControlsCenterY: CGFloat? {
+        guard System.edgeToEdgeSidebar, let window = window, !window.styleMask.contains(.fullScreen), let button = window.standardWindowButton(.closeButton), !button.isHidden, let buttonSuperview = button.superview else {
+            return nil
+        }
+        let rect = statusContainer.convert(buttonSuperview.convert(button.frame, to: nil), from: nil)
+        guard rect.maxX > 0, rect.minX < statusContainer.bounds.width else {
+            return nil
+        }
+        let centerY = statusContainer.isFlipped ? rect.midY : statusContainer.bounds.height - rect.midY
+        return centerY > 0 && centerY < statusContainer.bounds.height ? centerY : nil
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if System.edgeToEdgeSidebar {
+            needsLayout = true
+        }
+    }
+
     public override func layout() {
         super.layout()
         statusContainer.frame = NSMakeRect(0, 0, frame.width, 40)
         edit.sizeToFit(NSMakeSize(10, 14))
         edit.setFrameOrigin(NSMakePoint(statusContainer.frame.width - edit.frame.width - 10, statusContainer.frame.height - edit.frame.height))
         textView.centerX(y: 14)
+        if let centerY = windowControlsCenterY {
+            textView.setFrameOrigin(NSMakePoint(textView.frame.minX, floorToScreenPixels(backingScaleFactor, centerY - textView.frame.height / 2)))
+            edit.setFrameOrigin(NSMakePoint(edit.frame.minX, floorToScreenPixels(backingScaleFactor, centerY - edit.frame.height / 2)))
+        }
 
         if hasSidebar {
             searchView.frame = NSMakeRect(0, statusContainer.frame.maxY, frame.width, 50)

@@ -113,11 +113,54 @@ public struct System {
     /// the lite-mode "Blur Effects" toggle — when both `liquidGlass` and
     /// `blurEnabled` are false, `LiquidGlassView` renders a plain solid
     /// background instead.
-    public static var blurEnabled: Bool = true
+    public static var blurEnabled: Bool = true {
+        didSet {
+            if windowMaterial && blurEnabled != oldValue {
+                NotificationCenter.default.post(name: systemWindowMaterialDidChange, object: nil)
+            }
+        }
+    }
+
+    public static let edgeToEdgeSidebar: Bool = {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "DebugFloatingSidebar") {
+            return false
+        }
+        #endif
+        if #available(macOS 27.0, *) {
+            return true
+        }
+        return false
+    }()
+
+    public static let windowEdgeInset: CGFloat = 8
+
+    public static let windowMaterialAvailable: Bool = {
+        if #available(macOS 26.0, *) {
+            return true
+        }
+        return false
+    }()
+
+    public static var windowMaterial: Bool = false {
+        didSet {
+            if windowMaterial && !windowMaterialAvailable {
+                windowMaterial = false
+            }
+            if windowMaterial != oldValue {
+                NotificationCenter.default.post(name: systemWindowMaterialDidChange, object: nil)
+            }
+        }
+    }
+
+    public static var windowMaterialActive: Bool {
+        return windowMaterial && blurEnabled
+    }
 
 }
 
 let systemLiquidGlassDidChange = Notification.Name("TGUIKitLiquidGlassDidChange")
+public let systemWindowMaterialDidChange = Notification.Name("TGUIKitWindowMaterialDidChange")
 
 public var uiLocalizationFunc:((String)->String)?
 

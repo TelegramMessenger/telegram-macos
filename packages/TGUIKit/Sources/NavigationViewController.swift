@@ -351,6 +351,8 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         return containerOf(controller).navigationBar
     }
 
+    public var usesWindowEdgeInsets: Bool = false
+
     let pushDisposable:MetaDisposable = MetaDisposable()
     let popDisposable:MetaDisposable = MetaDisposable()
     
@@ -537,6 +539,7 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         let containerFrame = NSMakeRect(inset.minX, inset.minY, max(0, inset.width), max(0, inset.height))
         let container = ControllerContainer(frame: containerFrame)
         container.controller = controller
+        container.navigationBar.usesWindowEdgeInsets = usesWindowEdgeInsets
         let radius = controller.containerCornerRadius
         container.applyContainerCornerRadius(radius)
         container.applyBackdrop(controller.backdorColor)
