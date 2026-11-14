@@ -91,5 +91,14 @@ let package = Package(
                 .product(name: "rnoise", package: "rnoise"),
             ],
             path: "Tests/SettingsUIAccountResetTests"),
+        .testTarget(
+            name: "SettingsUISearchTests",
+            dependencies: [
+                "SettingsUI",
+                .product(name: "InAppSettings", package: "InAppSettings"),
+                .product(name: "InputDataUI", package: "InputDataUI"),
+                .product(name: "rnoise", package: "rnoise"),
+            ],
+            path: "Tests/SettingsUISearchTests"),
     ]
 )

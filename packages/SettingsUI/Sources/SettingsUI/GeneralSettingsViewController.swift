@@ -452,7 +452,179 @@ private func prepareEntries(left: [AppearanceWrapperEntry<GeneralSettingsEntry>]
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
 }
 
+public enum GeneralSettingsEntryTag: Int32 {
+    case liteMode = 1
+    case spellingWhileTyping = 2
+    case grammarWithSpelling = 3
+    case correctSpelling = 4
+    case sidebar = 5
+    case emojiReplacements = 6
+    case predictEmoji = 7
+    case bigEmoji = 8
+    case showCallsTab = 9
+    case statusBar = 10
+    case inAppSounds = 11
+    case shortcuts = 12
+    case copyFormatting = 13
+    case sendLargePhotos = 14
+    case forceTouchReply = 16
+    case forceTouchEdit = 17
+    case forceTouchForward = 18
+    case forceTouchReact = 20
+    case enterBehavior = 21
+    case cmdEnterBehavior = 22
+    case callSettings = 23
+    case previewChats = 24
+    case showProfileId = 25
+
+    fileprivate var stableId: Int {
+        switch self {
+        case .liteMode:
+            return GeneralSettingsEntry.liteMode(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .spellingWhileTyping:
+            return GeneralSettingsEntry.checkSpellingWhileTyping(sectionId: 0, enabled: false, key: "", viewType: .singleItem).stableId
+        case .grammarWithSpelling:
+            return GeneralSettingsEntry.checkGrammarWithSpelling(sectionId: 0, enabled: false, key: "", viewType: .singleItem).stableId
+        case .correctSpelling:
+            return GeneralSettingsEntry.correctSpellingAutomatically(sectionId: 0, enabled: false, key: "", viewType: .singleItem).stableId
+        case .sidebar:
+            return GeneralSettingsEntry.sidebar(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .emojiReplacements:
+            return GeneralSettingsEntry.emojiReplacements(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .predictEmoji:
+            return GeneralSettingsEntry.predictEmoji(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .bigEmoji:
+            return GeneralSettingsEntry.bigEmoji(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .showCallsTab:
+            return GeneralSettingsEntry.showCallsTab(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .statusBar:
+            return GeneralSettingsEntry.statusBar(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .inAppSounds:
+            return GeneralSettingsEntry.inAppSounds(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .shortcuts:
+            return GeneralSettingsEntry.shortcuts(sectionId: 0, viewType: .singleItem).stableId
+        case .copyFormatting:
+            return GeneralSettingsEntry.enableRFTCopy(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .sendLargePhotos:
+            return GeneralSettingsEntry.sendLargePhotos(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .forceTouchReply:
+            return GeneralSettingsEntry.forceTouchReply(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .forceTouchEdit:
+            return GeneralSettingsEntry.forceTouchEdit(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .forceTouchForward:
+            return GeneralSettingsEntry.forceTouchForward(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .forceTouchReact:
+            return GeneralSettingsEntry.forceTouchReact(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .enterBehavior:
+            return GeneralSettingsEntry.enterBehavior(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .cmdEnterBehavior:
+            return GeneralSettingsEntry.cmdEnterBehavior(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .callSettings:
+            return GeneralSettingsEntry.callSettings(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .previewChats:
+            return GeneralSettingsEntry.previewChats(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .showProfileId:
+            return GeneralSettingsEntry.showProfileId(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        }
+    }
+}
+
+extension GeneralSettingsEntryTag: SettingsSearchTag {
+    static var icon: SettingsSearchableItemIcon {
+        return .general
+    }
+    
+    static var rootTitle: String {
+        return strings().accountSettingsGeneral
+    }
+    
+    static func itemId(_ index: Int32) -> SettingsSearchableItemId {
+        return .general(index)
+    }
+    
+    static func open<Context: AccountContextProtocol>(_ tag: GeneralSettingsEntryTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+        switch tag {
+        case .callSettings:
+            present(.push, SettingsNavigationHooks.shared.makeCallSettingsController(context))
+        case .liteMode:
+            present(.push, LiteModeController(context: context))
+        default:
+            present(.push, GeneralSettingsViewController(context, focusOnItemTag: tag))
+        }
+    }
+    
+    var searchTitle: String {
+        switch self {
+        case .liteMode:
+            return strings().generalSettingsLiteMode
+        case .spellingWhileTyping:
+            return strings().generalSettingsSpellingCheckWhileTyping
+        case .grammarWithSpelling:
+            return strings().generalSettingsSpellingCheckGrammarSpelling
+        case .correctSpelling:
+            return strings().generalSettingsSpellingCheckSpellingAutomatically
+        case .sidebar:
+            return strings().generalSettingsEnableSidebar
+        case .emojiReplacements:
+            return strings().generalSettingsEmojiReplacements
+        case .predictEmoji:
+            return strings().generalSettingsEmojiPrediction
+        case .bigEmoji:
+            return strings().generalSettingsBigEmoji
+        case .showCallsTab:
+            return strings().generalSettingsShowCallsTab
+        case .statusBar:
+            return strings().generalSettingsStatusBarItem
+        case .inAppSounds:
+            return strings().generalSettingsInAppSounds
+        case .shortcuts:
+            return strings().generalSettingsShortcuts
+        case .copyFormatting:
+            return strings().generalSettingsCopyRTF
+        case .sendLargePhotos:
+            return strings().generalSettingsSendLargePhotos
+        case .forceTouchReply:
+            return strings().generalSettingsForceTouchReply
+        case .forceTouchEdit:
+            return strings().generalSettingsForceTouchEdit
+        case .forceTouchForward:
+            return strings().generalSettingsForceTouchForward
+        case .forceTouchReact:
+            return strings().generalSettingsForceTouchReact
+        case .enterBehavior:
+            return strings().generalSettingsSendByEnter
+        case .cmdEnterBehavior:
+            return strings().generalSettingsSendByCmdEnter
+        case .callSettings:
+            return strings().generalSettingsCallSettingsText
+        case .previewChats:
+            return strings().generalSettingsPreviewChatsText
+        case .showProfileId:
+            return strings().generalSettingsShowProfileIdText
+        }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        if case .predictEmoji = self {
+            return environment.predictEmojiVisible
+        }
+        return true
+    }
+    
+    var searchIndex: Int32 {
+        return rawValue
+    }
+}
+
+
 open class GeneralSettingsViewController<Context: AccountContextProtocol>: TableViewController<Context> {
+
+    private var focusOnItemTag: GeneralSettingsEntryTag?
+
+    public init(_ context: Context, focusOnItemTag: GeneralSettingsEntryTag? = nil) {
+        self.focusOnItemTag = focusOnItemTag
+        super.init(context)
+    }
 
     open override var defaultBarTitle: String {
         return strings().telegramGeneralSettingsViewController
@@ -563,6 +735,10 @@ open class GeneralSettingsViewController<Context: AccountContextProtocol>: Table
         disposable.set(signal.start(next: { [weak self] transition in
             self?.genericView.merge(with:  transition)
             self?.readyOnce()
+            if let focusOnItemTag = self?.focusOnItemTag, self?.genericView.item(stableId: AnyHashable(focusOnItemTag.stableId)) != nil {
+                self?.genericView.scroll(to: .center(id: AnyHashable(focusOnItemTag.stableId), innerId: nil, animated: true, focus: .init(focus: true), inset: 0), inset: NSEdgeInsets())
+                self?.focusOnItemTag = nil
+            }
         }))
                 
     }

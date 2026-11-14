@@ -247,6 +247,10 @@ public enum ThemeSettingsEntryTag: ItemListItemTag {
     case autoNight
     case chatMode
     case accentColor
+    case darkMode
+    case wallpaper
+    case nameColor
+    case dockIcon
     public func isEqual(to other: ItemListItemTag) -> Bool {
         if let other = other as? ThemeSettingsEntryTag, self == other {
             return true
@@ -267,7 +271,125 @@ public enum ThemeSettingsEntryTag: ItemListItemTag {
             return .general(_id_theme_chat_mode)
         case .accentColor:
             return .custom(_id_theme_accent_list)
+        case .darkMode:
+            return .general(_id_theme_night_mode)
+        case .wallpaper:
+            return .general(_id_theme_wallpaper1)
+        case .nameColor:
+            return .general(_id_name_color)
+        case .dockIcon:
+            return .custom(_id_dock_icon)
         }
+    }
+}
+
+
+enum AppearanceSearchTag: Int32, CaseIterable {
+    case fontSize = 1
+    case chatBackground = 2
+    case autoNight = 5
+    case accentColor = 6
+    case chatMode = 7
+    case darkMode = 8
+    case nameColor = 9
+    case dockIcon = 10
+}
+
+extension AppearanceSearchTag: SettingsSearchTag {
+    static var icon: SettingsSearchableItemIcon {
+        return .appearance
+    }
+    
+    static var rootTitle: String {
+        return strings().accountSettingsTheme
+    }
+    
+    static var rootAlternates: [String] {
+        return synonyms(strings().settingsSearchSynonymsAppearanceTitle)
+    }
+    
+    static func itemId(_ index: Int32) -> SettingsSearchableItemId {
+        return .appearance(index)
+    }
+    
+    static func open<Context: AccountContextProtocol>(_ tag: AppearanceSearchTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+        let focus: ThemeSettingsEntryTag?
+        switch tag {
+        case .chatBackground:
+            showModal(with: ChatWallpaperModalController(context), for: context.window)
+            return
+        case .autoNight:
+            present(.push, AutoNightSettingsController(context: context))
+            return
+        case .fontSize:
+            focus = .fontSize
+        case .accentColor:
+            focus = .accentColor
+        case .chatMode:
+            focus = .chatMode
+        case .darkMode:
+            focus = .darkMode
+        case .nameColor:
+            focus = .nameColor
+        case .dockIcon:
+            focus = .dockIcon
+        case nil:
+            focus = nil
+        }
+        present(.push, AppAppearanceViewController(context: context, focusOnItemTag: focus))
+    }
+    
+    var searchTitle: String {
+        switch self {
+        case .fontSize:
+            return strings().appearanceSettingsTextSizeHeader
+        case .chatBackground:
+            return strings().generalSettingsChatBackground
+        case .autoNight:
+            return strings().appearanceSettingsAutoNight
+        case .accentColor:
+            return strings().appearanceSettingsColorThemeHeader
+        case .chatMode:
+            return strings().appearanceSettingsChatViewHeader
+        case .darkMode:
+            return strings().appearanceSettingsDarkMode
+        case .nameColor:
+            return strings().appearanceYourNameColor
+        case .dockIcon:
+            return strings().appearanceSettingsDockIcon
+        }
+    }
+    
+    var searchAlternates: [String] {
+        switch self {
+        case .fontSize:
+            return synonyms(strings().settingsSearchSynonymsAppearanceTextSize)
+        case .chatBackground:
+            return synonyms(strings().settingsSearchSynonymsAppearanceChatBackground)
+        case .autoNight:
+            return synonyms(strings().settingsSearchSynonymsAppearanceAutoNightTheme)
+        case .accentColor:
+            return synonyms(strings().settingsSearchSynonymsAppearanceColorTheme)
+        case .chatMode:
+            return synonyms(strings().settingsSearchSynonymsAppearanceChatMode) + [strings().appearanceSettingsBubblesMode]
+        default:
+            return []
+        }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        switch self {
+        case .chatBackground:
+            return environment.chatBackgroundAvailable
+        case .dockIcon:
+            return environment.dockIconAvailable
+        default:
+            return true
+        }
+    }
+    
+    var searchIndex: Int32 {
+        return rawValue
     }
 }
 

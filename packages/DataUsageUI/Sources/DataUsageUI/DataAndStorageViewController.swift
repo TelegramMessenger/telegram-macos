@@ -26,6 +26,14 @@ public enum DataAndStorageEntryTag : ItemListItemTag {
     case automaticDownloadReset
     case autoplayGifs
     case autoplayVideos
+    case automaticDownload
+    case photos
+    case videos
+    case files
+    case downloadFolder
+    case sensitiveContent
+    case proxy
+    case exportData
     
     public func isEqual(to other: ItemListItemTag) -> Bool {
         if let other = other as? DataAndStorageEntryTag, self == other {
@@ -42,6 +50,22 @@ public enum DataAndStorageEntryTag : ItemListItemTag {
             return 13
         case .autoplayVideos:
             return 14
+        case .automaticDownload:
+            return 3
+        case .photos:
+            return 4
+        case .videos:
+            return 5
+        case .files:
+            return 6
+        case .downloadFolder:
+            return 11
+        case .sensitiveContent:
+            return 17
+        case .proxy:
+            return 20
+        case .exportData:
+            return 21
         }
     }
 }
