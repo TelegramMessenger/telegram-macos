@@ -199,6 +199,38 @@ void TGDisableLayerActions(CALayer *layer) {
                 }];
             }
 
+            NSString *domainPattern = @"(?<![@.%/=,?-])(?<![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])(?!(?:this|self|ctx|super|cls|window|document|global|module|exports|props|state|config|data|obj|args|req|res|err|opts|options|e)\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-|\\.[[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]))[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]](?:(?:[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-)*[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])?(?:\\.[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]](?:(?:[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-)*[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])?)*\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-|\\.[[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])(?::[0-9]{1,5}(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]))?(?:[/?#][^\\s　-ヿ㐀-鿿＀-￯]*[^\\s　-ヿ㐀-鿿＀-￯.,;:!?)\\]}\"\\'>”’»…])?";
+            NSRegularExpression *domainRegex = [NSRegularExpression regularExpressionWithPattern:domainPattern options:0 error:&error];
+            if (error) {
+                NSLog(@"Error creating regex: %@", error.localizedDescription);
+            } else {
+                [domainRegex enumerateMatchesInString:text options:0 range:NSMakeRange(0, text.length) usingBlock:^(NSTextCheckingResult *match, __unused NSMatchingFlags flags, __unused BOOL *stop) {
+                    @try {
+                        NSRange range = match.range;
+                        // A domain inside a URL with a scheme (slack://open?x&foo.dev, slack://open#foo.dev) is part of that URL:
+                        // supported schemes are already linked whole by NSDataDetector, unsupported ones stay plain text.
+                        // The scan stops at the end of the preceding URL: whitespace, a closing bracket or CJK / full-width text (https://a.com，foo.dev).
+                        NSMutableCharacterSet *urlEnd = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
+                        [urlEnd addCharactersInString:@")）"];
+                        [urlEnd addCharactersInRange:NSMakeRange(0x2E80, 0x9FFF - 0x2E80 + 1)];
+                        [urlEnd addCharactersInRange:NSMakeRange(0xAC00, 0xD7AF - 0xAC00 + 1)];
+                        [urlEnd addCharactersInRange:NSMakeRange(0xFF00, 0xFFEF - 0xFF00 + 1)];
+                        NSRange tokenStart = [text rangeOfCharacterFromSet:urlEnd options:NSBackwardsSearch range:NSMakeRange(0, range.location)];
+                        NSUInteger tokenFrom = tokenStart.location == NSNotFound ? 0 : NSMaxRange(tokenStart);
+                        if ([text rangeOfString:@"://" options:0 range:NSMakeRange(tokenFrom, range.location - tokenFrom)].location != NSNotFound) {
+                            return;
+                        }
+                        NSIndexSet *covered = [results indexesOfObjectsPassingTest:^BOOL(NSValue *value, __unused NSUInteger index, __unused BOOL *innerStop) {
+                            NSRange existing = value.rangeValue;
+                            return existing.location >= range.location && NSMaxRange(existing) <= NSMaxRange(range);
+                        }];
+                        [results removeObjectsAtIndexes:covered];
+                        [results addObject:[NSValue valueWithRange:range]];
+                    } @catch (NSException *exception) {
+                    }
+                }];
+            }
+
             // Custom detection for TonConnect deep links (tg://?v=2&... / tc://?v=2&...): they carry the
             // query directly after the scheme with NO host, a form NSDataDetector never matches. The
             // trailing character class stops the match before sentence punctuation.
