@@ -209,7 +209,13 @@ void TGDisableLayerActions(CALayer *layer) {
                         NSRange range = match.range;
                         // A domain inside a URL with a scheme (slack://open?x&foo.dev, slack://open#foo.dev) is part of that URL:
                         // supported schemes are already linked whole by NSDataDetector, unsupported ones stay plain text.
-                        NSRange tokenStart = [text rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet] options:NSBackwardsSearch range:NSMakeRange(0, range.location)];
+                        // The scan stops at the end of the preceding URL: whitespace, a closing bracket or CJK / full-width text (https://a.com，foo.dev).
+                        NSMutableCharacterSet *urlEnd = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
+                        [urlEnd addCharactersInString:@")）"];
+                        [urlEnd addCharactersInRange:NSMakeRange(0x2E80, 0x9FFF - 0x2E80 + 1)];
+                        [urlEnd addCharactersInRange:NSMakeRange(0xAC00, 0xD7AF - 0xAC00 + 1)];
+                        [urlEnd addCharactersInRange:NSMakeRange(0xFF00, 0xFFEF - 0xFF00 + 1)];
+                        NSRange tokenStart = [text rangeOfCharacterFromSet:urlEnd options:NSBackwardsSearch range:NSMakeRange(0, range.location)];
                         NSUInteger tokenFrom = tokenStart.location == NSNotFound ? 0 : NSMaxRange(tokenStart);
                         if ([text rangeOfString:@"://" options:0 range:NSMakeRange(tokenFrom, range.location - tokenFrom)].location != NSNotFound) {
                             return;
