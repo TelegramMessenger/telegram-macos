@@ -1,11 +1,15 @@
 import Cocoa
 import SidebarUI
+import ChatListUI
 import TelegramCore
 import Postbox
 import SwiftSignalKit
 import TGUIKit
 import InputView
 import InAppSettings
+
+extension ChatListFolderDropTarget: SidebarFolderDropTarget {
+}
 
 func navigateToChatListFilter(_ filter: Int32, context: AccountContext) {
 
@@ -93,6 +97,14 @@ final class AppSidebarUIEnvironment: SidebarUIEnvironment {
 
     func navigateToFilter(_ id: Int32) {
         navigateToChatListFilter(id, context: accountContext)
+    }
+
+    var folderDropTypes: [NSPasteboard.PasteboardType] {
+        return [ChatListFolderDrop.pasteboardType]
+    }
+
+    func makeFolderDropTarget(scrollView: NSScrollView, target: @escaping (NSPoint) -> (ChatListFilter, NSView)?, visibleTargets: @escaping () -> [(ChatListFilter, NSView, [NSView])]) -> any SidebarFolderDropTarget {
+        return ChatListFolderDropTarget(context: accountContext, scrollView: scrollView, horizontal: false, target: target, visibleTargets: visibleTargets)
     }
 
     func openPeerInfo(_ id: PeerId) {

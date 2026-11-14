@@ -182,7 +182,16 @@ class LeftSidebarFolderItem: TableRowItem {
 }
 
 
-private final class LeftSidebarFolderView : TableRowView {
+final class LeftSidebarFolderView : TableRowView {
+    var folderDropTarget: (ChatListFilter, NSView)? {
+        guard let item = item as? LeftSidebarFolderItem, !isResorting else { return nil }
+        return (item.folder, self)
+    }
+
+    var folderDropContentViews: [NSView] {
+        return [imageView]
+    }
+
     private let imageView = ImageView(frame: NSMakeRect(0, 0, 32, 32))
     private let badgeView = ImageView()
     private let textView = InteractiveTextView()

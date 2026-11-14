@@ -1,0 +1,300 @@
+var testTime: TimeInterval = 0
+func CACurrentMediaTime() -> TimeInterval { testTime }
+
+class TestTimer {
+    static var timers: [TestTimer] = []
+    var valid = true
+    let repeats: Bool
+    let interval: TimeInterval
+    var next: TimeInterval
+    var block: ((TestTimer) -> Void)?
+    init(timeInterval: TimeInterval, repeats: Bool, block: @escaping (TestTimer) -> Void) {
+        self.interval = timeInterval; self.next = testTime + timeInterval; self.repeats = repeats; self.block = block
+        Self.timers.append(self)
+    }
+    func invalidate() { valid = false; block = nil }
+    static func advance(_ interval: TimeInterval) {
+        let end = testTime + interval
+        while let next = timers.filter({ $0.valid && $0.next <= end }).min(by: { $0.next < $1.next }) {
+            testTime = next.next
+            next.next += next.interval
+            next.block?(next)
+            if !next.repeats { next.invalidate() }
+            timers.removeAll(where: { !$0.valid })
+        }
+        testTime = end
+    }
+}
+extension RunLoop { func add(_ timer: TestTimer, forMode: RunLoop.Mode) {} }
+class NSImage { let size: NSSize; init(size: NSSize) { self.size = size }; func lockFocus() {}; func unlockFocus() {}; func draw(in rect: NSRect) {}; func cgImage(forProposedRect: UnsafeMutablePointer<NSRect>?, context: Any?, hints: [String: Any]?) -> CGImage? { nil } }
+class NSShadow { var shadowColor: Color?; var shadowBlurRadius: CGFloat = 0; var shadowOffset = NSSize.zero; func set() {} }
+class NSImageView: NSView { enum Scaling { case scaleProportionallyUpOrDown, scaleAxesIndependently }; var image: NSImage?; var imageScaling = Scaling.scaleProportionallyUpOrDown; override init(frame: NSRect) { super.init(); self.frame = frame } }
+class NSPanel {
+    enum Style { case borderless, nonactivatingPanel }
+    enum Backing { case buffered }
+    enum Level { case floating }
+    static var latest: NSPanel?
+    var frame: NSRect
+    var frameWrites = 0
+    var isReleasedWhenClosed = false; var isOpaque = false; var backgroundColor = Color(); var hasShadow = false; var ignoresMouseEvents = false; var level = Level.floating; var contentView: NSView?; var alphaValue: CGFloat = 1; var closed = false; var beforeClose: (() -> Void)?
+    init(contentRect: NSRect, styleMask: [Style], backing: Backing, defer: Bool) { frame = contentRect; Self.latest = self }
+    func orderFront(_ sender: Any?) {}
+    func close() { beforeClose?(); closed = true }
+    func setFrame(_ frame: NSRect, display: Bool) { self.frame = frame; frameWrites += 1 }
+    var visualFrame: NSRect { guard let layer = contentView?.layer?.sublayers?.first as? TestMotionLayer else { return frame }; return (layer.presentation()?.frame ?? layer.frame).offsetBy(dx: frame.minX, dy: frame.minY) }
+    var visualAlpha: CGFloat { guard let layer = contentView?.layer?.sublayers?.first as? TestMotionLayer else { return alphaValue }; return CGFloat(layer.presentation()?.opacity ?? layer.opacity) }
+    func animator() -> PanelAnimator { PanelAnimator(self) }
+}
+class PanelAnimator {
+    let panel: NSPanel
+    init(_ panel: NSPanel) { self.panel = panel }
+    var alphaValue: CGFloat {
+        get { panel.alphaValue }
+        set {
+            let start = panel.alphaValue
+            NSAnimationContext.current!.animations.append { [panel] progress in panel.alphaValue = start + (newValue - start) * progress }
+        }
+    }
+    func setFrame(_ frame: NSRect, display: Bool) {
+        let start = panel.frame
+        NSAnimationContext.current!.animations.append { [panel] progress in
+            panel.frame = NSRect(x: start.minX + (frame.minX - start.minX) * progress, y: start.minY + (frame.minY - start.minY) * progress, width: start.width + (frame.width - start.width) * progress, height: start.height + (frame.height - start.height) * progress)
+        }
+    }
+}
+class NSAnimationContext {
+    static var current: NSAnimationContext?
+    var duration: TimeInterval = 0; var timingFunction: CAMediaTimingFunction?
+    var animations: [(CGFloat) -> Void] = []
+    static func runAnimationGroup(_ changes: (NSAnimationContext) -> Void, completionHandler: @escaping () -> Void) {
+        let context = NSAnimationContext(); current = context; changes(context); current = nil
+        let start = testTime
+        _ = TestTimer(timeInterval: 1.0 / 60.0, repeats: true) { timer in
+            let progress = CGFloat(min(1, (testTime - start) / context.duration))
+            let eased = progress * progress * (3 - 2 * progress)
+            context.animations.forEach { $0(eased) }
+            if progress >= 1 { timer.invalidate(); completionHandler() }
+        }
+    }
+}
+
+final class TestMotionLayer: CALayer {
+    private var motion: CAAnimationGroup?
+    private(set) var latestGroup: CAAnimationGroup?
+    private var start: TimeInterval = 0
+    private var completion: TestTimer?
+    override func add(_ animation: CAAnimation, forKey key: String?) {
+        guard key == "chatFolderDragMotion", let group = animation as? CAAnimationGroup else { super.add(animation, forKey: key); return }
+        completion?.invalidate()
+        motion = group
+        latestGroup = group
+        start = testTime
+        completion = TestTimer(timeInterval: group.duration, repeats: false) { [weak self] _ in
+            guard let self, self.motion === group else { return }
+            self.motion = nil
+            group.delegate?.animationDidStop?(group, finished: true)
+        }
+    }
+    override func removeAllAnimations() { completion?.invalidate(); completion = nil; motion = nil; super.removeAllAnimations() }
+    override func presentation() -> Self? {
+        guard let motion else { return nil }
+        let progress = min(1, max(0, (testTime - start) / motion.duration))
+        let result = type(of: self).init()
+        result.bounds = bounds; result.position = position; result.opacity = opacity
+        for animation in motion.animations ?? [] {
+            guard let keyframe = animation as? CAKeyframeAnimation, let values = keyframe.values, values.count > 1 else { continue }
+            let sample = progress * Double(values.count - 1)
+            let lower = min(values.count - 2, Int(sample)); let fraction = CGFloat(sample - Double(lower))
+            switch keyframe.keyPath {
+            case "position":
+                let a = (values[lower] as! NSValue).pointValue; let b = (values[lower + 1] as! NSValue).pointValue
+                result.position = NSPoint(x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction)
+            case "bounds":
+                let a = (values[lower] as! NSValue).rectValue; let b = (values[lower + 1] as! NSValue).rectValue
+                result.bounds = NSRect(x: 0, y: 0, width: a.width + (b.width - a.width) * fraction, height: a.height + (b.height - a.height) * fraction)
+            case "opacity":
+                let a = (values[lower] as! NSNumber).doubleValue; let b = (values[lower + 1] as! NSNumber).doubleValue
+                result.opacity = Float(a + (b - a) * Double(fraction))
+            default: break
+            }
+        }
+        return result
+    }
+    required override init() { super.init() }
+    override init(layer: Any) { super.init(layer: layer) }
+    required init?(coder: NSCoder) { super.init(coder: coder) }
+}
+
+__ACTUAL_PRESENTATION__
+
+func presentationMotionChecks() {
+    func reset() { TestTimer.timers.forEach { $0.invalidate() }; TestTimer.timers.removeAll(); NSPanel.latest = nil; testTime = 0; NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false }
+    func origin() -> NSView { let view = NSView(); view.frame = NSRect(x: 300, y: 300, width: 50, height: 50); return view }
+    let start = NSRect(x: 20, y: 100, width: 72, height: 72)
+    reset()
+    let source = origin(); let presentation = ExtractedDragPresentation(origin: source, decorations: [])
+    presentation.lift(); presentation.dragFrame = start; presentation.ended(at: NSPoint(x: 45, y: 125))
+    let panel = NSPanel.latest!
+    let motionLayer = panel.contentView?.layer?.sublayers?.first as? TestMotionLayer
+    let initialGroup = motionLayer?.latestGroup
+    check(initialGroup != nil && initialGroup!.animations?.count == 3 && initialGroup!.duration >= 0.30 && initialGroup!.duration <= 0.45, "real CA group owns position bounds and opacity interpolation")
+    if let group = initialGroup {
+        check(group.animations!.allSatisfy { ($0 as? CAKeyframeAnimation)?.values?.count == 61 }, "compositor receives complete curve not per-frame timer writes")
+    }
+    check(panel.visualFrame == start && panel.visualAlpha == 1, "native to owned panel has identical visible frame and opacity")
+    var visibleHandoff = false
+    panel.beforeClose = { visibleHandoff = source.alphaValue == 1 }
+    TestTimer.advance(0.08)
+    check(panel.visualFrame.midX > start.midX && panel.visualFrame.midX < source.frame.midX && panel.visualAlpha == 1 && source.alphaValue == 0, "return travels visibly rather than teleporting or exposing slot")
+    let stageFrame = panel.frame
+    let writes = panel.frameWrites
+    let firstVisual = panel.visualFrame
+    TestTimer.advance(0.08)
+    check(panel.frame == stageFrame && panel.frameWrites == writes && panel.visualFrame != firstVisual, "compositor moves avatar without60Hzwindowframe writes")
+    check(abs(panel.visualFrame.width - panel.visualFrame.height) < 0.00001, "smooth return does not squash avatar")
+    TestTimer.advance(0.5)
+    check(panel.closed && visibleHandoff && source.alphaValue == 1, "source restored before preview closes")
+    check(source.layer?.animation(forKey: "testScale") == nil, "return does not add separate origin bounce")
+    reset()
+    for added in [false, true] {
+        for completionFirst in [false, true] {
+            let source = origin(); let destination = origin(); destination.frame.origin.x = 600
+            let presentation = ExtractedDragPresentation(origin: source, decorations: [])
+            presentation.lift(); presentation.dragFrame = start; presentation.accept(destination: { destination })
+            var results: [Bool] = []
+            if completionFirst { presentation.complete(added: added, completed: { results.append($0) }) }
+            presentation.ended(at: .zero)
+            if !completionFirst { presentation.complete(added: added, completed: { results.append($0) }) }
+            let panel = NSPanel.latest!
+            if added {
+                TestTimer.advance(0.15)
+                check(panel.visualAlpha == 1 && panel.visualFrame.width == start.width && panel.visualFrame.midX > start.midX, "success visible attraction before shrink \(completionFirst)")
+                check(source.alphaValue == 0, "successful sink keeps original hidden until preview disappears \(completionFirst)")
+            }
+            TestTimer.advance(0.5)
+            presentation.complete(added: !added, completed: { results.append($0) })
+            TestTimer.advance(1)
+            check(results == [added] && source.alphaValue == 1, "real presentation once-only completion ordering \(added) \(completionFirst)")
+        }
+    }
+    reset()
+    let delayedSource = origin(); let delayed = ExtractedDragPresentation(origin: delayedSource, decorations: [])
+    delayed.lift(); delayed.dragFrame = start; delayed.accept(destination: { origin() }); delayed.ended(at: .zero)
+    TestTimer.advance(0.7)
+    check(delayedSource.alphaValue == 0 && NSPanel.latest?.visualFrame == start, "pending local transaction keeps preview and empty slot")
+    TestTimer.advance(0.7)
+    var late: [Bool] = []
+    delayed.complete(added: true, completed: { late.append($0) })
+    check(delayedSource.alphaValue == 1 && NSPanel.latest!.closed && late.isEmpty, "timeout returns and suppresses late success")
+    reset()
+    let reused = origin(); let cancelled = ExtractedDragPresentation(origin: reused, decorations: [])
+    cancelled.lift(); cancelled.dragFrame = start; cancelled.ended(at: .zero)
+    TestTimer.advance(0.1); cancelled.invalidate(); reused.alphaValue = 0.4
+    TestTimer.advance(1)
+    check(NSPanel.latest!.closed && reused.alphaValue == 0.4, "reused source invalidation never hands stale snapshot back")
+    reset()
+    let source2 = origin(); let destination = origin(); var valid = true; var results: [Bool] = []
+    let landing = ExtractedDragPresentation(origin: source2, decorations: [])
+    landing.lift(); landing.dragFrame = start; landing.accept(destination: { valid ? destination : nil }); landing.ended(at: .zero); landing.complete(added: true, completed: { results.append($0) })
+    TestTimer.advance(0.08); valid = false
+    TestTimer.advance(0.9)
+    check(results == [false] && source2.alphaValue == 1 && NSPanel.latest!.closed, "destination invalidation suppresses impact and restores source")
+    reset()
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    let staticSource = origin(); let reduced = ExtractedDragPresentation(origin: staticSource, decorations: [])
+    reduced.lift(); reduced.dragFrame = start; reduced.ended(at: .zero)
+    TestTimer.advance(0.08)
+    check(NSPanel.latest!.visualFrame == start && NSPanel.latest!.visualAlpha > 0 && NSPanel.latest!.visualAlpha < 1 && staticSource.alphaValue == 1, "reduce motion static fade and restored source")
+    TestTimer.advance(0.3)
+    check(NSPanel.latest!.closed && staticSource.layer!.animation(forKey: "testScale") == nil, "reduce motion no travel bounce")
+    reset()
+    let movingSource = origin(); let moving = ExtractedDragPresentation(origin: movingSource, decorations: [])
+    moving.lift(); moving.dragFrame = start; moving.ended(at: .zero)
+    TestTimer.advance(0.1)
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    TestTimer.advance(0.04)
+    let staticFrame = NSPanel.latest!.visualFrame
+    TestTimer.advance(0.06)
+    check(NSPanel.latest!.visualFrame == staticFrame && movingSource.alphaValue == 1, "reduce motion freezes compositor motion on next safety tick and restores source")
+    TestTimer.advance(0.4)
+    check(NSPanel.latest!.closed, "mid-return reduce motion closes preview")
+    reset()
+    let detached = origin(); let detachedPresentation = ExtractedDragPresentation(origin: detached, decorations: [])
+    detachedPresentation.lift(); detachedPresentation.dragFrame = start; detachedPresentation.ended(at: .zero)
+    TestTimer.advance(0.08); detached.window = nil
+    TestTimer.advance(0.04)
+    let detachedFrame = NSPanel.latest!.visualFrame
+    TestTimer.advance(0.04)
+    check(NSPanel.latest!.visualFrame == detachedFrame && detached.alphaValue == 1, "lost origin stops compositor travel at safety validation and restores alpha")
+    TestTimer.advance(0.5)
+    check(NSPanel.latest!.closed, "lost origin preview removed")
+    reset()
+    let resized = origin(); let resizedPresentation = ExtractedDragPresentation(origin: resized, decorations: [])
+    resizedPresentation.lift(); resizedPresentation.dragFrame = start; resizedPresentation.ended(at: .zero)
+    let resizeLayer = NSPanel.latest!.contentView?.layer?.sublayers?.first as? TestMotionLayer
+    let beforeResizeGroup = resizeLayer?.latestGroup
+    TestTimer.advance(0.08); resized.frame.size = NSSize(width: 40, height: 40)
+    TestTimer.advance(0.04)
+    if let old = beforeResizeGroup, let current = resizeLayer?.latestGroup {
+        old.delegate?.animationDidStop?(old, finished: true)
+        check(!NSPanel.latest!.closed && resized.alphaValue == 0 && current !== old, "superseded compositor callback cannot complete retargeted return")
+        current.delegate?.animationDidStop?(current, finished: false)
+        check(!NSPanel.latest!.closed && resized.alphaValue == 0, "cancelled compositor callback cannot restore source early")
+    }
+    TestTimer.advance(0.5)
+    check(abs(NSPanel.latest!.visualFrame.width - 52.8) < 0.00001, "source handoff uses current avatar geometry")
+    reset()
+    let onceSource = origin(); let once = ExtractedDragPresentation(origin: onceSource, decorations: [])
+    once.lift(); once.dragFrame = start; once.accept(destination: { onceSource })
+    var firstCallback = 0; var secondCallback = 0
+    once.complete(added: true, completed: { _ in firstCallback += 1 })
+    once.complete(added: false, completed: { _ in secondCallback += 1 })
+    once.ended(at: .zero); TestTimer.advance(0.9)
+    check(firstCallback == 1 && secondCallback == 0, "first transaction callback retained until source end")
+    let finishedPanel = NSPanel.latest
+    once.ended(at: .zero)
+    check(NSPanel.latest === finishedPanel && NSPanel.latest!.closed, "repeated source end cannot orphan another preview")
+    reset()
+    let popSource = origin(); let popDestination = origin(); popDestination.frame.origin.x = 600
+    let pop = ExtractedDragPresentation(origin: popSource, decorations: [])
+    pop.lift(); pop.dragFrame = start; pop.accept(destination: { popDestination }); pop.ended(at: .zero)
+    var impactHidden = false
+    pop.complete(added: true, completed: { _ in impactHidden = NSPanel.latest!.visualAlpha == 0 && popSource.alphaValue == 0 })
+    TestTimer.advance(0.32)
+    let popPanel = NSPanel.latest!
+    check(impactHidden && popPanel.visualAlpha == 0 && popSource.alphaValue == 0, "sink disappears before target impact and source reappearance")
+    check(abs(popPanel.visualFrame.midX - popSource.frame.midX) < 0.00001 && popPanel.visualFrame.width < 4, "source reappearance begins at a tiny centered point")
+    TestTimer.advance(0.06)
+    check(popPanel.visualFrame.width > 4 && popPanel.visualFrame.width < 66 && popSource.alphaValue == 0 && !popPanel.closed, "source grows visibly without early full-size original")
+    TestTimer.advance(0.10)
+    check(popPanel.visualFrame.width > 80 && popPanel.visualFrame.width <= 82.5 && popSource.alphaValue == 0, "source reappearance reaches bounded125percent overshoot")
+    TestTimer.advance(0.3)
+    check(popPanel.closed && popSource.alphaValue == 1 && popPanel.visualFrame.width == 66 && TestTimer.timers.isEmpty, "source settles to exact size and cleans all timers")
+    reset()
+    let toggledSource = origin(); let toggled = ExtractedDragPresentation(origin: toggledSource, decorations: [])
+    toggled.lift(); toggled.dragFrame = start; toggled.accept(destination: { popDestination }); toggled.ended(at: .zero); toggled.complete(added: true, completed: { _ in })
+    TestTimer.advance(0.42)
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    TestTimer.advance(0.04)
+    check(abs(NSPanel.latest!.visualFrame.width - 66) < 0.00001, "reduce motion during source pop removes overshoot")
+    TestTimer.advance(0.6)
+    check(NSPanel.latest!.closed && toggledSource.alphaValue == 1, "reduce motion changed during pop cleans compositor and restores")
+    reset()
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    let reduceSource = origin(); let reduceSuccess = ExtractedDragPresentation(origin: reduceSource, decorations: [])
+    reduceSuccess.lift(); reduceSuccess.dragFrame = start; reduceSuccess.accept(destination: { popDestination }); reduceSuccess.ended(at: .zero); reduceSuccess.complete(added: true, completed: { _ in })
+    TestTimer.advance(0.08)
+    check(NSPanel.latest!.visualFrame == start && reduceSource.alphaValue == 0, "reduced success sinks by fading before source returns")
+    TestTimer.advance(0.15)
+    check(NSPanel.latest!.visualFrame.width == 66 && NSPanel.latest!.visualAlpha > 0 && NSPanel.latest!.visualAlpha < 1 && reduceSource.alphaValue == 0, "reduced success fades source at normal size without pop")
+    TestTimer.advance(0.4)
+    check(NSPanel.latest!.closed && reduceSource.alphaValue == 1, "reduced successful reappearance completes")
+    reset()
+    let recycledSource = origin(); let recycledPop = ExtractedDragPresentation(origin: recycledSource, decorations: [])
+    recycledPop.lift(); recycledPop.dragFrame = start; recycledPop.accept(destination: { popDestination }); recycledPop.ended(at: .zero); recycledPop.complete(added: true, completed: { _ in })
+    TestTimer.advance(0.42); recycledPop.invalidate(); recycledSource.alphaValue = 0.4
+    TestTimer.advance(1)
+    check(NSPanel.latest!.closed && recycledSource.alphaValue == 0.4 && TestTimer.timers.allSatisfy { !$0.valid }, "recycled source stops reappearance without restoring wrong avatar")
+    reset()
+}
+presentationMotionChecks()
