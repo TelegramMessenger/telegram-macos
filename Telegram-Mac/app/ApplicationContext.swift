@@ -9,6 +9,7 @@ import Postbox
 import TelegramCore
 import Localization
 import InAppSettings
+import TelegramMediaUtils
 import IOKit
 import CodeSyntax
 import SettingsUI
@@ -604,11 +605,13 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(handleSidebarWindowResize(_:)), name: NSWindow.didResizeNotification, object: window)
 
         let accountId = context.account.id
+        let mediaBoxPath = context.account.postbox.mediaBox.basePath
         self.loggedOutDisposable.set(context.account.loggedOut.start(next: { value in
             if value {
                 let _ = logoutFromAccount(id: accountId, accountManager: context.sharedContext.accountManager, alreadyLoggedOutRemotely: false).start()
                 FastSettings.clear_uuid(context.account.id.int64)
                 BrowserStateContext.cleanup(context.account.id)
+                DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: mediaBoxPath)
                 closePipVideo(accountId: accountId)
                 if let groupCall = context.sharedContext.getCrossAccountGroupCall(), groupCall.call.account.id == accountId {
                     _ = context.sharedContext.endGroupCall(terminate: false).start()
@@ -641,6 +644,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 alert.beginSheetModal(for: window, completionHandler: { result in
                     Analytics.shared.screens.hideStandalone(owner: alert)
                     if result.rawValue == 1000 && text.isDropAuth {
+                        DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: context.account.postbox.mediaBox.basePath)
                         let _ = logoutFromAccount(id: context.account.id, accountManager: context.sharedContext.accountManager, alreadyLoggedOutRemotely: false).start()
                     }
                 })
