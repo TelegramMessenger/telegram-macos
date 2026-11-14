@@ -640,7 +640,7 @@ class ChatHeaderController {
                 self.monoforumView = nil
             }
             
-            let edge: CGFloat = 12
+            let edge: CGFloat = ChatInputView.inputEdgeInset
 
             if state.pinnedBesideSearch != nil, besideSearchPinnedView == nil, let inlinePinnedContainer, let pinned = primaryView as? ChatPinnedView, pinned.superview === inlinePinnedContainer {
                 besideSearchPinnedView = pinned

@@ -137,15 +137,19 @@ public class EmptyChatView : View {
             containerView.layer?.cornerRadius = 0
         }
         
-        toggleTips.setFrameOrigin(NSMakePoint(frame.width - toggleTips.frame.width - 12, 12 + navigationOverflow))
+        let edge = EmptyChatView.edgeInset
+        toggleTips.setFrameOrigin(NSMakePoint(frame.width - toggleTips.frame.width - edge, edge + navigationOverflow))
     }
+
+    private static let edgeInset: CGFloat = System.windowEdgeInset
 
     public func updateNavigationOverflow(_ overflow: CGFloat, transition: ContainedViewLayoutTransition) {
         guard navigationOverflow != overflow else {
             return
         }
         navigationOverflow = overflow
-        let origin = NSMakePoint(frame.width - toggleTips.frame.width - 12, 12 + overflow)
+        let edge = EmptyChatView.edgeInset
+        let origin = NSMakePoint(frame.width - toggleTips.frame.width - edge, edge + overflow)
         transition.updateFrame(view: toggleTips, frame: CGRect(origin: origin, size: toggleTips.frame.size))
     }
 }

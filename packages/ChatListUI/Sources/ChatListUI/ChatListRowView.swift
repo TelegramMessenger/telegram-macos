@@ -1488,7 +1488,8 @@ public class ChatListRowView: TableRowView {
              if !suppressForSelection, !suppressForHighlight, !suppressForResort, !suppressForDrag, !suppressForReveal, !item.isAutohidden, !nextSelected, !nextHighlighted, !nextResorting, !nextDragging {
 
                 ctx.setFillColor(theme.colors.border.cgColor)
-                ctx.fill(NSMakeRect(item.isLastPinned ? 0 : item.leftInset, contentView.bounds.height - .borderSize, item.isLastPinned ? contentView.frame.width : contentView.bounds.width - item.leftInset, .borderSize))
+                let minX = item.isLastPinned ? 0 : item.leftInset
+                ctx.fill(NSMakeRect(minX, contentView.bounds.height - .borderSize, max(0, contentView.bounds.width - item.margin - minX), .borderSize))
             }
 
             
