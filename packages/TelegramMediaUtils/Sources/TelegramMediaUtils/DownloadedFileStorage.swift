@@ -11,7 +11,7 @@ public enum DownloadedFileStorage {
     private static var closedDirectories = Set<String>()
 
     public static func removeTemporaryDirectory(mediaBoxPath: String) {
-        let directory = temporaryDirectory(mediaBoxPath: mediaBoxPath)
+        let directory = URL(fileURLWithPath: temporaryDirectory(mediaBoxPath: mediaBoxPath), isDirectory: true).standardizedFileURL.path
         lock.lock()
         closedDirectories.insert(directory)
         try? FileManager.default.removeItem(atPath: directory)
@@ -32,13 +32,21 @@ public enum DownloadedFileStorage {
         return path
     }
 
-    static func copy(from source: String, to destination: String) throws -> String {
+    private static func ensureOpen(_ directory: String, afterCopy: Bool = false) throws {
         lock.lock()
         defer { lock.unlock() }
-        let url = URL(fileURLWithPath: destination)
-        if closedDirectories.contains(url.deletingLastPathComponent().standardizedFileURL.path) {
+        if closedDirectories.contains(directory) {
+            if afterCopy {
+                try? FileManager.default.removeItem(atPath: directory)
+            }
             throw CocoaError(.fileWriteNoPermission)
         }
+    }
+
+    static func copy(from source: String, to destination: String) throws -> String {
+        let url = URL(fileURLWithPath: destination)
+        let directory = url.deletingLastPathComponent().standardizedFileURL.path
+        try ensureOpen(directory)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
         let base = url.deletingPathExtension().path
         let suffix = url.pathExtension.isEmpty ? "" : "." + url.pathExtension
@@ -47,6 +55,7 @@ public enum DownloadedFileStorage {
         while true {
             do {
                 try FileManager.default.copyItem(atPath: source, toPath: path)
+                try ensureOpen(directory, afterCopy: true)
                 return path
             } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError {
                 path = "\(base) (\(index))\(suffix)"
