@@ -67,6 +67,38 @@ final class WritingDirectionAlignmentTests: XCTestCase {
         XCTAssertEqual(alignment(makeStorage("۱۲۳ ٤٥٦"), at: 0), .natural)
     }
 
+    func testArabicPunctuationAndSignsAreNeutral() {
+        XCTAssertEqual(alignment(makeStorage("،Hello"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("٪Hello"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("\u{0600}Hello"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("،سلام"), at: 0), .right)
+    }
+
+    func testCombiningMarksAreNeutral() {
+        XCTAssertEqual(alignment(makeStorage("\u{064B}Hello"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("\u{05B0}Hello"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("\u{0301}سلام"), at: 0), .right)
+    }
+
+    func testDirectionMarksDecideDirection() {
+        XCTAssertEqual(alignment(makeStorage("\u{200F}hello"), at: 0), .right)
+        XCTAssertEqual(alignment(makeStorage("\u{200E}سلام"), at: 0), .natural)
+    }
+
+    func testIsolatedTextDoesNotDecideDirection() {
+        XCTAssertEqual(alignment(makeStorage("\u{2067}سلام\u{2069} hello"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage("\u{2066}hello\u{2069} سلام"), at: 0), .right)
+    }
+
+    func testLongParagraphsResolveDirection() {
+        let neutralRun = String(repeating: "1. ", count: 100)
+        XCTAssertEqual(alignment(makeStorage(neutralRun + "سلام"), at: 0), .right)
+        XCTAssertEqual(alignment(makeStorage(neutralRun + "hello سلام"), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage(String(repeating: "سلام دنیا ", count: 400)), at: 0), .right)
+        XCTAssertEqual(alignment(makeStorage(String(repeating: "hello world ", count: 400)), at: 0), .natural)
+        XCTAssertEqual(alignment(makeStorage(neutralRun + "\u{2067}hello\u{2069} سلام"), at: 0), .right)
+    }
+
     func testExplicitBaseWritingDirectionWins() {
         XCTAssertEqual(alignment(makeStorage("hello", baseWritingDirection: .rightToLeft), at: 0), .right)
         XCTAssertEqual(alignment(makeStorage("سلام", baseWritingDirection: .leftToRight), at: 0), .natural)

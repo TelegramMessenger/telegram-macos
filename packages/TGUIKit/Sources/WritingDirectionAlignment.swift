@@ -10,7 +10,7 @@ public extension NSTextStorage {
         let clampedLength = min(editedRange.length, string.length - clampedLocation)
         let paragraphsRange = string.paragraphRange(for: NSMakeRange(clampedLocation, clampedLength))
 
-        string.enumerateSubstrings(in: paragraphsRange, options: [.byParagraphs, .substringNotRequired]) { _, _, enclosingRange, _ in
+        string.enumerateSubstrings(in: paragraphsRange, options: [.byParagraphs, .substringNotRequired]) { _, substringRange, enclosingRange, _ in
             guard enclosingRange.length > 0 else {
                 return
             }
@@ -22,7 +22,7 @@ public extension NSTextStorage {
             case .leftToRight:
                 isRightToLeft = false
             default:
-                isRightToLeft = WritingDirectionDetection.firstStrongDirectionIsRightToLeft(string.substring(with: enclosingRange))
+                isRightToLeft = WritingDirectionDetection.resolvedBaseDirectionIsRightToLeft(string.substring(with: substringRange))
             }
             let targetAlignment: NSTextAlignment = isRightToLeft ? .right : .natural
 
@@ -49,26 +49,44 @@ public final class WritingDirectionAlignmentDelegate: NSObject, NSTextStorageDel
 }
 
 enum WritingDirectionDetection {
-    static func firstStrongDirectionIsRightToLeft(_ text: String) -> Bool {
-        for scalar in text.unicodeScalars {
-            if isRightToLeftScalar(scalar) {
-                return true
+    private static let isolateInitiators = CharacterSet(charactersIn: "\u{2066}\u{2067}\u{2068}")
+    private static let strongRightToLeftCharacter = "\u{05D0}"
+    private static let initialPrefixLength = 64
+
+    static func resolvedBaseDirectionIsRightToLeft(_ paragraph: String) -> Bool {
+        let text = paragraph as NSString
+        guard text.length > 0 else {
+            return false
+        }
+        if text.rangeOfCharacter(from: isolateInitiators).location == NSNotFound {
+            var prefixLength = initialPrefixLength
+            while prefixLength < text.length {
+                let prefix = text.substring(with: text.rangeOfComposedCharacterSequences(for: NSMakeRange(0, prefixLength)))
+                if trailingSpaceIsRightToLeft(prefix) {
+                    return true
+                }
+                if !trailingSpaceIsRightToLeft(prefix + strongRightToLeftCharacter) {
+                    return false
+                }
+                prefixLength *= 2
             }
-            if CharacterSet.letters.contains(scalar) {
-                return false
+        }
+        return trailingSpaceIsRightToLeft(paragraph)
+    }
+
+    private static func trailingSpaceIsRightToLeft(_ text: String) -> Bool {
+        let probe = text + " "
+        let trailingSpaceIndex = (probe as NSString).length - 1
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: probe))
+        guard let runs = CTLineGetGlyphRuns(line) as? [CTRun] else {
+            return false
+        }
+        for run in runs {
+            let range = CTRunGetStringRange(run)
+            if trailingSpaceIndex >= range.location && trailingSpaceIndex < range.location + range.length {
+                return CTRunGetStatus(run).contains(.rightToLeft)
             }
         }
         return false
-    }
-
-    private static func isRightToLeftScalar(_ scalar: Unicode.Scalar) -> Bool {
-        switch scalar.value {
-        case 0x0660...0x0669, 0x06F0...0x06F9:
-            return false
-        case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x10800...0x10FFF, 0x1E800...0x1EFFF:
-            return true
-        default:
-            return false
-        }
     }
 }
