@@ -1926,7 +1926,9 @@ public class ChatListRowItem: TableRowItem {
             return .complete()
         }
         let screen = self.analyticsMenuScreen
-        return chatListMenuItems(screen: screen) |> map { items in
+        return menuState() |> mapToSignal { [weak self] state in
+            return self?.chatListMenuItems(screen: screen, state: state) ?? .complete()
+        } |> map { items in
             if !items.isEmpty {
                 Analytics.shared.send(AnalyticsEvents.menuOpen(menu: .chatListItem, screen: screen, via: .rightClick))
             }
@@ -1934,7 +1936,18 @@ public class ChatListRowItem: TableRowItem {
         }
     }
     
-    private func chatListMenuItems(screen: AnalyticsScreen) -> Signal<[ContextMenuItem], NoError> {
+    struct MenuState {
+        let isPinned: Bool
+        let isMuted: Bool
+        let pinGroupId: EngineChatList.Group
+        let threadData: MessageHistoryThreadData?
+    }
+    
+    func menuState() -> Signal<MenuState, NoError> {
+        return .single(MenuState(isPinned: isPinned, isMuted: isMuted, pinGroupId: associatedGroupId, threadData: mode.threadData))
+    }
+    
+    private func chatListMenuItems(screen: AnalyticsScreen, state: MenuState) -> Signal<[ContextMenuItem], NoError> {
         let select: (AnalyticsMenuItems.ChatListItem) -> Void = { item in
             Analytics.shared.send(AnalyticsEvents.menuSelect(chatListItem: item, screen: screen))
         }
@@ -1949,14 +1962,14 @@ public class ChatListRowItem: TableRowItem {
         let effectivePeerId = self.renderedPeer?.chatMainPeer?.id ?? self.peerId
         let peer = self.peer
         let filter = self.filter
-        let isMuted = self.isMuted
+        let isMuted = state.isMuted
         let associatedGroupId = self.associatedGroupId
         let isAd = self.isAd
         let renderedPeer = self.renderedPeer
         let canArchive = self.canArchive
         let groupId = self.groupId
         let markAsUnread = self.markAsUnread
-        let isPinned = self.isPinned
+        let isPinned = state.isPinned
         let hideStatus = hideStatus
         let isSecret = self.isSecret
         let isUnread = badgeNode != nil || showsMentionSlot || isUnreadMarked
@@ -1977,7 +1990,7 @@ public class ChatListRowItem: TableRowItem {
         let togglePin:()->Void = {
             select(isPinned ? .unpin : .pin)
             if let peerId = peerId {
-                ChatListRowItem.togglePinned(context: context, peerId: peerId, isPinned: isPinned, mode: mode, filter: filter, associatedGroupId: associatedGroupId)
+                ChatListRowItem.togglePinned(context: context, peerId: peerId, isPinned: isPinned, mode: mode, filter: filter, associatedGroupId: state.pinGroupId)
             }
         }
         
@@ -1997,7 +2010,7 @@ public class ChatListRowItem: TableRowItem {
         let toggleMute:()->Void = {
             select(isMuted ? .unmute : .mute)
             if let peerId = effectivePeerId {
-                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId, threadData: mode.threadData)
+                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId, threadData: state.threadData)
             }
         }
         let toggleTopic:()->Void = {
