@@ -611,8 +611,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 let _ = logoutFromAccount(id: accountId, accountManager: context.sharedContext.accountManager, alreadyLoggedOutRemotely: false).start()
                 FastSettings.clear_uuid(context.account.id.int64)
                 BrowserStateContext.cleanup(context.account.id)
-                let tempDir = DownloadedFileStorage.temporaryDirectory(mediaBoxPath: mediaBoxPath)
-                try? FileManager.default.removeItem(atPath: tempDir)
+                DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: mediaBoxPath)
                 closePipVideo(accountId: accountId)
                 if let groupCall = context.sharedContext.getCrossAccountGroupCall(), groupCall.call.account.id == accountId {
                     _ = context.sharedContext.endGroupCall(terminate: false).start()

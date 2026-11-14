@@ -1,3 +1,4 @@
+import TelegramMediaUtils
 import Cocoa
 import SwiftSignalKit
 import Postbox
@@ -320,7 +321,10 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
     
     func logout() -> Signal<Never, NoError> {
         let accountManager = self.accountManager
-        let signal = combineLatest(self.activeAccounts.accounts.map { logoutFromAccount(id: $0.0, accountManager: self.accountManager, alreadyLoggedOutRemotely: false) }) |> deliverOnMainQueue
+        let signal = combineLatest(self.activeAccounts.accounts.map { id, account -> Signal<Void, NoError> in
+            DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: account.postbox.mediaBox.basePath)
+            return logoutFromAccount(id: id, accountManager: self.accountManager, alreadyLoggedOutRemotely: false)
+        }) |> deliverOnMainQueue
         appEncryption.remove()
         if #available(macOS 10.15, *) {
             _ = try? resetWalletLocalSecrets()

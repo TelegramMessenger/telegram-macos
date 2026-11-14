@@ -7,6 +7,10 @@ public enum DownloadedFileStorage {
             .appendingPathComponent("temp-downloads", isDirectory: true).path
     }
 
+    public static func removeTemporaryDirectory(mediaBoxPath: String) {
+        try? FileManager.default.removeItem(atPath: temporaryDirectory(mediaBoxPath: mediaBoxPath))
+    }
+
     static func existingPath(_ path: String, size: Int64, lastModified: Int32, in directory: String) -> String? {
         let url = URL(fileURLWithPath: path)
         guard url.deletingLastPathComponent().standardizedFileURL == URL(fileURLWithPath: directory, isDirectory: true).standardizedFileURL,
