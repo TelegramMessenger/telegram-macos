@@ -9848,7 +9848,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             guard let `self` = self else {return}
             let tableView = self.genericView.tableView
             let chatInteraction = self.chatInteraction
-            if self.mode.isThreadMode || self.mode.isTopicMode {
+            if self.mode.isThreadMode {
                 if let pinnedMessageId = chatInteraction.presentation.pinnedMessageId, position.visibleRows.location != NSNotFound {
                     var hidden: Bool = false
                     for row in position.visibleRows.min ..< position.visibleRows.max {
