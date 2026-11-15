@@ -2179,6 +2179,24 @@ public final class TextViewLayout : Equatable {
         }
     }
 
+    public func penOffset(for line: TextViewLine) -> CGFloat {
+        var penOffset = CGFloat(CTLineGetPenOffsetForFlush(line.line, line.penFlush, Double(layoutSize.width)))
+        if penFlush == 0.5, line.penFlush != 0.5 { penOffset = 0 }
+        if line.penFlush == 1, let size = cutout?.topRight, line.frame.maxY <= size.height {
+            penOffset -= size.width
+        }
+        if line.isRTL && blockQuotes.contains(where: { $0.frame.contains(line.frame.origin) }) {
+            penOffset -= 20 + 4 * 2
+        }
+        return penOffset + line.frame.minX
+    }
+
+    public func isOutsideText(_ point: NSPoint, line index: Int) -> Bool {
+        let line = lines[index]
+        let penOffset = self.penOffset(for: line)
+        return point.x > penOffset + line.frame.width || (line.penFlush == 1 && point.x < floor(penOffset))
+    }
+
     public func link(at point:NSPoint) -> (Any, LinkType, NSRange, NSRect)? {
 
         let index = findIndex(location: point)
@@ -2194,15 +2212,7 @@ public final class TextViewLayout : Equatable {
 
         let width:CGFloat = CGFloat(CTLineGetTypographicBounds(line.line, &ascent, &descent, &leading));
 
-        var penOffset = CGFloat(CTLineGetPenOffsetForFlush(line.line, line.penFlush, Double(layoutSize.width)))
-        if penFlush == 0.5, line.penFlush != 0.5 { penOffset = 0 }
-        if line.penFlush == 1, let size = cutout?.topRight, line.frame.maxY <= size.height {
-            penOffset -= size.width
-        }
-        if line.isRTL && blockQuotes.contains(where: { $0.frame.contains(line.frame.origin) }) {
-            penOffset -= 20 + 4 * 2
-        }
-        penOffset += line.frame.minX
+        let penOffset = self.penOffset(for: line)
         var point = point
         point.x -= penOffset
 
@@ -2305,6 +2315,12 @@ public final class TextViewLayout : Equatable {
         }
         
         let line = lines[index]
+        let penOffset = self.penOffset(for: line)
+        if line.penFlush == 1, point.x < floor(penOffset) {
+            return -1
+        }
+        var point = point
+        point.x -= penOffset
         let width:CGFloat = CGFloat(CTLineGetTypographicBounds(line.line, nil, nil, nil));
         if width > point.x {
             var charIndex = Int(CTLineGetStringIndexForPosition(line.line, point))
@@ -3472,7 +3488,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
         if let layout = textLayout, userInteractionEnabled {
             let point = self.convert(event.locationInWindow, from: nil)
             let index = layout.findIndex(location: point)
-            if index == -1 || (point.x > layout.lines[index].frame.maxX && isSelectable) {
+            if index == -1 || (layout.isOutsideText(point, line: index) && isSelectable) {
                 superview?.mouseDown(with: event)
                 if sendDownAnyway {
                     super.mouseDown(with: event)
@@ -3671,7 +3687,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             } else if layout.selectedRange.hasSelectText && event.clickCount == 1 && event.modifierFlags.contains(.shift) {
                 var range = layout.selectedRange.range
                 let index = layout.findCharacterIndex(at: point)
-                if index < range.min {
+                if index >= 0, index < range.min {
                     range.length += (range.location - index)
                     range.location = index
                 } else if index > range.max {
