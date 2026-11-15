@@ -69,6 +69,11 @@ public class GroupedLayout {
         return nil
     }
     
+    public func index(at point: NSPoint) -> Int? {
+        let frames = (0 ..< count).map { frame(at: $0) }
+        return frames.firstIndex(where: { NSPointInRect(point, $0) }) ?? frames.firstIndex(where: { NSPointInRect(point, $0.insetBy(dx: -20, dy: 0)) })
+    }
+    
     public func measure(_ maxSize: NSSize, spacing: CGFloat = 4.0, preview: Bool = false) {
         
         var photos: [MessagePhotoInfo] = []
