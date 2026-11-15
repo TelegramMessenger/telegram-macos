@@ -454,6 +454,7 @@ public class ChatControllerView : View, ChatInputDelegate {
         if self.backgroundMode != mode {
             self.cachedEdgeColor = nil
             self.cachedEdgeColorMode = nil
+            self.needsLayout = true
         }
         self.backgroundMode = mode
 
