@@ -378,9 +378,11 @@ private enum ChannelVisibilityEntry: TableItemListNodeEntry {
             return GeneralTextRowItem(initialSize, stableId: stableId, text: text, detectBold: true, textColor: theme.colors.listGrayText, viewType: viewType)
         case let .forwardHeader(_, text, viewType):
             return GeneralTextRowItem(initialSize, stableId: stableId, text: text, detectBold: true, textColor: theme.colors.listGrayText, viewType: viewType)
-        case let .allowForward(_, selected, viewType):
-            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().channelVisibilityForwardingRestrict, type: .switchable(selected), viewType: viewType, action: {
-                arguments.toggleForwarding(!selected)
+        case let .allowForward(_, allowed, viewType):
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().channelVisibilityForwardingRestrict, type: .switchable(!allowed), viewType: viewType, action: {
+                arguments.toggleForwarding(!allowed)
+            }, switchAction: {
+                arguments.toggleForwarding(!allowed)
             })
         case let .forwardInfo(_, text, viewType):
             return GeneralTextRowItem(initialSize, stableId: stableId, text: text, detectBold: true, textColor: theme.colors.listGrayText, viewType: viewType)
@@ -736,7 +738,7 @@ private func entries(arguments: Arguments, state: State) -> [ChannelVisibilityEn
         }
         
         
-        entries.append(.allowForward(sectionId: sectionId, !allowed, .singleItem))
+        entries.append(.allowForward(sectionId: sectionId, allowed, .singleItem))
         
         let desc: String
         
@@ -1280,7 +1282,7 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                         var signals: [Signal<Never, NoError>] = []
                         
                         if let updatedCopyProtection = state.forwardingEnabled {
-                            signals.append(context.engine.peers.toggleMessageCopyProtection(peerId: peerId, enabled: updatedCopyProtection) |> ignoreValues)
+                            signals.append(context.engine.peers.toggleMessageCopyProtection(peerId: peerId, enabled: !updatedCopyProtection) |> ignoreValues)
                         }
                         
                         if let updatedJoinToSend = state.joinToSend {
@@ -1357,6 +1359,8 @@ open class ChannelVisibilityController<Context: AccountContextProtocol>: EmptyCo
                             }
                             
                             let others = combineLatest(signals)
+                            |> then(.single([]))
+                            |> take(1)
                             |> castError(ConvertGroupToSupergroupError.self)
                             |> deliverOnMainQueue
                             
