@@ -1187,7 +1187,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
         
         if !data.message.isScheduledMessage, let peer = peer, !peer.isDeleted, isNotFailed, data.peerId == data.message.id.peerId, !isService, mode.customChatContents == nil, !isNonReplyableEphemeral {
 
-            let needUnpin = data.pinnedMessage?.others.contains(data.message.id) == true
+            let needUnpin = data.message.tags.contains(.pinned)
             let pinAndOld: Bool
             if let pinnedMessage = data.pinnedMessage, let last = pinnedMessage.others.last {
                 pinAndOld = last > data.message.id
