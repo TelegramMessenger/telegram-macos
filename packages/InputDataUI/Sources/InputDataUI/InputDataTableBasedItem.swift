@@ -314,7 +314,9 @@ final class InputDataTableBasedItemView: TableRowView {
         super.init(frame: frameRect)
         addSubview(container)
         container.layer?.cornerRadius = SettingsRowMetrics.cardCornerRadius
-        container.layer?.cornerCurve = .continuous
+        if #available(macOS 10.15, *) {
+            container.layer?.cornerCurve = .continuous
+        }
         container.layer?.borderWidth = .borderSize
     }
     

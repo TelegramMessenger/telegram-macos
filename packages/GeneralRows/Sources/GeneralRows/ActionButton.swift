@@ -75,7 +75,9 @@ public final class ActionButton : Control {
             self.stretchReferenceView = nil
             self.backgroundColor = bgColor
             self.layer?.cornerRadius = SettingsRowMetrics.cardCornerRadius
-            self.layer?.cornerCurve = .continuous
+            if #available(macOS 10.15, *) {
+                self.layer?.cornerCurve = .continuous
+            }
         }
 
 

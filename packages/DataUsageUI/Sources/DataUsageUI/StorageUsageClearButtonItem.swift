@@ -68,7 +68,9 @@ private final class StorageUsageClearButtonView: GeneralContainableRowView {
         super.init(frame: frameRect)
         button.scaleOnClick = true
         button.layer?.cornerRadius = StorageUsageClearButtonView.buttonRadius
-        button.layer?.cornerCurve = .continuous
+        if #available(macOS 10.15, *) {
+            button.layer?.cornerCurve = .continuous
+        }
         containerView.addSubview(button)
         containerView.addSubview(sizeView)
         for view in [titleView, sizeView] {

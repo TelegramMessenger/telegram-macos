@@ -320,6 +320,8 @@ extension NSView {
         let settings = item.settingsPresentation != nil
         layer?.masksToBounds = true
         layer?.cornerRadius = settings ? PeerMediaSettingsThumbCornerRadius : fallback
-        layer?.cornerCurve = settings ? .continuous : .circular
+        if #available(macOS 10.15, *) {
+            layer?.cornerCurve = settings ? .continuous : .circular
+        }
     }
 }

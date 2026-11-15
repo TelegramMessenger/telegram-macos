@@ -293,7 +293,9 @@
         contentView.layer?.masksToBounds = true
         contentView.layer?.cornerRadius = PeerMediaControllerView.contentCornerRadius
         contentView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        contentView.layer?.cornerCurve = .continuous
+        if #available(macOS 10.15, *) {
+            contentView.layer?.cornerCurve = .continuous
+        }
         headerUnderlayView.layer?.opacity = 0
         headerEdgeView.layer?.opacity = 0
         headerEdgeView.isEventLess = true
@@ -518,7 +520,9 @@
             mask.backgroundColor = NSColor.black.cgColor
             mask.cornerRadius = PeerMediaControllerView.contentCornerRadius
             mask.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-            mask.cornerCurve = .continuous
+            if #available(macOS 10.15, *) {
+                mask.cornerCurve = .continuous
+            }
             layer.mask = mask
         }
         var top: CGFloat = 0
