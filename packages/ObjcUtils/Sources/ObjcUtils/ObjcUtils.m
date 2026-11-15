@@ -209,16 +209,34 @@ void TGDisableLayerActions(CALayer *layer) {
                         NSRange range = match.range;
                         // A domain inside a URL with a scheme (slack://open?x&foo.dev, slack://open#foo.dev) is part of that URL:
                         // supported schemes are already linked whole by NSDataDetector, unsupported ones stay plain text.
-                        // The scan stops at the end of the preceding URL: whitespace, a closing bracket or CJK / full-width text (https://a.com，foo.dev).
+                        // The scan stops at the end of the preceding URL: whitespace, an unmatched closing bracket or CJK / full-width text (https://a.com，foo.dev).
                         NSMutableCharacterSet *urlEnd = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
-                        [urlEnd addCharactersInString:@")）"];
+                        [urlEnd addCharactersInString:@"）"];
                         [urlEnd addCharactersInRange:NSMakeRange(0x2E80, 0x9FFF - 0x2E80 + 1)];
                         [urlEnd addCharactersInRange:NSMakeRange(0xAC00, 0xD7AF - 0xAC00 + 1)];
                         [urlEnd addCharactersInRange:NSMakeRange(0xFF00, 0xFFEF - 0xFF00 + 1)];
                         NSRange tokenStart = [text rangeOfCharacterFromSet:urlEnd options:NSBackwardsSearch range:NSMakeRange(0, range.location)];
                         NSUInteger tokenFrom = tokenStart.location == NSNotFound ? 0 : NSMaxRange(tokenStart);
-                        if ([text rangeOfString:@"://" options:0 range:NSMakeRange(tokenFrom, range.location - tokenFrom)].location != NSNotFound) {
-                            return;
+                        NSRange scheme = [text rangeOfString:@"://" options:NSBackwardsSearch range:NSMakeRange(tokenFrom, range.location - tokenFrom)];
+                        if (scheme.location != NSNotFound) {
+                            // A ")" with no "(" before it in that URL ends it; brackets inside the query stay part of it.
+                            NSInteger depth = 0;
+                            BOOL urlEnded = NO;
+                            for (NSUInteger k = NSMaxRange(scheme); k < range.location && !urlEnded; k++) {
+                                unichar c = [text characterAtIndex:k];
+                                if (c == '(') depth++;
+                                else if (c == ')' && depth-- == 0) urlEnded = YES;
+                            }
+                            if (!urlEnded) {
+                                return;
+                            }
+                        }
+                        // A match inside a complete link that starts earlier (https://a.com?q=(a)&foo.dev) is part of that link.
+                        for (NSValue *value in results) {
+                            NSRange existing = value.rangeValue;
+                            if (existing.location < range.location && NSMaxRange(existing) >= NSMaxRange(range)) {
+                                return;
+                            }
                         }
                         NSIndexSet *covered = [results indexesOfObjectsPassingTest:^BOOL(NSValue *value, __unused NSUInteger index, __unused BOOL *innerStop) {
                             NSRange existing = value.rangeValue;
