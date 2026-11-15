@@ -1,0 +1,7 @@
+python3 -I run.py --source-root /path/to/app-worktree --output /outside/worktree
+
+The app worktree must contain the isolated Sparkle dependency worktree at submodules/Sparkle. The runner extracts the exact bestIconForHost Objective-C method and compares it with pinned Sparkle fce013fd1af560d9074f75270f8695aabaa143f1. Both variants must compile; baseline must fail behavioral assertions.
+
+Runs on macOS26+ to exercise the availability branch. Real NSImage/NSBundle/bitmap decoding is used; SUHost, legacy URL lookup and NSWorkspace are controlled fixtures. Verifies modern application host-path resolution, helper-versus-host identity, legacy fallback, generic fallback and preserving plugin/unknown-package icons. It does not launch Telegram, show updater UI, download/install an update or alter installed bundles. It does not prove system icon pixels or contour through screenshot comparison, nor execute the pre26 branch on an older OS. Full Sparkle/app compilation and user visual acceptance are separate.
+
+This production change belongs to Sparkle/SUApplicationInfo.m in the dependency, not an app-level swizzle: the installing window runs in Sparkle's independent Autoupdate helper. Publishing a Telegram PR will require a separately published dependency revision (or an explicitly approved vendoring strategy); no commit/submodule-pointer bump is fabricated here. Optional --compiler-lock serializes clang with native Swift suites.

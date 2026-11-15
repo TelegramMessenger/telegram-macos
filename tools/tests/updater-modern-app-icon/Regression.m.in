@@ -1,0 +1,114 @@
+#import <AppKit/AppKit.h>
+#import <CoreServices/CoreServices.h>
+
+@interface SUHost : NSObject
+@property(nonatomic, strong) NSBundle *bundle;
+@property(nonatomic, copy) NSString *bundlePath;
+@property(nonatomic, copy) NSDictionary *info;
+- (id)objectForInfoDictionaryKey:(NSString *)key;
+@end
+@implementation SUHost
+- (id)objectForInfoDictionaryKey:(NSString *)key { return self.info[key]; }
+@end
+
+static NSURL *legacyURL;
+static NSUInteger legacyRequests;
+@interface SUBundleIcon : NSObject
++ (NSURL *)iconURLForHost:(SUHost *)host;
+@end
+@implementation SUBundleIcon
++ (NSURL *)iconURLForHost:(SUHost *)host { legacyRequests += 1; return legacyURL; }
+@end
+
+static NSImage *systemIcon;
+static NSImage *fallbackIcon;
+static NSString *requestedPath;
+static NSString *requestedType;
+static NSUInteger systemRequests;
+@interface FixtureWorkspace : NSObject
++ (instancetype)sharedWorkspace;
+- (NSImage *)iconForFile:(NSString *)path;
+- (NSImage *)iconForFileType:(NSString *)type;
+@end
+@implementation FixtureWorkspace
++ (instancetype)sharedWorkspace { static FixtureWorkspace *value; if (!value) { value = [FixtureWorkspace new]; } return value; }
+- (NSImage *)iconForFile:(NSString *)path { requestedPath = path; systemRequests += 1; return systemIcon; }
+- (NSImage *)iconForFileType:(NSString *)type { requestedType = type; return fallbackIcon; }
+@end
+
+#define NSWorkspace FixtureWorkspace
+@interface SUApplicationInfo : NSObject
++ (NSImage *)bestIconForHost:(SUHost *)host;
+@end
+@implementation SUApplicationInfo
+@@METHOD@@
+@end
+#undef NSWorkspace
+
+static NSUInteger passed;
+static NSUInteger failed;
+static void check(BOOL condition, NSString *label) {
+    if (condition) { passed += 1; printf("PASS %s\n", label.UTF8String); }
+    else { failed += 1; printf("FAIL %s\n", label.UTF8String); }
+}
+static void reset(void) {
+    legacyRequests = 0;
+    systemRequests = 0;
+    requestedPath = nil;
+    requestedType = nil;
+    legacyURL = nil;
+}
+int main(int argc, const char *argv[]) {
+    @autoreleasepool {
+        NSString *directory = [NSString stringWithUTF8String:argv[1]];
+        NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:8 pixelsHigh:8 bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+        memset(rep.bitmapData, 127, rep.bytesPerRow * rep.pixelsHigh);
+        NSURL *url = [NSURL fileURLWithPath:[directory stringByAppendingPathComponent:@"fixture.png"]];
+        [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToURL:url atomically:YES];
+        systemIcon = [[NSImage alloc] initWithSize:NSMakeSize(12, 12)];
+        fallbackIcon = [[NSImage alloc] initWithSize:NSMakeSize(6, 6)];
+        SUHost *host = [SUHost new];
+        host.info = @{@"CFBundlePackageType": @"APPL"};
+        host.bundle = [NSBundle bundleWithPath:@"/System/Library/Frameworks/AppKit.framework"];
+        host.bundlePath = @"/Fixture/Host Application.app";
+        reset();
+        legacyURL = url;
+        NSImage *result = [SUApplicationInfo bestIconForHost:host];
+        check(result == systemIcon, @"modern app uses system rendered host icon instead of legacy bitmap");
+        check([requestedPath isEqual:host.bundlePath], @"helper requests host application not helper bundle");
+        check(systemRequests == 1 && legacyRequests == 0, @"modern icon avoids legacy lookup");
+        reset();
+        result = [SUApplicationInfo bestIconForHost:host];
+        check(result == systemIcon, @"modern icon works without CFBundleIconFile asset");
+        check(requestedType == nil, @"modern app does not use generic application fallback");
+        reset();
+        systemIcon = nil;
+        legacyURL = url;
+        result = [SUApplicationInfo bestIconForHost:host];
+        check(result != nil && result != fallbackIcon, @"failed system lookup preserves valid legacy image");
+        check(legacyRequests == 1, @"legacy fallback queried exactly once");
+        reset();
+        result = [SUApplicationInfo bestIconForHost:host];
+        check(result == fallbackIcon, @"missing icon preserves generic fallback");
+        check([requestedType isEqual:(__bridge NSString *)kUTTypeBundle], @"helper nonmain fallback remains bundle type");
+        host.bundle = NSBundle.mainBundle;
+        reset();
+        result = [SUApplicationInfo bestIconForHost:host];
+        check(result == fallbackIcon && [requestedType isEqual:(__bridge NSString *)kUTTypeApplication], @"main bundle fallback remains application type");
+        systemIcon = [[NSImage alloc] initWithSize:NSMakeSize(12, 12)];
+        host.info = @{@"CFBundlePackageType": @"BNDL"};
+        reset();
+        legacyURL = url;
+        result = [SUApplicationInfo bestIconForHost:host];
+        check(result != nil && result != systemIcon && result != fallbackIcon, @"plugin retains its explicit icon");
+        check(systemRequests == 0 && legacyRequests == 1, @"plugin does not request app-specific icon rendering");
+        host.info = @{};
+        reset();
+        legacyURL = url;
+        result = [SUApplicationInfo bestIconForHost:host];
+        check(result != nil && result != systemIcon, @"unknown package type retains legacy resolution");
+        check(systemRequests == 0, @"unknown package type avoids workspace app path");
+        printf("SUMMARY %lu passed %lu failed\n", (unsigned long)passed, (unsigned long)failed);
+        return failed ? 1 : 0;
+    }
+}
