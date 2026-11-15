@@ -3268,7 +3268,7 @@ private final class PickerHeaderBlurStrip: NSView {
         layer?.masksToBounds = true
         var filters: [CIFilter] = []
         if let clamp = CIFilter(name: "CIAffineClamp") {
-            clamp.setDefaults()
+            clamp.setValue(NSAffineTransform(), forKey: kCIInputTransformKey)
             filters.append(clamp)
         }
         if let blur = CIFilter(name: "CIGaussianBlur") {
