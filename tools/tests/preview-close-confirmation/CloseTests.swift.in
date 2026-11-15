@@ -22,12 +22,43 @@ final class Journey {
     func step(_ value: Step) { steps.append(value) }
     func cancel() { cancels += 1 }
 }
-struct TextState { var inputText: String }
+struct ChatTextInputState {
+    var inputText: String
+    init(inputText: String = "") { self.inputText = inputText }
+    init(attributedText: NSAttributedString, selectionRange: Range<Int>) { self.inputText = attributedText.string }
+}
+func stateAttributedStringForText(_ text: NSAttributedString) -> NSAttributedString { text }
 final class TextView {
     var text = ""
     func string() -> String { text }
+    func set(_ state: ChatTextInputState) { text = state.inputText }
 }
-final class PreviewView { let textView = TextView() }
+final class PreviewView {
+    let textView = TextView()
+    func updateMessageEffect(_ effect: Int?, interactions: ChatInteraction, animated: Bool) {}
+}
+struct InterfaceState {
+    var inputState = ChatTextInputState()
+    var messageEffect: Int?
+    func withUpdatedInputState(_ state: ChatTextInputState) -> InterfaceState {
+        var copy = self
+        copy.inputState = state
+        return copy
+    }
+    func withUpdatedMessageEffect(_ effect: Int?) -> InterfaceState {
+        var copy = self
+        copy.messageEffect = effect
+        return copy
+    }
+}
+struct Presentation {
+    var interfaceState = InterfaceState()
+    func updatedInterfaceState(_ update: (InterfaceState) -> InterfaceState) -> Presentation {
+        var copy = self
+        copy.interfaceState = update(copy.interfaceState)
+        return copy
+    }
+}
 struct Context { let window = 0 }
 struct Strings {
     let mediaSenderDiscardChangesHeader = "Discard Changes?"
@@ -47,6 +78,8 @@ final class ChatAction {
 }
 final class ChatInteraction {
     var revision = UUID()
+    var presentation = Presentation()
+    func update(_ transform: (Presentation) -> Presentation) { presentation = transform(presentation) }
     func captureDeferredSendAction() -> ChatAction {
         let captured = revision
         return ChatAction { [weak self] in self?.revision == captured }
@@ -68,8 +101,18 @@ final class PreviewController: ModalViewController {
     let context = Context()
     let analyticsContext: AnalyticsContext? = nil
     let analyticsMediaJourney: Journey? = Journey()
-    var temporaryInputState: TextState?
+    let contextChatInteraction = ChatInteraction()
+    var attributedString: NSAttributedString?
+    var temporaryInputState: ChatTextInputState?
+    __INITIAL_CAPTION_PROPERTY__
     var sent = false
+    init(caption: NSAttributedString? = nil, draft: String = "", effect: Int? = nil) {
+        attributedString = caption
+        super.init()
+        chatInteraction.presentation.interfaceState.inputState = ChatTextInputState(inputText: draft)
+        chatInteraction.presentation.interfaceState.messageEffect = effect
+        __INITIAL_CAPTION__
+    }
     __CAPTURE__
     __CLOSE__
     __CLOSE_MODAL__
@@ -128,8 +171,7 @@ final class CloseTests: XCTestCase {
     }
 
     func testChangedExistingCaptionRequestsConfirmation() {
-        let controller = PreviewController()
-        controller.temporaryInputState = TextState(inputText: "original")
+        let controller = PreviewController(draft: "original")
         controller.genericView.textView.text = "edited"
         let view = View(controller)
         view.closeButton.click()
@@ -139,8 +181,8 @@ final class CloseTests: XCTestCase {
     }
 
     func testDeletingExistingCaptionRequestsConfirmation() {
-        let controller = PreviewController()
-        controller.temporaryInputState = TextState(inputText: "original")
+        let controller = PreviewController(draft: "original")
+        controller.genericView.textView.text = ""
         let view = View(controller)
         view.closeButton.click()
         XCTAssertEqual(alerts.count, 1)
@@ -148,9 +190,7 @@ final class CloseTests: XCTestCase {
     }
 
     func testUnchangedCaptionClosesWithoutPrompt() {
-        let controller = PreviewController()
-        controller.temporaryInputState = TextState(inputText: "same")
-        controller.genericView.textView.text = "same"
+        let controller = PreviewController(draft: "same")
         let view = View(controller)
         view.closeButton.click()
         XCTAssertTrue(alerts.isEmpty)
@@ -159,6 +199,83 @@ final class CloseTests: XCTestCase {
 
     func testEmptyCaptionClosesWithoutPrompt() {
         let controller = PreviewController()
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testUnchangedPrefilledCaptionClosesWithoutPrompt() {
+        let controller = PreviewController(caption: NSAttributedString(string: "prefilled"))
+        XCTAssertNil(controller.temporaryInputState)
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testDeletingPrefilledCaptionRequestsConfirmation() {
+        let controller = PreviewController(caption: NSAttributedString(string: "prefilled"))
+        controller.genericView.textView.text = ""
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertTrue(controller.dismissals.isEmpty)
+    }
+
+    func testEditingPrefilledCaptionRequestsConfirmation() {
+        let controller = PreviewController(caption: NSAttributedString(string: "prefilled"))
+        controller.genericView.textView.text = "changed"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertTrue(controller.dismissals.isEmpty)
+        alerts.last?.cancel()
+        XCTAssertEqual(controller.genericView.textView.text, "changed")
+    }
+
+    func testRevertingPrefilledCaptionClosesWithoutPrompt() {
+        let controller = PreviewController(caption: NSAttributedString(string: "prefilled"))
+        controller.genericView.textView.text = "changed"
+        controller.genericView.textView.text = "prefilled"
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testPrefilledCaptionKeepsUnrelatedDraftAndEffect() {
+        let controller = PreviewController(caption: NSAttributedString(string: "supplied"), draft: "chat draft", effect: 42)
+        XCTAssertNil(controller.temporaryInputState)
+        XCTAssertEqual(controller.chatInteraction.presentation.interfaceState.inputState.inputText, "chat draft")
+        XCTAssertEqual(controller.chatInteraction.presentation.interfaceState.messageEffect, 42)
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testDraftInitializationKeepsRestorationStateSeparate() {
+        let controller = PreviewController(draft: "chat draft", effect: 42)
+        XCTAssertEqual(controller.temporaryInputState?.inputText, "chat draft")
+        XCTAssertEqual(controller.genericView.textView.text, "chat draft")
+        XCTAssertEqual(controller.contextChatInteraction.presentation.interfaceState.messageEffect, 42)
+        XCTAssertEqual(controller.chatInteraction.presentation.interfaceState.inputState.inputText, "")
+        XCTAssertNil(controller.chatInteraction.presentation.interfaceState.messageEffect)
+    }
+
+    func testEmptySuppliedCaptionTakesPrecedenceOverDraft() {
+        let controller = PreviewController(caption: NSAttributedString(string: ""), draft: "not displayed")
+        XCTAssertEqual(controller.genericView.textView.text, "")
+        XCTAssertNil(controller.temporaryInputState)
+        let view = View(controller)
+        view.closeButton.click()
+        XCTAssertTrue(alerts.isEmpty)
+        XCTAssertEqual(controller.dismissals, [.common])
+    }
+
+    func testMultilineUnicodePrefilledCaptionClosesWithoutPrompt() {
+        let controller = PreviewController(caption: NSAttributedString(string: "Привет 👋🏽\nSecond line"))
         let view = View(controller)
         view.closeButton.click()
         XCTAssertTrue(alerts.isEmpty)

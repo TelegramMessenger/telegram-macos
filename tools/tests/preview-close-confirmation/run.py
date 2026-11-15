@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -32,7 +33,12 @@ base = 'packages/PreviewSenderUI/Sources/PreviewSenderUI/'
 source = read(base + 'PreviewSenderController.swift')
 fixture = Path(__file__).with_name('CloseTests.swift.in').read_text()
 button = block(source, '        closeButton.set(handler:')
+caption_start = source.index('        if let attributedString = attributedString {')
+caption_end = source.index('        PreviewSenderUIHooks.shared.updateEmojies', caption_start)
+caption_property = re.search(r'    private var initialCaptionText = ""', source)
 replacements = {
+    '__INITIAL_CAPTION_PROPERTY__': caption_property.group(0).replace('private ', '', 1) if caption_property else '',
+    '__INITIAL_CAPTION__': source[caption_start:caption_end],
     '__BUTTON__': button + ', for: .Click)',
     '__CLOSE__': block(source, '    public override func close(animationType:').replace('public override ', 'override ', 1),
     '__CLOSE_MODAL__': block(source, '    fileprivate func closeModal()').replace('fileprivate ', '', 1),
@@ -52,4 +58,4 @@ with tempfile.TemporaryDirectory(prefix='preview-close-confirmation-') as tempor
     (output / 'Tests/CloseTests.swift').write_text(fixture)
     env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
     env['SWIFTPM_MODULECACHE_OVERRIDE'] = str(output / 'module-cache')
-    raise SystemExit(subprocess.run(['swift', 'test', '--package-path', str(output), '--jobs', '2'], env=env).returncode)
+    raise SystemExit(subprocess.run(['swift', 'test', '--package-path', str(output), '--jobs', '1'], env=env).returncode)
