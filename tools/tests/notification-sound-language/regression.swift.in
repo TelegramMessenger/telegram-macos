@@ -1,0 +1,98 @@
+import Foundation
+
+var language = "ru"
+
+public enum L10n {
+    static func tr(_ table: String, _ key: String, _ args: String...) -> String {
+        return ([language, key] + args).joined(separator: "|")
+    }
+@@LOCALIZATION@@
+}
+
+func strings() -> L10n.Type {
+    return L10n.self
+}
+
+public enum PeerMessageSound {
+    case none
+    case `default`
+    case bundledModern(id: Int32)
+    case bundledClassic(id: Int32)
+    case cloud(fileId: Int64)
+}
+
+public struct FileId {
+    let id: Int64
+}
+
+public struct TelegramMediaFile {
+    let fileId: FileId
+    let fileName: String?
+    let isVoice: Bool
+}
+
+public enum NotificationSoundList {
+    public final class NotificationSound {
+        let file: TelegramMediaFile
+        init(file: TelegramMediaFile) {
+            self.file = file
+        }
+    }
+}
+
+extension String {
+    var nsstring: NSString { self as NSString }
+}
+
+@@PRODUCTION@@
+
+var checks = 0
+var failures = 0
+func expect(_ value: String, _ expected: String, _ label: String) {
+    checks += 1
+    if value != expected {
+        failures += 1
+        print("FAIL \(label): expected \(expected), got \(value)")
+    }
+}
+
+let modern = ["Note", "Aurora", "Bamboo", "Chord", "Circles", "Complete", "Hello", "Input", "Keys", "Popcorn", "Pulse", "Synth"]
+let classic = ["Tritone", "Tremolo", "Alert", "Bell", "Calypso", "Chime", "Glass", "Telegraph"]
+let cloud = [
+    NotificationSoundList.NotificationSound(file: TelegramMediaFile(fileId: FileId(id: 101), fileName: "personal.tone.m4a", isVoice: false)),
+    NotificationSoundList.NotificationSound(file: TelegramMediaFile(fileId: FileId(id: 102), fileName: nil, isVoice: true)),
+    NotificationSoundList.NotificationSound(file: TelegramMediaFile(fileId: FileId(id: 103), fileName: "", isVoice: true)),
+    NotificationSoundList.NotificationSound(file: TelegramMediaFile(fileId: FileId(id: 104), fileName: nil, isVoice: false))
+]
+
+for locale in ["ru", "en", "be", "ru"] {
+    language = locale
+    for (index, name) in modern.enumerated() {
+        expect(localizedPeerNotificationSoundString(sound: .bundledModern(id: Int32(index))), "\(locale)|NotificationsSound.\(name)", "language-refresh/modern/\(locale)/\(index)")
+    }
+    for (index, name) in classic.enumerated() {
+        expect(localizedPeerNotificationSoundString(sound: .bundledClassic(id: Int32(index))), "\(locale)|NotificationsSound.\(name)", "language-refresh/classic/\(locale)/\(index)")
+    }
+    expect(localizedPeerNotificationSoundString(sound: .none), "\(locale)|NotificationsSound.None", "none/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .default), "\(locale)|PeerInfo.NotificationsDefault", "default/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .default, default: .default), "\(locale)|PeerInfo.NotificationsDefaultSound|\(locale)|NotificationsSound.Note", "language-refresh/default-fallback/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .default, default: .bundledModern(id: 11)), "\(locale)|PeerInfo.NotificationsDefaultSound|\(locale)|NotificationsSound.Synth", "language-refresh/default-modern/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .default, default: .bundledClassic(id: 7)), "\(locale)|PeerInfo.NotificationsDefaultSound|\(locale)|NotificationsSound.Telegraph", "language-refresh/default-classic/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .default, default: PeerMessageSound.none), "\(locale)|PeerInfo.NotificationsDefaultSound|\(locale)|NotificationsSound.None", "default-none/\(locale)")
+    for id: Int32 in [-1, 12, Int32.max] {
+        expect(localizedPeerNotificationSoundString(sound: .bundledModern(id: id)), "Sound \(id)", "invalid-modern/\(locale)/\(id)")
+    }
+    for id: Int32 in [-1, 8, Int32.max] {
+        expect(localizedPeerNotificationSoundString(sound: .bundledClassic(id: id)), "Sound \(id)", "invalid-classic/\(locale)/\(id)")
+    }
+    expect(localizedPeerNotificationSoundString(sound: .cloud(fileId: 101), list: cloud), "personal.tone", "cloud-filename/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .cloud(fileId: 102), list: cloud), "\(locale)|NotificationSound.Tone.Voice", "cloud-voice-nil/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .cloud(fileId: 103), list: cloud), "\(locale)|NotificationSound.Tone.Voice", "cloud-voice-empty/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .cloud(fileId: 104), list: cloud), "#", "cloud-nameless/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .cloud(fileId: 999), list: cloud), "\(locale)|PeerInfo.NotificationsDefault", "cloud-missing/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .cloud(fileId: 101)), "\(locale)|PeerInfo.NotificationsDefault", "cloud-no-list/\(locale)")
+    expect(localizedPeerNotificationSoundString(sound: .default, default: .cloud(fileId: 101), list: cloud), "\(locale)|PeerInfo.NotificationsDefaultSound|Sound 101", "deferred-inherited-cloud-unchanged/\(locale)")
+}
+
+print("RESULT checks=\(checks) failures=\(failures)")
+exit(failures == 0 ? 0 : 1)
