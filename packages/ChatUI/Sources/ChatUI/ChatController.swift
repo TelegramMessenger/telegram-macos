@@ -11853,7 +11853,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
        
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let strongSelf = self, let window = strongSelf.window, !hasModals(window) {
+            if let strongSelf = self, let window = strongSelf.window, !hasModals(window), !strongSelf.isTextFocusOutsideInput {
                 let result:KeyHandlerResult = strongSelf.chatInteraction.presentation.effectiveInput.inputText.isEmpty && strongSelf.chatInteraction.presentation.state == .normal ? .invoked : .rejected
 
                 if result == .invoked {
@@ -11878,7 +11878,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let strongSelf = self, let window = strongSelf.window, !hasModals(window) {
+            if let strongSelf = self, let window = strongSelf.window, !hasModals(window), !strongSelf.isTextFocusOutsideInput {
                 let result:KeyHandlerResult = strongSelf.chatInteraction.presentation.effectiveInput.inputText.isEmpty ? .invoked : .invokeNext
                 
                 
@@ -11892,7 +11892,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }, with: self, for: .DownArrow, priority: .low)
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let `self` = self, let window = self.window, !hasModals(window), self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
+            if let `self` = self, let window = self.window, !hasModals(window), !self.isTextFocusOutsideInput, self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
                 var currentReplyId = self.chatInteraction.presentation.interfaceState.replyMessage
                 self.genericView.tableView.enumerateItems(with: { item in
                     if let item = item as? ChatRowItem, let message = item.message {
@@ -11920,7 +11920,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }, with: self, for: .UpArrow, priority: .low, modifierFlags: [.command])
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let `self` = self, let window = self.window, !hasModals(window), self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
+            if let `self` = self, let window = self.window, !hasModals(window), !self.isTextFocusOutsideInput, self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
                 var currentReplyId = self.chatInteraction.presentation.interfaceState.replyMessage
                 self.genericView.tableView.enumerateItems(reversed: true, with: { item in
                     if let item = item as? ChatRowItem, let message = item.message {
@@ -11949,7 +11949,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            guard let `self` = self, let window = self.window, !hasModals(window) else {return .rejected}
+            guard let `self` = self, let window = self.window, !hasModals(window), !self.isTextFocusOutsideInput else {return .rejected}
             
             if let selectionState = self.chatInteraction.presentation.selectionState, !selectionState.selectedIds.isEmpty {
                 self.chatInteraction.deleteSelectedMessages()
@@ -11960,7 +11960,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }, with: self, for: .Delete, priority: .low)
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            guard let `self` = self else {return .rejected}
+            guard let `self` = self, !self.isTextFocusOutsideInput else {return .rejected}
             
             if let selectionState = self.chatInteraction.presentation.selectionState, !selectionState.selectedIds.isEmpty {
                 self.chatInteraction.deleteSelectedMessages()
@@ -12220,6 +12220,13 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
     }
     
     
+    private var isTextFocusOutsideInput: Bool {
+        guard let responder = context.window.firstResponder as? NSTextView else {
+            return false
+        }
+        return responder !== genericView.inputView.textView.inputView
+    }
+
     func findAndSetEditableMessage() -> Bool {
         if self.previousView.with({ $0?.originalView?.laterId == nil }) {
             
