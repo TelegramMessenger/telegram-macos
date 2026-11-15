@@ -8,6 +8,18 @@ import TelegramMediaUtils
 import TelegramTheme
 import TelegramUtils
 
+extension TelegramMediaFile {
+    var isChatStaticSticker: Bool {
+        if isStaticSticker {
+            return true
+        }
+        guard isSticker, mimeType == "image/webp", !isAnimated, !isVideo, !isVoice, !isMusic, let size = size else {
+            return false
+        }
+        return size >= 300 * 1024 && size <= 512 * 1024
+    }
+}
+
 public class ChatLayoutUtils: NSObject {
 
     public static func contentSize(for media:Media, with width: CGFloat, hasText: Bool = false, webpIsFile: Bool = false, groupedLayout: GroupedLayout? = nil, spacing: CGFloat = 4.0) -> NSSize {
@@ -59,7 +71,7 @@ public class ChatLayoutUtils: NSObject {
                 if let dimensions = dimensions {
                     size = dimensions.aspectFitted(size)
                 }
-            } else if file.isStaticSticker && !webpIsFile {
+            } else if file.isChatStaticSticker && !webpIsFile {
                 
                 var sz = NSMakeSize(208, 208)
                 if file.fileName == "telegram-animoji.tgs" {
