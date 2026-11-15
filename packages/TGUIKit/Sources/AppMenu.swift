@@ -163,5 +163,7 @@ public final class AppMenu {
         AppMenuController.closeAll()
     }
 
-    public static var keepsOpenOnNextMouseUp: Bool = false
+    public static func keepOpenOnNextMouseUp() {
+        AppMenuController.keepVisibleMenuOpenOnNextMouseUp()
+    }
 }

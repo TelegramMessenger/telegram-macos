@@ -512,6 +512,7 @@ final class AppMenuController : NSObject  {
             }, with: self, for: .leftMouseDown, priority: .modal)
             
             self.parent?.set(mouseHandler: { [weak self] event in
+                _ = self?.consumeKeepOpen()
                 if isInteracted {
                     self?.closeAll()
                 }
@@ -722,8 +723,29 @@ final class AppMenuController : NSObject  {
     
     private var foundItem: TableRowItem? = nil
     
+    private static weak var keepOpenOwner: AppMenuController?
+
+    static func keepVisibleMenuOpenOnNextMouseUp() {
+        for window in NSApp.windows {
+            if let host = window as? MenuHostWindow, host.isVisible, let controller = host.rootView?.controller, !controller.isClosed {
+                keepOpenOwner = controller
+                return
+            }
+        }
+        keepOpenOwner = nil
+    }
+
+    private func consumeKeepOpen() -> Bool {
+        guard AppMenuController.keepOpenOwner === self else {
+            return false
+        }
+        AppMenuController.keepOpenOwner = nil
+        return true
+    }
+
     private var isClosed = false
     func close() {
+        _ = consumeKeepOpen()
         
         self.tick?.invalidate()
         
@@ -1149,11 +1171,11 @@ final class AppMenuController : NSObject  {
             }
             
             host.set(mouseHandler: { [weak self, weak container] event in
+                let keepsOpen = self?.consumeKeepOpen() == true
                 guard let container, NSPointInRect(event.locationInWindow, container.frame) else {
                     return .rejected
                 }
-                if AppMenu.keepsOpenOnNextMouseUp {
-                    AppMenu.keepsOpenOnNextMouseUp = false
+                if keepsOpen {
                     return .rejected
                 }
                 if self?.menu.closeOutside == true {
