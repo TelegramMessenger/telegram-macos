@@ -170,7 +170,7 @@ final class ChatLayerMessageTextView: ChatLayerSceneView {
             let point = node.layer.convert(point, from: root.layer)
             if node.layer.bounds.contains(point), let layout = node.textLayout, !layout.lines.isEmpty {
                 let index = layout.findIndex(location: point)
-                return index >= 0 && point.x < layout.lines[index].frame.maxX
+                return index >= 0 && !layout.isOutsideText(point, line: index)
             }
         }
         return false

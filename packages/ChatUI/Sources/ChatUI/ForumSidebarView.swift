@@ -5,6 +5,7 @@ import TelegramTheme
 import TelegramContext
 import Localization
 import Postbox
+import SwiftSignalKit
 
 public protocol ForumSidebarRowsContent: AnyObject {
     var view: NSView { get }
@@ -51,33 +52,24 @@ final class ForumSidebarView: View {
         self.rowsContent?.selectionChanged = { [weak self] _ in self?.updateControls() }
         doneButton.set(text: strings().modalDone, for: .Normal)
         doneButton.set(font: .medium(13), for: .Normal)
-        doneButton.set(color: theme.colors.accent, for: .Normal)
         doneButton.set(handler: { [weak self] _ in self?.rowsContent?.setSelecting(false) }, for: .Click)
         contentView.addSubview(doneButton)
         wantsLayer = true
         layer?.cornerRadius = 20
         layer?.masksToBounds = false
         layer?.borderWidth = 1
-        layer?.borderColor = theme.colors.border.withAlphaComponent(0.5).cgColor
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.16
         layer?.shadowRadius = 14
         layer?.shadowOffset = NSMakeSize(0, -5)
-        backgroundColor = theme.colors.background
         contentView.wantsLayer = true
         contentView.layer?.cornerRadius = 20
         contentView.layer?.masksToBounds = true
-        contentView.backgroundColor = theme.colors.background
         addSubview(contentView)
         titleLabel.font = .medium(.title)
-        titleLabel.textColor = theme.colors.text
         titleLabel.alignment = .center
         titleLabel.lineBreakMode = .byTruncatingTail
-        searchView.searchTheme = .init(theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
-            strings().chatListSearchPlaceholder
-        }, theme.search.textColor, theme.search.placeholderColor)
         searchView.layer?.borderWidth = 1
-        searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
         searchView.searchInteractions = SearchInteractions({ [weak self] state, _ in
             self?.updateSearch(state)
         }, { [weak self] state in
@@ -90,12 +82,9 @@ final class ForumSidebarView: View {
         newTopicButton.set(text: strings().forumTopicTitleCreate, for: .Normal)
         newTopicButton.set(font: .medium(15), for: .Normal)
         newTopicButton.set(color: .white, for: .Normal)
-        newTopicButton.set(background: theme.colors.accent, for: .Normal)
-        newTopicButton.set(background: theme.colors.accent.withAlphaComponent(0.8), for: .Highlight)
         newTopicButton.setAccessibilityLabel(strings().forumTopicTitleCreate)
         newTopicButton.set(handler: { [weak self] _ in self?.onNewTopic?() }, for: .Click)
         bottomShadowView.isEventLess = true
-        separator.backgroundColor = theme.colors.border.withAlphaComponent(0.55)
         contentView.addSubview(titleLabel)
         contentView.addSubview(searchView)
         contentView.addSubview(separator)
@@ -104,6 +93,24 @@ final class ForumSidebarView: View {
         }
         contentView.addSubview(bottomShadowView)
         contentView.addSubview(newTopicButton)
+        updateLocalizationAndTheme(theme: theme)
+    }
+
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        layer?.borderColor = theme.colors.border.withAlphaComponent(0.5).cgColor
+        backgroundColor = theme.colors.background
+        contentView.backgroundColor = theme.colors.background
+        titleLabel.textColor = theme.colors.text
+        doneButton.set(color: theme.colors.accent, for: .Normal)
+        searchView.searchTheme = .init(theme.colors.background, theme.search.searchImage, theme.search.clearImage, {
+            strings().chatListSearchPlaceholder
+        }, theme.search.textColor, theme.search.placeholderColor)
+        searchView.layer?.borderColor = theme.colors.border.withAlphaComponent(0.75).cgColor
+        newTopicButton.set(background: theme.colors.accent, for: .Normal)
+        newTopicButton.set(background: theme.colors.accent.withAlphaComponent(0.8), for: .Highlight)
+        separator.backgroundColor = theme.colors.border.withAlphaComponent(0.55)
+        needsLayout = true
     }
 
     required init(frame frameRect: NSRect) {
@@ -206,6 +213,7 @@ final class ForumSidebarController: GenericViewController<ForumSidebarView>, Tra
     private var newTopicRequested = false
     private var isPresented = false
     private var pendingUpdate: ((ForumSidebarView) -> Void)?
+    private let appearanceDisposable = MetaDisposable()
     var onSelect: ((Int64?, MessageId?) -> Void)?
     var onNewTopic: (() -> Void)?
     var onDismiss: (() -> Void)?
@@ -234,7 +242,14 @@ final class ForumSidebarController: GenericViewController<ForumSidebarView>, Tra
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        appearanceDisposable.set(appearanceSignal.start(next: { [weak self] appearance in
+            self?.updateLocalizationAndTheme(theme: appearance.presentation)
+        }))
         readyOnce()
+    }
+
+    deinit {
+        appearanceDisposable.dispose()
     }
 
     override func navigationWillChangeController() {
