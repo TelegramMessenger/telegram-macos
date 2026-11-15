@@ -28,6 +28,14 @@ final class Auth_CountryManagerTests: XCTestCase {
         XCTAssertEqual(manager.item(byNumber: "9991234")?.1.code, "999")
     }
     
+    func testIgnoresDigitsBeyondLongestKnownPrefix() {
+        let digits = String(repeating: "5", count: 100_000)
+        XCTAssertEqual(manager.item(byNumber: "1202" + digits)?.0.id, "US")
+        XCTAssertEqual(manager.item(byNumber: "1416" + digits)?.0.id, "CA")
+        XCTAssertEqual(manager.item(byNumber: "290" + digits)?.1.code, "290")
+        XCTAssertNil(manager.item(byNumber: "0" + digits))
+    }
+    
     func testKeepsPreferredCountryWithoutAreaCodeMatch() {
         XCTAssertEqual(manager.item(byNumber: "12025550123", preferred: ["1": "CP"])?.0.id, "CP")
         XCTAssertEqual(manager.item(byNumber: "14165550123", preferred: ["1": "CP"])?.0.id, "CA")

@@ -61,6 +61,7 @@ func formatNationalNumber(_ number: String, code: Country.CountryCode?) -> Strin
 public final class Auth_CountryManager {
     public let list: [Country]
     private let byPrefix: [String: (Country, Country.CountryCode)]
+    private let maxPrefixLength: Int
     public init(_ countries:[Country]) {
         self.list = (countries).sorted(by: { lhs, rhs in
             return lhs.name < rhs.name
@@ -81,6 +82,7 @@ public final class Auth_CountryManager {
             byPrefix[code.code] = (Auth_CountryManager.globalCountry, code)
         }
         self.byPrefix = byPrefix
+        self.maxPrefixLength = byPrefix.keys.map { $0.count }.max() ?? 0
     }
     
     private static let globalCountry: Country = .init(id: "TG", name: "Test", localizedName: "Test", countryCodes: [.init(code: "999", prefixes: [], patterns: ["XXXX X XX"])], hidden: false)
@@ -90,6 +92,7 @@ public final class Auth_CountryManager {
     
     public func item(byNumber number: String, code: String? = nil, preferred: [String: String] = [:]) -> (Country, Country.CountryCode)? {
         var results: [(String, Country, Country.CountryCode)] = []
+        let number = String(number.prefix(maxPrefixLength))
         for i in 0 ..< number.count {
             let prefix = String(number.prefix(number.count - i))
             if let (country, countryCode) = byPrefix[prefix], code == nil || countryCode.code == code {
@@ -397,7 +400,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                         update(selected: item, update: true, updateCode: false, code: itemCode)
                         
                         let text = rest + numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-                        let formated = formatNationalNumber(text, code: itemCode).prefix(17)
+                        let formated = formatNationalNumber(String(text.prefix(17)), code: itemCode).prefix(17)
                         numberText.stringValue = formated
                         window?.makeFirstResponder(numberText)
                         numberText.setCursorToEnd()
@@ -427,7 +430,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                 if item != updated || selectedCode != typedCode {
                     self.update(selected: updated, update: true, updateCode: false, code: typedCode)
                 }
-                let formated = formatNationalNumber(current, code: typedCode ?? selectedCode).prefix(17)
+                let formated = formatNationalNumber(String(current.prefix(17)), code: typedCode ?? selectedCode).prefix(17)
                 numberText.stringValue = formated
                 self.updatePhoneNumber?(formated)
             } else if field == numberText {
