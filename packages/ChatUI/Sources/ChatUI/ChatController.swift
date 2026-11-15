@@ -6925,15 +6925,39 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 return state
             }
             
-            let signal:Signal<TelegramMediaPoll?, RequestMessageSelectPollOptionError>
-
             if submit {
-                if opaqueIdentifiers.isEmpty {
-                    signal = showModalProgress(signal: (context.engine.messages.requestMessageSelectPollOption(messageId: messageId, opaqueIdentifiers: []) |> deliverOnMainQueue), for: context.window)
-                } else {
-                    signal = (context.engine.messages.requestMessageSelectPollOption(messageId: messageId, opaqueIdentifiers: opaqueIdentifiers) |> deliverOnMainQueue)
+                let signal = context.account.postbox.transaction { transaction -> Message? in
+                    return transaction.getMessage(messageId)
                 }
-                
+                |> castError(RequestMessageSelectPollOptionError.self)
+                |> deliverOnMainQueue
+                |> mapToSignal { [weak self] message -> Signal<TelegramMediaPoll?, RequestMessageSelectPollOptionError> in
+                    guard let self, let message, let poll = message.anyMedia as? TelegramMediaPoll else {
+                        return .fail(.generic)
+                    }
+                    if isPollVotingClosed(message: message, poll: poll, timestamp: context.account.network.getApproximateRemoteTimestamp()) {
+                        self.updateState { state in
+                            var state = state
+                            state.pollAnswers.removeValue(forKey: messageId)
+                            return state
+                        }
+                        if poll.isClosed {
+                            showModalText(for: context.window, text: strings().chatPollVotingClosed)
+                            return .complete()
+                        }
+                        return refreshPollMessage(context: context, messageId: messageId, pollId: poll.pollId)
+                        |> castError(RequestMessageSelectPollOptionError.self)
+                        |> map { [weak self] updatedMessage -> TelegramMediaPoll? in
+                            if self != nil, let updatedPoll = updatedMessage?.anyMedia as? TelegramMediaPoll, updatedPoll.isClosed {
+                                showModalText(for: context.window, text: strings().chatPollVotingClosed)
+                            }
+                            return nil
+                        }
+                    }
+                    let vote = context.engine.messages.requestMessageSelectPollOption(messageId: messageId, opaqueIdentifiers: opaqueIdentifiers) |> deliverOnMainQueue
+                    return opaqueIdentifiers.isEmpty ? showModalProgress(signal: vote, for: context.window) : vote
+                }
+
                 self.selectMessagePollOptionDisposables.set(signal.start(next: { [weak self] poll in
                     if let poll = poll {
                         self?.updateState { state in
@@ -6982,42 +7006,38 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }
 
                 }, error: { [weak self] error in
-                    switch error {
-                    case .generic:
-                        let restrictionSignal = context.account.postbox.transaction { transaction -> String? in
-                            guard let message = transaction.getMessage(messageId) else {
-                                return nil
-                            }
-                            guard let poll = message.anyMedia as? TelegramMediaPoll else {
-                                return nil
-                            }
-                            return pollVoteRestrictionText(poll: poll, chatPeer: message.peers[message.id.peerId])
-                        } |> deliverOnMainQueue
-                        _ = restrictionSignal.start(next: { text in
-                            if let text {
-                                showModalText(for: context.window, text: text)
-                            } else {
-                                alert(for: context.window, info: strings().unknownError)
-                            }
-                        })
-                    case .restrictedToSubscribers:
-                        let restrictionSignal = context.account.postbox.transaction { transaction -> String? in
-                            guard let message = transaction.getMessage(messageId) else {
-                                return nil
-                            }
-                            guard let poll = message.anyMedia as? TelegramMediaPoll else {
-                                return nil
-                            }
-                            return pollVoteRestrictionText(poll: poll, chatPeer: message.peers[message.id.peerId])
-                        } |> deliverOnMainQueue
-                        _ = restrictionSignal.start(next: { text in
-                            if let text {
-                                showModalText(for: context.window, text: text)
-                            } else {
-                                alert(for: context.window, info: strings().unknownError)
-                            }
-                        })
+                    let errorText = context.account.postbox.transaction { transaction -> Message? in
+                        return transaction.getMessage(messageId)
                     }
+                    |> mapToSignal { message -> Signal<String, NoError> in
+                        guard let message, let poll = message.anyMedia as? TelegramMediaPoll else {
+                            return .single(strings().unknownError)
+                        }
+                        switch error {
+                        case .generic:
+                            if poll.isClosed {
+                                return .single(pollVoteErrorText(poll: poll, chatPeer: message.peers[messageId.peerId]))
+                            }
+                            return refreshPollMessage(context: context, messageId: messageId, pollId: poll.pollId)
+                            |> map { updatedMessage in
+                                let updatedPoll = updatedMessage?.anyMedia as? TelegramMediaPoll
+                                return pollVoteErrorText(poll: updatedPoll ?? poll, chatPeer: updatedMessage?.peers[messageId.peerId] ?? message.peers[messageId.peerId])
+                            }
+                        case .restrictedToSubscribers:
+                            return .single(pollVoteRestrictionText(poll: poll, chatPeer: message.peers[message.id.peerId]) ?? strings().unknownError)
+                        }
+                    }
+                    |> deliverOnMainQueue
+                    self?.selectMessagePollOptionDisposables.set(errorText.start(next: { [weak self] text in
+                        guard self != nil else {
+                            return
+                        }
+                        if text == strings().unknownError {
+                            alert(for: context.window, info: text)
+                        } else {
+                            showModalText(for: context.window, text: text)
+                        }
+                    }), forKey: messageId)
                     self?.updateState { state in
                         var state = state
                         var data = state.pollAnswers

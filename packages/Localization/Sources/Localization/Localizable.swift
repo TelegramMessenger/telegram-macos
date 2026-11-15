@@ -6445,6 +6445,7 @@ public final class L10n {
   public static func chatPollViewVotesOther(_ p1: Int) -> String {
     return L10n.tr("Localizable", "ChatPoll.ViewVotes_other", p1)
   }
+  public static var chatPollVotingClosed: String  { return L10n.tr("Localizable", "ChatPoll.VotingClosed") }
   /// Star reactions have been disabled for this channel.
   public static var chatReactionStarsDisabled: String  { return L10n.tr("Localizable", "ChatReaction.StarsDisabled") }
   /// Undo

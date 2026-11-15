@@ -1,0 +1,29 @@
+Poll expiry/results source-extracted native regression harness
+
+Run with python3 -I tools/tests/poll-expiry-results/run.py --source-root /absolute/source/root --output /absolute/owned/evidence/directory.
+
+Authority
+- Baseline is exact app object 246e3e957ae5cea1ecff6d7a6a6db3e47be69bb5.
+- Core API and the actual SwiftSignalKit sources are read from object 24638bc69bd083981b178dd1e7f921eebbf7fc46.
+- Git authority is the runner's own repository, never the potentially historical HEAD of --source-root.
+- GIT_* environment variables are removed. Compiler TMPDIR and module caches are owned by --output. Compilation is sequential, swiftc -j1.
+
+Production extraction
+- Poll deadline/closure/count/error predicates and bounded refresh state are compiled verbatim.
+- ChatPollItem actual isClosed/showResultsIn/deadlineEndDate/canInvokeVote/actionButtonIsEnabled/canAddOption properties are compiled verbatim in a small row boundary.
+- The actual aggregate-per-option rendering decisions are extracted up to AppKit text-layout creation; resulting percent/count/recent-voter values are recorded instead of drawing.
+- PollView actual refresh fields, timer/lifecycle methods, and identity/binding logic are compiled. AppKit window/visibility, row replacement, and countdown drawing are doubles.
+- ChatController actual vote preflight and error callback and existing country/subscriber restriction helper are compiled. Success animations and haptics are not included.
+- Baseline functions/properties/aggregate decisions/controller code come from exact Git source and must compile successfully. Baseline behavioral failures, not compiler errors, are required.
+- New helper/state tests are fixed-only; shared tests exercise exact old production paths, not a fabricated old helper implementation.
+
+Boundaries
+- Real pinned SwiftSignalKit is compiled as a local dynamic module; signal dispatch, mapToSignal, timeout, take, catch, MetaDisposable and DisposableDict are not mocked.
+- Message/poll/engine/Postbox/Network doubles expose only members used by extracted code. Runner asserts relevant signatures/optional types against pinned source and records hashes.
+- Engine cloud reload is a controlled signal. No network, account, database, profile or Telegram GUI is accessed.
+- Postbox transaction delivery is asynchronous on the main queue, with an in-memory fixture only.
+- Production getMessagesLoadIfNecessary(skipLocal:true) writes server messages through Postbox.addMessages; that persistence/replay path is source-inspected, not executed against a database. RPC failures can return cached models. Tests ensure an expired OPEN cached model cannot select closed error text.
+- Empty/absent aggregate data is distinct from the protocol's sparse zero-option omission: a nonempty voters array with known counts preserves absent individual answers as zero; a missing array/unknown counts/unknown total cannot invent percentages. Explicit totalVoters==0 is authoritative zero.
+- Timers are real, but most boundary time transitions are driven directly through the production updateDeadline method. Timeout uses the actual production 10s setting. Repeated-request bounds use monotonic inputs through the extracted state object, not wall-clock waiting.
+- SwiftGen is not available in PATH in the authoring environment; the one accessor follows the checked-in strings.stencil output exactly. The runner checks the single key/accessor and preserves UTF-16 English source.
+- Native tests do not substitute for the parent's complete package/application build or the user's manual acceptance. Public closed multi-choice View Votes enablement remains the separately unconfirmed lead and is not changed.

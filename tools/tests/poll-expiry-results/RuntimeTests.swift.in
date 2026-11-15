@@ -1,0 +1,500 @@
+import Foundation
+import CoreFoundation
+import QuartzCore
+import SwiftSignalKit
+
+public struct PeerId: Hashable { let value: Int64 }
+public struct MessageId: Hashable {
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+}
+public struct MediaId: Equatable { let namespace: Int32; let id: Int64 }
+public enum Namespaces {
+    public enum Message { static let Cloud: Int32 = 0 }
+}
+struct MessageFlags: OptionSet {
+    let rawValue: Int
+    static let Failed = MessageFlags(rawValue: 1)
+    static let Sending = MessageFlags(rawValue: 2)
+    static let Unsent = MessageFlags(rawValue: 4)
+}
+struct ForwardInfo { let date: Int32 }
+public class Peer { var displayTitle = "" }
+public class Message {
+    let id: MessageId
+    var timestamp: Int32
+    var forwardInfo: ForwardInfo?
+    var flags: MessageFlags = []
+    var media: [Any]
+    var peers: [PeerId: Peer] = [:]
+    var anyMedia: Any? { media.first }
+    init(id: MessageId = MessageId(peerId: PeerId(value: 1), namespace: 0, id: 1), timestamp: Int32 = 100, forward: Int32? = nil, poll: TelegramMediaPoll) {
+        self.id = id
+        self.timestamp = timestamp
+        self.forwardInfo = forward.map { ForwardInfo(date: $0) }
+        self.media = [poll]
+    }
+}
+struct TelegramMediaPollOption { let opaqueIdentifier: Data }
+struct TelegramMediaPollOptionVoters {
+    let selected: Bool
+    let opaqueIdentifier: Data
+    let count: Int32?
+    let isCorrect: Bool
+    let recentVoters: [PeerId]
+}
+struct TelegramMediaPollResults {
+    var voters: [TelegramMediaPollOptionVoters]?
+    var totalVoters: Int32?
+}
+enum TelegramMediaPollPublicity { case anonymous; case `public` }
+public class TelegramMediaPoll {
+    var pollId = MediaId(namespace: 0, id: 101)
+    var isClosed = false
+    var deadlineTimeout: Int32?
+    var deadlineDate: Int32?
+    var hideResultsUntilClose = false
+    var openAnswers = true
+    var countries: [String] = []
+    var restrictToSubscribers = false
+    var isMultiple = false
+    var isQuiz = false
+    var publicity: TelegramMediaPollPublicity = .anonymous
+    var options = [TelegramMediaPollOption(opaqueIdentifier: Data([1])), TelegramMediaPollOption(opaqueIdentifier: Data([2]))]
+    var results = TelegramMediaPollResults(voters: nil, totalVoters: nil)
+}
+enum GetMessagesResult { case progress; case result([Message]) }
+enum GetMessagesStrategy { case local; case cloud(skipLocal: Bool) }
+enum GetMessagesError: Error { case privateChannel }
+enum RequestMessageSelectPollOptionError: Error { case generic; case restrictedToSubscribers }
+final class Network {
+    var now: Int32 = 100
+    func getApproximateRemoteTimestamp() -> Int32 { now }
+}
+final class Transaction {
+    var message: Message?
+    init(_ message: Message?) { self.message = message }
+    func getMessage(_ id: MessageId) -> Message? { message?.id == id ? message : nil }
+}
+final class Postbox {
+    var message: Message?
+    func transaction<T>(_ body: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal { subscriber in
+            Queue.mainQueue().async {
+                subscriber.putNext(body(Transaction(self.message)))
+                subscriber.putCompletion()
+            }
+            return EmptyDisposable
+        }
+    }
+}
+final class MessagesAPI {
+    var requests: [(MessageId, Bool)] = []
+    var votes: [[Data]] = []
+    var response: Signal<GetMessagesResult, GetMessagesError> = .single(.result([]))
+    func getMessagesLoadIfNecessary(_ ids: [MessageId], strategy: GetMessagesStrategy = .cloud(skipLocal: false)) -> Signal<GetMessagesResult, GetMessagesError> {
+        let skip: Bool
+        if case let .cloud(value) = strategy { skip = value } else { skip = false }
+        requests.append((ids[0], skip))
+        return response
+    }
+    func requestMessageSelectPollOption(messageId: MessageId, opaqueIdentifiers: [Data]) -> Signal<TelegramMediaPoll?, RequestMessageSelectPollOptionError> {
+        votes.append(opaqueIdentifiers)
+        return .single(nil)
+    }
+}
+final class Engine { let messages = MessagesAPI() }
+final class Account { let network = Network(); let postbox = Postbox() }
+protocol AccountContextProtocol: AnyObject { var engine: Engine { get }; var account: Account { get }; var window: NSWindow { get } }
+final class Context: AccountContextProtocol { let engine = Engine(); let account = Account(); let window = NSWindow() }
+class NSWindow {}
+class Control {
+    var window: NSWindow?
+    var visibleRect = CGRect(x: 0, y: 0, width: 400, height: 200)
+    func viewWillMove(toWindow newWindow: NSWindow?) {}
+    func viewDidMoveToWindow() {}
+}
+struct Labels {
+    let unknownError = "generic"
+    let chatPollVotingClosed = "closed"
+    let chatMessageMenuItemsAndJoiner = " and "
+    let chatMessageMenuItemsOnlyOldSubscribersCanVote = "subscriber"
+    func chatMessageMenuItemsOnlyUsersFromCountriesCanVote(_ countries: String) -> String { "country" }
+    func chatMessageMenuItemsOnlySubscribersOfCanVote(_ title: String) -> String { "subscriber" }
+}
+struct Appearance { let locale = Locale(identifier: "en_US") }
+let appAppearance = Appearance()
+func strings() -> Labels { Labels() }
+var alerts: [String] = []
+func alert(for window: NSWindow, info: String) { alerts.append(info) }
+func showModalText(for window: NSWindow, text: String) { alerts.append(text) }
+func showModalProgress<T, E>(signal: Signal<T, E>, for window: NSWindow) -> Signal<T, E> { signal }
+@@RESTRICTION@@
+
+@@PERCENT@@
+@@HELPERS@@
+
+struct Option {
+    var isSelected = false
+    var isMultipleSelected = false
+    var isLoading = false
+}
+struct Aggregate { let percent: Float?; let count: Int32?; let peers: [PeerId] }
+final class Row {
+    var message: Message?
+    let poll: TelegramMediaPoll
+    let context: Context
+    var options: [Option] = []
+    var copies = 0
+    init(_ message: Message, context: Context) {
+        self.message = message
+        self.poll = message.anyMedia as! TelegramMediaPoll
+        self.context = context
+        self.options = poll.results.voters?.map { Option(isSelected: $0.selected) } ?? []
+    }
+    func copyAndUpdate(animated: Bool) { copies += 1 }
+    var canVote: Bool { canInvokeVote }
+    @@PROPERTIES@@
+    func aggregates() -> [Aggregate] {
+        let displayOptions = poll.options
+        let displayIndices = Array(poll.options.indices)
+        var output: [Aggregate] = []
+        @@AGGREGATE@@
+    }
+}
+final class Owner: Control {
+    weak var currentItem: Row?
+    @@OWNER_FIELDS@@
+    @@OWNER_METHODS@@
+    func updateResultsIn() {}
+    func bind(_ item: Row) { @@OWNER_BIND@@ }
+    func tick() { @@OWNER_TICK@@ }
+    var attempts: Int { @@OWNER_ATTEMPTS@@ }
+    var timerRunning: Bool { resultsInTimer != nil }
+    func exhaust() { @@OWNER_EXHAUST@@ }
+}
+struct ChatPollStateData {
+    var identifiers: [Data]
+    var isLoading: Bool
+}
+struct State { var pollAnswers: [MessageId: ChatPollStateData] = [:] }
+final class Controller {
+    let context: Context
+    let selectMessagePollOptionDisposables = DisposableDict<MessageId>()
+    var state = State()
+    init(_ context: Context) { self.context = context }
+    deinit { selectMessagePollOptionDisposables.dispose() }
+    func updateState(_ f: (State) -> State) { state = f(state) }
+    func submit(messageId: MessageId, opaqueIdentifiers: [Data]) {
+        let context = self.context
+        let submit = true
+        state.pollAnswers[messageId] = ChatPollStateData(identifiers: opaqueIdentifiers, isLoading: true)
+        @@PREFLIGHT@@
+        @@PREFLIGHT_START@@
+    }
+    func fail(messageId: MessageId, error: RequestMessageSelectPollOptionError) {
+        let context = self.context
+        let handler: (RequestMessageSelectPollOptionError) -> Void = { [weak self] error in
+            @@ERROR_BODY@@
+        }
+        handler(error)
+    }
+}
+
+var checks = 0
+var failures = 0
+func expect(_ value: @autoclosure () -> Bool, _ name: String) {
+    checks += 1
+    if value() { print("PASS \(name)") } else { failures += 1; print("FAIL \(name)") }
+}
+func spin(_ interval: Double = 0.025) {
+    RunLoop.main.run(until: Date(timeIntervalSinceNow: interval))
+}
+func voter(_ id: UInt8, _ count: Int32?, selected: Bool = false, peers: [PeerId] = []) -> TelegramMediaPollOptionVoters {
+    TelegramMediaPollOptionVoters(selected: selected, opaqueIdentifier: Data([id]), count: count, isCorrect: false, recentVoters: peers)
+}
+func fixture(now: Int32 = 100, deadline: Int32? = nil, relative: Int32? = nil, closed: Bool = false, timestamp: Int32 = 100, forward: Int32? = nil) -> (Context, TelegramMediaPoll, Message, Row) {
+    let context = Context()
+    context.account.network.now = now
+    let poll = TelegramMediaPoll()
+    poll.deadlineDate = deadline
+    poll.deadlineTimeout = relative
+    poll.isClosed = closed
+    let message = Message(timestamp: timestamp, forward: forward, poll: poll)
+    context.account.postbox.message = message
+    return (context, poll, message, Row(message, context: context))
+}
+
+for absolute in [false, true] {
+    let (context, _, _, row) = fixture(now: 159, deadline: absolute ? 160 : nil, relative: absolute ? nil : 60)
+    expect(row.deadlineEndDate == 160, "\(absolute ? "absolute" : "relative") deadline")
+    expect(row.showResultsIn, "deadline countdown for nonvoter")
+    expect(row.canVote, "vote before deadline")
+    context.account.network.now = 160
+    expect(!row.canVote, "disable at exact deadline")
+    expect(!row.isClosed, "clock does not assert server closure")
+}
+do {
+    let (_, _, _, row) = fixture(now: 160, relative: 60, timestamp: 150, forward: 100)
+    expect(row.deadlineEndDate == 160, "forward uses original timestamp")
+    expect(!row.canVote, "forwarded relative deadline blocks late vote")
+}
+do {
+    let (_, _, _, row) = fixture(now: 180, deadline: 200, relative: 60, timestamp: 100, forward: 20)
+    expect(row.deadlineEndDate == 200, "absolute close date takes precedence")
+    expect(row.canVote, "absolute deadline overrides old relative origin")
+}
+do {
+    let (_, _, _, row) = fixture(now: 100, deadline: 101)
+    expect(row.canVote, "remote clock not real wall clock controls votes")
+    let (_, _, _, indefinite) = fixture(now: Int32.max)
+    expect(indefinite.canVote, "untimed poll remains open")
+    let (_, _, _, closed) = fixture(now: 0, closed: true)
+    expect(!closed.canVote, "server closure blocks regardless of clock")
+}
+do {
+    let (context, poll, _, _) = fixture(now: 300, deadline: 100, relative: 1)
+    let local = Message(id: MessageId(peerId: PeerId(value: 1), namespace: 1, id: 1), poll: poll)
+    local.flags = .Sending
+    let row = Row(local, context: context)
+    expect(row.deadlineEndDate == nil, "local outgoing message has no server deadline")
+    expect(!row.canVote, "sending flag remains blocked")
+}
+do {
+    let (_, poll, _, row) = fixture(closed: true)
+    poll.results = TelegramMediaPollResults(voters: [voter(1, 3), voter(2, 1)], totalVoters: 4)
+    expect(row.aggregates().map { $0.percent } == [75, 25], "closed nonvoter sees final aggregates")
+    poll.results.voters = [voter(1, 4)]
+    expect(row.aggregates().map { $0.percent } == [100, 0], "server sparse zero option preserved")
+    poll.results.voters = nil
+    expect(row.aggregates().allSatisfy { $0.percent == nil }, "missing server voter data is not zero percent")
+    poll.results.totalVoters = nil
+    expect(row.aggregates().allSatisfy { $0.percent == nil }, "missing server total is not zero percent")
+    poll.results.totalVoters = 0
+    expect(row.aggregates().map { $0.percent } == [0, 0], "authoritative zero total renders zero")
+    poll.results = TelegramMediaPollResults(voters: [voter(1, nil)], totalVoters: 4)
+    expect(row.aggregates().allSatisfy { $0.percent == nil }, "withheld option counts remain unknown")
+}
+do {
+    let (_, poll, _, row) = fixture(now: 300, deadline: 200)
+    poll.hideResultsUntilClose = true
+    poll.results = TelegramMediaPollResults(voters: [voter(1, 3, selected: true), voter(2, 1)], totalVoters: 4)
+    expect(row.aggregates().allSatisfy { $0.percent == nil }, "expired clock cannot reveal hidden results")
+    poll.isClosed = true
+    expect(row.aggregates().map { $0.percent } == [75, 25], "server closure reveals hidden aggregates")
+    poll.isClosed = false
+    poll.hideResultsUntilClose = false
+    poll.results.voters = [voter(1, 4, selected: true)]
+    expect(row.aggregates().map { $0.percent } == [100, 0], "normal voted sparse live results preserved")
+    poll.results.voters = [voter(1, 4)]
+    expect(row.aggregates().allSatisfy { $0.percent == nil }, "open nonvoter results remain hidden")
+}
+do {
+    let (_, poll, _, row) = fixture(closed: true)
+    poll.results = TelegramMediaPollResults(voters: [voter(1, 4, peers: [PeerId(value: 9)])], totalVoters: 4)
+    expect(row.aggregates().allSatisfy { $0.peers.isEmpty }, "anonymous aggregates never expose identities")
+    poll.publicity = .public
+    expect(row.aggregates()[0].peers == [PeerId(value: 9)], "public voter metadata preserved")
+}
+do {
+    let (context, _, message, row) = fixture(now: 160, deadline: 160)
+    let owner = Owner()
+    owner.window = NSWindow()
+    context.engine.messages.response = .single(.result([message]))
+    owner.bind(row)
+    spin()
+    expect(context.engine.messages.requests.count == 1, "already expired initial bind refreshes immediately")
+    for _ in 0..<20 { owner.bind(row); owner.tick() }
+    expect(context.engine.messages.requests.count == 1, "rebuild does not repeatedly refetch")
+    expect(context.engine.messages.requests.allSatisfy { $0.0 == message.id && $0.1 }, "refresh forces matching cloud message")
+    owner.exhaust()
+    expect(!owner.timerRunning, "exhausted refresh stops timer")
+    owner.viewWillMove(toWindow: nil)
+    owner.window = nil
+    owner.tick()
+    expect(context.engine.messages.requests.count == 1, "detached row does not fetch")
+}
+do {
+    let (context, poll, message, row) = fixture(now: 101, deadline: 160)
+    poll.results.voters = [voter(1, 1, selected: true)]
+    let owner = Owner()
+    owner.window = NSWindow()
+    owner.bind(row)
+    context.account.network.now = 160
+    context.engine.messages.response = .single(.result([message]))
+    owner.tick()
+    spin()
+    expect(context.engine.messages.requests.count == 1, "deadline refresh also reaches voted viewers")
+    expect(row.copies == 1, "expiry redraw occurs once")
+    owner.tick()
+    expect(row.copies == 1, "expired row does not redraw forever")
+    owner.viewWillMove(toWindow: nil)
+}
+do {
+    let (context, _, message, _) = fixture(now: 160, deadline: 160)
+    let controller = Controller(context)
+    controller.submit(messageId: message.id, opaqueIdentifiers: [Data([1])])
+    spin()
+    expect(context.engine.messages.votes.isEmpty, "controller guards stale option click")
+    expect(controller.state.pollAnswers[message.id] == nil, "late vote clears transient selection")
+    let (openContext, _, openMessage, _) = fixture(now: 159, deadline: 160)
+    let openController = Controller(openContext)
+    openController.submit(messageId: openMessage.id, opaqueIdentifiers: [])
+    spin()
+    expect(openContext.engine.messages.votes == [[]], "preclosure retract vote still sent")
+}
+do {
+    let (context, poll, message, _) = fixture(now: 160, deadline: 160)
+    let controller = Controller(context)
+    alerts = []
+    context.engine.messages.response = .single(.result([message]))
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    expect(alerts == ["generic"], "expired open cached result keeps generic network error")
+    let closedPoll = TelegramMediaPoll()
+    closedPoll.isClosed = true
+    let updated = Message(id: message.id, poll: closedPoll)
+    context.engine.messages.response = .single(.result([updated]))
+    alerts = []
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    expect(alerts == ["closed"], "race refetch server closure selects closed error")
+    let wrong = Message(id: MessageId(peerId: PeerId(value: 99), namespace: 0, id: message.id.id), poll: closedPoll)
+    context.engine.messages.response = .single(.result([wrong]))
+    alerts = []
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    expect(alerts == ["generic"], "wrong peer response cannot claim closure")
+    closedPoll.pollId = MediaId(namespace: 0, id: 999)
+    context.engine.messages.response = .single(.result([updated]))
+    alerts = []
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    expect(alerts == ["generic"], "wrong poll response cannot claim closure")
+    context.engine.messages.response = .fail(.privateChannel)
+    alerts = []
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    expect(alerts == ["generic"], "failed reload keeps generic error")
+    for restriction in ["country", "subscriber"] {
+        poll.countries = restriction == "country" ? ["US"] : []
+        poll.restrictToSubscribers = restriction == "subscriber"
+        alerts = []
+        controller.fail(messageId: message.id, error: .generic)
+        spin()
+        expect(alerts == [restriction], "\(restriction) generic fallback survives failed refresh")
+    }
+    alerts = []
+    controller.fail(messageId: message.id, error: .restrictedToSubscribers)
+    spin()
+    expect(alerts == ["subscriber"], "explicit subscriber rejection preserved")
+    poll.isClosed = true
+    alerts = []
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    expect(alerts == ["closed"], "already stored server closure overrides restriction")
+}
+#if FIXED
+do {
+    let (_, poll, message, _) = fixture(now: 160, deadline: 160)
+    var state = PollRefreshState()
+    expect(state.update(messageId: message.id, pollId: poll.pollId, deadline: 160), "refresh new identity resets budget")
+    let first = state.begin(now: 0)!
+    expect(state.begin(now: 100) == nil, "refresh in flight deduplicated")
+    expect(!state.update(messageId: message.id, pollId: poll.pollId, deadline: 160), "same row rebuild preserves budget")
+    expect(state.finish(first), "matching response completes request")
+    expect(state.begin(now: 4.99) == nil, "refresh spacing bounded")
+    let second = state.begin(now: 5)!
+    state.cancel()
+    expect(!state.finish(second), "cancel ignores stale completion")
+    let third = state.begin(now: 10)!
+    expect(!state.finish(second) && state.inFlight, "old response cannot complete newer request")
+    expect(state.finish(third), "current response accepted")
+    expect(state.begin(now: 1000) == nil && state.attempts == 3, "three attempt hard bound")
+    state.cancel()
+    expect(state.begin(now: 2000) == nil, "detach does not reset exhausted budget")
+    _ = state.update(messageId: message.id, pollId: poll.pollId, deadline: 200)
+    expect(state.begin(now: 2001) != nil, "changed deadline gets fresh budget")
+    expect(pollDeadlineTimestamp(message: Message(timestamp: Int32.max, poll: poll), poll: poll) == 160, "absolute timestamp stays absolute near overflow")
+    poll.deadlineDate = nil
+    poll.deadlineTimeout = 60
+    expect(pollDeadlineTimestamp(message: Message(timestamp: Int32.max, poll: poll), poll: poll) == Int64(Int32.max) + 60, "relative timestamp addition does not overflow")
+}
+do {
+    let (context, poll, message, row) = fixture(now: 100, closed: true)
+    let owner = Owner()
+    owner.window = NSWindow()
+    var disposed = 0
+    context.engine.messages.response = Signal { _ in ActionDisposable { disposed += 1 } }
+    owner.bind(row)
+    expect(context.engine.messages.requests.count == 1, "closed missing aggregates refreshes")
+    owner.viewWillMove(toWindow: nil)
+    owner.window = nil
+    expect(disposed == 1, "window detach disposes inflight signal")
+    poll.results = TelegramMediaPollResults(voters: [voter(1, 2)], totalVoters: 2)
+    expect(!pollNeedsResultsRefresh(message: message, poll: poll, timestamp: 100), "sparse complete results stop refresh")
+}
+do {
+    let (context, _, message, _) = fixture(now: 160, deadline: 160)
+    let controller = Controller(context)
+    var subscriber: Subscriber<GetMessagesResult, GetMessagesError>?
+    var disposed = 0
+    context.engine.messages.response = Signal { value in
+        subscriber = value
+        return ActionDisposable { disposed += 1 }
+    }
+    alerts = []
+    controller.fail(messageId: message.id, error: .generic)
+    spin()
+    controller.selectMessagePollOptionDisposables.set(nil, forKey: message.id)
+    let closed = TelegramMediaPoll()
+    closed.isClosed = true
+    subscriber?.putNext(.result([Message(id: message.id, poll: closed)]))
+    subscriber?.putCompletion()
+    spin()
+    expect(disposed == 1 && alerts.isEmpty, "cancelled controller error cannot show stale alert")
+}
+do {
+    let (context, poll, message, row) = fixture(now: 160, deadline: 160)
+    let closedPoll = TelegramMediaPoll()
+    closedPoll.isClosed = true
+    context.engine.messages.response = .single(.result([Message(id: message.id, poll: closedPoll)]))
+    let controller = Controller(context)
+    alerts = []
+    controller.submit(messageId: message.id, opaqueIdentifiers: [Data([1])])
+    spin()
+    expect(context.engine.messages.votes.isEmpty && alerts == ["closed"], "late preflight confirms closure without sending vote")
+    let local = Message(id: MessageId(peerId: PeerId(value: 1), namespace: 1, id: 2), poll: closedPoll)
+    expect(!pollNeedsResultsRefresh(message: local, poll: closedPoll, timestamp: 160), "closed local poll cannot request cloud message")
+    let owner = Owner()
+    owner.window = NSWindow()
+    owner.bind(row)
+    owner.exhaust()
+    expect(!owner.timerRunning, "exhausted owner timer is stopped")
+    owner.viewWillMove(toWindow: nil)
+    owner.window = nil
+    let requests = context.engine.messages.requests.count
+    owner.window = NSWindow()
+    owner.viewDidMoveToWindow()
+    expect(context.engine.messages.requests.count == requests + 1 && owner.attempts == 1, "real reattachment permits a fresh bounded refresh")
+    owner.viewWillMove(toWindow: nil)
+    poll.isClosed = true
+}
+do {
+    let (context, poll, message, _) = fixture(now: 160, deadline: 160)
+    var disposed = 0
+    var values = 0
+    var receivedNil = false
+    context.engine.messages.response = Signal { _ in ActionDisposable { disposed += 1 } }
+    let disposable = refreshPollMessage(context: context, messageId: message.id, pollId: poll.pollId).start(next: { value in
+        values += 1
+        receivedNil = value == nil
+    })
+    spin(10.2)
+    expect(values == 1 && receivedNil && disposed == 1, "actual signal timeout yields missing result and disposes request")
+    disposable.dispose()
+}
+#endif
+print("SUMMARY \(checks) checks, \(failures) failures")
+exit(failures == 0 ? 0 : 1)

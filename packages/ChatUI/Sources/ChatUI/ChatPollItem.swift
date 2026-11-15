@@ -43,24 +43,141 @@ private extension TelegramMediaPoll {
 
 
 public func isPollEffectivelyClosed(message: Message, poll: TelegramMediaPoll) -> Bool {
+    return poll.isClosed
+}
+
+private func pollDeadlineTimestamp(message: Message, poll: TelegramMediaPoll) -> Int64? {
+    guard message.id.namespace == Namespaces.Message.Cloud else {
+        return nil
+    }
+    if let deadlineDate = poll.deadlineDate {
+        return Int64(deadlineDate)
+    }
+    if let deadlineTimeout = poll.deadlineTimeout {
+        return Int64(message.forwardInfo?.date ?? message.timestamp) + Int64(deadlineTimeout)
+    }
+    return nil
+}
+
+func isPollVotingClosed(message: Message, poll: TelegramMediaPoll, timestamp: Int32) -> Bool {
     if poll.isClosed {
         return true
-    } /*else if let deadlineTimeout = poll.deadlineTimeout, message.id.namespace == Namespaces.Message.Cloud {
-        let startDate: Int32
-        if let forwardInfo = message.forwardInfo {
-            startDate = forwardInfo.date
-        } else {
-            startDate = message.timestamp
+    }
+    return pollDeadlineTimestamp(message: message, poll: poll).map { Int64(timestamp) >= $0 } ?? false
+}
+
+private func visiblePollVoteCounts(poll: TelegramMediaPoll) -> [Int]? {
+    guard poll.isClosed || (poll.results.voters?.contains(where: { $0.selected }) == true && !poll.hideResultsUntilClose), let total = poll.results.totalVoters, total >= 0 else {
+        return nil
+    }
+    if total == 0 {
+        return poll.options.map { _ in 0 }
+    }
+    guard let voters = poll.results.voters, !voters.isEmpty, voters.allSatisfy({ ($0.count ?? -1) >= 0 }) else {
+        return nil
+    }
+    return poll.options.map { option in
+        return Int(voters.first(where: { $0.opaqueIdentifier == option.opaqueIdentifier })?.count ?? 0)
+    }
+}
+
+func refreshPollMessage(context: any AccountContextProtocol, messageId: MessageId, pollId: MediaId) -> Signal<Message?, NoError> {
+    return context.engine.messages.getMessagesLoadIfNecessary([messageId], strategy: .cloud(skipLocal: true))
+    |> mapToSignal { result -> Signal<Message?, GetMessagesError> in
+        switch result {
+        case .progress:
+            return .complete()
+        case let .result(messages):
+            return .single(messages.first(where: { message in
+                message.id == messageId && message.media.contains(where: { ($0 as? TelegramMediaPoll)?.pollId == pollId })
+            }))
         }
-        
-        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-        if timestamp >= startDate + deadlineTimeout {
-            return true
-        } else {
+    }
+    |> `catch` { _ -> Signal<Message?, NoError> in
+        return .single(nil)
+    }
+    |> take(1)
+    |> timeout(10.0, queue: .mainQueue(), alternate: .single(nil))
+    |> deliverOnMainQueue
+}
+
+func pollVoteErrorText(poll: TelegramMediaPoll?, chatPeer: Peer?) -> String {
+    if let poll {
+        if poll.isClosed {
+            return strings().chatPollVotingClosed
+        }
+        if let text = pollVoteRestrictionText(poll: poll, chatPeer: chatPeer) {
+            return text
+        }
+    }
+    return strings().unknownError
+}
+
+private func pollNeedsResultsRefresh(message: Message, poll: TelegramMediaPoll, timestamp: Int32) -> Bool {
+    guard message.id.namespace == Namespaces.Message.Cloud else {
+        return false
+    }
+    if poll.isClosed {
+        return visiblePollVoteCounts(poll: poll) == nil
+    }
+    return isPollVotingClosed(message: message, poll: poll, timestamp: timestamp)
+}
+
+private struct PollRefreshState {
+    private var messageId: MessageId?
+    private var pollId: MediaId?
+    private var deadline: Int64?
+    private(set) var attempts = 0
+    private(set) var inFlight = false
+    private var generation = 0
+    private var nextAttemptTime: Double = 0
+
+    var canRetry: Bool {
+        return attempts < 3
+    }
+
+    mutating func resume() {
+        if !inFlight {
+            attempts = 0
+            nextAttemptTime = 0
+        }
+    }
+
+    mutating func update(messageId: MessageId, pollId: MediaId, deadline: Int64?) -> Bool {
+        guard self.messageId != messageId || self.pollId != pollId || self.deadline != deadline else {
             return false
         }
-    }*/ else {
-        return false
+        cancel()
+        self.messageId = messageId
+        self.pollId = pollId
+        self.deadline = deadline
+        attempts = 0
+        nextAttemptTime = 0
+        return true
+    }
+
+    mutating func begin(now: Double) -> Int? {
+        guard !inFlight, attempts < 3, now >= nextAttemptTime else {
+            return nil
+        }
+        attempts += 1
+        inFlight = true
+        generation += 1
+        nextAttemptTime = now + 5.0
+        return generation
+    }
+
+    mutating func finish(_ generation: Int) -> Bool {
+        guard inFlight, self.generation == generation else {
+            return false
+        }
+        inFlight = false
+        return true
+    }
+
+    mutating func cancel() {
+        generation += 1
+        inFlight = false
     }
 }
 
@@ -273,7 +390,7 @@ public class ChatPollItem: ChatRowItem {
     fileprivate let poll: TelegramMediaPoll
     fileprivate var canAddOption: Bool {
         let hasVoted = options.contains(where: { $0.isSelected })
-        return poll.openAnswers && !isClosed && !hasVoted
+        return poll.openAnswers && !isVotingClosed && !hasVoted
     }
     
     public var actionButtonText: String? {
@@ -320,6 +437,9 @@ public class ChatPollItem: ChatRowItem {
         if message.flags.contains(.Failed) || message.flags.contains(.Sending) || message.flags.contains(.Unsent) {
             return false
         }
+        if !isClosed && isVotingClosed {
+            return false
+        }
         let hasSelected = options.contains(where: { $0.isMultipleSelected }) || options.contains(where: { $0.isSelected })
         if poll.isMultiple {
             return hasSelected
@@ -332,8 +452,15 @@ public class ChatPollItem: ChatRowItem {
        return isPollEffectivelyClosed(message: message!, poll: poll)
     }
 
+    fileprivate var isVotingClosed: Bool {
+        guard let message = message else {
+            return true
+        }
+        return isPollVotingClosed(message: message, poll: poll, timestamp: context.account.network.getApproximateRemoteTimestamp())
+    }
+
     public var showResultsIn: Bool {
-        guard let _ = poll.deadlineTimeout else { return false }
+        guard deadlineEndDate != nil else { return false }
         if isClosed { return false }
         let hasVoted = options.contains(where: { $0.isSelected })
         if poll.hideResultsUntilClose {
@@ -343,14 +470,8 @@ public class ChatPollItem: ChatRowItem {
     }
 
     public var deadlineEndDate: Int32? {
-        guard let deadlineTimeout = poll.deadlineTimeout, let message = message else { return nil }
-        let startDate: Int32
-        if let forwardInfo = message.forwardInfo {
-            startDate = forwardInfo.date
-        } else {
-            startDate = message.timestamp
-        }
-        return startDate + deadlineTimeout
+        guard let message = message, let deadline = pollDeadlineTimestamp(message: message, poll: poll) else { return nil }
+        return Int32(clamping: deadline)
     }
 
     public struct GalleryMediaInfo {
@@ -491,13 +612,9 @@ public class ChatPollItem: ChatRowItem {
             displayIndices = shuffled
         }
 
-        var votes:[Int] = []
-        for option in displayOptions {
-            let count = Int(poll.results.voters?.first(where: {$0.opaqueIdentifier == option.opaqueIdentifier})?.count ?? 0)
-            votes.append(count)
-        }
-
-        let percents = countNicePercent(votes: votes, total: Int(poll.results.totalVoters ?? 0))
+        let voteCounts = visiblePollVoteCounts(poll: poll)
+        let votes = voteCounts.map { counts in displayIndices.map { counts[$0] } }
+        let percents = countNicePercent(votes: votes ?? [], total: Int(poll.results.totalVoters ?? 0))
         let maximum: Int = percents.max() ?? 0
 
         let hideResults = poll.hideResultsUntilClose && !self.isClosed
@@ -521,21 +638,18 @@ public class ChatPollItem: ChatRowItem {
                 percent = nil
                 realPercent = 0
                 isCorrect = nil
-            } else if let vote = poll.results.voters?.first(where: {$0.opaqueIdentifier == option.opaqueIdentifier}), let totalVoters = poll.results.totalVoters, (voted || self.isClosed) {
+            } else if let votes = votes {
+                let vote = poll.results.voters?.first(where: { $0.opaqueIdentifier == option.opaqueIdentifier })
                 percent = maximum == 0 ? 0 : (Float(percents[i]) / Float(maximum))
-                realPercent = totalVoters == 0 ? 0 : Float(percents[i])
-                isSelected = vote.selected
-                votedCount = vote.count ?? 0
-                optionRecentVoters = vote.recentVoters
-                if poll.isQuiz {
-                    isCorrect = vote.isCorrect
-                } else {
-                   isCorrect = nil
-                }
+                realPercent = Float(percents[i])
+                isSelected = vote?.selected ?? false
+                votedCount = Int32(clamping: votes[i])
+                optionRecentVoters = poll.publicity == .public ? vote?.recentVoters ?? [] : []
+                isCorrect = poll.isQuiz ? vote?.isCorrect : nil
             } else {
-                percent = poll.results.totalVoters == nil || poll.results.totalVoters == 0 ? (isClosed ? 0 : nil) : voted ? 0 : (isClosed ? 0 : nil)
+                percent = nil
                 realPercent = 0
-                isSelected = false
+                isSelected = poll.results.voters?.first(where: { $0.opaqueIdentifier == option.opaqueIdentifier })?.selected ?? false
                 isCorrect = nil
             }
 
@@ -565,7 +679,7 @@ public class ChatPollItem: ChatRowItem {
         var totalText = poll.isQuiz ? strings().chatQuizTotalVotesOther(Int(totalCount)) : strings().chatPollTotalVotes1Other(Int(totalCount))
         totalText = totalText.replacingOccurrences(of: "\(totalCount)", with: Int(totalCount).separatedNumber)
         
-        if actionButtonText == nil && !isBotQuiz {
+        if actionButtonText == nil && !isBotQuiz && (!isClosed || poll.results.totalVoters != nil) {
             let text: String
             if totalCount > 0 {
                 text = totalText
@@ -708,7 +822,7 @@ public class ChatPollItem: ChatRowItem {
         if message.flags.contains(.Failed) || message.flags.contains(.Unsent) || message.flags.contains(.Sending) {
             return false
         }
-        if self.isClosed {
+        if self.isVotingClosed {
             return false
         }
         if self.options.contains(where: { $0.isLoading }) {
@@ -726,7 +840,7 @@ public class ChatPollItem: ChatRowItem {
             let identifiers = self.entry.additionalData.pollStateData.identifiers
             chatInteraction.vote(message.id, identifiers, true)
         } else {
-            if !isBotQuiz, let totalVoters = self.poll.results.totalVoters, totalVoters > 0 {
+            if !isBotQuiz, poll.publicity == .public, isClosed || (hasSelected && !poll.hideResultsUntilClose), let totalVoters = self.poll.results.totalVoters, totalVoters > 0 {
                 ChatNavigationHooks.shared.showPollResult(context, message, fromOption, context.window)
             }
         }
@@ -1498,6 +1612,15 @@ private final class PollOptionView : Control {
                         performSubviewRemoval(view, animated: animated, duration: duration / 2)
                     }
                 }
+            } else if item?.isVotingClosed == true {
+                if let view = selectingView {
+                    self.selectingView = nil
+                    performSubviewRemoval(view, animated: animated, duration: duration / 2)
+                }
+                if let view = progressIndicator {
+                    self.progressIndicator = nil
+                    performSubviewRemoval(view, animated: animated, duration: duration / 2)
+                }
             } else {
                 if let view = progressIndicator {
                     self.progressIndicator = nil
@@ -1826,6 +1949,9 @@ private final class PollView : Control {
     private var totalVotesTextView: TextView?
     private var resultsInView: TextView?
     private var resultsInTimer: SwiftSignalKit.Timer?
+    private let refreshDisposable = MetaDisposable()
+    private var refreshState = PollRefreshState()
+    private var votingClosed = false
     private(set) var explanationView: WPContentView?
     private var explanationCloseButton: ImageButton?
     fileprivate weak var currentItem: ChatPollItem?
@@ -1854,6 +1980,7 @@ private final class PollView : Control {
 
     deinit {
         resultsInTimer?.invalidate()
+        refreshDisposable.dispose()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -1861,7 +1988,68 @@ private final class PollView : Control {
         if newWindow == nil {
             resultsInTimer?.invalidate()
             resultsInTimer = nil
+            refreshState.cancel()
+            refreshDisposable.set(nil)
         }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            refreshState.resume()
+        }
+        updateDeadlineTimer()
+        updateDeadline()
+    }
+
+    private func updateDeadlineTimer() {
+        guard window != nil, let item = currentItem, let message = item.message else {
+            resultsInTimer?.invalidate()
+            resultsInTimer = nil
+            return
+        }
+        let timestamp = item.context.account.network.getApproximateRemoteTimestamp()
+        let hasFutureDeadline = !item.isClosed && (pollDeadlineTimestamp(message: message, poll: item.poll).map { $0 > Int64(timestamp) } ?? false)
+        guard hasFutureDeadline || (refreshState.canRetry && pollNeedsResultsRefresh(message: message, poll: item.poll, timestamp: timestamp)) else {
+            resultsInTimer?.invalidate()
+            resultsInTimer = nil
+            return
+        }
+        if resultsInTimer == nil {
+            resultsInTimer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
+                self?.updateDeadline()
+            }, queue: Queue.mainQueue())
+            resultsInTimer?.start()
+        }
+    }
+
+    private func updateDeadline() {
+        guard window != nil, let item = currentItem, let message = item.message else {
+            return
+        }
+        defer {
+            updateDeadlineTimer()
+        }
+        updateResultsIn()
+        let isVotingClosed = item.isVotingClosed
+        if votingClosed != isVotingClosed {
+            votingClosed = isVotingClosed
+            item.copyAndUpdate(animated: true)
+        }
+        guard !visibleRect.isEmpty else {
+            refreshState.cancel()
+            refreshDisposable.set(nil)
+            return
+        }
+        guard pollNeedsResultsRefresh(message: message, poll: item.poll, timestamp: item.context.account.network.getApproximateRemoteTimestamp()), let generation = refreshState.begin(now: CACurrentMediaTime()) else {
+            return
+        }
+        refreshDisposable.set(refreshPollMessage(context: item.context, messageId: message.id, pollId: item.poll.pollId).start(next: { [weak self] _ in
+            guard let self, self.refreshState.finish(generation) else {
+                return
+            }
+            self.updateDeadlineTimer()
+        }))
     }
     
     
@@ -2079,6 +2267,14 @@ private final class PollView : Control {
         }
 
         self.currentItem = item
+        if let message = item.message, refreshState.update(messageId: message.id, pollId: item.poll.pollId, deadline: pollDeadlineTimestamp(message: message, poll: item.poll)) {
+            refreshDisposable.set(nil)
+        }
+        if let message = item.message, !pollNeedsResultsRefresh(message: message, poll: item.poll, timestamp: item.context.account.network.getApproximateRemoteTimestamp()) {
+            refreshState.cancel()
+            refreshDisposable.set(nil)
+        }
+        votingClosed = item.isVotingClosed
         if item.showResultsIn {
             var isNew = false
             if resultsInView == nil {
@@ -2094,20 +2290,14 @@ private final class PollView : Control {
                 let resultsY = (totalVotesTextView?.frame.maxY ?? typeView.frame.maxY) + 5
                 resultsInView.setFrameOrigin(NSMakePoint(floorToScreenPixels(backingScaleFactor, (frame.width - resultsInView.frame.width) / 2), resultsY))
             }
-            if resultsInTimer == nil {
-                resultsInTimer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
-                    self?.updateResultsIn()
-                }, queue: Queue.mainQueue())
-                resultsInTimer?.start()
-            }
         } else {
             if let view = resultsInView {
                 resultsInView = nil
                 performSubviewRemoval(view, animated: animated)
             }
-            resultsInTimer?.invalidate()
-            resultsInTimer = nil
         }
+        updateDeadlineTimer()
+        updateDeadline()
 
         if let actionText = item.actionButtonText {
             let current: TextButton
@@ -2148,7 +2338,7 @@ private final class PollView : Control {
         }
         
         var avatarPeers: [Peer] = []
-        if !item.isBotQuiz {
+        if !item.isBotQuiz, item.poll.publicity == .public {
             for peerId in item.poll.results.recentVoters {
                 if let peer = message.peers[peerId] {
                     avatarPeers.append(peer)
@@ -2237,19 +2427,12 @@ private final class PollView : Control {
                 }
             }
             
-            timerView.reachedTimeout = { [weak item] in
-                item?.copyAndUpdate(animated: true)
+            timerView.reachedTimeout = { [weak self] in
+                self?.updateDeadline()
             }
-            var endDate: Int32?
-            if message.id.namespace == Namespaces.Message.Cloud {
-                let startDate: Int32
-                if let forwardInfo = message.forwardInfo {
-                    startDate = forwardInfo.date
-                } else {
-                    startDate = message.timestamp
-                }
-                endDate = startDate + deadlineTimeout
-            }
+            let localTimestamp = Int64(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
+            let remoteTimestamp = Int64(item.context.account.network.getApproximateRemoteTimestamp())
+            let endDate = item.deadlineEndDate.map { Int32(clamping: Int64($0) - remoteTimestamp + localTimestamp) }
             timerView.update(regularColor: item.presentation.chat.textColor(item.isIncoming, item.isBubbled), proximityColor: item.presentation.chat.redUI(item.isIncoming, item.isBubbled), timeout: deadlineTimeout, deadlineTimestamp: endDate)
             
         } else if let timerView = self.timerView {
@@ -2356,14 +2539,8 @@ private final class PollView : Control {
         guard let item = currentItem, let endDate = item.deadlineEndDate, let resultsInView = self.resultsInView else {
             return
         }
-        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-        let remaining = max(0, Int(endDate - timestamp))
-        if remaining == 0 {
-            resultsInTimer?.invalidate()
-            resultsInTimer = nil
-            item.copyAndUpdate(animated: true)
-            return
-        }
+        let timestamp = item.context.account.network.getApproximateRemoteTimestamp()
+        let remaining = max(0, Int(Int64(endDate) - Int64(timestamp)))
         let timeString: String
         if remaining >= 86400 {
             timeString = strings().messageTimerShortDays("\(remaining / 86400)")
