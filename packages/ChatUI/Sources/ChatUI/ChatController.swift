@@ -4940,7 +4940,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 self.chatInteraction.beginEditingMessage(nil)
                 self.chatInteraction.update({
                     $0.updatedInterfaceState({
-                        $0.withUpdatedComposeDisableUrlPreview(nil).updatedEditState({
+                        $0.updatedEditState({
                             $0?.withUpdatedLoadingState(.none)
                         })
                     })
@@ -4985,7 +4985,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         self.chatInteraction.beginEditingMessage(nil)
                         self.chatInteraction.update({
                             $0.updatedInterfaceState({
-                                $0.withUpdatedComposeDisableUrlPreview(nil).updatedEditState({
+                                $0.updatedEditState({
                                     $0?.withUpdatedLoadingState(.none)
                                 })
                             })
@@ -5169,10 +5169,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             if !presentation.effectiveInput.inputText.trimmed.isEmpty {
                                 setNextToTransaction = true
                                 let paidMessageStars = takePaidMessageStars()
+                                let urlPreview = urlPreviewMatchesInput(presentation, context: context) ? presentation.urlPreview : nil
+                                let disablePreview = presentation.interfaceState.composeDisableUrlPreview != nil && (urlPreview == nil || urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview)
                                 makeTextSignal = { [weak controller] textContext in
                                     guard let controller else { submission?.discard(); return .complete() }
                                     let sendObservation = controller.makeMessageSendObservation(.text, analyticsContext: textContext, scheduled: atDate != nil, silent: silent)
-                                    return Sender.enqueue(input: rewrittenInput ?? presentation.effectiveInput, context: context, peerId: destinationPeerId, replyId: destinationReply, threadId: destinationThreadId, disablePreview: presentation.interfaceState.composeDisableUrlPreview != nil, linkBelowMessage: presentation.interfaceState.linkBelowMessage, largeMedia: presentation.interfaceState.largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: currentSendAsPeerId, mediaPreview: rewrittenInput == nil ? presentation.urlPreview?.1 : nil, emptyHandler: { [weak controller] in
+                                    return Sender.enqueue(input: rewrittenInput ?? presentation.effectiveInput, context: context, peerId: destinationPeerId, replyId: destinationReply, threadId: destinationThreadId, disablePreview: disablePreview, linkBelowMessage: presentation.interfaceState.linkBelowMessage, largeMedia: presentation.interfaceState.largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: currentSendAsPeerId, mediaPreview: rewrittenInput == nil ? presentation.urlPreview?.1 : nil, emptyHandler: { [weak controller] in
                                         _ = controller?.nextTransaction.execute()
                                     }, customChatContents: customChatContents, messageEffect: messageEffect, sendPaidMessageStars: paidMessageStars, suggestPost: presentation.interfaceState.suggestPost, observedResult: { expectedCount, ids in
                                         sendObservation?.complete(expectedCount: expectedCount, resultCount: ids.count, acceptedCount: ids.compactMap { $0 }.count)
@@ -12809,10 +12811,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }
                     
                     var disableEditingPreview:((String)->Void)? = nil
-                    if oldValue.interfaceState.editState == nil, value.interfaceState.editState != nil {
+                    if let editState = value.interfaceState.editState, oldValue.interfaceState.editState?.message.id != editState.message.id {
                         disableEditingPreview = { [weak self] value in
                             self?.chatInteraction.update({ $0.updatedInterfaceState{
-                                $0.withUpdatedComposeDisableUrlPreview(value)
+                                $0.editState != nil ? $0.withUpdatedComposeDisableUrlPreview(value) : $0
                             }})
                         }
                     }

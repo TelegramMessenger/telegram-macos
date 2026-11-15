@@ -236,7 +236,7 @@ public class ChatInputAccessory: View {
                             $0.updatedInterfaceState {
                                 $0.updatedEditState { value in
                                     if let value = value {
-                                        return .init(message: value.message.withUpdatedMedia([]))
+                                        return .init(message: value.message.withUpdatedMedia([]), draftDisableUrlPreview: value.draftDisableUrlPreview)
                                     } else {
                                         return nil
                                     }
