@@ -1550,7 +1550,7 @@ public class GalleryViewer: NSResponder {
                             let layout = TextViewLayout(attributedText, alignment: .center, lineSpacing: 5.0, alwaysStaticItems: true)
                             layout.interactions = TextViewInteractions(processURL: { [weak strongSelf] url  in
                                  if let file = file {
-                                    showInFinder(file, account: context.account)
+                                    showInFinder(file, account: context.account, permanent: true)
                                     strongSelf?.close(false)
                                 }
                             })
@@ -1558,7 +1558,14 @@ public class GalleryViewer: NSResponder {
 
                             if let file = file {
 
-                                _ = (copyToDownloads(file, postbox: context.account.postbox, saveAnyway: true) |> map { _ in } |> deliverOnMainQueue |> take(1) |> then (showSaveModal(for: strongSelf.window, context: context, animation: LocalAnimatedSticker.success_saved, shouldBlur: false, text: layout, delay: 3.0))).start()
+                                let window = strongSelf.window
+                                _ = (copyToDownloads(file, postbox: context.account.postbox, saveAnyway: true) |> take(1) |> deliverOnMainQueue |> mapToSignal { saved -> Signal<Void, NoError> in
+                                    guard saved != nil else {
+                                        showModalText(for: window, text: strings().unknownError)
+                                        return .complete()
+                                    }
+                                    return showSaveModal(for: window, context: context, animation: LocalAnimatedSticker.success_saved, shouldBlur: false, text: layout, delay: 3.0)
+                                }).start()
                             } else {
                                 savePanel(file: path.nsstring.deletingPathExtension, ext: path.nsstring.pathExtension, for: strongSelf.window)
                             }

@@ -7,8 +7,8 @@ import TGUIKit
 import InAppSettings
 import TelegramTheme
 
-public func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAnyway: Bool = false) -> Signal<String?, NoError> {
-    return combineLatest(queue: resourcesQueue, downloadFilePath(file, postbox), downloadedFilePaths(postbox)) |> take(1) |> mapToSignal { expanded, paths -> Signal<String?, NoError> in
+public func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAnyway: Bool = false, permanent: Bool = false) -> Signal<String?, NoError> {
+    return combineLatest(queue: resourcesQueue, downloadFilePath(file, postbox, permanent: saveAnyway || permanent), downloadedFilePaths(postbox)) |> take(1) |> mapToSignal { expanded, paths -> Signal<String?, NoError> in
         guard let (boxPath, destination) = expanded else {
             return .single(nil)
         }
@@ -35,7 +35,7 @@ public func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAny
     }
 }
 
-public func downloadFilePath(_ file: TelegramMediaFile, _ postbox: Postbox) -> Signal<(String, String)?, NoError> {
+public func downloadFilePath(_ file: TelegramMediaFile, _ postbox: Postbox, permanent: Bool = false) -> Signal<(String, String)?, NoError> {
     return combineLatest(postbox.mediaBox.resourceData(file.resource), automaticDownloadSettings(postbox: postbox)) |> take(1) |> map { data, settings -> (String, String)? in
         guard data.complete else {
             return nil
@@ -49,7 +49,7 @@ public func downloadFilePath(_ file: TelegramMediaFile, _ postbox: Postbox) -> S
             ext = fileExt(file.mimeType) ?? ""
         }
         let name = fileName.nsstring.deletingPathExtension + (ext.isEmpty ? "" : "." + ext)
-        let directory = settings.usesTemporaryDownloadFolder ? DownloadedFileStorage.temporaryDirectory(mediaBoxPath: postbox.mediaBox.basePath) : settings.downloadFolder
+        let directory = settings.usesTemporaryDownloadFolder && !permanent ? DownloadedFileStorage.temporaryDirectory(mediaBoxPath: postbox.mediaBox.basePath) : settings.downloadFolder
         return (data.path, URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(name).path)
     }
 }
