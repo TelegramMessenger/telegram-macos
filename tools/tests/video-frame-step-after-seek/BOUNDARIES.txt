@@ -1,0 +1,9 @@
+Run with python3 -I tools/tests/video-frame-step-after-seek/run.py.
+Use --baseline <revision> to compile the same fixture against historical production code.
+Use --source-root <tree> for exact integrated sources, --output <new-directory> to retain generated source and logs, and --compiler-lock <path> to serialize native compiler work.
+
+The harness extracts the actual controller rewind closure, frame-step and playback methods, and the regular/PiP timeline and15-second control callbacks from SVideoView. It checks seeking while paused, forward/backward steps, repeated steps without intermediate status delivery, boundary clamping, weak lifetime, normal playing-scrub pause/resume and disposal of the obsolete preview subscription.
+
+Player status, player seeks and preview subscriptions use explicit synchronous fixtures. This is a control-flow regression, not a decoder, HLS streaming, SignalKit queue, network, window or Telegram-account test. Disposal prevents later emission in the fixture; real SignalKit delivery behavior and in-flight media generation are not simulated. Manual visual acceptance remains separate.
+
+The production change invalidates the old frame-step accumulator and detaches/hides its preview when the existing non-frame rewind callback runs. It retains the existing30fps step interval and does not change frame-accurate decoding policy.

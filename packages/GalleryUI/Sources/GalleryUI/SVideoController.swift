@@ -586,6 +586,10 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         genericView.interactions = SVideoInteractions(playOrPause: { [weak self] in
             self?.playOrPause()
         }, rewind: { [weak self] timestamp in
+            self?.frameStepTimestamp = nil
+            self?.frameStepDisposable?.dispose()
+            self?.frameStepDisposable = nil
+            self?.genericView.hideFrameStepOverlay()
             self?.mediaPlayer.seek(timestamp)
         }, scrobbling: { [weak self] timecode in
             guard let `self` = self else { return }
