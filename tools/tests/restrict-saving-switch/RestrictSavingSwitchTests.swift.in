@@ -1,0 +1,474 @@
+import Foundation
+
+typealias PeerId = Int64
+
+struct TelegramChannelFlags: OptionSet {
+    let rawValue: Int32
+    static let copyProtectionEnabled = TelegramChannelFlags(rawValue: 1 << 0)
+}
+
+struct TelegramGroupFlags: OptionSet {
+    let rawValue: Int32
+    static let copyProtectionEnabled = TelegramGroupFlags(rawValue: 1 << 0)
+}
+
+protocol Peer: AnyObject {
+    var isChannel: Bool { get }
+}
+
+final class TelegramChannel: Peer {
+    var flags: TelegramChannelFlags
+    let broadcast: Bool
+    init(broadcast: Bool, protected: Bool) {
+        self.broadcast = broadcast
+        self.flags = protected ? [.copyProtectionEnabled] : []
+    }
+    var isChannel: Bool {
+        return broadcast
+    }
+}
+
+final class TelegramGroup: Peer {
+    var flags: TelegramGroupFlags
+    init(protected: Bool) {
+        self.flags = protected ? [.copyProtectionEnabled] : []
+    }
+    var isChannel: Bool {
+        return false
+    }
+}
+
+func isProtected(_ peer: Peer) -> Bool {
+    if let peer = peer as? TelegramChannel {
+        return peer.flags.contains(.copyProtectionEnabled)
+    }
+    if let peer = peer as? TelegramGroup {
+        return peer.flags.contains(.copyProtectionEnabled)
+    }
+    return false
+}
+
+func setProtected(_ peer: Peer, _ value: Bool) {
+    if let peer = peer as? TelegramChannel {
+        if value {
+            peer.flags.insert(.copyProtectionEnabled)
+        } else {
+            peer.flags.remove(.copyProtectionEnabled)
+        }
+    }
+    if let peer = peer as? TelegramGroup {
+        if value {
+            peer.flags.insert(.copyProtectionEnabled)
+        } else {
+            peer.flags.remove(.copyProtectionEnabled)
+        }
+    }
+}
+
+struct Strings {
+    var channelVisibilityForwardingChannelInfo1: String { return "Subscribers will be able to copy, save or forward content from this channel." }
+    var channelVisibilityForwardingChannelInfo1Restrict: String { return "Subscribers won't be able to copy, save or forward content from this channel." }
+    var channelVisibilityForwardingGroupInfo1: String { return "Members will be able to copy, save and forward content from this group." }
+    var channelVisibilityForwardingGroupInfo1Restrict: String { return "Members won't be able to copy, save or forward content from this group." }
+    var unknownError: String { return "An error occurred." }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+enum GeneralViewType: Equatable {
+    case singleItem
+    case firstItem
+    case lastItem
+    case textTopItem
+    case textBottomItem
+}
+
+enum ChannelVisibilityEntry: Equatable {
+    case allowForward(sectionId: Int32, Bool, GeneralViewType)
+    case forwardInfo(sectionId: Int32, String, GeneralViewType)
+}
+
+struct State: Equatable {
+    var forwardingEnabled: Bool?
+    var updatingAddressName: Bool = false
+}
+
+final class Arguments {
+    let toggleForwarding: (Bool) -> Void
+    init(toggleForwarding: @escaping (Bool) -> Void) {
+        self.toggleForwarding = toggleForwarding
+    }
+}
+
+final class SwitchRowItem {
+    var value: Bool
+    let action: () -> Void
+    let switchAction: (() -> Void)?
+    init(value: Bool, action: @escaping () -> Void, switchAction: (() -> Void)?) {
+        self.value = value
+        self.action = action
+        self.switchAction = switchAction
+    }
+}
+
+func forwardEntries(state: State, peer: Peer) -> [ChannelVisibilityEntry] {
+    var entries: [ChannelVisibilityEntry] = []
+    let sectionId: Int32 = 0
+    __ENTRIES__
+    return entries
+}
+
+func rowItem(_ entry: ChannelVisibilityEntry, _ arguments: Arguments) -> SwitchRowItem? {
+    switch entry {
+    __ROW_CASE__
+        _ = viewType
+        let switchAction: (() -> Void)? = __SWITCH_ACTION__
+        return SwitchRowItem(value: __ROW_VALUE__, action: {
+            __ROW_ACTION__
+        }, switchAction: switchAction)
+    default:
+        return nil
+    }
+}
+
+var requested: [Bool] = []
+
+final class PeersEngine {
+    func toggleMessageCopyProtection(peerId: PeerId, enabled: Bool) -> Signal<Int, NoError> {
+        return Signal { subscriber in
+            requested.append(enabled)
+            subscriber.putNext(0)
+            subscriber.putCompletion()
+            return EmptyDisposable
+        }
+    }
+}
+
+final class Engine {
+    let peers = PeersEngine()
+}
+
+final class Window {}
+
+final class Context {
+    let engine = Engine()
+    let window = Window()
+}
+
+let context = Context()
+let peerId: PeerId = 1
+
+final class Screen {
+    let peer: Peer
+    var state = State()
+    var shown: [ChannelVisibilityEntry] = []
+    var row: SwitchRowItem?
+    var switchOn = false
+    var hint = ""
+    var arguments: Arguments!
+
+    init(peer: Peer) {
+        self.peer = peer
+        self.arguments = Arguments(toggleForwarding: __TOGGLE__)
+    }
+
+    var stateSwitch: Bool? {
+        for entry in shown {
+            if case .allowForward = entry {
+                return rowItem(entry, arguments)?.value
+            }
+        }
+        return nil
+    }
+
+    func render() {
+        let built = forwardEntries(state: state, peer: peer)
+        for entry in built {
+            switch entry {
+            case .allowForward:
+                if !shown.contains(entry), let item = rowItem(entry, arguments) {
+                    row = item
+                    switchOn = item.value
+                }
+            case let .forwardInfo(_, text, _):
+                hint = text
+            }
+        }
+        shown = built
+    }
+
+    var pending: (() -> Void)?
+
+    func finishAnimation() {
+        let change = pending
+        pending = nil
+        change?()
+    }
+
+    func stateChanged(_ item: SwitchRowItem) {
+        guard row === item else {
+            return
+        }
+        if item.switchAction == nil {
+            item.value = switchOn
+        }
+        (item.switchAction ?? item.action)()
+        render()
+    }
+
+    func clickRow() {
+        guard let current = row else {
+            return
+        }
+        if current.switchAction == nil {
+            clickSwitch()
+        } else {
+            current.action()
+            render()
+        }
+    }
+
+    func clickSwitch() {
+        finishAnimation()
+        guard let row = row else {
+            return
+        }
+        switchOn.toggle()
+        pending = { [unowned self] in
+            self.stateChanged(row)
+        }
+    }
+
+    func done() -> [Bool] {
+        requested = []
+        let state = self.state
+        var signals: [Signal<Never, NoError>] = []
+        __DONE__
+        _ = combineLatest(signals).start()
+        return requested
+    }
+}
+
+var activeScreen: Screen!
+
+func updateState(_ f: (State) -> State) {
+    activeScreen.state = f(activeScreen.state)
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+struct Kind {
+    let name: String
+    let make: (Bool) -> Peer
+    let allowText: String
+    let restrictText: String
+}
+
+let kinds = [
+    Kind(name: "channel", make: { TelegramChannel(broadcast: true, protected: $0) }, allowText: strings().channelVisibilityForwardingChannelInfo1, restrictText: strings().channelVisibilityForwardingChannelInfo1Restrict),
+    Kind(name: "supergroup", make: { TelegramChannel(broadcast: false, protected: $0) }, allowText: strings().channelVisibilityForwardingGroupInfo1, restrictText: strings().channelVisibilityForwardingGroupInfo1Restrict),
+    Kind(name: "group", make: { TelegramGroup(protected: $0) }, allowText: strings().channelVisibilityForwardingGroupInfo1, restrictText: strings().channelVisibilityForwardingGroupInfo1Restrict)
+]
+
+enum ClickPath: String, CaseIterable {
+    case row = "row"
+    case switchItself = "switch"
+    case rowThenDone = "row, Done at once"
+}
+
+for path in ClickPath.allCases {
+    for kind in kinds {
+        for start in [false, true] {
+            for clicks in (path == .rowThenDone ? 1 : 0) ... 3 {
+                let name = "\(path.rawValue), \(kind.name), \(start ? "protected" : "not protected"), \(clicks) click\(clicks == 1 ? "" : "s")"
+                let peer = kind.make(start)
+                let screen = Screen(peer: peer)
+                activeScreen = screen
+                screen.render()
+                check("\(name): the switch starts as the chat is", screen.switchOn == start)
+                check("\(name): the hint starts as the chat is", screen.hint == (start ? kind.restrictText : kind.allowText))
+                for click in stride(from: 1, through: clicks, by: 1) {
+                    switch path {
+                    case .row, .rowThenDone:
+                        screen.clickRow()
+                    case .switchItself:
+                        screen.clickSwitch()
+                    }
+                    if path != .rowThenDone || click < clicks {
+                        screen.finishAnimation()
+                    }
+                    let expected = start != (click % 2 == 1)
+                    check("\(name): after click \(click) the switch is \(expected ? "on" : "off")", screen.switchOn == expected)
+                    check("\(name): after click \(click) the screen state agrees with the switch", screen.stateSwitch == expected)
+                    check("\(name): after click \(click) the hint matches the switch", screen.hint == (expected ? kind.restrictText : kind.allowText))
+                }
+                let shownBeforeDone = screen.switchOn
+                let requests = screen.done()
+                check("\(name): Done sends at most one request", requests.count <= 1)
+                if clicks == 0 {
+                    check("\(name): Done without a click sends nothing", requests.isEmpty)
+                }
+                if let last = requests.last {
+                    setProtected(peer, last)
+                }
+                check("\(name): after Done the chat is \(shownBeforeDone ? "protected" : "not protected"), as the switch showed", isProtected(peer) == shownBeforeDone)
+                let reopened = Screen(peer: peer)
+                activeScreen = reopened
+                reopened.render()
+                check("\(name): the page opened again shows what was chosen", reopened.switchOn == shownBeforeDone)
+            }
+        }
+    }
+}
+
+enum ConvertGroupToSupergroupError {
+    case tooManyChannels
+    case generic
+}
+
+enum InactiveChannelsSource {
+    case upgrade
+}
+
+var alerts = 0
+
+func alert(for window: Window, info: String) {
+    alerts += 1
+}
+
+final class FeatureNavigationHooks {
+    static let shared = FeatureNavigationHooks()
+    func showInactiveChannels(_ context: Context, _ source: InactiveChannelsSource) {
+        alerts += 1
+    }
+}
+
+let finishedToggles = Atomic<Int>(value: 0)
+
+final class CompletionRecorder {
+    var values: [(PeerId?, Int)] = []
+    func set(_ signal: Signal<PeerId?, NoError>) {
+        _ = signal.start(next: { [weak self] value in
+            self?.values.append((value, finishedToggles.with { $0 }))
+        })
+    }
+}
+
+final class DoneScreen {
+    let updateAddressNameDisposable = MetaDisposable()
+    let onComplete = CompletionRecorder()
+
+    func doneWithLink(_ signal: Signal<PeerId?, ConvertGroupToSupergroupError>, _ signals: [Signal<Never, NoError>]) {
+        let run: () -> Void = { [weak self] in
+            __WITH_LINK__
+        }
+        run()
+    }
+
+    func doneWithoutLink(_ signals: [Signal<Never, NoError>]) {
+        let run: () -> Void = { [weak self] in
+            __WITHOUT_LINK__
+        }
+        run()
+    }
+}
+
+func later<T, E>(_ delay: Double, _ value: T) -> Signal<T, E> {
+    return Signal { subscriber in
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+            subscriber.putNext(value)
+            subscriber.putCompletion()
+        }
+        return EmptyDisposable
+    }
+}
+
+func failing<T>(_ delay: Double) -> Signal<T, ConvertGroupToSupergroupError> {
+    return Signal { subscriber in
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+            subscriber.putError(.generic)
+        }
+        return EmptyDisposable
+    }
+}
+
+func toggle(_ delay: Double?) -> Signal<Never, NoError> {
+    return Signal { subscriber in
+        let finish = {
+            _ = finishedToggles.modify { $0 + 1 }
+            subscriber.putCompletion()
+        }
+        if let delay = delay {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                finish()
+            }
+        } else {
+            finish()
+        }
+        return EmptyDisposable
+    }
+}
+
+func spin(until done: () -> Bool) {
+    let deadline = Date().addingTimeInterval(2)
+    while !done() && Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+}
+
+struct DoneCase {
+    let name: String
+    let link: Signal<PeerId?, ConvertGroupToSupergroupError>?
+    let toggles: [Double?]
+    let expected: [PeerId?]
+    let alerts: Int
+}
+
+let doneCases = [
+    DoneCase(name: "new link, no switch changed", link: .single(42), toggles: [], expected: [42], alerts: 0),
+    DoneCase(name: "new link, no switch changed, slow link", link: later(0.03, 42), toggles: [], expected: [42], alerts: 0),
+    DoneCase(name: "new link and Restrict Saving Content, the switch first", link: later(0.05, 42), toggles: [0.005], expected: [42], alerts: 0),
+    DoneCase(name: "new link and Restrict Saving Content, the link first", link: later(0.005, 42), toggles: [0.08], expected: [42], alerts: 0),
+    DoneCase(name: "new link and Restrict Saving Content, both at once", link: .single(42), toggles: [nil], expected: [42], alerts: 0),
+    DoneCase(name: "new link and three switches", link: later(0.02, 42), toggles: [nil, 0.01, 0.1], expected: [42], alerts: 0),
+    DoneCase(name: "link removed and a switch changed", link: later(0.02, nil), toggles: [0.04], expected: [nil], alerts: 0),
+    DoneCase(name: "the link update fails", link: failing(0.02), toggles: [0.01], expected: [], alerts: 1),
+    DoneCase(name: "no link change, no switch changed", link: nil, toggles: [], expected: [nil], alerts: 0),
+    DoneCase(name: "no link change, two switches", link: nil, toggles: [0.01, 0.05], expected: [nil], alerts: 0)
+]
+
+activeScreen = Screen(peer: TelegramChannel(broadcast: true, protected: false))
+
+for item in doneCases {
+    alerts = 0
+    _ = finishedToggles.swap(0)
+    let screen = DoneScreen()
+    let toggles = item.toggles.map(toggle)
+    if let link = item.link {
+        screen.doneWithLink(link, toggles)
+    } else {
+        screen.doneWithoutLink(toggles)
+    }
+    spin(until: { screen.onComplete.values.count >= item.expected.count && alerts >= item.alerts && finishedToggles.with { $0 } == toggles.count })
+    let values = screen.onComplete.values
+    check("Done, \(item.name): the screen \(item.expected.isEmpty ? "stays open" : "closes")", values.count == item.expected.count)
+    check("Done, \(item.name): the result is the chat it set up", values.map { $0.0 } == item.expected)
+    check("Done, \(item.name): it closes only after every switch request finished", values.allSatisfy { $0.1 == toggles.count })
+    check("Done, \(item.name): \(item.alerts) error alert\(item.alerts == 1 ? "" : "s")", alerts == item.alerts)
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)
