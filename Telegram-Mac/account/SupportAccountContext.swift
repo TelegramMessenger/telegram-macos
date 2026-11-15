@@ -5,6 +5,7 @@ import SwiftSignalKit
 import TGUIKit
 import InAppSettings
 import AppKit
+import ComponentsUI
 
 final class SupportAccountContext {
     
@@ -58,6 +59,7 @@ final class SupportAccountContext {
     private let disposable: DisposableDict<AccountRecordId> = DisposableDict()
     private let chatDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
     private let chatReadyDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
+    private let chatThemeDisposable: DisposableDict<ExternalChat.Key> = DisposableDict()
 
     
     private var externalChats: [ExternalChat.Key : ExternalChat] = [:]
@@ -131,7 +133,7 @@ final class SupportAccountContext {
         })
         
         telegramUpdateTheme(theme, window: window, animated: false)
-        window.applyChrome(.compact)
+        let windowControls = DetachedWindowControls.install(on: window)
 
         let splitView = SplitView(frame: window.contentView?.bounds ?? window.bounds)
         splitView.canChangeState = false
@@ -140,7 +142,11 @@ final class SupportAccountContext {
         window.contentView?.addSubview(splitView)
         splitView.addController(controller: navigation, proportion: SplitProportion(min: splitView.bounds.width, max: .greatestFiniteMagnitude))
         splitView.needsLayout = true
+        windowControls.bringToFront()
         splitView.layoutSubtreeIfNeeded()
+        self.chatThemeDisposable.set((themeSignal |> deliverOnMainQueue).start(next: { [weak windowControls] theme in
+            windowControls?.updateTheme(theme)
+        }), forKey: .init(peerId: peerId, accountId: accountId))
         self.chatReadyDisposable.set(chatController.ready.get().start(next: { [weak window] _ in
             window?.makeKeyAndOrderFront(self)
         }), forKey: .init(peerId: peerId, accountId: accountId))
@@ -258,6 +264,7 @@ final class SupportAccountContext {
         let key = ExternalChat.Key(peerId: peerId, accountId: accountId)
         self.chatDisposable.set(nil, forKey: key)
         self.chatReadyDisposable.set(nil, forKey: key)
+        self.chatThemeDisposable.set(nil, forKey: key)
         let external = self.externalChats.removeValue(forKey: key)
         if let external, let window = external.navigation.window {
             window.closeInterceptor = nil

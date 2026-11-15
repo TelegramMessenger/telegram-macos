@@ -454,6 +454,7 @@ public class ChatControllerView : View, ChatInputDelegate {
         if self.backgroundMode != mode {
             self.cachedEdgeColor = nil
             self.cachedEdgeColorMode = nil
+            self.needsLayout = true
         }
         self.backgroundMode = mode
 
@@ -8316,7 +8317,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             guard let `self` = self else {
                 return
             }
-            self.navigationController?.push(ChatAdditionController(context: context, chatLocation: chatLocation(), mode: .pinned, focusTarget: .init(messageId: messageId)))
+            let controller = ChatAdditionController(context: context, chatLocation: chatLocation(), mode: .pinned, focusTarget: .init(messageId: messageId))
+            controller.chatInteraction.pinnedMessagesOpener = self
+            self.navigationController?.push(controller)
         }
         
         chatInteraction.unpinAllMessages = { [weak self, unowned context] in

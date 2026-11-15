@@ -721,6 +721,10 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                                 telegramUpdateTheme(theme, window: context.context.window, animated: animated)
                                 context.applyNewTheme()
                             })
+                            self.enumerateExternalChatContexts({ context in
+                                telegramUpdateTheme(theme, window: context.window, animated: animated)
+                                context.window.applyChrome(.compact)
+                            })
                         }
                     }
                 })
