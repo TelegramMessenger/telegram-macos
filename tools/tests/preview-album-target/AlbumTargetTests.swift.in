@@ -41,7 +41,31 @@ class TableRowItem {
     init(_ initialSize: NSSize) {}
     func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool { true }
 }
-final class Table { func noteHeightOfRow(_ index: Int, _ animated: Bool) {} }
+final class Table {
+    var count = 0
+    var resortController: TableResortController?
+    func noteHeightOfRow(_ index: Int, _ animated: Bool) {}
+}
+final class TableResortController {
+    let complete: (Int, Int) -> Void
+    init(resortRange: NSRange, startTimeout: Double, start: @escaping (Int) -> Void, resort: @escaping (Int) -> Void, complete: @escaping (Int, Int) -> Void) {
+        self.complete = complete
+    }
+}
+final class PreviewView { let tableView = Table() }
+final class TransitionAnimation {
+    var value = false
+    func swap(_ value: Bool) -> Bool {
+        let previous = self.value
+        self.value = value
+        return previous
+    }
+}
+final class AnalyticsMediaJourney {
+    enum Step { case reorderMedia }
+    var steps = 0
+    func step(_ step: Step) { steps += 1 }
+}
 final class ChatMediaLayoutParameters {
     enum Presentation { case empty }
     let media: Media
@@ -105,7 +129,8 @@ __CONTROL__
     func move(from index: Int, to destination: Int) {
         let item = self.item
         let target = item.layout.frame(at: destination)
-        guard let newIndex = item.layout.moveItemIfNeeded(at: index, point: NSMakePoint(target.midX, target.midY)) else { return }
+        let draggingIndex: Int? = index
+        let point = NSMakePoint(target.midX, target.midY)
 __DROP__
     }
 }
@@ -113,13 +138,22 @@ private final class Controller {
     var urls: [URL]
     var edited: [URL] = []
     var painted: [URL] = []
+    var lockInteractiveChanges = false
+    let removeTransitionAnimation = TransitionAnimation()
+    var analyticsMediaJourney: AnalyticsMediaJourney? = AnalyticsMediaJourney()
+    let genericView = PreviewView()
     init(_ urls: [URL]) { self.urls = urls }
     func arguments() -> SenderPreviewArguments {
-        SenderPreviewArguments(context: Context(), theme: TelegramPresentationTheme(), edit: { self.edited.append($0) }, paint: { self.painted.append($0) }, delete: { url in
+        let removeTransitionAnimation = self.removeTransitionAnimation
+        return SenderPreviewArguments(context: Context(), theme: TelegramPresentationTheme(), edit: { self.edited.append($0) }, paint: { self.painted.append($0) }, delete: { url in
 __DELETE__
-        }, reorder: { from, to in
-__GLOBAL_MOVE__
-        })
+        }, reorder: __GLOBAL_MOVE__)
+    }
+    func tableReorder() -> (Int, Int) -> Void {
+        let arguments = self.arguments()
+        genericView.tableView.count = urls.count
+__TABLE_REORDER__
+        return genericView.tableView.resortController!.complete
     }
 }
 
@@ -233,5 +267,110 @@ for mode in [PreviewSendingState.State.media, .file] {
     }
     expect(urls, original, "ungrouped \(mode) order")
 }
-print("\(checks) checks, \(failures) failures")
+private let scenario = CommandLine.arguments.dropFirst().first ?? "original"
+
+if scenario == "stale" {
+    for (deleted, albumIndex, from, to, order) in [
+        ([1], 0, 2, 6, [2, 4, 5, 6, 7, 3] + Array(8...22)),
+        ([1], 0, 8, 2, [2, 9, 3, 4, 5, 6, 7, 8] + Array(10...22)),
+        ([1], 1, 0, 5, Array(2...10) + Array(12...16) + [11] + Array(17...22)),
+        ([1], 1, 9, 0, Array(2...10) + [20] + Array(11...19) + [21, 22]),
+        ([11], 1, 2, 5, Array(1...10) + [12, 14, 15, 16, 13] + Array(17...22)),
+        ([1, 10], 1, 0, 9, Array(2...9) + Array(12...20) + [11, 21, 22])
+    ] {
+        let original = (1...22).map(url)
+        let controller = Controller(original)
+        let albums = rows(state(original), controller)
+        for removed in deleted {
+            let deletion = RowActions(albums[(removed - 1) / 10])
+            deletion.configure(at: (removed - 1) % 10)
+            deletion.editControl.delete()
+        }
+        let before = controller.urls
+        let view = RowActions(albums[albumIndex])
+        let fromURL = view.item.urls[from]
+        let toURL = view.item.urls[to]
+        view.move(from: from, to: to)
+        expect(controller.urls, order.map(url), "stale album \(albumIndex) after deleting \(deleted), \(number(fromURL)) to \(number(toURL))")
+        expect(Set(controller.urls), Set(before), "stale reorder preserves surviving identities")
+        expect(controller.urls.count, before.count, "stale reorder preserves surviving count")
+        expect(controller.analyticsMediaJourney?.steps, 1, "valid stale reorder analytics")
+        expect(controller.lockInteractiveChanges, false, "valid stale reorder releases changes")
+        expectTargets(view.item, view.item.urls, controller, "stale row immediate identity")
+        view.move(from: to, to: from)
+        expect(controller.urls, before, "stale row repeated reverse before refresh")
+        expect(rows(state(controller.urls), controller).flatMap { $0.urls }, before, "stale reorder rechunks current URLs")
+    }
+}
+
+if scenario == "missing" {
+    for (removed, from, to) in [(11, 0, 5), (16, 0, 5), (20, 9, 0), (11, 9, 0)] {
+        let original = (1...22).map(url)
+        let controller = Controller(original)
+        let album = rows(state(original), controller)[1]
+        let deletion = RowActions(album)
+        deletion.configure(at: removed - 11)
+        deletion.editControl.delete()
+        let before = controller.urls
+        RowActions(album).move(from: from, to: to)
+        expect(controller.urls, before, "deleted endpoint \(removed) rejects \(from) to \(to)")
+        expect(controller.analyticsMediaJourney?.steps, 0, "deleted endpoint has no reorder analytics")
+        expect(controller.removeTransitionAnimation.value, false, "deleted endpoint keeps transition animation")
+        expect(controller.lockInteractiveChanges, false, "deleted endpoint keeps interactive changes")
+        expectTargets(album, album.urls, controller, "rejected drop local identities")
+    }
+    for replaced in [11, 16] {
+        let original = (1...22).map(url)
+        let controller = Controller(original)
+        let album = rows(state(original), controller)[1]
+        controller.urls[replaced - 1] = URL(fileURLWithPath: "/edited/\(replaced).jpg")
+        let before = controller.urls
+        RowActions(album).move(from: 0, to: 5)
+        expect(controller.urls, before, "replaced endpoint \(replaced) rejects stale drop")
+        expect(controller.analyticsMediaJourney?.steps, 0, "replaced endpoint has no reorder analytics")
+    }
+    let controller = Controller((1...22).map(url))
+    let album = rows(state(controller.urls), controller)[1]
+    controller.urls.removeAll()
+    RowActions(album).move(from: 0, to: 5)
+    expect(controller.urls, [], "empty current URLs reject stale album drop")
+    expect(controller.analyticsMediaJourney?.steps, 0, "empty current URLs have no reorder analytics")
+}
+
+if scenario == "boundary-forward" || scenario == "boundary-backward" {
+    for deleted in [1, 10] {
+        let original = (1...12).map(url)
+        let controller = Controller(original)
+        let albums = rows(state(original), controller)
+        let deletion = RowActions(albums[0])
+        deletion.configure(at: deleted - 1)
+        deletion.editControl.delete()
+        let before = controller.urls
+        let view = RowActions(albums[1])
+        let from = scenario == "boundary-forward" ? 0 : 1
+        let to = 1 - from
+        view.move(from: from, to: to)
+        expect(controller.urls, Array(1...10).filter { $0 != deleted }.map(url) + [url(12), url(11)], "stale final album \(from) to \(to) after deleting \(deleted)")
+        expectTargets(view.item, [url(12), url(11)], controller, "stale final album immediate identity")
+        view.move(from: to, to: from)
+        expect(controller.urls, before, "stale final album reversed before refresh")
+    }
+}
+
+if scenario == "original" {
+    for (from, to, expected) in [(0, 3, [2, 3, 4, 1]), (3, 0, [4, 1, 2, 3]), (2, 2, [1, 2, 3, 4])] {
+        let controller = Controller((1...4).map(url))
+        controller.tableReorder()(from, to)
+        expect(controller.urls, expected.map(url), "table reorder \(from) to \(to) retains index semantics")
+        expect(controller.analyticsMediaJourney?.steps, from == to ? 0 : 1, "table reorder analytics")
+    }
+    for (from, to, expected) in [(0, 3, [2, 3, 4, 1]), (3, 0, [4, 1, 2, 3]), (2, 2, [1, 2, 3, 4])] {
+        let controller = Controller((1...4).map(url))
+        let row = rows(state(controller.urls), controller)[0]
+        RowActions(row).move(from: from, to: to)
+        expect(controller.urls, expected.map(url), "first album unchanged move \(from) to \(to)")
+        expectTargets(row, expected.map(url), controller, "first album unchanged move identity")
+    }
+}
+print("\(scenario): \(checks) checks, \(failures) failures")
 exit(failures == 0 ? 0 : 1)

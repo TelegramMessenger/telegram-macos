@@ -793,8 +793,8 @@ private final class SenderPreviewArguments {
     let edit:(URL)->Void
     let paint: (URL)->Void
     let delete:(URL)->Void
-    let reorder:(Int, Int) -> Void
-    init(context: any AccountContextProtocol, theme: TelegramPresentationTheme, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete: @escaping(URL)->Void, reorder: @escaping(Int, Int) -> Void) {
+    let reorder:(URL, URL) -> Void
+    init(context: any AccountContextProtocol, theme: TelegramPresentationTheme, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete: @escaping(URL)->Void, reorder: @escaping(URL, URL) -> Void) {
         self.context = context
         self.theme = theme
         self.edit = edit
@@ -950,7 +950,6 @@ private enum PreviewEntry : Comparable, Identifiable {
               // arguments.delete(url)
             })
         case let .mediaGroup(_, _, urls, messages, isSpoiler, payAmount, renderingPreviews):
-            let offset = Int(messages[0].id.id)
             return MediaGroupPreviewRowItem(initialSize, messages: messages, urls: urls, editedData: state.editedData, renderingPreviews: renderingPreviews, isSpoiler: isSpoiler, payAmount: payAmount, edit: { url in
                 arguments.edit(url)
             }, paint: { url in
@@ -958,7 +957,7 @@ private enum PreviewEntry : Comparable, Identifiable {
             }, delete: { url in
                 arguments.delete(url)
             }, context: arguments.context, reorder: { from, to in
-                arguments.reorder(from + offset, to + offset)
+                arguments.reorder(from, to)
             })
         }
     }
@@ -2066,11 +2065,11 @@ public class PreviewSenderController: ModalViewController, Notifable {
             }
             self.lockInteractiveChanges = false
         }, reorder: { [weak self] from, to in
-            guard let `self` = self else { return }
+            guard let `self` = self, let fromIndex = self.urls.firstIndex(of: from), let toIndex = self.urls.firstIndex(of: to) else { return }
             _ = removeTransitionAnimation.swap(true)
             self.lockInteractiveChanges = true
             let previous = self.urls
-            self.urls.move(at: from, to: to)
+            self.urls.move(at: fromIndex, to: toIndex)
             if previous != self.urls {
                 self.analyticsMediaJourney?.step(.reorderMedia)
             }
@@ -2277,8 +2276,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
             
 
             if self.genericView.tableView.count > 1 {
-                self.genericView.tableView.resortController = TableResortController(resortRange: NSMakeRange(0, self.genericView.tableView.count), startTimeout: 0.0, start: { _ in }, resort: { _ in }, complete: { from, to in
-                    arguments.reorder(from, to)
+                self.genericView.tableView.resortController = TableResortController(resortRange: NSMakeRange(0, self.genericView.tableView.count), startTimeout: 0.0, start: { _ in }, resort: { _ in }, complete: { [weak self] from, to in
+                    guard let self, self.urls.indices.contains(from), self.urls.indices.contains(to) else { return }
+                    arguments.reorder(self.urls[from], self.urls[to])
                 })
             } else {
                 self.genericView.tableView.resortController = nil
