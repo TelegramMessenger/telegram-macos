@@ -1,0 +1,210 @@
+import Foundation
+
+public class NSEvent {
+    public struct ModifierFlags: OptionSet {
+        public let rawValue: UInt
+        public init(rawValue: UInt) { self.rawValue = rawValue }
+        public static let shift = ModifierFlags(rawValue: 1 << 17)
+        public static let control = ModifierFlags(rawValue: 1 << 18)
+        public static let option = ModifierFlags(rawValue: 1 << 19)
+        public static let command = ModifierFlags(rawValue: 1 << 20)
+    }
+    let keyCode: UInt16
+    let modifierFlags: ModifierFlags
+    weak var window: Window?
+    init(key: KeyboardKey, flags: ModifierFlags = [], window: Window?) {
+        self.keyCode = key.rawValue
+        self.modifierFlags = flags
+        self.window = window
+    }
+}
+
+public final class NSTextView: NSObject {
+    var isEditable: Bool
+    init(editable: Bool) { self.isEditable = editable }
+}
+
+final class WeakReference<Value: AnyObject> {
+    weak var value: Value?
+    init(value: Value?) { self.value = value }
+}
+
+@@KEYBOARD@@
+@@HANDLER_TYPES@@
+@@RESULT_TYPE@@
+
+public class NativeWindow: NSObject {
+    var forwarded = 0
+    func sendEvent(_ event: NSEvent) { forwarded += 1 }
+}
+
+public final class Window: NativeWindow {
+    struct StyleMask: OptionSet {
+        let rawValue: UInt
+        static let fullScreen = StyleMask(rawValue: 1 << 14)
+    }
+    var styleMask: StyleMask = []
+    var firstResponder: NSObject?
+    var isKeyWindow = true
+    var keyHandlers: [KeyboardKey: [KeyHandler]] = [:]
+
+@@SET_HANDLER@@
+
+    override func sendEvent(_ event: NSEvent) {
+@@DISPATCH@@
+        super.sendEvent(event)
+    }
+
+    func removeAllHandlers(for object: NSObject) {
+@@REMOVE_HANDLERS@@
+    }
+}
+
+final class Page {
+    enum Direction: Equatable { case up, down }
+    var scrolls: [Direction] = []
+    func scrollPage(direction: Direction) { scrolls.append(direction) }
+}
+
+final class Controller: NSObject {
+    var window: Window?
+    var page = Page()
+    init(window: Window?) { self.window = window }
+    func installHandlers() {
+@@PRODUCTION@@
+    }
+}
+
+var checks = 0
+var failures = 0
+func expect(_ condition: Bool, _ label: String) {
+    checks += 1
+    if !condition {
+        failures += 1
+        print("FAIL \(label)")
+    }
+}
+func fixture(_ fullscreen: Bool) -> (Window, Controller) {
+    let window = Window()
+    if fullscreen { window.styleMask = [.fullScreen] }
+    let controller = Controller(window: window)
+    controller.installHandlers()
+    return (window, controller)
+}
+func send(_ window: Window, key: KeyboardKey = .Space, flags: NSEvent.ModifierFlags = []) {
+    window.sendEvent(NSEvent(key: key, flags: flags, window: window))
+}
+
+for fullscreen in [false, true] {
+    let mode = fullscreen ? "fullscreen" : "normal"
+    do {
+        let (window, controller) = fixture(fullscreen)
+        send(window)
+        expect(controller.page.scrolls == [.down], "\(mode)/space-down")
+        expect(window.forwarded == 0, "\(mode)/space-consumed")
+        controller.page.scrolls.removeAll()
+        send(window, flags: [.shift])
+        expect(controller.page.scrolls == [.up], "\(mode)/shift-space-up")
+        expect(window.forwarded == 0, "\(mode)/shift-space-consumed")
+        controller.page.scrolls.removeAll()
+        send(window, key: .UpArrow)
+        send(window, key: .DownArrow)
+        expect(controller.page.scrolls == [.up, .down], "\(mode)/arrows-preserved")
+        let spaces = window.keyHandlers[.Space]!
+        expect(spaces.count == 2, "\(mode)/only-two-space-registrations")
+        expect(spaces.contains { $0.priority == .low && $0.modifierFlags == nil }, "\(mode)/space-low-priority")
+        expect(spaces.contains { $0.priority == .medium && $0.modifierFlags == [.shift] }, "\(mode)/shift-space-medium-priority")
+    }
+    for shift in [false, true] {
+        let flags: NSEvent.ModifierFlags = shift ? [.shift] : []
+        let variant = "\(mode)/\(shift ? "shift" : "plain")"
+        do {
+            let (window, controller) = fixture(fullscreen)
+            window.firstResponder = NSTextView(editable: true)
+            send(window, flags: flags)
+            expect(controller.page.scrolls.isEmpty, "\(variant)/editable-focus-no-scroll")
+            expect(window.forwarded == 1, "\(variant)/editable-focus-native-delivery")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            window.firstResponder = NSTextView(editable: false)
+            send(window, flags: flags)
+            expect(controller.page.scrolls == [shift ? .up : .down], "\(variant)/readonly-text-navigation")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            let previous = controller.page
+            controller.page = Page()
+            send(window, flags: flags)
+            expect(previous.scrolls.isEmpty, "\(variant)/previous-page-not-scrolled")
+            expect(controller.page.scrolls == [shift ? .up : .down], "\(variant)/current-page-scrolled")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            let mediaOwner = NSObject()
+            var mediaInvoked = 0
+            window.set(handler: { _ in mediaInvoked += 1; return .invoked }, with: mediaOwner, for: .Space, priority: .high)
+            send(window, flags: flags)
+            expect(mediaInvoked == 1, "\(variant)/media-priority-invoked")
+            expect(controller.page.scrolls.isEmpty, "\(variant)/media-priority-no-scroll")
+            expect(window.forwarded == 0, "\(variant)/media-priority-consumed")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            let mediaOwner = NSObject()
+            window.set(handler: { _ in .rejected }, with: mediaOwner, for: .Space, priority: .high)
+            send(window, flags: flags)
+            expect(controller.page.scrolls == [shift ? .up : .down], "\(variant)/rejected-media-falls-through")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            let owner = NSObject()
+            window.set(handler: { _ in .invokeNext }, with: owner, for: .All, priority: .supreme)
+            send(window, flags: flags)
+            expect(controller.page.scrolls.isEmpty, "\(variant)/global-native-priority-no-scroll")
+            expect(window.forwarded == 1, "\(variant)/global-native-priority-delivered")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            window.isKeyWindow = false
+            send(window, flags: flags)
+            expect(controller.page.scrolls.isEmpty, "\(variant)/inactive-window-no-scroll")
+            expect(window.forwarded == 1, "\(variant)/inactive-window-forwarded")
+        }
+        do {
+            let (window, controller) = fixture(fullscreen)
+            window.removeAllHandlers(for: controller)
+            send(window, flags: flags)
+            expect(controller.page.scrolls.isEmpty, "\(variant)/removed-handlers-no-scroll")
+            expect(window.forwarded == 1, "\(variant)/removed-handlers-forwarded")
+        }
+    }
+}
+
+do {
+    let (window, controller) = fixture(false)
+    let handlers = window.keyHandlers[.Space]!
+    controller.window = nil
+    let event = NSEvent(key: .Space, window: window)
+    for handler in handlers {
+        expect(handler.handler(event) == .rejected, "detached-window/rejected")
+    }
+    expect(controller.page.scrolls.isEmpty, "detached-window/no-scroll")
+}
+
+do {
+    let window = Window()
+    var controller: Controller? = Controller(window: window)
+    controller!.installHandlers()
+    let handlers = window.keyHandlers[.Space]!
+    weak var weakController = controller
+    controller = nil
+    expect(weakController == nil, "weak-owner/no-retain-cycle")
+    let event = NSEvent(key: .Space, window: window)
+    for handler in handlers {
+        expect(handler.handler(event) == .rejected, "weak-owner/rejected")
+    }
+}
+
+print("RESULT checks=\(checks) failures=\(failures)")
+exit(failures == 0 ? 0 : 1)
