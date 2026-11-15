@@ -215,7 +215,7 @@ fileprivate class PreviewSenderView : Control {
         
       
         closeButton.set(handler: { [weak self] _ in
-            self?.controller?.closeModal()
+            self?.controller?.close()
         }, for: .Click)
         
         headerView.layer?.masksToBounds = false
@@ -1463,6 +1463,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
     
     private let inputSwapDisposable = MetaDisposable()
     private var temporaryInputState: ChatTextInputState?
+    private var initialCaptionText = ""
     private var contextQueryState: (ChatPresentationInputQuery?, Disposable)?
     private let inputContextHelper: InputContextHelper
     private let inputInteraction:PreviewContextInteraction = PreviewContextInteraction()
@@ -1557,8 +1558,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
         guard !pendingActions.isClosed, !sent else { return }
         
         let currentText = self.genericView.textView.string()
-        let basicText = self.temporaryInputState?.inputText ?? ""
-        if (self.temporaryInputState == nil && !currentText.isEmpty) || (basicText != currentText) {
+        if self.initialCaptionText != currentText {
             analyticsMediaJourney?.step(.openConfirmation)
             let childAction = PreviewSenderChildAction(context: analyticsContext ?? Analytics.shared.unresolvedContext(), isCurrent: capturePendingAction())
             verifyAlert_button(for: context.window, header: strings().mediaSenderDiscardChangesHeader, information: strings().mediaSenderDiscardChangesText, ok: strings().mediaSenderDiscardChangesOK, successHandler: { [weak self] _ in
@@ -1980,6 +1980,8 @@ public class PreviewSenderController: ModalViewController, Notifable {
             })
         }
         
+        self.initialCaptionText = self.genericView.textView.string()
+
         PreviewSenderUIHooks.shared.updateEmojies(emoji, chatInteraction.peerId, { [weak self] emoji, fromRect in
             _ = self?.contextChatInteraction.appendText(.initialize(string: emoji))
             _ = self?.window?.makeFirstResponder(self?.genericView.textView.inputView)
