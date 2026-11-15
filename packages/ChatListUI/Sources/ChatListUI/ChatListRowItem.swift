@@ -2079,7 +2079,33 @@ public class ChatListRowItem: TableRowItem {
             isArchivedSignal = .single(false)
         }
 
-        return combineLatest(queue: .mainQueue(), chatListFilterPreferences(engine: context.engine), cachedData, soundsDataSignal, isArchivedSignal) |> take(1) |> map { filters, cachedData, soundsData, isArchived -> [ContextMenuItem] in
+        let folderStateSignal: Signal<(Peer, SearchPeerFolderState)?, NoError>
+        if let peerId = peerId, peerId.namespace != Namespaces.Peer.SecretChat, !mode.savedMessages {
+            let categories: Signal<[PeerId: ChatListFilterPeerCategories], NoError> = peer is TelegramCommunity ? (communityFilterCategories(account: context.account) |> take(1)) : .single([:])
+            folderStateSignal = combineLatest(context.engine.data.get(TelegramEngine.EngineData.Item.Messages.PeerReadCounters(id: peerId)), categories)
+            |> mapToSignal { readCounters, communityCategories in
+                return context.account.postbox.transaction { transaction -> (Peer, SearchPeerFolderState)? in
+                    guard let peer = transaction.getPeer(peerId) ?? peer else {
+                        return nil
+                    }
+                    let notificationPeerId = searchPeerNotificationPeerId(peer)
+                    let settings = transaction.getPeerNotificationSettings(id: notificationPeerId)
+                    let isMuted: Bool
+                    if let settings = settings as? TelegramPeerNotificationSettings, case let .muted(until) = settings.muteState {
+                        isMuted = until > context.timestamp
+                    } else {
+                        isMuted = resolvedIsRemovedFromTotalUnreadCount(globalSettings: transaction.getGlobalNotificationSettings(), peer: peer, peerSettings: settings)
+                    }
+                    let mentionCount = transaction.getMessageTagSummary(peerId: peerId, threadId: nil, tagMask: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud, customTag: nil)?.count ?? 0
+                    let pendingMentionCount = transaction.getPendingMessageActionsSummary(peerId: peerId, type: .consumeUnseenPersonalMessage, namespace: Namespaces.Message.Cloud) ?? 0
+                    return (peer, SearchPeerFolderState(groupId: transaction.getPeerChatListIndex(peerId)?.0 ?? transaction.getPeerChatListInclusion(peerId).groupId, isMuted: isMuted, isUnread: readCounters.isUnread, isContact: transaction.isPeerContact(peerId: notificationPeerId), hasUnreadMention: mentionCount > pendingMentionCount, communityCategories: communityCategories))
+                }
+            }
+        } else {
+            folderStateSignal = .single(nil)
+        }
+
+        return combineLatest(queue: .mainQueue(), chatListFilterPreferences(engine: context.engine), cachedData, soundsDataSignal, isArchivedSignal, folderStateSignal) |> take(1) |> map { filters, cachedData, soundsData, isArchived, folderState -> [ContextMenuItem] in
             
             var items:[ContextMenuItem] = []
             
@@ -2354,7 +2380,7 @@ public class ChatListRowItem: TableRowItem {
             }
             
             var submenu: [ContextMenuItem] = []
-            if let peerId = peerId, peerId.namespace != Namespaces.Peer.SecretChat, !mode.savedMessages {
+            if case let (peer, folderState)? = folderState {
                 for item in filters.list {
                     inner: switch item {
                     case .allChats:
@@ -2365,42 +2391,49 @@ public class ChatListRowItem: TableRowItem {
                         attr.append(string: item.title, color: theme.colors.text, font: .normal(.text))
                         InlineStickerItem.apply(to: attr, associatedMedia: [:], entities: item.entities, isPremium: true, playPolicy: item.enableAnimations ? nil : .framesCount(1))
 
+                        let isIncluded = searchPeerFolderContains(item, peer: peer, state: folderState)
                         
                         let menuItem = ContextMenuItem(item.title, handler: {
                             
                             let limit = context.isPremium ? context.premiumLimits.dialog_filters_chats_limit_premium : context.premiumLimits.dialog_filters_chats_limit_default
                             
-                            let isEnabled = data.includePeers.peers.contains(peerId) || data.includePeers.peers.count < limit
-                            if !data.includePeers.peers.contains(peerId) {
+                            if !isIncluded {
                                 select(.addToFolder)
                             }
-                            if isEnabled {
-                                _ = context.engine.peers.updateChatListFiltersInteractively({ list in
+                            _ = (folderStateSignal |> mapToSignal { current -> Signal<SearchPeerFolderUpdate, NoError> in
+                                guard case let (freshPeer, freshState)? = current else {
+                                    return .single(.unchanged)
+                                }
+                                let result = Atomic<SearchPeerFolderUpdate>(value: .unchanged)
+                                return context.engine.peers.updateChatListFiltersInteractively({ list in
                                     var list = list
-                                    for (i, folder) in list.enumerated() {
-                                        if ChatListUIHooks.shared.chatListFilterId(folder) == ChatListUIHooks.shared.chatListFilterId(item), var folderData = folder.data {
-                                            if data.includePeers.peers.contains(peerId) {
-                                                var peers = folderData.includePeers.peers
-                                                peers.removeAll(where: { $0 == peerId })
-                                                folderData.includePeers.setPeers(peers)
-                                            } else {
-                                                folderData.excludePeers.removeAll(where: { $0 == peerId })
-                                                folderData.includePeers.setPeers(folderData.includePeers.peers + [peerId])
-                                            }
-                                            list[i] = list[i].withUpdatedData(folderData)
+                                    if let index = list.firstIndex(where: { ChatListUIHooks.shared.chatListFilterId($0) == ChatListUIHooks.shared.chatListFilterId(item) }) {
+                                        let update = searchPeerFolderClickUpdate(list[index], peer: freshPeer, state: freshState, isIncluded: isIncluded, limit: limit)
+                                        _ = result.swap(update)
+                                        if case let .updated(updatedData) = update {
+                                            list[index] = list[index].withUpdatedData(updatedData)
                                         }
                                     }
                                     return list
-                                }).start()
-                            } else {
-                                if context.isPremium {
-                                    alert(for: context.window, info: strings().chatListFilterIncludeLimitReached)
-                                } else {
-                                    FeatureNavigationHooks.shared.showPremiumLimit(context, .chatInFolders)
+                                }) |> map { _ in result.with { $0 } }
+                            } |> deliverOnMainQueue).start(next: { result in
+                                switch result {
+                                case .includeLimitReached:
+                                    if context.isPremium {
+                                        alert(for: context.window, info: strings().chatListFilterIncludeLimitReached)
+                                    } else {
+                                        FeatureNavigationHooks.shared.showPremiumLimit(context, .chatInFolders)
+                                    }
+                                case .excludeLimitReached:
+                                    alert(for: context.window, info: strings().chatListFilterExcludeLimitReachedNew(limit))
+                                case .folderWouldBeEmpty:
+                                    alert(for: context.window, info: strings().chatListFilterErrorEmpty)
+                                case .updated, .unchanged:
+                                    break
                                 }
-                            }
+                            })
                            
-                        }, state: data.includePeers.peers.contains(peerId) ? .on : nil, itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(item).emoticon).value, attributedTitle: attr, customTextView: {
+                        }, state: isIncluded ? .on : nil, itemImage: ChatHistoryUIHooks.shared.folderEmoticonDrawable(FolderIcon(item).emoticon).value, attributedTitle: attr, customTextView: {
                             let layout = TextViewLayout(attr)
                             layout.measure(width: .greatestFiniteMagnitude)
 
@@ -2411,7 +2444,7 @@ public class ChatListRowItem: TableRowItem {
                             return textView
                         })
                         submenu.append(menuItem)
-                        menuItem.isEnabled = !data.includePeers.peers.contains(peerId) || data.includePeers.peers.count > 1
+                        menuItem.isEnabled = !isIncluded || !data.categories.isEmpty || data.includePeers.peers.count > 1
                     }
                 }
             }
