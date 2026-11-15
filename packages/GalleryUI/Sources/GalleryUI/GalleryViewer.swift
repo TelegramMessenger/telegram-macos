@@ -735,7 +735,11 @@ public class GalleryViewer: NSResponder {
                 let signal:Signal<(MessageHistoryView, ViewUpdateType, InitialMessageHistoryData?), NoError>
                 switch mode {
                 case .history, .preview:
-                    signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
+                    if chatLocation.threadId != nil, chatLocation.peerId == message.id.peerId {
+                        signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(context.chatLocationInput(for: chatLocation, contextHolder: contextHolder), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
+                    } else {
+                        signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
+                    }
                 case .thread:
                     if case let .thread(data) = chatLocation {
                         if case let .thread(data) = chatLocation, data.effectiveTopId == message.id {
@@ -1171,9 +1175,11 @@ public class GalleryViewer: NSResponder {
                     }, itemImage: MenuAnimation.menu_show_message.value))
                 }
                 if chatMode == .history && message.id.peerId != repliesPeerId && self.type == .history {
-                    items.append(ContextMenuItem(strings().galleryContextShowGallery, handler: { [weak self] in
-                        self?.showSharedMedia()
-                    }, itemImage: MenuAnimation.menu_shared_media.value))
+                    if chatLocation.threadId == nil {
+                        items.append(ContextMenuItem(strings().galleryContextShowGallery, handler: { [weak self] in
+                            self?.showSharedMedia()
+                        }, itemImage: MenuAnimation.menu_shared_media.value))
+                    }
                     
                     if GalleryHooks.shared.canSendHere(context, message) {
                         if let _ = message.anyMedia as? TelegramMediaImage {
@@ -1313,15 +1319,19 @@ public class GalleryViewer: NSResponder {
             actionDisposables.add(adminsDisposable)
             messagesActionDisposable.set(actionDisposables)
             
-            actionDisposables.add((adminsPromise.get() |> deliverOnMainQueue).start( next:{ [weak self] admins in
+            actionDisposables.add((adminsPromise.get() |> take(1) |> deliverOnMainQueue).start( next:{ [weak self] admins in
                 guard let `self` = self else {return}
                 
                 var canDelete:Bool = true
                 var canDeleteForEveryone = true
                 var otherCounter:Int32 = 0
+                var _mustDeleteForEveryoneMessage: Bool = true
                 for message in messages {
                     if !canDeleteMessage(message, account: self.context.account, chatLocation: chatLocation, mode: chatMode) {
                         canDelete = false
+                    }
+                    if !mustDeleteForEveryoneMessage(message) {
+                        _mustDeleteForEveryoneMessage = false
                     }
                     if !canDeleteForEveryoneMessage(message, context: self.context) {
                         canDeleteForEveryone = false
@@ -1363,7 +1373,10 @@ public class GalleryViewer: NSResponder {
                             _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: type).start()
                         })
                     } else {
-                        _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer).start()
+                        verifyAlert(for: self.window, header: strings().chatConfirmActionUndonable, information: _mustDeleteForEveryoneMessage ? strings().chatConfirmDeleteForEveryoneOther(messages.count) : strings().chatConfirmDeleteMessages1Other(messages.count), ok: strings().confirmDelete, successHandler: { [weak self] _ in
+                            guard let `self` = self else {return}
+                            _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer).start()
+                        })
                     }
                 }
             }))

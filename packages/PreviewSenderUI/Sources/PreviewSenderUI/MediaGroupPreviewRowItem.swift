@@ -18,16 +18,16 @@ class MediaGroupPreviewRowItem: TableRowItem {
     fileprivate let context: any AccountContextProtocol
     private let _stableId: UInt32 = arc4random()
     fileprivate let layout: GroupedLayout
-    fileprivate let reorder:(Int, Int)->Void
-    fileprivate let urls: [URL]
+    fileprivate let reorder:(URL, URL)->Void
+    fileprivate var urls: [URL]
     fileprivate let editedData: [URL: EditedImageData]
     fileprivate let renderingPreviews: [URL: CGImage]
     fileprivate let edit:(URL)->Void
     fileprivate let paint:(URL)->Void
     fileprivate let delete:(URL)->Void
-    fileprivate let parameters:[ChatMediaLayoutParameters]
+    fileprivate var parameters:[ChatMediaLayoutParameters]
     fileprivate let payAmount: Int64?
-    init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], isSpoiler: Bool, payAmount: Int64?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(Int, Int)->Void) {
+    init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], isSpoiler: Bool, payAmount: Int64?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(URL, URL)->Void) {
         layout = GroupedLayout(messages)
         self.editedData = editedData
         self.renderingPreviews = renderingPreviews
@@ -217,14 +217,18 @@ class MediaGroupPreviewRowView : TableRowView, ModalPreviewRowViewProtocol {
         point = NSMakePoint(min(max(0, point.x), frame.width - 10), min(max(0, point.y), frame.height - 10))
         if let index = draggingIndex, let newIndex = item.layout.moveItemIfNeeded(at: index, point: point) {
             
+            let from = item.urls[index]
+            let to = item.urls[newIndex]
             let current = contents[index]
             contents.remove(at: index)
             contents.insert(current, at: newIndex)
-            
+            item.urls.move(at: index, to: newIndex)
+            item.parameters.move(at: index, to: newIndex)
+
             _ = item.makeSize(frame.width, oldWidth: 0)
             item.table?.noteHeightOfRow(item.index, true)
-            
-            item.reorder(index, newIndex)
+
+            item.reorder(from, to)
             
             set(item: item, animated: true)
             for i in 0 ..< item.layout.count {

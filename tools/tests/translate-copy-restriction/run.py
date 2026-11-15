@@ -25,7 +25,7 @@ assert 'initialState.canCopy = messageId == nil' in modal
 assert 'current.canCopy = item.canCopy\n                current.update(layout: richLayout' in row_file
 assert 'if self.canCopy, let layout = self.currentLayout {\n            if event.clickCount == 2, self.selectWord' in page
 assert 'if self.canCopy, event.clickCount == 1, let layout = self.currentLayout {' in page
-assert 'blockHeaderRects.first(where: { $0.0.contains(point) }), layout.mayItems {' in text_view
+assert 'blockHeaderRects.first(where: { $0.0.contains(point) }) {\n                if !layout.mayItems {\n                    _ = layout.interactions.copy?()\n                } else if let string = layout.blockQuoteText(startingWith: blockHeader.1) {' in text_view
 restriction = section(modal, '        let copyRestriction = context.account.postbox.transaction', '        actionsDisposable.add((copyRestriction |> deliverOnMainQueue)')
 row = section(modal, '        if let copyRestriction = state.copyRestriction {', '        if showOriginal {')
 update = section(modal, '            updateState { current in\n                var current = current\n                current.canCopy = copyRestriction == nil', '        }))')

@@ -231,6 +231,20 @@ extension DocumentCanvasView: NSTextInputClient {
         needsDisplay = true
     }
 
+    func cancelMarkedText() {
+        guard hasMarkedText() else { return }
+        setMarkedText("", selectedRange: NSRange(location: 0, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        inputContext?.discardMarkedText()
+    }
+
+    override func doCommand(by selector: Selector) {
+        if selector == #selector(cancelOperation(_:)), hasMarkedText() {
+            cancelMarkedText()
+            return
+        }
+        super.doCommand(by: selector)
+    }
+
     func hasMarkedText() -> Bool { markedTextState != nil }
     func markedRange() -> NSRange { markedTextState?.range ?? NSRange(location: NSNotFound, length: 0) }
     func selectedRange() -> NSRange { NSRange(location: selFrom, length: selTo - selFrom) }

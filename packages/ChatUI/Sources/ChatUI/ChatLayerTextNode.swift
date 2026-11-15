@@ -337,7 +337,12 @@ final class ChatLayerTextNode: ChatLayerNode {
     }
 
     private func copyBlockQuote(at index: Int) {
-        guard let layout = textLayout, layout.blockQuotes.indices.contains(index), let text = layout.blockQuoteText(startingWith: layout.blockQuotes[index].range) else { return }
+        guard let layout = textLayout else { return }
+        guard layout.mayItems else {
+            _ = layout.interactions.copy?()
+            return
+        }
+        guard layout.blockQuotes.indices.contains(index), let text = layout.blockQuoteText(startingWith: layout.blockQuotes[index].range) else { return }
         if let copy = layout.interactions.copyToClipboard { _ = copy(text) }
         else {
             NSPasteboard.general.clearContents()
@@ -733,7 +738,10 @@ final class ChatLayerTextNode: ChatLayerNode {
             return true
         }
         if command == #selector(ChatLayerSceneView.copy(_:)) {
-            guard layout.mayItems else { return false }
+            guard layout.mayItems else {
+                _ = layout.interactions.copy?()
+                return true
+            }
             if layout.interactions.copy?() == true { return true }
             let range = layout.selectedRange.range
             guard range.location != NSNotFound, range.length > 0, range.location <= layout.attributedString.length, range.length <= layout.attributedString.length - range.location else { return false }

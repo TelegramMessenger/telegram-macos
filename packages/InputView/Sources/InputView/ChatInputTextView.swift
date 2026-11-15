@@ -629,6 +629,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     private let measurementTextContainer: ChatInputTextContainer
     private let measurementTextStorage: NSTextStorage
     private let measurementLayoutManager: NSLayoutManager
+    private let writingDirectionSelection = WritingDirectionSelection()
     
     private var blockQuotes: [Int: QuoteBackgroundView] = [:]
     private var collapseQuotes: [Int : Control] = [:]
@@ -686,6 +687,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         
         self.customTextStorage.delegate = self
         self.measurementTextStorage.delegate = self
+        self.writingDirectionSelection.attach(to: self)
         
         self.updateTextElements()
     }
@@ -752,6 +754,13 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     }
     
     
+    public func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) || editedMask.contains(.editedAttributes) else {
+            return
+        }
+        textStorage.alignParagraphsByWritingDirection(around: editedRange)
+    }
+
     public func layoutManager(_ layoutManager: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?, atEnd layoutFinishedFlag: Bool) {
         if textContainer !== self.customTextContainer {
             return
@@ -1378,6 +1387,33 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
             }
         } else {
             super.keyDown(with: theEvent)
+        }
+    }
+
+    public override func moveLeft(_ sender: Any?) {
+        moveCrossingParagraphsInTextOrder {
+            super.moveLeft(sender)
+        }
+    }
+
+    public override func moveRight(_ sender: Any?) {
+        moveCrossingParagraphsInTextOrder {
+            super.moveRight(sender)
+        }
+    }
+
+    private func moveCrossingParagraphsInTextOrder(_ move: () -> Void) {
+        let before = self.selectedRange()
+        move()
+        let after = self.selectedRange()
+        guard before.length == 0, after.length == 0 else {
+            return
+        }
+        let paragraph = (self.string as NSString).paragraphRange(for: NSRange(location: before.location, length: 0))
+        if after.location < paragraph.location {
+            self.setSelectedRange(NSRange(location: paragraph.location - 1, length: 0))
+        } else if after.location >= NSMaxRange(paragraph), NSMaxRange(paragraph) > before.location {
+            self.setSelectedRange(NSRange(location: NSMaxRange(paragraph), length: 0))
         }
     }
 

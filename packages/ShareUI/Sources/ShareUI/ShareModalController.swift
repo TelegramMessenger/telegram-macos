@@ -1140,7 +1140,7 @@ public final class ReplyForwardMessageObject : ShareObject {
                     let navigation = self.context.bindings.rootNavigation()
                     if let peer = peer {
                         
-                        if let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
+                        if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
                             controller.chatInteraction.update({ current in
                                 current.withoutSelectionState().updatedInterfaceState {
                                     $0.withUpdatedReplyMessageId(subject)
@@ -1385,7 +1385,7 @@ public final class ForwardMessagesObject : ShareObject {
                             
                             let comment = peer.canSendMessage() ? comment : nil
                             
-                            if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
+                            if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId), controller.chatInteraction.mode == .history {
                                 controller.inheritAnalyticsContext(origin)
                                 controller.chatInteraction.update({ current in
                                     current.withoutSelectionState().updatedInterfaceState {

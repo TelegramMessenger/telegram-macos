@@ -545,7 +545,8 @@ public class PCallSession {
         self.preferredVideoCodec = nil
         
         if self.isVideo {
-            self.videoCapturer = OngoingCallVideoCapturer(devicesContext.currentCameraId ?? "")
+            let cameraId = devicesContext.currentCameraId ?? devices.first(where: { $0.uniqueID == data.voiceSettings.cameraInputDeviceId })?.uniqueID ?? ""
+            self.videoCapturer = OngoingCallVideoCapturer(cameraId)
             self.statePromise.set(CallState(state: isOutgoing ? .waiting : .ringing, videoState: self.isVideoPossible ? .active(self.isVideoAvailable) : .notAvailable, remoteVideoState: .inactive, isMuted: self.isMuted, isOutgoingVideoPaused: self.isOutgoingVideoPaused, remoteAspectRatio: self.remoteAspectRatio, remoteAudioState: self.remoteAudioState, remoteBatteryLevel: self.remoteBatteryLevel, isScreenCapture: self.isScreenCapture, participants: self.incomingParticipants, conferenceReference: self.incomingConferenceSource, supportsConferenceCalls: self.supportsConferenceCalls))
         } else {
             self.statePromise.set(CallState(state: isOutgoing ? .waiting : .ringing, videoState: .notAvailable, remoteVideoState: .inactive, isMuted: self.isMuted, isOutgoingVideoPaused: self.isOutgoingVideoPaused, remoteAspectRatio: self.remoteAspectRatio, remoteAudioState: self.remoteAudioState, remoteBatteryLevel: self.remoteBatteryLevel, isScreenCapture: self.isScreenCapture, participants: self.incomingParticipants, conferenceReference: self.incomingConferenceSource, supportsConferenceCalls: self.supportsConferenceCalls))

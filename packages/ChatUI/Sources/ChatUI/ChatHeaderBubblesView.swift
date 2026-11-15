@@ -12,6 +12,7 @@ import ShortPeerRow
 import TelegramTheme
 import TelegramUtils
 import InlineStickerLayer
+import ComponentsUI
 
 
 private final class RightActionsCluster: Control {
@@ -249,7 +250,15 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
     private static let menuModeTransition: ContainedViewLayoutTransition = .animated(duration: ChatInputSendButton.fieldMotionDuration, curve: .easeOut)
 
-    var leftSideInset: CGFloat = sideInset
+    var leftSideInset: CGFloat {
+        let reserved = DetachedWindowControls.reservedWidth(in: window)
+        return reserved > 0 ? reserved : Self.sideInset
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        needsLayout = true
+    }
 
     var hasInlinePinnedMessage = false
     var compactTitle = false

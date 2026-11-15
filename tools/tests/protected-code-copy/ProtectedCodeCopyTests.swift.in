@@ -1,0 +1,422 @@
+import CoreGraphics
+import Foundation
+
+enum PasteboardType {
+    case string
+}
+
+final class NSPasteboard {
+    static let general = NSPasteboard()
+    var written: [String] = []
+
+    func clearContents() {
+    }
+
+    func declareTypes(_ types: [PasteboardType], owner: Any?) {
+    }
+
+    func setString(_ value: String, forType type: PasteboardType) {
+        self.written.append(value)
+    }
+}
+
+extension String {
+    var nsstring: NSString {
+        return self as NSString
+    }
+}
+
+struct Quote {
+    var range = NSRange(location: 0, length: 4)
+    var frame = NSRect(x: 0, y: 0, width: 100, height: 40)
+    var header: String? = "swift"
+    var headerInset: CGFloat = 20
+}
+
+enum LinkType {
+    case code
+    case plain
+}
+
+final class Interactions {
+    var copied: [String] = []
+    var copy: (() -> Bool)?
+    var copyCalls = 0
+    var opened: [String] = []
+    var processURL: (Any) -> Void = { _ in }
+    var makeLinkType: ((Any, String)) -> LinkType = { link in (link.0 as? String)?.hasPrefix("code:") == true ? .code : .plain }
+    var copyToClipboard: ((String) -> Bool)?
+
+    init() {
+        self.copyToClipboard = { [weak self] text in
+            self?.copied.append(text)
+            return true
+        }
+        self.processURL = { [weak self] link in
+            self?.opened.append(link as? String ?? "")
+        }
+    }
+
+    func copyAttributedString(_ value: NSAttributedString) -> Bool {
+        return false
+    }
+}
+
+struct Selection {
+    var range = NSRange(location: 0, length: 5)
+}
+
+final class TextViewLayout {
+    var mayItems = true
+    var blockQuotes: [Quote] = [Quote()]
+    let interactions = Interactions()
+    var selectedRange = Selection()
+    var attributedString = NSAttributedString(string: "secret text")
+
+    func blockQuoteText(startingWith range: NSRange) -> String? {
+        return "let value = 42"
+    }
+}
+
+class ChatLayerNode: Equatable {
+    static func == (lhs: ChatLayerNode, rhs: ChatLayerNode) -> Bool {
+        return lhs === rhs
+    }
+}
+
+final class ChatLayerButtonNode: ChatLayerNode {
+    let id: AnyHashable
+    let label: String
+    let action: () -> Void
+    var frame: NSRect = .zero
+
+    init(id: AnyHashable, label: String, action: @escaping () -> Void) {
+        self.id = id
+        self.label = label
+        self.action = action
+    }
+}
+
+struct HeaderId: Hashable {
+    let parent: Int
+    let index: Int
+}
+
+final class Window: NSObject {
+}
+
+class ChatLayerSceneView: Equatable {
+    var window: Any? = nil
+    var isHiddenOrHasHiddenAncestor = false
+
+    static func == (lhs: ChatLayerSceneView, rhs: ChatLayerSceneView) -> Bool {
+        return lhs === rhs
+    }
+}
+
+var toasts = 0
+
+func showModalText(for window: Window, text: String) {
+    toasts += 1
+}
+
+final class CachedPeerData {
+}
+
+final class Message {
+    var protected: Bool
+
+    init(protected: Bool) {
+        self.protected = protected
+    }
+
+    func isCopyProtected(cachedData: CachedPeerData?) -> Bool {
+        return self.protected
+    }
+}
+
+final class Presentation {
+    var cachedData: CachedPeerData? = nil
+}
+
+final class InteractionContext {
+    let window = Window()
+}
+
+final class ChatInteraction {
+    let presentation = Presentation()
+    let interactionContext = InteractionContext()
+}
+
+var notices: [Message] = []
+
+func showProtectedCopyAlert(_ message: Message, for window: Window) {
+    notices.append(message)
+}
+
+typealias TextViewInteractions = Interactions
+
+struct ViewLayout {
+    let text: TextViewLayout
+}
+
+final class FoldingTextLayout {
+    var blocks: [ViewLayout]
+
+    init(_ blocks: [TextViewLayout]) {
+        self.blocks = blocks.map { ViewLayout(text: $0) }
+    }
+}
+
+__RESTRICTION__
+
+func localizedString(_ key: String) -> String {
+    return key
+}
+
+final class ChatLayerTextNode {
+    var id = 1
+    var textLayout: TextViewLayout?
+    var scene: ChatLayerSceneView? = ChatLayerSceneView()
+    var children: [ChatLayerNode] = []
+    var isSelectable = true
+    var isVisible = true
+    var isEffectivelyEnabled = true
+
+    func setChildren(_ value: [ChatLayerNode]) throws {
+        self.children = value
+    }
+
+__HEADERS__
+}
+
+final class TextView {
+    var textLayout: TextViewLayout?
+
+__COPY__
+
+    func clickHeader(_ layout: TextViewLayout, window: Window) {
+        let point = NSPoint(x: 10, y: 5)
+        let blockHeaderRects: [(NSRect, NSRange)] = [(NSRect(x: 0, y: 0, width: 100, height: 20), NSRange(location: 0, length: 4))]
+__HEADER_CLICK__
+    }
+}
+
+enum ChatTextSelectionSource {
+    case view(TextView)
+    case layer(ChatLayerTextNode, ChatLayerSceneView)
+
+__SOURCE__
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+func node(mayItems: Bool, quotes: [Quote] = [Quote()]) throws -> (ChatLayerTextNode, TextViewLayout) {
+    let node = ChatLayerTextNode()
+    let layout = TextViewLayout()
+    layout.mayItems = mayItems
+    layout.blockQuotes = quotes
+    node.textLayout = layout
+    try node.updateCodeHeaders()
+    return (node, layout)
+}
+
+func button(_ node: ChatLayerTextNode) -> ChatLayerButtonNode? {
+    return node.children.first as? ChatLayerButtonNode
+}
+
+func nativeCopy(mayItems: Bool, handled: Bool?) -> [String] {
+    NSPasteboard.general.written = []
+    let view = TextView()
+    let layout = TextViewLayout()
+    layout.mayItems = mayItems
+    if let handled = handled {
+        layout.interactions.copy = { handled }
+    }
+    view.textLayout = layout
+    view.copy(0)
+    return NSPasteboard.general.written
+}
+
+do {
+    let (free, layout) = try node(mayItems: true)
+    check("free-code-block-has-a-button", free.children.count == 1)
+    check("button-keeps-its-label", button(free)?.label == "Text.Copy")
+    button(free)?.action()
+    check("free-code-block-copies", layout.interactions.copied == ["let value = 42"])
+
+    let (protected, protectedLayout) = try node(mayItems: false)
+    check("protected-code-block-keeps-its-button", protected.children.count == 1)
+    protectedLayout.interactions.copy = { protectedLayout.interactions.copyCalls += 1; return true }
+    toasts = 0
+    button(protected)?.action()
+    check("protected-button-copies-nothing", protectedLayout.interactions.copied.isEmpty)
+    check("protected-button-asks-for-the-notice", protectedLayout.interactions.copyCalls == 1)
+    check("protected-button-says-nothing-was-copied", toasts == 0)
+
+    let (quote, _) = try node(mayItems: true, quotes: [Quote(header: nil)])
+    check("plain-quote-has-no-button", quote.children.isEmpty)
+
+    let (stale, staleLayout) = try node(mayItems: true)
+    let staleButton = button(stale)
+    staleLayout.mayItems = false
+    staleLayout.interactions.copy = { staleLayout.interactions.copyCalls += 1; return true }
+    staleButton?.action()
+    check("stale-button-copies-nothing", staleLayout.interactions.copied.isEmpty)
+    check("stale-button-asks-for-the-notice", staleLayout.interactions.copyCalls == 1)
+
+    NSPasteboard.general.written = []
+    let (fallback, fallbackLayout) = try node(mayItems: true)
+    let fallbackButton = button(fallback)
+    fallbackLayout.interactions.copyToClipboard = nil
+    fallbackLayout.mayItems = false
+    fallbackButton?.action()
+    check("stale-button-skips-the-pasteboard-fallback", NSPasteboard.general.written.isEmpty)
+
+    fallbackLayout.mayItems = true
+    fallbackButton?.action()
+    check("free-block-uses-the-pasteboard-fallback", NSPasteboard.general.written == ["let value = 42"])
+
+    let (changing, changingLayout) = try node(mayItems: true)
+    changingLayout.mayItems = false
+    try changing.updateCodeHeaders()
+    check("button-stays-when-protection-appears", changing.children.count == 1)
+
+    let empty = ChatLayerTextNode()
+    try empty.updateCodeHeaders()
+    check("no-layout-has-no-button", empty.children.isEmpty)
+}
+
+do {
+    let view = TextView()
+    let free = TextViewLayout()
+    toasts = 0
+    view.clickHeader(free, window: Window())
+    check("free-native-header-copies", free.interactions.copied == ["let value = 42"])
+    check("free-native-header-says-copied", toasts == 1)
+
+    let protected = TextViewLayout()
+    protected.mayItems = false
+    protected.interactions.copy = { protected.interactions.copyCalls += 1; return true }
+    toasts = 0
+    view.clickHeader(protected, window: Window())
+    check("protected-native-header-copies-nothing", protected.interactions.copied.isEmpty)
+    check("protected-native-header-asks-for-the-notice", protected.interactions.copyCalls == 1)
+    check("protected-native-header-says-nothing-was-copied", toasts == 0)
+}
+
+do {
+    let chatInteraction = ChatInteraction()
+    notices = []
+    let protected = Message(protected: true)
+    check("restriction-notice-for-a-protected-message", showCopyRestriction(protected, chatInteraction: chatInteraction))
+    check("restriction-notice-names-the-message", notices.count == 1 && notices.first === protected)
+    notices = []
+    check("no-notice-for-a-free-message", !showCopyRestriction(Message(protected: false), chatInteraction: chatInteraction) && notices.isEmpty)
+}
+
+check("native-copy-writes-a-free-selection", nativeCopy(mayItems: true, handled: false) == ["secre"])
+check("native-copy-skips-a-protected-selection", nativeCopy(mayItems: false, handled: false).isEmpty)
+check("native-copy-without-a-handler-skips-a-protected-selection", nativeCopy(mayItems: false, handled: nil).isEmpty)
+check("native-copy-without-a-handler-writes-a-free-selection", nativeCopy(mayItems: true, handled: nil) == ["secre"])
+check("handled-copy-writes-nothing-here", nativeCopy(mayItems: true, handled: true).isEmpty)
+
+do {
+    let view = TextView()
+    let layout = TextViewLayout()
+    view.textLayout = layout
+    check("free-native-text-can-be-selected", ChatTextSelectionSource.view(view).textLayout === layout)
+    layout.mayItems = false
+    check("protected-native-text-cannot-be-selected", ChatTextSelectionSource.view(view).textLayout == nil)
+
+    let scene = ChatLayerSceneView()
+    let text = ChatLayerTextNode()
+    let textLayout = TextViewLayout()
+    text.scene = scene
+    text.textLayout = textLayout
+    check("free-layer-text-can-be-selected", ChatTextSelectionSource.layer(text, scene).textLayout === textLayout)
+    textLayout.mayItems = false
+    check("protected-layer-text-cannot-be-selected", ChatTextSelectionSource.layer(text, scene).textLayout == nil)
+}
+
+func restricted(protected: Bool, mayItems: Bool, previous: (() -> Bool)?) -> (Interactions, TextViewLayout) {
+    let layout = TextViewLayout()
+    layout.mayItems = mayItems
+    let interactions = layout.interactions
+    interactions.copy = previous
+    restrictCopying(interactions, message: Message(protected: protected), layout: layout, chatInteraction: sharedInteraction)
+    return (interactions, layout)
+}
+
+let sharedInteraction = ChatInteraction()
+
+do {
+    var previousCalls = 0
+    notices = []
+    let (protected, protectedLayout) = restricted(protected: true, mayItems: false, previous: { previousCalls += 1; return false })
+    check("protected-copy-is-handled", protected.copy?() == true)
+    check("protected-copy-shows-the-notice-once", notices.count == 1)
+    check("protected-copy-never-reaches-the-old-handler", previousCalls == 0)
+    notices = []
+    protected.processURL("code:let value = 42")
+    check("protected-inline-code-shows-the-notice", notices.count == 1 && protected.opened.isEmpty)
+    protected.processURL("https://telegram.org")
+    check("protected-links-still-open", protected.opened == ["https://telegram.org"])
+    withExtendedLifetime(protectedLayout) {}
+
+    notices = []
+    previousCalls = 0
+    let (free, freeLayout) = restricted(protected: false, mayItems: true, previous: { previousCalls += 1; return true })
+    check("free-copy-uses-the-old-handler", free.copy?() == true && previousCalls == 1)
+    free.processURL("code:let value = 42")
+    check("free-inline-code-copies-as-before", free.opened == ["code:let value = 42"])
+    check("free-text-shows-no-notice", notices.isEmpty)
+    withExtendedLifetime(freeLayout) {}
+
+    notices = []
+    let folded = FoldingTextLayout([TextViewLayout(), TextViewLayout()])
+    folded.blocks.forEach { $0.text.mayItems = false }
+    let foldedInteractions = Interactions()
+    restrictCopying(foldedInteractions, message: Message(protected: true), layout: folded, chatInteraction: sharedInteraction)
+    check("protected-folded-caption-shows-the-notice", foldedInteractions.copy?() == true && notices.count == 1)
+    let freeFolded = FoldingTextLayout([TextViewLayout()])
+    let freeFoldedInteractions = Interactions()
+    restrictCopying(freeFoldedInteractions, message: Message(protected: false), layout: freeFolded, chatInteraction: sharedInteraction)
+    check("free-folded-caption-copies-as-before", freeFoldedInteractions.copy?() == false)
+    withExtendedLifetime((folded, freeFolded)) {}
+
+    let (bare, bareLayout) = restricted(protected: false, mayItems: true, previous: nil)
+    check("free-copy-without-a-handler-lets-the-view-copy", bare.copy?() == false)
+    withExtendedLifetime(bareLayout) {}
+
+    notices = []
+    toasts = 0
+    let (header, headerLayout) = restricted(protected: true, mayItems: false, previous: nil)
+    TextView().clickHeader(headerLayout, window: Window())
+    check("protected-native-header-shows-the-notice-end-to-end", notices.count == 1 && header.copied.isEmpty && toasts == 0)
+
+    notices = []
+    let protectedNode = ChatLayerTextNode()
+    let (layer, layerLayout) = restricted(protected: true, mayItems: false, previous: nil)
+    protectedNode.textLayout = layerLayout
+    try? protectedNode.updateCodeHeaders()
+    button(protectedNode)?.action()
+    check("protected-layer-button-shows-the-notice-end-to-end", notices.count == 1 && layer.copied.isEmpty)
+
+    notices = []
+    let (stale, staleLayout) = restricted(protected: false, mayItems: false, previous: { previousCalls += 1; return false })
+    previousCalls = 0
+    check("stale-protected-layout-still-copies-nothing", stale.copy?() == true && previousCalls == 0)
+    check("stale-protected-layout-shows-no-wrong-notice", notices.isEmpty)
+    withExtendedLifetime(staleLayout) {}
+}
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)

@@ -24,6 +24,7 @@ import GroupCallScreenUI
 import WebAppUI
 import InlineStickerLayer
 import AppAnalytics
+import ComponentsUI
 
 struct UserInfoPersonalChannel : Equatable {
     let peer: EnginePeer
@@ -464,9 +465,16 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         super.setFrameSize(newSize)
     }
     
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateLayout(size: frame.size, transition: .immediate)
+    }
+
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        transition.updateFrame(view: navigationBarView, frame: NSMakeRect(0, navigationOverflow, size.width, 64))
-        transition.updateFrame(view: navBgView, frame: navigationBarView.frame)
+        let reserved = DetachedWindowControls.reservedWidth(in: window)
+        let leading = reserved > 0 ? reserved - DetachedWindowHeaderLayout.sideInset : 0
+        transition.updateFrame(view: navigationBarView, frame: NSMakeRect(leading, navigationOverflow, max(0, size.width - leading), 64))
+        transition.updateFrame(view: navBgView, frame: NSMakeRect(0, navigationOverflow, size.width, 64))
         transition.updateFrame(view: tableView, frame: NSMakeRect(0, 0, size.width, size.height))
     }
 
@@ -593,6 +601,10 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     
     public override var barHeight: CGFloat {
         return 0
+    }
+
+    public override var containerCornerRadius: CGFloat {
+        return context.isExternal ? 0 : super.containerCornerRadius
     }
 
     public override func updateNavigationHeaderOverflow(_ overflow: CGFloat, transition: ContainedViewLayoutTransition) {

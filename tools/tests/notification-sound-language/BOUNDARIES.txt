@@ -1,0 +1,9 @@
+Run with python3 -I run.py --source-root <worktree> --output <external-owned-directory>.
+
+The harness compiles the exact production name arrays, soundName and localizedPeerNotificationSoundString, without replacing their bodies. The negative control reads these same declarations from git object 246e3e957ae5cea1ecff6d7a6a6db3e47be69bb5, compiles successfully, then must fail language-refresh assertions. Compilation failure is not a negative-control success. Baseline/support git reads use the runner's own repository, never --source-root's historical HEAD.
+
+The actual generated localization accessors are extracted from the same authoritative app base. Only L10n.tr is doubled: a controllable in-memory locale prefixes the real localization key. This proves re-resolution on a language change, not the quality or availability of translation files or live settings refresh.
+
+PeerMessageSound cases and integer widths, NotificationSound.file, and TelegramMediaFile's fileId/fileName/isVoice fields are boundary doubles inspected against pinned core 24638bc69bd083981b178dd1e7f921eebbf7fc46. Persistence, Codable, network fetching and media playback are not linked. Foundation's NSString path-extension handling is real. The resource/playback function is checked byte-for-byte unchanged against the app base rather than simulated. Existing default/cloud behavior, including deferred inherited-cloud naming scenario44, is intentionally asserted unchanged.
+
+Both compiles run serially with swiftc -j1. Inherited GIT_* variables are removed. Generated Swift, binaries, logs, temporary files, HOME and module caches remain under --output. This is not a full package/app build and does not launch AppKit or Telegram.

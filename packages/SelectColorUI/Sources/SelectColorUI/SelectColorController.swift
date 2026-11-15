@@ -461,6 +461,7 @@ private final class ProfilePreviewRowView : GeneralContainableRowView {
                 color = theme.colors.text.withAlphaComponent(0.3)
             }
             
+            current.darkensCover = item.nameColor != nil
             SettingsHooks.shared.setPeerInfoSpawnEmoji(current, emoji, color, item.context, animated)
         } else if let view = self.emojiSpawn {
             performSubviewRemoval(view, animated: animated)

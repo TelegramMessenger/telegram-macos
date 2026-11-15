@@ -57,7 +57,7 @@ blocks = {
     '__THRESHOLD__': section(selection, 'func chatTextSelectionDidDrag(', 'public class ChatSelectText'),
     '__GESTURE__': section(poll, '    private var startMouseDownPoint:', '    private var option: PollOption?'),
     '__CLICK__': section(poll, '        set(handler: { [weak self] control in', '    required init?(coder: NSCoder) {').rsplit('    }', 1)[0],
-    '__COPY_POLICY__': section(poll, '    fileprivate var canCopyText: Bool', '    public override init('),
+    '__COPY_POLICY__': section(poll, '    fileprivate func copyBlocked() -> Bool {' if '    fileprivate func copyBlocked() -> Bool {' in poll else '    fileprivate var canCopyText: Bool', '    public override init('),
     '__PEER_POLICY__': section(peer, '    func isCopyProtected(cachedData:', '    var maybePremiumRequired:'),
     '__INVALIDATE__': section(poll, '    private func updateTextSelection(', '    func menuTextLayout('),
     '__MENU_TARGET__': section(poll, '    func menuTextLayout(', '    public override func canStartTextSelecting'),

@@ -216,6 +216,16 @@ private struct State : Equatable {
     var isEditing: Bool = false
     var titleOverride: String?
 
+    func isInstalled(_ collection: PreviewState.Collection, source: PreviewState.Source) -> Bool {
+        if collection.installed { return true }
+        switch source {
+        case .emoji:
+            return installed.contains(.emoji(.name(collection.info.shortName)))
+        case .stickers:
+            return installed.contains(.stickers(.name(collection.info.shortName)))
+        }
+    }
+
     static func == (lhs: State, rhs: State) -> Bool {
         return lhs.preview === rhs.preview
             && lhs.installed == rhs.installed
@@ -263,13 +273,7 @@ private func entries(_ state: State, controllerSource: StickerPackPreviewModalSo
         index += 1
     case let .loaded(source, collections):
         let isInstalled: (PreviewState.Collection) -> Bool = { collection in
-            if collection.installed { return true }
-            switch source {
-            case .emoji:
-                return state.installed.contains(.emoji(.name(collection.info.shortName)))
-            case .stickers:
-                return state.installed.contains(.stickers(.name(collection.info.shortName)))
-            }
+            return state.isInstalled(collection, source: source)
         }
 
         result.append(.sectionId(sectionId, type: .customModern(4)))
@@ -542,7 +546,11 @@ public func StickerPackPreviewModalController(_ context: any AccountContextProto
         case .install:
             let title: String
             let text: String
-            if !collection.installed {
+            let isInstalled = stateValue.with { $0.isInstalled(collection, source: source) }
+            if isInstalled && !shouldClose {
+                return
+            }
+            if !isInstalled {
                 _ = analyticsContext.preservingPresentation(context.engine.stickers.addStickerPackInteractively(info: collection.info, items: collection.items)).start()
                 switch source {
                 case .stickers:
@@ -759,15 +767,7 @@ public func StickerPackPreviewModalController(_ context: any AccountContextProto
 
         if controllerSource == .install, collections.count == 1 {
             let collection = collections[0]
-            let isInstalled: Bool = {
-                if collection.installed { return true }
-                switch source {
-                case .emoji:
-                    return state.installed.contains(.emoji(.name(collection.info.shortName)))
-                case .stickers:
-                    return state.installed.contains(.stickers(.name(collection.info.shortName)))
-                }
-            }()
+            let isInstalled = state.isInstalled(collection, source: source)
             if source == .stickers, isOwnStickerPack(collection.info) {
                 items.append(ContextSeparatorItem())
                 if !collection.items.isEmpty, !state.isEditing {
@@ -905,13 +905,7 @@ public func StickerPackPreviewModalController(_ context: any AccountContextProto
         }
 
         let isInstalled: (PreviewState.Collection) -> Bool = { collection in
-            if collection.installed { return true }
-            switch source {
-            case .emoji:
-                return state.installed.contains(.emoji(.name(collection.info.shortName)))
-            case .stickers:
-                return state.installed.contains(.stickers(.name(collection.info.shortName)))
-            }
+            return state.isInstalled(collection, source: source)
         }
         let notInstalledCount = collections.filter { !isInstalled($0) }.count
         let isOwnInstalled = controllerSource == .install && source == .stickers && collections.count == 1 && isOwnStickerPack(collections[0].info) && isInstalled(collections[0])

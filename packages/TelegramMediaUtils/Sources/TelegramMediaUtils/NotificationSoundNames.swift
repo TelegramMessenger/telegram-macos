@@ -5,31 +5,35 @@ import SwiftSignalKit
 import Localization
 import TGUIKit
 
-private let modernSoundsNamePaths: [String] = [
-    strings().notificationsSoundNote,
-    strings().notificationsSoundAurora,
-    strings().notificationsSoundBamboo,
-    strings().notificationsSoundChord,
-    strings().notificationsSoundCircles,
-    strings().notificationsSoundComplete,
-    strings().notificationsSoundHello,
-    strings().notificationsSoundInput,
-    strings().notificationsSoundKeys,
-    strings().notificationsSoundPopcorn,
-    strings().notificationsSoundPulse,
-    strings().notificationsSoundSynth
-]
+private var modernSoundsNamePaths: [String] {
+    return [
+        strings().notificationsSoundNote,
+        strings().notificationsSoundAurora,
+        strings().notificationsSoundBamboo,
+        strings().notificationsSoundChord,
+        strings().notificationsSoundCircles,
+        strings().notificationsSoundComplete,
+        strings().notificationsSoundHello,
+        strings().notificationsSoundInput,
+        strings().notificationsSoundKeys,
+        strings().notificationsSoundPopcorn,
+        strings().notificationsSoundPulse,
+        strings().notificationsSoundSynth
+    ]
+}
 
-private let classicSoundNamePaths: [String] = [
-    strings().notificationsSoundTritone,
-    strings().notificationsSoundTremolo,
-    strings().notificationsSoundAlert,
-    strings().notificationsSoundBell,
-    strings().notificationsSoundCalypso,
-    strings().notificationsSoundChime,
-    strings().notificationsSoundGlass,
-    strings().notificationsSoundTelegraph
-]
+private var classicSoundNamePaths: [String] {
+    return [
+        strings().notificationsSoundTritone,
+        strings().notificationsSoundTremolo,
+        strings().notificationsSoundAlert,
+        strings().notificationsSoundBell,
+        strings().notificationsSoundCalypso,
+        strings().notificationsSoundChime,
+        strings().notificationsSoundGlass,
+        strings().notificationsSoundTelegraph
+    ]
+}
 
 private func soundName(sound: PeerMessageSound) -> String {
     switch sound {
@@ -38,13 +42,15 @@ private func soundName(sound: PeerMessageSound) -> String {
         case .default:
             return ""
         case let .bundledModern(id):
-            if id >= 0 && Int(id) < modernSoundsNamePaths.count {
-                return modernSoundsNamePaths[Int(id)]
+            let names = modernSoundsNamePaths
+            if id >= 0 && Int(id) < names.count {
+                return names[Int(id)]
             }
             return "Sound \(id)"
         case let .bundledClassic(id):
-            if id >= 0 && Int(id) < classicSoundNamePaths.count {
-                return classicSoundNamePaths[Int(id)]
+            let names = classicSoundNamePaths
+            if id >= 0 && Int(id) < names.count {
+                return names[Int(id)]
             }
             return "Sound \(id)"
     case let .cloud(fileId):
