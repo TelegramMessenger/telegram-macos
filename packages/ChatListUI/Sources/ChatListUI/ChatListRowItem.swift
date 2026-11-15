@@ -1766,7 +1766,7 @@ public class ChatListRowItem: TableRowItem {
     public func toggleMuted() {
         let peerId = renderedPeer?.chatMainPeer?.id ?? peerId
         if let peerId = peerId {
-            ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: self.mode.threadId)
+            ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: self.mode.threadId, threadData: self.mode.threadData)
         }
     }
     public func delete() {
@@ -1776,9 +1776,13 @@ public class ChatListRowItem: TableRowItem {
         }
     }
     
-    public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?) {
+    public static func toggleMuted(context: any AccountContextProtocol, peerId: PeerId, isMuted: Bool, threadId: Int64?, threadData: MessageHistoryThreadData?) {
         if isMuted {
-            _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).start()
+            if let threadId, threadData?.notificationSettings.muteState == .default {
+                _ = context.engine.peers.updatePeerMuteSetting(peerId: peerId, threadId: threadId, muteInterval: 0).start()
+            } else {
+                _ = context.engine.peers.togglePeerMuted(peerId: peerId, threadId: threadId).start()
+            }
         } else {
             var options:[ModalOptionSet] = []
             
@@ -1814,27 +1818,8 @@ public class ChatListRowItem: TableRowItem {
     }
     
     public static func togglePinned(context: any AccountContextProtocol, peerId: PeerId, isPinned: Bool, mode: ChatListRowItem.Mode, filter: ChatListFilter, associatedGroupId: EngineChatList.Group) {
-        let location: TogglePeerChatPinnedLocation
-        if case .filter = filter {
-            location = .filter(ChatListUIHooks.shared.chatListFilterId(filter))
-        } else {
-            location = .group(associatedGroupId._asGroup())
-        }
-        let current: Signal<Bool, NoError>
-        switch mode {
-        case let .topic(threadId, _), let .savedMessages(threadId):
-            current = context.engine.peers.getForumChannelPinnedTopics(id: peerId) |> map { $0.contains(threadId) }
-        case .chat:
-            current = context.engine.peers.getPinnedItemIds(location: location) |> map { $0.contains(.peer(peerId)) }
-        }
-        _ = (current |> take(1) |> deliverOnMainQueue).start(next: { current in
-            if current == isPinned {
-                applyTogglePinned(context: context, peerId: peerId, mode: mode, location: location, filter: filter, associatedGroupId: associatedGroupId)
-            }
-        })
-    }
-    
-    private static func applyTogglePinned(context: any AccountContextProtocol, peerId: PeerId, mode: ChatListRowItem.Mode, location: TogglePeerChatPinnedLocation, filter: ChatListFilter, associatedGroupId: EngineChatList.Group) {
+        
+        
         switch mode {
         case let .topic(threadId, _):
             let signal = context.engine.peers.toggleForumChannelTopicPinned(id: peerId, threadId: threadId) |> deliverOnMainQueue
@@ -1857,7 +1842,13 @@ public class ChatListRowItem: TableRowItem {
                 }
             })
         case .chat:
+            let location: TogglePeerChatPinnedLocation
             let itemId: PinnedItemId = .peer(peerId)
+            if case .filter = filter {
+                location = .filter(ChatListUIHooks.shared.chatListFilterId(filter))
+            } else {
+                location = .group(associatedGroupId._asGroup())
+            }
             let context = context
             
             _ = (context.engine.peers.toggleItemPinned(location: location, itemId: itemId) |> deliverOnMainQueue).start(next: { result in
@@ -1935,9 +1926,7 @@ public class ChatListRowItem: TableRowItem {
             return .complete()
         }
         let screen = self.analyticsMenuScreen
-        return menuState() |> mapToSignal { [weak self] state in
-            return self?.chatListMenuItems(screen: screen, state: state) ?? .complete()
-        } |> map { items in
+        return chatListMenuItems(screen: screen) |> map { items in
             if !items.isEmpty {
                 Analytics.shared.send(AnalyticsEvents.menuOpen(menu: .chatListItem, screen: screen, via: .rightClick))
             }
@@ -1945,17 +1934,7 @@ public class ChatListRowItem: TableRowItem {
         }
     }
     
-    struct MenuState {
-        let isPinned: Bool
-        let isMuted: Bool
-        let pinGroupId: EngineChatList.Group
-    }
-    
-    func menuState() -> Signal<MenuState, NoError> {
-        return .single(MenuState(isPinned: isPinned, isMuted: isMuted, pinGroupId: associatedGroupId))
-    }
-    
-    private func chatListMenuItems(screen: AnalyticsScreen, state: MenuState) -> Signal<[ContextMenuItem], NoError> {
+    private func chatListMenuItems(screen: AnalyticsScreen) -> Signal<[ContextMenuItem], NoError> {
         let select: (AnalyticsMenuItems.ChatListItem) -> Void = { item in
             Analytics.shared.send(AnalyticsEvents.menuSelect(chatListItem: item, screen: screen))
         }
@@ -1970,14 +1949,14 @@ public class ChatListRowItem: TableRowItem {
         let effectivePeerId = self.renderedPeer?.chatMainPeer?.id ?? self.peerId
         let peer = self.peer
         let filter = self.filter
-        let isMuted = state.isMuted
+        let isMuted = self.isMuted
         let associatedGroupId = self.associatedGroupId
         let isAd = self.isAd
         let renderedPeer = self.renderedPeer
         let canArchive = self.canArchive
         let groupId = self.groupId
         let markAsUnread = self.markAsUnread
-        let isPinned = state.isPinned
+        let isPinned = self.isPinned
         let hideStatus = hideStatus
         let isSecret = self.isSecret
         let isUnread = badgeNode != nil || showsMentionSlot || isUnreadMarked
@@ -1995,13 +1974,10 @@ public class ChatListRowItem: TableRowItem {
             }
         }
         
-        let currentState = self.menuState
         let togglePin:()->Void = {
             select(isPinned ? .unpin : .pin)
             if let peerId = peerId {
-                _ = currentState().start(next: { current in
-                    ChatListRowItem.togglePinned(context: context, peerId: peerId, isPinned: isPinned, mode: mode, filter: filter, associatedGroupId: current.pinGroupId)
-                })
+                ChatListRowItem.togglePinned(context: context, peerId: peerId, isPinned: isPinned, mode: mode, filter: filter, associatedGroupId: associatedGroupId)
             }
         }
         
@@ -2021,7 +1997,7 @@ public class ChatListRowItem: TableRowItem {
         let toggleMute:()->Void = {
             select(isMuted ? .unmute : .mute)
             if let peerId = effectivePeerId {
-                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId)
+                ChatListRowItem.toggleMuted(context: context, peerId: peerId, isMuted: isMuted, threadId: threadId, threadData: mode.threadData)
             }
         }
         let toggleTopic:()->Void = {
