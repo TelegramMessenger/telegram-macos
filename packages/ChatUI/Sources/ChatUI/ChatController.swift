@@ -80,6 +80,30 @@ private func chatHistoryContains(_ message: Message, threadId: Int64?, tag: Hist
     }
 }
 
+private func chatHistoryCanSelect(_ message: Message) -> Bool {
+    guard let media = message.media.first else {
+        return true
+    }
+    if let action = media as? TelegramMediaAction {
+        switch action.action {
+        case .phoneCall, .conferenceCall:
+            return true
+        default:
+            return false
+        }
+    }
+    if let story = media as? TelegramMediaStory {
+        return !story.isMention
+    }
+    if media is TelegramMediaExpiredContent {
+        return false
+    }
+    if message.id.peerId.namespace != Namespaces.Peer.SecretChat, message.autoclearTimeout != nil, media is TelegramMediaImage || (media.isVideoFile && !media.isInstantVideo) {
+        return false
+    }
+    return true
+}
+
 private func chatHistoryKeepsReadState(peer: Peer?, chatLocation: ChatLocation) -> Bool {
     if case .thread = chatLocation {
         return true
@@ -8736,7 +8760,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 let cloudId = MessageId(peerId: lastMessageId.peerId, namespace: cloudNamespace, id: id)
                                 let localId = MessageId(peerId: lastMessageId.peerId, namespace: localNamespace, id: id)
                                 let message = transaction.getMessage(cloudId) ?? transaction.getMessage(localId)
-                                if let message = message, chatHistoryContains(message, threadId: threadId, tag: tag) {
+                                if let message = message, chatHistoryContains(message, threadId: threadId, tag: tag), chatHistoryCanSelect(message) {
                                     if minId > maxId {
                                         messages.append(message)
                                     } else {
