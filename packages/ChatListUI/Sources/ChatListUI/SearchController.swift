@@ -386,7 +386,9 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             let mode: ChatListRowItem.Mode
             let titleMode: ChatListRowItem.TitleMode
             let id: EngineChatList.Item.Id
-            if case .savedMessages = target {
+            var savedMessagesParentPeerId: PeerId?
+            if case let .savedMessages(parentPeerId) = target {
+                savedMessagesParentPeerId = parentPeerId
                 let sourcePeerId = message.threadId.map(PeerId.init) ?? message.sourceReference?.messageId.peerId ?? message.forwardInfo?.source?.id ?? message.forwardInfo?.author?.id ?? (message.forwardInfo == nil ? arguments.context.peerId : PeerId(anonymousSavedMessagesId))
                 id = .chatList(sourcePeerId)
                 mode = .savedMessages(sourcePeerId.toInt64())
@@ -409,7 +411,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
             case .common, .community:
                 titleMode = .forumInfo
             }
-            let item = ChatListMessageRowItem(initialSize, context: arguments.context, message: message, id: id, query: query, renderedPeer: peer, readState: combinedState, mode: mode, titleMode: titleMode)
+            let item = ChatListMessageRowItem(initialSize, context: arguments.context, message: message, id: id, query: query, renderedPeer: peer, readState: combinedState, mode: mode, titleMode: titleMode, savedMessagesParentPeerId: savedMessagesParentPeerId)
             return item
         case let .globalPeer(foundPeer, badge, _, adPeer):
             var status: String? = nil
