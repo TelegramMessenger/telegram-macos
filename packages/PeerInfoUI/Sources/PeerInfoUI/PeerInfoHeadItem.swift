@@ -1880,6 +1880,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
         isTogglingAvatar = true
+        photoContainer.layer?.removeAnimation(forKey: "transform")
         item.isAvatarExpanded = expanded
         item.noteHeightOfRow(animated: true)
         item.arguments.avatarExpandedDidChange?()
