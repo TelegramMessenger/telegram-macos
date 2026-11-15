@@ -79,6 +79,10 @@ row_markers = ["public override func mouseDown(", "public override func mouseDra
 row_body = "\n".join(block(row, marker) for marker in row_markers if marker in row)
 if drop:
     row_body = row[row.index("    private var avatarMouseDown:"):row.index("    override public func draggingEntered", row.index("    private var avatarMouseDown:"))]
+    row_class = row[row.index("public class ChatListRowView:"):]
+    row_body += "\n" + block(row_class, "public override func viewDidMoveToWindow()")
+    reuse_cleanup = block(block(row_class, "public override func set(item:"), "if previousStableId != item.stableId")
+    row_body += "\nfunc reuse(_ item: ChatListRowItem) { let previousStableId = (self.item as? ChatListRowItem)?.stableId\n" + reuse_cleanup + "\nself.item = item\n}"
 top_body = "\n".join(block(top, marker) for marker in ["private func folderDropTarget(", "private func folderDropTargets()", "public override func draggingEntered(", "public override func draggingUpdated(", "public override func performDragOperation("] if marker in top)
 side_body = "\n".join(block(sidebar, marker) for marker in ["override func draggingEntered(", "override func draggingUpdated(", "override func performDragOperation("] if marker in sidebar)
 if refined:
@@ -179,7 +183,7 @@ try:
         for key, marker in {"CONTENT_VIEWS": "    var contentViews:", "ITEM_CONTENT_VIEWS": "    public var contentViews:", "VISIBLE_ITEMS": "public var visibleItems:", "ITEM_AT_POINT": "public func item(at point:"}.items():
             fixture = fixture.replace("__" + key + "__", block(segment, marker) if marker in segment else "")
     swift.write_text(fixture)
-    command = ["xcrun", "swiftc", "-j2", "-module-cache-path", str(output / "cache"), str(swift), "-o", str(output / "checks")]
+    command = ["xcrun", "swiftc", "-j1", "-module-cache-path", str(output / "cache"), str(swift), "-o", str(output / "checks")]
     if args.sdk_typecheck:
         command = command[:-2] + ["-typecheck"]
     compiled = subprocess.run(command, env=env, text=True, capture_output=True)

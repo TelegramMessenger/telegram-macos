@@ -97,12 +97,7 @@ final class ChatListFolderDragSource: NSObject, NSDraggingSource {
     private(set) var isActive = true
     private var membership: ChatListFolderDragState?
     private let membershipDisposable = MetaDisposable()
-    private let invalidated = Atomic<Bool>(value: false)
     var presentation: ChatListFolderDragPresentation?
-
-    var isInvalidated: Bool {
-        return invalidated.with { $0 }
-    }
 
     init(context: any AccountContextProtocol, peer: Peer) {
         self.context = context
@@ -155,7 +150,6 @@ final class ChatListFolderDragSource: NSObject, NSDraggingSource {
 
     func consume() {
         isActive = false
-        _ = invalidated.swap(true)
         stopObserving()
         presentation?.invalidate()
     }
@@ -204,7 +198,7 @@ public enum ChatListFolderDrop {
         source.accept(destination: destination)
         if filter == .allChats {
             _ = (context.account.postbox.transaction { transaction -> Bool in
-                guard !context.isFrozen, !source.isInvalidated else { return false }
+                guard !context.isFrozen else { return false }
                 return chatListFolderDropUnarchive(transaction: transaction, peerId: source.peer.id)
             }
             |> deliverOnMainQueue).start(next: { changed in
@@ -221,13 +215,13 @@ public enum ChatListFolderDrop {
         |> take(1)
         |> deliverOnMainQueue
         |> mapToSignal { snapshot -> Signal<SearchPeerFolderUpdate, NoError> in
-            guard !context.isFrozen, !source.isInvalidated else {
+            guard !context.isFrozen else {
                 return .single(.unchanged)
             }
             let limit = context.isPremium ? context.premiumLimits.dialog_filters_chats_limit_premium : context.premiumLimits.dialog_filters_chats_limit_default
             let result = Atomic<SearchPeerFolderUpdate>(value: .unchanged)
             return context.engine.peers.updateChatListFiltersInteractively { list in
-                guard !context.isFrozen, !source.isInvalidated else { return list }
+                guard !context.isFrozen else { return list }
                 var list = list
                 if let index = list.firstIndex(where: { ChatListUIHooks.shared.chatListFilterId($0) == filterId }) {
                     let update = chatListFolderDropUpdate(list[index], peer: snapshot.peer, state: snapshot.folders, limit: limit)

@@ -89,9 +89,26 @@ final class Transaction {
     func updatePeerChatListInclusion(_ id: PeerId, inclusion: PeerChatListInclusion) { inclusions[id] = inclusion; changes.append((id, inclusion)) }
     func operationLogAddEntry(peerId: PeerId, tag: Int, tagLocalIndex: OperationIndex, tagMergedIndex: OperationIndex, contents: SynchronizeGroupedPeersOperation) { operations.append(contents) }
 }
+final class TestTransactionQueue {
+    var held = false
+    private var pending: [() -> Void] = []
+    var count: Int { pending.count }
+    func schedule(_ action: @escaping () -> Void) -> TestDisposable {
+        var cancelled = false
+        let work = { if !cancelled { action() } }
+        if held { pending.append(work) } else { work() }
+        return TestDisposable { cancelled = true }
+    }
+    func flush() {
+        let work = pending
+        pending.removeAll()
+        work.forEach { $0() }
+    }
+}
 public final class TestPostbox {
     weak var context: Context?
     let store = Transaction()
+    let transactions = TestTransactionQueue()
     var beforeTransaction: (() -> Void)?
     var combinedRequests = 0
     var emitInitial = true
@@ -110,7 +127,7 @@ public final class TestPostbox {
     func emit() { for next in Array(observers.values) { next(0) } }
     func flushSnapshots() { let callbacks = Array(pendingSnapshots.values); pendingSnapshots.removeAll(); callbacks.forEach { $0() } }
     func transaction<T>(_ f: @escaping (Transaction) -> T) -> Signal<T, NoError> {
-        Signal { [self] next in beforeTransaction?(); next(f(store)); return TestDisposable() }
+        Signal { [self] next in transactions.schedule { [self] in beforeTransaction?(); next(f(store)) } }
     }
 }
 public class Account { let postbox = TestPostbox() }
@@ -125,9 +142,10 @@ public class Engine { let peers = EnginePeers() }
 class EnginePeers {
     var list: [ChatListFilter] = [] { didSet { changed?() } }
     var updates = 0; var beforeUpdate: (() -> Void)?; var changed: (() -> Void)?
+    let transactions = TestTransactionQueue()
     func currentChatListFilters() -> Signal<[ChatListFilter], NoError> { .single(list) }
     func updateChatListFiltersInteractively(_ update: @escaping ([ChatListFilter]) -> [ChatListFilter]) -> Signal<[ChatListFilter], NoError> {
-        Signal { [self] next in beforeUpdate?(); let result = update(list); if result != list { updates += 1 }; list = result; next(result); return TestDisposable() }
+        Signal { [self] next in transactions.schedule { [self] in beforeUpdate?(); let result = update(list); if result != list { updates += 1 }; list = result; next(result) } }
     }
 }
 func searchPeerContextMenuSnapshot(peer: Peer, context: any AccountContextProtocol, canPin: Bool) -> Signal<Snapshot, NoError> {

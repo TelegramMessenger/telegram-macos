@@ -8,7 +8,7 @@ mirror; unchanged files fall back to --source-root or the feature worktree. New
 presentation/target files are absent rather than borrowed from the refined source.
 An optional --output requires a new directory with no symlink ancestors. Without it,
 the owned temporary directory, compiler cache and executable are removed on exit.
-The runner strips inherited GIT_* variables and invokes swiftc -j2 sequentially,
+The runner strips inherited GIT_* variables and invokes swiftc -j1 sequentially,
 using owned TMPDIR, CLANG_MODULE_CACHE_PATH and SWIFT_MODULECACHE_PATH directories.
 An optional --sdk-typecheck typechecks the actual presentation/target classes and
 actual generic segment content/visible-geometry accessors against the installed
@@ -21,7 +21,11 @@ Production source compiled:
   native source callbacks and perform-drop signal/transaction handler, unchanged.
 - SearchPeerFolderState, SearchPeerFolderUpdate, searchPeerFolderContains and
   searchPeerFolderUpdate from SearchPeerContextMenu.swift, unchanged.
-- Avatar hit testing, mouse down/drag/up and scroll handlers from ChatListRowView.
+- Avatar hit testing, mouse down/drag/up, scroll and isHidden handlers from ChatListRowView.
+- The full viewDidMoveToWindow handler and the stable-ID-change cleanup block from
+  set(item:animated:). The latter runs inside a minimal reuse wrapper which supplies
+  the old/new stable IDs and replaces the item after cleanup; the rest of row setup
+  and reveal rendering are not executed.
 - Top-strip target/visible-content lookup and drag entry/update/perform handlers.
 - Sidebar drag entry/update/perform handlers; table enumeration remains a boundary.
 - ScrollableSegmentView.item(at:) and visibleItems geometry filtering.
@@ -64,7 +68,9 @@ Boundary doubles:
   Before-control assertions concern visibility, overshoot, late shrink and cleanup,
   not pixel-exact system interpolation; no output is treated as a visual recording.
 - The first presentation double in Checks.swift.in delivers local mutation results
-  synchronously, or holds its callback for overlap tests. The full extracted
+  synchronously, or holds its callback for overlap tests. Its complete/end methods
+  respect invalidation, matching the real presentation's suppression of late visual
+  feedback and stale avatar writes. The full extracted
   presentation in PresentationChecks.swift.in tests ordering, timeout/late results,
   source reuse, window/target invalidation, Reduce Motion changes, current source
   geometry, preview continuity, shallow continuous return without squash/bounce,
@@ -93,11 +99,25 @@ Boundary doubles:
   delivery. It tests source loading/refresh/cancellation without running Postbox.
   then() models the production single(nil)-then-state sequence, not general signal
   completion semantics. Current-filter/peer state is supplied by the fixture.
+- Both interactive filter updates and unarchive transactions can be held in explicit
+  queues. The real subscribed closure executes only when the test flushes its queue,
+  after perform has returned success and source-row teardown has run. These are
+  deterministic interleavings, not actual background threads or Postbox scheduling.
 - The interactive filter-update boundary executes the real closure with latest list
   and a pre-update edit. The unarchive transaction runs the real archive-only helper
   against inert peer/inclusion/operation-log stores; it checks preserved minTimestamp,
   cleared archive pin, explicit root target, one sync operation and atomic no-op races.
   Actual storage, network synchronization and background queue scheduling are NOT run.
+- Delayed lifecycle regressions exercise hidden, scrolled-out, window-detached,
+  stable-ID-reused and new-gesture source cleanup before and after acceptance. Both
+  custom-folder and All Chats mutations must survive post-acceptance cleanup exactly
+  once, while pre-acceptance cleanup must prevent all queued writes. Custom-folder
+  tests also hold the snapshot before it can dispatch the filter transaction.
+- Accepted work revalidates current folder deletion, explicit/implicit membership,
+  capacity, metadata and frozen context, or current archive inclusion, peer existence,
+  pin/timestamp and frozen context. Mutation assertions inspect actual stored state,
+  not a presentation callback: invalidated presentations suppress late feedback and
+  never overwrite the recycled avatar or its decorations.
 - Alerts/premium navigation increment a counter. Sidebar/app-bridge registration,
   explicit geometry wiring and the existing visibility hook have structural checks.
 
@@ -107,6 +127,11 @@ cannot compile against them and produce an explicit failed capability assertion;
 the real older presentation still executes the shared lifecycle tests. Original
 --revision baseline checks remain available. Compilation failures are reported as
 COMPILE_ERROR_NOT_A_REGRESSION_RESULT, never counted as regression evidence.
+The accepted-drop lifecycle control at ba4e7705a6ac4d94564b75c3cbc8e693d777962f
+compiles with the same delayed-transaction tests and fails 44 of 773 assertions;
+the lifecycle fix passes all 773. This distinguishes a returned-success/queued-write
+regression from a compiler failure. Row teardown still rejects unaccepted drags;
+after acceptance it only tears down observation and presentation, not storage work.
 
 Limits: this is not a full build, GUI reproduction or manual acceptance. Actual
 AppKit animation appearance, opaque-child overlay visibility, retina rendering,
