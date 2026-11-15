@@ -992,6 +992,15 @@ extension DocumentCanvasView {
             editing { insertParagraphBeforeImage(at: i, text: "") }
             return
         }
+        if let (region, _) = leafRegion(containingGlobal: selFrom), case .pullQuote = region.ref,
+           selTo <= region.globalStart + region.length {
+            if caretAtQuoteTrailingBlankLine() {
+                exitQuoteBelow()
+            } else {
+                commitText("\n")
+            }
+            return
+        }
         // Enter at the END of a heading starts a plain body paragraph — a heading is a one-line title, so
         // the next line is normal text rather than carrying the heading style forward. Splitting mid-heading
         // (or a heading that is also a list item) keeps the current behavior.

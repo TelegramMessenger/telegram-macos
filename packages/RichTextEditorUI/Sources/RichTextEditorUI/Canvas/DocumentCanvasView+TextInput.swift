@@ -142,7 +142,9 @@ extension DocumentCanvasView {
             // container's left edge), ignoring firstLineHeadIndent. For an indented empty line — a list
             // item or quote — that drops the caret into the marker gutter; place it at the text indent.
             if r.layout.length == 0 {
-                if let p = activeStack(at: r.globalStart)?.box as? BlockBox {
+                if case .quoteAuthor = r.ref {
+                    rect.origin.x = r.canvasOrigin.x + r.layout.container.size.width / 2
+                } else if let p = activeStack(at: r.globalStart)?.box as? BlockBox {
                     let ps = p.mapper.styleSheet.paragraphStyle(for: p.style, attributes: p.paragraphAttributes, list: p.listMembership)
                     rect.origin.x = r.canvasOrigin.x + ps.firstLineHeadIndent
                 } else if let pq = activeStack(at: r.globalStart)?.box as? PullQuoteBox {
