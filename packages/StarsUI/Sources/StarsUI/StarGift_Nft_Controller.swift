@@ -992,22 +992,18 @@ private final class HeaderItem : GeneralRowItem {
             self.onSaleLayout = .init(attr, alignment: .center)
             self.onSaleLayout?.measure(width: .greatestFiniteMagnitude)
             
-            self.info = .init(.initialize(string: "", color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text)), alignment: .center)
+            if let sender = state.headerGiftMessage?.sender {
+                self.info = HeaderItem.senderInfo(sender)
+            } else {
+                self.info = .init(.initialize(string: "", color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text)), alignment: .center)
+            }
             
             self.variansLayout = nil
         } else {
             self.variansLayout = nil
             self.onSaleLayout = nil
             if let sender = state.headerGiftMessage?.sender {
-                let senderName = sender._asPeer().displayTitle
-                let attr = NSMutableAttributedString()
-                attr.append(string: strings().chatServiceStarGiftFrom(senderName), color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text))
-                let senderRange = attr.string.nsstring.range(of: senderName, options: .backwards)
-                if senderRange.location != NSNotFound {
-                    attr.addAttribute(.foregroundColor, value: NSColor.white, range: senderRange)
-                    attr.addAttribute(.font, value: NSFont.medium(.text), range: senderRange)
-                }
-                self.info = .init(attr, maximumNumberOfLines: 1, alignment: .center)
+                self.info = HeaderItem.senderInfo(sender)
             } else {
                 self.info = .init(.initialize(string: state.headerInfo, color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text)), alignment: .center)
             }
@@ -1099,6 +1095,22 @@ private final class HeaderItem : GeneralRowItem {
         return !self.converted
     }
     
+    private static func senderInfo(_ sender: EnginePeer) -> TextViewLayout {
+        let senderName = sender._asPeer().displayTitle
+        let attr = NSMutableAttributedString()
+        attr.append(string: strings().chatServiceStarGiftFrom(senderName), color: NSColor.white.withAlphaComponent(0.8), font: .normal(.text))
+        let senderRange = attr.string.nsstring.range(of: senderName, options: .backwards)
+        if senderRange.location != NSNotFound {
+            attr.addAttribute(.foregroundColor, value: NSColor.white, range: senderRange)
+            attr.addAttribute(.font, value: NSFont.medium(.text), range: senderRange)
+        }
+        return .init(attr, maximumNumberOfLines: 1, alignment: .center)
+    }
+
+    var stacksOnSaleAboveInfo: Bool {
+        return onSaleLayout != nil && state.headerGiftMessage?.sender != nil
+    }
+
     public override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
         _ = super.makeSize(width, oldWidth: oldWidth)
 
@@ -1131,6 +1143,10 @@ private final class HeaderItem : GeneralRowItem {
 
         if let giftMessage {
             height += giftMessage.height
+        }
+
+        if stacksOnSaleAboveInfo, let onSaleLayout {
+            height += onSaleLayout.layoutSize.height + 8 + 6
         }
 
         if !actions.isEmpty {
@@ -1743,6 +1759,14 @@ private final class HeaderView : GeneralRowView {
         if let messageView {
             messageView.centerX(y: infoView.frame.minY + 20 + GiftMessage.topSpacing)
         }
+
+        let titleAnchorY: CGFloat
+        if let onSaleView, (item as? HeaderItem)?.stacksOnSaleAboveInfo == true {
+            onSaleView.centerX(y: infoView.frame.minY - onSaleView.frame.height - 6)
+            titleAnchorY = onSaleView.frame.minY
+        } else {
+            titleAnchorY = infoView.frame.minY
+        }
         
         transition.updateFrame(view: backgroundView, frame: size.bounds)
 
@@ -1750,11 +1774,11 @@ private final class HeaderView : GeneralRowView {
 
         if let avatarView {
             avatarView.centerX(y: 30)
-            textView.centerX(y: infoView.frame.minY - textView.frame.height - 5, addition: -10)
+            textView.centerX(y: titleAnchorY - textView.frame.height - 5, addition: -10)
             giftView.setFrameOrigin(NSMakePoint(textView.frame.maxX + 2, textView.frame.minY - 3))
         } else {
             giftView.centerX(y: 30)
-            textView.centerX(y: infoView.frame.minY - textView.frame.height - 5)
+            textView.centerX(y: titleAnchorY - textView.frame.height - 5)
         }
         updateBackground(animated: false)
     }
