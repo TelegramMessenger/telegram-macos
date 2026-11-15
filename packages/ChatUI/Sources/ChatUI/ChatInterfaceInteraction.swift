@@ -541,14 +541,14 @@ public final class ChatInteraction : InterfaceObserver  {
         }
     }
     public var sendMedias:([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool) -> Void = {_,_,_,_,_,_,_,_, _ in}
-    public var sendMediasWithAnalytics: (([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool, AnalyticsMediaSubmission?, Int) -> Void)?
-    public func sendMediasObserved(_ medias: [Media], _ caption: ChatTextInputState, _ collage: Bool, _ additionalText: ChatTextInputState?, _ silent: Bool, _ schedule: Schedule?, _ spoiler: Bool, _ effect: AvailableMessageEffects.MessageEffect?, _ leadingText: Bool, submission: AnalyticsMediaSubmission?, part: Int) {
+    public var sendMediasWithAnalytics: (([Media], ChatTextInputState, Bool, ChatTextInputState?, Bool, Schedule?, Bool, AvailableMessageEffects.MessageEffect?, Bool, AnalyticsMediaSubmission?, Int, Set<Int>) -> Void)?
+    public func sendMediasObserved(_ medias: [Media], _ caption: ChatTextInputState, _ collage: Bool, _ additionalText: ChatTextInputState?, _ silent: Bool, _ schedule: Schedule?, _ spoiler: Bool, _ effect: AvailableMessageEffects.MessageEffect?, _ leadingText: Bool, submission: AnalyticsMediaSubmission?, part: Int, spoilerIndices: Set<Int> = []) {
         let origin = captureAnalyticsContext(inherited: submission?.context ?? Analytics.shared.unresolvedContext())
         submission?.restrict(to: origin)
         let presentation = origin.beginPresentation()
         defer { presentation.end() }
         if let sendMediasWithAnalytics = sendMediasWithAnalytics {
-            sendMediasWithAnalytics(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText, submission, part)
+            sendMediasWithAnalytics(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText, submission, part, spoilerIndices)
         } else {
             submission?.discard()
             sendMedias(medias, caption, collage, additionalText, silent, schedule, spoiler, effect, leadingText)

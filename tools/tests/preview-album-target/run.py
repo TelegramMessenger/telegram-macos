@@ -47,20 +47,22 @@ row = read('packages/PreviewSenderUI/Sources/PreviewSenderUI/MediaGroupPreviewRo
 layout = read('packages/ChatUI/Sources/ChatUI/GroupedLayout.swift')
 extensions = read('packages/TGUIKit/Sources/Extensions.swift')
 fixture = Path(__file__).with_name('AlbumTargetTests.swift.in').read_text()
+individual_spoilers = 'spoilerOverrides' in controller
 parts = {
+    '__SPOILER_ARGUMENTS__': ', toggleSpoiler: { _ in }, canSpoiler: true' if individual_spoilers else '',
     '__ARGUMENTS__': block(controller, 'private final class SenderPreviewArguments'),
     '__ENTRY_CASES__': section(controller, '    case section(Int)\n    case media(index:', '    var stableId: PreviewEntryId'),
     '__ENTRIES__': block(controller, 'private func previewMediaEntries('),
-    '__GROUP_ITEM__': section(controller, '        case let .mediaGroup(_, _, urls, messages, isSpoiler, payAmount, renderingPreviews):', '\n        }\n    }'),
+    '__GROUP_ITEM__': section(controller, '        case let .mediaGroup(_, _, urls, messages, ' + ('spoilers' if individual_spoilers else 'isSpoiler') + ', payAmount, renderingPreviews):', '\n        }\n    }'),
     '__ROW_ITEM__': section(row, 'class MediaGroupPreviewRowItem:', '    override func makeSize(') + '}\n',
-    '__CONTROL__': section(row, '                self.editControl.set(edit:', '                self.editControl.setFrameOrigin('),
+    '__CONTROL__': section(row, '                let url = item.urls[i]\n                self.editControl.set(edit:' if '                let url = item.urls[i]\n                self.editControl.set(edit:' in row else '                self.editControl.set(edit:', '                self.editControl.setFrameOrigin('),
     '__DROP__': section(row, '        if let index = draggingIndex, let newIndex = item.layout.moveItemIfNeeded(', '            set(item: item, animated: true)') + '        }',
     '__RENDERING__': section(row, 'updateMediaPreviewRendering(', ', in: contents[i], animated: animated)').removeprefix('updateMediaPreviewRendering('),
     '__LAYOUT_MOVE__': block(layout, '    public func moveItemIfNeeded('),
     '__ARRAY_MOVE__': block(extensions, '    mutating func move(at oldIndex:'),
     '__CHUNKS__': block(extensions, '    func chunks('),
     '__DELETE__': section(controller, '            self.urls.removeAll(where:', '\n'),
-    '__GLOBAL_MOVE__': block(controller, '}, reorder: { [weak self] from, to in').removeprefix('}, reorder: '),
+    '__GLOBAL_MOVE__': block(controller, 'reorder: { [weak self] from, to in').removeprefix('reorder: '),
     '__TABLE_REORDER__': section(controller, 'self.genericView.tableView.resortController = TableResortController(', '\n            } else {'),
 }
 for marker, source in parts.items():

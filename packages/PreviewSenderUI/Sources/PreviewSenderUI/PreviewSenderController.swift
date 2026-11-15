@@ -55,11 +55,41 @@ fileprivate struct PreviewSendingState : Hashable {
     let isSpoiler: Bool
     let sort: Sort
     let payAmount: Int64?
-    
+    var spoilerOverrides: [URL: Bool] = [:]
+
+    func isSpoiler(for url: URL) -> Bool {
+        return spoilerOverrides[url] ?? isSpoiler
+    }
+
+    func spoiler(for url: URL, media: Media, override: Bool? = nil) -> Bool {
+        return state == .media && payAmount == nil && Sender.canHaveSpoiler(media) && (override ?? isSpoiler(for: url))
+    }
+
+    func withToggledSpoiler(for url: URL) -> PreviewSendingState {
+        var updated = self
+        updated.spoilerOverrides[url] = !isSpoiler(for: url)
+        return updated
+    }
+
+    func withUpdatedSpoilerUrls(_ urls: [URL]) -> PreviewSendingState {
+        var updated = self
+        let urls = Set(urls)
+        updated.spoilerOverrides = spoilerOverrides.filter { urls.contains($0.key) }
+        return updated
+    }
+
+    func withReplacedSpoilerUrl(_ url: URL, with new: URL) -> PreviewSendingState {
+        var updated = self
+        updated.spoilerOverrides.removeValue(forKey: url)
+        updated.spoilerOverrides[new] = spoilerOverrides[url]
+        return updated
+    }
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(state)
         hasher.combine(isCollage)
         hasher.combine(isSpoiler)
+        hasher.combine(spoilerOverrides)
         if let payAmount {
             hasher.combine(payAmount)
         }
@@ -74,19 +104,19 @@ fileprivate struct PreviewSendingState : Hashable {
     }
     
     func withUpdatedState(_ state: State) -> PreviewSendingState {
-        return .init(state: state, isCollage: self.isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount)
+        return .init(state: state, isCollage: self.isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount, spoilerOverrides: self.spoilerOverrides)
     }
     func withUpdatedIsCollage(_ isCollage: Bool) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount)
+        return .init(state: self.state, isCollage: isCollage, isSpoiler: self.isSpoiler, sort: self.sort, payAmount: self.payAmount, spoilerOverrides: self.spoilerOverrides)
     }
     func withUpdatedIsSpoiler(_ isSpoiler: Bool) -> PreviewSendingState {
         return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: self.sort, payAmount: self.payAmount)
     }
     func withUpdatedSort(_ sort: Sort) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: self.payAmount)
+        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: self.payAmount, spoilerOverrides: self.spoilerOverrides)
     }
     func withUpdatedPayAmount(_ payAmount: Int64?) -> PreviewSendingState {
-        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: payAmount)
+        return .init(state: self.state, isCollage: self.isCollage, isSpoiler: isSpoiler, sort: sort, payAmount: payAmount, spoilerOverrides: self.spoilerOverrides)
     }
 }
 
@@ -400,10 +430,11 @@ fileprivate class PreviewSenderView : Control {
             }
 
             if canSpoiler {
-                menu.addItem(ContextMenuItem(!newValue.isSpoiler ? strings().previewSenderSpoilerTooltipEnable : strings().previewSenderSpoilerTooltipDisable, handler: {
+                let allSpoilers = self.controller?.allMediaHaveSpoilers ?? newValue.isSpoiler
+                menu.addItem(ContextMenuItem(!allSpoilers ? strings().previewSenderSpoilerTooltipEnable : strings().previewSenderSpoilerTooltipDisable, handler: {
                     self.controller?.analyticsMediaJourney?.step(.toggleSpoiler)
                     updateValue {
-                        $0.withUpdatedIsSpoiler(!$0.isSpoiler)
+                        $0.withUpdatedIsSpoiler(!allSpoilers)
                     }
                 }, itemImage: MenuAnimation.menu_send_spoiler.value))
             }
@@ -793,13 +824,17 @@ private final class SenderPreviewArguments {
     let edit:(URL)->Void
     let paint: (URL)->Void
     let delete:(URL)->Void
+    let toggleSpoiler: (URL) -> Void
+    let canSpoiler: Bool
     let reorder:(URL, URL) -> Void
-    init(context: any AccountContextProtocol, theme: TelegramPresentationTheme, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete: @escaping(URL)->Void, reorder: @escaping(URL, URL) -> Void) {
+    init(context: any AccountContextProtocol, theme: TelegramPresentationTheme, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete: @escaping(URL)->Void, toggleSpoiler: @escaping(URL)->Void, canSpoiler: Bool, reorder: @escaping(URL, URL) -> Void) {
         self.context = context
         self.theme = theme
         self.edit = edit
         self.paint = paint
         self.delete = delete
+        self.toggleSpoiler = toggleSpoiler
+        self.canSpoiler = canSpoiler
         self.reorder = reorder
     }
 }
@@ -903,7 +938,7 @@ private enum PreviewEntryId : Hashable {
 private enum PreviewEntry : Comparable, Identifiable {
     case section(Int)
     case media(index: Int, sectionId: Int, url: URL, media: Media, isSpoiler: Bool, payAmount: Int64?, renderingPreview: CGImage?)
-    case mediaGroup(index: Int, sectionId: Int, urls: [URL], messages: [Message], isSpoiler: Bool, payAmount: Int64?, renderingPreviews: [URL : CGImage])
+    case mediaGroup(index: Int, sectionId: Int, urls: [URL], messages: [Message], spoilers: [Bool], payAmount: Int64?, renderingPreviews: [URL : CGImage])
     case archive(index: Int, sectionId: Int, urls: [URL], media: Media)
     var stableId: PreviewEntryId {
         switch self {
@@ -936,7 +971,9 @@ private enum PreviewEntry : Comparable, Identifiable {
         case .section:
             return GeneralRowItem(initialSize, height: 20, stableId: stableId)
         case let .media(_, _, url, media, isSpoiler, payAmount, renderingPreview):
-            return MediaPreviewRowItem(initialSize, media: media, context: arguments.context, theme: arguments.theme, editedData: state.editedData[url], isSpoiler: isSpoiler, payAmount: payAmount, renderingPreview: renderingPreview, edit: {
+            return MediaPreviewRowItem(initialSize, media: media, context: arguments.context, theme: arguments.theme, editedData: state.editedData[url], isSpoiler: isSpoiler, payAmount: payAmount, renderingPreview: renderingPreview, toggleSpoiler: arguments.canSpoiler && state.currentState.state == .media && payAmount == nil && Sender.canHaveSpoiler(media) ? {
+                arguments.toggleSpoiler(url)
+            } : nil, edit: {
                 arguments.edit(url)
             }, paint: {
                 arguments.paint(url)
@@ -949,16 +986,14 @@ private enum PreviewEntry : Comparable, Identifiable {
             }, delete: {
               // arguments.delete(url)
             })
-        case let .mediaGroup(_, _, urls, messages, isSpoiler, payAmount, renderingPreviews):
-            return MediaGroupPreviewRowItem(initialSize, messages: messages, urls: urls, editedData: state.editedData, renderingPreviews: renderingPreviews, isSpoiler: isSpoiler, payAmount: payAmount, edit: { url in
+        case let .mediaGroup(_, _, urls, messages, spoilers, payAmount, renderingPreviews):
+            return MediaGroupPreviewRowItem(initialSize, messages: messages, urls: urls, editedData: state.editedData, renderingPreviews: renderingPreviews, spoilers: spoilers, payAmount: payAmount, toggleSpoiler: arguments.canSpoiler && payAmount == nil ? arguments.toggleSpoiler : nil, edit: { url in
                 arguments.edit(url)
             }, paint: { url in
                 arguments.paint(url)
             }, delete: { url in
                 arguments.delete(url)
-            }, context: arguments.context, reorder: { from, to in
-                arguments.reorder(from, to)
-            })
+            }, context: arguments.context, reorder: arguments.reorder)
         }
     }
     
@@ -1024,12 +1059,15 @@ private func previewMediaEntries( _ state: PreviewState) -> [PreviewEntry] {
             let collages = messages.chunks(10)
             for collage in collages {
                 let urls = collage.map { state.urls[Int($0.id.id)] }
-                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
+                let spoilers = collage.enumerated().map { i, message in
+                    state.currentState.spoiler(for: urls[i], media: message.media[0])
+                }
+                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: urls, messages: collage, spoilers: spoilers, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
                 index += 1
             }
         } else {
             for (i, media) in state.medias.enumerated() {
-                entries.append(.media(index: index, sectionId: sectionId, url: state.urls[i], media: media, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreview: state.renderingPreviews[state.urls[i]]))
+                entries.append(.media(index: index, sectionId: sectionId, url: state.urls[i], media: media, isSpoiler: state.currentState.spoiler(for: state.urls[i], media: media), payAmount: state.currentState.payAmount, renderingPreview: state.renderingPreviews[state.urls[i]]))
                 index += 1
             }
         }
@@ -1381,7 +1419,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
 
     private func flushPendingRenderSend() {
-        guard !isRenderingEdit, let pending = pendingRenderSend, getMediaUrls() == urls, !getMedias().contains(where: isPreviewPlaceholder) else { return }
+        guard !isRenderingEdit, let pending = pendingRenderSend, getMediaUrls() == urls, isMediaStateCurrent(), !getMedias().contains(where: isPreviewPlaceholder) else { return }
         pendingRenderSend = nil
         genericView.sendButton.alphaValue = 1.0
         pending()
@@ -1417,6 +1455,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
     
     var getMedias:()->[Media] = { return [] }
     private var getMediaUrls: () -> [URL] = { return [] }
+    private var isMediaStateCurrent: () -> Bool = { return true }
     var updateCustomPreview:(String, String?)->Void = { _, _ in }
 
     fileprivate var previews: [String: String] = [:] {
@@ -1426,11 +1465,23 @@ public class PreviewSenderController: ModalViewController, Notifable {
         }
     }
     
+    fileprivate var allMediaHaveSpoilers: Bool {
+        let state = genericView.state
+        let eligibleUrls = zip(getMediaUrls(), getMedias()).filter { Sender.canHaveSpoiler($0.1) }.map { $0.0 }
+        return !eligibleUrls.isEmpty && eligibleUrls.allSatisfy { state.isSpoiler(for: $0) }
+    }
+
+    private func replaceAttachmentUrl(at index: Int, with url: URL) {
+        genericView.state = genericView.state.withReplacedSpoilerUrl(urls[index], with: url)
+        urls[index] = url
+    }
+
     fileprivate var urls:[URL] {
         set {
             let uniqueUrls = newValue.uniqueElements
             if _urls != uniqueUrls { pendingActions.invalidate() }
             _urls = uniqueUrls
+            self.genericView.state = self.genericView.state.withUpdatedSpoilerUrls(_urls)
             attachmentEdits.update(_urls)
             var canCollage: Bool = canCollagesFromUrl(_urls)
             if self.genericView.state.state == .media {
@@ -1590,9 +1641,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
             self.genericView.sendButton.shake(beep: false)
             return
         }
-        if isRenderingEdit || getMediaUrls() != urls {
+        if isRenderingEdit || getMediaUrls() != urls || !isMediaStateCurrent() {
             pendingRenderSend = { [weak self] in
-                self?.send(silent, atDate: atDate, asSpoiler: asSpoiler)
+                self?.send(silent, atDate: atDate, asSpoiler: asSpoiler, via: via)
             }
             genericView.sendButton.alphaValue = 0.5
             return
@@ -2038,6 +2089,10 @@ public class PreviewSenderController: ModalViewController, Notifable {
         self.getMediaUrls = {
             return stateValue.with { $0.urls }
         }
+        self.isMediaStateCurrent = { [weak self] in
+            guard let self else { return false }
+            return stateValue.with { $0.urls == self.urls && $0.currentState == self.genericView.state }
+        }
         
         self.updateCustomPreview = { [weak self] path, preview in
             if let preview {
@@ -2066,7 +2121,14 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 PendingVideoRenders.shared.cancel(path: url.path)
             }
             self.lockInteractiveChanges = false
-        }, reorder: { [weak self] from, to in
+        }, toggleSpoiler: { [weak self] url in
+            guard let self, !self.pendingActions.isClosed, !self.sent, self.genericView.canSpoiler, self.genericView.state.state == .media, self.genericView.state.payAmount == nil, self.urls.contains(url) else { return }
+            let state = self.genericView.state.withToggledSpoiler(for: url)
+            self.genericView.state = state
+            self.pendingActions.invalidate()
+            self.analyticsMediaJourney?.step(.toggleSpoiler)
+            self.urlsAndStateValue.set(UrlAndState(self.urls, state, previews: self.previews))
+        }, canSpoiler: chatInteraction.peerId.namespace != Namespaces.Peer.SecretChat, reorder: { [weak self] from, to in
             guard let `self` = self, let fromIndex = self.urls.firstIndex(of: from), let toIndex = self.urls.firstIndex(of: to) else { return }
             _ = removeTransitionAnimation.swap(true)
             self.lockInteractiveChanges = true
@@ -2169,7 +2231,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 containers.append(ArchiverSenderContainer(path: dir, files: urls))
             }
             
-            return (previewMedias(containers: containers, savedState: savedStateMedias.with { $0[state]}, isCollage: state.isCollage, previews: urlsAndState.previews), urls, state)
+            return (previewMedias(containers: containers, savedState: savedStateMedias.with { $0[state.withUpdatedIsSpoiler(false)]}, isCollage: state.isCollage, previews: urlsAndState.previews), urls, state)
         } |> map { previews, urls, state in
             let (transition, preparations) = prepareMedias(left: previousMedias.swap(previews), right: previews, isSecretRelated: isSecretRelated, isCollage: state.isCollage, account: context.account, placeholderResource: placeholderResource)
             return (transition, urls, state, previews, preparations)
@@ -2181,7 +2243,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
             }
             _ = savedStateMedias.modify { current in
                 var current = current
-                current[state] = previews
+                current[state.withUpdatedIsSpoiler(false)] = previews
                 return current
             }
             startPreparations(preparations)
@@ -2225,7 +2287,6 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 }
             }))
             
-            self.genericView.state = state
             let isPreparing = medias.contains(where: isPreviewPlaceholder)
             self.genericView.sendButton.isEnabled = !isPreparing
             self.genericView.sendButton.alphaValue = isPreparing || self.pendingRenderSend != nil ? 0.5 : 1.0
@@ -2245,7 +2306,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
             }
             
             let canSpoiler: Bool
-            canSpoiler = options.contains(.media) && state.state == .media && !isSecretChat && state.payAmount == nil
+            canSpoiler = medias.contains(where: Sender.canHaveSpoiler) && state.state == .media && !isSecretChat && state.payAmount == nil
 
             
             self.genericView.applyOptions(options, count: self.urls.count, canCollage: canCollage, canSpoiler: canSpoiler)
@@ -2277,10 +2338,11 @@ public class PreviewSenderController: ModalViewController, Notifable {
             self.readyOnce()
             
 
-            if self.genericView.tableView.count > 1 {
-                self.genericView.tableView.resortController = TableResortController(resortRange: NSMakeRange(0, self.genericView.tableView.count), startTimeout: 0.0, start: { _ in }, resort: { _ in }, complete: { [weak self] from, to in
-                    guard let self, self.urls.indices.contains(from), self.urls.indices.contains(to) else { return }
-                    arguments.reorder(self.urls[from], self.urls[to])
+            if self.genericView.tableView.count > 1, !(state.state == .media && state.isCollage) {
+                let urls = stateValue.with { $0.urls }
+                self.genericView.tableView.resortController = TableResortController(resortRange: NSMakeRange(0, self.genericView.tableView.count), startTimeout: 0.0, start: { _ in }, resort: { _ in }, complete: { from, to in
+                    guard urls.indices.contains(from), urls.indices.contains(to) else { return }
+                    arguments.reorder(urls[from], urls[to])
                 })
             } else {
                 self.genericView.tableView.resortController = nil
@@ -2329,6 +2391,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
             if !canCollage && state.isCollage {
                 state = state.withUpdatedIsCollage(false)
             }
+            self.genericView.state = state
             self.genericView.tableView.scroll(to: .up(true))
             self.pendingActions.invalidate()
             self.urlsAndStateValue.set(UrlAndState(self.urls, state, previews: self.previews))
@@ -2358,6 +2421,10 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 let peer = self.chatInteraction.peer
                 let state = stateValue.with { $0.currentState }
                 let medias = stateValue.with { $0.medias }
+                let urls = stateValue.with { $0.urls }
+                let spoilers = medias.enumerated().map { index, media in
+                    !isSecretChat && state.spoiler(for: urls[index], media: media, override: asSpoiler)
+                }
                 if medias.contains(where: isPreviewPlaceholder) {
                     self.analyticsMediaJourney?.submissionBlocked(.preparation)
                     return
@@ -2479,7 +2546,8 @@ public class PreviewSenderController: ModalViewController, Notifable {
                                 self.closeModal()
                                 return
                             }
-                            self.chatInteraction.sendMediasObserved(makeMedia(collage, true), input, state.isCollage && state.payAmount == nil, additionalMessage, silent, atDate, asSpoiler ?? state.isSpoiler, effect, state.sortValue == .up, submission: submission, part: index + 1)
+                            let spoilerIndices = Set(collage.indices.filter { spoilers[index * 10 + $0] })
+                            self.chatInteraction.sendMediasObserved(makeMedia(collage, true), input, state.isCollage && state.payAmount == nil, additionalMessage, silent, atDate, false, effect, state.sortValue == .up, submission: submission, part: index + 1, spoilerIndices: spoilerIndices)
                             additionalMessage = nil
                         }
                     } else {
@@ -2488,7 +2556,8 @@ public class PreviewSenderController: ModalViewController, Notifable {
                             self.closeModal()
                             return
                         }
-                        self.chatInteraction.sendMediasObserved(makeMedia(medias, false), input, false, additionalMessage, silent, atDate, asSpoiler ?? state.isSpoiler, effect, state.sortValue == .up, submission: submission, part: 1)
+                        let spoilerIndices = Set(medias.indices.filter { spoilers[$0] })
+                        self.chatInteraction.sendMediasObserved(makeMedia(medias, false), input, false, additionalMessage, silent, atDate, false, effect, state.sortValue == .up, submission: submission, part: 1, spoilerIndices: spoilerIndices)
                     }
                     
                     self.emoji.popover?.hide()
@@ -2627,7 +2696,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                                 }
                                 return data
                             }}
-                            self.urls[index] = new
+                            self.replaceAttachmentUrl(at: index, with: new)
                             self.analyticsMediaJourney?.step(.applyEditor)
                             context.engine.accountData.addAppLogEvent(time: Date().timeIntervalSince1970, type: AppLogEvents.imageEditor.rawValue, peerId: context.peerId, data: [:])
                         }
@@ -2664,7 +2733,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                             }
                             return data
                         }}
-                        self.urls[index] = new
+                        self.replaceAttachmentUrl(at: index, with: new)
                         self.analyticsMediaJourney?.step(.applyEditor)
                         context.engine.accountData.addAppLogEvent(time: Date().timeIntervalSince1970, type: AppLogEvents.imageEditor.rawValue, peerId: context.peerId, data: [:])
                     }
@@ -2922,7 +2991,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 previews[new.path] = preview
                 self.previews = previews
             }
-            self.urls[index] = new
+            self.replaceAttachmentUrl(at: index, with: new)
             self.analyticsMediaJourney?.step(.applyEditor)
         })
         editor.analyticsContext = analyticsContext

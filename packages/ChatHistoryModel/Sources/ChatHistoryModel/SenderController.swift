@@ -670,11 +670,21 @@ public class Sender: NSObject {
         return enqueue(media: [media], caption: ChatTextInputState(), context: context, peerId: peerId, replyId: replyId, threadId: threadId, replyStoryId: replyStoryId, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, query: query, collectionId: collectionId, customChatContents: customChatContents, sendPaidMessageStars: sendPaidMessageStars, observedResult: observedResult)
     }
 
-    public static func enqueue(media:[Media], caption: ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, isCollage: Bool = false, additionText: ChatTextInputState? = nil, silent: Bool = false, atDate: Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, query: String? = nil, collectionId: ItemCollectionId? = nil, isSpoiler: Bool = false, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, leadingText: Bool = false, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil) ->Signal<[MessageId?],NoError> {
-        return enqueue(media: media, caption: caption, context: context, peerId: peerId, replyId: replyId, threadId: threadId, replyStoryId: replyStoryId, isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: sendAsPeerId, query: query, collectionId: collectionId, isSpoiler: isSpoiler, customChatContents: customChatContents, messageEffect: messageEffect, leadingText: leadingText, sendPaidMessageStars: sendPaidMessageStars, suggestPost: suggestPost, observedResult: nil)
+    public static func canHaveSpoiler(_ media: Media) -> Bool {
+        if media is TelegramMediaImage {
+            return true
+        }
+        if let file = media as? TelegramMediaFile {
+            return file.isVideo && !file.isInstantVideo && !file.isSticker && !file.isAnimatedSticker
+        }
+        return false
     }
 
-    public static func enqueue(media:[Media], caption: ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, isCollage: Bool = false, additionText: ChatTextInputState? = nil, silent: Bool = false, atDate: Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, query: String? = nil, collectionId: ItemCollectionId? = nil, isSpoiler: Bool = false, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, leadingText: Bool = false, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil, observedResult: ((Int, [MessageId?]) -> Void)?) ->Signal<[MessageId?],NoError> {
+    public static func enqueue(media:[Media], caption: ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, isCollage: Bool = false, additionText: ChatTextInputState? = nil, silent: Bool = false, atDate: Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, query: String? = nil, collectionId: ItemCollectionId? = nil, isSpoiler: Bool = false, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, leadingText: Bool = false, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil, spoilerIndices: Set<Int> = []) ->Signal<[MessageId?],NoError> {
+        return enqueue(media: media, caption: caption, context: context, peerId: peerId, replyId: replyId, threadId: threadId, replyStoryId: replyStoryId, isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: sendAsPeerId, query: query, collectionId: collectionId, isSpoiler: isSpoiler, customChatContents: customChatContents, messageEffect: messageEffect, leadingText: leadingText, sendPaidMessageStars: sendPaidMessageStars, suggestPost: suggestPost, spoilerIndices: spoilerIndices, observedResult: nil)
+    }
+
+    public static func enqueue(media:[Media], caption: ChatTextInputState, context: any AccountContextProtocol, peerId:PeerId, replyId:EngineMessageReplySubject?, threadId: Int64?, replyStoryId: StoryId? = nil, isCollage: Bool = false, additionText: ChatTextInputState? = nil, silent: Bool = false, atDate: Date? = nil, repeatPeriod: Int32? = nil, sendAsPeerId: PeerId? = nil, query: String? = nil, collectionId: ItemCollectionId? = nil, isSpoiler: Bool = false, customChatContents: ChatCustomContentsProtocol? = nil, messageEffect: AvailableMessageEffects.MessageEffect? = nil, leadingText: Bool = false, sendPaidMessageStars: StarsAmount? = nil, suggestPost: ChatInterfaceState.ChannelSuggestPost? = nil, spoilerIndices: Set<Int> = [], observedResult: ((Int, [MessageId?]) -> Void)?) ->Signal<[MessageId?],NoError> {
         
         let dynamicEmojiOrder: Bool = context.stickerSettings.dynamicPackOrder
         
@@ -702,9 +712,6 @@ public class Sender: NSObject {
         if let sendPaidMessageStars {
             attributes.append(PaidStarsMessageAttribute(stars: sendPaidMessageStars, postponeSending: false))
         }
-        if isSpoiler {
-            attributes.append(MediaSpoilerMessageAttribute())
-        }
         if let messageEffect {
             attributes.append(EffectMessageAttribute(id: messageEffect.id))
         }
@@ -726,6 +733,10 @@ public class Sender: NSObject {
         let count = media.count
         let inlineMdeia = caption.with { $0.inlineMedia }
         for (i, media) in media.enumerated() {
+            var attributes = attributes
+            if (isSpoiler || spoilerIndices.contains(i)) && canHaveSpoiler(media) {
+                attributes.append(MediaSpoilerMessageAttribute())
+            }
             let text: String
             if media.isInteractiveMedia {
                 text = caption.swap(.init()).inputText
