@@ -192,6 +192,9 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
 // with the shared enqueue-on-send / draft-on-cancel behavior of the attach-menu entry.
 @available(macOS 12, *)
 private func composerEditorController(chatInteraction: ChatInteraction, initialDocument: Document?, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])?, analyticsContext: AnalyticsContext) -> InputDataModalController {
+    if let editState = chatInteraction.presentation.interfaceState.editState {
+        return editingRichTextEditorController(chatInteraction: chatInteraction, message: editState.message, initialDocument: initialDocument, initialDraft: initialDraft, analyticsContext: analyticsContext)
+    }
     let context = chatInteraction.interactionContext
     let flushDraft = ActionBox()
     chatInteraction.storePendingRichTextEditorDraft = { flushDraft.action?() }
@@ -238,7 +241,7 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, seeding documen
 
 @available(macOS 12, *)
 private func consumeComposerText(chatInteraction: ChatInteraction, around pasted: Document) -> Document {
-    guard chatInteraction.richTextDraft == nil else {
+    guard chatInteraction.presentation.interfaceState.editState != nil || chatInteraction.richTextDraft == nil else {
         return pasted
     }
     let inputState = chatInteraction.presentation.effectiveInput
@@ -246,6 +249,18 @@ private func consumeComposerText(chatInteraction: ChatInteraction, around pasted
     guard length > 0 else {
         return pasted
     }
+    let surrounding = richTextPasteSurroundingBlocks(inputState)
+    var result = pasted
+    result.blocks = surrounding.before + pasted.blocks + surrounding.after
+    if chatInteraction.presentation.interfaceState.editState == nil {
+        chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
+    }
+    return result
+}
+
+@available(macOS 12, *)
+func richTextPasteSurroundingBlocks(_ inputState: ChatTextInputState) -> (before: [Block], after: [Block]) {
+    let length = inputState.inputText.length
     let lower = min(max(0, inputState.selectionRange.lowerBound), length)
     let upper = min(max(lower, inputState.selectionRange.upperBound), length)
     func blocks(_ range: NSRange) -> [Block] {
@@ -255,10 +270,7 @@ private func consumeComposerText(chatInteraction: ChatInteraction, around pasted
         let part = inputState.subInputState(from: range)
         return richTextDocument(text: part.inputText, entities: part.messageTextEntities()).blocks
     }
-    var result = pasted
-    result.blocks = blocks(NSMakeRange(0, lower)) + pasted.blocks + blocks(NSMakeRange(upper, length - upper))
-    chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
-    return result
+    return (blocks(NSMakeRange(0, lower)), blocks(NSMakeRange(upper, length - upper)))
 }
 
 // Opens the editor with the FULL content of a rich-text message (refetched by id) — used when pasting a
@@ -267,13 +279,19 @@ private func consumeComposerText(chatInteraction: ChatInteraction, around pasted
 public func showRichTextEditor(chatInteraction: ChatInteraction, refetching messageId: MessageId) {
     let analyticsContext = chatInteraction.captureAnalyticsContext(sourcePeerId: messageId.peerId)
     let context = chatInteraction.interactionContext
+    let editState = chatInteraction.presentation.interfaceState.editState
     _ = analyticsContext.preservingPresentation(context.account.postbox.messagesAtIds([messageId]) |> deliverOnMainQueue).start(next: { messages in
         guard let message = messages.first, message.id == messageId,
               let rich = message.attributes.compactMap({ $0 as? RichTextMessageAttribute }).first else { return }
         let origin = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: message.id.peerId)
         let analyticsPresentation = origin.beginPresentation()
         defer { analyticsPresentation.end() }
-        let draft = richTextOutgoing(from: rich.instantPage)
+        guard chatInteraction.presentation.interfaceState.editState?.message.id == editState?.message.id else { return }
+        var draft = richTextOutgoing(from: rich.instantPage)
+        if editState != nil {
+            let surrounding = richTextPasteSurroundingBlocks(chatInteraction.presentation.effectiveInput)
+            draft.blocks = outgoingBlocks(fromSelection: surrounding.before) + draft.blocks + outgoingBlocks(fromSelection: surrounding.after)
+        }
         let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: nil, initialDraft: draft, analyticsContext: origin)
         showModal(with: controller, for: context.window)
     })
@@ -283,10 +301,6 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, refetching mess
 public func showRichTextEditor(chatInteraction: ChatInteraction, editing message: Message) {
     let analyticsContext = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : chatInteraction.captureAnalyticsContext(sourcePeerId: message.id.peerId)
     let context = chatInteraction.interactionContext
-    let messageId = message.id
-    let scheduleInfo: OutgoingScheduleInfoMessageAttribute? = message.isScheduledMessage
-        ? OutgoingScheduleInfoMessageAttribute(scheduleTime: message.scheduleTime ?? message.timestamp, repeatPeriod: message.scheduleRepeatPeriod)
-        : nil
     // A rich message keeps its content (incl. media) in an InstantPage — seed media-preserving so photos /
     // files / tables come back into the editor. Plain messages seed as a text+entities document.
     var initialDocument: Document?
@@ -296,6 +310,17 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, editing message
     } else {
         initialDocument = richTextDocument(from: message)
     }
+    let controller = editingRichTextEditorController(chatInteraction: chatInteraction, message: message, initialDocument: initialDocument, initialDraft: initialDraft, analyticsContext: analyticsContext)
+    showModal(with: controller, for: context.window)
+}
+
+@available(macOS 12, *)
+private func editingRichTextEditorController(chatInteraction: ChatInteraction, message: Message, initialDocument: Document?, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])?, analyticsContext: AnalyticsContext) -> InputDataModalController {
+    let context = chatInteraction.interactionContext
+    let messageId = message.id
+    let scheduleInfo: OutgoingScheduleInfoMessageAttribute? = message.isScheduledMessage
+        ? OutgoingScheduleInfoMessageAttribute(scheduleTime: message.scheduleTime ?? message.timestamp, repeatPeriod: message.scheduleRepeatPeriod)
+        : nil
     let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, isEditing: true, onDeleteMessage: { [weak chatInteraction] in
         guard let chatInteraction else { return }
         let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
@@ -308,12 +333,19 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, editing message
         defer { analyticsPresentation.end() }
         let entities = attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.first
         let richText = attributes.compactMap { $0 as? RichTextMessageAttribute }.first
-        _ = origin.preservingPresentation(context.engine.messages.requestEditMessage(messageId: messageId, text: text, media: .keep, entities: entities, richText: richText, inlineStickers: [:], scheduleInfoAttribute: scheduleInfo) |> deliverOnMainQueue).start(error: { _ in
+        _ = origin.preservingPresentation(context.engine.messages.requestEditMessage(messageId: messageId, text: text, media: .keep, entities: entities, richText: richText, inlineStickers: [:], scheduleInfoAttribute: scheduleInfo) |> deliverOnMainQueue).start(next: { progress in
+            if case .done(true) = progress {
+                chatInteraction.update { current in
+                    guard current.interfaceState.editState?.message.id == messageId else { return current }
+                    return current.updatedInterfaceState { $0.withoutEditMessage() }
+                }
+            }
+        }, error: { _ in
             showModalText(for: context.window, text: strings().unknownError)
         })
     })
     controller.analyticsContext = analyticsContext
-    showModal(with: controller, for: context.window)
+    return controller
 }
 
 // MARK: - Controller
