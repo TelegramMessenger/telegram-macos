@@ -2079,7 +2079,6 @@ public class ChatListRowItem: TableRowItem {
             isArchivedSignal = .single(false)
         }
 
-        let readState = self.readState
         let folderStateSignal: Signal<(Peer, SearchPeerFolderState)?, NoError>
         if let peerId = peerId, peerId.namespace != Namespaces.Peer.SecretChat, !mode.savedMessages {
             let categories: Signal<[PeerId: ChatListFilterPeerCategories], NoError> = peer is TelegramCommunity ? (communityFilterCategories(account: context.account) |> take(1)) : .single([:])
@@ -2099,7 +2098,7 @@ public class ChatListRowItem: TableRowItem {
                     }
                     let mentionCount = transaction.getMessageTagSummary(peerId: peerId, threadId: nil, tagMask: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud, customTag: nil)?.count ?? 0
                     let pendingMentionCount = transaction.getPendingMessageActionsSummary(peerId: peerId, type: .consumeUnseenPersonalMessage, namespace: Namespaces.Message.Cloud) ?? 0
-                    return (peer, SearchPeerFolderState(groupId: transaction.getPeerChatListIndex(peerId)?.0 ?? transaction.getPeerChatListInclusion(peerId).groupId, isMuted: isMuted, isUnread: readCounters.isUnread && readState?.isMuted != true, isContact: transaction.isPeerContact(peerId: notificationPeerId), hasUnreadMention: mentionCount > pendingMentionCount, communityCategories: communityCategories))
+                    return (peer, SearchPeerFolderState(groupId: transaction.getPeerChatListIndex(peerId)?.0 ?? transaction.getPeerChatListInclusion(peerId).groupId, isMuted: isMuted, isUnread: readCounters.isUnread, isContact: transaction.isPeerContact(peerId: notificationPeerId), hasUnreadMention: mentionCount > pendingMentionCount, communityCategories: communityCategories))
                 }
             }
         } else {
@@ -2401,19 +2400,24 @@ public class ChatListRowItem: TableRowItem {
                             if !isIncluded {
                                 select(.addToFolder)
                             }
-                            let result = Atomic<SearchPeerFolderUpdate>(value: .unchanged)
-                            _ = (context.engine.peers.updateChatListFiltersInteractively({ list in
-                                var list = list
-                                if let index = list.firstIndex(where: { ChatListUIHooks.shared.chatListFilterId($0) == ChatListUIHooks.shared.chatListFilterId(item) }) {
-                                    let update = searchPeerFolderUpdate(list[index], peer: peer, state: folderState, limit: limit)
-                                    _ = result.swap(update)
-                                    if case let .updated(updatedData) = update {
-                                        list[index] = list[index].withUpdatedData(updatedData)
-                                    }
+                            _ = (folderStateSignal |> mapToSignal { current -> Signal<SearchPeerFolderUpdate, NoError> in
+                                guard case let (freshPeer, freshState)? = current else {
+                                    return .single(.unchanged)
                                 }
-                                return list
-                            }) |> deliverOnMainQueue).start(next: { _ in
-                                switch result.with({ $0 }) {
+                                let result = Atomic<SearchPeerFolderUpdate>(value: .unchanged)
+                                return context.engine.peers.updateChatListFiltersInteractively({ list in
+                                    var list = list
+                                    if let index = list.firstIndex(where: { ChatListUIHooks.shared.chatListFilterId($0) == ChatListUIHooks.shared.chatListFilterId(item) }) {
+                                        let update = searchPeerFolderClickUpdate(list[index], peer: freshPeer, state: freshState, isIncluded: isIncluded, limit: limit)
+                                        _ = result.swap(update)
+                                        if case let .updated(updatedData) = update {
+                                            list[index] = list[index].withUpdatedData(updatedData)
+                                        }
+                                    }
+                                    return list
+                                }) |> map { _ in result.with { $0 } }
+                            } |> deliverOnMainQueue).start(next: { result in
+                                switch result {
                                 case .includeLimitReached:
                                     if context.isPremium {
                                         alert(for: context.window, info: strings().chatListFilterIncludeLimitReached)
@@ -2422,6 +2426,8 @@ public class ChatListRowItem: TableRowItem {
                                     }
                                 case .excludeLimitReached:
                                     alert(for: context.window, info: strings().chatListFilterExcludeLimitReachedNew(limit))
+                                case .folderWouldBeEmpty:
+                                    alert(for: context.window, info: strings().chatListFilterErrorEmpty)
                                 case .updated, .unchanged:
                                     break
                                 }
