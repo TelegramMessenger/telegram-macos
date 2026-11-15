@@ -392,6 +392,51 @@ public func messageFileSaveMenuItem(file: TelegramMediaFile, context: any Accoun
     }, itemImage: MenuAnimation.menu_save_as.value, keyEquivalent: keyEquivalent)
 }
 
+func messageTextRange(of range: NSRange, in shown: NSAttributedString, message: Message) -> NSRange? {
+    let shownText = shown.string as NSString
+    let text = message.text as NSString
+    var replaced: [Int: Int] = [:]
+    for entity in message.textEntities?.entities ?? [] {
+        switch entity.type {
+        case .CustomEmoji, .FormattedDate:
+            replaced[entity.range.lowerBound] = entity.range.count
+        default:
+            break
+        }
+    }
+    var index = 0
+    var location = 0
+    var lower: Int?
+    while index < NSMaxRange(range) {
+        guard index < shownText.length else {
+            return nil
+        }
+        var run = NSRange(location: NSNotFound, length: 0)
+        let rest = NSMakeRange(index, shownText.length - index)
+        let step: (shown: Int, text: Int)
+        if let length = replaced[location], shown.attribute(TextInputAttributes.customEmoji, at: index, longestEffectiveRange: &run, in: rest) != nil || shown.attribute(TextInputAttributes.formattedDate, at: index, longestEffectiveRange: &run, in: rest) != nil {
+            step = (NSMaxRange(run) - index, length)
+        } else if location < text.length, shownText.character(at: index) == text.character(at: location) {
+            step = (1, 1)
+        } else if shownText.character(at: index) == 0x0A {
+            step = (1, 0)
+        } else if location < text.length, let scalar = Unicode.Scalar(text.character(at: location)), CharacterSet.newlines.contains(scalar) {
+            step = (0, 1)
+        } else {
+            return nil
+        }
+        if lower == nil, step.shown > 0, range.location < index + step.shown {
+            lower = location
+        }
+        index += step.shown
+        location += step.text
+    }
+    guard let lower, location <= text.length else {
+        return nil
+    }
+    return NSMakeRange(lower, location - lower)
+}
+
 public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLayout: (TextViewLayout?, LinkType?)?, chatInteraction: ChatInteraction, useGroupIfNeeded: Bool = true, fromAdPromo: Bool = false, source: ChatMenuItemSource = .general) -> Signal<[ContextMenuItem], NoError> {
     
     if chatInteraction.interactionContext.isFrozen {
@@ -631,8 +676,15 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             firstBlock.append(ContextMenuItem(strings().chatMessageContextQuote, handler: {
 
                 let quote_length_max = context.appConfiguration.getGeneralValue("quote_length_max", orElse: 1024)
-                if selectedString.length > quote_length_max {
+                let textRange = messageTextRange(of: selectedRange, in: layout.attributedString, message: message)
+                if (textRange?.length ?? selectedString.length) > quote_length_max {
                     alert(for: context.window, info: strings().chatMessageContextQuoteLimitExceed)
+                } else if let textRange {
+                    let quoteText = message.text.nsstring.substring(with: textRange)
+                    let trimmed = trimStringWithEntities(string: quoteText, entities: messageTextEntitiesInRange(entities: message.textEntities?.entities ?? [], range: textRange, onlyQuoteable: true), maxLength: Int(quote_length_max))
+                    let leading = quoteText.utf16.prefix(while: { $0 == 0x20 || $0 == 0x0A }).count
+                    let quote = EngineMessageReplyQuote(text: trimmed.string, offset: textRange.location + leading, entities: trimmed.entities, media: message.media.first)
+                    chatInteraction.setupReplyMessage(message, .init(messageId: message.id, quote: trimmed.string.isEmpty ? nil : quote, innerSubject: nil))
                 } else {
                     let attributed = enititesAttributedStringForText(selectedString).trimmed
                     let entities = messageTextEntitiesInRange(entities: ChatTextInputState(attributedText: attributed, selectionRange: 0..<0).messageTextEntities(), range: attributed.range, onlyQuoteable: true)
