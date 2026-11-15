@@ -4,10 +4,15 @@ import QuartzCore
 import SwiftSignalKit
 
 public struct PeerId: Hashable { let value: Int64 }
-public struct MessageId: Hashable {
+public struct MessageId: Hashable, Comparable {
     let peerId: PeerId
     let namespace: Int32
     let id: Int32
+    public static func < (lhs: MessageId, rhs: MessageId) -> Bool {
+        if lhs.peerId != rhs.peerId { return lhs.peerId.value < rhs.peerId.value }
+        if lhs.namespace != rhs.namespace { return lhs.namespace < rhs.namespace }
+        return lhs.id < rhs.id
+    }
 }
 public struct MediaId: Equatable { let namespace: Int32; let id: Int64 }
 public enum Namespaces {
@@ -20,7 +25,7 @@ struct MessageFlags: OptionSet {
     static let Unsent = MessageFlags(rawValue: 4)
 }
 struct ForwardInfo { let date: Int32 }
-public class Peer { var displayTitle = "" }
+public class Peer { var displayTitle = ""; var id = PeerId(value: 1); var canUseInputPeer = true }
 public class Message {
     let id: MessageId
     var timestamp: Int32
@@ -68,46 +73,119 @@ enum GetMessagesResult { case progress; case result([Message]) }
 enum GetMessagesStrategy { case local; case cloud(skipLocal: Bool) }
 enum GetMessagesError: Error { case privateChannel }
 enum RequestMessageSelectPollOptionError: Error { case generic; case restrictedToSubscribers }
+struct CachedChannelData {
+    let minAvailableMessageId: MessageId?
+}
+enum Api {
+    struct InputPeer { let id: PeerId }
+    struct Updates { let messages: [Message] }
+    struct Request { let peer: InputPeer; let id: Int32; let hash: Int64 }
+    enum functions {
+        enum messages {
+            static func getPollResults(peer: InputPeer, msgId: Int32, pollHash: Int64) -> Request {
+                Request(peer: peer, id: msgId, hash: pollHash)
+            }
+        }
+    }
+}
+func apiInputPeer(_ peer: Peer) -> Api.InputPeer? { peer.canUseInputPeer ? Api.InputPeer(id: peer.id) : nil }
 final class Network {
     var now: Int32 = 100
+    var requests: [Api.Request] = []
+    var response: Signal<GetMessagesResult, GetMessagesError> = .single(.result([]))
     func getApproximateRemoteTimestamp() -> Int32 { now }
+    func request(_ request: Api.Request) -> Signal<Api.Updates, GetMessagesError> {
+        requests.append(request)
+        return response |> mapToSignal { value -> Signal<Api.Updates, GetMessagesError> in
+            switch value {
+            case .progress: return .complete()
+            case let .result(messages): return .single(Api.Updates(messages: messages))
+            }
+        }
+    }
 }
 final class Transaction {
-    var message: Message?
-    init(_ message: Message?) { self.message = message }
-    func getMessage(_ id: MessageId) -> Message? { message?.id == id ? message : nil }
+    let postbox: Postbox
+    init(_ postbox: Postbox) { self.postbox = postbox }
+    func getMessage(_ id: MessageId) -> Message? { postbox.message?.id == id ? postbox.message : nil }
+    func getPeer(_ id: PeerId) -> Peer? { postbox.peer?.id == id ? postbox.peer : nil }
+    func getPeerCachedData(peerId: PeerId) -> Any? { postbox.cachedData }
 }
 final class Postbox {
     var message: Message?
+    var peer: Peer? = Peer()
+    var cachedData: CachedChannelData?
+    var transactions = 0
     func transaction<T>(_ body: @escaping (Transaction) -> T) -> Signal<T, NoError> {
         return Signal { subscriber in
             Queue.mainQueue().async {
-                subscriber.putNext(body(Transaction(self.message)))
+                self.transactions += 1
+                subscriber.putNext(body(Transaction(self)))
                 subscriber.putCompletion()
             }
             return EmptyDisposable
         }
     }
 }
+final class StateManager {
+    let postbox: Postbox
+    var updates: [Api.Updates] = []
+    var barrierCount = 0
+    var barrier: Signal<[MessageId], NoError> = .single([])
+    var applyBeforeBarrier: (() -> Void)?
+    init(_ postbox: Postbox) { self.postbox = postbox }
+    func addUpdates(_ updates: Api.Updates) { self.updates.append(updates) }
+    func pollStateUpdateCompletion() -> Signal<[MessageId], NoError> {
+        barrierCount += 1
+        return barrier |> map { value in
+            for updates in self.updates {
+                if let current = self.postbox.message, let matching = updates.messages.first(where: { $0.id == current.id && ($0.anyMedia as? TelegramMediaPoll)?.pollId == (current.anyMedia as? TelegramMediaPoll)?.pollId }) {
+                    self.postbox.message = matching
+                }
+            }
+            self.updates.removeAll()
+            self.applyBeforeBarrier?()
+            return value
+        }
+    }
+}
+final class Account {
+    let network = Network()
+    let postbox = Postbox()
+    lazy var stateManager = StateManager(postbox)
+}
 final class MessagesAPI {
-    var requests: [(MessageId, Bool)] = []
+    let account: Account
+    var genericRequests: [(MessageId, Bool)] = []
+    var requests: [(MessageId, Bool)] { genericRequests + account.network.requests.map { (MessageId(peerId: $0.peer.id, namespace: 0, id: $0.id), $0.hash == 0) } }
     var votes: [[Data]] = []
-    var response: Signal<GetMessagesResult, GetMessagesError> = .single(.result([]))
-    func getMessagesLoadIfNecessary(_ ids: [MessageId], strategy: GetMessagesStrategy = .cloud(skipLocal: false)) -> Signal<GetMessagesResult, GetMessagesError> {
+    var response: Signal<GetMessagesResult, GetMessagesError> {
+        get { account.network.response }
+        set { account.network.response = newValue }
+    }
+    init(_ account: Account) { self.account = account }
+    func getMessagesLoadIfNecessary(_ messageIds: [MessageId], strategy: GetMessagesStrategy = .cloud(skipLocal: false)) -> Signal<GetMessagesResult, GetMessagesError> {
+        let transaction = Transaction(account.postbox)
+        @@LOADER_FILTER@@
+        guard !ids.isEmpty else { return .single(.result([])) }
         let skip: Bool
         if case let .cloud(value) = strategy { skip = value } else { skip = false }
-        requests.append((ids[0], skip))
+        genericRequests.append((ids[0], skip))
         return response
     }
+    @@CORE_WRAPPER@@
     func requestMessageSelectPollOption(messageId: MessageId, opaqueIdentifiers: [Data]) -> Signal<TelegramMediaPoll?, RequestMessageSelectPollOptionError> {
         votes.append(opaqueIdentifiers)
         return .single(nil)
     }
 }
-final class Engine { let messages = MessagesAPI() }
-final class Account { let network = Network(); let postbox = Postbox() }
+final class Engine {
+    let messages: MessagesAPI
+    init(_ account: Account) { self.messages = MessagesAPI(account) }
+}
+@@CORE_REFRESH@@
 protocol AccountContextProtocol: AnyObject { var engine: Engine { get }; var account: Account { get }; var window: NSWindow { get } }
-final class Context: AccountContextProtocol { let engine = Engine(); let account = Account(); let window = NSWindow() }
+final class Context: AccountContextProtocol { let account = Account(); lazy var engine = Engine(account); let window = NSWindow() }
 class NSWindow {}
 class Control {
     var window: NSWindow?
@@ -307,7 +385,7 @@ do {
     expect(context.engine.messages.requests.count == 1, "already expired initial bind refreshes immediately")
     for _ in 0..<20 { owner.bind(row); owner.tick() }
     expect(context.engine.messages.requests.count == 1, "rebuild does not repeatedly refetch")
-    expect(context.engine.messages.requests.allSatisfy { $0.0 == message.id && $0.1 }, "refresh forces matching cloud message")
+    expect(context.engine.messages.requests.allSatisfy { $0.0 == message.id && $0.1 }, "refresh requests matching poll identity")
     owner.exhaust()
     expect(!owner.timerRunning, "exhausted refresh stops timer")
     owner.viewWillMove(toWindow: nil)
@@ -360,6 +438,7 @@ do {
     controller.fail(messageId: message.id, error: .generic)
     spin()
     expect(alerts == ["closed"], "race refetch server closure selects closed error")
+    context.account.postbox.message = message
     let wrong = Message(id: MessageId(peerId: PeerId(value: 99), namespace: 0, id: message.id.id), poll: closedPoll)
     context.engine.messages.response = .single(.result([wrong]))
     alerts = []
@@ -428,6 +507,7 @@ do {
     var disposed = 0
     context.engine.messages.response = Signal { _ in ActionDisposable { disposed += 1 } }
     owner.bind(row)
+    spin()
     expect(context.engine.messages.requests.count == 1, "closed missing aggregates refreshes")
     owner.viewWillMove(toWindow: nil)
     owner.window = nil
@@ -477,6 +557,7 @@ do {
     let requests = context.engine.messages.requests.count
     owner.window = NSWindow()
     owner.viewDidMoveToWindow()
+    spin()
     expect(context.engine.messages.requests.count == requests + 1 && owner.attempts == 1, "real reattachment permits a fresh bounded refresh")
     owner.viewWillMove(toWindow: nil)
     poll.isClosed = true
@@ -495,6 +576,111 @@ do {
     expect(values == 1 && receivedNil && disposed == 1, "actual signal timeout yields missing result and disposes request")
     disposable.dispose()
 }
+for floor in [Int32?.none, Int32?(100)] {
+    let context = Context()
+    let poll = TelegramMediaPoll()
+    let id = MessageId(peerId: PeerId(value: 1), namespace: 0, id: 110)
+    let message = Message(id: id, poll: poll)
+    context.account.postbox.message = message
+    context.account.postbox.cachedData = floor.map { CachedChannelData(minAvailableMessageId: MessageId(peerId: id.peerId, namespace: 0, id: $0)) }
+    let closed = TelegramMediaPoll()
+    closed.isClosed = true
+    closed.results = TelegramMediaPollResults(voters: [voter(1, 3), voter(2, 1)], totalVoters: 4)
+    context.engine.messages.response = .single(.result([Message(id: id, poll: closed)]))
+    var result: Message?
+    let disposable = refreshPollMessage(context: context, messageId: id, pollId: poll.pollId).start(next: { result = $0 })
+    spin()
+    expect(context.engine.messages.requests.count == 1, "floor \(String(describing: floor)) requests available poll110")
+    expect((result?.anyMedia as? TelegramMediaPoll)?.isClosed == true, "floor \(String(describing: floor)) returns server closure")
+    expect(context.engine.messages.genericRequests.isEmpty, "floor \(String(describing: floor)) bypasses generic loader")
+    disposable.dispose()
+}
+#if REFRESH_FIXED
+for unavailable in [Int32(90), 100] {
+    let context = Context()
+    let poll = TelegramMediaPoll()
+    let id = MessageId(peerId: PeerId(value: 1), namespace: 0, id: unavailable)
+    context.account.postbox.message = Message(id: id, poll: poll)
+    context.account.postbox.cachedData = CachedChannelData(minAvailableMessageId: MessageId(peerId: id.peerId, namespace: 0, id: 100))
+    var received = false
+    let disposable = refreshPollMessage(context: context, messageId: id, pollId: poll.pollId).start(next: { received = $0 == nil })
+    spin()
+    expect(received && context.engine.messages.requests.isEmpty, "unavailable poll\(unavailable) cannot request")
+    disposable.dispose()
+}
+for invalid in ["local", "missing-message", "wrong-poll", "missing-peer", "no-input-peer"] {
+    let context = Context()
+    let poll = TelegramMediaPoll()
+    let id = MessageId(peerId: PeerId(value: 1), namespace: invalid == "local" ? 1 : 0, id: 110)
+    context.account.postbox.message = invalid == "missing-message" ? nil : Message(id: id, poll: poll)
+    if invalid == "missing-peer" { context.account.postbox.peer = nil }
+    if invalid == "no-input-peer" { context.account.postbox.peer?.canUseInputPeer = false }
+    let pollId = invalid == "wrong-poll" ? MediaId(namespace: 0, id: 999) : poll.pollId
+    var received = false
+    let disposable = refreshPollMessage(context: context, messageId: id, pollId: pollId).start(next: { received = $0 == nil })
+    spin()
+    expect(received && context.engine.messages.requests.isEmpty, "\(invalid) produces nil without RPC")
+    disposable.dispose()
+}
+do {
+    let (context, poll, message, _) = fixture(now: 160, deadline: 160)
+    let closed = TelegramMediaPoll()
+    closed.isClosed = true
+    context.engine.messages.response = .single(.result([Message(id: message.id, poll: closed)]))
+    var barrierSubscriber: Subscriber<[MessageId], NoError>?
+    context.account.stateManager.barrier = Signal { subscriber in
+        barrierSubscriber = subscriber
+        return EmptyDisposable
+    }
+    var result: Message?
+    let disposable = refreshPollMessage(context: context, messageId: message.id, pollId: poll.pollId).start(next: { result = $0 })
+    spin()
+    expect(result == nil && context.account.postbox.message === message, "refresh waits for state replay barrier")
+    expect(context.account.stateManager.barrierCount == 1 && context.account.stateManager.updates.count == 1, "RPC update queued before barrier")
+    expect(context.account.network.requests.first?.hash == 0, "refresh requests complete poll results without cached hash")
+    barrierSubscriber?.putNext([])
+    barrierSubscriber?.putCompletion()
+    spin()
+    expect((result?.anyMedia as? TelegramMediaPoll)?.isClosed == true, "refresh reads replayed message after barrier")
+    disposable.dispose()
+}
+for mutation in ["deleted", "different-poll"] {
+    let (context, poll, message, _) = fixture(now: 160, deadline: 160)
+    context.engine.messages.response = .single(.result([message]))
+    context.account.stateManager.applyBeforeBarrier = {
+        if mutation == "deleted" { context.account.postbox.message = nil }
+        else {
+            let replacement = TelegramMediaPoll()
+            replacement.pollId = MediaId(namespace: 0, id: 999)
+            context.account.postbox.message = Message(id: message.id, poll: replacement)
+        }
+    }
+    var received = false
+    let disposable = refreshPollMessage(context: context, messageId: message.id, pollId: poll.pollId).start(next: { received = $0 == nil })
+    spin()
+    expect(received, "\(mutation) during refresh rejected on final read")
+    disposable.dispose()
+}
+do {
+    let (context, poll, message, _) = fixture(now: 160, deadline: 160)
+    context.engine.messages.response = .single(.result([message]))
+    var barrierSubscriber: Subscriber<[MessageId], NoError>?
+    var disposed = 0
+    context.account.stateManager.barrier = Signal { subscriber in
+        barrierSubscriber = subscriber
+        return ActionDisposable { disposed += 1 }
+    }
+    var values = 0
+    let disposable = refreshPollMessage(context: context, messageId: message.id, pollId: poll.pollId).start(next: { _ in values += 1 })
+    spin()
+    let transactions = context.account.postbox.transactions
+    disposable.dispose()
+    barrierSubscriber?.putNext([])
+    barrierSubscriber?.putCompletion()
+    spin()
+    expect(disposed == 1 && values == 0 && context.account.postbox.transactions == transactions, "cancelled state barrier cannot read or deliver stale message")
+}
+#endif
 #endif
 print("SUMMARY \(checks) checks, \(failures) failures")
 exit(failures == 0 ? 0 : 1)

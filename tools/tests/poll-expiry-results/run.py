@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -67,11 +68,21 @@ def main():
         raise SystemExit("Use python3 -I run.py --source-root ... --output ...")
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path, default=REPO)
+    parser.add_argument("--core-source-root", type=Path)
+    parser.add_argument("--compiler-lock", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=True)
     source = args.source_root.resolve()
+    core_source = (args.core_source_root or source / "submodules/telegram-ios").resolve()
+    if any(output == root or root in output.parents for root in (source, REPO, core_source)):
+        raise SystemExit("Output must be outside source repositories")
+    output.mkdir(parents=True, exist_ok=True)
+    lock_path = (args.compiler_lock or output / "compiler.lock").resolve()
+    if any(lock_path == root or root in lock_path.parents for root in (source, REPO, core_source)):
+        raise SystemExit("Compiler lock must be outside source repositories")
+    compiler_lock = lock_path.open("a")
+    fcntl.flock(compiler_lock.fileno(), fcntl.LOCK_EX)
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     for key, folder in [("TMPDIR", "tmp"), ("CLANG_MODULE_CACHE_PATH", "clang-cache"), ("SWIFT_MODULECACHE_PATH", "swift-cache")]:
         path = output / folder
@@ -135,10 +146,18 @@ def main():
     percent = git("show", f"{BASE}:packages/FoundationUtils/Sources/FoundationUtils/PercentCounter.swift")
     restriction = block(git("show", f"{BASE}:packages/ChatUI/Sources/ChatUI/ChatMessageMenuItems.swift"), "public func pollVoteRestrictionText")
     template = Path(__file__).with_name("RuntimeTests.swift.in").read_text()
+    core_poll_path = "submodules/TelegramCore/Sources/TelegramEngine/Messages/Polls.swift"
+    core_engine_path = "submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift"
+    core_poll_source = (core_source / core_poll_path).read_text()
+    core_engine_source = (core_source / core_engine_path).read_text()
+    core_refresh = block(core_poll_source, "func _internal_requestMessagePollResults")
+    core_wrapper = block(core_engine_source, "public func requestMessagePollResults").replace("public func", "func", 1)
+    loader_filter = between(core("submodules/TelegramCore/Sources/TelegramEngine/Messages/LoadMessagesIfNecessary.swift"), "        var ids = messageIds", "        var messages:[Message] = []")
     results = {}
-    for name in ["fixed", "baseline"]:
-        item = (source / ITEM).read_text() if name == "fixed" else git("show", f"{BASE}:{ITEM}")
-        controller = (source / CONTROLLER).read_text() if name == "fixed" else git("show", f"{BASE}:{CONTROLLER}")
+    for name in ["fixed", "review-baseline", "baseline"]:
+        revision = "c308767a2f0092080f09d1bb7b91e7843a954737" if name == "review-baseline" else BASE
+        item = (source / ITEM).read_text() if name == "fixed" else git("show", f"{revision}:{ITEM}")
+        controller = (source / CONTROLLER).read_text() if name == "fixed" else git("show", f"{revision}:{CONTROLLER}")
         fixed = "func pollDeadlineTimestamp" in item
         if name == "fixed" and not fixed:
             raise AssertionError("Production source root does not contain runtime fix")
@@ -166,6 +185,9 @@ def main():
             preflight += "self.selectMessagePollOptionDisposables.set(signal.start(), forKey: messageId)\n}\n"
         generated = template
         replacements = {
+            "CORE_REFRESH": core_refresh,
+            "CORE_WRAPPER": core_wrapper,
+            "LOADER_FILTER": loader_filter,
             "HELPERS": helpers, "PERCENT": percent, "RESTRICTION": restriction, "PROPERTIES": properties, "AGGREGATE": aggregate,
             "OWNER_FIELDS": owner_fields, "OWNER_METHODS": owner_methods, "OWNER_BIND": owner_bind,
             "PREFLIGHT": preflight, "ERROR_BODY": error_body,
@@ -181,14 +203,15 @@ def main():
         generated_path = output / f"{name}.swift"
         generated_path.write_text(generated)
         executable = output / name
-        run([swiftc, *flags, *( ["-D", "FIXED"] if fixed else []), "-I", str(output), "-L", str(output), "-lSwiftSignalKit", "-Xlinker", "-rpath", "-Xlinker", str(output), str(generated_path), "-o", str(executable)], f"{name}-compile.log")
+        defines = (["-D", "FIXED"] if fixed else []) + (["-D", "REFRESH_FIXED"] if name == "fixed" else [])
+        run([swiftc, *flags, *defines, "-I", str(output), "-L", str(output), "-lSwiftSignalKit", "-Xlinker", "-rpath", "-Xlinker", str(output), str(generated_path), "-o", str(executable)], f"{name}-compile.log")
         execution = subprocess.run([str(executable)], cwd=REPO, env=env, capture_output=True, text=True, timeout=90)
         (output / f"{name}-run.log").write_text(execution.stdout + execution.stderr)
-        if execution.returncode != (0 if fixed else 1):
+        if execution.returncode != (0 if name == "fixed" else 1):
             raise AssertionError(f"Unexpected {name} result {execution.returncode}:\n{execution.stdout}\n{execution.stderr}")
         passed = execution.stdout.count("PASS ")
         failed = execution.stdout.count("FAIL ")
-        if (fixed and failed) or (not fixed and failed < 3):
+        if (name == "fixed" and failed) or (name != "fixed" and failed < 3):
             raise AssertionError(f"Expected compiled behavioral baseline negatives: {passed}/{failed}")
         results[name] = {"passed": passed, "failed": failed, "exit": execution.returncode, "source_sha256": hashlib.sha256(item.encode()).hexdigest()}
         print(f"{name}: {passed} passed, {failed} failed")
@@ -197,7 +220,7 @@ def main():
     assert strings.count('"ChatPoll.VotingClosed" =') == 1
     assert accessor.count('static var chatPollVotingClosed:') == 1
     assert 'return L10n.tr("Localizable", "ChatPoll.VotingClosed")' in accessor
-    (output / "results.json").write_text(json.dumps({"base": BASE, "core": CORE, "source_root": str(source), "authority_repo": str(REPO), "core_api_sha256": hashes, "results": results}, indent=2) + "\n")
+    (output / "results.json").write_text(json.dumps({"base": BASE, "core": CORE, "source_root": str(source), "authority_repo": str(REPO), "core_source_root": str(core_source), "core_refresh_sha256": hashlib.sha256(core_poll_source.encode()).hexdigest(), "core_wrapper_sha256": hashlib.sha256(core_engine_source.encode()).hexdigest(), "core_api_sha256": hashes, "results": results}, indent=2) + "\n")
 
 
 if __name__ == "__main__":

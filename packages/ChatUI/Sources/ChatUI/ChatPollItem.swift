@@ -82,20 +82,7 @@ private func visiblePollVoteCounts(poll: TelegramMediaPoll) -> [Int]? {
 }
 
 func refreshPollMessage(context: any AccountContextProtocol, messageId: MessageId, pollId: MediaId) -> Signal<Message?, NoError> {
-    return context.engine.messages.getMessagesLoadIfNecessary([messageId], strategy: .cloud(skipLocal: true))
-    |> mapToSignal { result -> Signal<Message?, GetMessagesError> in
-        switch result {
-        case .progress:
-            return .complete()
-        case let .result(messages):
-            return .single(messages.first(where: { message in
-                message.id == messageId && message.media.contains(where: { ($0 as? TelegramMediaPoll)?.pollId == pollId })
-            }))
-        }
-    }
-    |> `catch` { _ -> Signal<Message?, NoError> in
-        return .single(nil)
-    }
+    return context.engine.messages.requestMessagePollResults(messageId: messageId, pollId: pollId)
     |> take(1)
     |> timeout(10.0, queue: .mainQueue(), alternate: .single(nil))
     |> deliverOnMainQueue

@@ -6,7 +6,7 @@ Authority
 - Baseline is exact app object 246e3e957ae5cea1ecff6d7a6a6db3e47be69bb5.
 - Core API and the actual SwiftSignalKit sources are read from object 24638bc69bd083981b178dd1e7f921eebbf7fc46.
 - Git authority is the runner's own repository, never the potentially historical HEAD of --source-root.
-- GIT_* environment variables are removed. Compiler TMPDIR and module caches are owned by --output. Compilation is sequential, swiftc -j1.
+- GIT_* environment variables are removed. Compiler TMPDIR and module caches are owned by --output. Output and --compiler-lock must be outside the source repositories. Compilation is sequential, swiftc -j1, under an exclusive compiler lock (default: --output/compiler.lock).
 
 Production extraction
 - Poll deadline/closure/count/error predicates and bounded refresh state are compiled verbatim.
@@ -20,9 +20,11 @@ Production extraction
 Boundaries
 - Real pinned SwiftSignalKit is compiled as a local dynamic module; signal dispatch, mapToSignal, timeout, take, catch, MetaDisposable and DisposableDict are not mocked.
 - Message/poll/engine/Postbox/Network doubles expose only members used by extracted code. Runner asserts relevant signatures/optional types against pinned source and records hashes.
-- Engine cloud reload is a controlled signal. No network, account, database, profile or Telegram GUI is accessed.
-- Postbox transaction delivery is asynchronous on the main queue, with an in-memory fixture only.
-- Production getMessagesLoadIfNecessary(skipLocal:true) writes server messages through Postbox.addMessages; that persistence/replay path is source-inspected, not executed against a database. RPC failures can return cached models. Tests ensure an expired OPEN cached model cannot select closed error text.
+- The fixed refresh extracts the Core _internal_requestMessagePollResults function and TelegramEngine.Messages.requestMessagePollResults wrapper from --core-source-root (default: --source-root/submodules/telegram-ios). The application calls that API instead of getMessagesLoadIfNecessary.
+- The RPC, Postbox and state manager are controlled in-memory doubles. Actual pinned SwiftSignalKit operators execute the source-extracted Core request, update submission, barrier wait, final identity check and application timeout. No network, account, database, profile or Telegram GUI is accessed.
+- Postbox transaction delivery is asynchronous on the main queue. The state-manager double applies supplied matching updates at its controlled barrier; real AccountStateManager replay/persistence is source-inspected, not executed. Separate Core API typechecking must use the actual compiled dependencies, not these doubles.
+- Review baseline c308767a2f0092080f09d1bb7b91e7843a954737 compiles the previous app helper with the exact pinned generic-loader history filter. Floor 100 / available poll 110 must fail that baseline and pass the fixed path. The original app baseline remains separately compiled.
+- Additional coverage checks no-floor requests, unavailable IDs 90 and 100, local/missing/wrong-poll/missing-peer inputs, pollHash zero, waiting for update replay, deletion/replacement during refresh, and cancellation while the state barrier is pending. A returned OPEN model cannot select closed error text.
 - Empty/absent aggregate data is distinct from the protocol's sparse zero-option omission: a nonempty voters array with known counts preserves absent individual answers as zero; a missing array/unknown counts/unknown total cannot invent percentages. Explicit totalVoters==0 is authoritative zero.
 - Timers are real, but most boundary time transitions are driven directly through the production updateDeadline method. Timeout uses the actual production 10s setting. Repeated-request bounds use monotonic inputs through the extracted state object, not wall-clock waiting.
 - SwiftGen is not available in PATH in the authoring environment; the one accessor follows the checked-in strings.stencil output exactly. The runner checks the single key/accessor and preserves UTF-16 English source.
