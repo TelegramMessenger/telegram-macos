@@ -7,23 +7,27 @@ import PhoneNumberUtils
 import TelegramTheme
 import Localization
 
-private func formatNumber(_ number: String, country: Country) -> String {
-    var formatted: String = ""
-    
+func phoneNumberPattern(_ number: String, code: Country.CountryCode?) -> String? {
     var pattern: String?
     if number.isEmpty {
-        pattern = country.countryCodes.first?.patterns.first(where: { value in
+        pattern = code?.patterns.first(where: { value in
             return value.trimmingCharacters(in: CharacterSet(charactersIn: "0987654321")).count == value.count
         })
     } else {
-        pattern = country.countryCodes.first?.patterns.first(where: { value in
+        pattern = code?.patterns.first(where: { value in
             return value.first == number.first
         })
     }
     if pattern == nil {
-        pattern = country.countryCodes.first?.patterns.last
+        pattern = code?.patterns.last
     }
-    guard let pattern = pattern else {
+    return pattern
+}
+
+func formatNationalNumber(_ number: String, code: Country.CountryCode?) -> String {
+    var formatted: String = ""
+    
+    guard let pattern = phoneNumberPattern(number, code: code) else {
         return number
     }
     
@@ -183,6 +187,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     
     private let country_overlay: Control = Control()
     private var preferredCountryIdForCode: [String: String] = [:]
+    private var selectedCode: Country.CountryCode?
     private let nextView = ImageView()
     
     private let codeText:TextField = TextField()
@@ -290,23 +295,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     private func updatePlaceholder() {
         let number = numberText.stringValue
         var text: String = number.isEmpty ? strings().loginPhoneFieldPlaceholder : ""
-        if let item = selected {
-            var pattern: String?
-            if number.isEmpty {
-                pattern = item.countryCodes.first?.patterns.first(where: { value in
-                    return value.trimmingCharacters(in: CharacterSet(charactersIn: "0987654321")).count == value.count
-                })
-            } else {
-                pattern = item.countryCodes.first?.patterns.first(where: { value in
-                    return value.first == number.first
-                })
-            }
-            if pattern == nil {
-                pattern = item.countryCodes.first?.patterns.last
-            }
-            if let pattern = pattern {
-                text = String(pattern.replacingOccurrences(of: "X", with: "-"))
-            }
+        if selected != nil, let pattern = phoneNumberPattern(number.components(separatedBy: CharacterSet.decimalDigits.inverted).joined(), code: selectedCode) {
+            text = String(pattern.replacingOccurrences(of: "X", with: "-"))
         }
         let attr = NSMutableAttributedString()
         _ = attr.append(string: text, color: theme.colors.grayText, font: .code(.title))
@@ -361,7 +351,15 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     }
     
     
-    public func update(selected:Country?, update:Bool, updateCode:Bool = true) -> Void {
+    public func update(selected:Country?, update:Bool, updateCode:Bool = true, code: Country.CountryCode? = nil) -> Void {
+        let typedCode = codeText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+        if let code = code {
+            self.selectedCode = code
+        } else if updateCode {
+            self.selectedCode = selected?.countryCodes.first
+        } else {
+            self.selectedCode = selected?.countryCodes.first(where: { $0.code == typedCode }) ?? selected?.countryCodes.first
+        }
         self.selected = selected
         if let selected = selected {
             country.set(text: selected.emojiName , for: .Normal)
@@ -371,7 +369,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         country_overlay.setAccessibilityValue(selected?.emojiName ?? strings().loginInvalidCountryCode)
         country.sizeToFit()
         if updateCode {
-            codeText.stringValue = selected != nil ? "+\(selected!.countryCodes[0].code)" : "+"
+            codeText.stringValue = selectedCode.flatMap { "+\($0.code)" } ?? "+"
         }
         needsLayout = true
     }
@@ -396,10 +394,10 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                     if let (item, itemCode) = manager.item(byNumber: code, preferred: preferredCountryIdForCode) {
                         let rest = String(code.dropFirst(itemCode.code.count))
                         codeText.stringValue = "+" + itemCode.code
-                        update(selected: item, update: true, updateCode: false)
+                        update(selected: item, update: true, updateCode: false, code: itemCode)
                         
                         let text = rest + numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-                        let formated = formatNumber(text, country: item).prefix(17)
+                        let formated = formatNationalNumber(text, code: itemCode).prefix(17)
                         numberText.stringValue = formated
                         window?.makeFirstResponder(numberText)
                         numberText.setCursorToEnd()
@@ -409,10 +407,11 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                     }
                 } else {
                     codeText.stringValue = "+" + dec
-                    let item:Country? = manager.item(byNumber: String(dec), code: String(dec), preferred: preferredCountryIdForCode)?.0 ?? manager.item(byCodeNumber: String(dec), prefix: nil)
+                    let match = manager.item(byNumber: String(dec), code: String(dec), preferred: preferredCountryIdForCode)
+                    let item:Country? = match?.0 ?? manager.item(byCodeNumber: String(dec), prefix: nil)
                     
                     let shouldSwitch = manager.items(byCodeNumber: dec, checkAll: true).count == 1
-                    update(selected: item, update: true, updateCode:false)
+                    update(selected: item, update: true, updateCode:false, code: match?.1)
                                              
                     if shouldSwitch {
                         window?.makeFirstResponder(numberText)
@@ -422,12 +421,13 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             } else if field == numberText, let item = self.selected {
                 let current = numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
 
-                let updated:Country? = manager.item(byNumber: String(dec) + current, preferred: preferredCountryIdForCode)?.0 ?? manager.item(byCodeNumber: String(dec), prefix: nil)
-                if item != updated {
-                    self.update(selected: updated, update: true, updateCode: false)
+                let match = manager.item(byNumber: String(dec) + current, preferred: preferredCountryIdForCode)
+                let updated:Country? = match?.0 ?? manager.item(byCodeNumber: String(dec), prefix: nil)
+                let typedCode: Country.CountryCode? = match.flatMap { $0.1.code == String(dec) ? $0.1 : nil } ?? manager.item(byNumber: String(dec), code: String(dec))?.1 ?? updated?.countryCodes.first(where: { $0.code == String(dec) })
+                if item != updated || selectedCode != typedCode {
+                    self.update(selected: updated, update: true, updateCode: false, code: typedCode)
                 }
-                let formatCountry: Country? = updated.flatMap { value in value.countryCodes.contains(where: { $0.code == String(dec) }) ? value : nil } ?? manager.item(byNumber: String(dec), code: String(dec))?.0
-                let formated = formatNumber(current, country: formatCountry ?? updated ?? item).prefix(17)
+                let formated = formatNationalNumber(current, code: typedCode ?? selectedCode).prefix(17)
                 numberText.stringValue = formated
                 self.updatePhoneNumber?(formated)
             } else if field == numberText {
