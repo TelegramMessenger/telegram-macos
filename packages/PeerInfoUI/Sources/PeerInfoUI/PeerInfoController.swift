@@ -7,7 +7,6 @@ import Postbox
 import TelegramContext
 import TelegramTheme
 import TelegramUtils
-import GeneralRows
 import TelegramLinks
 import TelegramMediaUtils
 import Localization
@@ -348,11 +347,6 @@ struct PeerMediaTabsData : Equatable {
 }
 
 
-private func peerInfoSettingsCorners(_ item: TableRowItem) -> TableRowItem {
-    (item as? GeneralRowItem)?.usesSettingsCorners = true
-    return item
-}
-
 fileprivate func prepareEntries<Context: AccountContextProtocol>(from:[AppearanceWrapperEntry<PeerInfoSortableEntry>]?, to:[AppearanceWrapperEntry<PeerInfoSortableEntry>], account:Account, initialSize:NSSize, peerId:PeerId, arguments: PeerInfoArguments<Context>, animated:Bool) -> Signal<TableUpdateTransition, NoError> {
     
     return Signal { subscriber in
@@ -368,7 +362,7 @@ fileprivate func prepareEntries<Context: AccountContextProtocol>(from:[Appearanc
             let index:Int = 0
             
             for i in index ..< entries.count {
-                let item = peerInfoSettingsCorners(entries[i].entry.entry.item(initialSize: initialSize, arguments: arguments))
+                let item = entries[i].entry.entry.item(initialSize: initialSize, arguments: arguments)
                 height += item.height
                 firstInsertion.append((i, item))
                 if initialSize.height < height {
@@ -387,7 +381,7 @@ fileprivate func prepareEntries<Context: AccountContextProtocol>(from:[Appearanc
                     
                     for i in initialIndex ..< entries.count {
                         let item:TableRowItem
-                        item = peerInfoSettingsCorners(entries[i].entry.entry.item(initialSize: initialSize, arguments: arguments))
+                        item = entries[i].entry.entry.item(initialSize: initialSize, arguments: arguments)
                         insertions.append((i, item))
                     }
                     subscriber.putNext(TableUpdateTransition(deleted: [], inserted: insertions, updated: updates, state: .none(nil)))
@@ -396,7 +390,7 @@ fileprivate func prepareEntries<Context: AccountContextProtocol>(from:[Appearanc
             }
         } else {
             let (deleted,inserted, updated) = proccessEntriesWithoutReverse(from, right: to, { (peerInfoSortableEntry) -> TableRowItem in
-                return peerInfoSettingsCorners(peerInfoSortableEntry.entry.entry.item(initialSize: initialSize, arguments: arguments))
+                return peerInfoSortableEntry.entry.entry.item(initialSize: initialSize, arguments: arguments)
             })
             
             subscriber.putNext(TableUpdateTransition(deleted: deleted, inserted: inserted, updated: updated, animated: animated, state: animated ? .none(nil) : .saveVisible(.lower, false), grouping: true, animateVisibleOnly: false))

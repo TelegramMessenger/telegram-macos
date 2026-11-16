@@ -307,13 +307,8 @@ public class PeerMediaMusicRowView : PeerMediaRowView, APDelegate {
             let arguments = TransformImageArguments(corners: imageCorners, imageSize: PeerMediaIconSize, boundingSize: PeerMediaIconSize, intrinsicInsets: NSEdgeInsets())
             
             thumbPlaceholder.image = theme.icons.playerMusicPlaceholder
-            if item.inModal {
-                thumbPlaceholder.layer?.cornerRadius = cornerRadius
-                thumbView.layer?.cornerRadius = cornerRadius
-            } else {
-                thumbPlaceholder.applyPeerMediaThumbCorners(item, fallback: cornerRadius)
-                thumbView.applyPeerMediaThumbCorners(item, fallback: cornerRadius)
-            }
+            thumbPlaceholder.layer?.cornerRadius = cornerRadius
+            thumbView.layer?.cornerRadius = cornerRadius
             playIcon.isHidden = !item.inModal
                     playOverlay.isHidden = !item.inModal || item.thumbResource == nil
             if let resource = item.thumbResource {

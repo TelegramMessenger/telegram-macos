@@ -388,7 +388,6 @@ class TextAndLabelRowView: GeneralRowView {
                 }
 
             }
-            self.containerView.applySettingsCorners(item)
             self.containerView.setCorners(item.viewType.corners)
 
             if let launchAppButton {

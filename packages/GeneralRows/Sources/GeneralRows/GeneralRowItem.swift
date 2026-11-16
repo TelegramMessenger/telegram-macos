@@ -370,7 +370,6 @@ open class GeneralRowItem: TableRowItem {
     
     open private(set) var viewType: GeneralViewType
     public private(set) var settingsPresentation: SettingsRowPresentation?
-    public var usesSettingsCorners: Bool = false
 
     @discardableResult
     open func withSettingsLayout(_ presentation: SettingsRowPresentation = .content) -> Self {

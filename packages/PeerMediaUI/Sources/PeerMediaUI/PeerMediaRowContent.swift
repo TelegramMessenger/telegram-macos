@@ -197,7 +197,7 @@ public class PeerMediaRowView : GeneralContainableRowView, Notifable {
         let contentY = floorToScreenPixels(backingScaleFactor, (containerView.frame.height - contentSize.height) / 2)
         transition.updateFrame(view: contentView, frame: CGRect(origin: NSMakePoint(contentX, contentY), size: contentSize))
 
-        transition.updateFrame(layer: borderView, frame: NSMakeRect(item.separatorOffset + (selecting ? 22 + item.viewType.innerInset.left : 0), containerView.frame.height - .borderSize, containerView.frame.width - item.separatorOffset - (item.settingsPresentation != nil ? item.viewType.innerInset.right : 0), .borderSize))
+        transition.updateFrame(layer: borderView, frame: NSMakeRect(item.separatorOffset + (selecting ? 22 + item.viewType.innerInset.left : 0), containerView.frame.height - .borderSize, containerView.frame.width - item.separatorOffset, .borderSize))
 
         if let selectingControl = selectingControl {
             let x = selecting ? item.viewType.innerInset.left : -22
@@ -310,18 +310,5 @@ public class PeerMediaRowView : GeneralContainableRowView, Notifable {
 
     deinit {
         contentView.removeAllSubviews()
-    }
-}
-
-public let PeerMediaSettingsThumbCornerRadius: CGFloat = 9
-
-extension NSView {
-    func applyPeerMediaThumbCorners(_ item: GeneralRowItem, fallback: CGFloat) {
-        let settings = item.settingsPresentation != nil
-        layer?.masksToBounds = true
-        layer?.cornerRadius = settings ? PeerMediaSettingsThumbCornerRadius : fallback
-        if #available(macOS 10.15, *) {
-            layer?.cornerCurve = settings ? .continuous : .circular
-        }
     }
 }

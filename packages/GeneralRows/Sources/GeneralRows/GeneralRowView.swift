@@ -127,7 +127,7 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
     }
 
 
-    open var cornerRadius: CGFloat = SettingsRowMetrics.cardCornerRadius
+    open var cornerRadius: CGFloat = 20
     public var settingsCornerRadius: CGFloat?
 
     public func applySettingsCorners(_ item: TableRowItem) {
@@ -137,7 +137,7 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
         case .some:
             settingsCornerRadius = SettingsRowMetrics.cardCornerRadius
         case nil:
-            settingsCornerRadius = (item as? GeneralRowItem)?.usesSettingsCorners == true ? SettingsRowMetrics.cardCornerRadius : nil
+            settingsCornerRadius = nil
         }
     }
     // The visible rounding is drawn by `maskLayer`, not `layer.cornerRadius`, so report it for the morph.
@@ -196,13 +196,54 @@ open class GeneralRowContainerView : Control, MorphCornerProviding {
         self.corners = corners
     }
     private func createMask(for corners: GeneralViewItemCorners, frame: NSRect) -> CGPath {
-        let radius = min(frame.height / 2, settingsCornerRadius ?? cornerRadius)
-        let topLeft = corners.contains(.topLeft) ? radius : 0
-        let topRight = corners.contains(.topRight) ? radius : 0
-        let bottomLeft = corners.contains(.bottomLeft) ? radius : 0
-        let bottomRight = corners.contains(.bottomRight) ? radius : 0
-        let smoothing = continuousCornerSmoothing(size: frame.size, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, limit: SettingsRowMetrics.cornerSmoothing)
-        return CGPath.continuousRoundedRect(CGRect(origin: .zero, size: frame.size), topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, smoothing: smoothing)
+        if let settingsCornerRadius {
+            let radius = min(frame.height / 2, settingsCornerRadius)
+            let topLeft = corners.contains(.topLeft) ? radius : 0
+            let topRight = corners.contains(.topRight) ? radius : 0
+            let bottomLeft = corners.contains(.bottomLeft) ? radius : 0
+            let bottomRight = corners.contains(.bottomRight) ? radius : 0
+            let smoothing = continuousCornerSmoothing(size: frame.size, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, limit: SettingsRowMetrics.cornerSmoothing)
+            return CGPath.continuousRoundedRect(CGRect(origin: .zero, size: frame.size), topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, smoothing: smoothing)
+        }
+
+        if corners.contains(.topLeft) && corners.contains(.topRight) && corners.contains(.bottomLeft) && corners.contains(.bottomRight) {
+            let radius = min(frame.height / 2, 20)
+            return CGPath(roundedRect: CGRect(origin: .zero, size: frame.size), cornerWidth: radius, cornerHeight: radius, transform: nil)
+        }
+
+        let path = CGMutablePath()
+
+        let minx:CGFloat = 0, midx = frame.width/2.0, maxx = frame.width
+        let miny:CGFloat = 0, midy = frame.height/2.0, maxy = frame.height
+
+        path.move(to: NSMakePoint(minx, midy))
+
+        var topLeftRadius: CGFloat = 0
+        var bottomLeftRadius: CGFloat = 0
+        var topRightRadius: CGFloat = 0
+        var bottomRightRadius: CGFloat = 0
+
+
+        if corners.contains(.topLeft)  {
+            bottomLeftRadius = cornerRadius
+        }
+        if corners.contains(.topRight) {
+            bottomRightRadius = cornerRadius
+        }
+        if corners.contains(.bottomLeft) {
+            topLeftRadius = cornerRadius
+        }
+        if corners.contains(.bottomRight) {
+            topRightRadius = cornerRadius
+        }
+
+        path.addArc(tangent1End: NSMakePoint(minx, miny), tangent2End: NSMakePoint(midx, miny), radius: bottomLeftRadius)
+        path.addArc(tangent1End: NSMakePoint(maxx, miny), tangent2End: NSMakePoint(maxx, midy), radius: bottomRightRadius)
+        path.addArc(tangent1End: NSMakePoint(maxx, maxy), tangent2End: NSMakePoint(midx, maxy), radius: topRightRadius)
+        path.addArc(tangent1End: NSMakePoint(minx, maxy), tangent2End: NSMakePoint(minx, midy), radius: topLeftRadius)
+
+
+        return path
     }
     
     open override func setFrameSize(_ newSize: NSSize) {

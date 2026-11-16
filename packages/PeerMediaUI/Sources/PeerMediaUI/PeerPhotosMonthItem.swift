@@ -103,22 +103,22 @@ public class PeerPhotosMonthItem: GeneralRowItem {
                 if self.items.count < rowCount {
                     if message == self.items.first {
                         if self.viewType.position != .last {
-                            topLeft = .Corner(0)
+                            topLeft = .Corner(.cornerRadius)
                         }
-                        bottomLeft = .Corner(0)
+                        bottomLeft = .Corner(.cornerRadius)
                     }
                 } else if self.items.count == rowCount {
                     if message == self.items.first {
                         if self.viewType.position != .last {
-                            topLeft = .Corner(0)
+                            topLeft = .Corner(.cornerRadius)
                         }
-                        bottomLeft = .Corner(0)
+                        bottomLeft = .Corner(.cornerRadius)
                     } else if message == self.items.last {
                         if message == self.items.last {
                             if self.viewType.position != .last {
-                                topRight = .Corner(0)
+                                topRight = .Corner(.cornerRadius)
                             }
-                            bottomRight = .Corner(0)
+                            bottomRight = .Corner(.cornerRadius)
                         }
                     }
                 } else {
@@ -130,16 +130,16 @@ public class PeerPhotosMonthItem: GeneralRowItem {
                     if firstLine {
                         if self.viewType.position != .last {
                             if i % rowCount == 1 {
-                                topLeft = .Corner(0)
+                                topLeft = .Corner(.cornerRadius)
                             } else if i % rowCount == 0 {
-                                topRight = .Corner(0)
+                                topRight = .Corner(.cornerRadius)
                             }
                         }
                     } else if lastLine {
                         if i % rowCount == 1 {
-                            bottomLeft = .Corner(0)
+                            bottomLeft = .Corner(.cornerRadius)
                         } else if i % rowCount == 0 {
-                            bottomRight = .Corner(0)
+                            bottomRight = .Corner(.cornerRadius)
                         }
                     }
                 }
@@ -447,7 +447,6 @@ private final class PeerPhotosMonthView : TableRowView, Notifable {
             return
         }
         self.containerView.frame = NSMakeRect(floorToScreenPixels(backingScaleFactor, (frame.width - item.blockWidth) / 2), item.inset.top, item.blockWidth, frame.height - item.inset.bottom - item.inset.top)
-        self.containerView.settingsCornerRadius = SettingsRowMetrics.cardCornerRadius
         self.containerView.setCorners(item.viewType.corners)
         
         updateVisibleItems()

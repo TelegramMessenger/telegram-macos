@@ -241,7 +241,7 @@
     private static var topPanelHeight: CGFloat {
         return tabsTopInset + PeerMediaTabsView.height + tabsBottomInset
     }
-    private static let contentCornerRadius: CGFloat = SettingsRowMetrics.cardCornerRadius
+    private static let contentCornerRadius: CGFloat = 20
     private static let headerEdgeExtension: CGFloat = 68
     private static let headerEdgeFadeHeight: CGFloat = 60
     
@@ -293,9 +293,6 @@
         contentView.layer?.masksToBounds = true
         contentView.layer?.cornerRadius = PeerMediaControllerView.contentCornerRadius
         contentView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        if #available(macOS 10.15, *) {
-            contentView.layer?.cornerCurve = .continuous
-        }
         headerUnderlayView.layer?.opacity = 0
         headerEdgeView.layer?.opacity = 0
         headerEdgeView.isEventLess = true
@@ -520,9 +517,6 @@
             mask.backgroundColor = NSColor.black.cgColor
             mask.cornerRadius = PeerMediaControllerView.contentCornerRadius
             mask.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-            if #available(macOS 10.15, *) {
-                mask.cornerCurve = .continuous
-            }
             layer.mask = mask
         }
         var top: CGFloat = 0

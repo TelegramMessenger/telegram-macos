@@ -260,7 +260,6 @@ public class PeerMediaWebpageRowView : PeerMediaRowView {
    public override func layout() {
         super.layout()
         if let item = item as? PeerMediaWebpageRowItem {
-            imageView.applyPeerMediaThumbCorners(item, fallback: 0)
             ivImage?.setFrameOrigin(item.contentInset.left, textView.frame.maxY + 6.0)
             textView.setFrameOrigin(NSMakePoint(item.contentInset.left,item.contentInset.top))
             
