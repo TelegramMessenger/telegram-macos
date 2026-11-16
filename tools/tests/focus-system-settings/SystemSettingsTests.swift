@@ -37,11 +37,16 @@ final class SystemSettingsTests: XCTestCase {
         for parameter in ["Accounts", "Folders", "Chats"] {
             try openPicker(parameter)
             let title = try XCTUnwrap(titles[parameter])
-            XCTAssertTrue(element(title, in: settings).waitForExistence(timeout: 20), settings.debugDescription)
+            XCTAssertTrue(catalogItem(title).waitForExistence(timeout: 20), settings.debugDescription)
+            try search("No matching Focus fixture")
+            let absent = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: catalogItem(title))
+            XCTAssertEqual(XCTWaiter.wait(for: [absent], timeout: 10), .completed, settings.debugDescription)
             try search(title)
-            XCTAssertTrue(element(title, in: settings).waitForExistence(timeout: 10), settings.debugDescription)
-            click(title, in: settings)
+            XCTAssertTrue(catalogItem(title).waitForExistence(timeout: 10), settings.debugDescription)
+            catalogItem(title).click()
             closePicker()
+            let selected = parameterGroup(parameter).staticTexts.matching(textPredicate(title)).firstMatch
+            XCTAssertTrue(selected.waitForExistence(timeout: 10), settings.debugDescription)
         }
         record(settings, name: "Selected account folder and chat")
     }
@@ -54,14 +59,14 @@ final class SystemSettingsTests: XCTestCase {
         settings.activate()
         closePicker()
         try openPicker("Accounts")
-        XCTAssertTrue(element("Focus CI Account", in: settings).waitForExistence(timeout: 20), settings.debugDescription)
+        XCTAssertTrue(catalogItem("Focus CI Account").waitForExistence(timeout: 20), settings.debugDescription)
     }
 
     func testLockingWithPickerAlreadyOpen() throws {
         unlock()
         try openEditor()
         try openPicker("Chats")
-        XCTAssertTrue(element("Focus CI Chat", in: settings).waitForExistence(timeout: 20), settings.debugDescription)
+        XCTAssertTrue(catalogItem("Focus CI Chat").waitForExistence(timeout: 20), settings.debugDescription)
         record(settings, name: "Visible chat before lock")
         let picker = try pickerSearchField()
         XCTAssertTrue(picker.isHittable, settings.debugDescription)
@@ -71,7 +76,7 @@ final class SystemSettingsTests: XCTestCase {
         XCTAssertTrue(picker.exists && picker.isHittable, "The existing picker closed instead of redacting its content")
         let hidden = NSPredicate { [weak self] _, _ in
             guard let self else { return false }
-            return !self.element("Focus CI Chat", in: self.settings).exists
+            return !self.catalogItem("Focus CI Chat").exists
         }
         let vanished = XCTNSPredicateExpectation(predicate: hidden, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [vanished], timeout: 10), .completed,
@@ -105,11 +110,9 @@ final class SystemSettingsTests: XCTestCase {
     }
 
     private func openPicker(_ parameter: String) throws {
-        let row = settings.descendants(matching: .any).matching(NSPredicate(
-            format: "label == %@ OR identifier == %@ OR value == %@", parameter, parameter, parameter
-        )).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 15), settings.debugDescription)
-        row.click()
+        let add = parameterGroup(parameter).buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Item")).firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 15), settings.debugDescription)
+        add.click()
         record(settings, name: "\(parameter) picker")
     }
 
@@ -134,18 +137,37 @@ final class SystemSettingsTests: XCTestCase {
     }
 
     private func closePicker() {
-        if settings.buttons["Done"].exists {
-            settings.buttons["Done"].click()
-        } else {
+        for container in settings.popovers.allElementsBoundByIndex + settings.sheets.allElementsBoundByIndex.reversed() {
+            guard container.descendants(matching: .searchField).allElementsBoundByIndex.contains(where: { $0.isHittable }) else { continue }
+            for title in ["Done", "Add", "Select"] {
+                let button = container.buttons[title]
+                if button.exists && button.isHittable {
+                    button.click()
+                    return
+                }
+            }
             settings.typeKey(.escape, modifierFlags: [])
+            return
         }
     }
 
+    private func parameterGroup(_ parameter: String) -> XCUIElement {
+        settings.groups["focusConfiguration." + parameter.lowercased()]
+    }
+
+    private func catalogItem(_ title: String) -> XCUIElement {
+        settings.staticTexts.matching(textPredicate(title)).firstMatch
+    }
+
+    private func textPredicate(_ title: String) -> NSPredicate {
+        NSPredicate(format: "label == %@ OR value == %@", title, title)
+    }
+
     private func assertLockedPicker() {
-        let locked = settings.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Open and unlock Telegram")).firstMatch
+        let locked = settings.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "Open and unlock Telegram", "Open and unlock Telegram")).firstMatch
         XCTAssertTrue(locked.waitForExistence(timeout: 15), settings.debugDescription)
         for title in titles.values {
-            XCTAssertFalse(element(title, in: settings).exists, "Locked picker disclosed \(title)")
+            XCTAssertFalse(catalogItem(title).exists, "Locked picker disclosed \(title)")
         }
         record(settings, name: "Locked picker")
     }
