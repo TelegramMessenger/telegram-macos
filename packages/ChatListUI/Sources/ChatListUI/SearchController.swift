@@ -395,8 +395,7 @@ fileprivate func prepareEntries(from:[AppearanceWrapperEntry<ChatListSearchEntry
                 } else if sourcePeerId.isAnonymousSavedMessages {
                     peer = RenderedPeer(peer: TelegramUser(id: sourcePeerId, accessHash: nil, firstName: nil, lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, subscriberCount: nil, verificationIconFileId: nil))
                 }
-            } else if let data = threadInfo, let threadId = message.replyAttribute?.threadMessageId {
-                let threadId = Int64(threadId.id)
+            } else if let data = threadInfo, let threadId = message.threadId {
                 mode = .topic(threadId, data)
                 id = .forum(threadId)
             } else {
@@ -1205,14 +1204,28 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
                     }
                     
                     return signal
-                        |> map { result -> ([ChatListSearchEntry], Bool, SearchMessagesState?, SearchMessagesResult?, SearchScope?) in
+                        |> mapToSignal { result -> Signal<((SearchMessagesResult, SearchMessagesState), [MessageId: MessageHistoryThreadData]), NoError> in
+                            guard case let .forum(peerId) = target else {
+                                return .single((result, result.0.threadInfo))
+                            }
+                            return context.account.postbox.transaction { transaction in
+                                var threadInfo = result.0.threadInfo
+                                for message in result.0.messages where message.id.peerId == peerId && threadInfo[message.id] == nil {
+                                    if let threadId = message.threadId, let data = transaction.getMessageHistoryThreadInfo(peerId: peerId, threadId: threadId)?.data.get(MessageHistoryThreadData.self) {
+                                        threadInfo[message.id] = data
+                                    }
+                                }
+                                return (result, threadInfo)
+                            }
+                        }
+                        |> map { result, threadInfo -> ([ChatListSearchEntry], Bool, SearchMessagesState?, SearchMessagesResult?, SearchScope?) in
                             
                             var entries: [ChatListSearchEntry] = []
                             var index = 20001
                             for message in result.0.messages {
                                 switch target {
                                 case .forum:
-                                    if let threadInfo = result.0.threadInfo[message.id] {
+                                    if let threadInfo = threadInfo[message.id] {
                                         entries.append(.message(message, query, result.0.readStates[message.id.peerId], threadInfo, index))
                                         index += 1
                                     }
