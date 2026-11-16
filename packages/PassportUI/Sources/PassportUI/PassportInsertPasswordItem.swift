@@ -79,7 +79,7 @@ class PassportInsertPasswordItem: GeneralRowItem {
     }
     
     override var height: CGFloat {
-        return PassportInsertPasswordItem.topPadding + PassportInsertPasswordItem.fieldHeight + 12 + descLayout.layoutSize.height + 10 + 18 + 24 + PassportInsertPasswordItem.fieldHeight + 24
+        return PassportInsertPasswordItem.topPadding + descLayout.layoutSize.height + 12 + PassportInsertPasswordItem.fieldHeight + 20 + PassportInsertPasswordItem.fieldHeight + 16 + 18 + 24
     }
 
     override var backdorColor: NSColor {
@@ -187,12 +187,12 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
         backdrop.frame = bounds
         let margin = PassportInsertPasswordItem.margin
         let fieldHeight = PassportInsertPasswordItem.fieldHeight
-        inputContainer.frame = NSMakeRect(margin, PassportInsertPasswordItem.topPadding, frame.width - margin * 2, fieldHeight)
+        descTextView.centerX(y: PassportInsertPasswordItem.topPadding)
+        inputContainer.frame = NSMakeRect(margin, descTextView.frame.maxY + 12, frame.width - margin * 2, fieldHeight)
         input.setFrameSize(NSMakeSize(inputContainer.frame.width - PassportInsertPasswordItem.textInset * 2, input.frame.height))
         input.centerY(x: PassportInsertPasswordItem.textInset)
-        descTextView.centerX(y: inputContainer.frame.maxY + 12)
-        forgotPassword.centerX(y: descTextView.frame.maxY + 10)
-        nextButton.frame = NSMakeRect(margin, forgotPassword.frame.maxY + 24, frame.width - margin * 2, fieldHeight)
+        nextButton.frame = NSMakeRect(margin, inputContainer.frame.maxY + 20, frame.width - margin * 2, fieldHeight)
+        forgotPassword.centerX(y: nextButton.frame.maxY + 16)
     }
     
     @objc func checkPasscode() {

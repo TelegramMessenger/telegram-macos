@@ -2575,7 +2575,7 @@ public class PassportController: GenericViewController<PassportControllerView> {
     }
 
     public override func backSettings() -> (String, CGImage?) {
-        let color = System.liquidGlass ? theme.colors.text : theme.colors.accentIcon
+        let color = barPresentation.foregroundColor
         return (form == nil ? strings().navigationBack : "", form == nil ? TelegramThemeHooks.shared.image(.iconNavigationBack).precomposed(color) : theme.icons.dismissPinned)
     }
 
