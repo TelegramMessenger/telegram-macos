@@ -2,9 +2,40 @@ import Postbox
 import TelegramCore
 
 func folderSharingInitializeSelection(_ peers: [Peer], selectedIds: Set<PeerId>?, selection: FolderSharingPeerSelection?) {
+    guard let selection = selection else {
+        return
+    }
     for peer in peers {
-        if selectedIds == nil || selectedIds!.contains(peer.id) {
-            selection?.toggleSelection(peer)
+        if (selectedIds == nil || selectedIds!.contains(peer.id)) && !selection.selectedPeerIds.contains(peer.id) {
+            selection.toggleSelection(peer)
+        }
+    }
+}
+
+struct FolderSharingLinkSelection {
+    private var initializedPeers: [PeerId: Peer] = [:]
+    private var unavailableSelected: Set<PeerId> = []
+    private(set) var initialSelected: Set<PeerId> = []
+
+    mutating func update(_ peers: [Peer], selectedIds: Set<PeerId>?, selection: FolderSharingPeerSelection?) {
+        guard let selection = selection else {
+            return
+        }
+        let availableIds = Set(peers.map { $0.id })
+        for (id, peer) in initializedPeers {
+            if !availableIds.contains(id) && selection.selectedPeerIds.contains(id) {
+                unavailableSelected.insert(id)
+                selection.toggleSelection(peer)
+            }
+        }
+        let newPeers = peers.filter { initializedPeers[$0.id] == nil }
+        folderSharingInitializeSelection(newPeers, selectedIds: selectedIds, selection: selection)
+        initialSelected.formUnion(newPeers.filter { selection.selectedPeerIds.contains($0.id) }.map { $0.id })
+        for peer in peers {
+            if unavailableSelected.remove(peer.id) != nil && !selection.selectedPeerIds.contains(peer.id) {
+                selection.toggleSelection(peer)
+            }
+            initializedPeers[peer.id] = peer
         }
     }
 }

@@ -229,7 +229,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
         statePromise.set(stateValue.modify (f))
     }
 
-    var initialSelected: Set<PeerId> = Set()
+    var linkSelection = FolderSharingLinkSelection()
 
     if let data = filter.data {
 
@@ -268,14 +268,12 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
 
             let peers = access + cantInvite
 
-            folderSharingInitializeSelection(access.map { $0.peer }, selectedIds: link.map { Set($0.peerIds) }, selection: selected)
-
-            initialSelected = selected?.selectedPeerIds ?? []
+            linkSelection.update(access.map { $0.peer }, selectedIds: link.map { Set($0.peerIds) }, selection: selected)
 
             updateState { current in
                 var current = current
                 current.peers = peers
-                current.selected = initialSelected
+                current.selected = selected?.selectedPeerIds ?? []
                 current.membersCount = memberCounts
                 return current
             }
@@ -369,7 +367,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
     let modalController = InputDataModalController(controller, modalInteractions: link != nil ? modalInteractions : nil, closeHandler: { f in
         if let link = link {
             let state = stateValue.with { $0 }
-            if state.needsDiscardConfirmation(original: link, initialSelected: initialSelected) {
+            if state.needsDiscardConfirmation(original: link, initialSelected: linkSelection.initialSelected) {
                 environment.confirmAction( information: strings().shareFolderDiscardText, ok: strings().shareFolderDiscardOk, successHandler: {
                     f()
                 })
