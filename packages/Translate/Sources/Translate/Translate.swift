@@ -49,11 +49,10 @@ public struct Translate {
     }
     
     public static func normalizeLanguageCode(_ code: String) -> String {
-        let code = canonicalLanguageCode(code)
+        var code = canonicalLanguageCode(code)
         if self.codes.contains(where: { $0.code.contains(code) }) {
             return code
         }
-        var code = code
         if code.contains("-") {
             code = code.components(separatedBy: "-").first ?? code
         }
