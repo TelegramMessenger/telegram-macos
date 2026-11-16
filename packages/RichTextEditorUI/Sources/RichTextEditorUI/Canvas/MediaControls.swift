@@ -14,6 +14,11 @@ public struct MediaControlsContext: Equatable {
 }
 
 @available(macOS 12, *)
+public protocol MediaGroupSliderSelectionProviding: AnyObject {
+    var currentMediaIndex: Int? { get }
+}
+
+@available(macOS 12, *)
 protocol MediaControlsProviding: CanvasBlock {
     var mediaControlsKind: MediaControlsKind? { get }
     var mediaAreaFrame: CGRect { get }

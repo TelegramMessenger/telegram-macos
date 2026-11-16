@@ -38,6 +38,7 @@ final class HostedMediaBlock {
     var interactionView: MediaInteractionOverlayView?
     var mediaID: String?
     var spoiler: Bool?
+    var mediaIDs: [String]?
     init(view: NSView, canvasFrame: CGRect) { self.view = view; self.canvasFrame = canvasFrame }
 }
 

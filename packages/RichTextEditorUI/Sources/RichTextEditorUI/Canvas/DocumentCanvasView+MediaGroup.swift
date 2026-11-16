@@ -214,6 +214,21 @@ extension DocumentCanvasView {
         needsLayout = true
     }
 
+    func mediaTileIndex(forBlock id: BlockID, controlIndex: Int) -> Int? {
+        guard let box = boxes.first(where: { $0.id == id }) else { return nil }
+        if let group = box as? MediaGroupBlockBox {
+            if group.kind == .slideshow {
+                guard controlIndex == 0,
+                      let hosted = mediaGroupTileViews["\(id.rawValue)#slider"], hosted.mediaIDs == group.mediaIDs,
+                      let index = (hosted.view as? MediaGroupSliderSelectionProviding)?.currentMediaIndex,
+                      group.mediaIDs.indices.contains(index) else { return nil }
+                return index
+            }
+            return group.mediaIDs.indices.contains(controlIndex) ? controlIndex : nil
+        }
+        return controlIndex == 0 && (box is MediaBlockBox || box is ImageBlockBox) ? 0 : nil
+    }
+
     /// Returns the media id for a block. For a group, `tileIndex` selects the tile; for a single
     /// image/video block, `tileIndex` is ignored. Returns nil if the block or index is not found.
     func mediaID(forBlock id: BlockID, tileIndex: Int?) -> String? {
@@ -237,11 +252,19 @@ extension DocumentCanvasView {
                 present.insert(key)
                 let width = box.canvasWidth
                 let hosted: HostedMediaBlock
-                if let h = mediaGroupTileViews[key] { hosted = h }
-                else if let v = mediaGroupSliderProvider(box.mediaIDs, width) {
-                    let h = HostedMediaBlock(view: v, canvasFrame: .zero)
-                    mediaGroupTileViews[key] = h; mediaBlockHost.addSubview(v); hosted = h
-                } else { continue }
+                if let h = mediaGroupTileViews[key], h.mediaIDs == box.mediaIDs { hosted = h }
+                else {
+                    if let old = mediaGroupTileViews.removeValue(forKey: key) {
+                        mediaBlockViewWillRemove?(old.view)
+                        old.view.removeFromSuperview()
+                    }
+                    guard let view = mediaGroupSliderProvider(box.mediaIDs, width) else { continue }
+                    let h = HostedMediaBlock(view: view, canvasFrame: .zero)
+                    h.mediaIDs = box.mediaIDs
+                    mediaGroupTileViews[key] = h
+                    mediaBlockHost.addSubview(view)
+                    hosted = h
+                }
                 let viewH = hosted.view.frame.height
                 if viewH > 0, box.hostHeight == nil || abs((box.hostHeight ?? 0) - viewH) > 0.5 {
                     box.hostHeight = viewH; needsLayout = true
