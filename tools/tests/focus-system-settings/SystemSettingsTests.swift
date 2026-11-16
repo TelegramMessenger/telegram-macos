@@ -20,6 +20,7 @@ final class SystemSettingsTests: XCTestCase {
         host.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         host.launch()
         XCTAssertTrue(host.buttons["unlock"].waitForExistence(timeout: 30), host.debugDescription)
+        assertHostState("Locked")
         settings.terminate()
     }
 
@@ -65,7 +66,7 @@ final class SystemSettingsTests: XCTestCase {
         let picker = try pickerSearchField()
         XCTAssertTrue(picker.isHittable, settings.debugDescription)
         DistributedNotificationCenter.default().postNotificationName(Notification.Name("org.telegram.FocusSettingsCI.lock"), object: nil, userInfo: nil, deliverImmediately: true)
-        XCTAssertTrue(host.staticTexts["Locked"].waitForExistence(timeout: 5), host.debugDescription)
+        assertHostState("Locked")
         XCTAssertEqual(settings.state, .runningForeground)
         XCTAssertTrue(picker.exists && picker.isHittable, "The existing picker closed instead of redacting its content")
         let hidden = NSPredicate { [weak self] _, _ in
@@ -82,7 +83,12 @@ final class SystemSettingsTests: XCTestCase {
     private func unlock() {
         host.activate()
         host.buttons["unlock"].click()
-        XCTAssertTrue(host.staticTexts["Unlocked"].waitForExistence(timeout: 5), host.debugDescription)
+        assertHostState("Unlocked")
+    }
+
+    private func assertHostState(_ value: String) {
+        let expected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: host.staticTexts["status"])
+        XCTAssertEqual(XCTWaiter.wait(for: [expected], timeout: 10), .completed, host.debugDescription)
     }
 
     private func openEditor() throws {
@@ -93,14 +99,14 @@ final class SystemSettingsTests: XCTestCase {
         settings.activate()
         click("Do Not Disturb", in: settings, timeout: 30)
         clickContaining("Add Filter", in: settings)
-        click("Telegram Focus CI", in: settings, timeout: 30)
+        clickContaining("Telegram Focus CI", in: settings)
         XCTAssertTrue(element("Accounts", in: settings).waitForExistence(timeout: 20), settings.debugDescription)
         record(settings, name: "Focus filter editor")
     }
 
     private func openPicker(_ parameter: String) throws {
         let row = settings.descendants(matching: .any).matching(NSPredicate(
-            format: "label == %@ OR identifier == %@", parameter, parameter
+            format: "label == %@ OR identifier == %@ OR value == %@", parameter, parameter, parameter
         )).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15), settings.debugDescription)
         row.click()
@@ -146,7 +152,7 @@ final class SystemSettingsTests: XCTestCase {
 
     private func element(_ title: String, in application: XCUIApplication) -> XCUIElement {
         application.descendants(matching: .any).matching(NSPredicate(
-            format: "label == %@ OR identifier == %@", title, title
+            format: "label == %@ OR identifier == %@ OR value == %@", title, title, title
         )).firstMatch
     }
 
@@ -167,6 +173,7 @@ final class SystemSettingsTests: XCTestCase {
         tree.name = name + " accessibility tree"
         tree.lifetime = .keepAlways
         add(tree)
+        guard application.state != .notRunning else { return }
         let screenshot = XCTAttachment(screenshot: application.screenshot())
         screenshot.name = name
         screenshot.lifetime = .keepAlways

@@ -21,7 +21,11 @@ def command(arguments, log, check=True, timeout=60):
     with log.open('a') as stream:
         stream.write('Command: ' + repr(arguments) + '\n')
         stream.flush()
-        return subprocess.run(arguments, stdout=stream, stderr=subprocess.STDOUT, check=check, timeout=timeout)
+        result = subprocess.run(arguments, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
+    if check and result.returncode:
+        print('\n'.join(log.read_text().splitlines()[-70:]))
+        raise subprocess.CalledProcessError(result.returncode, arguments)
+    return result
 
 
 def relocate_target(value, original, application):
@@ -74,6 +78,11 @@ def main():
     application, run = install_fixture(manifest, output)
     result = None
     try:
+        extension = application / 'Contents/Extensions/FocusIntents.appex'
+        info = plistlib.loads((extension / 'Contents/Info.plist').read_bytes())
+        command(['xcrun', 'dwarfdump', '--uuid', str(application / 'Contents/MacOS/Telegram Focus CI'),
+                 str(extension / 'Contents/MacOS' / info['CFBundleExecutable'])], output / 'installation.log')
+        command([str(application / 'Contents/MacOS/Telegram Focus CI'), '--verify-installation'], output / 'installation.log')
         result = command([
             'xcodebuild', 'test-without-building', '-xctestrun', str(run),
             '-destination', 'platform=macOS', '-parallel-testing-enabled', 'NO',
@@ -88,13 +97,14 @@ def main():
             print(f'Diagnostic collection timed out: {error.cmd[0]}')
         command([LAUNCH_SERVICES, '-u', str(application)], output / 'registration.log', check=False)
     print('\n'.join((output / 'ui-tests.log').read_text().splitlines()[-120:]))
-    if result is None or result.returncode:
-        raise SystemExit(result.returncode if result else 1)
     summary = json.loads(subprocess.check_output([
         'xcrun', 'xcresulttool', 'get', 'test-results', 'summary',
         '--path', str(output / 'SystemSettings.xcresult'),
     ], text=True, timeout=30))
     (output / 'test-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+    print(json.dumps(summary, indent=2))
+    if result is None or result.returncode:
+        raise SystemExit(result.returncode if result else 1)
     expected = {'totalTestCount': 3, 'passedTests': 3, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0}
     if any(summary.get(key) != value for key, value in expected.items()):
         raise RuntimeError(f'Expected three executed passing UI tests: {summary}')

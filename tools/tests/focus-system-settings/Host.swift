@@ -1,16 +1,86 @@
 import AppKit
+import Darwin
+import MachO
 import FocusFilterCore
 import FocusFilterInfrastructure
 
 @main
 private enum FixtureApplication {
     static func main() {
+        InstallationDiagnostics.record()
+        if CommandLine.arguments.contains("--verify-installation") {
+            do {
+                try verifyInstallation()
+                print("PASS: installed host initialized the production catalog session")
+            } catch {
+                NSLog("Focus CI installation verification failed: %@", String(describing: error))
+                exit(EXIT_FAILURE)
+            }
+            return
+        }
         let application = NSApplication.shared
         let delegate = FixtureDelegate()
         application.delegate = delegate
         application.setActivationPolicy(.regular)
         application.run()
         withExtendedLifetime(delegate) {}
+    }
+
+    private static func verifyInstallation() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("focus-ci-installation-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = try FocusCatalogAccessSession(storageDirectory: directory, applicationBundleURL: Bundle.main.bundleURL)
+        try session.update(isUnlocked: false)
+    }
+}
+
+private enum InstallationDiagnostics {
+    static func record() {
+        NSLog("Focus CI main bundle: %@", Bundle.main.bundleURL.path)
+        NSLog("Focus CI main executable: %@", Bundle.main.executableURL?.path ?? "missing")
+        NSLog("Focus CI image zero: %@", _dyld_get_image_name(0).map { String(cString: $0) } ?? "missing")
+        NSLog("Focus CI image zero UUID: %@", loadedUUID()?.uuidString ?? "missing")
+        recordBundle(Bundle.main.bundleURL, label: "host")
+        recordBundle(Bundle.main.bundleURL.appendingPathComponent("Contents/Extensions/FocusIntents.appex"), label: "extension")
+    }
+
+    private static func recordBundle(_ bundle: URL, label: String) {
+        let info = bundle.appendingPathComponent("Contents/Info.plist")
+        NSLog("Focus CI %@ Info.plist: %@ exists=%d", label, info.path, FileManager.default.fileExists(atPath: info.path))
+        do {
+            let data = try Data(contentsOf: info)
+            let dictionary = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            guard let executable = dictionary?["CFBundleExecutable"] as? String else {
+                NSLog("Focus CI %@ has no CFBundleExecutable", label)
+                return
+            }
+            let path = bundle.appendingPathComponent("Contents/MacOS").appendingPathComponent(executable)
+            NSLog("Focus CI %@ executable: %@ exists=%d", label, path.path, FileManager.default.fileExists(atPath: path.path))
+            let attributes = try FileManager.default.attributesOfItem(atPath: path.path)
+            NSLog("Focus CI %@ executable attributes: %@", label, String(describing: attributes))
+        } catch {
+            NSLog("Focus CI %@ inspection failed: %@", label, String(describing: error))
+        }
+    }
+
+    private static func loadedUUID() -> UUID? {
+        guard let header = _dyld_get_image_header(0), header.pointee.sizeofcmds <= 1_048_576 else { return nil }
+        let headerSize = header.pointee.magic == MH_MAGIC_64 ? MemoryLayout<mach_header_64>.size : MemoryLayout<mach_header>.size
+        let commands = UnsafeRawPointer(header).advanced(by: headerSize)
+        let length = Int(header.pointee.sizeofcmds)
+        var offset = 0
+        for _ in 0..<header.pointee.ncmds {
+            guard length - offset >= MemoryLayout<load_command>.size else { return nil }
+            let address = commands.advanced(by: offset)
+            let command = address.assumingMemoryBound(to: load_command.self).pointee
+            guard command.cmdsize >= MemoryLayout<load_command>.size, Int(command.cmdsize) <= length - offset else { return nil }
+            if command.cmd == LC_UUID, command.cmdsize >= MemoryLayout<uuid_command>.size {
+                return UUID(uuid: address.assumingMemoryBound(to: uuid_command.self).pointee.uuid)
+            }
+            offset += Int(command.cmdsize)
+        }
+        return nil
     }
 }
 
@@ -22,7 +92,7 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         showWindow()
-        DistributedNotificationCenter.default().addObserver(self, selector: #selector(lockCatalog), name: Notification.Name("org.telegram.FocusSettingsCI.lock"), object: nil)
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(lockFromNotification(_:)), name: Notification.Name("org.telegram.FocusSettingsCI.lock"), object: nil)
         do {
             try prepareCatalog()
             try setUnlocked(false)
@@ -81,6 +151,10 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate {
         updateAccess(isUnlocked: false)
     }
 
+    @objc private func lockFromNotification(_ notification: Notification) {
+        updateAccess(isUnlocked: false)
+    }
+
     private func updateAccess(isUnlocked: Bool) {
         do {
             try setUnlocked(isUnlocked)
@@ -96,7 +170,7 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func report(_ error: Error) {
-        status.stringValue = "Setup failed: \(error.localizedDescription)"
-        NSLog("Focus CI host failed: %@", error.localizedDescription)
+        status.stringValue = "Setup failed: \(String(describing: error))"
+        NSLog("Focus CI host failed: %@", String(describing: error))
     }
 }
