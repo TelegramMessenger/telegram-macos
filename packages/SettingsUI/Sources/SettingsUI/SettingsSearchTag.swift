@@ -18,6 +18,8 @@ struct SettingsSearchEnvironment {
     var hasFeaturedStickers: Bool = true
     var hasCustomEmojiPacks: Bool = true
     var quickReactionAvailable: Bool = true
+    var hasTonBalance: Bool = true
+    var walletAvailable: Bool = true
     var secretChatWebPreviewAvailable: Bool = true
     var chatBackgroundAvailable: Bool = true
     var dockIconAvailable: Bool = true

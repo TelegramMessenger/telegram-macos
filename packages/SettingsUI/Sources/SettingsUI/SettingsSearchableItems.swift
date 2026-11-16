@@ -238,6 +238,14 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
     let quickReactionAvailable = context.reactions.stateValue
         |> map { $0?.enabled.isEmpty == false }
         |> distinctUntilChanged
+    let hasTonBalance = context.tonContext.state
+        |> map { state -> Bool in
+            guard let state = state else {
+                return false
+            }
+            return state.balance.value > 0 || !state.transactions.isEmpty
+        }
+        |> distinctUntilChanged
     
     let hasPassport: Signal<Bool, NoError> = .single(false) |> then(context.engine.auth.twoStepVerificationConfiguration() |> map { configuration -> Bool in
         if case let .set(_, _, _, hasSecureValues, _) = configuration {
@@ -303,12 +311,16 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             return .single(false)
         })
     
-    let facts = combineLatest(baseSettings, contentConfiguration, combineLatest(hasWebSessions, hasCurrentSession), combineLatest(hasPassport, hasLoginEmail), combineLatest(hasFeaturedStickers, hasCustomEmojiPacks, quickReactionAvailable))
+    let facts = combineLatest(baseSettings, contentConfiguration, combineLatest(hasWebSessions, hasCurrentSession), combineLatest(hasPassport, hasLoginEmail), combineLatest(hasFeaturedStickers, hasCustomEmojiPacks, quickReactionAvailable, hasTonBalance))
     
     return combineLatest(accountsInfo, localizations, proxyServers, privacySettings, facts)
         |> map { accountsInfo, localizations, proxyServers, privacySettings, facts in
             let (baseSettings, contentConfiguration, sessionFacts, passportAndEmail, stickerFacts) = facts
-            let (hasFeaturedStickers, hasCustomEmojiPacks, quickReactionAvailable) = stickerFacts
+            let (hasFeaturedStickers, hasCustomEmojiPacks, quickReactionAvailable, hasTonBalance) = stickerFacts
+            var walletAvailable = false
+            if #available(macOS 10.15, *) {
+                walletAvailable = SettingsHooks.shared.walletHooks.hasWallet(context) && context.appConfiguration.getBoolValue("wallet_available", orElse: false)
+            }
             let (hasWebSessions, hasCurrentSession) = sessionFacts
             let (hasPassport, hasLoginEmail) = passportAndEmail
             
@@ -335,6 +347,8 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
                 hasFeaturedStickers: hasFeaturedStickers,
                 hasCustomEmojiPacks: hasCustomEmojiPacks,
                 quickReactionAvailable: quickReactionAvailable,
+                hasTonBalance: hasTonBalance,
+                walletAvailable: walletAvailable,
                 secretChatWebPreviewAvailable: FastSettings.isSecretChatWebPreviewAvailable(for: context.account.id.int64) != nil,
                 chatBackgroundAvailable: theme.bubbled,
                 dockIconAvailable: dockIconAvailable,

@@ -16,6 +16,8 @@ enum SettingsRootSearchTag: Int32, CaseIterable {
     case stars = 6
     case myProfile = 7
     case profileColor = 8
+    case tonEarnings = 9
+    case wallet = 10
 }
 
 extension SettingsRootSearchTag: SettingsSearchTag {
@@ -66,6 +68,12 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             if let navigation = navigation {
                 SettingsHooks.shared.pushPeerInfo(navigation, context, context.peerId, false)
             }
+        case .tonEarnings:
+            SettingsNavigationHooks.shared.showStarsList(context, .ton, nil)
+        case .wallet:
+            if #available(macOS 10.15, *) {
+                SettingsHooks.shared.walletHooks.showWallet(context, context.window, nil)
+            }
         case .profileColor:
             _ = (context.account.postbox.transaction { transaction in
                 return transaction.getPeer(context.peerId)
@@ -95,6 +103,10 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return strings().accountSettingsMyProfile
         case .profileColor:
             return strings().accountSettingsSetProfileColor
+        case .tonEarnings:
+            return strings().accountViewControllerGramEarnings
+        case .wallet:
+            return strings().accountViewControllerMoney
         }
     }
     
@@ -114,6 +126,8 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return .stars
         case .myProfile, .profileColor:
             return .profile
+        case .tonEarnings, .wallet:
+            return .stars
         }
     }
     
@@ -127,6 +141,10 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return environment.premiumAvailable
         case .stars:
             return environment.premiumAvailable && environment.starsAvailable
+        case .tonEarnings:
+            return environment.hasTonBalance
+        case .wallet:
+            return environment.walletAvailable
         }
     }
     
