@@ -27,6 +27,7 @@ struct PreviewSendingState {
     var isCollage = true
     var isSpoiler = false
     var payAmount: Int64?
+    func spoiler(for url: URL, media: Media) -> Bool { state == .media && isSpoiler }
 }
 struct PreviewState {
     let urls: [URL]
@@ -147,10 +148,11 @@ private final class Controller {
         let removeTransitionAnimation = self.removeTransitionAnimation
         return SenderPreviewArguments(context: Context(), theme: TelegramPresentationTheme(), edit: { self.edited.append($0) }, paint: { self.painted.append($0) }, delete: { url in
 __DELETE__
-        }, reorder: __GLOBAL_MOVE__)
+        }__SPOILER_ARGUMENTS__, reorder: __GLOBAL_MOVE__)
     }
     func tableReorder() -> (Int, Int) -> Void {
         let arguments = self.arguments()
+        let urls = self.urls
         genericView.tableView.count = urls.count
 __TABLE_REORDER__
         return genericView.tableView.resortController!.complete

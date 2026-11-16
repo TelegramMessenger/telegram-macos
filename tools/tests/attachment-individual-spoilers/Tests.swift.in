@@ -1,0 +1,721 @@
+import Foundation
+import CoreGraphics
+
+typealias CGImage = Int
+typealias NoError = Never
+struct Signal<Value, Failure: Error> {
+    let value: Value
+    static func single(_ value: Value) -> Self { Self(value: value) }
+}
+infix operator |> : AdditionPrecedence
+func |> <A, B>(value: A, transform: (A) -> B) -> B { transform(value) }
+func deliverOnMainQueue<T>(_ signal: Signal<T, NoError>) -> Signal<T, NoError> { signal }
+func take<T>(_ count: Int) -> (Signal<T, NoError>) -> Signal<T, NoError> { { $0 } }
+func map<A, B>(_ f: @escaping (A) -> B) -> (Signal<A, NoError>) -> Signal<B, NoError> { { .single(f($0.value)) } }
+final class Atomic<Value> {
+    private var value: Value
+    private let lock = NSLock()
+    var afterRead: ((Int) -> Void)?
+    private var reads = 0
+    init(value: Value) { self.value = value }
+    func with<T>(_ f: (Value) -> T) -> T {
+        lock.lock()
+        let result = f(value)
+        reads += 1
+        let count = reads
+        lock.unlock()
+        afterRead?(count)
+        return result
+    }
+    func swap(_ updated: Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        let old = value
+        value = updated
+        return old
+    }
+    func modify(_ f: (Value) -> Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        value = f(value)
+        return value
+    }
+}
+final class HeldPreparationQueue {
+    private let queue = DispatchQueue(label: "spoiler-fixture-prepare")
+    private let gate = DispatchSemaphore(value: 0)
+    private let completed = DispatchSemaphore(value: 0)
+    func enqueue(_ action: @escaping () -> Void) {
+        queue.async { self.gate.wait(); action(); self.completed.signal() }
+    }
+    func release() { gate.signal(); completed.wait() }
+}
+final class ValuePromise<T> {
+    var value: T?
+    func set(_ value: T) { self.value = value }
+}
+extension Array {
+@@ARRAY@@
+}
+extension Array where Element: Hashable {
+    var uniqueElements: [Element] { var seen = Set<Element>(); return filter { seen.insert($0).inserted } }
+}
+extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    var length: Int { utf16.count }
+}
+func cut_long_message(_ value: String, _ length: Int) -> [String] { [value] }
+
+struct PeerId: Hashable {
+    let namespace: Int32
+    init(_ id: Int64) { namespace = 0 }
+    init(namespace: Int32) { self.namespace = namespace }
+}
+struct MessageId: Hashable {
+    typealias Id = Int32
+    let peerId: PeerId
+    let namespace: Int32
+    let id: Int32
+}
+struct MediaId: Hashable { let value: Int }
+enum Namespaces { enum Peer { static let SecretChat: Int32 = 1; static let CloudUser: Int32 = 0 } }
+struct StoryId { let peerId: PeerId; let id: Int32 }
+struct EngineMessageReplySubject {}
+struct ItemCollectionId: Hashable {}
+struct StarsAmount {}
+struct ParsingType: OptionSet {
+    let rawValue: Int
+    static let Hashtags = Self(rawValue: 1)
+    static let Links = Self(rawValue: 2)
+}
+class Media {
+    let name: String
+    let id: MediaId?
+    init(_ name: String, id: Int = 0) { self.name = name; self.id = .init(value: id) }
+    var isInteractiveMedia: Bool { self is TelegramMediaImage || (self as? TelegramMediaFile)?.isVideo == true }
+    var probablySticker: Bool { false }
+    var canHaveCaption: Bool { !((self as? TelegramMediaFile)?.isSticker == true || (self as? TelegramMediaFile)?.isInstantVideo == true) }
+    func isEqual(to other: Media) -> Bool { name == other.name && type(of: self) == type(of: other) }
+}
+final class TelegramMediaImage: Media {}
+final class LocalFileVideoMediaResource {}
+final class TelegramMediaFile: Media {
+    let isVideo: Bool
+    let isInstantVideo: Bool
+    let isSticker: Bool
+    let isAnimatedSticker: Bool
+    let resource: Any
+    init(_ name: String, video: Bool = false, round: Bool = false, sticker: Bool = false, animatedSticker: Bool = false) {
+        isVideo = video; isInstantVideo = round; isSticker = sticker; isAnimatedSticker = animatedSticker
+        resource = LocalFileVideoMediaResource()
+        super.init(name)
+    }
+}
+final class TelegramMediaPaidContent: Media {
+    enum Extended { case full(media: Media) }
+    init(amount: Int64, extendedMedia: [Extended]) { super.init("paid") }
+}
+struct Message {
+    let media: [Media]
+    let stableId: UInt32
+    let id: MessageId
+    init(_ media: Media, stableId: UInt32, messageId: MessageId) { self.media = [media]; self.stableId = stableId; self.id = messageId }
+}
+func isEqualMessages(_ a: Message, _ b: Message) -> Bool { a.stableId == b.stableId && a.media[0].isEqual(to: b.media[0]) }
+let previewPlaceholderSuccessors = Atomic<[MediaId: MediaId]>(value: [:])
+protocol Identifiable { associatedtype StableId: Hashable; var stableId: StableId { get } }
+protocol MessageAttribute {}
+class PostboxDecoder {}
+class PostboxEncoder {}
+@@SPOILER_ATTRIBUTE@@
+struct TextEntitiesMessageAttribute: MessageAttribute { let entities: [String] }
+struct NotificationInfoMessageAttribute: MessageAttribute {
+    struct Flags: OptionSet { let rawValue: Int; static let muted = Self(rawValue: 1) }
+    let flags: Flags
+}
+struct OutgoingScheduleInfoMessageAttribute: MessageAttribute { let scheduleTime: Int32; let repeatPeriod: Int32? }
+struct SendAsMessageAttribute: MessageAttribute { let peerId: PeerId }
+struct EmojiSearchQueryMessageAttribute: MessageAttribute { let query: String }
+struct PaidStarsMessageAttribute: MessageAttribute { let stars: StarsAmount; let postponeSending: Bool }
+struct EffectMessageAttribute: MessageAttribute { let id: Int64 }
+struct InvertMediaMessageAttribute: MessageAttribute {}
+struct SuggestAttribute: MessageAttribute {}
+struct ChatInterfaceState {
+    struct ChannelSuggestPost { var attribute: MessageAttribute? { SuggestAttribute() } }
+}
+struct AvailableMessageEffects { struct MessageEffect { let id: Int64 } }
+struct ChatTextInputState {
+    let inputText: String
+    var attributes: [String] = []
+    var inlineMedia: [String: String] { [:] }
+    var upstairCollections: [ItemCollectionId] { [] }
+    init(inputText: String = "") { self.inputText = inputText }
+    func messageTextEntities(_ type: ParsingType, extractDates: Bool) -> [String] { [inputText] }
+    func subInputState(from range: NSRange) -> Self { self }
+}
+enum AnyMediaReference { case standalone(media: Media) }
+struct EnqueueMessage {
+    let text: String
+    let attributes: [MessageAttribute]
+    let mediaReference: AnyMediaReference?
+    let localGroupingKey: Int64?
+    let replyToStoryId: StoryId?
+    static func message(text: String, attributes: [MessageAttribute], inlineStickers: [String: String], mediaReference: AnyMediaReference?, threadId: Int64?, replyToMessageId: EngineMessageReplySubject?, replyToStoryId: StoryId?, localGroupingKey: Int64?, correlationId: Int64?, bubbleUpEmojiOrStickersets: [ItemCollectionId]) -> Self {
+        Self(text: text, attributes: attributes, mediaReference: mediaReference, localGroupingKey: localGroupingKey, replyToStoryId: replyToStoryId)
+    }
+    var spoiler: Bool { attributes.contains { $0 is MediaSpoilerMessageAttribute } }
+    var media: Media? { if case let .standalone(media)? = mediaReference { return media }; return nil }
+}
+final class Account { var batches: [[EnqueueMessage]] = [] }
+struct StickerSettings { let dynamicPackOrder = true }
+protocol AccountContextProtocol { var account: Account { get }; var stickerSettings: StickerSettings { get } }
+final class Context: AccountContextProtocol { let account = Account(); let stickerSettings = StickerSettings() }
+protocol ChatCustomContentsProtocol { func enqueueMessages(messages: [EnqueueMessage]) -> Signal<[MessageId?], NoError> }
+func enqueueMessages(account: Account, peerId: PeerId, messages: [EnqueueMessage]) -> Signal<[MessageId?], NoError> {
+    account.batches.append(messages)
+    return .single(messages.indices.map { MessageId(peerId: peerId, namespace: 0, id: Int32($0)) })
+}
+var groupingSequence: Int64 = 0
+func arc4random64() -> Int64 { groupingSequence += 1; return groupingSequence }
+struct FastSettings {
+    static var isNeedCollage = true
+    static func isChannelMessagesMuted(_ id: PeerId) -> Bool { false }
+}
+enum Sender {
+@@ELIGIBLE@@
+@@ENQUEUE@@
+}
+
+final class AnalyticsContext {
+    func beginPresentation() -> AnalyticsPresentation { AnalyticsPresentation() }
+}
+final class AnalyticsPresentation { func end() {} }
+final class Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> AnalyticsContext { AnalyticsContext() }
+}
+final class AnalyticsMediaSubmission {
+    let context = AnalyticsContext()
+    func restrict(to: AnalyticsContext) {}
+    func discard() {}
+}
+final class AnalyticsMediaJourney {
+    enum Spec {
+        enum MediaMode { case media, file, archive }
+        enum Step { case toggleSpoiler, removeMedia, reorderMedia }
+        enum SubmitVia { case unknown, sendMenu, enter }
+    }
+    enum Blocked { case preparation, slowMode }
+    func submissionBlocked(_ value: Blocked) {}
+    func retrySubmissionIfBlocked() {}
+    func step(_ value: Spec.Step) {}
+    func selected(count: Int, mode: Spec.MediaMode) {}
+}
+struct ChatLocation { static func peer(_ id: PeerId) -> Self { Self() } }
+final class ChatInteraction {
+    struct Schedule { let date: Date; let repeatPeriod: Int32? }
+    struct Presentation { var slowMode: SlowMode?; var interfaceState = ChatInterfaceStateForFixture() }
+    var peerId = PeerId(0)
+    var peer: Int? = nil
+    var presentation = Presentation()
+    init(chatLocation: ChatLocation = .peer(PeerId(0)), context: any AccountContextProtocol) {}
+    func captureAnalyticsContext(inherited: AnalyticsContext) -> AnalyticsContext { inherited }
+@@INTERACTION@@
+}
+struct ChatInterfaceStateForFixture { var suggestPost: ChatInterfaceState.ChannelSuggestPost? }
+final class SendObservation { func complete(expectedCount: Int, resultCount: Int, acceptedCount: Int) {} }
+final class ResultGroup {
+    enum Result { case accepted, rejected, partiallyAccepted }
+    func complete(index: Int, buildResult: () -> Result?) { _ = buildResult() }
+}
+struct Slice { struct PeerData { var paidMessage: StarsAmount? }; var additionalPeerData = PeerData() }
+struct Theme {}
+typealias TelegramPresentationTheme = Theme
+let theme = Theme()
+struct EditedImageData: Equatable {}
+struct Strings {
+    let previewSenderSendAsSpoiler = "Send as Spoiler"
+    let previewSenderCaptionPlaceholder = "Caption"
+    let slowModeMultipleError = "Slow mode multiple messages"
+    let previewSenderSpoilerTooltipEnable = "Hide with Spoiler"
+    let previewSenderSpoilerTooltipDisable = "Disable Spoiler"
+    let voiceOverCommonEdit = "Edit"
+    let voiceOverCommonDraw = "Draw"
+    let voiceOverCommonDelete = "Delete"
+}
+func strings() -> Strings { Strings() }
+struct MenuAnimation { static let menu_send_spoiler = Self(); var value: Int { 0 } }
+final class ContextMenuItem {
+    let text: String
+    let handler: () -> Void
+    init(_ text: String, handler: @escaping () -> Void, itemImage: Int?) { self.text = text; self.handler = handler }
+}
+final class ContextMenu { var items: [ContextMenuItem] = []; func addItem(_ item: ContextMenuItem) { items.append(item) } }
+final class NSAccessibilityCustomAction {
+    let handler: () -> Bool
+    init(name: String, handler: @escaping () -> Bool) { self.handler = handler }
+}
+class TableRowItem {
+    let initialSize: NSSize
+    var width: CGFloat
+    var table: Table?
+    var index = 0
+    init(_ size: NSSize) { initialSize = size; width = size.width }
+    func makeSize(_ width: CGFloat, oldWidth: CGFloat) -> Bool { self.width = width; return true }
+    var height: CGFloat { 0 }
+    var stableId: AnyHashable { 0 }
+    var identifier: String { "row" }
+    var layoutSize: NSSize { .zero }
+    var accessibilityLabel: String? { nil }
+    var accessibilityCustomActions: [NSAccessibilityCustomAction]? { nil }
+    func viewClass() -> AnyClass { Node.self }
+    func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> { .single([]) }
+}
+final class GeneralRowItem: TableRowItem { init(_ size: NSSize, height: CGFloat, stableId: AnyHashable) { super.init(size) } }
+final class Table { var count = 0; var frame = NSRect.zero; func noteHeightOfRow(_ index: Int, _ animated: Bool) {} }
+class Node { var frame = NSRect.zero }
+typealias ChatMediaContentView = Node
+final class MediaPreviewRowView: Node {}
+struct MediaPresentation { static let empty = Self(); static func make(theme: Theme) -> Self { Self() } }
+struct AutoplayMediaPreferences { static let defaultSettings = Self() }
+final class ChatMediaLayoutParameters {
+    var forceSpoiler = false
+    var payAmount: Int64?
+    init(presentation: MediaPresentation, media: Media) {}
+    static func layout(for media: Media, isWebpage: Bool, chatInteraction: ChatInteraction, presentation: MediaPresentation, automaticDownload: Bool, isIncoming: Bool, autoplayMedia: AutoplayMediaPreferences) -> ChatMediaLayoutParameters { .init(presentation: presentation, media: media) }
+    func makeLabelsForWidth(_ width: CGFloat) {}
+}
+enum ChatLayoutUtils {
+    static func contentSize(for media: Media, with width: CGFloat) -> NSSize { NSSize(width: width, height: 120) }
+    static func contentNode(for media: Media) -> Node.Type { Node.self }
+}
+func previewSenderAccessibilityLabel(for media: Media) -> String { media.name }
+final class GroupedLayout {
+    var messages: [Message]
+    var target: Int?
+    var count: Int { messages.count }
+    var dimensions: NSSize { NSSize(width: 280, height: CGFloat(count * 40)) }
+    init(_ messages: [Message]) { self.messages = messages }
+    func measure(_ size: NSSize, preview: Bool = false) {}
+    func frame(at index: Int) -> NSRect { NSRect(x: 0, y: index * 40, width: 280, height: 40) }
+    func moveItemIfNeeded(at index: Int, point: NSPoint) -> Int? {
+        guard let target else { return nil }
+        messages.move(at: index, to: target)
+        self.target = nil
+        return target
+    }
+}
+@@VIDEO_EDITABLE@@
+@@STATE@@
+@@ARGUMENTS@@
+struct UpdateTransition<T> {
+    var deleted: [Int] = []
+    var inserted: [(Int, T)] = []
+    var updated: [(Int, T)] = []
+}
+@@PREVIEW_STATE@@
+@@PREVIEW_STATE_EQUAL@@
+final class PlaceholderMedia: Media {}
+func isPreviewPlaceholder(_ media: Media) -> Bool { media is PlaceholderMedia }
+func applyPrepared(_ preparedMedias: Atomic<[(Media, Media)]>, to stateValue: Atomic<PreviewState>) {
+    let updateState: ((PreviewState) -> PreviewState) -> Void = { f in _ = stateValue.modify(f) }
+@@APPLY_PREPARED@@
+    applyPreparedMedias()
+}
+@@ENTRY_ID@@
+@@ENTRY@@
+@@ENTRY_EQUAL@@
+@@ENTRY_LESS@@
+@@ENTRIES@@
+@@SINGLE@@
+@@GROUP@@
+struct NSEvent { let locationInWindow: NSPoint }
+class ReorderBase: Node { func mouseUp(with event: NSEvent) {} }
+final class MediaGroupPreviewRowView: ReorderBase {
+    var item: TableRowItem?
+    var contents: [Node] = []
+    var draggingIndex: Int?
+    var startPoint = NSPoint.zero
+    var offset: NSPoint { .init(x: 20, y: 6) }
+    var rendered: [(String, URL, Bool)] = []
+    func convert(_ point: NSPoint, from: Node?) -> NSPoint { point }
+    func set(item: TableRowItem, animated: Bool) {
+        guard let item = item as? MediaGroupPreviewRowItem else { return }
+        rendered = item.layout.messages.indices.map { (item.layout.messages[$0].media[0].name, item.urls[$0], item.parameters[$0].forceSpoiler) }
+    }
+    func updateControl() {}
+@@REORDER@@
+}
+struct PreviewOptions: Equatable { let value: Int; static let media = Self(value: 0); static let file = Self(value: 1) }
+func canCollagesFromUrl(_ urls: [URL]) -> Bool { !urls.contains { $0.pathExtension == "txt" } }
+struct UrlAndState { init(_ urls: [URL], _ state: PreviewSendingState, previews: [String: String]) {} }
+final class PendingActions { var isClosed = false; var invalidations = 0; func invalidate() { invalidations += 1 } }
+final class AttachmentEdits { func update(_ urls: [URL]) {} }
+final class PendingVideoRenders { static let shared = PendingVideoRenders(); func cancel(path: String) {} }
+final class FixtureTable {
+    enum Scroll { case up(Bool) }
+    func scroll(to: Scroll) {}
+}
+struct SlowMode { let hasLocked: Bool }
+final class FixtureButton {
+    var alphaValue: Double = 1
+    var shakes = 0
+    func shake(beep: Bool = false) { shakes += 1 }
+}
+struct FixtureInput {
+    var inputText = ""
+    func textInputState() -> ChatTextInputState { .init(inputText: inputText) }
+}
+final class FixtureTextView {
+    struct Interactions { var presentation = FixtureInput() }
+    var interactions = Interactions()
+    var shakes = 0
+    func shake(beep: Bool = false) { shakes += 1 }
+    func selectAll() {}
+}
+func tooltip(for button: FixtureButton, text: String) {}
+final class PreviewView {
+    let tableView = FixtureTable()
+    let sendButton = FixtureButton()
+    let textView = FixtureTextView()
+    var stateValueInteractiveUpdate: ((PreviewSendingState) -> Void)?
+    var state = PreviewSendingState(state: .media, isCollage: true, isSpoiler: false, sort: .down, payAmount: nil)
+    var canSpoiler = true
+    weak var controller: TestController?
+    func updateWithSlowMode(_ slowMode: SlowMode?, urlsCount: Int) {}
+    func globalMenu() -> [ContextMenuItem] {
+        let newValue = state
+        let menu = ContextMenu()
+        let updateValue: ((PreviewSendingState) -> PreviewSendingState) -> Void = { f in self.state = f(self.state) }
+@@GLOBAL_MENU@@
+        return menu.items
+    }
+}
+final class TestController {
+    let context = Context()
+    lazy var chatInteraction = ChatInteraction(context: context)
+    lazy var genericView: PreviewView = { let view = PreviewView(); view.controller = self; return view }()
+    var presentation: Theme? = nil
+    var _urls: [URL] = []
+    var previews: [String: String] = [:]
+    var mediaByUrl: [URL: Media] = [:]
+    var lockInteractiveChanges = false
+    var pendingActions = PendingActions()
+    var attachmentEdits = AttachmentEdits()
+    var sent = false
+    var editedVideos: [URL: Int] = [:]
+    var analyticsMediaJourney: AnalyticsMediaJourney? = nil
+    var urlsAndStateValue = ValuePromise<UrlAndState>()
+    var runEditor: ((URL, Bool) -> Void)?
+    var closed = false
+    var isMediaStateCurrent: () -> Bool = { true }
+    lazy var getPreviewState: () -> PreviewState? = { [unowned self] in self.state() }
+    lazy var getMedias: () -> [Media] = { [unowned self] in self.urls.map { self.mediaByUrl[$0]! } }
+    lazy var getMediaUrls: () -> [URL] = { [unowned self] in self.urls }
+    var isRenderingEdit = false
+    var pendingRenderSend: (() -> Void)?
+    var appFile: Media? = nil
+    var sendCurrentMedia: ((Bool, ChatInteraction.Schedule?, Bool?, AnalyticsMediaJourney.Spec.SubmitVia) -> Void)?
+    var dispatchVia: [AnalyticsMediaJourney.Spec.SubmitVia] = []
+    var inputPlaceholder: String { genericView.state.state == .media && genericView.state.isCollage || urls.count == 1 ? strings().previewSenderCaptionPlaceholder : "Comment" }
+@@PREVIEW_SNAPSHOT@@
+@@SEND_ELIGIBILITY@@
+@@FLUSH_PENDING@@
+    func bindPreparedState(_ stateValue: Atomic<PreviewState>) {
+@@MEDIA_BINDING@@
+@@URL_BINDING@@
+@@CURRENT_STATE_BINDING@@
+    }
+    func bindInteractiveState() {
+@@INTERACTIVE_BINDING@@
+    }
+    func tableReorder() -> (Int, Int) -> Void {
+        let arguments = arguments()
+        let urls = self.urls
+        return @@TABLE_REORDER@@
+    }
+    func cachedSenderOptions(_ urls: [URL]) -> [PreviewOptions] { [.media] }
+    func validateSendSource() -> Bool { true }
+    func closeModal() { closed = true }
+@@URLS@@
+@@ALL_SPOILERS@@
+@@REPLACE_URL@@
+    func arguments() -> SenderPreviewArguments {
+        let context = self.context
+        let chatInteraction = self.chatInteraction
+        let removeTransitionAnimation = Atomic(value: false)
+@@ARGUMENT_CREATION@@
+        return arguments
+    }
+    func state() -> PreviewState {
+        let medias = genericView.state.state == .archive ? [TelegramMediaFile("archive")] : urls.map { mediaByUrl[$0]! }
+        return .init(urls: urls, medias: medias, currentState: genericView.state, editedData: [:])
+    }
+    func rows() -> [TableRowItem] { let state = state(); return previewMediaEntries(state).map { $0.item(arguments: arguments(), state: state, initialSize: NSSize(width: 320, height: 500)) } }
+    func installChatSender() {
+        let context = self.context
+        let destinationPeerId = PeerId(0)
+        let takeReplyId: () -> EngineMessageReplySubject? = { nil }
+        let threadId64: () -> Int64? = { nil }
+        let takePaidMessageStars: () -> StarsAmount? = { nil }
+        let customChatContents: ChatCustomContentsProtocol? = nil
+        let presentation = chatInteraction.presentation
+        let sendObservation: SendObservation? = nil
+@@CHAT_PREFIX@@
+        let repeatPeriod = atDate?.repeatPeriod
+        let atDate = atDate?.date
+        _ = @@CHAT_CALL@@
+        }
+    }
+    func installStorySender() {
+        let context = self.context
+        let peerId = PeerId(0)
+        let id: Int32 = 7
+        let slice: Slice? = Slice()
+        let resultGroup: ResultGroup? = nil
+@@STORY_PREFIX@@
+        _ = @@STORY_CALL@@
+        }
+    }
+    func sendMenu() -> [ContextMenuItem] {
+        guard chatInteraction.peerId.namespace != Namespaces.Peer.SecretChat else { return [] }
+        var items: [ContextMenuItem] = []
+@@SEND_MENU@@
+        return items
+    }
+@@SEND_GATE@@
+        sendCurrentMedia?(silent, atDate, asSpoiler, via)
+    }
+    func installPreviewSender(_ stateValue: Atomic<PreviewState>) {
+        bindPreparedState(stateValue)
+        let isSecretChat = chatInteraction.peerId.namespace == Namespaces.Peer.SecretChat
+@@SEND_ENTRY@@
+@@SEND_INPUT@@
+                let amount = state.payAmount
+@@MEDIA_WRAPPING@@
+                let effect: AvailableMessageEffects.MessageEffect? = nil
+                let submission: AnalyticsMediaSubmission? = nil
+                self.dispatchVia.append(via)
+@@SEND_BRANCH@@
+            }
+        }
+    }
+    func submit(override: Bool? = nil, caption: String = "caption", additional: String? = nil) {
+        let state = genericView.state
+        let medias = getMedias()
+        let urls = getMediaUrls()
+        let isSecretChat = false
+        let asSpoiler = override
+@@SPOILER_SNAPSHOT@@
+        let amount = state.payAmount
+@@MEDIA_WRAPPING@@
+        let input = ChatTextInputState(inputText: caption)
+        var additionalMessage = additional.map { ChatTextInputState(inputText: $0) }
+        let silent = true
+        let atDate = ChatInteraction.Schedule(date: Date(timeIntervalSince1970: 1000), repeatPeriod: 60)
+        let effect: AvailableMessageEffects.MessageEffect? = .init(id: 42)
+        let submission: AnalyticsMediaSubmission? = nil
+@@SEND_BRANCH@@
+    }
+}
+
+var failures: [String] = []
+var checks = 0
+func check(_ condition: @autoclosure () -> Bool, _ message: String) { checks += 1; if !condition() { failures.append(message) } }
+func fixture(_ count: Int, grouped: Bool = true) -> TestController {
+    let value = TestController()
+    let urls = (0 ..< count).map { URL(fileURLWithPath: "/synthetic/\($0 / 2)/same-\($0 % 2).jpg") }
+    value.mediaByUrl = Dictionary(uniqueKeysWithValues: urls.enumerated().map { ($0.element, $0.offset % 2 == 0 ? TelegramMediaImage("photo\($0.offset)", id: $0.offset) as Media : TelegramMediaFile("video\($0.offset)", video: true) as Media) })
+    value.urls = urls
+    value.genericView.state = value.genericView.state.withUpdatedIsCollage(grouped)
+    value.installChatSender()
+    return value
+}
+func menu(_ controller: TestController, at index: Int) -> [ContextMenuItem] {
+    let rows = controller.rows()
+    if controller.genericView.state.state == .media && controller.genericView.state.isCollage {
+        return rows[index / 10].menuItems(in: NSPoint(x: 30, y: CGFloat((index % 10) * 40 + 16))).value
+    }
+    return rows[index].menuItems(in: NSPoint(x: 30, y: 20)).value
+}
+func toggle(_ controller: TestController, at index: Int) {
+    let items = menu(controller, at: index)
+    check(items.count == 1, "attachment \(index) has one individual spoiler action")
+    items.first?.handler()
+}
+func previewFlags(_ controller: TestController) -> [Bool] {
+    controller.rows().flatMap { row -> [Bool] in
+        if let row = row as? MediaGroupPreviewRowItem { return row.parameters.map { $0.forceSpoiler } }
+        if let row = row as? MediaPreviewRowItem { return [row.parameters?.forceSpoiler == true] }
+        return []
+    }
+}
+func sentFlags(_ controller: TestController) -> [Bool] { controller.context.account.batches.flatMap { $0.filter { $0.media != nil }.map { $0.spoiler } } }
+func resetSent(_ controller: TestController) { controller.context.account.batches = [] }
+
+let basic = fixture(3)
+let originals = basic.urls
+toggle(basic, at: 1)
+check(previewFlags(basic) == [false, true, false], "one grouped video hides without hiding neighbors")
+check(menu(basic, at: 1).first?.text == strings().previewSenderSpoilerTooltipDisable, "selected tile offers disable")
+check(menu(basic, at: 0).first?.text == strings().previewSenderSpoilerTooltipEnable, "visible tile offers enable")
+check(basic.rows()[0].menuItems(in: NSPoint(x: 0, y: 0)).value.isEmpty, "album gutter has no target")
+let before = previewMediaEntries(basic.state())
+toggle(basic, at: 0)
+let after = previewMediaEntries(basic.state())
+check(before != after, "entry equality changes after individual selection")
+toggle(basic, at: 0)
+basic.urls = [originals[2], originals[0], originals[1]]
+check(previewFlags(basic) == [false, false, true], "URL identity follows reorder with duplicate basenames")
+basic.urls.remove(at: 1)
+check(previewFlags(basic) == [false, true], "delete preceding item preserves selected URL")
+let replaced = URL(fileURLWithPath: "/synthetic/editor/edited.mp4")
+basic.mediaByUrl[replaced] = TelegramMediaFile("edited", video: true)
+basic.replaceAttachmentUrl(at: 1, with: replaced)
+check(previewFlags(basic) == [false, true], "editor replacement inherits spoiler")
+basic.replaceAttachmentUrl(at: 1, with: replaced)
+check(previewFlags(basic) == [false, true], "same-URL editor replacement retains override")
+basic.urls.remove(at: 1)
+basic.urls.append(replaced)
+check(previewFlags(basic) == [false, false], "deleted URL does not resurrect individual spoiler on re-add")
+toggle(basic, at: 1)
+basic.genericView.state = basic.genericView.state.withUpdatedSort(.up).withUpdatedIsCollage(false)
+check(previewFlags(basic) == [false, true], "sort and ungrouping preserve per-URL choices")
+check(basic.rows()[1].accessibilityCustomActions?.count == 3, "single video exposes spoiler, edit and delete accessibility actions")
+basic.submit(additional: "comment")
+check(sentFlags(basic) == [false, true], "ungrouped send serializes one spoiler")
+let sent = basic.context.account.batches.flatMap { $0 }
+check(sent.first?.text == "comment" && sent.first?.spoiler == false, "additional text never receives media spoiler")
+check(sent.filter { $0.media != nil }.allSatisfy { $0.localGroupingKey == nil }, "ungrouped sends stay ungrouped")
+check(sent.filter { $0.media != nil }.allSatisfy { $0.attributes.contains { $0 is NotificationInfoMessageAttribute } && $0.attributes.contains { $0 is OutgoingScheduleInfoMessageAttribute } && $0.attributes.contains { $0 is EffectMessageAttribute } && $0.attributes.contains { $0 is InvertMediaMessageAttribute } }, "silent schedule effect and caption-position attributes survive")
+check(sent.filter { $0.media != nil }.map { $0.text } == ["caption", ""], "per-media spoiler does not move caption")
+resetSent(basic)
+basic.genericView.globalMenu().first?.handler()
+check(previewFlags(basic) == [true, true], "global enable replaces mixed selection")
+basic.genericView.globalMenu().first?.handler()
+check(previewFlags(basic) == [false, false], "global disable clears all selections")
+toggle(basic, at: 0)
+basic.submit(override: true)
+check(sentFlags(basic) == [true, true], "send-as-spoiler overrides individual choices")
+resetSent(basic)
+basic.submit(override: false)
+check(sentFlags(basic) == [false, false], "explicit false send override clears selected flags")
+check(previewFlags(basic) == [true, false], "send override does not mutate preview selection")
+basic.genericView.state = basic.genericView.state.withUpdatedState(.file)
+check(previewFlags(basic) == [false, false] && menu(basic, at: 0).isEmpty, "file mode suppresses spoiler previews and actions")
+resetSent(basic)
+basic.submit(override: true)
+check(sentFlags(basic) == [false, false], "file-mode send-as-spoiler cannot leak photo flags")
+basic.genericView.state = basic.genericView.state.withUpdatedState(.media)
+check(previewFlags(basic) == [true, false], "return to media restores prior choices")
+
+let global = fixture(3)
+global.genericView.globalMenu().first?.handler()
+toggle(global, at: 1)
+check(previewFlags(global) == [true, false, true], "individual disable overrides enabled global default")
+check(global.genericView.globalMenu().first?.text == strings().previewSenderSpoilerTooltipEnable, "mixed state offers global enable even with enabled default")
+let visibleReplacement = URL(fileURLWithPath: "/synthetic/editor/visible.jpg")
+global.mediaByUrl[visibleReplacement] = TelegramMediaImage("visible")
+global.replaceAttachmentUrl(at: 1, with: visibleReplacement)
+check(previewFlags(global) == [true, false, true], "editor replacement preserves explicit false override")
+global.submit()
+check(sentFlags(global) == [true, false, true], "global default plus individual exclusion serializes correctly")
+global.genericView.globalMenu().first?.handler()
+check(previewFlags(global) == [true, true, true], "global enable clears explicit false overrides")
+global.genericView.globalMenu().first?.handler()
+check(previewFlags(global) == [false, false, false], "global disable clears explicit true and false overrides")
+
+let batches = fixture(23)
+let batchUrls = batches.urls
+for index in [0, 9, 10, 12, 20, 22] { toggle(batches, at: index) }
+let expected = (0 ..< 23).map { [0, 9, 10, 12, 20, 22].contains($0) }
+check(previewFlags(batches) == expected, "all three preview albums use their own flags")
+check(batches.rows().compactMap { $0 as? MediaGroupPreviewRowItem }.flatMap { $0.urls } == batchUrls, "album URL slices align beyond ten attachments")
+batches.submit()
+check(batches.context.account.batches.map { $0.count } == [10, 10, 3], "batch sizes remain ten ten three")
+check(sentFlags(batches) == expected, "batch-local spoiler indices map to correct outgoing media")
+check(batches.context.account.batches.allSatisfy { Set($0.compactMap { $0.localGroupingKey }).count == 1 }, "each album keeps one grouping key")
+check(Set(batches.context.account.batches.compactMap { $0.first?.localGroupingKey }).count == 3, "each album has a distinct grouping key")
+check(batches.context.account.batches.flatMap { $0.compactMap { $0.media?.name } } == batches.getMedias().map { $0.name }, "send preserves URL/media order across batches")
+resetSent(batches)
+batches.installStorySender()
+batches.submit()
+check(sentFlags(batches) == expected, "story reply sender forwards per-media indices")
+check(batches.context.account.batches.flatMap { $0 }.allSatisfy { $0.replyToStoryId?.id == 7 }, "story reply subject remains intact")
+
+let drag = fixture(13)
+toggle(drag, at: 11)
+let groupItem = drag.rows()[1] as! MediaGroupPreviewRowItem
+let rowView = MediaGroupPreviewRowView()
+rowView.frame = NSRect(x: 0, y: 0, width: 320, height: 400)
+rowView.item = groupItem
+rowView.contents = (0 ..< groupItem.layout.count).map { _ in Node() }
+rowView.draggingIndex = 1
+groupItem.layout.target = 0
+let beforeDrag = drag.urls
+rowView.mouseUp(with: NSEvent(locationInWindow: NSPoint(x: 30, y: 20)))
+var afterDrag = beforeDrag
+afterDrag.move(at: 11, to: 10)
+check(drag.urls == afterDrag, "second album drag changes only intended global URL positions")
+check(rowView.rendered.map { $0.0 } == groupItem.layout.messages.map { $0.media[0].name }, "immediate drag redraw matches layout")
+check(rowView.rendered.map { $0.1 } == Array(afterDrag[10...]), "immediate drag redraw URL identity is not stale")
+check(rowView.rendered.map { $0.2 } == [true, false, false], "drag moves preview spoiler parameters with media")
+
+let eligibility = fixture(7, grouped: false)
+let types: [Media] = [TelegramMediaImage("image"), TelegramMediaFile("video", video: true), TelegramMediaFile("gif", video: true), TelegramMediaFile("round", video: true, round: true), TelegramMediaFile("sticker", video: true, sticker: true), TelegramMediaFile("animated", animatedSticker: true), TelegramMediaFile("document")]
+for index in types.indices { eligibility.mediaByUrl[eligibility.urls[index]] = types[index] }
+for index in 0 ..< 3 { toggle(eligibility, at: index) }
+for index in 3 ..< 7 { check(menu(eligibility, at: index).isEmpty, "ineligible media \(index) has no spoiler action") }
+check(previewFlags(eligibility) == [true, true, true, false, false, false, false], "photo ordinary video and GIF eligible; round stickers documents excluded")
+eligibility.submit(override: true)
+check(sentFlags(eligibility) == [true, true, true, false, false, false, false], "send-as-spoiler respects media eligibility")
+let direct = Context()
+_ = Sender.enqueue(media: types, caption: .init(inputText: "legacy"), context: direct, peerId: PeerId(0), replyId: nil, threadId: nil, isSpoiler: true)
+check(direct.account.batches.first?.map { $0.spoiler } == [true, true, true, false, false, false, false], "legacy Bool enqueue overload remains compatible and eligible")
+
+let race = fixture(3, grouped: false)
+let prepared = Atomic(value: race.state())
+race.bindPreparedState(prepared)
+race.bindInteractiveState()
+check(race.isMediaStateCurrent(), "matching prepared state starts current")
+toggle(race, at: 1)
+check(!race.isMediaStateCurrent(), "selection invalidates send until its prepared state arrives")
+_ = prepared.swap(race.state())
+check(race.isMediaStateCurrent(), "matching selection preparation releases send gate")
+race.genericView.stateValueInteractiveUpdate?(race.genericView.state.withUpdatedState(.archive).withUpdatedIsCollage(true))
+check(race.genericView.state.state == .archive && !race.genericView.state.isCollage, "interactive archive normalization writes authoritative state")
+check(!race.isMediaStateCurrent(), "mode normalization invalidates prepared gate")
+_ = prepared.swap(race.state())
+check(race.isMediaStateCurrent(), "normalized archive state releases send gate")
+race.genericView.stateValueInteractiveUpdate?(race.genericView.state.withUpdatedState(.media).withUpdatedIsCollage(true))
+let documentUrl = URL(fileURLWithPath: "/synthetic/plain.txt")
+race.mediaByUrl[documentUrl] = TelegramMediaFile("document")
+race.urls.append(documentUrl)
+check(!race.genericView.state.isCollage, "URL producer normalizes grouping in authoritative state")
+_ = prepared.swap(race.state())
+check(race.isMediaStateCurrent(), "normalized URL producer releases prepared gate")
+
+let stale = fixture(4, grouped: false)
+let staleUrls = stale.urls
+let move = stale.tableReorder()
+stale.urls.remove(at: 0)
+move(2, 1)
+check(stale.urls == [staleUrls[2], staleUrls[1], staleUrls[3]], "table drag resolves snapshot URL identities after deletion")
+let moved = stale.urls
+if @@TABLE_REORDER_GUARD@@ {
+    move(-1, 0)
+    move(100, 1)
+}
+check(@@TABLE_REORDER_GUARD@@ && stale.urls == moved, "table drag ignores invalid snapshot indices")
+let staleAction = menu(stale, at: 1).first
+stale.urls.remove(at: 1)
+staleAction?.handler()
+check(previewFlags(stale).allSatisfy { !$0 }, "deleted tile's pending menu cannot toggle survivor")
+
+check(@@EDITOR_WIRING@@ == 3, "paint image and video editor paths all transfer URL spoiler state")
+check(@@SEND_STATE_GUARD@@, "send waits for current prepared selection and stale transitions cannot overwrite it")
+check(@@SNAPSHOT_BINDING@@, "ungrouped reorder closure resolves captured URLs not stale global positions")
+let result: [String: Any] = ["checks": checks, "failures": failures, "passed": failures.isEmpty, "baseline_adapter": @@BASELINE_MODE@@]
+let resultData = try! JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
+print(String(decoding: resultData, as: UTF8.self))
+exit(failures.isEmpty ? 0 : 1)
