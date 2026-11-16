@@ -91,7 +91,10 @@ private final class PassportNewPhoneNumberRowView : TableRowView {
             return
         }
         item.readValue = { [weak self] in
-            return self?.input.readyValue ?? ""
+            guard let input = self?.input, input.hasNumber else {
+                return ""
+            }
+            return input.readyValue
         }
         countriesDisposable.set((item.countries |> deliverOnMainQueue).start(next: { [weak self] countries in
             self?.input.manager = Auth_CountryManager(countries)
