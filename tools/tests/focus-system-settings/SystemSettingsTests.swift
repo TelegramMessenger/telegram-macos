@@ -4,6 +4,7 @@ import XCTest
 final class SystemSettingsTests: XCTestCase {
     private let host = XCUIApplication(bundleIdentifier: "org.telegram.FocusSettingsCI")
     private let settings = XCUIApplication(bundleIdentifier: "com.apple.systempreferences")
+    private var activeParameter = ""
     private let titles = ["Accounts": "Focus CI Account", "Folders": "Focus CI Folder", "Chats": "Focus CI Chat"]
 
     override func setUpWithError() throws {
@@ -45,8 +46,11 @@ final class SystemSettingsTests: XCTestCase {
             XCTAssertTrue(catalogItem(title).waitForExistence(timeout: 10), settings.debugDescription)
             catalogItem(title).click()
             closePicker()
-            let selected = parameterGroup(parameter).staticTexts.matching(textPredicate(title)).firstMatch
+            let selected = parameterGroup(parameter).descendants(matching: .any).matching(NSPredicate(
+                format: "label BEGINSWITH %@ OR value BEGINSWITH %@", title, title
+            )).firstMatch
             XCTAssertTrue(selected.waitForExistence(timeout: 10), settings.debugDescription)
+            XCTAssertTrue(parameterGroup(parameter).staticTexts.matching(textPredicate("1 item")).firstMatch.exists, settings.debugDescription)
         }
         record(settings, name: "Selected account folder and chat")
     }
@@ -55,9 +59,11 @@ final class SystemSettingsTests: XCTestCase {
         try openEditor()
         try openPicker("Accounts")
         assertLockedPicker()
+        let dismiss = settings.buttons["action-button-1"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 10), settings.debugDescription)
+        dismiss.click()
         unlock()
         settings.activate()
-        closePicker()
         try openPicker("Accounts")
         XCTAssertTrue(catalogItem("Focus CI Account").waitForExistence(timeout: 20), settings.debugDescription)
     }
@@ -110,6 +116,7 @@ final class SystemSettingsTests: XCTestCase {
     }
 
     private func openPicker(_ parameter: String) throws {
+        activeParameter = parameter
         let add = parameterGroup(parameter).buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Item")).firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 15), settings.debugDescription)
         add.click()
@@ -123,32 +130,24 @@ final class SystemSettingsTests: XCTestCase {
         field.typeText(text)
     }
 
+    private var picker: XCUIElement {
+        parameterGroup(activeParameter).popovers.firstMatch
+    }
+
     private func pickerSearchField() throws -> XCUIElement {
-        let deadline = Date().addingTimeInterval(15)
-        repeat {
-            for container in settings.popovers.allElementsBoundByIndex + settings.sheets.allElementsBoundByIndex {
-                let fields = container.descendants(matching: .searchField).allElementsBoundByIndex.filter { $0.isHittable }
-                if fields.count == 1 { return fields[0] }
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        } while Date() < deadline
-        XCTFail("No unambiguous search field inside the Focus picker.\n\(settings.debugDescription)")
-        throw NSError(domain: "FocusSettingsCI", code: 1)
+        let field = picker.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 15), settings.debugDescription)
+        XCTAssertEqual(picker.searchFields.count, 1, settings.debugDescription)
+        XCTAssertTrue(field.isHittable, settings.debugDescription)
+        return field
     }
 
     private func closePicker() {
-        for container in settings.popovers.allElementsBoundByIndex + settings.sheets.allElementsBoundByIndex.reversed() {
-            guard container.descendants(matching: .searchField).allElementsBoundByIndex.contains(where: { $0.isHittable }) else { continue }
-            for title in ["Done", "Add", "Select"] {
-                let button = container.buttons[title]
-                if button.exists && button.isHittable {
-                    button.click()
-                    return
-                }
-            }
+        if picker.exists {
             settings.typeKey(.escape, modifierFlags: [])
-            return
         }
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: picker)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 10), .completed, settings.debugDescription)
     }
 
     private func parameterGroup(_ parameter: String) -> XCUIElement {
@@ -156,7 +155,7 @@ final class SystemSettingsTests: XCTestCase {
     }
 
     private func catalogItem(_ title: String) -> XCUIElement {
-        settings.staticTexts.matching(textPredicate(title)).firstMatch
+        picker.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
     }
 
     private func textPredicate(_ title: String) -> NSPredicate {
