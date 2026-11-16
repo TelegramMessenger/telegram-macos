@@ -175,7 +175,7 @@ final class FolderSharingUITests: XCTestCase {
         selection.toggleFromRow(group(1))
         selection.toggleFromRow(group(2))
         refresh.update([], selectedIds: [group(1).id], selection: selection)
-        XCTAssertTrue(selection.selectedPeerIds.isEmpty)
+        XCTAssertEqual(selection.selectedPeerIds, [group(2).id])
         XCTAssertEqual(refresh.initialSelected, [group(1).id])
         refresh.update(peers, selectedIds: [group(1).id], selection: selection)
         XCTAssertEqual(selection.selectedPeerIds, [group(2).id])
@@ -188,12 +188,46 @@ final class FolderSharingUITests: XCTestCase {
         let linked: Set<PeerId> = [group(1).id, group(2).id]
         refresh.update([group(1), group(2)], selectedIds: linked, selection: selection)
         refresh.update([group(2)], selectedIds: linked, selection: selection)
-        XCTAssertEqual(selection.selectedPeerIds, [group(2).id])
+        XCTAssertEqual(selection.selectedPeerIds, linked)
         XCTAssertEqual(refresh.initialSelected, linked)
         refresh.update([group(2)], selectedIds: linked, selection: selection)
-        XCTAssertEqual(selection.selectedPeerIds, [group(2).id])
+        XCTAssertEqual(selection.selectedPeerIds, linked)
         refresh.update([group(1), group(2)], selectedIds: linked, selection: selection)
         XCTAssertEqual(selection.selectedPeerIds, linked)
+    }
+
+    func testOnlyLinkedPeerEligibilityLossPreservesDoneAndClose() {
+        let selection = Selection()
+        let original = link()
+        var refresh = FolderSharingLinkSelection(selectedIds: Set(original.peerIds))
+        refresh.update([group(1)], selectedIds: Set(original.peerIds), selection: selection)
+        refresh.update([], selectedIds: Set(original.peerIds), selection: selection)
+        let state = FolderSharingLinkState(filter: filter(), link: original, selected: refresh.selectedPeerIds(selection))
+        XCTAssertEqual(state.selected, Set(original.peerIds))
+        XCTAssertFalse(state.needsDiscardConfirmation(original: original, initialSelected: refresh.initialSelected))
+        var events: [String] = []
+        folderSharingSaveLink(state: state, original: original, edit: { _, _, _, _ in events.append("edit") }, updated: { _, _ in XCTFail() }, success: { XCTFail() }, failure: { XCTFail() }, delete: { events.append("delete") }, close: { events.append("close") })
+        XCTAssertEqual(events, ["close"])
+        XCTAssertEqual(selection.toggled, original.peerIds)
+    }
+
+    func testUnresolvedLinkedIdsSurviveRowsAndBulkChanges() {
+        let selection = Selection()
+        let ids: Set<PeerId> = [group(1).id]
+        var refresh = FolderSharingLinkSelection(selectedIds: ids)
+        XCTAssertEqual(refresh.selectedPeerIds(selection), ids)
+        refresh.update([group(2)], selectedIds: ids, selection: selection)
+        XCTAssertEqual(refresh.selectedPeerIds(selection), ids)
+        folderSharingToggleAll([group(2)], selected: refresh.selectedPeerIds(selection), selection: selection)
+        XCTAssertEqual(refresh.selectedPeerIds(selection), [group(1).id, group(2).id])
+        folderSharingToggleAll([group(2)], selected: refresh.selectedPeerIds(selection), selection: selection)
+        XCTAssertEqual(refresh.selectedPeerIds(selection), ids)
+        refresh.update([group(1), group(2)], selectedIds: ids, selection: selection)
+        selection.toggleFromRow(group(1))
+        XCTAssertTrue(refresh.selectedPeerIds(selection).isEmpty)
+        refresh.update([], selectedIds: ids, selection: selection)
+        refresh.update([group(1), group(2)], selectedIds: ids, selection: selection)
+        XCTAssertTrue(refresh.selectedPeerIds(selection).isEmpty)
     }
 
     func testMissingSelectionDoesNotConsumeInitialization() {

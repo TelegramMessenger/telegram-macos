@@ -161,7 +161,16 @@ def native(label, revision):
     row_callback = block(controller, '{ [weak selected] peerId, _ in')
     local = re.search(r'^    var (?:initialSelected|linkSelection)[^\n]*', controller, re.MULTILINE)
     assert local is not None
+    initial = re.search(r'^    let initialState = FolderSharingLinkState[^\n]*', controller, re.MULTILINE).group(0).strip()
+    merge = block(controller, '}, merge: {').removeprefix('}, merge: ')
+    transaction = block(controller, 'controller.afterTransaction =')
+    done = re.search(r'title\.set\(text: (stateValue\.with \{[^}]+\}) \?', transaction).group(1)
+    assert done in re.search(r'title\.set\(background:[^\n]+', transaction).group(0)
     discard = re.search(r'if (state\.needsDiscardConfirmation\([^\n]+\)) \{', controller).group(1)
+    row_enabled = re.search(r'makePeerRow\(initialSize, peer: item\.peer\.peer, enabled: (.+?), status:', controller).group(1)
+    bulk_peers = re.search(r'folderSharingToggleAll\((items\.filter.+?), selected: state\.selected, selection:', controller).group(1)
+    bulk_visible = re.search(r'if items\.count > 1, (.+?) \{', controller).group(1)
+    edit_peer_ids = re.search(r'editChatFolderLink\([^\n]+peerIds: (.+?), revoke: false', controller).group(1)
     production = '\n\n'.join([
         block(environment, 'public protocol FolderSharingPeerSelection:'),
         block(models, 'struct FolderSharingPeer:'),
@@ -171,7 +180,7 @@ def native(label, revision):
         selection
     ])
     tests = fixture.read_text()
-    for marker, value in [('__SELECTION_LOCAL__', local.group(0).strip()), ('__PEER_CALLBACK__', callback), ('__ROW_CALLBACK__', row_callback), ('__DISCARD_EXPRESSION__', discard)]:
+    for marker, value in [('__INITIAL_STATE__', initial), ('__SELECTION_LOCAL__', local.group(0).strip()), ('__PEER_CALLBACK__', callback), ('__ROW_CALLBACK__', row_callback), ('__MERGE_CALLBACK__', merge), ('__DONE_EXPRESSION__', done), ('__DISCARD_EXPRESSION__', discard), ('__ROW_ENABLED__', row_enabled), ('__BULK_PEERS__', bulk_peers), ('__BULK_VISIBLE__', bulk_visible), ('__EDIT_PEER_IDS__', edit_peer_ids)]:
         assert tests.count(marker) == 1
         tests = tests.replace(marker, value)
     harness = directory / 'main.swift'
@@ -200,7 +209,7 @@ def native(label, revision):
         'assertion_failures': failures,
         'failed_tests': [line for line in text.splitlines() if line.startswith('Test Case ') and ' failed ' in line],
         'exit': result.returncode,
-        'boundary': 'Native XCTest executable runs verbatim extracted peer callback, row callback, discard expression, state, selection helpers and save routing. Real PeerId/buffers and ExportedChatFolderLink source; peer payload, eligibility predicate, filter and state container are in-memory test doubles. Foundation/XCTest only; no app, account, Postbox instance, database, Contacts, network or GUI.'
+        'boundary': 'Native XCTest executable runs verbatim extracted initial state, peer callback, row callback, bulk-selection merge callback, Done/Delete predicate, discard expression, state, selection helpers and save routing. Real PeerId/buffers and ExportedChatFolderLink source; peer payload, eligibility predicate, filter and state container are in-memory test doubles. Footer predicate is checked, not an AppKit button. Foundation/XCTest only; no account, Postbox instance, database, Contacts, network or GUI.'
     }
     save(directory / 'verification.json', record)
     records.append(record)

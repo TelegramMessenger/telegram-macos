@@ -13,30 +13,25 @@ func folderSharingInitializeSelection(_ peers: [Peer], selectedIds: Set<PeerId>?
 }
 
 struct FolderSharingLinkSelection {
-    private var initializedPeers: [PeerId: Peer] = [:]
-    private var unavailableSelected: Set<PeerId> = []
-    private(set) var initialSelected: Set<PeerId> = []
+    private var initializedPeerIds: Set<PeerId> = []
+    private(set) var initialSelected: Set<PeerId>
+
+    init(selectedIds: Set<PeerId> = []) {
+        initialSelected = selectedIds
+    }
+
+    func selectedPeerIds(_ selection: FolderSharingPeerSelection?) -> Set<PeerId> {
+        return (selection?.selectedPeerIds ?? []).union(initialSelected.subtracting(initializedPeerIds))
+    }
 
     mutating func update(_ peers: [Peer], selectedIds: Set<PeerId>?, selection: FolderSharingPeerSelection?) {
         guard let selection = selection else {
             return
         }
-        let availableIds = Set(peers.map { $0.id })
-        for (id, peer) in initializedPeers {
-            if !availableIds.contains(id) && selection.selectedPeerIds.contains(id) {
-                unavailableSelected.insert(id)
-                selection.toggleSelection(peer)
-            }
-        }
-        let newPeers = peers.filter { initializedPeers[$0.id] == nil }
+        let newPeers = peers.filter { !initializedPeerIds.contains($0.id) }
         folderSharingInitializeSelection(newPeers, selectedIds: selectedIds, selection: selection)
-        initialSelected.formUnion(newPeers.filter { selection.selectedPeerIds.contains($0.id) }.map { $0.id })
-        for peer in peers {
-            if unavailableSelected.remove(peer.id) != nil && !selection.selectedPeerIds.contains(peer.id) {
-                selection.toggleSelection(peer)
-            }
-            initializedPeers[peer.id] = peer
-        }
+        initialSelected.formUnion(selectedIds ?? Set(newPeers.filter { selection.selectedPeerIds.contains($0.id) }.map { $0.id }))
+        initializedPeerIds.formUnion(peers.map { $0.id })
     }
 }
 

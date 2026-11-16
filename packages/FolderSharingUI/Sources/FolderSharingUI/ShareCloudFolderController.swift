@@ -147,13 +147,13 @@ private func entries(_ state: FolderSharingLinkState, arguments: Arguments) -> [
 
     var rightItem = InputDataGeneralTextRightData(isLoading: false, text: nil)
 
-    if items.count > 1, !state.isEmpty {
+    if items.count > 1, !state.isEmpty || !state.selected.isEmpty {
         let allSelected = items.filter {
             $0.selected && $0.enabled
         }.count == items.filter({ $0.enabled }).count
 
         rightItem = .init(isLoading: false, text: .initialize(string: allSelected ? strings().shareFolderDeselectAll : strings().shareFolderSelectAll, color: theme.colors.accent, font: .normal(.short)), action: {
-            folderSharingToggleAll(items.filter { $0.enabled }.map { $0.peer.peer }, selected: state.selected, selection: arguments.select)
+            folderSharingToggleAll(items.filter { $0.enabled || $0.selected }.map { $0.peer.peer }, selected: state.selected, selection: arguments.select)
             arguments.merge()
         }, update: arc4random())
     }
@@ -197,7 +197,7 @@ private func entries(_ state: FolderSharingLinkState, arguments: Arguments) -> [
         }
 
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: folderSharingLinkPeerIdentifier(item.peer.peer.id), equatable: .init(item), comparable: nil, item: { initialSize, stableId in
-            return arguments.environment.makePeerRow(initialSize, peer: item.peer.peer, enabled: item.enabled, status: text, selection: interactionType, viewType: item.viewType, disabledAction: {
+            return arguments.environment.makePeerRow(initialSize, peer: item.peer.peer, enabled: item.enabled || item.selected, status: text, selection: interactionType, viewType: item.viewType, disabledAction: {
                 arguments.cantSelect(item.peer.peer)
             })
         }))
@@ -221,7 +221,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
     let actionsDisposable = DisposableSet()
     var close:(()->Void)? = nil
 
-    let initialState = FolderSharingLinkState(filter: filter, link: link, peers: [], selected: [])
+    let initialState = FolderSharingLinkState(filter: filter, link: link, peers: [], selected: Set(link?.peerIds ?? []))
     let selected = environment.makeSelection()
     let statePromise = ValuePromise<FolderSharingLinkState>(ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
@@ -229,7 +229,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
         statePromise.set(stateValue.modify (f))
     }
 
-    var linkSelection = FolderSharingLinkSelection()
+    var linkSelection = FolderSharingLinkSelection(selectedIds: Set(link?.peerIds ?? []))
 
     if let data = filter.data {
 
@@ -268,12 +268,14 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
 
             let peers = access + cantInvite
 
-            linkSelection.update(access.map { $0.peer }, selectedIds: link.map { Set($0.peerIds) }, selection: selected)
+            let initialPeerIds = link.map { Set($0.peerIds) }
+            let selectionPeers = access + cantInvite.filter { initialPeerIds?.contains($0.peer.id) == true }
+            linkSelection.update(selectionPeers.map { $0.peer }, selectedIds: initialPeerIds, selection: selected)
 
             updateState { current in
                 var current = current
                 current.peers = peers
-                current.selected = selected?.selectedPeerIds ?? []
+                current.selected = linkSelection.selectedPeerIds(selected)
                 current.membersCount = memberCounts
                 return current
             }
@@ -288,12 +290,12 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
             return
         }
         let peer = stateValue.with { $0.peers.first(where: { $0.peer.id == peerId }) }?.peer
-        if let peer = peer {
+        if let peer = peer, stateValue.with({ $0.selected.contains(peer.id) || peerCanBeSharedInFolder(peer, filter: $0.filter) }) {
             selected.toggleFromRow(peer)
         }
         updateState { current in
             var current = current
-            current.selected = selected.selectedPeerIds
+            current.selected = linkSelection.selectedPeerIds(selected)
             return current
         }
     }
@@ -337,7 +339,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
     }, merge: {
         updateState { current in
             var current = current
-            current.selected = selected.selectedPeerIds
+            current.selected = linkSelection.selectedPeerIds(selected)
             return current
         }
     })
@@ -387,7 +389,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
     controller.validateData = { data in
         let state = stateValue.with { $0 }
         folderSharingSaveLink(state: state, original: link, edit: { current, selected, success, failure in
-            _ = showModalProgress(signal: context.engine.peers.editChatFolderLink(filterId: state.filter.folderSharingId, link: current, title: current.title, peerIds: Array(selected), revoke: false), for: context.window).start(next: success, error: { _ in failure() })
+            _ = showModalProgress(signal: context.engine.peers.editChatFolderLink(filterId: state.filter.folderSharingId, link: current, title: current.title, peerIds: selected == Set(current.peerIds) ? nil : Array(selected), revoke: false), for: context.window).start(next: success, error: { _ in failure() })
         }, updated: updated, success: environment.showSuccess, failure: {
             environment.alert(strings().unknownError)
         }, delete: arguments.delete, close: { close?() })
