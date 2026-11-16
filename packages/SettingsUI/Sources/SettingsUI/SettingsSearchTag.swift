@@ -87,22 +87,8 @@ func searchEntries<Tag: SettingsSearchTag>(_ type: Tag.Type, environment: Settin
 func searchableItems<Tag: SettingsSearchTag, Context: AccountContextProtocol>(_ type: Tag.Type, context: Context, environment: SettingsSearchEnvironment) -> [SettingsSearchableItem<Context>] {
     return searchEntries(type, environment: environment).map { entry in
         SettingsSearchableItem<Context>(id: entry.id, title: entry.title, alternate: entry.alternate, icon: entry.icon, breadcrumbs: entry.breadcrumbs, present: { context, navigation, present in
-            searchDbg("open \(Tag.self) tag=\(String(describing: entry.tag))")
             Tag.open(entry.tag, context: context, navigation: navigation, environment: environment, present: present)
         })
     }
 }
 
-
-func searchDbg(_ message: String) {
-    NSLog("[SearchDbg] %@", message)
-    let line = "\(Date().timeIntervalSince1970) \(message)\n"
-    let path = "/tmp/searchdbg.log"
-    if let handle = FileHandle(forWritingAtPath: path) {
-        handle.seekToEndOfFile()
-        handle.write(line.data(using: .utf8)!)
-        handle.closeFile()
-    } else {
-        try? line.write(toFile: path, atomically: false, encoding: .utf8)
-    }
-}

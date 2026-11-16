@@ -232,29 +232,18 @@ extension PrivacySearchTag: SettingsSearchTag {
 }
 
 private let selectivePrivacyRequest = MetaDisposable()
-private var selectivePrivacyRequestInFlight = false
 
 private func presentSelectivePrivacy<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, loaded: AccountPrivacySettings?, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
     let open: (AccountPrivacySettings) -> Void = { settings in
-        searchDbg("opening kind=\(kind) fromSnapshot=\(loaded != nil)")
         present(.push, selectivePrivacyController(context, kind: kind, settings: settings, updated: { _, _, _, _ in }))
     }
     if let loaded = loaded {
         open(loaded)
         return
     }
-    if selectivePrivacyRequestInFlight {
-        searchDbg("ignored tap, request in flight kind=\(kind)")
-        return
-    }
-    selectivePrivacyRequestInFlight = true
-    searchDbg("requesting settings kind=\(kind)")
     selectivePrivacyRequest.set((context.engine.privacy.requestAccountPrivacySettings()
         |> take(1)
         |> deliverOnMainQueue).start(next: { settings in
-            selectivePrivacyRequestInFlight = false
             open(settings)
-        }, completed: {
-            selectivePrivacyRequestInFlight = false
         }))
 }
