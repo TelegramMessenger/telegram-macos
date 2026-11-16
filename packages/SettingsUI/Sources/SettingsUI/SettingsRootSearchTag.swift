@@ -15,6 +15,7 @@ enum SettingsRootSearchTag: Int32, CaseIterable {
     case sendGift = 5
     case stars = 6
     case myProfile = 7
+    case profileColor = 8
 }
 
 extension SettingsRootSearchTag: SettingsSearchTag {
@@ -65,6 +66,14 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             if let navigation = navigation {
                 SettingsHooks.shared.pushPeerInfo(navigation, context, context.peerId, false)
             }
+        case .profileColor:
+            _ = (context.account.postbox.transaction { transaction in
+                return transaction.getPeer(context.peerId)
+            } |> deliverOnMainQueue).start(next: { peer in
+                if let peer = peer {
+                    present(.push, SettingsHooks.shared.makeSelectColorParentController(context, peer))
+                }
+            })
         }
     }
     
@@ -84,6 +93,8 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return strings().accountSettingsStars
         case .myProfile:
             return strings().accountSettingsMyProfile
+        case .profileColor:
+            return strings().accountSettingsSetProfileColor
         }
     }
     
@@ -101,14 +112,14 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return .gift
         case .stars:
             return .stars
-        case .myProfile:
+        case .myProfile, .profileColor:
             return .profile
         }
     }
     
     func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
         switch self {
-        case .chatFolders, .myProfile:
+        case .chatFolders, .myProfile, .profileColor:
             return true
         case .passport:
             return environment.passportAvailable
