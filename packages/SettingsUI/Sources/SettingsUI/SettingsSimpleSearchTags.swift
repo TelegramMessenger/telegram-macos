@@ -97,6 +97,10 @@ enum StickersSearchTag: Int32, CaseIterable {
     case suggestOptions = 1
     case featuredPacks = 3
     case archivedPacks = 4
+    case loopAnimated = 5
+    case customEmoji = 6
+    case quickReaction = 7
+    case dynamicPackOrder = 8
 }
 
 extension StickersSearchTag: SettingsSearchTag {
@@ -126,6 +130,8 @@ extension StickersSearchTag: SettingsSearchTag {
             present(.push, SettingsNavigationHooks.shared.makeFeaturedStickerPacksController(context))
         case .archivedPacks:
             present(.push, SettingsNavigationHooks.shared.makeArchivedStickerPacksController(context))
+        case .loopAnimated, .customEmoji, .quickReaction, .dynamicPackOrder:
+            present(.push, SettingsNavigationHooks.shared.makeInstalledStickerPacksController(context, nil))
         }
     }
     
@@ -137,6 +143,14 @@ extension StickersSearchTag: SettingsSearchTag {
             return strings().installedStickersTranding
         case .archivedPacks:
             return strings().installedStickersArchived
+        case .loopAnimated:
+            return strings().installedStickersLoopAnimated
+        case .customEmoji:
+            return strings().installedStickersCustomEmoji
+        case .quickReaction:
+            return strings().reactionSettingsQuickTitle
+        case .dynamicPackOrder:
+            return strings().installedStickersDynamicPackOrder
         }
     }
     
@@ -148,6 +162,21 @@ extension StickersSearchTag: SettingsSearchTag {
             return synonyms(strings().settingsSearchSynonymsStickersFeaturedPacks)
         case .archivedPacks:
             return synonyms(strings().settingsSearchSynonymsStickersArchivedPacks)
+        case .loopAnimated, .customEmoji, .quickReaction, .dynamicPackOrder:
+            return []
+        }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        switch self {
+        case .featuredPacks:
+            return environment.hasFeaturedStickers
+        case .customEmoji:
+            return environment.hasCustomEmojiPacks
+        case .quickReaction:
+            return environment.quickReactionAvailable
+        default:
+            return true
         }
     }
     

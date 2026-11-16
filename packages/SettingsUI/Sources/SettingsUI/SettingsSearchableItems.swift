@@ -228,6 +228,17 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
         |> map { $0.sessions.contains(where: { $0.isCurrent }) }
         |> distinctUntilChanged
     
+    let stickerViews = context.account.postbox.combinedView(keys: [.orderedItemList(id: Namespaces.OrderedItemList.CloudFeaturedStickerPacks), .itemCollectionInfos(namespaces: [Namespaces.ItemCollection.CloudEmojiPacks])])
+    let hasFeaturedStickers = stickerViews
+        |> map { ($0.views[.orderedItemList(id: Namespaces.OrderedItemList.CloudFeaturedStickerPacks)] as? OrderedItemListView)?.items.isEmpty == false }
+        |> distinctUntilChanged
+    let hasCustomEmojiPacks = stickerViews
+        |> map { ($0.views[.itemCollectionInfos(namespaces: [Namespaces.ItemCollection.CloudEmojiPacks])] as? ItemCollectionInfosView)?.entriesByNamespace[Namespaces.ItemCollection.CloudEmojiPacks]?.isEmpty == false }
+        |> distinctUntilChanged
+    let quickReactionAvailable = context.reactions.stateValue
+        |> map { $0?.enabled.isEmpty == false }
+        |> distinctUntilChanged
+    
     let hasPassport: Signal<Bool, NoError> = .single(false) |> then(context.engine.auth.twoStepVerificationConfiguration() |> map { configuration -> Bool in
         if case let .set(_, _, _, hasSecureValues, _) = configuration {
             return hasSecureValues
@@ -292,11 +303,12 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             return .single(false)
         })
     
-    let facts = combineLatest(baseSettings, contentConfiguration, combineLatest(hasWebSessions, hasCurrentSession), combineLatest(hasPassport, hasLoginEmail))
+    let facts = combineLatest(baseSettings, contentConfiguration, combineLatest(hasWebSessions, hasCurrentSession), combineLatest(hasPassport, hasLoginEmail), combineLatest(hasFeaturedStickers, hasCustomEmojiPacks, quickReactionAvailable))
     
     return combineLatest(accountsInfo, localizations, proxyServers, privacySettings, facts)
         |> map { accountsInfo, localizations, proxyServers, privacySettings, facts in
-            let (baseSettings, contentConfiguration, sessionFacts, passportAndEmail) = facts
+            let (baseSettings, contentConfiguration, sessionFacts, passportAndEmail, stickerFacts) = facts
+            let (hasFeaturedStickers, hasCustomEmojiPacks, quickReactionAvailable) = stickerFacts
             let (hasWebSessions, hasCurrentSession) = sessionFacts
             let (hasPassport, hasLoginEmail) = passportAndEmail
             
@@ -320,6 +332,9 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
                 loginEmailAvailable: loginEmailAvailable,
                 hasWebSessions: hasWebSessions,
                 hasCurrentSession: hasCurrentSession,
+                hasFeaturedStickers: hasFeaturedStickers,
+                hasCustomEmojiPacks: hasCustomEmojiPacks,
+                quickReactionAvailable: quickReactionAvailable,
                 secretChatWebPreviewAvailable: FastSettings.isSecretChatWebPreviewAvailable(for: context.account.id.int64) != nil,
                 chatBackgroundAvailable: theme.bubbled,
                 dockIconAvailable: dockIconAvailable,
