@@ -12,6 +12,9 @@ enum ProfileSearchTag: Int32, CaseIterable {
     case username = 3
     case addAccount = 4
     case logout = 5
+    case birthday = 6
+    case personalChannel = 7
+    case chatAutomation = 8
 }
 
 extension ProfileSearchTag: SettingsSearchTag {
@@ -33,8 +36,8 @@ extension ProfileSearchTag: SettingsSearchTag {
     
     static func open<Context: AccountContextProtocol>(_ tag: ProfileSearchTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
         switch tag {
-        case nil, .bio:
-            EditAccountInfoController(context: context, focusOnItemTag: tag == nil ? nil : .bio, f: { controller in
+        case nil, .bio, .birthday, .personalChannel, .chatAutomation:
+            EditAccountInfoController(context: context, focusOnItemTag: tag == .bio ? .bio : nil, f: { controller in
                 present(.push, controller)
             })
         case .phoneNumber:
@@ -63,6 +66,12 @@ extension ProfileSearchTag: SettingsSearchTag {
             return strings().editAccountAddAccount
         case .logout:
             return strings().editAccountLogout
+        case .birthday:
+            return strings().editAccountBirthdayDate
+        case .personalChannel:
+            return strings().editAccountPersonalChannel
+        case .chatAutomation:
+            return strings().editAccountInfoChatAutomation
         }
     }
     
@@ -78,6 +87,8 @@ extension ProfileSearchTag: SettingsSearchTag {
             return synonyms(strings().settingsSearchSynonymsEditProfileAddAccount)
         case .logout:
             return synonyms(strings().settingsSearchSynonymsEditProfileLogout)
+        case .birthday, .personalChannel, .chatAutomation:
+            return []
         }
     }
     

@@ -7,10 +7,9 @@ import Localization
 import TelegramContext
 import AlertsUI
 
-enum LanguageSearchTag: CaseIterable {
-    static var allCases: [LanguageSearchTag] {
-        return []
-    }
+enum LanguageSearchTag: Int32, CaseIterable {
+    case doNotTranslate = 10001
+    case translateEntireChats = 10002
 }
 
 extension LanguageSearchTag: SettingsSearchTag {
@@ -31,15 +30,27 @@ extension LanguageSearchTag: SettingsSearchTag {
     }
     
     static func open<Context: AccountContextProtocol>(_ tag: LanguageSearchTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
-        present(.push, LanguageController(context))
+        switch tag {
+        case .doNotTranslate:
+            present(.push, LanguageController(context, focusOnItemTag: .doNotTranslate))
+        case .translateEntireChats:
+            present(.push, LanguageController(context, focusOnItemTag: .translateEntireChats))
+        case nil:
+            present(.push, LanguageController(context))
+        }
     }
     
     var searchTitle: String {
-        return ""
+        switch self {
+        case .doNotTranslate:
+            return strings().languageTranslateMessagesDoNotTranslate
+        case .translateEntireChats:
+            return strings().languageTranslateMessagesChannel
+        }
     }
     
     var searchIndex: Int32 {
-        return 0
+        return rawValue
     }
 }
 
