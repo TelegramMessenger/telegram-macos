@@ -158,6 +158,7 @@ public final class ChatListRevealView : TableStickView {
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(containerView)
+        registerForDraggedTypes([ChatListFolderDrop.pasteboardType])
         containerView.backgroundColor = .clear
         containerView.layer?.masksToBounds = false
         containerView.addSubview(segmentView)
@@ -203,12 +204,61 @@ public final class ChatListRevealView : TableStickView {
         needsDisplay = true
     }
     
+    private var folderDrop: ChatListFolderDropTarget?
+    private weak var folderDropContext: (any AccountContextProtocol)?
+
+    private func folderDropTarget(_ point: NSPoint) -> (ChatListFilter, NSView)? {
+        guard let item = item as? ChatListRevealItem,
+              visibleRect.contains(convert(point, from: nil)),
+              let segment = segmentView.item(at: segmentView.convert(point, from: nil)), let view = segment.contentView,
+              let filter = item.tabs.first(where: { Int64(ChatListUIHooks.shared.chatListFilterId($0)) == segment.uniqueId }) else {
+            return nil
+        }
+        return (filter, view)
+    }
+
+    private func folderDropTargets() -> [(ChatListFilter, NSView, [NSView])] {
+        guard let item = item as? ChatListRevealItem else { return [] }
+        return segmentView.visibleItems.compactMap { segment in
+            guard let view = segment.contentView, let filter = item.tabs.first(where: { Int64(ChatListUIHooks.shared.chatListFilterId($0)) == segment.uniqueId }) else { return nil }
+            return (filter, view, segment.contentViews)
+        }
+    }
+
+    public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return draggingUpdated(sender)
+    }
+
+    public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return folderDrop?.update(sender) ?? []
+    }
+
+    public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return folderDrop?.perform(sender) ?? false
+    }
+
+    public override func draggingExited(_ sender: NSDraggingInfo?) {
+        folderDrop?.exit()
+    }
+
+    public override func draggingEnded(_ sender: NSDraggingInfo) {
+        folderDrop?.exit()
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { folderDrop?.exit() }
+    }
+
     private var splitViewState: SplitViewState?
     
     public override func set(item: TableRowItem, animated: Bool = false) {
         super.set(item: item, animated: animated)
 
         guard let item = item as? ChatListRevealItem else {
+            folderDrop?.exit()
+            folderDrop = nil
+            folderDropContext = nil
             return
         }
 
@@ -217,9 +267,21 @@ public final class ChatListRevealView : TableStickView {
 
 
         guard let context = item.context else {
+            folderDrop?.exit()
+            folderDrop = nil
+            folderDropContext = nil
             return
         }
-        
+        if folderDropContext !== context {
+            folderDrop?.exit()
+            folderDropContext = context
+            folderDrop = ChatListFolderDropTarget(context: context, scrollView: segmentView.scrollView, horizontal: true, target: { [weak self] point in
+                return self?.folderDropTarget(point)
+            }, visibleTargets: { [weak self] in
+                return self?.folderDropTargets() ?? []
+            })
+        }
+
         let generateIcon:(ChatListFilter?)->CGImage? = { tab in
             let unreadCount:ChatListFilterBadge? = item.counters.count(for: tab)
             let icon: CGImage?
@@ -340,8 +402,7 @@ public final class ChatListRevealView : TableStickView {
     public override var isHidden: Bool {
         didSet {
             if isHidden {
-                var bp:Int = 0
-                bp += 1
+                folderDrop?.exit()
             }
         }
     }

@@ -1,0 +1,240 @@
+func membershipChecks() {
+    let context = Context(); let peer = TelegramUser(1); let target = folder()
+    let postbox = context.account.postbox
+    postbox.store.peers[peer.id] = peer
+    func state(_ group: PeerGroupId?, muted: Bool = false, unread: Bool = false, contact: Bool = false) -> SearchPeerFolderState {
+        SearchPeerFolderState(groupId: group, isMuted: muted, isUnread: unread, isContact: contact, hasUnreadMention: false, communityCategories: [:])
+    }
+    func drag() -> DragInfo {
+        let sender = info(context, peer)
+        sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = (sender.draggingSource as! ChatListFolderDragSource).token
+        return sender
+    }
+    func consume(_ sender: DragInfo) { (sender.draggingSource as! ChatListFolderDragSource).consume() }
+    var pinned = folder(includes: [peer.id]).data!; _ = pinned.includePeers.addPinnedPeer(peer.id)
+    for member in [folder(includes: [peer.id]), folder().withUpdatedData(pinned), folder(categories: [.nonContacts])] {
+        context.engine.peers.list = [member]
+        let sender = drag()
+        check(ChatListFolderDrop.validate(sender, context: context, filter: member).isEmpty, "existing explicit pinned or implicit member has no eligible cursor")
+        check(ChatListFolderDrop.canScroll(sender, context: context), "ineligible member target does not block edge autoscroll")
+        let previous = context.engine.peers.list
+        check(!ChatListFolderDrop.perform(sender, context: context, filter: member) && context.engine.peers.list == previous, "existing membership never dispatches toggle or success")
+        consume(sender)
+    }
+    context.engine.peers.list = [target]
+    postbox.emitInitial = false
+    let loading = drag()
+    check(ChatListFolderDrop.validate(loading, context: context, filter: target).isEmpty && ChatListFolderDrop.canScroll(loading, context: context), "loading membership is ineligible without blocking autoscroll")
+    postbox.emitInitial = true; postbox.emit()
+    check(ChatListFolderDrop.validate(loading, context: context, filter: target) == .copy, "membership ready enables fresh destination")
+    let requests = postbox.snapshotRequests
+    for _ in 0..<100 { _ = ChatListFolderDrop.validate(loading, context: context, filter: target) }
+    check(postbox.snapshotRequests == requests, "pointer ticks never read storage or refresh snapshot")
+    postbox.holdSnapshots = true
+    context.engine.peers.list = [folder(includes: [peer.id])]
+    check(ChatListFolderDrop.validate(loading, context: context, filter: target).isEmpty, "changed folder clears old cached eligibility immediately")
+    context.engine.peers.list = [target]
+    postbox.flushSnapshots(); postbox.holdSnapshots = false
+    check(ChatListFolderDrop.validate(loading, context: context, filter: target) == .copy, "superseded async membership result cannot replace newer state")
+    context.engine.peers.list = []
+    check(ChatListFolderDrop.validate(loading, context: context, filter: target).isEmpty, "deleted destination does not retain hover eligibility")
+    consume(loading)
+    check(postbox.observers.isEmpty && postbox.pendingSnapshots.isEmpty, "consume disposes membership observers and pending reads")
+    context.engine.peers.list = [target]
+    let archived = state(Namespaces.PeerGroup.archive)
+    context.state = archived
+    postbox.store.inclusions[peer.id] = .ifHasMessagesOrOneOf(groupId: Namespaces.PeerGroup.archive, pinningIndex: 7, minTimestamp: 1234)
+    let archiveDrop = drag()
+    check(ChatListFolderDrop.validate(archiveDrop, context: context, filter: .allChats) == .copy, "archived chat makes AllChats eligible")
+    let filtersBefore = context.engine.peers.list
+    var results: [Bool] = []
+    check(ChatListFolderDrop.perform(archiveDrop, context: context, filter: .allChats, completed: { results.append($0) }), "AllChats dispatches explicit unarchive")
+    check(postbox.store.inclusions[peer.id] == .ifHasMessagesOrOneOf(groupId: .root, pinningIndex: nil, minTimestamp: 1234), "unarchive clears archive pin and preserves minTimestamp")
+    check(postbox.store.operations.count == 1 && postbox.store.operations[0].peerId == peer.id && postbox.store.operations[0].groupId == .root && results == [true], "one root synchronization operation and changed-success result")
+    check(context.engine.peers.list == filtersBefore && context.engine.peers.updates == 0, "AllChats never mutates custom filter membership")
+    check(!ChatListFolderDrop.perform(archiveDrop, context: context, filter: .allChats) && postbox.observers.isEmpty, "accepted unarchive is one-shot and disposes observers")
+    context.state = state(.root)
+    let root = drag()
+    check(ChatListFolderDrop.validate(root, context: context, filter: .allChats).isEmpty && !ChatListFolderDrop.perform(root, context: context, filter: .allChats), "already-main chat is not an AllChats drop target")
+    consume(root)
+    context.state = archived
+    postbox.store.inclusions[peer.id] = .ifHasMessagesOrOneOf(groupId: Namespaces.PeerGroup.archive, pinningIndex: 3, minTimestamp: 456)
+    let raced = drag(); let operationCount = postbox.store.operations.count
+    postbox.beforeTransaction = { postbox.store.inclusions[peer.id] = .ifHasMessagesOrOneOf(groupId: .root, pinningIndex: 4, minTimestamp: 789) }
+    results = []
+    check(ChatListFolderDrop.perform(raced, context: context, filter: .allChats, completed: { results.append($0) }), "concurrent unarchive handled at transaction")
+    check(results == [false] && postbox.store.operations.count == operationCount && postbox.store.inclusions[peer.id] == .ifHasMessagesOrOneOf(groupId: .root, pinningIndex: 4, minTimestamp: 789), "already-root race preserves main pin and emits no duplicate success or sync")
+    postbox.beforeTransaction = nil
+    let invalidated = drag()
+    postbox.store.inclusions[peer.id] = .ifHasMessagesOrOneOf(groupId: Namespaces.PeerGroup.archive, pinningIndex: nil, minTimestamp: nil)
+    consume(invalidated)
+    results = []
+    check(!ChatListFolderDrop.perform(invalidated, context: context, filter: .allChats, completed: { results.append($0) }), "source invalidation before acceptance rejects archive drop")
+    check(postbox.store.inclusions[peer.id] == .ifHasMessagesOrOneOf(groupId: Namespaces.PeerGroup.archive, pinningIndex: nil, minTimestamp: nil) && results.isEmpty, "unaccepted archive drop never mutates storage or completes")
+    context.state = state(.root); context.engine.peers.list = [target]
+    let membershipRace = drag()
+    context.engine.peers.beforeUpdate = { context.engine.peers.list = [folder(includes: [peer.id])] }
+    let updates = context.engine.peers.updates
+    results = []
+    _ = ChatListFolderDrop.perform(membershipRace, context: context, filter: target, completed: { results.append($0) })
+    check(results == [false] && context.engine.peers.updates == updates && context.engine.peers.list[0].data!.includePeers.peers == [peer.id], "fresh interactive filter transaction never toggles concurrent member off")
+    context.engine.peers.beforeUpdate = nil
+    let ended = drag()
+    (ended.draggingSource as! ChatListFolderDragSource).draggingSession(NSDraggingSession(), endedAt: .zero, operation: [])
+    check(postbox.observers.isEmpty && ChatListFolderDrop.validate(ended, context: context, filter: target).isEmpty, "source end disposes membership cache and eligibility")
+}
+
+func delayedDropLifecycleChecks() {
+    let peer = TelegramUser(1)
+    let replacement = TelegramUser(99)
+    let archived: PeerChatListInclusion = .ifHasMessagesOrOneOf(groupId: Namespaces.PeerGroup.archive, pinningIndex: 7, minTimestamp: 1234)
+    func prepare(_ archive: Bool) -> Context {
+        let context = Context()
+        context.engine.peers.list = [folder()]
+        context.account.postbox.store.peers = [peer.id: peer, replacement.id: replacement]
+        context.account.postbox.store.inclusions = [peer.id: archived, replacement.id: archived]
+        context.state = SearchPeerFolderState(groupId: archive ? Namespaces.PeerGroup.archive : .root, isMuted: false, isUnread: false, isContact: false, hasUnreadMention: false, communityCategories: [:])
+        context.account.postbox.transactions.held = true
+        context.engine.peers.transactions.held = true
+        return context
+    }
+    func dragRow(_ context: Context) -> (Row, DragInfo, ChatListFolderDragSource) {
+        let row = Row()
+        row.item = ChatListRowItem(context, peer)
+        row.photo.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+        row.starBadgeView = NSView()
+        row.starBadgeView!.alphaValue = 0.6
+        row.mouseDown(with: NSEvent())
+        row.mouseDragged(with: NSEvent(50, time: 0.01))
+        let (item, source) = row.sessions.last!
+        let sender = DragInfo()
+        sender.draggingSource = source
+        sender.draggingPasteboard.values = item.writer.values
+        return (row, sender, source as! ChatListFolderDragSource)
+    }
+    func teardown(_ row: Row, _ context: Context, _ mode: String) {
+        switch mode {
+        case "hidden": row.isHidden = true
+        case "scrolled": row.simulatedVisibleRect = .zero; row.visibilityChanged()
+        case "detached": row.window = nil; row.viewDidMoveToWindow()
+        case "reused": row.reuse(ChatListRowItem(context, replacement))
+        default: row.mouseDown(with: NSEvent(100))
+        }
+    }
+    let modes = ["hidden", "scrolled", "detached", "reused", "new-gesture"]
+    for archive in [false, true] {
+        let target: ChatListFilter = archive ? .allChats : folder()
+        for holdSnapshot in archive ? [false] : [false, true] {
+            for mode in modes {
+                let name = "accepted \(archive ? "archive" : "folder") \(holdSnapshot ? "snapshot" : "transaction") \(mode)"
+                let context = prepare(archive)
+                let postbox = context.account.postbox
+                let queue = archive ? postbox.transactions : context.engine.peers.transactions
+                let (row, sender, source) = dragRow(context)
+                let presentation = source.presentation!
+                check(ChatListFolderDrop.validate(sender, context: context, filter: target) == .copy && row.photo.alphaValue == 0, "\(name) starts eligible and lifted")
+                postbox.holdSnapshots = holdSnapshot
+                var completed: [Bool] = []
+                check(ChatListFolderDrop.perform(sender, context: context, filter: target, completed: { completed.append($0) }), "\(name) returns success before storage runs")
+                check(queue.count == (holdSnapshot ? 0 : 1) && postbox.pendingSnapshots.count == (holdSnapshot ? 1 : 0), "\(name) retains delayed work")
+                check(context.engine.peers.updates == 0 && postbox.store.changes.isEmpty && completed.isEmpty, "\(name) has not mutated synchronously")
+                check(!ChatListFolderDrop.perform(sender, context: context, filter: target), "\(name) cannot accept a second time")
+                teardown(row, context, mode)
+                check(presentation.invalidated && row.photo.alphaValue == 1 && row.starBadgeView!.alphaValue == 0.6 && postbox.observers.isEmpty, "\(name) cancels only source presentation and observation")
+                row.photo.alphaValue = 0.35
+                row.starBadgeView!.alphaValue = 0.25
+                source.draggingSession(NSDraggingSession(), endedAt: .zero, operation: .copy)
+                if holdSnapshot {
+                    postbox.flushSnapshots()
+                    check(queue.count == 1 && context.engine.peers.updates == 0, "\(name) still queues accepted mutation after delayed snapshot")
+                }
+                queue.flush()
+                if archive {
+                    check(postbox.store.inclusions[peer.id] == .ifHasMessagesOrOneOf(groupId: .root, pinningIndex: nil, minTimestamp: 1234) && postbox.store.changes.count == 1, "\(name) commits accepted unarchive")
+                    check(postbox.store.operations.count == 1 && postbox.store.operations.first?.peerId == peer.id && postbox.store.operations.first?.groupId == .root, "\(name) writes exactly one original-peer sync operation")
+                    check(context.engine.peers.list == [folder()] && context.engine.peers.updates == 0, "\(name) leaves custom folders untouched")
+                } else {
+                    check(context.engine.peers.list == [folder(includes: [peer.id])] && context.engine.peers.updates == 1, "\(name) commits accepted original-peer membership")
+                    check(postbox.store.inclusions[peer.id] == archived && postbox.store.changes.isEmpty && postbox.store.operations.isEmpty, "\(name) leaves archive untouched")
+                }
+                check(postbox.store.inclusions[replacement.id] == archived && row.photo.alphaValue == 0.35 && row.starBadgeView!.alphaValue == 0.25 && presentation.results.isEmpty && completed.isEmpty, "\(name) never animates or mutates recycled row")
+                queue.flush()
+                check(queue.count == 0 && postbox.pendingSnapshots.isEmpty && context.engine.peers.updates == (archive ? 0 : 1) && postbox.store.operations.count == (archive ? 1 : 0), "\(name) drains once without duplicate commits")
+            }
+        }
+        for mode in modes {
+            let name = "unaccepted \(archive ? "archive" : "folder") \(mode)"
+            let context = prepare(archive)
+            let postbox = context.account.postbox
+            let (row, sender, source) = dragRow(context)
+            check(ChatListFolderDrop.validate(sender, context: context, filter: target) == .copy, "\(name) was eligible before teardown")
+            teardown(row, context, mode)
+            var completed: [Bool] = []
+            check(!source.isActive && ChatListFolderDrop.validate(sender, context: context, filter: target).isEmpty && !ChatListFolderDrop.canScroll(sender, context: context), "\(name) cannot validate after teardown")
+            check(!ChatListFolderDrop.perform(sender, context: context, filter: target, completed: { completed.append($0) }) && postbox.transactions.count == 0 && context.engine.peers.transactions.count == 0, "\(name) rejects without queueing work")
+            postbox.flushSnapshots()
+            postbox.transactions.flush()
+            context.engine.peers.transactions.flush()
+            check(context.engine.peers.list == [folder()] && context.engine.peers.updates == 0 && postbox.store.inclusions[peer.id] == archived && postbox.store.changes.isEmpty && postbox.store.operations.isEmpty && completed.isEmpty && postbox.observers.isEmpty, "\(name) never mutates after delayed queues drain")
+        }
+    }
+    for race in ["deleted", "explicit-member", "implicit-member", "limit", "frozen", "metadata"] {
+        let context = prepare(false)
+        let sender = info(context, peer)
+        let source = sender.draggingSource as! ChatListFolderDragSource
+        sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = source.token
+        var completed: [Bool] = []
+        check(ChatListFolderDrop.perform(sender, context: context, filter: folder(), completed: { completed.append($0) }) && context.engine.peers.transactions.count == 1, "delayed folder \(race) accepted before transaction")
+        source.consume()
+        switch race {
+        case "deleted": context.engine.peers.list = []
+        case "explicit-member": context.engine.peers.list = [folder(includes: [peer.id])]
+        case "implicit-member": context.engine.peers.list = [folder(categories: [.nonContacts])]
+        case "limit": context.engine.peers.list = [folder(includes: [PeerId(8), PeerId(9)])]
+        case "frozen": context.isFrozen = true
+        default: context.engine.peers.list = [folder(includes: [PeerId(8)], excludes: [peer.id], shared: true, muted: true, read: true, archived: true)]
+        }
+        let latest = context.engine.peers.list
+        let previousAlerts = alerts
+        context.engine.peers.transactions.flush()
+        let expected = race == "metadata" ? [folder(includes: [peer.id, PeerId(8)], shared: true, muted: true, read: true, archived: true)] : latest
+        check(context.engine.peers.list == expected && context.engine.peers.updates == (race == "metadata" ? 1 : 0) && completed == [race == "metadata"], "delayed folder \(race) revalidates latest transaction state after teardown")
+        check(alerts == previousAlerts + (race == "limit" ? 1 : 0) && context.account.postbox.store.operations.isEmpty, "delayed folder \(race) preserves limit feedback and archive state")
+    }
+    let frozenSnapshot = prepare(false)
+    let frozenSender = info(frozenSnapshot, peer)
+    let frozenSource = frozenSender.draggingSource as! ChatListFolderDragSource
+    frozenSender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = frozenSource.token
+    frozenSnapshot.account.postbox.holdSnapshots = true
+    var frozenCompleted: [Bool] = []
+    check(ChatListFolderDrop.perform(frozenSender, context: frozenSnapshot, filter: folder(), completed: { frozenCompleted.append($0) }), "delayed folder snapshot accepts before account freezes")
+    frozenSource.consume()
+    frozenSnapshot.isFrozen = true
+    frozenSnapshot.account.postbox.flushSnapshots()
+    check(frozenSnapshot.engine.peers.transactions.count == 0 && frozenSnapshot.engine.peers.updates == 0 && frozenCompleted == [false], "account freeze after acceptance still rejects before filter transaction")
+    for race in ["root", "removed-chat", "missing-peer", "frozen", "archive-edited"] {
+        let context = prepare(true)
+        let postbox = context.account.postbox
+        let sender = info(context, peer)
+        let source = sender.draggingSource as! ChatListFolderDragSource
+        sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = source.token
+        var completed: [Bool] = []
+        check(ChatListFolderDrop.perform(sender, context: context, filter: .allChats, completed: { completed.append($0) }) && postbox.transactions.count == 1, "delayed archive \(race) accepted before transaction")
+        source.consume()
+        switch race {
+        case "root": postbox.store.inclusions[peer.id] = .ifHasMessagesOrOneOf(groupId: .root, pinningIndex: 4, minTimestamp: 789)
+        case "removed-chat": postbox.store.inclusions[peer.id] = .notIncluded
+        case "missing-peer": postbox.store.peers.removeValue(forKey: peer.id)
+        case "frozen": context.isFrozen = true
+        default: postbox.store.inclusions[peer.id] = .ifHasMessagesOrOneOf(groupId: Namespaces.PeerGroup.archive, pinningIndex: 11, minTimestamp: 789)
+        }
+        let latest = postbox.store.inclusions[peer.id]
+        postbox.transactions.flush()
+        let changed = race == "archive-edited"
+        let expected: PeerChatListInclusion? = changed ? .ifHasMessagesOrOneOf(groupId: .root, pinningIndex: nil, minTimestamp: 789) : latest
+        check(postbox.store.inclusions[peer.id] == expected && postbox.store.changes.count == (changed ? 1 : 0) && completed == [changed], "delayed archive \(race) revalidates latest transaction state after teardown")
+        check(postbox.store.operations.count == (changed ? 1 : 0) && context.engine.peers.list == [folder()] && context.engine.peers.updates == 0, "delayed archive \(race) preserves synchronization and custom folders")
+    }
+}
+membershipChecks()
+delayedDropLifecycleChecks()

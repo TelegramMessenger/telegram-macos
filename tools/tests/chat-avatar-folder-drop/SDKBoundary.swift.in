@@ -1,0 +1,41 @@
+import Cocoa
+import QuartzCore
+
+struct Theme { struct Colors { let accent = NSColor.controlAccentColor; let text = NSColor.labelColor; let background = NSColor.windowBackgroundColor }; let colors = Colors() }
+let theme = Theme()
+extension NSView { var snapshot: NSImage { NSImage(size: bounds.size) } }
+extension CALayer {
+    func animateAlpha(from: CGFloat, to: CGFloat, duration: Double) {}
+    func animateScaleSpring(from: CGFloat, to: CGFloat, duration: Double) {}
+}
+public protocol AccountContextProtocol: AnyObject { var isFrozen: Bool { get } }
+public struct ChatListFilter {}
+struct ChatListUIHooks { static let shared = Self(); func chatListFilterId(_ filter: ChatListFilter) -> Int32 { 1 } }
+enum ChatListFolderDrop {
+    static func canScroll(_ sender: NSDraggingInfo, context: any AccountContextProtocol) -> Bool { true }
+    static func validate(_ sender: NSDraggingInfo, context: any AccountContextProtocol, filter: ChatListFilter) -> NSDragOperation { .copy }
+    static func perform(_ sender: NSDraggingInfo, context: any AccountContextProtocol, filter: ChatListFilter, destination: (() -> NSView?)? = nil, completed: @escaping (Bool) -> Void = { _ in }) -> Bool { true }
+}
+
+__PRESENTATION__
+__TARGET__
+
+class SDKSegmentContent {
+    var imageView: NSView?
+    var textView: NSView?
+    var customTextView: NSView?
+    __CONTENT_VIEWS__
+}
+class SDKSegmentItem {
+    var view: SDKSegmentContent?
+    __ITEM_CONTENT_VIEWS__
+}
+public struct ScrollableSegmentItem {
+    let view: NSView?
+}
+class SDKSegmentGeometry: NSView {
+    var items: [ScrollableSegmentItem] = []
+    let scrollView = NSScrollView()
+    __VISIBLE_ITEMS__
+    __ITEM_AT_POINT__
+}

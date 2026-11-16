@@ -1,0 +1,718 @@
+func activeFolderBackdrops(_ host: NSView) -> [CALayer] {
+    return (host.layer?.sublayers ?? []).filter { $0.zPosition == -1 && $0.opacity > 0 }
+}
+
+func motionChecks() {
+    func near(_ lhs: CGFloat, _ rhs: CGFloat) -> Bool { abs(lhs - rhs) < 0.00001 }
+    for horizontal in [false, true] {
+        let maximum: CGFloat = horizontal ? 1.10 : 1.70
+        check(near(chatListFolderDropMagnification(distance: 0, length: 64, horizontal: horizontal), maximum), "center magnification \(horizontal)")
+        var previous = maximum
+        for distance in stride(from: CGFloat(0), through: 170, by: 5) {
+            let scale = chatListFolderDropMagnification(distance: distance, length: 64, horizontal: horizontal)
+            check(scale <= previous && scale >= 1, "progressive bounded magnification \(horizontal) \(distance)")
+            check(scale == chatListFolderDropMagnification(distance: -distance, length: 64, horizontal: horizontal), "symmetric neighbors \(horizontal) \(distance)")
+            previous = scale
+        }
+        check(chatListFolderDropMagnification(distance: 128, length: 64, horizontal: horizontal) > 1, "second neighbor participates \(horizontal)")
+    }
+    check(chatListFolderDropMagnification(distance: 0, length: 0, horizontal: false) == 1, "empty geometry neutral")
+    let tab = NSRect(x: 2, y: 2, width: 296, height: 44)
+    let longText = NSRect(x: 8, y: 12, width: 280, height: 20)
+    let fitted = chatListFolderDropFittedScale(1.12, content: longText, bounds: tab)
+    check(fitted < 1.12 && fitted > 1.05 && near(longText.width * fitted, tab.width), "long label bounded by available geometry")
+    check(chatListFolderDropFittedScale(1.25, content: .zero, bounds: tab) == 1, "empty content neutral")
+    check(chatListFolderDropFittedScale(1.25, content: tab.insetBy(dx: -1, dy: -1), bounds: tab) == 1, "overflowing content not enlarged")
+    let start = NSRect(x: -200, y: 100, width: 72, height: 72)
+    let finish = NSRect(x: 180, y: 330, width: 66, height: 66)
+    var values: [ChatListFolderDragMotion] = []
+    for step in 0...100 {
+        let value = ChatListFolderDragMotion.value(from: start, to: finish, progress: CGFloat(step) / 100, added: false, reducedMotion: false)
+        values.append(value)
+        check(value.alpha == 1 && value.frame.width >= 66 && value.frame.width <= 72, "return stays visible and base size bounded \(step)")
+        let transform = value.transform
+        check(near(transform.m11 * transform.m22 - transform.m12 * transform.m21, 1), "directional deformation preserves area \(step)")
+    }
+    check(values.first!.frame == start && values.last!.frame == finish, "return native frame to exact source frame")
+    let dx = finish.midX - start.midX
+    let dy = finish.midY - start.midY
+    let distance = hypot(dx, dy)
+    let projected = values.map { (($0.frame.midX - start.midX) * dx + ($0.frame.midY - start.midY) * dy) / distance }
+    let peak = projected.max()! / distance
+    check(peak > 1.05 && peak < 1.09, "gentler spring retains a small positional overshoot")
+    check(projected[25] < distance && projected[60] > distance, "gentle return still crosses origin")
+    check(abs(projected[99] - distance) < 0.01, "spring settles without endpoint snap")
+    let stretch = values.indices.map { values[$0].transform.m11 + values[$0].transform.m22 }
+    check(stretch.max()! > 2.03 && stretch.max()! < 2.045 && near(stretch.first!, 2) && near(stretch.last!, 2), "return deformation is softer and becomes circular at rest")
+    for offset in [NSPoint(x: -300, y: 180), NSPoint(x: 300, y: -180), NSPoint(x: 0, y: 240), .zero] {
+        let destination = start.offsetBy(dx: offset.x, dy: offset.y)
+        let mid = ChatListFolderDragMotion.value(from: start, to: destination, progress: 0.30, added: false, reducedMotion: false).frame
+        let final = ChatListFolderDragMotion.value(from: start, to: destination, progress: 1, added: false, reducedMotion: false).frame
+        check(mid.minX.isFinite && mid.minY.isFinite && final == destination, "spring handles reverse vertical and zero distance \(offset)")
+    }
+    let distant = start.offsetBy(dx: 4000, dy: 0)
+    let farFrames = (0...100).map { ChatListFolderDragMotion.value(from: start, to: distant, progress: CGFloat($0) / 100, added: false, reducedMotion: false).frame }
+    check(farFrames.map { $0.midX - distant.midX }.max()! < 80, "large drags bound absolute spring overshoot")
+    var crossingLow: CGFloat = 0
+    var crossingHigh: CGFloat = 0.45
+    func position(_ progress: CGFloat) -> CGFloat { ChatListFolderDragMotion.value(from: start, to: distant, progress: progress, added: false, reducedMotion: false).frame.midX }
+    for _ in 0..<40 {
+        let middle = (crossingLow + crossingHigh) / 2
+        if position(middle) < distant.midX { crossingLow = middle } else { crossingHigh = middle }
+    }
+    let crossing = (crossingLow + crossingHigh) / 2
+    let epsilon: CGFloat = 0.000001
+    let incoming = (position(crossing) - position(crossing - epsilon)) / epsilon
+    let outgoing = (position(crossing + epsilon) - position(crossing)) / epsilon
+    check(incoming > 1 && abs(outgoing / incoming - 1) < 0.001, "long return preserves velocity through target crossing")
+    let peakStep = projected.firstIndex(of: projected.max()!)!
+    let peakTime = CGFloat(peakStep) / 100 * ChatListFolderDragMotion.returnDuration(from: start, to: finish)
+    check(peakTime > 0.36 && peakTime < 0.43, "gentler spring peak is later without prolonged wobble")
+    __SMOOTH_DURATION_CHECKS__
+    let popFrames = (0...1000).map { ChatListFolderDragMotion.reappearance(at: finish, progress: CGFloat($0) / 1000, reducedMotion: false).frame }
+    let popScales = popFrames.map { $0.width / finish.width }
+    let popPeak = popScales.max()!; let peakIndex = popScales.firstIndex(of: popPeak)!
+    check(popPeak > 1.249 && popPeak <= 1.25001 && peakIndex > 300 && peakIndex < 450, "one fluid source pop")
+    check(near(popScales.first!, 0.04) && near(popScales.last!, 1), "pop starts tiny and ends at exact source size")
+    check(zip(popScales.prefix(peakIndex), popScales.dropFirst().prefix(peakIndex)).allSatisfy { $0 <= $1 } && zip(popScales.dropFirst(peakIndex), popScales.dropFirst(peakIndex + 1)).allSatisfy { $0 >= $1 }, "source pop reverses once")
+    let scaleSpeed = zip(popScales, popScales.dropFirst()).map { ($1 - $0) * 1000 }
+    check(abs(scaleSpeed.last!) < 0.001 && abs(scaleSpeed[peakIndex]) < 0.02, "pop settles smoothly")
+    check(popFrames.allSatisfy { near($0.midX, finish.midX) && near($0.midY, finish.midY) && near($0.width, $0.height) }, "pop stays centered and preserves proportions")
+    let landing = NSRect(x: start.midX - 6, y: start.midY - 36, width: 12, height: 12)
+    let approach = ChatListFolderDragMotion.value(from: start, to: landing, progress: 0.28, added: true, reducedMotion: false)
+    check(approach.frame.midY > start.midY && approach.frame.size == start.size && approach.alpha == 1, "absorption gently lifts before shrinking")
+    let late = ChatListFolderDragMotion.value(from: start, to: landing, progress: 0.88, added: true, reducedMotion: false)
+    check(late.alpha > 0 && late.alpha < 1 && late.frame.width > landing.width && late.frame.width < start.width, "absorption smoothly shrinks and fades together")
+    let impact = ChatListFolderDragMotion.value(from: start, to: landing, progress: 1, added: true, reducedMotion: false)
+    check(impact.frame == landing && impact.alpha == 0, "landing exact small impact frame")
+    for added in [false, true] {
+        for step in 0...20 {
+            let value = ChatListFolderDragMotion.value(from: start, to: finish, progress: CGFloat(step) / 20, added: added, reducedMotion: true)
+            check(value.frame == start && value.alpha >= 0 && value.alpha <= 1 && CATransform3DIsIdentity(value.transform), "reduce motion static fade \(added) \(step)")
+        }
+    }
+}
+motionChecks()
+
+func waveChecks() {
+    let frames = (0..<5).map { NSRect(x: 0, y: CGFloat($0) * 64, width: 80, height: 64) }
+    for position in stride(from: CGFloat(0), through: 319, by: 1) {
+        let growth = frames.map { 32 * (chatListFolderDropMagnification(distance: position - $0.midY, length: $0.height, horizontal: false) - 1) }
+        let offsets = chatListFolderDropOffsets(frames: frames, growth: growth, position: position, horizontal: false)
+        let selected = min(4, Int(position / 64))
+        for index in frames.indices {
+            let lower = frames[index].minY + offsets[index] - growth[index] / 2
+            let upper = frames[index].maxY + offsets[index] + growth[index] / 2
+            if index == selected {
+                check(position >= lower - 0.00001 && position <= upper + 0.00001, "pointer remains inside selected presentation region \(position)")
+            } else {
+                check(position <= lower + 0.00001 || position >= upper - 0.00001, "neighbor never crosses selected pointer \(position) \(index)")
+            }
+            if index > 0 {
+                let previousEnd = frames[index - 1].maxY + offsets[index - 1] + growth[index - 1] / 2
+                check(lower - previousEnd > -24 && lower - previousEnd < 24, "neighbor displacement stays bounded by available row slack \(position) \(index)")
+            }
+        }
+    }
+    let contentGeometry = frames.map { NSRect(x: 24, y: $0.minY + 4, width: 40, height: 56) }
+    for position in stride(from: CGFloat(0), through: 319, by: 1) {
+        let growth = frames.map { 32 * (chatListFolderDropMagnification(distance: position - $0.midY, length: $0.height, horizontal: false) - 1) }
+        let offsets = chatListFolderDropOffsets(frames: frames, growth: growth, position: position, horizontal: false, contents: contentGeometry)
+        let selected = min(4, Int(position / 64))
+        for index in frames.indices where index != selected {
+            let lower = contentGeometry[index].minY + offsets[index] - growth[index] / 2
+            let upper = contentGeometry[index].maxY + offsets[index] + growth[index] / 2
+            check(position <= lower || position >= upper, "spaced neighbor never crosses stable selected pointer \(position) \(index)")
+        }
+    }
+    let context = Context(); let scroll = ScrollView()
+    scroll.frame = NSRect(x: 0, y: 0, width: 80, height: 320); scroll.contentView.frame = scroll.frame
+    var filters = (1...5).map { folder(Int32($0)) }
+    context.engine.peers.list = filters
+    let rows = frames.map { frame -> NSView in let view = NSView(frame: frame); view.window = scroll.window; view.layer!.masksToBounds = true; return view }
+    var icons = rows.map { row -> NSView in let icon = NSView(frame: NSRect(x: 24, y: 8, width: 32, height: 32)); icon.superview = row; icon.window = row.window; icon.alphaValue = 0.7; return icon }
+    let labels = rows.map { row -> NSView in let label = NSView(frame: NSRect(x: 8, y: 44, width: 64, height: 16)); label.superview = row; label.window = row.window; return label }
+    let badges = rows.map { row -> NSView in let badge = NSView(frame: NSRect(x: 48, y: 4, width: 10, height: 10)); badge.superview = row; badge.window = row.window; return badge }
+    let target = ChatListFolderDropTarget(context: context, scrollView: scroll, horizontal: false, target: { point in
+        guard let index = rows.firstIndex(where: { $0.frame.contains(point) }) else { return nil }
+        return (filters[index], rows[index])
+    }, visibleTargets: { rows.indices.map { (filters[$0], rows[$0], [icons[$0], badges[$0], labels[$0]]) } })
+    func drag(_ y: CGFloat = 160) -> DragInfo {
+        let sender = info(context, TelegramUser(1)); sender.draggingLocation = NSPoint(x: 40, y: y)
+        sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = (sender.draggingSource as! ChatListFolderDragSource).token
+        return sender
+    }
+    let sender = drag()
+    check(target.update(sender) == .copy, "valid internal drag starts shared presentation")
+    let host = scroll.children.last!
+    check(host.layer!.masksToBounds && host.children.count == 15 && rows.allSatisfy { $0.layer!.masksToBounds }, "shared host escapes row clipping but clips at viewport")
+    let customTransform = CATransform3DMakeScale(0.9, 0.8, 1)
+    icons[4].layer!.transform = customTransform
+    icons[4].layer!.masksToBounds = true
+    let existing = CABasicAnimation(keyPath: "opacity"); existing.fromValue = 0.5; existing.toValue = 0.7; existing.duration = 20
+    icons[4].layer!.add(existing, forKey: "unrelated")
+    let center = host.children[6].frame
+    let neighbor = host.children[3].frame
+    print("dense_wave_center=\(center.width / 32) neighbor=\(neighbor.width / 32)")
+    check(host.children.contains(where: { !host.bounds.contains($0.frame) }), "dense wave clips outward peripheral replicas instead of collapsing peak")
+    check(center.width > 52 && neighbor.width > 45 && center.width > neighbor.width, "peak and neighboring replica magnify")
+    check(abs(center.maxX - 56) < 0.00001 && abs(neighbor.maxX - 56) < 0.00001, "sidebar icons retain common trailing edge")
+    check(host.children[3].frame.minY < 72 && host.children[9].frame.minY > 200, "neighbors genuinely displace along axis")
+    for index in 1..<5 {
+        check(host.children[(index - 1) * 3 + 2].frame.maxY <= host.children[index * 3].frame.minY, "neighbor title and next icon do not overlap \(index)")
+    }
+    check(icons.prefix(4).allSatisfy { $0.alphaValue == 0.7 && CATransform3DIsIdentity($0.layer!.transform) && $0.frame == NSRect(x: 24, y: 8, width: 32, height: 32) }, "original alpha transform and hit frames untouched")
+    let backdrop = activeFolderBackdrops(host).first
+    let highlightedContent = host.children[6...8].reduce(NSRect.null) { $0.union($1.frame) }
+    check(activeFolderBackdrops(host).count == 1 && backdrop?.borderWidth == 0 && (backdrop?.backgroundColor?.alpha ?? 0) > 0 && (backdrop?.backgroundColor?.alpha ?? 1) < 0.18, "only active target gets a soft unoutlined backdrop")
+    check(backdrop?.frame.contains(highlightedContent) == true && host.bounds.contains(backdrop?.frame ?? .zero), "backdrop includes enlarged icon badge and title within viewport")
+    check((backdrop?.frame.minY ?? 0) >= host.children[5].frame.maxY && (backdrop?.frame.maxY ?? .greatestFiniteMagnitude) <= host.children[9].frame.minY, "backdrop leaves neighboring content clear")
+    let backdropAnimation = backdrop?.animation(forKey: "chatFolderDropBackdrop") as? CAAnimationGroup
+    let contentAnimation = host.children[6].layer?.animation(forKey: "chatFolderDrop") as? CAAnimationGroup
+    check(backdropAnimation?.duration == contentAnimation?.duration && backdropAnimation?.animations?.count == 2, "backdrop and enlarged content start synchronized geometry animations")
+    let backdropPositions = backdropAnimation?.animations?.first as? CABasicAnimation
+    let backdropBounds = backdropAnimation?.animations?.last as? CABasicAnimation
+    if let initialPosition = (backdropPositions?.fromValue as? NSValue)?.pointValue,
+       let initialBounds = (backdropBounds?.fromValue as? NSValue)?.rectValue {
+        let initialFrame = NSRect(x: initialPosition.x - initialBounds.width / 2, y: initialPosition.y - initialBounds.height / 2, width: initialBounds.width, height: initialBounds.height)
+        let initialContent = [icons[2], badges[2], labels[2]].reduce(NSRect.null) { $0.union($1.convert($1.bounds, to: host)) }
+        check(initialFrame.contains(initialContent), "backdrop begins around original content rather than jumping to enlarged bounds")
+    } else {
+        check(false, "backdrop supplies initial animation geometry")
+    }
+    sender.draggingLocation.y = 164; _ = target.update(sender)
+    check(host.children[6].frame != center && host.children[6].frame.width > 52, "wave follows sub-row pointer movement")
+    let previousIcon = icons[2]
+    icons[2] = NSView(frame: previousIcon.frame); icons[2].superview = rows[2]; icons[2].window = rows[2].window
+    filters[2] = folder(8); context.engine.peers.list = filters
+    _ = target.update(sender)
+    check(previousIcon.layer!.animationKeys() == nil && icons[2].layer!.animation(forKey: "chatFolderDropHidden") != nil, "content and filter reuse release old original")
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    _ = target.update(sender)
+    check(scroll.children.isEmpty && icons.allSatisfy { $0.layer!.animation(forKey: "chatFolderDropHidden") == nil }, "reduce motion removes replicas immediately")
+    check(CATransform3DEqualToTransform(icons[4].layer!.transform, customTransform) && icons[4].layer!.masksToBounds && icons[4].alphaValue == 0.7 && icons[4].layer!.animation(forKey: "unrelated") != nil, "cleanup preserves preexisting transform alpha clip and unrelated animation")
+    icons[4].layer!.transform = CATransform3DIdentity; icons[4].layer!.removeAnimation(forKey: "unrelated")
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
+    _ = target.update(sender); scroll.window = nil; target.tick()
+    check(scroll.children.isEmpty && rows.allSatisfy { $0.children.isEmpty } && icons.allSatisfy { $0.layer!.animationKeys() == nil }, "window detach clears overlay and hiding")
+    scroll.window = Window(); rows.forEach { $0.window = scroll.window }; icons.forEach { $0.window = scroll.window }
+    let pendingDrag = drag()
+    let pending = ChatListFolderDragPresentation(origin: NSView(), decorations: [])
+    pending.deferCompletion = true
+    (pendingDrag.draggingSource as! ChatListFolderDragSource).presentation = pending
+    _ = target.update(pendingDrag)
+    let landingHost = scroll.children.last!
+    let beforeDrop = landingHost.children.map { $0.frame }
+    check(target.perform(pendingDrag), "drop accepted while magnified")
+    target.exit()
+    check(scroll.children.last === landingHost && landingHost.children.map { $0.frame } == beforeDrop, "native drag end does not reset hover before absorption")
+    pending.deferredCompletion?()
+    TestTimer.advance(0.4)
+    check(scroll.children.isEmpty && rows.allSatisfy { $0.children.isEmpty } && icons.allSatisfy { $0.layer!.animationKeys() == nil }, "successful settle cleans all replica and impact state")
+    context.engine.peers.list = filters
+    let old = drag(); let oldPresentation = ChatListFolderDragPresentation(origin: NSView(), decorations: []); oldPresentation.deferCompletion = true
+    (old.draggingSource as! ChatListFolderDragSource).presentation = oldPresentation
+    _ = target.update(old); _ = target.perform(old)
+    context.engine.peers.list = filters
+    _ = target.update(drag(96)); oldPresentation.deferredCompletion?()
+    let restartedHost = scroll.children.last!
+    let restartedContent = restartedHost.children[3...5].reduce(NSRect.null) { $0.union($1.frame) }
+    check(activeFolderBackdrops(restartedHost).count == 1 && activeFolderBackdrops(restartedHost).first?.frame.contains(restartedContent) == true && rows[2].children.isEmpty, "old landing cannot pulse over new drag")
+    target.exit(); TestTimer.advance(0.4)
+    oldPresentation.deferredCompletion?()
+    check(scroll.children.isEmpty && rows.allSatisfy { $0.children.isEmpty }, "old landing stays invalid after new drag exits")
+    context.engine.peers.list = filters
+    let frozenDrag = drag(); _ = target.update(frozenDrag); _ = target.perform(frozenDrag)
+    context.isFrozen = true; TestTimer.advance(0.4)
+    check(scroll.children.isEmpty && icons.allSatisfy { $0.layer!.animationKeys() == nil }, "frozen context releases presentation")
+    context.isFrozen = false
+    context.engine.peers.list = filters
+    for y: CGFloat in [1, 8, 32, 63.9, 64.1, 287, 312, 319] {
+        let value = drag(y)
+        _ = target.update(value)
+        let edgeHost = scroll.children.last!
+        let selected = min(4, Int(y / 64))
+        check((0..<3).allSatisfy { edgeHost.bounds.insetBy(dx: -0.001, dy: -0.001).contains(edgeHost.children[selected * 3 + $0].frame) }, "selected first last and boundary content fits viewport \(y)")
+        let content = edgeHost.children[(selected * 3)..<(selected * 3 + 3)].reduce(NSRect.null) { $0.union($1.frame) }
+        check(activeFolderBackdrops(edgeHost).count == 1 && activeFolderBackdrops(edgeHost).first?.frame.contains(content) == true, "stable hit region keeps intended folder and backdrop \(y)")
+    }
+    rows[0].frame.origin.y = -24
+    _ = target.update(drag(32))
+    check(scroll.children.last!.layer!.masksToBounds && scroll.children.last!.children.contains(where: { $0.frame.minY < 0 }), "partial first row clips only at viewport")
+    rows[0].frame.origin.y = 0
+    scroll.window!.mouseLocationOutsideOfEventStream = NSPoint(x: 40, y: 319)
+    target.tick()
+    check(scroll.scrollChanges > 0, "shared host retains edge autoscroll")
+    target.exit(); TestTimer.advance(0.4)
+    let reusedDrag = drag(); let reusedPresentation = ChatListFolderDragPresentation(origin: NSView(), decorations: []); reusedPresentation.deferCompletion = true
+    (reusedDrag.draggingSource as! ChatListFolderDragSource).presentation = reusedPresentation
+    _ = target.update(reusedDrag); _ = target.perform(reusedDrag)
+    let replaced = icons[2]
+    icons[2] = NSView(frame: replaced.frame); icons[2].superview = rows[2]; icons[2].window = rows[2].window
+    TestTimer.advance(0.04)
+    check(replaced.layer!.animationKeys() == nil, "landing content reuse releases old hiding immediately")
+    scroll.window = nil; target.exit()
+    check(scroll.children.isEmpty && icons.allSatisfy { $0.layer!.animationKeys() == nil }, "landing window detach restores all originals")
+    reusedPresentation.deferredCompletion?(); TestTimer.advance(0.4)
+    check(rows.allSatisfy { $0.children.isEmpty }, "late landing on detached target cannot flash feedback")
+    let tabScroll = ScrollView(); tabScroll.frame = NSRect(x: 0, y: 0, width: 600, height: 48); tabScroll.contentView.frame = tabScroll.frame
+    let tabRows = (0..<4).map { index -> NSView in let view = NSView(frame: NSRect(x: CGFloat(index) * 150, y: 0, width: 150, height: 48)); view.window = tabScroll.window; return view }
+    let texts = tabRows.map { row -> NSView in let text = NSView(frame: NSRect(x: 12, y: 12, width: 120, height: 20)); text.superview = row; text.window = row.window; return text }
+    let tabFilters = (1...4).map { folder(Int32($0)) }; context.engine.peers.list = tabFilters
+    let horizontal = ChatListFolderDropTarget(context: context, scrollView: tabScroll, horizontal: true, target: { point in
+        guard let index = tabRows.firstIndex(where: { $0.frame.contains(point) }) else { return nil }
+        return (tabFilters[index], tabRows[index])
+    }, visibleTargets: { tabRows.indices.map { (tabFilters[$0], tabRows[$0], [texts[$0]]) } })
+    let horizontalDrag = drag(); horizontalDrag.draggingLocation = NSPoint(x: 225, y: 24)
+    _ = horizontal.update(horizontalDrag)
+    let tabHost = tabScroll.children.last!
+    check(tabHost.children[1].frame.width > 120 && tabHost.children[1].frame.width <= 132, "horizontal wave mildly enlarges readable text")
+    check(tabHost.children[0].frame.minX < 12 && tabHost.children[2].frame.minX > 312, "horizontal neighbors spread around pointer")
+    check(tabHost.children.allSatisfy { abs($0.frame.maxY - 32) < 0.001 } && tabHost.bounds.contains(tabHost.children[1].frame), "horizontal common baseline and selected viewport bounds")
+    check(texts.allSatisfy { CATransform3DIsIdentity($0.layer!.transform) }, "horizontal model transforms stay unchanged")
+    horizontal.exit(); TestTimer.advance(0.4)
+    check(tabScroll.children.isEmpty && texts.allSatisfy { $0.layer!.animationKeys() == nil }, "horizontal cancellation clears all replicas")
+    context.engine.peers.list = [tabFilters[0], folder(2, includes: [PeerId(1)]), tabFilters[2], tabFilters[3]]
+    let invalidHover = drag(); invalidHover.draggingLocation = NSPoint(x: 225, y: 24)
+    check(horizontal.update(invalidHover).isEmpty && tabScroll.children.last!.children[1].frame.width > texts[1].frame.width && activeFolderBackdrops(tabScroll.children.last!).isEmpty, "existing membership magnifies without copy operation or add highlight")
+    check(!horizontal.perform(invalidHover), "dropping into existing membership remains rejected")
+    TestTimer.advance(0.4)
+    invalidHover.draggingLocation.x = 375; _ = horizontal.update(invalidHover)
+    check(tabScroll.children.last!.children[1].frame.width > texts[1].frame.width && activeFolderBackdrops(tabScroll.children.last!).count == 1, "already-member neighbor participates in the same wave")
+    horizontal.exit(); TestTimer.advance(0.4)
+    let spacious = ScrollView(); spacious.frame = NSRect(x: 0, y: 0, width: 100, height: 500); spacious.contentView.frame = spacious.frame
+    let spaciousRows = (0..<3).map { index -> NSView in let row = NSView(frame: NSRect(x: 0, y: 140 + CGFloat(index) * 64, width: 100, height: 64)); row.window = spacious.window; return row }
+    let spaciousIcons = spaciousRows.map { row -> NSView in let icon = NSView(frame: NSRect(x: 34, y: 8, width: 32, height: 32)); icon.superview = row; icon.window = row.window; return icon }
+    context.engine.peers.list = Array(tabFilters.prefix(3))
+    let spaciousTarget = ChatListFolderDropTarget(context: context, scrollView: spacious, horizontal: false, target: { point in
+        guard let index = spaciousRows.firstIndex(where: { $0.frame.contains(point) }) else { return nil }
+        return (tabFilters[index], spaciousRows[index])
+    }, visibleTargets: { spaciousRows.indices.map { (tabFilters[$0], spaciousRows[$0], [spaciousIcons[$0]]) } })
+    let spaciousDrag = drag(236); _ = spaciousTarget.update(spaciousDrag)
+    let spaciousHost = spacious.children.last!
+    check(spaciousHost.children[1].frame.width > 54 && spaciousHost.children[0].frame.width > 45, "unconstrained sidebar reaches strong Dock peak and neighbor wave")
+    spaciousTarget.exit(); TestTimer.advance(0.4)
+    let eventless = ChatListFolderDropPlateView(frame: .zero)
+    check(eventless.hitTest(.zero) == nil, "shared overlay never intercepts selection or reorder")
+}
+waveChecks()
+
+func flippedWaveChecks() {
+    let window = Window(); window.modelsFlippedCoordinates = true
+    let root = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 800)); root.window = window
+    let scroll = ScrollView(); scroll.frame = NSRect(x: 70, y: 90, width: 100, height: 360); root.addSubview(scroll, positioned: .above, relativeTo: nil)
+    scroll.contentView.frame = NSRect(x: 7, y: 13, width: 80, height: 320)
+    scroll.addSubview(scroll.contentView, positioned: .above, relativeTo: nil)
+    scroll.contentView.offset = NSPoint(x: 0, y: 100)
+    let document = FlippedTestView(frame: NSRect(x: 0, y: 0, width: 80, height: 600)); scroll.contentView.addSubview(document, positioned: .above, relativeTo: nil)
+    let visibleTop = document.convert(scroll.contentView.bounds, from: scroll.contentView).minY
+    let rows = (0..<5).map { index -> NSView in let row = FlippedTestView(frame: NSRect(x: 0, y: visibleTop + CGFloat(index) * 64, width: 80, height: 64)); document.addSubview(row, positioned: .above, relativeTo: nil); return row }
+    let contents = rows.map { row -> [NSView] in
+        let icon = NSView(frame: NSRect(x: 24, y: 8, width: 32, height: 32))
+        let badge = NSView(frame: NSRect(x: 48, y: 4, width: 10, height: 10))
+        let title = NSView(frame: NSRect(x: 8, y: 44, width: 64, height: 16))
+        for child in [icon, badge, title] { row.addSubview(child, positioned: .above, relativeTo: nil) }
+        return [icon, badge, title]
+    }
+    let context = Context(); let filters = (1...5).map { folder(Int32($0)) }; context.engine.peers.list = filters
+    let target = ChatListFolderDropTarget(context: context, scrollView: scroll, horizontal: false, target: { point in
+        guard let index = rows.firstIndex(where: { $0.bounds.contains($0.convert(point, from: nil)) }) else { return nil }
+        return (filters[index], rows[index])
+    }, visibleTargets: { rows.indices.map { (filters[$0], rows[$0], contents[$0]) } })
+    let sender = info(context, TelegramUser(1)); let source = sender.draggingSource as! ChatListFolderDragSource
+    sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = source.token
+    func windowPoint(_ y: CGFloat) -> NSPoint { document.convert(NSPoint(x: 40, y: visibleTop + y), to: nil) }
+    sender.draggingLocation = windowPoint(160)
+    check(target.update(sender) == .copy, "flipped hierarchy resolves stable target from window Y-up")
+    let host = scroll.children.last!
+    check(host.isFlipped && host.frame == scroll.contentView.frame && host.convert(sender.draggingLocation, from: nil) == NSPoint(x: 40, y: 160), "wave host normalizes flipped point and nonzero clip origin")
+    check(host.children[6].frame.width > 52 && host.children[3].frame.width > 45, "flipped dense wave retains strong centered magnification")
+    check(host.children[3].frame.minY < 72 && host.children[9].frame.minY > 200, "flipped neighbors displace outward not toward pointer")
+    check(host.children[7].frame.minY < host.children[6].frame.minY && host.children[8].frame.minY > host.children[6].frame.maxY, "flipped badge above and title below actual icon")
+    for y in stride(from: CGFloat(1), through: 319, by: 7) {
+        sender.draggingLocation = windowPoint(y); _ = target.update(sender)
+        let selected = min(4, Int(y / 64))
+        let pointer = host.convert(sender.draggingLocation, from: nil)
+        for index in rows.indices where index != selected {
+            let bounds = host.children[(index * 3)..<(index * 3 + 3)].reduce(NSRect.null) { $0.union($1.frame) }
+            check(pointer.y <= bounds.minY || pointer.y >= bounds.maxY, "flipped visible neighbor cannot claim selected pointer \(y) \(index)")
+        }
+        check((0..<3).allSatisfy { host.bounds.insetBy(dx: -0.001, dy: -0.001).contains(host.children[selected * 3 + $0].frame) }, "flipped active edge content remains visible \(y)")
+    }
+    context.engine.peers.list = [filters[0], folder(2, includes: [PeerId(1)]), filters[2], filters[3], filters[4]]
+    sender.draggingLocation = windowPoint(160); _ = target.update(sender)
+    check(host.children[3].frame.width > contents[1][0].frame.width && activeFolderBackdrops(host).count == 1, "mixed membership neighbor magnifies without acquiring acceptance highlight")
+    check(host.children[6].frame.width > 52, "mixed membership keeps strong eligible peak")
+    for index in 1..<5 {
+        check(host.children[(index - 1) * 3 + 2].frame.maxY <= host.children[index * 3].frame.minY, "mixed membership titles and icons never collide \(index)")
+    }
+    sender.draggingLocation = windowPoint(96)
+    check(target.update(sender).isEmpty, "ineligible stable folder remains rejected in flipped hierarchy")
+    check(scroll.children.count == 2 && host.children[3].frame.width > 52 && activeFolderBackdrops(host).isEmpty, "already-member hovered target keeps strong wave without add highlight")
+    check(!target.perform(sender) && context.engine.peers.list[1].data!.includePeers.peers.contains(PeerId(1)), "rejected already-member drop never removes membership")
+    TestTimer.advance(0.4)
+    sender.draggingLocation = windowPoint(160); _ = target.update(sender)
+    let stableHost = scroll.children.last!
+    let stableReplicas = stableHost.children
+    let snapshotCounts = contents.flatMap { $0 }.map { $0.snapshotCount }
+    let current = SuppliedHoverLayer(); current.frame = stableReplicas[6].frame
+    let visible = SuppliedHoverLayer(); visible.frame = current.frame.offsetBy(dx: 0, dy: 3)
+    current.supplied = visible
+    stableReplicas[6].layer = current
+    for offset: CGFloat in [5, 11, 17] {
+        scroll.contentView.offset.y = 100 + offset
+        sender.draggingLocation = windowPoint(160); _ = target.update(sender)
+        check(scroll.children.last === stableHost && zip(stableHost.children, stableReplicas).allSatisfy { $0 === $1 }, "scroll tick preserves replica identity \(offset)")
+        check(contents.flatMap { $0 }.map { $0.snapshotCount } == snapshotCounts, "scroll tick never resnapshots unchanged content \(offset)")
+        let animation = current.animation(forKey: "chatFolderDrop") as? CAAnimationGroup
+        let start = (animation?.animations?.first as? CABasicAnimation)?.fromValue as? NSValue
+        check(start?.pointValue == visible.position, "scroll retarget begins at supplied visible position \(offset)")
+    }
+    let scrolledHost = scroll.children.last!
+    check(abs(contents[2][0].convert(contents[2][0].bounds, to: scrolledHost).minY - 153) < 0.001, "nonzero scrolled bounds update host geometry")
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true; _ = target.update(sender)
+    check(scroll.children.count == 1 && contents.flatMap { $0 }.allSatisfy { $0.layer!.animation(forKey: "chatFolderDropHidden") == nil }, "flipped reduced motion skips all wave geometry")
+    let reducedPlate = rows[2].children.last!
+    _ = target.update(sender)
+    check(rows[2].children.last === reducedPlate, "reduced motion retains selected plate instead of restarting its fade on every tick")
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
+    _ = target.update(sender)
+    check(scroll.children.last!.children.count == 15 && contents[2][0].layer!.animation(forKey: "chatFolderDropHidden") != nil, "disabling reduced motion rebuilds previously static selected feedback")
+    target.exit(); TestTimer.advance(0.4)
+}
+flippedWaveChecks()
+
+func accentTransferChecks() {
+    func image(_ gray: CGFloat) -> CGImage {
+        let context = CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 8, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(gray: gray, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        return context.makeImage()!
+    }
+    let idle = image(0.4), accent = image(0.9), badge = image(0.6), hover = image(0.7)
+    let context = Context()
+    let scroll = ScrollView(); scroll.frame = NSRect(x: 0, y: 0, width: 100, height: 500); scroll.contentView.frame = scroll.frame
+    let filters = [ChatListFilter.allChats, folder(1), folder(2), folder(3, includes: [PeerId(1)])]
+    context.engine.peers.list = filters
+    let rows = (0..<4).map { index -> NSView in
+        let row = NSView(frame: NSRect(x: 0, y: 120 + CGFloat(index) * 64, width: 100, height: 64)); row.window = scroll.window; return row
+    }
+    let contents = rows.map { row -> [NSView] in
+        let icon = NSView(frame: NSRect(x: 34, y: 8, width: 32, height: 32))
+        let badge = NSView(frame: NSRect(x: 58, y: 4, width: 10, height: 10))
+        let title = NSView(frame: NSRect(x: 8, y: 44, width: 84, height: 16))
+        for view in [icon, badge, title] { view.superview = row; view.window = row.window }
+        return [icon, badge, title]
+    }
+    var identities = rows.map { _ in NSObject() }
+    var selectedIndex = 0
+    var imageRequests = 0
+    let target = ChatListFolderDropTarget(context: context, scrollView: scroll, horizontal: false, target: { point in
+        guard let index = rows.firstIndex(where: { $0.frame.contains(point) }) else { return nil }
+        return (filters[index], rows[index])
+    }, visibleTargets: { rows.indices.map { (filters[$0], rows[$0], contents[$0]) } }, appearance: { view in
+        guard let index = rows.firstIndex(where: { $0 === view }) else { return nil }
+        return (identities[index], index == selectedIndex, { imageRequests += 1; return [(idle, accent, hover), (badge, badge, badge), (idle, accent, idle)] })
+    })
+    func drag(_ index: Int) -> DragInfo {
+        let sender = info(context, TelegramUser(1))
+        sender.draggingLocation = NSPoint(x: 50, y: rows[index].frame.midY)
+        sender.draggingPasteboard.values[ChatListFolderDrop.pasteboardType] = (sender.draggingSource as! ChatListFolderDragSource).token
+        return sender
+    }
+    func accentLayer(_ host: NSView, _ index: Int, _ component: Int = 0) -> CALayer {
+        return host.children[index * 3 + component].layer!.sublayers![1]
+    }
+    func state(_ host: NSView, _ index: Int) -> Float { accentLayer(host, index).opacity }
+    let sender = drag(1)
+    check(target.update(sender) == .copy, "eligible sidebar transfers accent with copy feedback")
+    let host = scroll.children.last!
+    check(activeFolderBackdrops(host).isEmpty && host.children.count == 12, "accent sidebar creates no plate or extra hit views")
+    check(state(host, 0) == 0 && state(host, 1) == 1 && state(host, 2) == 0 && state(host, 3) == 0 && selectedIndex == 0, "All Chats lends its sole accent without switching selected folder")
+    for index in [0, 1] {
+        for component in [0, 2] {
+            let layer = accentLayer(host, index, component)
+            let animation = layer.animation(forKey: "chatFolderDropAccent") as? CABasicAnimation
+            check(animation?.duration == 0.7 && animation?.keyPath == "opacity" && animation?.timingFunction != nil, "icon title share requested slower smooth accent transition \(index) \(component)")
+        }
+    }
+    check((host.children[4].layer?.contents as AnyObject?) === badge && host.children[4].layer?.sublayers == nil, "badge pixels and opacity are never crossfaded or recolored")
+    let geometry = host.children.map { $0.frame }
+    let identitiesBefore = host.children
+    let imageRequestsBefore = imageRequests
+    _ = target.update(sender)
+    check(zip(identitiesBefore, host.children).allSatisfy { $0 === $1 } && host.children.map { $0.frame } == geometry && imageRequests == imageRequestsBefore, "stationary hover retains color layers and accepted geometry without resnapshotting hidden originals")
+    for index in [0, 1, 2, 3] {
+        for component in [0, 2] {
+            let replica = host.children[index * 3 + component]
+            check(replica.layer!.sublayers!.allSatisfy { $0.frame == replica.bounds }, "tint content follows accepted replica dimensions \(index) \(component)")
+        }
+    }
+    sender.draggingLocation = NSPoint(x: 50, y: rows[2].frame.midY); _ = target.update(sender)
+    check(state(host, 0) == 0 && state(host, 1) == 0 && state(host, 2) == 1, "eligible to eligible transfers accent without restoring original between targets")
+    sender.draggingLocation = NSPoint(x: 50, y: rows[3].frame.midY)
+    check(target.update(sender).isEmpty && state(host, 0) == 0 && state(host, 2) == 0 && state(host, 3) == 0, "existing member keeps original selection neutral without plus or target accent")
+    __NEUTRAL_HOVER_CHECKS__
+    let memberHost = host
+    sender.draggingLocation = NSPoint(x: 50, y: rows[0].frame.midY)
+    check(target.update(sender).isEmpty && state(host, 0) == 0, "hovering original All Chats keeps it neutral while source is already in root")
+    sender.draggingLocation = NSPoint(x: 50, y: rows[3].frame.midY); _ = target.update(sender)
+    check(scroll.children.last === memberHost && selectedIndex == 0, "member-to-member transition preserves presentation and actual selection")
+    check(host.children[9].frame.width > 32 && !target.perform(sender), "existing member still magnifies and never mutates membership")
+    TestTimer.advance(0.8)
+    check(scroll.children.isEmpty && contents.flatMap { $0 }.allSatisfy { $0.layer!.animation(forKey: "chatFolderDropHidden") == nil }, "rejected drop restores originals and removes highlight layers")
+    let archive = drag(0)
+    selectedIndex = 2
+    context.state = SearchPeerFolderState(groupId: Namespaces.PeerGroup.archive, isMuted: false, isUnread: false, isContact: false, hasUnreadMention: false, communityCategories: [:])
+    check(target.update(archive) == .copy, "All Chats can receive transferred accent for an archived peer")
+    let archiveHost = scroll.children.last!
+    check(state(archiveHost, 0) == 1 && state(archiveHost, 2) == 0, "All Chats eligible target borrows custom folder accent")
+    target.exit(); TestTimer.advance(0.8)
+    context.state = SearchPeerFolderState(groupId: .root, isMuted: false, isUnread: false, isContact: false, hasUnreadMention: false, communityCategories: [:])
+    selectedIndex = 0
+    let cancelled = drag(1); _ = target.update(cancelled)
+    let cancelHost = scroll.children.last!
+    target.exit()
+    check(state(cancelHost, 0) == 1 && state(cancelHost, 1) == 0, "cancellation begins accent return before removing replicas")
+    TestTimer.advance(0.4)
+    check(scroll.children.last === cancelHost, "cancellation retains color presentation until slower fade completes")
+    TestTimer.advance(0.4)
+    check(scroll.children.isEmpty, "cancellation removes replicas after full color fade")
+    let reentry = drag(1); _ = target.update(reentry)
+    let reentryHost = scroll.children.last!
+    target.exit(); TestTimer.advance(0.3)
+    reentry.draggingLocation = NSPoint(x: 50, y: rows[2].frame.midY)
+    _ = target.update(reentry)
+    check(scroll.children.last === reentryHost && state(reentryHost, 0) == 0 && state(reentryHost, 2) == 1, "reentry during color restoration retargets retained presentation")
+    TestTimer.advance(0.6)
+    check(scroll.children.last === reentryHost, "cancelled release timer cannot clear a resumed hover")
+    target.exit(); TestTimer.advance(0.8)
+    let gap = drag(2); _ = target.update(gap)
+    let gapHost = scroll.children.last!
+    gap.draggingLocation.y = 50
+    check(target.update(gap).isEmpty && state(gapHost, 0) == 0 && state(gapHost, 2) == 0, "gap inside sidebar keeps original selection neutral")
+    target.exit(); TestTimer.advance(0.8)
+    selectedIndex = 2
+    identities[2] = NSObject()
+    let custom = drag(1); _ = target.update(custom)
+    let customHost = scroll.children.last!
+    check(state(customHost, 2) == 0 && state(customHost, 1) == 1, "custom selected folder lends accent like All Chats")
+    let rapidRow = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 64))
+    let rapidContent = NSView(frame: NSRect(x: 34, y: 8, width: 32, height: 32)); rapidContent.superview = rapidRow
+    let rapidHost = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 64))
+    let rapid = ChatListFolderDropFeedback(filterId: 50, view: rapidRow, contents: [rapidContent], host: rapidHost, appearance: (NSObject(), false, { [(idle, accent, hover)] }))
+    let rapidReplica = rapidHost.children[0]
+    let originalAccent = rapidReplica.layer!.sublayers![1]
+    rapid.update(scale: 1, selected: true, accented: true)
+    rapid.update(scale: 1, selected: false, accented: false)
+    check((originalAccent.animation(forKey: "chatFolderDropAccent") as? CABasicAnimation)?.fromValue as? Float == 1, "rapid reversal reuses current model endpoint when compositor is absent")
+    rapid.remove()
+    __VISIBLE_COLOR_RETARGET_CHECKS__
+    target.exit()
+    check(state(customHost, 2) == 1 && state(customHost, 1) == 0, "custom original selection regains accent")
+    TestTimer.advance(0.8)
+    let success = drag(1)
+    let presentation = ChatListFolderDragPresentation(origin: NSView(), decorations: [])
+    presentation.deferCompletion = true
+    (success.draggingSource as! ChatListFolderDragSource).presentation = presentation
+    _ = target.update(success)
+    let landingHost = scroll.children.last!
+    let landingFrames = landingHost.children.map { $0.frame }
+    check(target.perform(success), "accent transfer accepts actual local folder addition")
+    target.exit()
+    check(state(landingHost, 1) == 1 && state(landingHost, 2) == 0 && landingHost.children.map { $0.frame } == landingFrames, "accepted absorption keeps target accent and magnification until completion")
+    presentation.deferredCompletion?()
+    check(state(landingHost, 1) == 0 && state(landingHost, 2) == 1 && rows.allSatisfy { $0.children.isEmpty }, "successful completion restores original without new sidebar plate pulse")
+    TestTimer.advance(0.4)
+    check(scroll.children.last === landingHost, "completion never cuts off slower selection restoration")
+    TestTimer.advance(0.4)
+    check(context.engine.peers.list[1].data!.includePeers.peers.contains(PeerId(1)) && scroll.children.isEmpty && selectedIndex == 2, "addition is retained and real selection unchanged after cleanup")
+    context.engine.peers.list = filters
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+    let reduced = drag(1); _ = target.update(reduced)
+    check(scroll.children.isEmpty && rows.allSatisfy { $0.children.count == 3 }, "reduced motion uses static row-local color replicas")
+    let reducedReplica = rows[1].children[0]
+    check(reducedReplica.frame == contents[1][0].frame && reducedReplica.layer!.sublayers![1].opacity == 1, "reduced motion only changes color, not scale")
+    _ = target.update(reduced)
+    check(rows[1].children[0] === reducedReplica, "reduced motion does not restart tint each tick")
+    target.exit()
+    check(rows[1].children[0].layer!.sublayers![1].opacity == 0 && rows[2].children[0].layer!.sublayers![1].opacity == 1, "reduced motion cancellation restores selection with a static fade")
+    TestTimer.advance(0.8)
+    check(rows.allSatisfy { $0.children.isEmpty }, "reduced motion tint cleanup restores originals")
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
+    let reused = drag(1); _ = target.update(reused)
+    let oldHost = scroll.children.last!, oldReplica = oldHost.children[3]
+    identities[1] = NSObject(); _ = target.update(reused)
+    check(oldReplica.superview == nil && contents[1][0].layer!.animation(forKey: "chatFolderDropHidden") != nil, "row appearance refresh replaces stale image layers without losing owned hiding")
+    scroll.window = nil; target.exit()
+    check(scroll.children.isEmpty && contents.flatMap { $0 }.allSatisfy { $0.layer!.animation(forKey: "chatFolderDropHidden") == nil }, "window detach removes tint without stale content mutations")
+}
+accentTransferChecks()
+
+func spatialHighlightChecks() {
+    let host = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 700))
+    let highlight = ChatListFolderDropHighlight(host: host)
+    let origin = NSRect(x: 8, y: 500, width: 84, height: 60)
+    highlight.seed(origin, filterId: 0)
+    check(highlight.visibleFrame.midY == origin.midY && highlight.band.animationKeys() == nil, "highlight begins at original open folder before first hover flight")
+    highlight.seed(NSRect(x:0,y:20,width:100,height:60),filterId:8)
+    check(highlight.visibleFrame.midY == origin.midY, "repeated seed cannot restart an existing highlight at a new origin")
+    check(highlight.content.mask === highlight.band && highlight.content.backgroundColor == nil && !(highlight.content.sublayers ?? []).contains(where: { $0 === highlight.band }), "one moving mask colors content without drawing a background plate")
+    let far = NSRect(x: 8, y: 0, width: 84, height: 60)
+    highlight.move(to: far, filterId: 1, neutral: false)
+    let group = highlight.band.animation(forKey: "chatFolderDropTravel") as! CAAnimationGroup
+    let positions = group.animations![0] as! CAKeyframeAnimation
+    let samples = positions.values!.map { ($0 as! NSValue).pointValue.y }
+    check(group.duration > 0.6 && group.duration <= 0.7 && samples.first == origin.midY && samples.last == far.midY, "first far hover visibly travels from selected folder rather than fading at target")
+    check(samples[15] > far.midY && samples[15] < origin.midY && zip(samples,samples.dropFirst()).allSatisfy { $0 >= $1 }, "flight traverses intervening positions monotonically")
+    let beforeRetarget = highlight.remaining
+    highlight.move(to: far.offsetBy(dx: 0, dy: 3), filterId: 1, neutral: false)
+    check(highlight.remaining == beforeRetarget && highlight.band.frame.minY == far.minY, "subrow wave ticks do not restart easing while the same-target highlight is travelling")
+    check(abs(samples[1]-samples[0]) < abs(samples[15]-samples[14]) && abs(samples[30]-samples[29]) < abs(samples[15]-samples[14]), "highlight spatial travel eases into and out of movement")
+    testTime += group.duration * 0.4
+    let current = highlight.visibleFrame
+    highlight.move(to: NSRect(x: 8,y: 580,width: 84,height: 60), filterId: 2, neutral: false)
+    let retarget = highlight.band.animation(forKey: "chatFolderDropTravel") as! CAAnimationGroup
+    let start = ((retarget.animations![0] as! CAKeyframeAnimation).values!.first as! NSValue).pointValue
+    check(abs(start.y-current.midY)<0.0001 && abs(start.y-origin.midY)>1, "midflight retarget starts at current position not old folder or destination")
+    check(chatListFolderDropHighlightDuration(distance: 64) < 0.3 && chatListFolderDropHighlightDuration(distance: 560) == 0.7 && chatListFolderDropHighlightDuration(distance: 2000) == 0.7, "adjacent flight is faster and long distance duration is bounded")
+    testTime += 1
+    highlight.move(to: NSRect(x: 8,y: 580,width: 84,height: 60), filterId: 2, neutral: false)
+    check(highlight.remaining == 0, "stationary hover does not restart flight timer")
+    highlight.remove()
+    check(highlight.content.superlayer == nil && highlight.band.animationKeys() == nil, "flight cleanup removes shared mask")
+
+    func image(_ value: CGFloat) -> CGImage {
+        let ctx=CGContext(data:nil,width:2,height:2,bitsPerComponent:8,bytesPerRow:8,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(gray:value,alpha:1));ctx.fill(CGRect(x:0,y:0,width:2,height:2));return ctx.makeImage()!
+    }
+    let idle=image(0.4), accent=image(0.9), neutral=image(0.7), badge=image(0.6)
+    let bitmapHost=NSView(frame:NSRect(x:0,y:0,width:20,height:160))
+    let bitmapHighlight=ChatListFolderDropHighlight(host:bitmapHost)
+    CATransaction.begin();CATransaction.setDisableActions(true)
+    for y:CGFloat in [10,70,130] {
+        let layer=CALayer();layer.frame=NSRect(x:4,y:y,width:12,height:20);layer.contents=accent
+        bitmapHighlight.accent.addSublayer(layer)
+    }
+    CATransaction.commit()
+    bitmapHighlight.seed(NSRect(x:0,y:0,width:20,height:40),filterId:0)
+    func alphaAt(_ y:Int)->UInt8 {
+        let ctx=CGContext(data:nil,width:20,height:160,bitsPerComponent:8,bytesPerRow:80,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.clear(CGRect(x:0,y:0,width:20,height:160));bitmapHighlight.content.render(in:ctx)
+        return ctx.data!.assumingMemoryBound(to:UInt8.self)[(159-y)*80+10*4+3]
+    }
+    print("synthetic_mask_seed=\(alphaAt(20)),\(alphaAt(80)),\(alphaAt(140))")
+    check(alphaAt(20)>240 && alphaAt(80)==0 && alphaAt(140)==0,"synthetic mask renders only original folder color before travel")
+    CATransaction.begin();CATransaction.setDisableActions(true);bitmapHighlight.band.frame=NSRect(x:0,y:60,width:20,height:40);CATransaction.commit()
+    check(alphaAt(20)==0 && alphaAt(80)>240 && alphaAt(140)==0,"synthetic mask reveals intermediate folder color in a spatially different position")
+    bitmapHighlight.remove()
+    let flippedHost=FlippedTestView(frame:NSRect(x:0,y:0,width:20,height:160))
+    flippedHost.layer!.isGeometryFlipped=true
+    let direct=CALayer();direct.frame=NSRect(x:4,y:10,width:12,height:20);direct.contents=accent
+    flippedHost.layer!.addSublayer(direct)
+    func pixels(_ layer:CALayer)->[UInt8] {
+        let ctx=CGContext(data:nil,width:20,height:160,bitsPerComponent:8,bytesPerRow:80,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.clear(CGRect(x:0,y:0,width:20,height:160));layer.render(in:ctx)
+        return Array(UnsafeBufferPointer(start:ctx.data!.assumingMemoryBound(to:UInt8.self),count:12800))
+    }
+    let referencePixels=pixels(flippedHost.layer!)
+    direct.removeFromSuperlayer()
+    let flippedHighlight=ChatListFolderDropHighlight(host:flippedHost)
+    let grouped=CALayer();grouped.frame=direct.frame;grouped.contents=accent;flippedHighlight.accent.addSublayer(grouped)
+    flippedHighlight.seed(NSRect(x:0,y:0,width:20,height:40),filterId:1)
+    check(pixels(flippedHost.layer!)==referencePixels,"nested spatial color layers use the same flipped coordinates as direct replica content")
+    flippedHighlight.remove()
+    let context=Context();let scroll=ScrollView();scroll.frame=NSRect(x:0,y:0,width:100,height:600);scroll.contentView.frame=scroll.frame
+    let filters=[ChatListFilter.allChats,folder(1),folder(2),folder(3,includes:[PeerId(1)])];context.engine.peers.list=filters
+    let rows=(0..<4).map { index -> NSView in let v=NSView(frame:NSRect(x:0,y:100+CGFloat(index)*80,width:100,height:64));v.window=scroll.window;return v }
+    let contents=rows.map { row -> [NSView] in
+        let a=NSView(frame:NSRect(x:34,y:8,width:32,height:32)),b=NSView(frame:NSRect(x:58,y:4,width:10,height:10)),c=NSView(frame:NSRect(x:8,y:44,width:84,height:16))
+        for v in [a,b,c] {v.superview=row;v.window=row.window};return [a,b,c]
+    }
+    var selectedIndex=2
+    var visibleIndices=Array(rows.indices)
+    var identities=rows.map {_ in NSObject()}
+    let target=ChatListFolderDropTarget(context:context,scrollView:scroll,horizontal:false,target:{point in
+        guard let i=rows.firstIndex(where:{$0.frame.contains(point)}) else{return nil};return(filters[i],rows[i])
+    },visibleTargets:{visibleIndices.map{(filters[$0],rows[$0],contents[$0])}},appearance:{view in
+        guard let i=rows.firstIndex(where:{$0 === view}) else{return nil}
+        return(identities[i],i==selectedIndex,{[(idle,accent,neutral),(badge,badge,badge),(idle,accent,idle)]})
+    },selectionFrame:{(filters[selectedIndex].id,rows[selectedIndex].frame)})
+    func drag(_ index:Int)->DragInfo {
+        let s=info(context,TelegramUser(1));s.draggingLocation=NSPoint(x:50,y:rows[index].frame.midY);s.draggingPasteboard.values[ChatListFolderDrop.pasteboardType]=(s.draggingSource as! ChatListFolderDragSource).token;return s
+    }
+    func paint(_ host:NSView)->CALayer {return host.layer!.sublayers!.first(where:{$0.mask != nil})!}
+    func flight(_ layer:CALayer)->CAAnimationGroup {return layer.mask!.animation(forKey:"chatFolderDropTravel") as! CAAnimationGroup}
+    let sender=drag(1)
+    check(target.update(sender) == .copy,"spatial target still advertises accepted copy")
+    let overlay=scroll.children.last!,colors=paint(scroll.children.last!)
+    let first=flight(colors)
+    let firstPoint=((first.animations![0] as! CAKeyframeAnimation).values!.first as! NSValue).pointValue
+    check(abs(firstPoint.y-(rows[2].frame.minY+32))<4,"actual target seeds first flight at open custom folder")
+    check(activeFolderBackdrops(overlay).isEmpty && overlay.children.count==12,"spatial highlight adds no duplicate icon views or plate")
+    check(colors.sublayers![0].sublayers!.count==8 && colors.sublayers![1].sublayers!.count==8,"all visible icon/title color copies share one travelling mask")
+    check(overlay.children[4].layer!.sublayers==nil && (overlay.children[4].layer!.contents as AnyObject?) === badge,"unread badge excluded from travelling color field")
+    let replicas=overlay.children
+    _=target.update(sender)
+    check(zip(replicas,overlay.children).allSatisfy{$0 === $1},"stationary hover reuses all geometry and paint layers")
+    let oldEnd=colors.mask!.frame
+    sender.draggingLocation=NSPoint(x:50,y:20)
+    check(target.update(sender).isEmpty && colors.mask!.frame==oldEnd,"internal gap holds travelling target rather than returning to selection")
+    sender.draggingLocation=NSPoint(x:50,y:rows[3].frame.midY)
+    check(target.update(sender).isEmpty && colors.sublayers![0].opacity==0 && colors.sublayers![1].opacity==1,"member endpoint changes shared highlight tone without plus or reset")
+    check(colors.mask!.frame.midY>rows[2].frame.midY && overlay.children[9].frame.width>32,"member hover still receives flight and accepted magnification")
+    check(!target.perform(sender),"member drop still cannot mutate")
+    TestTimer.advance(0.8)
+    check(scroll.children.isEmpty && selectedIndex==2,"cancel return ends on unchanged selection and removes masking")
+
+    selectedIndex=0
+    let allChats=drag(2);_=target.update(allChats)
+    let allPaint=paint(scroll.children.last!)
+    let allStart=((flight(allPaint).animations![0] as! CAKeyframeAnimation).values!.first as! NSValue).pointValue
+    check(abs(allStart.y-(rows[0].frame.minY+32))<4,"first hover starts from All Chats when it is open")
+    target.exit();TestTimer.advance(0.8)
+    selectedIndex=3;visibleIndices=[0,1,2]
+    let offscreen=drag(0);_=target.update(offscreen)
+    let offPaint=paint(scroll.children.last!)
+    let offStart=((flight(offPaint).animations![0] as! CAKeyframeAnimation).values!.first as! NSValue).pointValue
+    check(abs(offStart.y-rows[3].frame.midY)<0.001,"nonvisible selected folder supplies real source geometry without forcing a row view")
+    target.exit();TestTimer.advance(0.8)
+    visibleIndices=Array(rows.indices);selectedIndex=2
+    let waiting=drag(0);waiting.draggingLocation=NSPoint(x:50,y:20);_=target.update(waiting)
+    let waitingHost=scroll.children.last!,waitingPaint=paint(scroll.children.last!)
+    check(waitingPaint.mask!.animation(forKey:"chatFolderDropTravel")==nil && abs(waitingPaint.mask!.frame.midY-(rows[2].frame.minY+32))<4,"inside panel before any folder hover retains original highlight")
+    waiting.draggingLocation=NSPoint(x:50,y:rows[1].frame.midY);_=target.update(waiting)
+    let waitingStart=((flight(waitingPaint).animations![0] as! CAKeyframeAnimation).values!.first as! NSValue).pointValue
+    check(abs(waitingStart.y-(rows[2].frame.minY+32))<4,"first real hover after gap still starts from open folder")
+    testTime += 0.08
+    target.exit()
+    let returnFlight=flight(waitingPaint)
+    let returnStart=((returnFlight.animations![0] as! CAKeyframeAnimation).values!.first as! NSValue).pointValue
+    check(returnStart.y<rows[2].frame.midY,"cancel midflight returns from intermediate position")
+    testTime += 0.04
+    waiting.draggingLocation=NSPoint(x:50,y:rows[3].frame.midY);_=target.update(waiting)
+    check(scroll.children.last === waitingHost && paint(scroll.children.last!) === waitingPaint,"reentry redirects same flying highlight without replacing overlay")
+    target.exit();TestTimer.advance(0.8)
+    let accepted=drag(1);let presentation=ChatListFolderDragPresentation(origin:NSView(),decorations:[]);presentation.deferCompletion=true;(accepted.draggingSource as! ChatListFolderDragSource).presentation=presentation
+    _=target.update(accepted);let landingHost=scroll.children.last!,landingPaint=paint(scroll.children.last!);let beforeFrames=landingHost.children.map{$0.frame}
+    check(target.perform(accepted),"spatial highlight accepts successful insertion")
+    target.exit();check(landingHost.children.map{$0.frame}==beforeFrames,"native drag end preserves accepted absorption geometry")
+    testTime += 0.4
+    presentation.deferredCompletion?()
+    check(landingPaint.mask!.frame.midY>rows[1].frame.midY,"completion sends highlight back toward original selected folder")
+    TestTimer.advance(0.8)
+    check(scroll.children.isEmpty && context.engine.peers.list[1].data!.includePeers.peers.contains(PeerId(1)),"return cleanup preserves successful membership")
+    context.engine.peers.list=filters
+    let reuse=drag(1);_=target.update(reuse);let samePaint=paint(scroll.children.last!)
+    identities[1]=NSObject();_=target.update(reuse)
+    check(paint(scroll.children.last!) === samePaint,"row reuse keeps a single shared travelling highlight")
+    scroll.window=nil;target.exit()
+    check(scroll.children.isEmpty && contents.flatMap{$0}.allSatisfy{$0.layer!.animation(forKey:"chatFolderDropHidden")==nil},"detach restores original content and removes flight")
+    scroll.window=Window();rows.forEach{$0.window=scroll.window};contents.flatMap{$0}.forEach{$0.window=scroll.window}
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion=true
+    let reduced=drag(1);_=target.update(reduced)
+    check(scroll.children.isEmpty && rows[1].children.count==3,"Reduce Motion uses static feedback rather than spatial travel")
+    target.exit();TestTimer.advance(0.8);NSWorkspace.shared.accessibilityDisplayShouldReduceMotion=false
+    check(rows.allSatisfy{$0.children.isEmpty},"reduced feedback restores originals")
+}
+spatialHighlightChecks()
