@@ -21,7 +21,7 @@ func installInputTextViewHooks() {
         guard let context = context as? AccountContext else {
             return
         }
-        showModal(with: TranslateModalController(context: context, from: from, toLang: appAppearance.languageCode, text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: { translated in
+        showModal(with: TranslateModalController(context: context, from: from, toLang: context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: { translated in
             onUse(translated)
         }), for: window)
     }, showURLFormatter: { window, string, defaultUrl, hosts, completion in
@@ -31,7 +31,7 @@ func installInputTextViewHooks() {
     })
     hooks.showTranslateWithContext = { context, window, from, draft, analyticsContext, onUse in
         guard let context = context as? AccountContext else { return }
-        showModal(with: TranslateModalController(context: context, from: from, toLang: appAppearance.languageCode, text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: onUse, analyticsContext: analyticsContext), for: window)
+        showModal(with: TranslateModalController(context: context, from: from, toLang: context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: onUse, analyticsContext: analyticsContext), for: window)
     }
     hooks.showPremiumBoardingWithContext = { context, window, analyticsContext in
         guard let context = context as? AccountContext else { return }

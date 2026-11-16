@@ -234,7 +234,6 @@ var globalLinkExecutor:TextViewInteractions {
             return false
         }, translate: { text, window in
             let language = Translate.detectLanguage(for: text)
-            let toLang = appAppearance.languageCode
             var current: AccountContext?
             appDelegate?.enumerateAccountContexts({ context in
                 if context.window === window {
@@ -242,7 +241,7 @@ var globalLinkExecutor:TextViewInteractions {
                 }
             })
             
-            if language != toLang, let context = current {
+            if let context = current, case let toLang = context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), language != toLang {
                 return ContextMenuItem(strings().chatContextTranslate, handler: {
                     showModal(with: TranslateModalController(context: context, from: language, toLang: toLang, text: text), for: context.window)
                 }, itemImage: MenuAnimation.menu_translate.value)

@@ -662,7 +662,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
             let page = richTextInstantPage(from: outgoingBlocks(fromSelection: selection), media: [:])
             if let page {
                 let (text, entities) = richTextPlainPreview(from: page)
-                showModal(with: ChatInputUIHooks.shared.makeRichTranslateModalObserved(context, nil, appAppearance.languageCode, text, entities, selection, analyticsContext: origin, onUse: { [weak coordinator] blocks, sourceContext in
+                showModal(with: ChatInputUIHooks.shared.makeRichTranslateModalObserved(context, nil, context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), text, entities, selection, analyticsContext: origin, onUse: { [weak coordinator] blocks, sourceContext in
                     guard let coordinator else { return }
                     let current = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
                     if sourceContext.isExcluded || sourceContext.scope?.isValid != true || current.isExcluded || current.scope?.isValid != true {

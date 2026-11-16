@@ -26,8 +26,9 @@ private final class Arguments {
     public let premiumAlert:()->Void
     public let openPremium:()->Void
     public let doNotTranslate:(String)->Void
+    public let translationLanguage:(String?)->Void
     
-    public init(context: any AccountContextProtocol, searchInteractions: SearchInteractions, change:@escaping(LocalizationInfo)->Void, delete:@escaping(LocalizationInfo)->Void, toggleTranslateChannels: @escaping()->Void, premiumAlert:@escaping()->Void, openPremium: @escaping()->Void, doNotTranslate:@escaping(String)->Void) {
+    public init(context: any AccountContextProtocol, searchInteractions: SearchInteractions, change:@escaping(LocalizationInfo)->Void, delete:@escaping(LocalizationInfo)->Void, toggleTranslateChannels: @escaping()->Void, premiumAlert:@escaping()->Void, openPremium: @escaping()->Void, doNotTranslate:@escaping(String)->Void, translationLanguage:@escaping(String?)->Void) {
         self.context = context
         self.change = change
         self.delete = delete
@@ -35,6 +36,7 @@ private final class Arguments {
         self.premiumAlert = premiumAlert
         self.toggleTranslateChannels = toggleTranslateChannels
         self.doNotTranslate = doNotTranslate
+        self.translationLanguage = translationLanguage
         self.searchInteractions = searchInteractions
     }
 }
@@ -57,6 +59,7 @@ private func _id_language_official(_ id: String) -> InputDataIdentifier {
 }
 private let _id_translate_channels = InputDataIdentifier("_id_translate_channels")
 private let _id_do_not_translate = InputDataIdentifier("_id_do_not_translate")
+private let _id_translation_language = InputDataIdentifier("_id_translation_language")
 
 public enum LanguageEntryTag {
     case doNotTranslate
@@ -84,39 +87,42 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().languageTranslateMessagesHeader), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
     index += 1
     
-    var ignoreCodes = state.settings.doNotTranslate.compactMap {
-        Translate.find($0)
-    }.sorted(by: { $0.language < $1.language })
-    
-    if ignoreCodes.isEmpty, let code = Translate.find(state.language.baseLanguageCode) {
-        ignoreCodes.append(code)
+    let appLanguage = state.language.baseLanguageCode
+    let appLanguageName = Translate.find(appLanguage).map { _NSLocalizedString($0.localizationKey) } ?? state.language.localizedName
+    let appLanguageTitle = "App Language (\(appLanguageName))" //TODOLANG Language.Translate.AppLanguage
+    let translationTitle = state.settings.translationLanguage.flatMap(Translate.find).map {
+        _NSLocalizedString($0.localizationKey)
+    } ?? appLanguageTitle
+    let languages = Translate.codes.sorted {
+        _NSLocalizedString($0.localizationKey).localizedStandardCompare(_NSLocalizedString($1.localizationKey)) == .orderedAscending
     }
+    let translationOptions = [ContextMenuItem(appLanguageTitle, handler: {
+        arguments.translationLanguage(nil)
+    }, itemImage: state.settings.translationLanguage == nil ? MenuAnimation.menu_check_selected.value : nil, removeTail: false), ContextSeparatorItem()] + languages.map { code in
+        ContextMenuItem(_NSLocalizedString(code.localizationKey), handler: {
+            if let first = code.code.first {
+                arguments.translationLanguage(first)
+            }
+        }, itemImage: state.settings.translationLanguage.map(code.code.contains) == true ? MenuAnimation.menu_check_selected.value : nil)
+    }
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_translation_language, data: .init(name: "Translate Into", color: theme.colors.text, type: .contextSelector(translationTitle, translationOptions), viewType: .singleItem))) //TODOLANG Language.Translate.TranslateInto
+    index += 1
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("Choose the default language for message and chat translations. You can choose a different language for individual chats."), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem))) //TODOLANG Language.Translate.TranslateIntoInfo
+    index += 1
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
 
-    var codes = Translate.codes.sorted(by: { lhs, rhs in
-        let lhsSelected = ignoreCodes.contains(where: { $0.code == lhs.code })
-        let rhsSelected = ignoreCodes.contains(where: { $0.code == rhs.code })
-        if lhsSelected && !rhsSelected {
-            return true
-        } else if !lhsSelected && rhsSelected {
-            return false
-        } else {
-            return lhs.language < rhs.language
-        }
-    })
+    let ignoredLanguages = Set(state.settings.doNotTranslate.map(Translate.normalizeLanguageCode))
+    let ignoreCodes = languages.filter { !ignoredLanguages.isDisjoint(with: $0.code) }
+
+    let codes = ignoreCodes + languages.filter { ignoredLanguages.isDisjoint(with: $0.code) }
     
-    let codeIndex = codes.firstIndex(where: {
-        $0.code.contains(state.language.baseLanguageCode)
-    })
-    if let codeIndex = codeIndex {
-        codes.move(at: codeIndex, to: 0)
-    }
-    
-    let title = ignoreCodes.isEmpty ? "" : ignoreCodes.map {
+    let title = ignoreCodes.map {
         return _NSLocalizedString($0.localizationKey)
     }.joined(separator: ", ")
     
     entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_do_not_translate, data: .init(name: strings().languageTranslateMessagesDoNotTranslate, color: theme.colors.text, type: .contextSelector(title, codes.map { code in
-        ContextMenuItem(code.language, handler: {
+        ContextMenuItem(_NSLocalizedString(code.localizationKey), handler: {
             if let first = code.code.first {
                 arguments.doNotTranslate(first)
             }
@@ -337,6 +343,10 @@ public func LanguageController(_ context: any AccountContextProtocol, focusOnIte
                 current.insert(code)
             }
             return settings.withUpdatedDoNotTranslate(current)
+        }).start())
+    }, translationLanguage: { code in
+        actionsDisposable.add(updateBaseAppSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
+            return settings.withUpdatedTranslationLanguage(code)
         }).start())
     })
     

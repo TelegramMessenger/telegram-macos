@@ -496,7 +496,7 @@ extension ChatInteraction {
                 }
             }
         }
-        showModal(with: ChatInputUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, draft, alwaysUsePeerId: editMessageId == nil ? alwaysUseAIEditorPeerId : nil, analyticsContext: analyticsContext, onUse: { translated in
+        showModal(with: ChatInputUIHooks.shared.makeTranslateModalObserved(context, language, context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), draft, alwaysUsePeerId: editMessageId == nil ? alwaysUseAIEditorPeerId : nil, analyticsContext: analyticsContext, onUse: { translated in
             apply(translated, false)
         }, onSend: { translated in
             apply(translated, true)
