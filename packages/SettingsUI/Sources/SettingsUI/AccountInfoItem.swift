@@ -388,6 +388,9 @@ private class AccountInfoView : GeneralContainableRowView {
             if let control = statusControl, item.peer.isPremium {
                 control.removeAllHandlers()
                 control.userInteractionEnabled = true
+                control.setAccessibilityElement(true)
+                control.setAccessibilityRole(.button)
+                control.setAccessibilityLabel(item.peer.emojiStatus != nil ? strings().accountSettingsChangeStatus : strings().accountSettingsUpdateStatus)
                 control.set(handler: { [weak item] control in
                     if let user = item?.peer {
                         item?.setStatus(control, user)

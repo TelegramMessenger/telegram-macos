@@ -35,7 +35,7 @@ struct NativeSliderGeometry {
     static let inlineMinWidth: CGFloat = 360
     static let inlineTextMinWidth: CGFloat = 120
     static let inlineSliderMin: CGFloat = 140
-    static let inlineSliderMax: CGFloat = 240
+    static let inlineSliderMax: CGFloat = 320
     static let columnGap: CGFloat = 16
 }
 
@@ -97,7 +97,7 @@ public class SelectSizeRowItem: GeneralRowItem {
     }
 
     fileprivate func labelLayout(_ index: Int, selected: Bool) -> TextViewLayout? {
-        guard let titles = titles, index < titles.count else {
+        guard let titles = titles, index < titles.count, !titles[index].isEmpty else {
             return nil
         }
         let font: NSFont = selected ? .semibold(NativeSliderGeometry.labelSize) : .normal(NativeSliderGeometry.labelSize)
