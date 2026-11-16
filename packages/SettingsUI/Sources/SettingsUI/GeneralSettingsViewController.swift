@@ -475,6 +475,7 @@ public enum GeneralSettingsEntryTag: Int32 {
     case callSettings = 23
     case previewChats = 24
     case showProfileId = 25
+    case showContactsTab = 26
 
     fileprivate var stableId: Int {
         switch self {
@@ -494,6 +495,8 @@ public enum GeneralSettingsEntryTag: Int32 {
             return GeneralSettingsEntry.bigEmoji(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .showCallsTab:
             return GeneralSettingsEntry.showCallsTab(sectionId: 0, enabled: false, viewType: .singleItem).stableId
+        case .showContactsTab:
+            return GeneralSettingsEntry.showContactsTab(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .statusBar:
             return GeneralSettingsEntry.statusBar(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .inAppSounds:
@@ -568,6 +571,8 @@ extension GeneralSettingsEntryTag: SettingsSearchTag {
             return strings().generalSettingsBigEmoji
         case .showCallsTab:
             return strings().generalSettingsShowCallsTab
+        case .showContactsTab:
+            return strings().generalSettingsShowContactsTab
         case .statusBar:
             return strings().generalSettingsStatusBarItem
         case .inAppSounds:
