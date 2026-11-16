@@ -4782,8 +4782,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             .withUpdatedInputState(ChatTextInputState())
                             .withUpdatedComposeDisableUrlPreview(nil)
                     }
+                    if flushInput {
+                        value = value.withUpdatedForwardMessageIds([])
+                    }
                     value = value.withUpdatedReplyMessageId(nil)
-                        .withUpdatedForwardMessageIds([])
                         .withUpdatedMessageEffect(nil)
                         .withUpdatedSuggestPost(nil)
                         .withoutEditMessage()
@@ -7673,7 +7675,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 resultGroup?.end()
                                 scrollAfterSend()
                             })
-                            controller.nextTransaction.set(handler: afterSentTransition)
+                            if !controller.nextTransaction.isExutable {
+                                controller.nextTransaction.set(handler: {
+                                    _afterSentTransition(false)
+                                })
+                            }
                         }
                         switch strongSelf.mode {
                         case .history, .thread, .customChatContents:
