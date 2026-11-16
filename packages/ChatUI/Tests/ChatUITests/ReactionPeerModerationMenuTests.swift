@@ -27,14 +27,14 @@ final class ReactionPeerModerationMenuTests: XCTestCase {
         return TelegramChannel(id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(3)), accessHash: nil, title: "Group", username: nil, photo: [], creationDate: 0, version: 0, participationStatus: status, info: broadcast ? .broadcast(.init(flags: [])) : .group(.init(flags: [])), flags: flags, restrictionInfo: nil, adminRights: rights.isEmpty ? nil : TelegramChatAdminRights(rights: rights), bannedRights: nil, defaultBannedRights: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, emojiStatus: nil, approximateBoostLevel: nil, subscriptionUntilDate: nil, verificationIconFileId: nil, sendPaidMessageStars: nil, linkedMonoforumId: nil)
     }
 
-    private func message(peer: Peer?, canViewList: Bool = true, hasReactions: Bool = true, namespace: Int32 = Namespaces.Message.Cloud) -> Message {
+    private func message(peer: Peer?, canViewList: Bool = true, hasReactions: Bool = true, namespace: Int32 = Namespaces.Message.Cloud, id: Int32 = 1, reactions: [MessageReaction] = [], recentPeers: [ReactionsMessageAttribute.RecentPeer] = [], topPeers: [ReactionsMessageAttribute.TopPeer] = []) -> Message {
         let chatId = peer?.id ?? PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(3))
         var peers = SimpleDictionary<PeerId, Peer>()
         if let peer {
             peers[peer.id] = peer
         }
-        let attributes: [MessageAttribute] = hasReactions ? [ReactionsMessageAttribute(canViewList: canViewList, isTags: false, reactions: [], recentPeers: [], topPeers: [])] : []
-        return Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: chatId, namespace: namespace, id: 1), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: nil, text: "Message", attributes: attributes, media: [], peers: peers, associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:])
+        let attributes: [MessageAttribute] = hasReactions ? [ReactionsMessageAttribute(canViewList: canViewList, isTags: false, reactions: reactions, recentPeers: recentPeers, topPeers: topPeers)] : []
+        return Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: chatId, namespace: namespace, id: id), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: nil, text: "Message", attributes: attributes, media: [], peers: peers, associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:])
     }
 
     private func canModerate(_ message: Message?, participantId: PeerId? = nil, reaction: MessageReaction.Reaction? = .builtin("👍")) -> Bool {
@@ -134,12 +134,75 @@ final class ReactionPeerModerationMenuTests: XCTestCase {
         let profile = try XCTUnwrap(menu.items.first as? ContextMenuItem)
         let deletion = try XCTUnwrap(menu.items.last as? ContextMenuItem)
         XCTAssertEqual(profile.title, strings().chatContextPeerOpenInfo)
-        XCTAssertEqual(deletion.title, strings().deleteGroupMessagesDeleteReaction)
+        XCTAssertEqual(deletion.title, strings().deleteGroupMessagesDeleteAllReactions)
         XCTAssertTrue(actions.isEmpty)
         profile.handler?()
         XCTAssertEqual(actions, ["profile"])
         deletion.handler?()
         XCTAssertEqual(actions, ["profile", "reaction"])
+    }
+
+    func testConfirmationDisclosesAuthorWideSingleMessageScopeIncludingStars() {
+        XCTAssertEqual(reactionPeerModerationConfirmation(peer: group()), "Delete all reactions from Group on this message, including any paid Stars reactions?")
+    }
+
+    func testMultipleReactionRowsAdvertiseTheSameAuthorWideAction() throws {
+        let values: [MessageReaction.Reaction] = [.builtin("👍"), .custom(42)]
+        let message = message(peer: group(), reactions: values.map { MessageReaction(value: $0, count: 1, chosenOrder: nil) }, recentPeers: values.map { .init(value: $0, isLarge: false, isUnseen: false, isMy: false, peerId: participantId, timestamp: nil) })
+        for reaction in values {
+            var requests: [MessageId] = []
+            let item = ContextMenuItem("Participant")
+            let binding = ReactionPeerModerationBinding(item: item, message: message, accountPeerId: accountId, reactionPeerId: participantId, reaction: reaction, openProfile: {}, deleteReaction: { requests.append($0.id) })
+            try withExtendedLifetime(binding) {
+                let deletion = try XCTUnwrap(item.submenu?.items.last as? ContextMenuItem)
+                XCTAssertEqual(deletion.title, strings().deleteGroupMessagesDeleteAllReactions)
+                XCTAssertTrue(requests.isEmpty)
+                deletion.handler?()
+                XCTAssertEqual(requests, [message.id])
+            }
+        }
+    }
+
+    func testMixedReactionDataKeepsStarsRowsExcludedWithoutNarrowingTheScope() throws {
+        let values: [MessageReaction.Reaction] = [.builtin("👍"), .custom(42), .stars]
+        let reactions = values.map { MessageReaction(value: $0, count: $0 == .stars ? 10 : 1, chosenOrder: nil) }
+        let recentPeers: [ReactionsMessageAttribute.RecentPeer] = values.map { .init(value: $0, isLarge: false, isUnseen: false, isMy: false, peerId: participantId, timestamp: nil) }
+        let topPeers: [ReactionsMessageAttribute.TopPeer] = [.init(peerId: participantId, count: 10, isTop: true, isMy: false, isAnonymous: false)]
+        let original = message(peer: group(), reactions: reactions, recentPeers: recentPeers, topPeers: topPeers)
+        let refreshed = try XCTUnwrap(reactionPeerModerationMessage(messageId: original.id, message: original, peer: group()))
+        XCTAssertEqual(refreshed.reactionsAttribute?.reactions, reactions)
+        XCTAssertEqual(refreshed.reactionsAttribute?.recentPeers, recentPeers)
+        XCTAssertEqual(refreshed.reactionsAttribute?.topPeers, topPeers)
+        XCTAssertTrue(canModerate(refreshed, reaction: .builtin("👍")))
+        XCTAssertTrue(canModerate(refreshed, reaction: .custom(42)))
+        XCTAssertFalse(canModerate(refreshed, reaction: .stars))
+        XCTAssertEqual(reactionPeerModerationConfirmation(peer: group()), "Delete all reactions from Group on this message, including any paid Stars reactions?")
+    }
+
+    func testRefreshedMessageUsesCurrentPermissionsRatherThanEmbeddedPermissions() throws {
+        let original = message(peer: group())
+        let revoked = try XCTUnwrap(reactionPeerModerationMessage(messageId: original.id, message: original, peer: group(role: .member)))
+        XCTAssertFalse(canModerate(revoked))
+        let restored = try XCTUnwrap(reactionPeerModerationMessage(messageId: original.id, message: revoked, peer: group()))
+        XCTAssertTrue(canModerate(restored))
+        XCTAssertFalse(canModerate(restored, participantId: accountId))
+    }
+
+    func testRefreshedMessageUsesCurrentReactionVisibility() throws {
+        let original = message(peer: group())
+        for current in [message(peer: group(), canViewList: false), message(peer: group(), hasReactions: false)] {
+            let refreshed = try XCTUnwrap(reactionPeerModerationMessage(messageId: original.id, message: current, peer: group()))
+            XCTAssertFalse(canModerate(refreshed))
+        }
+    }
+
+    func testRefreshedMessageRequiresTheOriginalMessageAndChat() {
+        let original = message(peer: group())
+        XCTAssertNil(reactionPeerModerationMessage(messageId: original.id, message: nil, peer: group()))
+        XCTAssertNil(reactionPeerModerationMessage(messageId: original.id, message: original, peer: nil))
+        XCTAssertNil(reactionPeerModerationMessage(messageId: original.id, message: message(peer: group(), id: 2), peer: group()))
+        XCTAssertNil(reactionPeerModerationMessage(messageId: original.id, message: message(peer: channel(flags: [.isCreator])), peer: channel(flags: [.isCreator])))
+        XCTAssertNil(reactionPeerModerationMessage(messageId: original.id, message: original, peer: channel(flags: [.isCreator])))
     }
 
     func testTimestampIsTheDisabledBottomRowAfterASeparator() throws {

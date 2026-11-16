@@ -46,10 +46,23 @@ public func canDeleteReactionsInChat(message: Message) -> Bool {
     }
 }
 
+func reactionPeerModerationConfirmation(peer: Peer) -> String {
+    return "Delete all reactions from \(peer.displayTitle) on this message, including any paid Stars reactions?" //TODOLANG
+}
+
+func reactionPeerModerationMessage(messageId: MessageId, message: Message?, peer: Peer?) -> Message? {
+    guard let message, message.id == messageId, let peer, peer.id == messageId.peerId else {
+        return nil
+    }
+    var peers = message.peers
+    peers[peer.id] = peer
+    return message.withUpdatedPeers(peers)
+}
+
 func reactionPeerModerationMenu(openProfile: @escaping () -> Void, deleteReaction: @escaping () -> Void, timestamp: String? = nil) -> ContextMenu {
     let menu = ContextMenu()
     menu.addItem(ContextMenuItem(strings().chatContextPeerOpenInfo, handler: openProfile, itemImage: MenuAnimation.menu_open_profile.value))
-    menu.addItem(ContextMenuItem(strings().deleteGroupMessagesDeleteReaction, handler: deleteReaction, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
+    menu.addItem(ContextMenuItem(strings().deleteGroupMessagesDeleteAllReactions, handler: deleteReaction, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
     if let timestamp {
         menu.addItem(ContextSeparatorItem())
         let item = ContextMenuItem(timestamp, itemImage: MenuAnimation.menu_reactions.value, removeTail: false)
@@ -83,13 +96,7 @@ final class ReactionPeerModerationBinding {
     }
 
     func update(peer: Peer?) {
-        if let peer, peer.id == message.id.peerId {
-            var peers = message.peers
-            peers[peer.id] = peer
-            currentMessage = message.withUpdatedPeers(peers)
-        } else {
-            currentMessage = nil
-        }
+        currentMessage = reactionPeerModerationMessage(messageId: message.id, message: message, peer: peer)
         guard let item else { return }
         if ReactionPeerMenu.canModerate(message: currentMessage, accountPeerId: accountPeerId, reactionPeerId: reactionPeerId, reaction: reaction) {
             if item.submenu == nil {
@@ -965,27 +972,20 @@ public final class ReactionPeerMenu : ContextMenuItem {
                 let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: self.analyticsContext).restricting(peerId: peer.id)
                 let presentation = origin.beginPresentation()
                 defer { presentation.end() }
-                let currentPeer = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId)) |> deliverOnMainQueue
-                _ = origin.preservingPresentation(currentPeer).startStandalone(next: { currentPeer in
-                    guard let currentPeer else { return }
-                    let chatPeer = currentPeer._asPeer()
-                    var peers = message.peers
-                    peers[peer.id] = peer
-                    peers[chatPeer.id] = chatPeer
-                    let message = message.withUpdatedPeers(peers)
-                    guard Self.canModerate(message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue) else { return }
+                let messageId = message.id
+                let currentState = context.engine.data.get(TelegramEngine.EngineData.Item.Messages.Message(id: messageId), TelegramEngine.EngineData.Item.Peer.Peer(id: messageId.peerId)) |> deliverOnMainQueue
+                _ = origin.preservingPresentation(currentState).startStandalone(next: { currentMessage, currentPeer in
+                    guard let message = reactionPeerModerationMessage(messageId: messageId, message: currentMessage?._asMessage(), peer: currentPeer?._asPeer()),
+                          Self.canModerate(message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue) else { return }
                     let confirmationPresentation = origin.beginPresentation()
-                    verifyAlert(for: context.window, header: strings().deleteGroupMessagesDeleteReaction, information: peer.displayTitle, ok: strings().confirmDelete, successHandler: { _ in
+                    verifyAlert(for: context.window, header: strings().deleteGroupMessagesDeleteAllReactions, information: reactionPeerModerationConfirmation(peer: peer), ok: strings().confirmDelete, successHandler: { _ in
                         let presentation = origin.beginPresentation()
                         defer { presentation.end() }
-                        let refreshedPeer = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId)) |> deliverOnMainQueue
-                        _ = origin.preservingPresentation(refreshedPeer).startStandalone(next: { refreshedPeer in
-                            guard let refreshedPeer else { return }
-                            var peers = message.peers
-                            peers[refreshedPeer.id] = refreshedPeer._asPeer()
-                            let message = message.withUpdatedPeers(peers)
-                            guard Self.canModerate(message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue) else { return }
-                            _ = origin.preservingPresentation(context.engine.messages.deleteReaction(messageId: message.id, authorId: peer.id)).startStandalone()
+                        let refreshedState = context.engine.data.get(TelegramEngine.EngineData.Item.Messages.Message(id: messageId), TelegramEngine.EngineData.Item.Peer.Peer(id: messageId.peerId)) |> deliverOnMainQueue
+                        _ = origin.preservingPresentation(refreshedState).startStandalone(next: { refreshedMessage, refreshedPeer in
+                            guard let message = reactionPeerModerationMessage(messageId: messageId, message: refreshedMessage?._asMessage(), peer: refreshedPeer?._asPeer()),
+                                  Self.canModerate(message: message, accountPeerId: context.peerId, reactionPeerId: peer.id, reaction: reactionValue) else { return }
+                            _ = origin.preservingPresentation(context.engine.messages.deleteReaction(messageId: messageId, authorId: peer.id)).startStandalone()
                         })
                     }, onDeinit: {
                         confirmationPresentation.end()
