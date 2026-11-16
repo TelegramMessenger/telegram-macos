@@ -40,7 +40,9 @@ public class MGalleryPhotoItem: MGalleryItem {
     private let livePhotoStatusDisposable = MetaDisposable()
     private let livePhotoRotateDisposable = MetaDisposable()
     private let livePhotoFetching = MetaDisposable()
+    private let fileExtension: String
     public override init(_ context: any AccountContextProtocol, _ entry: GalleryEntry, _ pagerSize: NSSize) {
+        var file: TelegramMediaFile?
         switch entry {
         case .message(let entry):
             // Rich messages carry their media inside the instant page (`message.media` is empty),
@@ -54,6 +56,7 @@ public class MGalleryPhotoItem: MGalleryItem {
                 if case let .Loaded(content) = webpage.content, let image = content.image {
                     self.media = image
                 } else if case let .Loaded(content) = webpage.content, let media = content.file  {
+                    file = media
                     let represenatation = TelegramMediaImageRepresentation(dimensions: media.dimensions ?? PixelDimensions(0, 0), resource: media.resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false)
                     var representations = media.previewRepresentations
                     representations.append(represenatation)
@@ -64,6 +67,7 @@ public class MGalleryPhotoItem: MGalleryItem {
                 }
             } else {
                 if let media = media as? TelegramMediaFile {
+                    file = media
                     let represenatation = TelegramMediaImageRepresentation(dimensions: media.dimensions ?? PixelDimensions(0, 0), resource: media.resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false)
                     var representations = media.previewRepresentations
                     representations.append(represenatation)
@@ -81,6 +85,7 @@ public class MGalleryPhotoItem: MGalleryItem {
             self.secureIdAccessContext = document.context
         case .media(let media, _, _):
             if let media = media as? TelegramMediaFile {
+                file = media
                 let represenatation = TelegramMediaImageRepresentation(dimensions: media.dimensions ?? PixelDimensions(0, 0), resource: media.resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false)
                 var representations = media.previewRepresentations
                 representations.append(represenatation)
@@ -94,6 +99,11 @@ public class MGalleryPhotoItem: MGalleryItem {
         }
         
         self.representation = media.representationForDisplayAtSize(PixelDimensions(NSMakeSize(1280, 1280)))!
+        if let file = file, self.representation.resource.id == file.resource.id {
+            self.fileExtension = MGalleryPhotoItem.fileExtension(for: file)
+        } else {
+            self.fileExtension = kMediaImageExt
+        }
         if let message = entry.message, !message.containsSecretMedia {
             self.livePhotoVideo = media.video
         } else {
@@ -132,6 +142,19 @@ public class MGalleryPhotoItem: MGalleryItem {
                 }
             }))
         }
+    }
+
+    static func fileExtension(for file: TelegramMediaFile) -> String {
+        if let ext = file.fileName?.nsstring.pathExtension, !ext.isEmpty {
+            return ext
+        }
+        if let ext = fileExt(file.mimeType) {
+            return ext
+        }
+        if let type = UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, file.mimeType as CFString, nil)?.takeRetainedValue(), let ext = UTTypeCopyPreferredTagWithClass(type, kUTTagClassFilenameExtension)?.takeRetainedValue() {
+            return ext as String
+        }
+        return kMediaImageExt
     }
 
     public var isLivePhoto: Bool {
@@ -361,9 +384,9 @@ public class MGalleryPhotoItem: MGalleryItem {
                 
             }
             
-            path.set(context.account.postbox.mediaBox.resourceData(representation.resource) |> mapToSignal { resource -> Signal<String, NoError> in
+            path.set(context.account.postbox.mediaBox.resourceData(representation.resource) |> mapToSignal { [fileExtension] resource -> Signal<String, NoError> in
                 if resource.complete {
-                    return .single(link(path:resource.path, ext:kMediaImageExt)!)
+                    return .single(link(path:resource.path, ext:fileExtension)!)
                 }
                 return .never()
             })
