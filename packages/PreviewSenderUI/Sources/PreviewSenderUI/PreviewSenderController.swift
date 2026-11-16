@@ -61,8 +61,12 @@ fileprivate struct PreviewSendingState : Hashable {
         return spoilerOverrides[url] ?? isSpoiler
     }
 
+    func canHaveSpoiler(_ media: Media) -> Bool {
+        return state == .media && payAmount == nil && Sender.canHaveSpoiler(media)
+    }
+
     func spoiler(for url: URL, media: Media, override: Bool? = nil) -> Bool {
-        return state == .media && payAmount == nil && Sender.canHaveSpoiler(media) && (override ?? isSpoiler(for: url))
+        return canHaveSpoiler(media) && (override ?? isSpoiler(for: url))
     }
 
     func withToggledSpoiler(for url: URL) -> PreviewSendingState {
@@ -1419,7 +1423,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
 
     private func flushPendingRenderSend() {
-        guard !isRenderingEdit, let pending = pendingRenderSend, getMediaUrls() == urls, isMediaStateCurrent(), !getMedias().contains(where: isPreviewPlaceholder) else { return }
+        guard !isRenderingEdit, let pending = pendingRenderSend, let preview = currentPreviewState, !preview.medias.contains(where: isPreviewPlaceholder) else { return }
         pendingRenderSend = nil
         genericView.sendButton.alphaValue = 1.0
         pending()
@@ -1454,8 +1458,18 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
     
     var getMedias:()->[Media] = { return [] }
-    private var getMediaUrls: () -> [URL] = { return [] }
-    private var isMediaStateCurrent: () -> Bool = { return true }
+    private var getPreviewState: () -> PreviewState? = { return nil }
+    private var currentPreviewState: PreviewState? {
+        guard let preview = getPreviewState(), preview.urls == urls, preview.currentState == genericView.state else { return nil }
+        let mediaCount = preview.currentState.state == .archive ? 1 : preview.urls.count
+        guard !preview.urls.isEmpty, preview.medias.count == mediaCount else { return nil }
+        return preview
+    }
+
+    private func canSendAsSpoiler(_ preview: PreviewState) -> Bool {
+        return !isRenderingEdit && chatInteraction.peerId.namespace != Namespaces.Peer.SecretChat && preview.medias.contains(where: preview.currentState.canHaveSpoiler)
+    }
+
     var updateCustomPreview:(String, String?)->Void = { _, _ in }
 
     fileprivate var previews: [String: String] = [:] {
@@ -1466,8 +1480,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
     }
     
     fileprivate var allMediaHaveSpoilers: Bool {
+        guard let preview = getPreviewState(), preview.urls == urls else { return false }
         let state = genericView.state
-        let eligibleUrls = zip(getMediaUrls(), getMedias()).filter { Sender.canHaveSpoiler($0.1) }.map { $0.0 }
+        let eligibleUrls = zip(preview.urls, preview.medias).filter { state.canHaveSpoiler($0.1) }.map { $0.0 }
         return !eligibleUrls.isEmpty && eligibleUrls.allSatisfy { state.isSpoiler(for: $0) }
     }
 
@@ -1641,16 +1656,21 @@ public class PreviewSenderController: ModalViewController, Notifable {
             self.genericView.sendButton.shake(beep: false)
             return
         }
-        if isRenderingEdit || getMediaUrls() != urls || !isMediaStateCurrent() {
+        let preview = currentPreviewState
+        if isRenderingEdit || (appFile == nil && preview == nil) {
             pendingRenderSend = { [weak self] in
                 self?.send(silent, atDate: atDate, asSpoiler: asSpoiler, via: via)
             }
             genericView.sendButton.alphaValue = 0.5
             return
         }
+        if asSpoiler == true, preview.map(canSendAsSpoiler) != true {
+            genericView.sendButton.shake(beep: false)
+            return
+        }
         pendingActions.invalidate()
         analyticsMediaJourney?.retrySubmissionIfBlocked()
-        if self.getMedias().contains(where: isPreviewPlaceholder) {
+        if preview?.medias.contains(where: isPreviewPlaceholder) == true {
             analyticsMediaJourney?.submissionBlocked(.preparation)
             self.genericView.sendButton.shake(beep: false)
             return
@@ -1859,9 +1879,11 @@ public class PreviewSenderController: ModalViewController, Notifable {
                             }, itemImage: MenuAnimation.menu_online.value))
                         }
                         
-                        items.append(ContextMenuItem(strings().previewSenderSendAsSpoiler, handler: { [weak self] in
-                            self?.send(false, asSpoiler: true, via: .sendMenu)
-                        }, itemImage: MenuAnimation.menu_send_spoiler.value))
+                        if let preview = self.currentPreviewState, self.canSendAsSpoiler(preview) {
+                            items.append(ContextMenuItem(strings().previewSenderSendAsSpoiler, handler: { [weak self] in
+                                self?.send(false, asSpoiler: true, via: .sendMenu)
+                            }, itemImage: MenuAnimation.menu_send_spoiler.value))
+                        }
                         
                         
                     }
@@ -2086,12 +2108,8 @@ public class PreviewSenderController: ModalViewController, Notifable {
         self.getMedias = {
             return stateValue.with { $0.medias }
         }
-        self.getMediaUrls = {
-            return stateValue.with { $0.urls }
-        }
-        self.isMediaStateCurrent = { [weak self] in
-            guard let self else { return false }
-            return stateValue.with { $0.urls == self.urls && $0.currentState == self.genericView.state }
+        self.getPreviewState = {
+            return stateValue.with { $0 }
         }
         
         self.updateCustomPreview = { [weak self] path, preview in
@@ -2400,34 +2418,35 @@ public class PreviewSenderController: ModalViewController, Notifable {
         self.sendCurrentMedia = { [weak self] silent, atDate, asSpoiler, via in
             guard let self, !self.pendingActions.isClosed, !self.sent, self.validateSendSource() else { return }
             
-            if stateValue.with({ $0.medias.contains(where: isPreviewPlaceholder) }) {
+            guard !self.isRenderingEdit, let preview = self.currentPreviewState, !preview.medias.contains(where: isPreviewPlaceholder) else {
                 self.analyticsMediaJourney?.submissionBlocked(.preparation)
                 self.genericView.sendButton.shake(beep: false)
                 return
             }
-            
+            if asSpoiler == true, !self.canSendAsSpoiler(preview) {
+                self.genericView.sendButton.shake(beep: false)
+                return
+            }
+
+            let state = preview.currentState
+            let medias = preview.medias
+            let urls = preview.urls
             let slowMode = self.chatInteraction.presentation.slowMode
             let inputState = self.genericView.textView.interactions.presentation
-            
+            let canHaveCaption = medias.count == 1 ? medias[0].canHaveCaption : state.isCollage && !medias.isEmpty
+
             if let slowMode = slowMode, slowMode.hasLocked {
                 self.analyticsMediaJourney?.submissionBlocked(.slowMode)
                 self.genericView.textView.shake()
-            } else if self.inputPlaceholder != strings().previewSenderCaptionPlaceholder && slowMode != nil && inputState.inputText.length > 0 {
+            } else if (!canHaveCaption || medias.count > 10) && slowMode != nil && inputState.inputText.length > 0 {
                 self.analyticsMediaJourney?.submissionBlocked(.slowMode)
                 tooltip(for: self.genericView.sendButton, text: strings().slowModeMultipleError)
                 self.genericView.textView.selectAll()
                 self.genericView.textView.shake()
             } else {
                 let peer = self.chatInteraction.peer
-                let state = stateValue.with { $0.currentState }
-                let medias = stateValue.with { $0.medias }
-                let urls = stateValue.with { $0.urls }
                 let spoilers = medias.enumerated().map { index, media in
                     !isSecretChat && state.spoiler(for: urls[index], media: media, override: asSpoiler)
-                }
-                if medias.contains(where: isPreviewPlaceholder) {
-                    self.analyticsMediaJourney?.submissionBlocked(.preparation)
-                    return
                 }
                 var permissions:[(String, Int)] = []
                 for i in 0 ..< medias.count {
@@ -2459,11 +2478,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 }
                 var additionalMessage: ChatTextInputState? = nil
                 
-                if (medias.count > 1  || (medias.count == 1 && (!medias[0].canHaveCaption))) && !input.inputText.isEmpty  {
-                    if !state.isCollage {
-                        additionalMessage = input
-                        input = ChatTextInputState()
-                    }
+                if !canHaveCaption && !state.isCollage && !medias.isEmpty && !input.inputText.isEmpty {
+                    additionalMessage = input
+                    input = ChatTextInputState()
                 }
                 if additionalMessage != nil, let text = permissionText(from: peer, for: .banSendText, cachedData: chatInteraction.presentation.cachedData) {
                     permissions.insert((text, -1), at: 0)

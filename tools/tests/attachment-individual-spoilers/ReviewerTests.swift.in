@@ -1,0 +1,220 @@
+func reviewerFixture(_ count: Int = 3, grouped: Bool = true) -> (TestController, Atomic<PreviewState>) {
+    let controller = fixture(count, grouped: grouped)
+    let prepared = Atomic(value: controller.state())
+    controller.installPreviewSender(prepared)
+    return (controller, prepared)
+}
+
+func queuedDeletion() {
+    let (controller, prepared) = reviewerFixture()
+    let queue = HeldPreparationQueue()
+    controller.urls.removeFirst()
+    let next = controller.state()
+    queue.enqueue { _ = prepared.modify { $0.apply(transition: UpdateTransition(deleted: [0]), urls: next.urls, state: next.currentState) } }
+    var released = false
+    prepared.afterRead = { count in
+        if count == 3 {
+            released = true
+            queue.release()
+        }
+    }
+    controller.sendCurrentMedia?(false, nil, nil, .enter)
+    check(controller.context.account.batches.isEmpty, "queued deletion blocks the stale send snapshot")
+    if !released { queue.release() }
+    prepared.afterRead = nil
+    controller.sendCurrentMedia?(false, nil, nil, .enter)
+    check(controller.context.account.batches.flatMap { $0.compactMap { $0.media?.name } } == next.medias.map { $0.name }, "deletion sends only the validated surviving media")
+}
+
+func reviewerTests() {
+    for mode in [PreviewSendingState.State.media, .file, .archive] {
+        let (controller, prepared) = reviewerFixture()
+        controller.genericView.state = controller.genericView.state.withUpdatedState(mode)
+        _ = prepared.swap(controller.state())
+        check(controller.sendMenu().count == (mode == .media ? 1 : 0), "send menu matches mode eligibility for \(mode)")
+        controller.sendCurrentMedia?(false, nil, true, .sendMenu)
+        check(mode == .media ? sentFlags(controller) == [true, true, true] : controller.context.account.batches.isEmpty, "explicit spoiler send cannot dispatch visibly in \(mode)")
+        resetSent(controller)
+        controller.sendCurrentMedia?(false, nil, nil, .enter)
+        check(controller.context.account.batches.flatMap { $0.compactMap { $0.media } }.count == (mode == .archive ? 1 : 3), "ordinary \(mode) send preserves its media cardinality")
+    }
+    for excluded in [TelegramMediaFile("round", video: true, round: true), TelegramMediaFile("sticker", video: true, sticker: true), TelegramMediaFile("animated", animatedSticker: true), TelegramMediaFile("document")] {
+        let (controller, prepared) = reviewerFixture(1)
+        controller.mediaByUrl[controller.urls[0]] = excluded
+        _ = prepared.swap(controller.state())
+        check(controller.sendMenu().isEmpty, "send menu excludes \(excluded.name)")
+        controller.sendCurrentMedia?(false, nil, true, .sendMenu)
+        check(controller.context.account.batches.isEmpty, "explicit spoiler rejects \(excluded.name)")
+    }
+    let (mixed, mixedState) = reviewerFixture()
+    mixed.mediaByUrl[mixed.urls[1]] = TelegramMediaFile("document")
+    _ = mixedState.swap(mixed.state())
+    check(mixed.sendMenu().count == 1, "mixed selection offers spoiler for eligible media")
+    mixed.sendMenu().first?.handler()
+    check(sentFlags(mixed) == [true, false, true], "send menu dispatch hides every eligible item in a mixed selection")
+
+    let (staleMenu, staleState) = reviewerFixture()
+    let action = staleMenu.sendMenu().first
+    staleMenu.genericView.state = staleMenu.genericView.state.withUpdatedState(.file)
+    action?.handler()
+    check(staleMenu.context.account.batches.isEmpty && staleMenu.pendingRenderSend != nil, "mode change defers a captured menu action before preparation")
+    _ = staleState.swap(staleMenu.state())
+    staleMenu.flushPendingRenderSend()
+    check(staleMenu.context.account.batches.isEmpty && staleMenu.pendingRenderSend == nil, "deferred explicit spoiler action rejects file mode after preparation")
+
+    let (paid, paidState) = reviewerFixture()
+    paid.genericView.state = paid.genericView.state.withUpdatedPayAmount(10)
+    _ = paidState.swap(paid.state())
+    check(paid.sendMenu().isEmpty, "paid selection has no spoiler send action")
+    let (secret, secretState) = reviewerFixture()
+    secret.chatInteraction.peerId = PeerId(namespace: Namespaces.Peer.SecretChat)
+    secret.installPreviewSender(secretState)
+    check(secret.sendMenu().isEmpty, "secret selection has no spoiler send action")
+    secret.sendCurrentMedia?(false, nil, true, .sendMenu)
+    check(secret.context.account.batches.isEmpty, "explicit spoiler rejects a secret selection")
+
+    for change in ["spoiler", "mode", "grouping", "sort", "paid"] {
+        let (controller, prepared) = reviewerFixture()
+        switch change {
+        case "spoiler": controller.genericView.state = controller.genericView.state.withUpdatedIsSpoiler(true)
+        case "mode": controller.genericView.state = controller.genericView.state.withUpdatedState(.file)
+        case "grouping": controller.genericView.state = controller.genericView.state.withUpdatedIsCollage(false)
+        case "sort": controller.genericView.state = controller.genericView.state.withUpdatedSort(.up)
+        default: controller.genericView.state = controller.genericView.state.withUpdatedPayAmount(1)
+        }
+        controller.sendCurrentMedia?(false, nil, nil, .enter)
+        check(controller.context.account.batches.isEmpty, "final dispatch revalidates prepared \(change) state")
+        resetSent(controller)
+        if change != "paid" {
+            _ = prepared.swap(controller.state())
+            controller.sendCurrentMedia?(false, nil, nil, .enter)
+            check(controller.context.account.batches.flatMap { $0.compactMap { $0.media } }.count == 3, "matching \(change) generation dispatches")
+        }
+    }
+    let (reorder, reorderedState) = reviewerFixture()
+    reorder.genericView.state = reorder.genericView.state.withToggledSpoiler(for: reorder.urls[0])
+    _ = reorderedState.swap(reorder.state())
+    let queue = HeldPreparationQueue()
+    reorder.urls.move(at: 0, to: 2)
+    let reordered = reorder.state()
+    queue.enqueue { _ = reorderedState.modify { $0.apply(transition: UpdateTransition(updated: Array(reordered.medias.enumerated())), urls: reordered.urls, state: reordered.currentState) } }
+    var released = false
+    reorderedState.afterRead = { count in
+        if count == 3 { released = true; queue.release() }
+    }
+    reorder.sendCurrentMedia?(false, nil, nil, .enter)
+    check(reorder.context.account.batches.isEmpty, "equal-count queued reorder cannot pair old media with new URLs")
+    if !released { queue.release() }
+    reorderedState.afterRead = nil
+    resetSent(reorder)
+    reorder.sendCurrentMedia?(false, nil, nil, .enter)
+    check(sentFlags(reorder) == [false, false, true], "reordered send follows the selected URL")
+    check(reorder.context.account.batches.flatMap { $0.compactMap { $0.media?.name } } == reordered.medias.map { $0.name }, "reordered dispatch preserves media identity")
+
+    let (consistent, consistentState) = reviewerFixture()
+    consistent.genericView.state = consistent.genericView.state.withToggledSpoiler(for: consistent.urls[1])
+    let accepted = consistent.state()
+    _ = consistentState.swap(accepted)
+    let consistencyQueue = HeldPreparationQueue()
+    consistencyQueue.enqueue {
+        _ = consistentState.modify { $0.apply(transition: UpdateTransition(deleted: [0]), urls: Array(accepted.urls.dropFirst()), state: accepted.currentState) }
+    }
+    var consistencyReleased = false
+    consistentState.afterRead = { count in
+        if count == 1 { consistencyReleased = true; consistencyQueue.release() }
+    }
+    consistent.sendCurrentMedia?(false, nil, nil, .enter)
+    if !consistencyReleased { consistencyQueue.release() }
+    consistentState.afterRead = nil
+    check(consistent.context.account.batches.flatMap { $0.compactMap { $0.media?.name } } == accepted.medias.map { $0.name }, "a queued transition after snapshot acquisition cannot change captured dispatch identity")
+    check(sentFlags(consistent) == [false, true, false], "captured dispatch spoiler indices stay aligned after a background transition")
+
+    let (malformed, malformedState) = reviewerFixture()
+    let valid = malformed.state()
+    _ = malformedState.swap(PreviewState(urls: valid.urls, medias: Array(valid.medias.dropLast()), currentState: valid.currentState, editedData: [:]))
+    malformed.sendCurrentMedia?(false, nil, nil, .enter)
+    check(malformed.context.account.batches.isEmpty, "mismatched snapshot cardinality is rejected, not truncated")
+
+    let (pending, pendingState) = reviewerFixture()
+    pending.genericView.state = pending.genericView.state.withToggledSpoiler(for: pending.urls[1])
+    pending.send(false, asSpoiler: false, via: .sendMenu)
+    check(pending.pendingRenderSend != nil && pending.context.account.batches.isEmpty, "outer send holds the current generation and explicit false override")
+    _ = pendingState.swap(pending.state())
+    pending.flushPendingRenderSend()
+    check(sentFlags(pending) == [false, false, false] && pending.dispatchVia == [.sendMenu], "pending send preserves override and submission origin")
+    check(pending.genericView.state.isSpoiler(for: pending.urls[1]), "send override leaves individual state unchanged")
+    resetSent(pending)
+    pending.genericView.state = pending.genericView.state.withUpdatedIsSpoiler(false)
+    pending.send(true, atDate: .init(date: Date(timeIntervalSince1970: 2000), repeatPeriod: 60), asSpoiler: true, via: .sendMenu)
+    _ = pendingState.swap(pending.state())
+    pending.flushPendingRenderSend()
+    check(sentFlags(pending) == [true, true, true], "pending send preserves explicit true override")
+    check(pending.context.account.batches.flatMap { $0 }.allSatisfy { $0.attributes.contains { $0 is NotificationInfoMessageAttribute } && $0.attributes.contains { $0 is OutgoingScheduleInfoMessageAttribute } }, "pending send preserves silent and scheduling flags")
+
+    let (rendering, renderState) = reviewerFixture()
+    rendering.isRenderingEdit = true
+    check(rendering.sendMenu().isEmpty, "rendering does not offer spoiler send")
+    rendering.sendCurrentMedia?(false, nil, nil, .enter)
+    check(rendering.context.account.batches.isEmpty, "final dispatch waits for editor render")
+    resetSent(rendering)
+    rendering.isRenderingEdit = false
+    let oldPlaceholder = PlaceholderMedia("old-placeholder")
+    let newPlaceholder = PlaceholderMedia("new-placeholder")
+    let current = rendering.state()
+    _ = renderState.swap(PreviewState(urls: current.urls, medias: [newPlaceholder] + Array(current.medias.dropFirst()), currentState: current.currentState, editedData: [:]))
+    applyPrepared(Atomic(value: [(oldPlaceholder as Media, TelegramMediaImage("obsolete") as Media)]), to: renderState)
+    check(renderState.with { $0.medias[0] === newPlaceholder && $0.currentState == current.currentState && $0.urls == current.urls }, "old preparation cannot replace a newer generation placeholder")
+    rendering.sendCurrentMedia?(false, nil, nil, .enter)
+    check(rendering.context.account.batches.isEmpty, "placeholder snapshot blocks dispatch")
+    applyPrepared(Atomic(value: [(newPlaceholder as Media, TelegramMediaImage("ready") as Media)]), to: renderState)
+    check(renderState.with { $0.medias[0].name == "ready" && $0.currentState == current.currentState && $0.urls == current.urls }, "current preparation preserves URLs and sending state")
+    rendering.sendCurrentMedia?(false, nil, nil, .enter)
+    check(rendering.context.account.batches.flatMap { $0.compactMap { $0.media?.name } }.first == "ready", "matching final preparation reaches dispatch")
+
+    for count in [1, 2, 10, 11] {
+        for grouped in [false, true] {
+            let (controller, prepared) = reviewerFixture(count, grouped: grouped)
+            controller.genericView.state = controller.genericView.state.withUpdatedState(.file)
+            for url in controller.urls { controller.mediaByUrl[url] = TelegramMediaFile("file-\(url.path)") }
+            _ = prepared.swap(controller.state())
+            controller.chatInteraction.presentation.slowMode = SlowMode(hasLocked: false)
+            controller.genericView.textView.interactions.presentation.inputText = "caption"
+            controller.sendCurrentMedia?(false, nil, nil, .enter)
+            let allowed = count <= 10 && (count == 1 || grouped)
+            check(!controller.context.account.batches.isEmpty == allowed, "slow-mode file caption count \(count), grouped \(grouped)")
+            if allowed {
+                check(controller.context.account.batches.flatMap { $0 }.filter { !$0.text.isEmpty }.map { $0.text } == ["caption"], "file caption stays in exactly one outgoing message")
+                check(controller.context.account.batches.flatMap { $0 }.allSatisfy { $0.media != nil }, "file caption is not a second text message")
+            }
+            resetSent(controller)
+            controller.chatInteraction.presentation.slowMode = SlowMode(hasLocked: true)
+            controller.sendCurrentMedia?(false, nil, nil, .enter)
+            check(controller.context.account.batches.isEmpty, "active cooldown blocks count \(count), grouped \(grouped)")
+        }
+    }
+    let appFile = fixture(0)
+    appFile.appFile = TelegramMediaFile("app-file")
+    appFile.getPreviewState = { nil }
+    var appFileDispatches = 0
+    appFile.sendCurrentMedia = { _, _, _, _ in appFileDispatches += 1 }
+    check(appFile.sendMenu().isEmpty, "preexisting app-file path offers no spoiler action")
+    appFile.send(false)
+    check(appFileDispatches == 1, "ordinary app-file dispatch does not require a URL snapshot")
+    appFile.send(false, asSpoiler: true)
+    check(appFileDispatches == 1, "explicit spoiler cannot use the app-file bypass")
+
+    let (plain, plainState) = reviewerFixture(2, grouped: false)
+    plain.genericView.textView.interactions.presentation.inputText = "comment"
+    plain.sendCurrentMedia?(false, nil, nil, .enter)
+    check(plain.context.account.batches.flatMap { $0 }.first?.media == nil, "ungrouped caption remains a separate comment outside slow mode")
+    check(plain.context.account.batches.flatMap { $0 }.first?.spoiler == false, "separate comment does not inherit spoilers")
+    _ = plainState
+}
+
+if CommandLine.arguments.contains("--queued-deletion") {
+    queuedDeletion()
+    let result: [String: Any] = ["checks": checks, "failures": failures, "passed": failures.isEmpty]
+    print(String(decoding: try! JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]), as: UTF8.self))
+    exit(failures.isEmpty ? 0 : 1)
+}
+if !@@BASELINE_MODE@@ { reviewerTests() }

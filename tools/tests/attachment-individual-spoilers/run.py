@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--core-git-dir", type=Path)
     parser.add_argument("--baseline", action="store_true")
+    parser.add_argument("--reviewer-baseline", action="store_true")
     parser.add_argument("--compiler-lock", type=Path)
     args = parser.parse_args()
     root = args.source_root.resolve()
@@ -86,11 +87,14 @@ def main():
     input_texts = {}
     input_origins = {}
 
+    baseline = "adf9afc783c7b83ca49c746862304286fb7d317a" if args.reviewer_baseline else BASELINE
+
     def read(path):
         file = root / path
-        if args.baseline or not file.is_file():
-            text = subprocess.check_output(["git", "-C", str(harness_root), "show", BASELINE + ":" + path], text=True)
-            input_origins[path] = BASELINE
+        if args.baseline or args.reviewer_baseline or not file.is_file():
+            revision = baseline if args.baseline or args.reviewer_baseline else subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            text = subprocess.check_output(["git", "-C", str(root), "show", revision + ":" + path], text=True)
+            input_origins[path] = revision
         else:
             text = file.read_text()
             input_origins[path] = str(file)
@@ -133,10 +137,39 @@ def main():
     block("GLOBAL_MENU", PREVIEW + "PreviewSenderController.swift", controller, "if canSpoiler {")
     resort_start = controller.index("complete: {", controller.index("TableResortController(resortRange:"))
     pieces["TABLE_REORDER"] = excerpt("TABLE_REORDER", PREVIEW + "PreviewSenderController.swift", balanced(controller, resort_start + len("complete: ")))
-    if "self.isMediaStateCurrent = {" in controller:
+    if "self.getPreviewState = {" in controller:
+        block("CURRENT_STATE_BINDING", PREVIEW + "PreviewSenderController.swift", controller, "self.getPreviewState = {")
+        pieces["CURRENT_STATE_BINDING"] += "\nself.isMediaStateCurrent = { [weak self] in self?.currentPreviewState != nil }"
+    elif "self.isMediaStateCurrent = {" in controller:
         block("CURRENT_STATE_BINDING", PREVIEW + "PreviewSenderController.swift", controller, "self.isMediaStateCurrent = {")
     else:
         pieces["CURRENT_STATE_BINDING"] = "self.isMediaStateCurrent = { true }"
+    for name, marker in [("PREVIEW_SNAPSHOT", "private var currentPreviewState:"), ("SEND_ELIGIBILITY", "private func canSendAsSpoiler(")]:
+        if marker in controller:
+            block(name, PREVIEW + "PreviewSenderController.swift", controller, marker)
+        else:
+            pieces[name] = ""
+    menu_start = controller.index("                        if let preview = self.currentPreviewState", controller.index("contextChatInteraction.sendMessageMenu")) if "if let preview = self.currentPreviewState" in controller else controller.index("items.append(ContextMenuItem(strings().previewSenderSendAsSpoiler")
+    menu = balanced(controller, menu_start) if "if let preview = self.currentPreviewState" in controller else balanced(controller, menu_start, "(", ")")
+    pieces["SEND_MENU"] = excerpt("SEND_MENU", PREVIEW + "PreviewSenderController.swift", menu)
+    entry_start = controller.index("self.sendCurrentMedia = { [weak self] silent, atDate, asSpoiler, via in")
+    entry_end = controller.index("                var permissions:", entry_start)
+    pieces["SEND_ENTRY"] = excerpt("SEND_ENTRY", PREVIEW + "PreviewSenderController.swift", controller[entry_start:entry_end])
+    input_start = controller.index("                var input:ChatTextInputState", entry_end)
+    input_end = controller.index("                if additionalMessage != nil", input_start)
+    pieces["SEND_INPUT"] = excerpt("SEND_INPUT", PREVIEW + "PreviewSenderController.swift", controller[input_start:input_end])
+    send_start = controller.index("    func send(_ silent:")
+    send_end = controller.index("        let text =", send_start)
+    pieces["SEND_GATE"] = excerpt("SEND_GATE", PREVIEW + "PreviewSenderController.swift", controller[send_start:send_end])
+    block("FLUSH_PENDING", PREVIEW + "PreviewSenderController.swift", controller, "private func flushPendingRenderSend()")
+    block("PREVIEW_STATE", PREVIEW + "PreviewSenderController.swift", controller, "private struct PreviewState :")
+    block("PREVIEW_STATE_EQUAL", PREVIEW + "PreviewSenderController.swift", controller, "private func == (lhs: PreviewState,")
+    block("APPLY_PREPARED", PREVIEW + "PreviewSenderController.swift", controller, "let applyPreparedMedias: () -> Void = {")
+    block("MEDIA_BINDING", PREVIEW + "PreviewSenderController.swift", controller, "self.getMedias = {")
+    if "self.getMediaUrls = {" in controller:
+        block("URL_BINDING", PREVIEW + "PreviewSenderController.swift", controller, "self.getMediaUrls = {")
+    else:
+        pieces["URL_BINDING"] = ""
     block("INTERACTIVE_BINDING", PREVIEW + "PreviewSenderController.swift", controller, "self.genericView.stateValueInteractiveUpdate = {")
     block("MEDIA_WRAPPING", PREVIEW + "PreviewSenderController.swift", controller, "let makeMedia:([Media], Bool)->[Media]")
     send_start = controller.index("if state.isCollage && medias.count > 1 {")
@@ -180,10 +213,12 @@ def main():
     pieces["SPOILER_ATTRIBUTE"] = excerpt("SPOILER_ATTRIBUTE", CORE + ":" + core_path, balanced(attribute, attribute.index("public class MediaSpoilerMessageAttribute")))
     pieces["BASELINE_MODE"] = "false" if enhanced else "true"
     pieces["EDITOR_WIRING"] = str(controller.count("self.replaceAttachmentUrl(at: index, with: new)"))
-    pieces["SEND_STATE_GUARD"] = "true" if "getMediaUrls() != urls || !isMediaStateCurrent()" in controller and "self.genericView.state = state\n            let isPreparing" not in controller else "false"
+    pieces["SEND_STATE_GUARD"] = "true" if ("getMediaUrls() != urls || !isMediaStateCurrent()" in controller or "appFile == nil && preview == nil" in controller) and "self.genericView.state = state\n            let isPreparing" not in controller else "false"
     pieces["SNAPSHOT_BINDING"] = "true" if "arguments.reorder(urls[from], urls[to])" in controller else "false"
     pieces["TABLE_REORDER_GUARD"] = "true" if "guard urls.indices.contains(from), urls.indices.contains(to)" in pieces["TABLE_REORDER"] else "false"
     template = (Path(__file__).parent / "Tests.swift.in").read_text()
+    reviewer_tests = (Path(__file__).parent / "ReviewerTests.swift.in").read_text()
+    template = template.replace("let basic = fixture(3)", (reviewer_tests if enhanced else "") + "\nlet basic = fixture(3)")
     for name, text in pieces.items():
         template = template.replace("@@" + name + "@@", text)
     unexpanded = re.findall(r"@@[A-Z_]+@@", template)
@@ -191,7 +226,7 @@ def main():
         raise ValueError("Unexpanded markers: " + str(unexpanded))
     materialized = out / "Tests.swift"
     materialized.write_text(template)
-    manifest = {"baseline": BASELINE, "pinned_core": CORE, "source_root": str(root), "baseline_requested": args.baseline, "input_origins": input_origins, "inputs": inputs, "extracts": extracts, "visibility_only_rewrite": True, "fixture_sha256": hashlib.sha256(template.encode()).hexdigest()}
+    manifest = {"baseline": baseline, "pinned_core": CORE, "source_root": str(root), "baseline_requested": args.baseline or args.reviewer_baseline, "input_origins": input_origins, "inputs": inputs, "extracts": extracts, "visibility_only_rewrite": True, "fixture_sha256": hashlib.sha256(template.encode()).hexdigest()}
     (out / "extraction.json").write_text(json.dumps(manifest, indent=2) + "\n")
     report = {"source_root": str(root), "baseline_adapter": not enhanced, "compiler_lock": str(compiler_lock), "compiled": False, "passed": False}
     compiler = subprocess.check_output(["xcrun", "--find", "swiftc"], text=True).strip()
@@ -226,7 +261,11 @@ def main():
             report["behavior"] = json.loads(run.stdout)
         except json.JSONDecodeError:
             report["behavior"] = {"error": "No JSON behavior result"}
-        report["passed"] = parse.returncode == 0 and run.returncode == 0
+        if enhanced:
+            deletion = subprocess.run([str(out / "Tests"), "--queued-deletion"], text=True, capture_output=True)
+            (out / "queued-deletion.log").write_text(deletion.stdout + deletion.stderr)
+            report["queued_deletion_exit"] = deletion.returncode
+        report["passed"] = parse.returncode == 0 and run.returncode == 0 and report.get("queued_deletion_exit", 0) == 0
     (out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     return 0 if report["passed"] else 1

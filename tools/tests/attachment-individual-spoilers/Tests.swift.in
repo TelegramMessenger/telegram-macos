@@ -13,10 +13,42 @@ func deliverOnMainQueue<T>(_ signal: Signal<T, NoError>) -> Signal<T, NoError> {
 func take<T>(_ count: Int) -> (Signal<T, NoError>) -> Signal<T, NoError> { { $0 } }
 func map<A, B>(_ f: @escaping (A) -> B) -> (Signal<A, NoError>) -> Signal<B, NoError> { { .single(f($0.value)) } }
 final class Atomic<Value> {
-    var value: Value
+    private var value: Value
+    private let lock = NSLock()
+    var afterRead: ((Int) -> Void)?
+    private var reads = 0
     init(value: Value) { self.value = value }
-    func with<T>(_ f: (Value) -> T) -> T { f(value) }
-    func swap(_ updated: Value) -> Value { let old = value; value = updated; return old }
+    func with<T>(_ f: (Value) -> T) -> T {
+        lock.lock()
+        let result = f(value)
+        reads += 1
+        let count = reads
+        lock.unlock()
+        afterRead?(count)
+        return result
+    }
+    func swap(_ updated: Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        let old = value
+        value = updated
+        return old
+    }
+    func modify(_ f: (Value) -> Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        value = f(value)
+        return value
+    }
+}
+final class HeldPreparationQueue {
+    private let queue = DispatchQueue(label: "spoiler-fixture-prepare")
+    private let gate = DispatchSemaphore(value: 0)
+    private let completed = DispatchSemaphore(value: 0)
+    func enqueue(_ action: @escaping () -> Void) {
+        queue.async { self.gate.wait(); action(); self.completed.signal() }
+    }
+    func release() { gate.signal(); completed.wait() }
 }
 final class ValuePromise<T> {
     var value: T?
@@ -62,6 +94,7 @@ class Media {
     init(_ name: String, id: Int = 0) { self.name = name; self.id = .init(value: id) }
     var isInteractiveMedia: Bool { self is TelegramMediaImage || (self as? TelegramMediaFile)?.isVideo == true }
     var probablySticker: Bool { false }
+    var canHaveCaption: Bool { !((self as? TelegramMediaFile)?.isSticker == true || (self as? TelegramMediaFile)?.isInstantVideo == true) }
     func isEqual(to other: Media) -> Bool { name == other.name && type(of: self) == type(of: other) }
 }
 final class TelegramMediaImage: Media {}
@@ -170,15 +203,20 @@ final class AnalyticsMediaJourney {
     enum Spec {
         enum MediaMode { case media, file, archive }
         enum Step { case toggleSpoiler, removeMedia, reorderMedia }
+        enum SubmitVia { case unknown, sendMenu, enter }
     }
+    enum Blocked { case preparation, slowMode }
+    func submissionBlocked(_ value: Blocked) {}
+    func retrySubmissionIfBlocked() {}
     func step(_ value: Spec.Step) {}
     func selected(count: Int, mode: Spec.MediaMode) {}
 }
 struct ChatLocation { static func peer(_ id: PeerId) -> Self { Self() } }
 final class ChatInteraction {
     struct Schedule { let date: Date; let repeatPeriod: Int32? }
-    struct Presentation { var slowMode: Int?; var interfaceState = ChatInterfaceStateForFixture() }
-    let peerId = PeerId(0)
+    struct Presentation { var slowMode: SlowMode?; var interfaceState = ChatInterfaceStateForFixture() }
+    var peerId = PeerId(0)
+    var peer: Int? = nil
     var presentation = Presentation()
     init(chatLocation: ChatLocation = .peer(PeerId(0)), context: any AccountContextProtocol) {}
     func captureAnalyticsContext(inherited: AnalyticsContext) -> AnalyticsContext { inherited }
@@ -196,6 +234,9 @@ typealias TelegramPresentationTheme = Theme
 let theme = Theme()
 struct EditedImageData: Equatable {}
 struct Strings {
+    let previewSenderSendAsSpoiler = "Send as Spoiler"
+    let previewSenderCaptionPlaceholder = "Caption"
+    let slowModeMultipleError = "Slow mode multiple messages"
     let previewSenderSpoilerTooltipEnable = "Hide with Spoiler"
     let previewSenderSpoilerTooltipDisable = "Disable Spoiler"
     let voiceOverCommonEdit = "Edit"
@@ -267,12 +308,19 @@ final class GroupedLayout {
 @@VIDEO_EDITABLE@@
 @@STATE@@
 @@ARGUMENTS@@
-struct PreviewState {
-    let urls: [URL]
-    let medias: [Media]
-    let currentState: PreviewSendingState
-    let editedData: [URL: EditedImageData]
-    var renderingPreviews: [URL: CGImage] = [:]
+struct UpdateTransition<T> {
+    var deleted: [Int] = []
+    var inserted: [(Int, T)] = []
+    var updated: [(Int, T)] = []
+}
+@@PREVIEW_STATE@@
+@@PREVIEW_STATE_EQUAL@@
+final class PlaceholderMedia: Media {}
+func isPreviewPlaceholder(_ media: Media) -> Bool { media is PlaceholderMedia }
+func applyPrepared(_ preparedMedias: Atomic<[(Media, Media)]>, to stateValue: Atomic<PreviewState>) {
+    let updateState: ((PreviewState) -> PreviewState) -> Void = { f in _ = stateValue.modify(f) }
+@@APPLY_PREPARED@@
+    applyPreparedMedias()
 }
 @@ENTRY_ID@@
 @@ENTRY@@
@@ -308,13 +356,33 @@ final class FixtureTable {
     enum Scroll { case up(Bool) }
     func scroll(to: Scroll) {}
 }
+struct SlowMode { let hasLocked: Bool }
+final class FixtureButton {
+    var alphaValue: Double = 1
+    var shakes = 0
+    func shake(beep: Bool = false) { shakes += 1 }
+}
+struct FixtureInput {
+    var inputText = ""
+    func textInputState() -> ChatTextInputState { .init(inputText: inputText) }
+}
+final class FixtureTextView {
+    struct Interactions { var presentation = FixtureInput() }
+    var interactions = Interactions()
+    var shakes = 0
+    func shake(beep: Bool = false) { shakes += 1 }
+    func selectAll() {}
+}
+func tooltip(for button: FixtureButton, text: String) {}
 final class PreviewView {
     let tableView = FixtureTable()
+    let sendButton = FixtureButton()
+    let textView = FixtureTextView()
     var stateValueInteractiveUpdate: ((PreviewSendingState) -> Void)?
     var state = PreviewSendingState(state: .media, isCollage: true, isSpoiler: false, sort: .down, payAmount: nil)
     var canSpoiler = true
     weak var controller: TestController?
-    func updateWithSlowMode(_ slowMode: Int?, urlsCount: Int) {}
+    func updateWithSlowMode(_ slowMode: SlowMode?, urlsCount: Int) {}
     func globalMenu() -> [ContextMenuItem] {
         let newValue = state
         let menu = ContextMenu()
@@ -341,7 +409,21 @@ final class TestController {
     var runEditor: ((URL, Bool) -> Void)?
     var closed = false
     var isMediaStateCurrent: () -> Bool = { true }
+    lazy var getPreviewState: () -> PreviewState? = { [unowned self] in self.state() }
+    lazy var getMedias: () -> [Media] = { [unowned self] in self.urls.map { self.mediaByUrl[$0]! } }
+    lazy var getMediaUrls: () -> [URL] = { [unowned self] in self.urls }
+    var isRenderingEdit = false
+    var pendingRenderSend: (() -> Void)?
+    var appFile: Media? = nil
+    var sendCurrentMedia: ((Bool, ChatInteraction.Schedule?, Bool?, AnalyticsMediaJourney.Spec.SubmitVia) -> Void)?
+    var dispatchVia: [AnalyticsMediaJourney.Spec.SubmitVia] = []
+    var inputPlaceholder: String { genericView.state.state == .media && genericView.state.isCollage || urls.count == 1 ? strings().previewSenderCaptionPlaceholder : "Comment" }
+@@PREVIEW_SNAPSHOT@@
+@@SEND_ELIGIBILITY@@
+@@FLUSH_PENDING@@
     func bindPreparedState(_ stateValue: Atomic<PreviewState>) {
+@@MEDIA_BINDING@@
+@@URL_BINDING@@
 @@CURRENT_STATE_BINDING@@
     }
     func bindInteractiveState() {
@@ -353,8 +435,6 @@ final class TestController {
         return @@TABLE_REORDER@@
     }
     func cachedSenderOptions(_ urls: [URL]) -> [PreviewOptions] { [.media] }
-    func getMedias() -> [Media] { urls.map { mediaByUrl[$0]! } }
-    func getMediaUrls() -> [URL] { urls }
     func validateSendSource() -> Bool { true }
     func closeModal() { closed = true }
 @@URLS@@
@@ -367,7 +447,10 @@ final class TestController {
 @@ARGUMENT_CREATION@@
         return arguments
     }
-    func state() -> PreviewState { .init(urls: urls, medias: getMedias(), currentState: genericView.state, editedData: [:]) }
+    func state() -> PreviewState {
+        let medias = genericView.state.state == .archive ? [TelegramMediaFile("archive")] : urls.map { mediaByUrl[$0]! }
+        return .init(urls: urls, medias: medias, currentState: genericView.state, editedData: [:])
+    }
     func rows() -> [TableRowItem] { let state = state(); return previewMediaEntries(state).map { $0.item(arguments: arguments(), state: state, initialSize: NSSize(width: 320, height: 500)) } }
     func installChatSender() {
         let context = self.context
@@ -392,6 +475,29 @@ final class TestController {
         let resultGroup: ResultGroup? = nil
 @@STORY_PREFIX@@
         _ = @@STORY_CALL@@
+        }
+    }
+    func sendMenu() -> [ContextMenuItem] {
+        guard chatInteraction.peerId.namespace != Namespaces.Peer.SecretChat else { return [] }
+        var items: [ContextMenuItem] = []
+@@SEND_MENU@@
+        return items
+    }
+@@SEND_GATE@@
+        sendCurrentMedia?(silent, atDate, asSpoiler, via)
+    }
+    func installPreviewSender(_ stateValue: Atomic<PreviewState>) {
+        bindPreparedState(stateValue)
+        let isSecretChat = chatInteraction.peerId.namespace == Namespaces.Peer.SecretChat
+@@SEND_ENTRY@@
+@@SEND_INPUT@@
+                let amount = state.payAmount
+@@MEDIA_WRAPPING@@
+                let effect: AvailableMessageEffects.MessageEffect? = nil
+                let submission: AnalyticsMediaSubmission? = nil
+                self.dispatchVia.append(via)
+@@SEND_BRANCH@@
+            }
         }
     }
     func submit(override: Bool? = nil, caption: String = "caption", additional: String? = nil) {
