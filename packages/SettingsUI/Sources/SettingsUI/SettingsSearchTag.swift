@@ -14,6 +14,7 @@ struct SettingsSearchEnvironment {
     var passkeysAvailable: Bool = true
     var loginEmailAvailable: Bool = true
     var hasWebSessions: Bool = true
+    var hasCurrentSession: Bool = true
     var secretChatWebPreviewAvailable: Bool = true
     var chatBackgroundAvailable: Bool = true
     var dockIconAvailable: Bool = true

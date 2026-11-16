@@ -28,6 +28,12 @@ public enum NotificationsAndSoundsEntryTag: ItemListItemTag {
     case messagePreviews
     case includeChannels
     case includeMutedChats
+    case includePublicGroups
+    case toggleNotifications
+    case bounceDockIcon
+    case snoof
+    case acceptSecretChats
+    case acceptCalls
     case unreadCountCategory
     case joinedNotifications
     case reset
@@ -50,6 +56,18 @@ public enum NotificationsAndSoundsEntryTag: ItemListItemTag {
             return .general(_id_include_channels)
         case .includeMutedChats:
             return .general(_id_include_muted_chats)
+        case .includePublicGroups:
+            return .general(_id_include_public_group)
+        case .toggleNotifications:
+            return .general(_id_notifications)
+        case .bounceDockIcon:
+            return .general(_id_bounce)
+        case .snoof:
+            return .general(_id_snoof)
+        case .acceptSecretChats:
+            return .general(_id_accept_secret_chats)
+        case .acceptCalls:
+            return .general(_id_accept_calls)
         case .unreadCountCategory:
             return .general(_id_count_unred_messages)
         case .joinedNotifications:

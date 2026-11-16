@@ -224,6 +224,10 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
         |> map { !$0.sessions.isEmpty }
         |> distinctUntilChanged
     
+    let hasCurrentSession = context.activeSessionsContext.state
+        |> map { $0.sessions.contains(where: { $0.isCurrent }) }
+        |> distinctUntilChanged
+    
     let hasPassport: Signal<Bool, NoError> = .single(false) |> then(context.engine.auth.twoStepVerificationConfiguration() |> map { configuration -> Bool in
         if case let .set(_, _, _, hasSecureValues, _) = configuration {
             return hasSecureValues
@@ -288,11 +292,12 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             return .single(false)
         })
     
-    let facts = combineLatest(baseSettings, contentConfiguration, hasWebSessions, combineLatest(hasPassport, hasLoginEmail))
+    let facts = combineLatest(baseSettings, contentConfiguration, combineLatest(hasWebSessions, hasCurrentSession), combineLatest(hasPassport, hasLoginEmail))
     
     return combineLatest(accountsInfo, localizations, proxyServers, privacySettings, facts)
         |> map { accountsInfo, localizations, proxyServers, privacySettings, facts in
-            let (baseSettings, contentConfiguration, hasWebSessions, passportAndEmail) = facts
+            let (baseSettings, contentConfiguration, sessionFacts, passportAndEmail) = facts
+            let (hasWebSessions, hasCurrentSession) = sessionFacts
             let (hasPassport, hasLoginEmail) = passportAndEmail
             
             var allItems: [SettingsSearchableItem<Context>] = []
@@ -314,6 +319,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
                 passkeysAvailable: privacyPasskeysAvailable(context: context),
                 loginEmailAvailable: loginEmailAvailable,
                 hasWebSessions: hasWebSessions,
+                hasCurrentSession: hasCurrentSession,
                 secretChatWebPreviewAvailable: FastSettings.isSecretChatWebPreviewAvailable(for: context.account.id.int64) != nil,
                 chatBackgroundAvailable: theme.bubbled,
                 dockIconAvailable: dockIconAvailable,

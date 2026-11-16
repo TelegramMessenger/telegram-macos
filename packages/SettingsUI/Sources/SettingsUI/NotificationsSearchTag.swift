@@ -13,6 +13,14 @@ enum NotificationSearchTag: CaseIterable {
     case reset
     case allAccounts
     case defaultSound
+    case toggleNotifications
+    case bounceDockIcon
+    case snoof
+    case messageEffect
+    case badgeEnabled
+    case includePublicGroups
+    case acceptSecretChats
+    case acceptCalls
     case category(NotificationSettingsCategory, NotificationCategoryEntryTag?)
     case reactions(ReactionNotificationEntryTag?)
     
@@ -34,7 +42,7 @@ enum NotificationSearchTag: CaseIterable {
     }
     
     static var allCases: [NotificationSearchTag] {
-        var result: [NotificationSearchTag] = [.messagePreviews, .includeChannels, .unreadCount, .contactJoined, .reset, .allAccounts, .defaultSound]
+        var result: [NotificationSearchTag] = [.toggleNotifications, .messagePreviews, .defaultSound, .bounceDockIcon, .snoof, .acceptSecretChats, .acceptCalls, .messageEffect, .badgeEnabled, .includePublicGroups, .includeChannels, .unreadCount, .contactJoined, .reset, .allAccounts]
         for (category, _) in categories {
             result.append(.category(category, nil))
             for row in categoryRows(category) {
@@ -89,6 +97,22 @@ extension NotificationSearchTag: SettingsSearchTag {
             focus = .allAccounts
         case .defaultSound:
             focus = .tone
+        case .toggleNotifications:
+            focus = .toggleNotifications
+        case .bounceDockIcon:
+            focus = .bounceDockIcon
+        case .snoof:
+            focus = .snoof
+        case .messageEffect:
+            focus = .messageEffect
+        case .badgeEnabled:
+            focus = .badgeEnabled
+        case .includePublicGroups:
+            focus = .includePublicGroups
+        case .acceptSecretChats:
+            focus = .acceptSecretChats
+        case .acceptCalls:
+            focus = .acceptCalls
         case nil:
             focus = nil
         }
@@ -111,6 +135,22 @@ extension NotificationSearchTag: SettingsSearchTag {
             return strings().notificationSettingsAllAccounts
         case .defaultSound:
             return strings().notificationSettingsThisDeviceDefaultSound
+        case .toggleNotifications:
+            return strings().notificationSettingsToggleNotifications
+        case .bounceDockIcon:
+            return strings().notificationSettingsBounceDockIcon
+        case .snoof:
+            return strings().notificationSettingsSnoof
+        case .messageEffect:
+            return strings().notificationSettingsSendMessageEffect
+        case .badgeEnabled:
+            return strings().notificationSettingsBadgeEnabled
+        case .includePublicGroups:
+            return strings().notificationSettingsIncludeGroups
+        case .acceptSecretChats:
+            return strings().sessionPreviewAcceptSecret
+        case .acceptCalls:
+            return strings().sessionPreviewAcceptCalls
         case let .category(category, entryTag):
             guard let entryTag = entryTag else {
                 return category.title
@@ -144,11 +184,15 @@ extension NotificationSearchTag: SettingsSearchTag {
     var searchBreadcrumbs: [String] {
         let root = strings().accountSettingsNotifications
         switch self {
-        case .messagePreviews, .defaultSound:
+        case .toggleNotifications, .messagePreviews, .defaultSound, .bounceDockIcon:
             return [root, strings().notificationSettingsThisDeviceHeader]
-        case .includeChannels, .unreadCount:
+        case .badgeEnabled, .includePublicGroups, .includeChannels, .unreadCount:
             return [root, strings().notificationSettingsBadgeHeader]
-        case .contactJoined, .reset, .allAccounts:
+        case .messageEffect:
+            return [root, strings().notificationSettingsSoundEffects]
+        case .acceptSecretChats, .acceptCalls:
+            return [root, strings().sessionPreviewAcceptHeader]
+        case .snoof, .contactJoined, .reset, .allAccounts:
             return [root]
         case let .category(category, entryTag):
             return [root, entryTag == nil ? strings().notificationSettingsMessageNotifications : category.title]
@@ -158,10 +202,14 @@ extension NotificationSearchTag: SettingsSearchTag {
     }
     
     func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
-        if case .allAccounts = self {
+        switch self {
+        case .allAccounts:
             return environment.hasMultipleAccounts
+        case .acceptSecretChats, .acceptCalls:
+            return environment.hasCurrentSession
+        default:
+            return true
         }
-        return true
     }
     
     var searchIndex: Int32 {
@@ -180,6 +228,22 @@ extension NotificationSearchTag: SettingsSearchTag {
             return 23
         case .defaultSound:
             return 24
+        case .toggleNotifications:
+            return 1
+        case .messageEffect:
+            return 3
+        case .badgeEnabled:
+            return 4
+        case .bounceDockIcon:
+            return 5
+        case .snoof:
+            return 6
+        case .acceptSecretChats:
+            return 7
+        case .acceptCalls:
+            return 8
+        case .includePublicGroups:
+            return 18
         case let .category(category, entryTag):
             let base: Int32
             switch category {
