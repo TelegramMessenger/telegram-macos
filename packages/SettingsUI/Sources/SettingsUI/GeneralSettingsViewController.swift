@@ -457,7 +457,6 @@ public enum GeneralSettingsEntryTag: Int32 {
     case spellingWhileTyping = 2
     case grammarWithSpelling = 3
     case correctSpelling = 4
-    case sidebar = 5
     case emojiReplacements = 6
     case predictEmoji = 7
     case bigEmoji = 8
@@ -487,8 +486,6 @@ public enum GeneralSettingsEntryTag: Int32 {
             return GeneralSettingsEntry.checkGrammarWithSpelling(sectionId: 0, enabled: false, key: "", viewType: .singleItem).stableId
         case .correctSpelling:
             return GeneralSettingsEntry.correctSpellingAutomatically(sectionId: 0, enabled: false, key: "", viewType: .singleItem).stableId
-        case .sidebar:
-            return GeneralSettingsEntry.sidebar(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .emojiReplacements:
             return GeneralSettingsEntry.emojiReplacements(sectionId: 0, enabled: false, viewType: .singleItem).stableId
         case .predictEmoji:
@@ -563,8 +560,6 @@ extension GeneralSettingsEntryTag: SettingsSearchTag {
             return strings().generalSettingsSpellingCheckGrammarSpelling
         case .correctSpelling:
             return strings().generalSettingsSpellingCheckSpellingAutomatically
-        case .sidebar:
-            return strings().generalSettingsEnableSidebar
         case .emojiReplacements:
             return strings().generalSettingsEmojiReplacements
         case .predictEmoji:
