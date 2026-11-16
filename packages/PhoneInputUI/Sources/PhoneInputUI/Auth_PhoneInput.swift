@@ -168,7 +168,51 @@ public final class Auth_CountryManager {
     }
 }
 
+final class PhoneInputFieldEditor: NSTextView {
+    var shouldInsert: ((String) -> Bool)?
+    
+    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        if let replacementString = replacementString, let shouldInsert = shouldInsert, !shouldInsert(replacementString) {
+            return false
+        }
+        return super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
+    }
+}
+
+final class PhoneInputTextFieldCell: NSTextFieldCell {
+    let editor: PhoneInputFieldEditor = {
+        let editor = PhoneInputFieldEditor()
+        editor.isFieldEditor = true
+        editor.isRichText = false
+        editor.importsGraphics = false
+        editor.allowsUndo = true
+        return editor
+    }()
+    
+    override func fieldEditor(for controlView: NSView) -> NSTextView? {
+        return editor
+    }
+}
+
 final class PhoneInputTextField : NSTextField {
+    override class var cellClass: AnyClass? {
+        get {
+            return PhoneInputTextFieldCell.self
+        }
+        set {
+            super.cellClass = newValue
+        }
+    }
+    
+    var shouldInsert: ((String) -> Bool)? {
+        get {
+            return (cell as? PhoneInputTextFieldCell)?.editor.shouldInsert
+        }
+        set {
+            (cell as? PhoneInputTextFieldCell)?.editor.shouldInsert = newValue
+        }
+    }
+    
     public var didUpdateResponder: (()->Void)? = nil
     
     public var isFirstResponder: Bool = false
@@ -195,7 +239,6 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     
     let codeText:PhoneInputTextField = PhoneInputTextField()
     let numberText:PhoneInputTextField = PhoneInputTextField()
-    private var lastCodeDigits: String = ""
 
     
     public var manager: Auth_CountryManager = .init([]) {
@@ -267,6 +310,19 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         numberText.delegate = self
         numberText.nextResponder = codeText
         numberText.nextKeyView = codeText
+        
+        codeText.shouldInsert = { [weak self] text in
+            guard let self = self else {
+                return true
+            }
+            return self.shouldInsert(text, into: self.codeText)
+        }
+        numberText.shouldInsert = { [weak self] text in
+            guard let self = self else {
+                return true
+            }
+            return self.shouldInsert(text, into: self.numberText)
+        }
         
         addSubview(placeholder)
         addSubview(codeText)
@@ -374,7 +430,6 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         country.sizeToFit()
         if updateCode {
             codeText.stringValue = selectedCode.flatMap { "+\($0.code)" } ?? "+"
-            lastCodeDigits = selectedCode?.code ?? ""
         }
         needsLayout = true
     }
@@ -383,19 +438,38 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         if !hasChanges {
             self.codeText.stringValue = "\(countryCode)"
             self.numberText.stringValue = formatPhoneNumber(number)
-            self.lastCodeDigits = "\(countryCode)"
         }
         needsLayout = true
     }
     
     private var hasChanges: Bool = false
     
+    private func shouldInsert(_ text: String, into field: PhoneInputTextField) -> Bool {
+        let digits = text.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+        if digits.isEmpty {
+            return true
+        }
+        let isInternational = text.contains("+")
+        guard isInternational || (field == codeText && digits.count > 4) else {
+            return true
+        }
+        hasChanges = true
+        if digits.count > 4 {
+            numberText.stringValue = ""
+        }
+        codeText.stringValue = "+" + digits
+        window?.makeFirstResponder(codeText)
+        codeText.setCursorToEnd()
+        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: codeText, userInfo: nil))
+        updatePhoneNumber?(codeText.stringValue + numberText.stringValue)
+        return false
+    }
+    
     public func controlTextDidChange(_ obj: Notification) {
         if let field = obj.object as? NSTextField {
             hasChanges = true
             let code = codeText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
             let dec = code.prefix(4)
-            let pasted = code.count - lastCodeDigits.count > 1
             if field == codeText {
                 if code.length > 4 {
                     if let (item, itemCode) = manager.item(byNumber: code, preferred: preferredCountryIdForCode) {
@@ -403,8 +477,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                         codeText.stringValue = "+" + itemCode.code
                         update(selected: item, update: true, updateCode: false, code: itemCode)
                         
-                        let existing = pasted ? "" : numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-                        let text = rest + existing
+                        let text = rest + numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
                         let formated = formatNationalNumber(String(text.prefix(17)), code: itemCode).prefix(17)
                         numberText.stringValue = formated
                         window?.makeFirstResponder(numberText)
@@ -426,7 +499,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                     }
                 }
                 
-            } else if field == numberText, let item = self.selected, !numberText.stringValue.contains("+") {
+            } else if field == numberText, let item = self.selected {
                 let current = numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
 
                 let match = manager.item(byNumber: String(dec) + current, preferred: preferredCountryIdForCode)
@@ -449,7 +522,6 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             }
             
         }
-        lastCodeDigits = codeText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
         updatePlaceholder()
         needsLayout = true
     }
