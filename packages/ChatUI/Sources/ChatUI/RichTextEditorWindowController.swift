@@ -88,10 +88,7 @@ private func richTextSendMenuItems(chatInteraction: ChatInteraction, analyticsCo
 }
 
 func richTextThreadReplySubject(chatInteraction: ChatInteraction) -> EngineMessageReplySubject? {
-    guard let threadId = chatInteraction.chatLocation.threadId, !chatInteraction.isMonoforum, threadId != Message.newTopicThreadId else {
-        return nil
-    }
-    return .init(messageId: MessageId(peerId: chatInteraction.peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId)), quote: nil, innerSubject: nil)
+    return makeThreadReplySubject(peerId: chatInteraction.peerId, threadId: chatInteraction.chatLocation.threadId, isMonoforum: chatInteraction.isMonoforum)
 }
 
 private func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute], analyticsContext: AnalyticsContext) {
