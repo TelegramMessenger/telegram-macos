@@ -153,6 +153,55 @@ extension DocumentCanvasView {
 
     // MARK: - Clipboard (plaintext, CRLF-flattened — multi-line paragraph paste is a later phase)
 
+    private func selectedCellPlainText(_ stack: BlockStack, from lo: Int, to hi: Int) -> String? {
+        let parts = stack.leafRegions().compactMap { region -> String? in
+            let a = max(lo, region.globalStart), b = min(hi, region.globalStart + region.length)
+            if a < b {
+                let text = region.layout.attributedString.string as NSString
+                return text.substring(with: NSRange(location: a - region.globalStart, length: b - a))
+            }
+            if region.length == 0, lo <= region.globalStart, region.globalStart <= hi { return "" }
+            return nil
+        }
+        if !parts.isEmpty { return parts.joined(separator: "\n") }
+        if stack.boxes.isEmpty, lo <= stack.baseOffset, stack.baseOffset < hi { return "" }
+        return nil
+    }
+
+    private func plainTextWithTableBoundaries(in boxes: [CanvasBlock], from lo: Int, to hi: Int) -> String {
+        boxes.map { box -> String in
+            let a = max(lo, box.nodeStart), b = min(hi, box.nodeStart + box.nodeSize)
+            guard a < b else { return "" }
+            if let table = box as? TableBlockBox {
+                return table.cells.compactMap { row -> String? in
+                    let cells = row.compactMap { selectedCellPlainText($0, from: lo, to: hi) }
+                    return cells.isEmpty ? nil : cells.joined(separator: "\t")
+                }.joined(separator: "\n")
+            }
+            if let quote = box as? BlockQuoteBox, !quote.collapsed {
+                return plainTextWithTableBoundaries(in: quote.children.boxes, from: lo, to: hi)
+            }
+            return box.leafRegions().map { region -> String in
+                let a = max(lo, region.globalStart), b = min(hi, region.globalStart + region.length)
+                guard a < b else { return "" }
+                let text = region.layout.attributedString.string as NSString
+                return text.substring(with: NSRange(location: a - region.globalStart, length: b - a))
+            }.joined()
+        }.joined()
+    }
+
+    private func structuralTablePlainText() -> String? {
+        guard let selection = tableSelection, let table = activeTable()?.box, table.id == selection.table else { return nil }
+        return table.cells.enumerated().compactMap { row, cells -> String? in
+            if case let .rows(range) = selection.kind, !range.contains(row) { return nil }
+            let selectedCells = cells.enumerated().compactMap { column, stack -> String? in
+                if case let .columns(range) = selection.kind, !range.contains(column) { return nil }
+                return selectedCellPlainText(stack, from: 0, to: documentSize) ?? ""
+            }
+            return selectedCells.joined(separator: "\t")
+        }.joined(separator: "\n")
+    }
+
     /// Copy the current selection to the pasteboard: a rich `DocumentCodec` fragment (for attribute-
     /// preserving paste back into the editor) AND plain text (for other apps). `string` is set first because
     /// its setter clears the pasteboard; `richFragment` then adds the private type without clearing.
@@ -165,11 +214,12 @@ extension DocumentCanvasView {
             // destructive delete. Write the selection's plain text instead, exactly as the UIKit editor's
             // `writeSelectionToPasteboard` does for a fragment-less selection. Paste-back is unaffected:
             // the plain branch of `pasteFromPasteboard` routes through the region-aware `replace`.
-            if selFrom < selTo { pasteboard.string = text(inGlobalRange: selFrom, selTo) }
+            if selFrom < selTo { pasteboard.string = plainTextWithTableBoundaries(in: boxes, from: selFrom, to: selTo) }
             return
         }
         // Plain text: the selected text, or (for a structural/table fragment) the fragment flattened.
-        pasteboard.string = (selFrom < selTo) ? text(inGlobalRange: selFrom, selTo) : Self.plainText(of: fragment)
+        pasteboard.string = structuralTablePlainText()
+            ?? ((selFrom < selTo) ? plainTextWithTableBoundaries(in: boxes, from: selFrom, to: selTo) : Self.plainText(of: fragment))
         if let data = try? DocumentCodec.encode(Document(blocks: fragment)) {
             pasteboard.richFragment = data
         }
