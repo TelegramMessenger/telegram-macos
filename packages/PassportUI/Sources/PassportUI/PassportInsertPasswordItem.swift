@@ -79,11 +79,6 @@ private final class PassportInsertPasswordField : NSSecureTextField {
         set {}
     }
     
-    override func resignFirstResponder() -> Bool {
-        (self.delegate as? PassportInsertPasswordRowView)?.controlTextDidBeginEditing(Notification(name: NSControl.textDidChangeNotification))
-        return super.resignFirstResponder()
-    }
-    
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
         clearEditorNow()
@@ -241,20 +236,6 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
   
     }
     
-    private func clearEditorBackground() {
-        if let editor = (input.currentEditor() as? NSTextView) ?? input.textView {
-            clearFieldEditorBackground(editor)
-        }
-    }
-    
-    func controlTextDidBeginEditing(_ obj: Notification) {
-        clearEditorBackground()
-    }
-    
-    func controlTextDidEndEditing(_ obj: Notification) {
-        clearEditorBackground()
-    }
-    
     override func layout() {
         super.layout()
         backdrop.frame = bounds
@@ -276,7 +257,6 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
             (self?.window as? Window)?.applyResponderIfNeeded()
             self?.input.shake()
             self?.input.textView?.selectAllText()
-            self?.clearEditorBackground()
         }))
     }
     
@@ -314,7 +294,6 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
         if let window = window as? Window {
             window.applyResponderIfNeeded()
         }
-        clearEditorBackground()
     }
     
     override var firstResponder: NSResponder? {
