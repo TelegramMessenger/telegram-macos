@@ -3228,12 +3228,12 @@ public class PassportController: GenericViewController<PassportControllerView> {
                     for relative in relative {
                         values.append(ValuesSelectorValue<SecureIdRequestedFormFieldValue>(localized: editSettings.hasValue(relative) ? relative.descEdit : relative.descAdd, value: relative))
                     }
-                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdIdentityDocument, headerInset: 56, onComplete: { selected in
+                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdIdentityDocument, onComplete: { selected in
                         push(selected.value, selected.value == .address ? nil : selected.value, selected.value == .address)
                     }), for: context.window)
                 } else if relative.count > 1 {
                     let values:[ValuesSelectorValue<SecureIdRequestedFormFieldValue>] = relative.map({ValuesSelectorValue(localized: $0.rawValue, value: $0)})
-                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdResidentialAddress, headerInset: 56, onComplete: { selected in
+                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdResidentialAddress, onComplete: { selected in
                         filePanel(with: photoExts,for: context.window, completion: { files in
                             if let files = files {
                                 push(request.primary, selected.value, request.fillPrimary)
@@ -3561,12 +3561,12 @@ public class PassportController: GenericViewController<PassportControllerView> {
                     for relative in relative {
                         values.append(ValuesSelectorValue<SecureIdRequestedFormFieldValue>(localized: editSettings.hasValue(relative) ? relative.descEdit : relative.descAdd, value: relative))
                     }
-                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdIdentityDocument, headerInset: 56, onComplete: { selected in
+                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdIdentityDocument, onComplete: { selected in
                         push(selected.value, selected.value.valueKey == .personalDetails ? nil : selected.value, selected.value.valueKey == .personalDetails ? .personalDetails(nativeName: true) : nil)
                     }), for: context.window)
                 } else if relative.count > 1 {
                     let values:[ValuesSelectorValue<SecureIdRequestedFormFieldValue>] = relative.map({ValuesSelectorValue(localized: $0.rawValue, value: $0)})
-                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdIdentityDocument, headerInset: 56, onComplete: { selected in
+                    showModal(with: ValuesSelectorModalController(values: values, selected: values[0], title: strings().secureIdIdentityDocument, onComplete: { selected in
                         if let relativeValue = relativeValue, relativeValue.frontSideVerificationDocument != nil {
                             push(request.primary, selected.value, request.fillPrimary ? request.primary : nil)
                         } else {
