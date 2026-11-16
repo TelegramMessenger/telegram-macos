@@ -49,7 +49,12 @@ public func downloadFilePath(_ file: TelegramMediaFile, _ postbox: Postbox, perm
             ext = fileExt(file.mimeType) ?? ""
         }
         let name = fileName.nsstring.deletingPathExtension + (ext.isEmpty ? "" : "." + ext)
-        let directory = settings.usesTemporaryDownloadFolder && !permanent ? DownloadedFileStorage.temporaryDirectory(mediaBoxPath: postbox.mediaBox.basePath) : settings.downloadFolder
+        let directory: String
+        if settings.usesTemporaryDownloadFolder {
+            directory = permanent ? AutomaticMediaDownloadSettings.defaultSettings.downloadFolder : DownloadedFileStorage.temporaryDirectory(mediaBoxPath: postbox.mediaBox.basePath)
+        } else {
+            directory = settings.downloadFolder
+        }
         return (data.path, URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(name).path)
     }
 }
