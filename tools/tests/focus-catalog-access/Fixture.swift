@@ -1,4 +1,11 @@
 import Foundation
+#if canImport(Darwin)
+import MachO
+#endif
+
+private enum FixtureError: Error {
+    case injectedCheckerMissing
+}
 
 @main
 private enum Fixture {
@@ -6,6 +13,9 @@ private enum Fixture {
         let arguments = CommandLine.arguments
         let directory = URL(fileURLWithPath: arguments[2])
         let application = URL(fileURLWithPath: arguments[3])
+        if arguments[1].hasPrefix("injected-") {
+            try verifyInjectedChecker()
+        }
         if arguments[1] == "state" {
             let reader = try? FocusCatalogAccessReader(storageDirectory: directory, applicationBundleURL: application)
             print(String(describing: reader?.state ?? .unavailable))
@@ -16,8 +26,17 @@ private enum Fixture {
             print(reader?.isAccessible ?? false)
             return
         }
-        if arguments[1] == "reader" {
-            let reader = try FocusCatalogAccessReader(storageDirectory: directory, applicationBundleURL: application)
+        if arguments[1] == "reader" || arguments[1] == "injected-reader" {
+            let reader: FocusCatalogAccessReader
+            #if canImport(Darwin)
+            if arguments[1] == "injected-reader" {
+                reader = try FocusCatalogAccessReader(storageDirectory: directory, extensionBundle: .main)
+            } else {
+                reader = try FocusCatalogAccessReader(storageDirectory: directory, applicationBundleURL: application)
+            }
+            #else
+            reader = try FocusCatalogAccessReader(storageDirectory: directory, applicationBundleURL: application)
+            #endif
             print("ready")
             fflush(stdout)
             while readLine() != nil {
@@ -55,5 +74,17 @@ private enum Fixture {
             print("done")
             fflush(stdout)
         }
+    }
+
+    private static func verifyInjectedChecker() throws {
+        #if canImport(Darwin)
+        guard let header = _dyld_get_image_header(0), header.pointee.filetype == MH_DYLIB,
+              let name = _dyld_get_image_name(0),
+              URL(fileURLWithPath: String(cString: name)).lastPathComponent == "libMainThreadChecker.dylib" else {
+            throw FixtureError.injectedCheckerMissing
+        }
+        #else
+        throw FixtureError.injectedCheckerMissing
+        #endif
     }
 }

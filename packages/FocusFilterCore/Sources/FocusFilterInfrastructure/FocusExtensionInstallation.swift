@@ -1,4 +1,5 @@
 import Darwin
+import Darwin.crt_externs
 import Foundation
 import MachO
 
@@ -167,11 +168,10 @@ final class FocusExtensionInstallation {
     }
 
     static func loadedExecutableUUID() -> UUID? {
-        guard let header = _dyld_get_image_header(0) else { return nil }
+        guard let header = _NSGetMachExecuteHeader() else { return nil }
         let value = header.pointee
-        guard value.magic == MH_MAGIC || value.magic == MH_MAGIC_64, value.sizeofcmds <= 1_048_576 else { return nil }
-        let headerSize = value.magic == MH_MAGIC_64 ? MemoryLayout<mach_header_64>.size : MemoryLayout<mach_header>.size
-        let commands = Data(bytes: UnsafeRawPointer(header).advanced(by: headerSize), count: Int(value.sizeofcmds))
+        guard value.magic == MH_MAGIC_64, value.filetype == MH_EXECUTE, value.sizeofcmds <= 1_048_576 else { return nil }
+        let commands = Data(bytes: UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size), count: Int(value.sizeofcmds))
         return commandUUID(commands, count: Int(value.ncmds), littleEndian: true)
     }
 

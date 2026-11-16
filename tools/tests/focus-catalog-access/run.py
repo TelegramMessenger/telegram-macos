@@ -36,12 +36,13 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
     storage = temporary / 'stable'
     processes = []
 
-    def start(kind='owner', app=application, directory=storage):
-        process = subprocess.Popen([str(binary), kind, str(directory), str(app)], stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    def start(kind='owner', app=application, directory=storage, executable_path=binary, environment=None):
+        process = subprocess.Popen([str(executable_path), kind, str(directory), str(app)], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=environment)
         processes.append(process)
         assert select.select([process.stdout], [], [], 5)[0], 'Session initialization must not block'
-        assert process.stdout.readline().strip() == 'ready'
+        response = process.stdout.readline().strip()
+        assert response == 'ready', (response, process.stderr.read() if process.poll() is not None else '')
         return process
 
     def command(process, value, expected=None):
@@ -69,6 +70,32 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         assert process.wait(timeout=5) == 0, process.stderr.read()
 
     try:
+        if platform.system() == 'Darwin':
+            developer = Path(subprocess.check_output(['xcode-select', '-p'], text=True).strip())
+            checker = developer / 'usr/lib/libMainThreadChecker.dylib'
+            assert checker.is_file(), f'Main Thread Checker is required for the injected-image regression: {checker}'
+            environment = os.environ.copy()
+            environment['DYLD_INSERT_LIBRARIES'] = str(checker)
+            injected_storage = temporary / 'injected'
+            injected_owner = start(kind='injected-owner', directory=injected_storage,
+                                   executable_path=executable, environment=environment)
+            injected_reader = start(kind='injected-reader', directory=injected_storage,
+                                    executable_path=extension_executable, environment=environment)
+            reader_value(injected_reader, False)
+            command(injected_owner, 'unlock')
+            reader_value(injected_reader, True)
+            state('accessible', directory=injected_storage)
+            command(injected_owner, 'lock')
+            reader_value(injected_reader, False)
+            state('locked', directory=injected_storage)
+            command(injected_owner, 'unlock')
+            reader_value(injected_reader, True)
+            injected_owner.kill()
+            injected_owner.wait(timeout=5)
+            reader_value(injected_reader, False)
+            state('locked', directory=injected_storage)
+            stop(injected_reader)
+            print('PASS: Main Thread Checker is image zero; production owner and extension-bundle reader preserve lock/unlock/crash admission')
         allowed(False)
         state('locked')
         first = start()
