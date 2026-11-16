@@ -168,7 +168,7 @@ public final class Auth_CountryManager {
     }
 }
 
-private final class TextField : NSTextField {
+final class PhoneInputTextField : NSTextField {
     public var didUpdateResponder: (()->Void)? = nil
     
     public var isFirstResponder: Bool = false
@@ -193,8 +193,9 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     private var selectedCode: Country.CountryCode?
     private let nextView = ImageView()
     
-    private let codeText:TextField = TextField()
-    private let numberText:TextField = TextField()
+    let codeText:PhoneInputTextField = PhoneInputTextField()
+    let numberText:PhoneInputTextField = PhoneInputTextField()
+    private var lastCodeDigits: String = ""
 
     
     public var manager: Auth_CountryManager = .init([]) {
@@ -373,6 +374,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         country.sizeToFit()
         if updateCode {
             codeText.stringValue = selectedCode.flatMap { "+\($0.code)" } ?? "+"
+            lastCodeDigits = selectedCode?.code ?? ""
         }
         needsLayout = true
     }
@@ -381,6 +383,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         if !hasChanges {
             self.codeText.stringValue = "\(countryCode)"
             self.numberText.stringValue = formatPhoneNumber(number)
+            self.lastCodeDigits = "\(countryCode)"
         }
         needsLayout = true
     }
@@ -392,6 +395,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             hasChanges = true
             let code = codeText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
             let dec = code.prefix(4)
+            let pasted = code.count - lastCodeDigits.count > 1
             if field == codeText {
                 if code.length > 4 {
                     if let (item, itemCode) = manager.item(byNumber: code, preferred: preferredCountryIdForCode) {
@@ -399,7 +403,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                         codeText.stringValue = "+" + itemCode.code
                         update(selected: item, update: true, updateCode: false, code: itemCode)
                         
-                        let text = rest + numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                        let existing = pasted ? "" : numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                        let text = rest + existing
                         let formated = formatNationalNumber(String(text.prefix(17)), code: itemCode).prefix(17)
                         numberText.stringValue = formated
                         window?.makeFirstResponder(numberText)
@@ -421,7 +426,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                     }
                 }
                 
-            } else if field == numberText, let item = self.selected {
+            } else if field == numberText, let item = self.selected, !numberText.stringValue.contains("+") {
                 let current = numberText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
 
                 let match = manager.item(byNumber: String(dec) + current, preferred: preferredCountryIdForCode)
@@ -444,6 +449,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             }
             
         }
+        lastCodeDigits = codeText.stringValue.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
         updatePlaceholder()
         needsLayout = true
     }

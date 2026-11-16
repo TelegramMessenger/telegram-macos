@@ -19,6 +19,8 @@ let package = Package(
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
+        .package(name: "ColorPalette", path: "../ColorPalette"),
+        .package(name: "ThemeSettings", path: "../ThemeSettings"),
     ] + deps.map { .package(name: $0.0, path: $0.1) },
     targets: [
         .target(
@@ -34,6 +36,10 @@ let package = Package(
             dependencies: [
                 "PhoneInputUI",
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
+                .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
+                .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil),
+                .product(name: "ColorPalette", package: "ColorPalette", condition: nil),
+                .product(name: "ThemeSettings", package: "ThemeSettings", condition: nil),
             ],
             path: "Tests/PhoneInputUITests"),
     ]
