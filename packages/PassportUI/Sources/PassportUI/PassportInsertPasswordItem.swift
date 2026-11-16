@@ -22,7 +22,62 @@ import OCR
 import FilePanels
 import ObjcUtils
 
+private func clearFieldEditorBackground(_ editor: NSTextView) {
+    editor.drawsBackground = false
+    editor.backgroundColor = .clear
+    editor.insertionPointColor = theme.colors.text
+    editor.wantsLayer = true
+    editor.layer?.backgroundColor = NSColor.clear.cgColor
+    editor.enclosingScrollView?.drawsBackground = false
+    editor.enclosingScrollView?.backgroundColor = .clear
+}
+
+private final class PassportInsertPasswordCell : NSSecureTextFieldCell {
+    override var drawsBackground: Bool {
+        get {
+            return false
+        }
+        set {}
+    }
+    
+    override var backgroundColor: NSColor? {
+        get {
+            return .clear
+        }
+        set {}
+    }
+    
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: rect, in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
+        if let editor = textObj as? NSTextView {
+            clearFieldEditorBackground(editor)
+        }
+    }
+    
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: rect, in: controlView, editor: textObj, delegate: delegate, event: event)
+        if let editor = textObj as? NSTextView {
+            clearFieldEditorBackground(editor)
+        }
+    }
+    
+    override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
+        let editor = super.setUpFieldEditorAttributes(textObj)
+        if let editor = editor as? NSTextView {
+            clearFieldEditorBackground(editor)
+        }
+        return editor
+    }
+}
+
 private final class PassportInsertPasswordField : NSSecureTextField {
+    
+    override class var cellClass: AnyClass? {
+        get {
+            return PassportInsertPasswordCell.self
+        }
+        set {}
+    }
     
     override func resignFirstResponder() -> Bool {
         (self.delegate as? PassportInsertPasswordRowView)?.controlTextDidBeginEditing(Notification(name: NSControl.textDidChangeNotification))
@@ -30,8 +85,28 @@ private final class PassportInsertPasswordField : NSSecureTextField {
     }
     
     override func becomeFirstResponder() -> Bool {
-        (self.delegate as? PassportInsertPasswordRowView)?.controlTextDidEndEditing(Notification(name: NSControl.textDidChangeNotification))
-        return super.becomeFirstResponder()
+        let result = super.becomeFirstResponder()
+        clearEditorNow()
+        DispatchQueue.main.async { [weak self] in
+            self?.clearEditorNow()
+        }
+        return result
+    }
+    
+    override func layout() {
+        super.layout()
+        clearEditorNow()
+    }
+    
+    override func textDidBeginEditing(_ notification: Notification) {
+        super.textDidBeginEditing(notification)
+        clearEditorNow()
+    }
+    
+    private func clearEditorNow() {
+        if let editor = currentEditor() as? NSTextView {
+            clearFieldEditorBackground(editor)
+        }
     }
     
     override func mouseDown(with event: NSEvent) {
@@ -167,10 +242,8 @@ final class PassportInsertPasswordRowView : GeneralRowView, NSTextFieldDelegate 
     }
     
     private func clearEditorBackground() {
-        if let editor = input.textView {
-            editor.drawsBackground = false
-            editor.backgroundColor = .clear
-            editor.insertionPointColor = theme.colors.text
+        if let editor = (input.currentEditor() as? NSTextView) ?? input.textView {
+            clearFieldEditorBackground(editor)
         }
     }
     
