@@ -344,7 +344,7 @@ private let _id_name_color = InputDataIdentifier("_id_name_color")
 
 private let _id_dock_icon = InputDataIdentifier("_id_dock_icon")
 
-private func appAppearanceEntries(appearance: Appearance, state: State, settings: ThemePaletteSettings, cloudThemes: [TelegramTheme], generated:  CloudThemesCachedData, autoNightSettings: AutoNightThemePreferences, animatedEmojiStickers: [String: StickerPackItem], dockIcons: TelegramApplicationIcons, dockSettings: DockSettings, arguments: AppAppearanceViewArguments) -> [InputDataEntry] {
+private func appAppearanceEntries(appearance: Appearance, state: State, settings: ThemePaletteSettings, cloudThemes: [TelegramTheme], generated:  CloudThemesCachedData, autoNightSettings: AutoNightThemePreferences, animatedEmojiStickers: [String: StickerPackItem], dockIcons: TelegramApplicationIcons, dockSettings: DockSettings, liquidGlassActive: Bool, arguments: AppAppearanceViewArguments) -> [InputDataEntry] {
     
     var entries:[InputDataEntry] = []
     var sectionId: Int32 = 0
@@ -513,7 +513,7 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
     #endif
     if appearance.presentation.bubbled, glassBubblesSupported {
         let liteMode = appearance.presentation.liteMode
-        let glassAvailable = !liteMode.enabled && liteMode.liquidGlassEnabled
+        let glassAvailable = liquidGlassActive
         entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_theme_glass_bubbles, data: InputDataGeneralData(name: _NSLocalizedString("Appearance.Settings.GlassBubbles"), color: appearance.presentation.colors.text, type: .switchable(glassAvailable && liteMode.glassBubblesEnabled), viewType: .innerItem, enabled: glassAvailable, action: arguments.toggleGlassBubbles, disabledAction: arguments.alertGlassBubbles)))
         index += 1
     }
@@ -730,7 +730,8 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
             })
         })
     }, alertGlassBubbles: {
-        showModalText(for: context.window, text: _NSLocalizedString("Appearance.Settings.GlassBubbles.RequiresLiquidGlass"))
+        let key = theme.liteMode.liquidGlassEnabled ? "Appearance.Settings.GlassBubbles.PowerSaving" : "Appearance.Settings.GlassBubbles.RequiresLiquidGlass"
+        showModalText(for: context.window, text: _NSLocalizedString(key))
     }, toggleFontSize: { value in
         updateDisposable.set(updateThemeInteractivetly(accountManager: context.sharedContext.accountManager, f: { settings in
             return settings.withUpdatedFontSize(value)
@@ -826,8 +827,20 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
             }
     } |> deliverOnMainQueue
     
-    let signal:Signal<InputDataSignalValue, NoError> = combineLatest(queue: prepareQueue, themeUnmodifiedSettings(accountManager: context.sharedContext.accountManager), SettingsHooks.shared.cloudThemes(context), nightSettings, appearanceSignal, animatedEmojiStickers, statePromise.get(), context.engine.resources.applicationIcons(), dockSettings(accountManager: context.sharedContext.accountManager)) |> map { themeSettings, themes, autoNightSettings, appearance, animatedEmojiStickers, state, dockIcons, dockSettings in
-        return appAppearanceEntries(appearance: appearance, state: state, settings: themeSettings, cloudThemes: themes.themes.reversed(), generated: themes, autoNightSettings: autoNightSettings, animatedEmojiStickers: animatedEmojiStickers, dockIcons: dockIcons, dockSettings: dockSettings, arguments: arguments)
+    let liquidGlassActive: Signal<Bool, NoError> = Signal { subscriber in
+        subscriber.putNext(System.liquidGlass)
+        let observer = NotificationCenter.default.addObserver(forName: systemLiquidGlassDidChange, object: nil, queue: .main) { _ in
+            subscriber.putNext(System.liquidGlass)
+        }
+        return ActionDisposable {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    let appearanceAndGlass = combineLatest(appearanceSignal, liquidGlassActive |> distinctUntilChanged)
+
+    let signal:Signal<InputDataSignalValue, NoError> = combineLatest(queue: prepareQueue, themeUnmodifiedSettings(accountManager: context.sharedContext.accountManager), SettingsHooks.shared.cloudThemes(context), nightSettings, appearanceAndGlass, animatedEmojiStickers, statePromise.get(), context.engine.resources.applicationIcons(), dockSettings(accountManager: context.sharedContext.accountManager)) |> map { themeSettings, themes, autoNightSettings, appearanceAndGlass, animatedEmojiStickers, state, dockIcons, dockSettings in
+        let (appearance, liquidGlassActive) = appearanceAndGlass
+        return appAppearanceEntries(appearance: appearance, state: state, settings: themeSettings, cloudThemes: themes.themes.reversed(), generated: themes, autoNightSettings: autoNightSettings, animatedEmojiStickers: animatedEmojiStickers, dockIcons: dockIcons, dockSettings: dockSettings, liquidGlassActive: liquidGlassActive, arguments: arguments)
     }
     |> map { entries in
          return InputDataSignalValue(entries: entries, animated: true)
