@@ -9,6 +9,14 @@ struct FocusApplicationLocation {
         return url.pathExtension == "app" ? url : nil
     }
 
+    static func focusExtensionURL(containing bundleURL: URL) -> URL? {
+        let bundleURL = bundleURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard let applicationURL = applicationURL(containing: bundleURL) else { return nil }
+        let extensionURL = applicationURL.appendingPathComponent("Contents/Extensions/FocusIntents.appex")
+        guard bundleURL == applicationURL || bundleURL == extensionURL else { return nil }
+        return extensionURL
+    }
+
     static func executableURL(in applicationURL: URL) -> URL? {
         let infoURL = applicationURL.appendingPathComponent("Contents/Info.plist")
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: infoURL.path),

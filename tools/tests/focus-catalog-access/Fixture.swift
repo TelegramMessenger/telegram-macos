@@ -6,6 +6,11 @@ private enum Fixture {
         let arguments = CommandLine.arguments
         let directory = URL(fileURLWithPath: arguments[2])
         let application = URL(fileURLWithPath: arguments[3])
+        if arguments[1] == "state" {
+            let reader = try? FocusCatalogAccessReader(storageDirectory: directory, applicationBundleURL: application)
+            print(String(describing: reader?.state ?? .unavailable))
+            return
+        }
         if arguments[1] == "read" {
             let reader = try? FocusCatalogAccessReader(storageDirectory: directory, applicationBundleURL: application)
             print(reader?.isAccessible ?? false)

@@ -1,5 +1,6 @@
 import AppIntents
 import FocusFilterCore
+import FocusFilterInfrastructure
 import Foundation
 
 enum TestFailure: Error {
@@ -9,10 +10,11 @@ enum TestFailure: Error {
 
 enum FocusStorageError: Error {
     case locked
+    case verificationUnavailable
 }
 
 enum FocusIntentStorage {
-    static var isCatalogAccessible = true
+    static var catalogAccessState = FocusCatalogAccessState.accessible
     static var repository: (any FocusFilterRepository)?
 
     static func withRequest<Result>(_ work: () throws -> Result) rethrows -> Result {
@@ -348,9 +350,9 @@ private enum FocusIntentTests {
     private static func testDeniedQueriesDoNotReadCatalog() async throws {
         let source = TestCatalogSource(catalog: privateCatalog)
         let provider: @Sendable () -> FocusFilterCatalog = { source.loadCatalog() }
-        let accounts = FocusAccountQuery(catalogProvider: provider, accessAllowed: { false })
-        let folders = FocusFolderQuery(catalogProvider: provider, accessAllowed: { false })
-        let chats = FocusChatQuery(catalogProvider: provider, accessAllowed: { false })
+        let accounts = FocusAccountQuery(catalogProvider: provider, accessState: { .locked })
+        let folders = FocusFolderQuery(catalogProvider: provider, accessState: { .locked })
+        let chats = FocusChatQuery(catalogProvider: provider, accessState: { .locked })
         try await expectLocked { try await accounts.suggestedEntities() }
         try await expectLocked { try await folders.suggestedEntities() }
         try await expectLocked { try await chats.suggestedEntities() }
@@ -382,9 +384,9 @@ private enum FocusIntentTests {
             let source = TestCatalogSource(catalog: privateCatalog)
             let provider: @Sendable () -> FocusFilterCatalog = { source.loadCatalog() }
             let access: @Sendable () -> Bool = { permission.isAllowed() }
-            let accounts = FocusAccountQuery(catalogProvider: provider, accessAllowed: access)
-            let folders = FocusFolderQuery(catalogProvider: provider, accessAllowed: access)
-            let chats = FocusChatQuery(catalogProvider: provider, accessAllowed: access)
+            let accounts = FocusAccountQuery(catalogProvider: provider, accessState: { access() ? .accessible : .locked })
+            let folders = FocusFolderQuery(catalogProvider: provider, accessState: { access() ? .accessible : .locked })
+            let chats = FocusChatQuery(catalogProvider: provider, accessState: { access() ? .accessible : .locked })
             let browse: [() async throws -> Void] = [
                 { _ = try await accounts.suggestedEntities() },
                 { _ = try await folders.suggestedEntities() },
@@ -419,9 +421,9 @@ private enum FocusIntentTests {
         }
     }
 
-    private static func testExistingDisplaysAndRulesWhileLocked() async throws {
+    private static func testExistingDisplaysAndRulesWhileDenied(_ state: FocusCatalogAccessState) async throws {
         defer {
-            FocusIntentStorage.isCatalogAccessible = true
+            FocusIntentStorage.catalogAccessState = .accessible
             FocusIntentStorage.repository = nil
         }
         let catalog = privateCatalog
@@ -439,14 +441,17 @@ private enum FocusIntentTests {
         intent.effect = .both
         let configuration = intent.configuration
         let predicate = intent.appContext.notificationFilterPredicate
-        FocusIntentStorage.isCatalogAccessible = false
-        precondition(String(localized: accounts[0].displayRepresentation.title) == String(localized: "Locked account"))
-        precondition(String(localized: folders[0].displayRepresentation.title) == String(localized: "Locked folder"))
-        precondition(String(localized: chats[0].displayRepresentation.title) == String(localized: "Locked chat"))
+        FocusIntentStorage.catalogAccessState = state
+        let hiddenAccount = String(localized: state == .locked ? "Locked account" : "Unavailable account")
+        let hiddenFolder = String(localized: state == .locked ? "Locked folder" : "Unavailable folder")
+        let hiddenChat = String(localized: state == .locked ? "Locked chat" : "Unavailable chat")
+        precondition(String(localized: accounts[0].displayRepresentation.title) == hiddenAccount)
+        precondition(String(localized: folders[0].displayRepresentation.title) == hiddenFolder)
+        precondition(String(localized: chats[0].displayRepresentation.title) == hiddenChat)
         precondition(accounts[0].displayRepresentation.subtitle == nil)
         precondition(folders[0].displayRepresentation.subtitle == nil)
         precondition(chats[0].displayRepresentation.subtitle == nil)
-        precondition(String(localized: intent.displayRepresentation.subtitle!) == String(localized: "Locked account"))
+        precondition(String(localized: intent.displayRepresentation.subtitle!) == hiddenAccount)
         precondition(intent.configuration == configuration)
         precondition(intent.appContext.notificationFilterPredicate == predicate)
         let restoredAccounts = try await accountQuery.entities(for: accounts.map(\.id))
@@ -464,7 +469,7 @@ private enum FocusIntentTests {
         precondition(Set(accounts + restoredAccounts).count == 1)
         precondition(Set(folders + restoredFolders).count == 1)
         precondition(Set(chats + restoredChats).count == 1)
-        FocusIntentStorage.isCatalogAccessible = true
+        FocusIntentStorage.catalogAccessState = .accessible
         let available = try await chatQuery.suggestedEntities()
         precondition(available[0].title == "Private chat")
         precondition(String(localized: chats[0].displayRepresentation.title) == "Private chat (42)")
@@ -473,7 +478,8 @@ private enum FocusIntentTests {
     static func main() async throws {
         try await testDeniedQueriesDoNotReadCatalog()
         try await testRevocationDuringQueries()
-        try await testExistingDisplaysAndRulesWhileLocked()
+        try await testExistingDisplaysAndRulesWhileDenied(.locked)
+        try await testExistingDisplaysAndRulesWhileDenied(.unavailable)
         try await testFolderAccountIdentifiers()
         try await testTelegramChatIdentifiers()
         try await testTelegramAccountIdentifiers()

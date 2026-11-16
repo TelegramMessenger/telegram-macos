@@ -11,24 +11,27 @@ public enum FocusCatalogAccessError: Error {
     case duplicateSession
 }
 
-private struct FocusCatalogAccessLocation {
-    let applicationURL: URL
-    let identity: String
-    let fileURL: URL
+public enum FocusCatalogAccessState: Equatable {
+    case accessible
+    case locked
+    case unavailable
+}
 
-    init(storageDirectory: URL, applicationBundleURL: URL) throws {
-        guard let applicationURL = FocusApplicationLocation.applicationURL(containing: applicationBundleURL),
-              let identity = Self.identity(at: applicationURL) else {
+private struct FocusCatalogBundleIdentity {
+    let bundleURL: URL
+    let value: String
+
+    init(bundleURL: URL) throws {
+        guard let value = Self.identity(at: bundleURL) else {
             throw FocusCatalogAccessError.invalidInstallation
         }
-        self.applicationURL = applicationURL
-        self.identity = identity
-        self.fileURL = storageDirectory.standardizedFileURL.resolvingSymlinksInPath().appendingPathComponent("CatalogAccess", isDirectory: true).appendingPathComponent(identity)
+        self.bundleURL = bundleURL
+        self.value = value
     }
 
-    var matchesLoadedApplication: Bool {
+    var matchesLoadedExecutable: Bool {
         #if canImport(Darwin)
-        guard let executable = FocusApplicationLocation.executableURL(in: applicationURL),
+        guard let executable = FocusApplicationLocation.executableURL(in: bundleURL),
               let loaded = FocusExtensionInstallation.loadedExecutableUUID(),
               let installed = FocusExtensionInstallation.executableUUIDs(at: executable) else { return false }
         return installed.contains(loaded)
@@ -38,14 +41,14 @@ private struct FocusCatalogAccessLocation {
     }
 
     var isCurrent: Bool {
-        Self.identity(at: applicationURL) == identity
+        Self.identity(at: bundleURL) == value
     }
 
-    private static func identity(at applicationURL: URL) -> String? {
-        guard let executableURL = FocusApplicationLocation.executableURL(in: applicationURL) else { return nil }
+    private static func identity(at bundleURL: URL) -> String? {
+        guard let executableURL = FocusApplicationLocation.executableURL(in: bundleURL) else { return nil }
         var directory = stat()
         var executable = stat()
-        guard stat(applicationURL.path, &directory) == 0, directory.st_mode & S_IFMT == S_IFDIR,
+        guard stat(bundleURL.path, &directory) == 0, directory.st_mode & S_IFMT == S_IFDIR,
               stat(executableURL.path, &executable) == 0, executable.st_mode & S_IFMT == S_IFREG else { return nil }
         #if canImport(Darwin)
         let modified = executable.st_mtimespec
@@ -56,6 +59,27 @@ private struct FocusCatalogAccessLocation {
         #endif
         return "\(directory.st_dev)-\(directory.st_ino)-\(executable.st_dev)-\(executable.st_ino)-\(executable.st_size)-\(modified.tv_sec)-\(modified.tv_nsec)-\(changed.tv_sec)-\(changed.tv_nsec)"
     }
+}
+
+private struct FocusCatalogAccessLocation {
+    let extensionIdentity: FocusCatalogBundleIdentity
+    let fileURL: URL
+
+    init(storageDirectory: URL, applicationBundleURL: URL) throws {
+        guard let extensionURL = FocusApplicationLocation.focusExtensionURL(containing: applicationBundleURL) else {
+            throw FocusCatalogAccessError.invalidInstallation
+        }
+        extensionIdentity = try FocusCatalogBundleIdentity(bundleURL: extensionURL)
+        fileURL = storageDirectory.standardizedFileURL.resolvingSymlinksInPath()
+            .appendingPathComponent("CatalogAccess", isDirectory: true)
+            .appendingPathComponent("extension-\(extensionIdentity.value)")
+    }
+
+    var isCurrent: Bool { extensionIdentity.isCurrent }
+}
+
+private enum FocusCatalogAccessFileError: Error {
+    case missing
 }
 
 private enum FocusCatalogAccessSlot: Int64 {
@@ -72,7 +96,10 @@ private enum FocusCatalogAccessFiles {
     static func openFile(_ url: URL, create: Bool) throws -> Int32 {
         let flags = (create ? O_RDWR | O_CREAT : O_RDONLY) | O_CLOEXEC | O_NOFOLLOW
         let descriptor = open(url.path, flags, mode_t(0o600))
-        guard descriptor >= 0 else { throw FocusCatalogAccessError.unavailable }
+        guard descriptor >= 0 else {
+            if !create && errno == ENOENT { throw FocusCatalogAccessFileError.missing }
+            throw FocusCatalogAccessError.unavailable
+        }
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG,
               metadata.st_uid == geteuid(), metadata.st_nlink == 1 else {
@@ -119,7 +146,7 @@ private enum FocusCatalogAccessFiles {
         record.l_len = 1
         guard fcntl(descriptor, F_GETLK, &record) == 0 else { throw FocusCatalogAccessError.unavailable }
         if record.l_type == Int16(F_UNLCK) { return nil }
-        guard record.l_type == Int16(F_RDLCK), record.l_pid > 0 else { throw FocusCatalogAccessError.unavailable }
+        guard (record.l_type == Int16(F_RDLCK) || (slot == .initialization && record.l_type == Int16(F_WRLCK))), record.l_pid > 0 else { throw FocusCatalogAccessError.unavailable }
         return record.l_pid
     }
 }
@@ -132,13 +159,18 @@ public final class FocusCatalogAccessSession {
     }
 
     private let location: FocusCatalogAccessLocation
+    private let applicationIdentity: FocusCatalogBundleIdentity
     private var descriptor: Int32 = -1
     private var registered = false
     private var initialization = Initialization.pending
 
     public init(storageDirectory: URL, applicationBundleURL: URL) throws {
         location = try FocusCatalogAccessLocation(storageDirectory: storageDirectory, applicationBundleURL: applicationBundleURL)
-        guard location.matchesLoadedApplication else { throw FocusCatalogAccessError.invalidInstallation }
+        guard let applicationURL = FocusApplicationLocation.applicationURL(containing: applicationBundleURL) else {
+            throw FocusCatalogAccessError.invalidInstallation
+        }
+        applicationIdentity = try FocusCatalogBundleIdentity(bundleURL: applicationURL)
+        guard applicationIdentity.matchesLoadedExecutable else { throw FocusCatalogAccessError.invalidInstallation }
         FocusCatalogAccessFiles.lock.lock()
         defer { FocusCatalogAccessFiles.lock.unlock() }
         guard !FocusCatalogAccessFiles.ownedPaths.contains(location.fileURL.path) else {
@@ -193,7 +225,7 @@ public final class FocusCatalogAccessSession {
         guard descriptor >= 0, initialization != .failed else { throw FocusCatalogAccessError.unavailable }
         do {
             try initializeIfPossible()
-            let permitted = initialization == .ready && isUnlocked && location.isCurrent && location.matchesLoadedApplication && FocusCatalogAccessFiles.isHealthy(descriptor)
+            let permitted = initialization == .ready && isUnlocked && location.isCurrent && applicationIdentity.isCurrent && applicationIdentity.matchesLoadedExecutable && FocusCatalogAccessFiles.isHealthy(descriptor)
             try FocusCatalogAccessFiles.changeLock(descriptor, type: Int16(permitted ? F_UNLCK : F_RDLCK), at: .denial)
         } catch {
             initialization = .failed
@@ -220,7 +252,7 @@ public final class FocusCatalogAccessReader {
 
     #if canImport(Darwin)
     public convenience init(storageDirectory: URL, extensionBundle: Bundle) throws {
-        guard let installation = FocusExtensionInstallation(bundle: extensionBundle) else {
+        guard let installation = FocusExtensionInstallation(bundle: extensionBundle, includesApplication: false) else {
             throw FocusCatalogAccessError.invalidInstallation
         }
         try self.init(storageDirectory: storageDirectory, applicationBundleURL: extensionBundle.bundleURL)
@@ -231,24 +263,30 @@ public final class FocusCatalogAccessReader {
     }
     #endif
 
-    public var isAccessible: Bool {
+    public var isAccessible: Bool { state == .accessible }
+
+    public var state: FocusCatalogAccessState {
         FocusCatalogAccessFiles.lock.lock()
         defer { FocusCatalogAccessFiles.lock.unlock() }
-        guard !FocusCatalogAccessFiles.ownedPaths.contains(location.fileURL.path), location.isCurrent, isCurrentExtension(),
-              let descriptor = try? FocusCatalogAccessFiles.openFile(location.fileURL, create: false) else { return false }
-        defer { close(descriptor) }
+        guard !FocusCatalogAccessFiles.ownedPaths.contains(location.fileURL.path),
+              location.isCurrent, isCurrentExtension() else { return .unavailable }
         do {
+            let descriptor = try FocusCatalogAccessFiles.openFile(location.fileURL, create: false)
+            defer { close(descriptor) }
             guard FocusCatalogAccessFiles.isHealthy(descriptor),
-                  try FocusCatalogAccessFiles.lockOwner(descriptor, at: .emergencyDenial) == nil,
-                  try FocusCatalogAccessFiles.lockOwner(descriptor, at: .initialization) == nil,
+                  try FocusCatalogAccessFiles.lockOwner(descriptor, at: .emergencyDenial) == nil else { return .unavailable }
+            guard try FocusCatalogAccessFiles.lockOwner(descriptor, at: .initialization) == nil,
                   try FocusCatalogAccessFiles.lockOwner(descriptor, at: .denial) == nil,
                   try FocusCatalogAccessFiles.lockOwner(descriptor, at: .presence) != nil,
                   try FocusCatalogAccessFiles.lockOwner(descriptor, at: .denial) == nil,
-                  try FocusCatalogAccessFiles.lockOwner(descriptor, at: .initialization) == nil,
-                  try FocusCatalogAccessFiles.lockOwner(descriptor, at: .emergencyDenial) == nil else { return false }
-            return FocusCatalogAccessFiles.isHealthy(descriptor) && location.isCurrent && isCurrentExtension()
+                  try FocusCatalogAccessFiles.lockOwner(descriptor, at: .initialization) == nil else { return .locked }
+            guard try FocusCatalogAccessFiles.lockOwner(descriptor, at: .emergencyDenial) == nil,
+                  FocusCatalogAccessFiles.isHealthy(descriptor), location.isCurrent, isCurrentExtension() else { return .unavailable }
+            return .accessible
+        } catch FocusCatalogAccessFileError.missing {
+            return .locked
         } catch {
-            return false
+            return .unavailable
         }
     }
 }

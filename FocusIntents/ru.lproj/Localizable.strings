@@ -28,3 +28,4 @@
 "Locked folder" = "Скрытая папка";
 "Locked chat" = "Скрытый чат";
 "Open and unlock Telegram to choose accounts, folders, and chats. Saved Focus rules keep working." = "Откройте и разблокируйте Telegram, чтобы выбрать аккаунты, папки и чаты. Сохранённые правила фокусирования продолжают работать.";
+"Telegram could not verify access to its Focus catalog. Try again while Telegram is open. Saved Focus rules keep working." = "Telegram не удалось проверить доступ к каталогу фокусирования. Повторите попытку, когда Telegram открыт. Сохранённые правила фокусирования продолжают работать.";

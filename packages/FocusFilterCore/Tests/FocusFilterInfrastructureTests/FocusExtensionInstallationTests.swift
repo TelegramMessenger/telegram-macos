@@ -108,6 +108,16 @@ final class FocusExtensionInstallationTests: XCTestCase {
         XCTAssertNil(installation.snapshot())
     }
 
+    func testCatalogSnapshotDoesNotRequireHostMetadata() throws {
+        let fixture = try makeInstallation()
+        try FileManager.default.removeItem(at: fixture.app.appendingPathComponent("Contents/Info.plist"))
+        try FileManager.default.removeItem(at: fixture.app.appendingPathComponent("Contents/MacOS/Telegram"))
+        let installation = try XCTUnwrap(FocusExtensionInstallation(bundleURL: fixture.bundle, executableURL: fixture.executable, loadedUUID: firstUUID, includesApplication: false))
+        XCTAssertTrue(installation.isCurrent(try XCTUnwrap(installation.snapshot())))
+        try thin(secondUUID).write(to: fixture.executable, options: .atomic)
+        XCTAssertFalse(installation.isCurrent(try XCTUnwrap(installation.snapshot())))
+    }
+
     func testSignatureResourceChangesAreDetected() throws {
         let fixture = try makeInstallation()
         let signature = fixture.bundle.appendingPathComponent("Contents/_CodeSignature/CodeResources")

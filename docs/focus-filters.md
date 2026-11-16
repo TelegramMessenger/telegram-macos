@@ -186,10 +186,22 @@ Browsing or searching accounts, folders and chats requires the corresponding
 Telegram installation to be running and unlocked. Access starts denied before
 decryption and is revoked before asynchronous passcode checks or lock-screen UI.
 Screen locking and logout revoke it too. A live process permit is scoped to the
-build channel, application directory and executable identity; another installed
+build channel and embedded extension directory/executable identity; another installed
 copy cannot grant access. Multiple processes for the same installation must all
 be unlocked. Process termination releases its permit, and absent owners, stale
 installations and access failures deny catalogue reads.
+
+The extension checks its own installed bundle and loaded Mach-O identity, without
+reading the containing application's Info.plist or executable. The application
+verifies its own loaded executable when creating and updating its permit. A
+verification failure has a separate picker error from a locked or absent app;
+failed reader initialization is retried on the next request. Neither failure
+allows catalogue access. The lifecycle observer retains its broader installation
+check; unavailable host metadata can still postpone automatic retirement.
+
+Replacing only the host executable in place while leaving the extension unchanged
+is detected on the owner's next permit update. A newly started locked host shares
+the extension's permit key and blocks access even if an older host remains open.
 
 Saved selections still resolve to their stable identities while locked, with
 neutral placeholders instead of names or public Telegram IDs. Entity display
@@ -316,6 +328,6 @@ Validation in the Linux maintenance environment: the preparation patch applied, 
 
 The remaining requests in review comment https://github.com/TelegramMessenger/telegram-macos/pull/128#issuecomment-6819660757 are not resolved by this change:
 
-- The picker still needs passcode-aware access control, including identifier resolution without breaking background activation of saved rules. A native test must cover locking while System Settings already holds entity names; hiding only subsequent query results cannot establish that cached names are cleared.
+- Passcode-aware catalogue access and neutral saved-selection resolution are implemented. A native test must still cover locking while System Settings already holds entity names; hiding only subsequent query results cannot establish that cached names are cleared. Verify sandbox admission with the host Info.plist inaccessible, recovery from verification failures, and separate copies/channels on the signed build.
 - Actual CPU, memory and update latency of catalog scanning must be measured against a large signed-in account. This environment has neither a running macOS Telegram instance nor such an account, so no performance measurements have been claimed.
 - Configuration read failure deliberately retains the user-selected behavior: use ordinary Telegram/macOS notification settings with a visible warning until the filter can be restored. This behavior was not changed to match the reviewer's alternative suggestion.

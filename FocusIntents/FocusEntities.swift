@@ -1,5 +1,6 @@
 import AppIntents
 import FocusFilterCore
+import FocusFilterInfrastructure
 import Foundation
 
 struct FocusAccountEntity: AppEntity, Hashable {
@@ -25,8 +26,13 @@ struct FocusAccountEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        guard FocusIntentStorage.isCatalogAccessible else {
+        switch FocusIntentStorage.catalogAccessState {
+        case .locked:
             return DisplayRepresentation(title: "Locked account")
+        case .unavailable:
+            return DisplayRepresentation(title: "Unavailable account")
+        case .accessible:
+            break
         }
         return DisplayRepresentation(title: focusAccountDisplayTitle(title, telegramUserId: telegramUserId))
     }
@@ -39,8 +45,8 @@ struct FocusAccountQuery: EntityStringQuery {
         self.init(catalogProvider: { FocusIntentStorage.loadCatalog() })
     }
 
-    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessAllowed: @escaping @Sendable () -> Bool = { FocusIntentStorage.isCatalogAccessible }) {
-        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessAllowed: accessAllowed)
+    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessState: @escaping @Sendable () -> FocusCatalogAccessState = { FocusIntentStorage.catalogAccessState }) {
+        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessState: accessState)
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusAccountEntity] {
@@ -95,8 +101,13 @@ struct FocusFolderEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        guard FocusIntentStorage.isCatalogAccessible else {
+        switch FocusIntentStorage.catalogAccessState {
+        case .locked:
             return DisplayRepresentation(title: "Locked folder")
+        case .unavailable:
+            return DisplayRepresentation(title: "Unavailable folder")
+        case .accessible:
+            break
         }
         return DisplayRepresentation(title: "\(title)", subtitle: "\(accountTitle)")
     }
@@ -109,8 +120,8 @@ struct FocusFolderQuery: EntityStringQuery {
         self.init(catalogProvider: { FocusIntentStorage.loadCatalog() })
     }
 
-    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessAllowed: @escaping @Sendable () -> Bool = { FocusIntentStorage.isCatalogAccessible }) {
-        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessAllowed: accessAllowed)
+    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessState: @escaping @Sendable () -> FocusCatalogAccessState = { FocusIntentStorage.catalogAccessState }) {
+        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessState: accessState)
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusFolderEntity] {
@@ -166,8 +177,13 @@ struct FocusChatEntity: AppEntity, Hashable {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        guard FocusIntentStorage.isCatalogAccessible else {
+        switch FocusIntentStorage.catalogAccessState {
+        case .locked:
             return DisplayRepresentation(title: "Locked chat")
+        case .unavailable:
+            return DisplayRepresentation(title: "Unavailable chat")
+        case .accessible:
+            break
         }
         if let telegramChatId {
             return DisplayRepresentation(title: "\(title) (\(String(telegramChatId)))", subtitle: "\(accountTitle)")
@@ -183,8 +199,8 @@ struct FocusChatQuery: EntityStringQuery {
         self.init(catalogProvider: { FocusIntentStorage.loadCatalog() })
     }
 
-    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessAllowed: @escaping @Sendable () -> Bool = { FocusIntentStorage.isCatalogAccessible }) {
-        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessAllowed: accessAllowed)
+    init(catalogProvider: @escaping @Sendable () -> FocusFilterCatalog, accessState: @escaping @Sendable () -> FocusCatalogAccessState = { FocusIntentStorage.catalogAccessState }) {
+        self.catalogAccess = FocusEntityCatalogAccess(catalogProvider: catalogProvider, accessState: accessState)
     }
 
     func entities(for identifiers: [String]) async throws -> [FocusChatEntity] {
@@ -217,29 +233,40 @@ struct FocusChatQuery: EntityStringQuery {
 
 private struct FocusEntityCatalogAccess {
     let catalogProvider: @Sendable () -> FocusFilterCatalog
-    let accessAllowed: @Sendable () -> Bool
+    let accessState: @Sendable () -> FocusCatalogAccessState
 
     func resolve<Result>(_ projection: (FocusEntityCatalog) -> Result) -> Result {
-        guard accessAllowed() else {
+        guard accessState() == .accessible else {
             return projection(FocusEntityCatalog(FocusFilterCatalog()))
         }
         let catalog = catalogProvider()
-        guard accessAllowed() else {
+        guard accessState() == .accessible else {
             return projection(FocusEntityCatalog(FocusFilterCatalog()))
         }
         let result = projection(FocusEntityCatalog(catalog))
-        guard accessAllowed() else {
+        guard accessState() == .accessible else {
             return projection(FocusEntityCatalog(FocusFilterCatalog()))
         }
         return result
     }
 
+    private func requireAccess() throws {
+        switch accessState() {
+        case .accessible:
+            return
+        case .locked:
+            throw FocusStorageError.locked
+        case .unavailable:
+            throw FocusStorageError.verificationUnavailable
+        }
+    }
+
     func browse<Result>(_ projection: (FocusEntityCatalog) -> Result) throws -> Result {
-        guard accessAllowed() else { throw FocusStorageError.locked }
+        try requireAccess()
         let catalog = catalogProvider()
-        guard accessAllowed() else { throw FocusStorageError.locked }
+        try requireAccess()
         let result = projection(FocusEntityCatalog(catalog))
-        guard accessAllowed() else { throw FocusStorageError.locked }
+        try requireAccess()
         return result
     }
 }

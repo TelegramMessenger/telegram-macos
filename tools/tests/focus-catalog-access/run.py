@@ -28,6 +28,11 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
     (application / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': 'App'}))
     executable = application / 'Contents/MacOS/App'
     shutil.copy2(binary, executable)
+    extension = application / 'Contents/Extensions/FocusIntents.appex'
+    (extension / 'Contents/MacOS').mkdir(parents=True)
+    (extension / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': 'Extension'}))
+    extension_executable = extension / 'Contents/MacOS/Extension'
+    shutil.copy2(binary, extension_executable)
     storage = temporary / 'stable'
     processes = []
 
@@ -50,6 +55,10 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         result = subprocess.check_output([str(binary), 'read', str(directory), str(app)], text=True, timeout=5).strip()
         assert result == str(expected).lower(), (result, expected)
 
+    def state(expected, app=application, directory=storage):
+        result = subprocess.check_output([str(binary), 'state', str(directory), str(app)], text=True, timeout=5).strip()
+        assert result == expected, (result, expected)
+
     def reader_value(process, expected):
         process.stdin.write('read\n')
         process.stdin.flush()
@@ -61,9 +70,11 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
 
     try:
         allowed(False)
+        state('locked')
         first = start()
         allowed(False)
         command(first, 'unlock')
+        state('accessible')
         for _ in range(10):
             allowed(True)
         command(first, 'own-read', 'false')
@@ -72,6 +83,7 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         allowed(True)
         command(first, 'lock')
         allowed(False)
+        state('locked')
         command(first, 'unlock')
         allowed(True)
         second = start()
@@ -92,6 +104,21 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         command(third, 'unlock')
         allowed(True)
         gate_file, = (storage / 'CatalogAccess').iterdir()
+        gate_file.rename(gate_file.with_suffix('.saved'))
+        gate_file.mkdir()
+        state('unavailable')
+        gate_file.rmdir()
+        gate_file.with_suffix('.saved').rename(gate_file)
+        state('accessible')
+        invalid_storage = temporary / 'invalid-presence'
+        invalid_file = invalid_storage / 'CatalogAccess' / gate_file.name
+        invalid_file.parent.mkdir(parents=True)
+        invalid_file.write_bytes(b'\x00')
+        with invalid_file.open('r+b') as invalid_presence:
+            fcntl.lockf(invalid_presence, fcntl.LOCK_EX | fcntl.LOCK_NB, 1, 0)
+            state('unavailable', directory=invalid_storage)
+        state('locked', directory=invalid_storage)
+
         with gate_file.open('r+b') as initialization:
             fcntl.lockf(initialization, fcntl.LOCK_EX | fcntl.LOCK_NB, 1, 2)
             pending = start()
@@ -126,6 +153,7 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         allowed(False, directory=startup_storage)
         gate_file.write_bytes(b'\x01')
         allowed(False)
+        state('unavailable')
         command(third, 'unlock')
         allowed(False)
         poisoned_peer = start()
@@ -163,9 +191,9 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         allowed(False, directory=temporary / 'beta')
         old_reader = start(kind='reader')
         reader_value(old_reader, True)
-        replacement = executable.with_suffix('.replacement')
+        replacement = extension_executable.with_suffix('.replacement')
         shutil.copy2(binary, replacement)
-        replacement.replace(executable)
+        replacement.replace(extension_executable)
         allowed(False)
         reader_value(old_reader, False)
         replacement_owner = start()
@@ -177,9 +205,31 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-access-') as temporary:
         stop(replacement_owner)
         allowed(False)
         allowed(True, app=other_app)
+        app_info = other_app / 'Contents/Info.plist'
+        original_info = app_info.read_bytes()
+        app_info.unlink()
+        allowed(True, app=other_app)
+        state('accessible', app=other_app / 'Contents/Extensions/FocusIntents.appex')
+        command(other, 'unlock')
+        state('locked', app=other_app)
+        app_info.write_bytes(original_info)
+        command(other, 'unlock')
+        state('accessible', app=other_app)
+        host_executable = other_app / 'Contents/MacOS/App'
+        host_replacement = host_executable.with_suffix('.replacement')
+        shutil.copy2(binary, host_replacement)
+        host_replacement.replace(host_executable)
+        new_host = start(app=other_app)
+        state('locked', app=other_app)
+        command(new_host, 'unlock')
+        state('accessible', app=other_app)
+        command(other, 'unlock')
+        state('locked', app=other_app)
         stop(other)
+        state('accessible', app=other_app)
+        stop(new_host)
         allowed(False, app=other_app)
-        (other_app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': '../App'}))
+        (other_app / 'Contents/Extensions/FocusIntents.appex/Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': '../App'}))
         allowed(False, app=other_app)
         print('PASS: production Swift gate + persistent failure recovery: nonblocking startup, revocation, crash, readers, duplicate sessions, multiple owners, copies, channels, replacement and invalid installation')
     finally:

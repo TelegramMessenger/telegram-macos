@@ -1,5 +1,6 @@
 import AppIntents
 import FocusFilterCore
+import FocusFilterInfrastructure
 import Foundation
 
 private let catalog = FocusFilterCatalog(
@@ -10,32 +11,34 @@ private let catalog = FocusFilterCatalog(
 
 private final class CatalogProbe: @unchecked Sendable {
     private let lock = NSLock()
-    private var allowed = true
+    private var accessState = FocusCatalogAccessState.accessible
+    private var deniedState = FocusCatalogAccessState.locked
     private var remainingChecks: Int?
     private var revokeOnRead = false
     private var readCount = 0
     private var permissionCheckCount = 0
 
-    func reset(allowed: Bool, remainingChecks: Int? = nil, revokeOnRead: Bool = false) {
+    func reset(allowed: Bool, remainingChecks: Int? = nil, revokeOnRead: Bool = false, deniedState: FocusCatalogAccessState = .locked) {
         lock.lock()
         defer { lock.unlock() }
-        self.allowed = allowed
+        self.accessState = allowed ? .accessible : deniedState
+        self.deniedState = deniedState
         self.remainingChecks = remainingChecks
         self.revokeOnRead = revokeOnRead
         readCount = 0
         permissionCheckCount = 0
     }
 
-    func isAllowed() -> Bool {
+    func state() -> FocusCatalogAccessState {
         lock.lock()
         defer { lock.unlock() }
         permissionCheckCount += 1
-        guard allowed else { return false }
+        guard accessState == .accessible else { return accessState }
         if let remainingChecks {
-            guard remainingChecks > 0 else { return false }
+            guard remainingChecks > 0 else { return deniedState }
             self.remainingChecks = remainingChecks - 1
         }
-        return true
+        return .accessible
     }
 
     func read() -> FocusFilterCatalog {
@@ -43,7 +46,7 @@ private final class CatalogProbe: @unchecked Sendable {
         defer { lock.unlock() }
         readCount += 1
         if revokeOnRead {
-            allowed = false
+            accessState = deniedState
         }
         return catalog
     }
@@ -57,12 +60,13 @@ private final class CatalogProbe: @unchecked Sendable {
 
 enum FocusStorageError: Error {
     case locked
+    case verificationUnavailable
 }
 
 enum FocusIntentStorage {
     fileprivate static let probe = CatalogProbe()
 
-    static var isCatalogAccessible: Bool { probe.isAllowed() }
+    static var catalogAccessState: FocusCatalogAccessState { probe.state() }
 
     static func loadCatalog() -> FocusFilterCatalog { probe.read() }
 
@@ -117,9 +121,9 @@ private struct QueryCase {
                 folders = FocusFolderQuery(catalogProvider: { probe.read() })
                 chats = FocusChatQuery(catalogProvider: { probe.read() })
             } else {
-                accounts = FocusAccountQuery(catalogProvider: { probe.read() }, accessAllowed: { probe.isAllowed() })
-                folders = FocusFolderQuery(catalogProvider: { probe.read() }, accessAllowed: { probe.isAllowed() })
-                chats = FocusChatQuery(catalogProvider: { probe.read() }, accessAllowed: { probe.isAllowed() })
+                accounts = FocusAccountQuery(catalogProvider: { probe.read() }, accessState: { probe.state() })
+                folders = FocusFolderQuery(catalogProvider: { probe.read() }, accessState: { probe.state() })
+                chats = FocusChatQuery(catalogProvider: { probe.read() }, accessState: { probe.state() })
             }
         } else {
             accounts = FocusAccountQuery()
@@ -168,17 +172,30 @@ private func expectPlaceholder(_ values: [Snapshot], _ query: QueryCase) throws 
     try expect(value.accountTitle == nil || value.accountTitle == "Unavailable account", "\(query.name): account subtitle hidden")
 }
 
+private func expectDenied(_ operation: () async throws -> [Snapshot], state: FocusCatalogAccessState, context: String) async throws {
+    do {
+        _ = try await operation()
+        throw Failure(description: "\(context): expected denied error")
+    } catch FocusStorageError.locked {
+        try expect(state == .locked, "\(context): verification failure must not report locked")
+    } catch FocusStorageError.verificationUnavailable {
+        try expect(state == .unavailable, "\(context): lock must not report verification failure")
+    }
+}
+
 private func testDeniedQueries() async throws {
     let probe = CatalogProbe()
-    probe.reset(allowed: false)
-    for query in QueryCase.queries(probe: probe) {
-        try expectPlaceholder(try await query.resolve(), query)
-        try await expectLocked(query.suggest, "\(query.name) suggestions")
-        for search in ["Private", query.telegramId, "", " \n\t"] {
-            try await expectLocked({ try await query.search(search) }, "\(query.name) search \(search)")
+    for state in [FocusCatalogAccessState.locked, .unavailable] {
+        probe.reset(allowed: false, deniedState: state)
+        for query in QueryCase.queries(probe: probe) {
+            try expectPlaceholder(try await query.resolve(), query)
+            try await expectDenied(query.suggest, state: state, context: "\(query.name) suggestions")
+            for search in ["Private", query.telegramId, "", " \n\t"] {
+                try await expectDenied({ try await query.search(search) }, state: state, context: "\(query.name) search \(search)")
+            }
         }
+        try expect(probe.counts.reads == 0, "denied query routes never read the catalog")
     }
-    try expect(probe.counts.reads == 0, "denied query routes never read the catalog")
 }
 
 private func testAllowedQueries() async throws {
@@ -205,25 +222,27 @@ private func testAllowedQueries() async throws {
 
 private func testRevokedQueries() async throws {
     let probe = CatalogProbe()
-    for revokeDuringRead in [true, false] {
-        for query in QueryCase.queries(probe: probe) {
-            func allowUntilRevocation() {
-                probe.reset(allowed: true, remainingChecks: revokeDuringRead ? nil : 2, revokeOnRead: revokeDuringRead)
-            }
-            allowUntilRevocation()
-            try expectPlaceholder(try await query.resolve(), query)
-            try expect(probe.counts.reads == 1, "\(query.name) resolution reads before revocation")
-            allowUntilRevocation()
-            try await expectLocked(query.suggest, "\(query.name) suggestions revoked")
-            try expect(probe.counts.reads == 1, "\(query.name) suggestions read before revocation")
-            for search in ["Private", ""] {
+    for state in [FocusCatalogAccessState.locked, .unavailable] {
+        for revokeDuringRead in [true, false] {
+            for query in QueryCase.queries(probe: probe) {
+                func allowUntilRevocation() {
+                    probe.reset(allowed: true, remainingChecks: revokeDuringRead ? nil : 2, revokeOnRead: revokeDuringRead, deniedState: state)
+                }
                 allowUntilRevocation()
-                try await expectLocked({ try await query.search(search) }, "\(query.name) search revoked")
-                try expect(probe.counts.reads == 1, "\(query.name) search reads before revocation")
+                try expectPlaceholder(try await query.resolve(), query)
+                try expect(probe.counts.reads == 1, "\(query.name) resolution reads before revocation")
+                allowUntilRevocation()
+                try await expectDenied(query.suggest, state: state, context: "\(query.name) suggestions revoked")
+                try expect(probe.counts.reads == 1, "\(query.name) suggestions read before revocation")
+                for search in ["Private", ""] {
+                    allowUntilRevocation()
+                    try await expectDenied({ try await query.search(search) }, state: state, context: "\(query.name) search revoked")
+                    try expect(probe.counts.reads == 1, "\(query.name) search reads before revocation")
+                }
+                probe.reset(allowed: true)
+                let recovered = try await query.suggest()
+                try expect(recovered.first?.title == "Private \(query.name)", "\(query.name) restores after access recovers")
             }
-            probe.reset(allowed: true)
-            let recovered = try await query.suggest()
-            try expect(recovered.first?.title == "Private \(query.name)", "\(query.name) restores after unlocking")
         }
     }
 }
@@ -271,6 +290,15 @@ private func testExistingDisplayRedaction() async throws {
     try expect(folder == restoredFolder && folderHash == restoredFolder.hashValue, "folder identity stable when locked")
     try expect(chat == restoredChat && chatHash == restoredChat.hashValue, "chat identity stable when locked")
     try expect(FocusIntentStorage.probe.counts.reads == 0, "display redaction and saved IDs do not read catalog")
+    FocusIntentStorage.probe.reset(allowed: false, deniedState: .unavailable)
+    for (display, expected) in zip([account.displayRepresentation, folder.displayRepresentation, chat.displayRepresentation], ["Unavailable account", "Unavailable folder", "Unavailable chat"]) {
+        try expect(display.title == expected && display.subtitle == nil, "existing entities distinguish unavailable verification without disclosing names")
+    }
+    for query in QueryCase.queries(probe: nil) {
+        try expectPlaceholder(try await query.resolve(), query)
+        try await expectDenied(query.suggest, state: .unavailable, context: "default unavailable suggestions")
+        try await expectDenied({ try await query.search("") }, state: .unavailable, context: "default unavailable search")
+    }
     FocusIntentStorage.probe.reset(allowed: true)
     try expect(account.displayRepresentation.title == "Private account (6123456789)", "existing account display restores after unlock")
     try expect(folder.displayRepresentation.title == "Private folder", "existing folder display restores after unlock")

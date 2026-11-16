@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-catalog-queries-') as te
     modules = {
         'FocusFilterCore': sorted((root / 'packages/FocusFilterCore/Sources/FocusFilterCore').glob('*.swift')),
         'AppIntents': [fixtures / 'AppIntentsFixture.swift'],
+        'FocusFilterInfrastructure': [root / 'packages/FocusFilterCore/Sources/FocusFilterInfrastructure' / name for name in ['FocusApplicationLocation.swift', 'FocusCatalogAccess.swift']],
     }
     for module, sources in modules.items():
         if not sources:
@@ -32,10 +33,20 @@ with tempfile.TemporaryDirectory(prefix='telegram-focus-catalog-queries-') as te
     executable = directory / 'tests'
     subprocess.run(shared + [
         '-parse-as-library', '-I', str(directory), '-L', str(directory),
-        '-lFocusFilterCore', '-lAppIntents',
+        '-lFocusFilterCore', '-lAppIntents', '-lFocusFilterInfrastructure',
         '-Xlinker', '-rpath', '-Xlinker', str(directory),
         str(root / 'FocusIntents/FocusEntities.swift'),
         str(fixtures / 'FocusCatalogQueryTests.swift'),
         '-o', str(executable),
     ], check=True)
-    raise SystemExit(subprocess.run([str(executable)]).returncode)
+    subprocess.run([str(executable)], check=True)
+    storage_executable = directory / 'storage-tests'
+    subprocess.run(shared + [
+        '-parse-as-library', '-I', str(directory), '-L', str(directory),
+        '-lFocusFilterCore', '-lFocusFilterInfrastructure',
+        '-Xlinker', '-rpath', '-Xlinker', str(directory),
+        str(root / 'FocusIntents/FocusIntentStorage.swift'),
+        str(fixtures / 'FocusIntentStorageTests.swift'),
+        '-o', str(storage_executable),
+    ], check=True)
+    raise SystemExit(subprocess.run([str(storage_executable)]).returncode)
