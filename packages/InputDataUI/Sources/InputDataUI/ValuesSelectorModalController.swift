@@ -73,6 +73,11 @@ private final class ValuesSelectorModalView : View {
     let tableView: TableView = TableView(frame: NSZeroRect)
     fileprivate let searchView: SearchView = SearchView(frame: NSZeroRect)
     private let separator : View = View()
+    var headerInset: CGFloat = 0 {
+        didSet {
+            needsLayout = true
+        }
+    }
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         addSubview(tableView)
@@ -96,7 +101,6 @@ private final class ValuesSelectorModalView : View {
     override func layout() {
         super.layout()
         
-        let headerInset: CGFloat = 56
         let offset: CGFloat = headerInset + (searchView.isHidden ? 0 : 50)
         
         tableView.frame = NSMakeRect(0, offset, frame.width, frame.height - offset)
@@ -170,8 +174,10 @@ public class ValuesSelectorModalController<T>: ModalViewController where T : Equ
     private let onComplete:(ValuesSelectorValue<T>)->Void
     private let disposable = MetaDisposable()
     private let title: String
+    private let headerInset: CGFloat
     private let stateValue: Atomic<ValuesSelectorState<T>>
-    public init(values: [ValuesSelectorValue<T>], selected: ValuesSelectorValue<T>?, title: String, onComplete:@escaping(ValuesSelectorValue<T>)->Void) {
+    public init(values: [ValuesSelectorValue<T>], selected: ValuesSelectorValue<T>?, title: String, headerInset: CGFloat = 0, onComplete:@escaping(ValuesSelectorValue<T>)->Void) {
+        self.headerInset = headerInset
         self.stateValue = Atomic(value: ValuesSelectorState(selected: nil, values: values))
         self.onComplete = onComplete
         self.title = title
@@ -182,6 +188,7 @@ public class ValuesSelectorModalController<T>: ModalViewController where T : Equ
     public override func viewDidLoad() {
         super.viewDidLoad()
         
+        genericView.headerInset = headerInset
         genericView.hasSearch(self.stateValue.with { $0.values.count > 10 })
         
         let search:ValuePromise<SearchState> = ValuePromise(SearchState(state: .None, request: nil), ignoreRepeated: true)
