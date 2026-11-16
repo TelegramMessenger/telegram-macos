@@ -34,19 +34,22 @@ class MediaGroupPreviewRowItem: TableRowItem {
     init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], spoilers: [Bool], payAmount: Int64?, toggleSpoiler: ((URL) -> Void)?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(URL, URL)->Void) {
         assert(messages.count == urls.count && messages.count == spoilers.count)
         layout = GroupedLayout(messages)
+        let attachments = Dictionary(uniqueKeysWithValues: messages.enumerated().map { index, message in
+            (message.id, (url: urls[index], spoiler: spoilers[index]))
+        })
         self.editedData = editedData
         self.renderingPreviews = renderingPreviews
         self.edit = edit
         self.paint = paint
         self.delete = delete
-        self.urls = urls
+        self.urls = layout.messages.map { attachments[$0.id]!.url }
         self.reorder = reorder
         self.context = context
         self.payAmount = payAmount
         self.toggleSpoiler = toggleSpoiler
-        self.parameters = messages.enumerated().map { index, message in
+        self.parameters = layout.messages.map { message in
             let param = ChatMediaLayoutParameters(presentation: .empty, media: message.media[0])
-            param.forceSpoiler = spoilers[index] || payAmount != nil
+            param.forceSpoiler = attachments[message.id]!.spoiler || payAmount != nil
             return param
         }
         super.init(initialSize)

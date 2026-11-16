@@ -1,7 +1,22 @@
 import Foundation
 import CoreGraphics
+import ImageIO
 
-typealias CGImage = Int
+extension CGImage {
+    var size: CGSize { CGSize(width: width, height: height) }
+}
+extension CGSize {
+    func fitted(_ bounds: CGSize) -> CGSize {
+        let scale = min(bounds.width / width, bounds.height / height)
+        return CGSize(width: width * scale, height: height * scale)
+    }
+}
+struct PixelDimensions { let size: CGSize; init(_ size: CGSize) { self.size = size } }
+struct LocalFileReferenceMediaResource { init(localFilePath: String, randomId: Int64, isUniquelyReferencedTemporaryFile: Bool) {} }
+struct TelegramMediaImageRepresentation {
+    init(dimensions: PixelDimensions, resource: LocalFileReferenceMediaResource, progressiveSizes: [Int], immediateThumbnailData: Data?, hasVideo: Bool, isPersonal: Bool) {}
+}
+func compressImageToJPEG(_ image: CGImage, quality: CGFloat) -> Data { Data() }
 typealias NoError = Never
 struct Signal<Value, Failure: Error> {
     let value: Value
@@ -68,8 +83,9 @@ func cut_long_message(_ value: String, _ length: Int) -> [String] { [value] }
 
 struct PeerId: Hashable {
     let namespace: Int32
-    init(_ id: Int64) { namespace = 0 }
-    init(namespace: Int32) { self.namespace = namespace }
+    let id: Int64
+    init(_ id: Int64) { namespace = 0; self.id = id }
+    init(namespace: Int32) { self.namespace = namespace; id = 0 }
 }
 struct MessageId: Hashable {
     typealias Id = Int32
@@ -77,8 +93,15 @@ struct MessageId: Hashable {
     let namespace: Int32
     let id: Int32
 }
-struct MediaId: Hashable { let value: Int }
-enum Namespaces { enum Peer { static let SecretChat: Int32 = 1; static let CloudUser: Int32 = 0 } }
+struct MediaId: Hashable {
+    let value: Int
+    init(value: Int) { self.value = value }
+    init(namespace: Int32, id: Int64) { value = Int(id) }
+}
+enum Namespaces {
+    enum Peer { static let SecretChat: Int32 = 1; static let CloudUser: Int32 = 0 }
+    enum Media { static let LocalImage: Int32 = 0 }
+}
 struct StoryId { let peerId: PeerId; let id: Int32 }
 struct EngineMessageReplySubject {}
 struct ItemCollectionId: Hashable {}
@@ -92,18 +115,25 @@ class Media {
     let name: String
     let id: MediaId?
     init(_ name: String, id: Int = 0) { self.name = name; self.id = .init(value: id) }
-    var isInteractiveMedia: Bool { self is TelegramMediaImage || (self as? TelegramMediaFile)?.isVideo == true }
+@@INTERACTIVE_MEDIA@@
     var probablySticker: Bool { false }
     var canHaveCaption: Bool { !((self as? TelegramMediaFile)?.isSticker == true || (self as? TelegramMediaFile)?.isInstantVideo == true) }
     func isEqual(to other: Media) -> Bool { name == other.name && type(of: self) == type(of: other) }
 }
-final class TelegramMediaImage: Media {}
+final class TelegramMediaImage: Media {
+    convenience init(imageId: MediaId, representations: [TelegramMediaImageRepresentation], immediateThumbnailData: Data?, reference: Int?, partialReference: Int?, flags: [Int]) { self.init("prepared-photo", id: imageId.value) }
+}
+final class TelegramMediaMap: Media { let venue: Int? = nil }
+final class TelegramMediaDice: Media {}
 final class LocalFileVideoMediaResource {}
 final class TelegramMediaFile: Media {
     let isVideo: Bool
     let isInstantVideo: Bool
     let isSticker: Bool
     let isAnimatedSticker: Bool
+    let isWebm = false
+    let isAnimated = false
+    let mimeType = "application/octet-stream"
     let resource: Any
     init(_ name: String, video: Bool = false, round: Bool = false, sticker: Bool = false, animatedSticker: Bool = false) {
         isVideo = video; isInstantVideo = round; isSticker = sticker; isAnimatedSticker = animatedSticker
@@ -119,6 +149,7 @@ struct Message {
     let media: [Media]
     let stableId: UInt32
     let id: MessageId
+    var anyMedia: Media? { media.first }
     init(_ media: Media, stableId: UInt32, messageId: MessageId) { self.media = [media]; self.stableId = stableId; self.id = messageId }
 }
 func isEqualMessages(_ a: Message, _ b: Message) -> Bool { a.stableId == b.stableId && a.media[0].isEqual(to: b.media[0]) }
@@ -178,12 +209,26 @@ func enqueueMessages(account: Account, peerId: PeerId, messages: [EnqueueMessage
 var groupingSequence: Int64 = 0
 func arc4random64() -> Int64 { groupingSequence += 1; return groupingSequence }
 struct FastSettings {
+    static var photoDimension: CGFloat = 1280
     static var isNeedCollage = true
     static func isChannelMessagesMuted(_ id: PeerId) -> Bool { false }
 }
 enum Sender {
 @@ELIGIBLE@@
 @@ENQUEUE@@
+}
+func preparePNG(width: Int, height: Int) -> Media {
+    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    let imageData = NSMutableData()
+    let destination = CGImageDestinationCreateWithData(imageData, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+    precondition(CGImageDestinationFinalize(destination))
+    var media: Media!
+    let randomId: Int64 = 1
+    let isUniquelyReferencedTemporaryFile = true
+    func makeFileMedia(_ isMedia: Bool) { media = TelegramMediaFile("prepared-document") }
+@@PREPARE_IMAGE@@
+    return media
 }
 
 final class AnalyticsContext {
@@ -290,20 +335,16 @@ enum ChatLayoutUtils {
     static func contentNode(for media: Media) -> Node.Type { Node.self }
 }
 func previewSenderAccessibilityLabel(for media: Media) -> String { media.name }
+enum GroupedMediaType { case photoOrVideo, files }
 final class GroupedLayout {
     var messages: [Message]
-    var target: Int?
+    var type: GroupedMediaType
     var count: Int { messages.count }
     var dimensions: NSSize { NSSize(width: 280, height: CGFloat(count * 40)) }
-    init(_ messages: [Message]) { self.messages = messages }
+@@LAYOUT_INIT@@
     func measure(_ size: NSSize, preview: Bool = false) {}
     func frame(at index: Int) -> NSRect { NSRect(x: 0, y: index * 40, width: 280, height: 40) }
-    func moveItemIfNeeded(at index: Int, point: NSPoint) -> Int? {
-        guard let target else { return nil }
-        messages.move(at: index, to: target)
-        self.target = nil
-        return target
-    }
+@@LAYOUT_MOVE@@
 }
 @@VIDEO_EDITABLE@@
 @@STATE@@
@@ -331,6 +372,16 @@ func applyPrepared(_ preparedMedias: Atomic<[(Media, Media)]>, to stateValue: At
 @@GROUP@@
 struct NSEvent { let locationInWindow: NSPoint }
 class ReorderBase: Node { func mouseUp(with event: NSEvent) {} }
+final class EditControl {
+    var edit: () -> Void = {}
+    var paint: () -> Void = {}
+    var delete: () -> Void = {}
+    func set(edit: @escaping () -> Void, paint: @escaping () -> Void, delete: @escaping () -> Void, editedData: EditedImageData?) {
+        self.edit = edit
+        self.paint = paint
+        self.delete = delete
+    }
+}
 final class MediaGroupPreviewRowView: ReorderBase {
     var item: TableRowItem?
     var contents: [Node] = []
@@ -338,6 +389,16 @@ final class MediaGroupPreviewRowView: ReorderBase {
     var startPoint = NSPoint.zero
     var offset: NSPoint { .init(x: 20, y: 6) }
     var rendered: [(String, URL, Bool)] = []
+    let editControl = EditControl()
+    func controls(at i: Int) -> EditControl {
+        let item = item as! MediaGroupPreviewRowItem
+@@EDIT_CONTROL@@
+        return editControl
+    }
+    func renderingPreview(at i: Int) -> CGImage? {
+        let item = item as! MediaGroupPreviewRowItem
+        return @@RENDERING@@
+    }
     func convert(_ point: NSPoint, from: Node?) -> NSPoint { point }
     func set(item: TableRowItem, animated: Bool) {
         guard let item = item as? MediaGroupPreviewRowItem else { return }
@@ -651,7 +712,6 @@ rowView.frame = NSRect(x: 0, y: 0, width: 320, height: 400)
 rowView.item = groupItem
 rowView.contents = (0 ..< groupItem.layout.count).map { _ in Node() }
 rowView.draggingIndex = 1
-groupItem.layout.target = 0
 let beforeDrag = drag.urls
 rowView.mouseUp(with: NSEvent(locationInWindow: NSPoint(x: 30, y: 20)))
 var afterDrag = beforeDrag

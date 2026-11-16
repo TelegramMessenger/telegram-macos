@@ -7,11 +7,15 @@ typealias EditedImageData = Int
 protocol AccountContextProtocol {}
 struct Context: AccountContextProtocol {}
 struct TelegramPresentationTheme {}
-struct PeerId { init(_ value: Int64) {} }
-struct MessageId {
+struct PeerId: Hashable {
+    let value: Int64
+    init(_ value: Int64) { self.value = value }
+}
+struct MessageId: Hashable {
     typealias Id = Int32
+    let peerId: PeerId
+    let namespace: Int32
     let id: Id
-    init(peerId: PeerId, namespace: Int32, id: Id) { self.id = id }
 }
 struct Message {
     let media: [Media]

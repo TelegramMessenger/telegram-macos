@@ -7,9 +7,12 @@ import argparse
 import fcntl
 import hashlib
 import json
+import os
 import platform
 from pathlib import Path
 import re
+import shutil
+import signal
 import subprocess
 
 BASELINE = "14a0ffe4d100136d4afdaa43a797d32699cb23f3"
@@ -63,6 +66,37 @@ def balanced(text, start, opening="{", closing="}"):
     raise ValueError("Unbalanced extraction")
 
 
+def compile_checked(command, out, root, compiler_lock):
+    with compiler_lock.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        volumes = [out, root]
+        before = [shutil.disk_usage(path).free for path in volumes]
+        if min(before) < 8 * 1024 ** 3:
+            raise RuntimeError("Compiler requires at least 8 GiB free disk space")
+        temporary = out / "tmp"
+        temporary.mkdir(exist_ok=True)
+        env = dict(os.environ, TMPDIR=str(temporary) + "/")
+        process = subprocess.Popen(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, env=env)
+        aborted = False
+        minimum = min(before)
+        while True:
+            free = min(shutil.disk_usage(path).free for path in volumes)
+            minimum = min(minimum, free)
+            if free < 4 * 1024 ** 3:
+                os.killpg(process.pid, signal.SIGTERM)
+                aborted = True
+            try:
+                stdout, stderr = process.communicate(timeout=1)
+                break
+            except subprocess.TimeoutExpired:
+                if aborted:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    stdout, stderr = process.communicate()
+                    break
+        (out / ("disk-" + ("parse" if "-parse" in command else "compile") + ".json")).write_text(json.dumps({"free_before": before, "minimum_free": minimum, "aborted": aborted, "process_group": process.pid}) + "\n")
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path, required=True)
@@ -70,6 +104,8 @@ def main():
     parser.add_argument("--core-git-dir", type=Path)
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--reviewer-baseline", action="store_true")
+    parser.add_argument("--filtered-baseline", action="store_true")
+    parser.add_argument("--extract-only", action="store_true")
     parser.add_argument("--compiler-lock", type=Path)
     args = parser.parse_args()
     root = args.source_root.resolve()
@@ -87,12 +123,15 @@ def main():
     input_texts = {}
     input_origins = {}
 
-    baseline = "adf9afc783c7b83ca49c746862304286fb7d317a" if args.reviewer_baseline else BASELINE
+    if sum([args.baseline, args.reviewer_baseline, args.filtered_baseline]) > 1:
+        parser.error("Choose one baseline")
+    baseline = "4b5b09c4fc6192240404ec14113adb512f6f502a" if args.filtered_baseline else "adf9afc783c7b83ca49c746862304286fb7d317a" if args.reviewer_baseline else BASELINE
+    baseline_requested = args.baseline or args.reviewer_baseline or args.filtered_baseline
 
     def read(path):
         file = root / path
-        if args.baseline or args.reviewer_baseline or not file.is_file():
-            revision = baseline if args.baseline or args.reviewer_baseline else subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+        if baseline_requested or not file.is_file():
+            revision = baseline if baseline_requested else subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
             text = subprocess.check_output(["git", "-C", str(root), "show", revision + ":" + path], text=True)
             input_origins[path] = revision
         else:
@@ -129,6 +168,22 @@ def main():
     block("SINGLE", PREVIEW + "MediaPreviewRowItem.swift", single, "class MediaPreviewRowItem:")
     block("GROUP", PREVIEW + "MediaGroupPreviewRowItem.swift", group, "class MediaGroupPreviewRowItem:")
     block("REORDER", PREVIEW + "MediaGroupPreviewRowItem.swift", group, "override func mouseUp(with event: NSEvent)")
+    control_marker = "                let url = item.urls[i]" if "                let url = item.urls[i]" in group else "                self.editControl.set(edit:"
+    control_start = group.index(control_marker)
+    control_end = group.index("                self.editControl.setFrameOrigin(", control_start)
+    pieces["EDIT_CONTROL"] = excerpt("EDIT_CONTROL", PREVIEW + "MediaGroupPreviewRowItem.swift", group[control_start:control_end])
+    rendering_start = group.index("updateMediaPreviewRendering(")
+    rendering_end = group.index(", in: contents[i], animated: animated)", rendering_start)
+    pieces["RENDERING"] = excerpt("RENDERING", PREVIEW + "MediaGroupPreviewRowItem.swift", group[rendering_start + len("updateMediaPreviewRendering("):rendering_end])
+    layout = read(CHAT + "GroupedLayout.swift")
+    block("LAYOUT_INIT", CHAT + "GroupedLayout.swift", layout, "public init(_ messages: [Message], type:")
+    block("LAYOUT_MOVE", CHAT + "GroupedLayout.swift", layout, "public func moveItemIfNeeded(")
+    predicates_path = "packages/TelegramMediaUtils/Sources/TelegramMediaUtils/MediaPredicates.swift"
+    predicates = read(predicates_path)
+    block("INTERACTIVE_MEDIA", predicates_path, predicates, "var isInteractiveMedia:")
+    image_start = sender.index("                    let dimension: CGFloat = FastSettings.photoDimension")
+    image_end = sender.index('                } else if mimeType.hasPrefix("video")', image_start)
+    pieces["PREPARE_IMAGE"] = excerpt("PREPARE_IMAGE", SENDER, sender[image_start:image_end])
     block("VIDEO_EDITABLE", PREVIEW + "PreviewSenderController.swift", controller, "func canEditPreviewVideo(")
     block("URLS", PREVIEW + "PreviewSenderController.swift", controller, "fileprivate var urls:[URL]")
     block("ARGUMENT_CREATION", PREVIEW + "PreviewSenderController.swift", controller, "let arguments = SenderPreviewArguments(")
@@ -226,35 +281,38 @@ def main():
         raise ValueError("Unexpanded markers: " + str(unexpanded))
     materialized = out / "Tests.swift"
     materialized.write_text(template)
-    manifest = {"baseline": baseline, "pinned_core": CORE, "source_root": str(root), "baseline_requested": args.baseline or args.reviewer_baseline, "input_origins": input_origins, "inputs": inputs, "extracts": extracts, "visibility_only_rewrite": True, "fixture_sha256": hashlib.sha256(template.encode()).hexdigest()}
+    manifest = {"baseline": baseline, "pinned_core": CORE, "source_root": str(root), "baseline_requested": baseline_requested, "input_origins": input_origins, "inputs": inputs, "extracts": extracts, "visibility_only_rewrite": True, "fixture_sha256": hashlib.sha256(template.encode()).hexdigest()}
     (out / "extraction.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    if args.extract_only:
+        print(json.dumps(manifest, indent=2))
+        return 0
     report = {"source_root": str(root), "baseline_adapter": not enhanced, "compiler_lock": str(compiler_lock), "compiled": False, "passed": False}
     compiler = subprocess.check_output(["xcrun", "--find", "swiftc"], text=True).strip()
     sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
     target = platform.machine() + "-apple-macosx13.0"
     compiler_lock.parent.mkdir(parents=True, exist_ok=True)
-    with compiler_lock.open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        parse_files = []
-        for path in [PREVIEW + "PreviewSenderController.swift", PREVIEW + "MediaPreviewRowItem.swift", PREVIEW + "MediaGroupPreviewRowItem.swift", SENDER, CHAT + "ChatController.swift", CHAT + "ChatInterfaceInteraction.swift", STORY]:
-            parse_file = out / "source" / path
-            parse_file.parent.mkdir(parents=True, exist_ok=True)
-            parse_file.write_text(input_texts[path])
-            parse_files.append(parse_file)
-        parse_command = [compiler, "-j1", "-parse"] + [str(path) for path in parse_files]
-        parse = subprocess.run(parse_command, text=True, capture_output=True)
-        (out / "parse.log").write_text(parse.stdout + parse.stderr)
-        report["parse_command"] = parse_command
-        report["parse_exit"] = parse.returncode
-        command = [compiler, "-j1", "-Onone", "-sdk", sdk, "-target", target, "-module-cache-path", str(out / "module-cache"), str(materialized), "-o", str(out / "Tests")]
-        result = subprocess.run(command, text=True, capture_output=True)
-        (out / "compile.log").write_text(result.stdout + result.stderr)
-        report["compile_command"] = command
-        report["compile_exit"] = result.returncode
-        report["compiled"] = result.returncode == 0
-        fcntl.flock(lock, fcntl.LOCK_UN)
+    parse_files = []
+    for path in [PREVIEW + "PreviewSenderController.swift", PREVIEW + "MediaPreviewRowItem.swift", PREVIEW + "MediaGroupPreviewRowItem.swift", SENDER, CHAT + "ChatController.swift", CHAT + "ChatInterfaceInteraction.swift", STORY]:
+        parse_file = out / "source" / path
+        parse_file.parent.mkdir(parents=True, exist_ok=True)
+        parse_file.write_text(input_texts[path])
+        parse_files.append(parse_file)
+    parse_command = [compiler, "-j1", "-parse"] + [str(path) for path in parse_files]
+    parse = compile_checked(parse_command, out, root, compiler_lock)
+    (out / "parse.log").write_text(parse.stdout + parse.stderr)
+    report["parse_command"] = parse_command
+    report["parse_exit"] = parse.returncode
+    command = [compiler, "-j1", "-Onone", "-sdk", sdk, "-target", target, "-module-cache-path", str(out / "module-cache"), str(materialized), "-o", str(out / "Tests")]
+    result = compile_checked(command, out, root, compiler_lock)
+    (out / "compile.log").write_text(result.stdout + result.stderr)
+    report["compile_command"] = command
+    report["compile_exit"] = result.returncode
+    report["compiled"] = result.returncode == 0
     if report["compiled"]:
-        run = subprocess.run([str(out / "Tests")], text=True, capture_output=True)
+        temporary = out / "tmp"
+        temporary.mkdir(exist_ok=True)
+        env = dict(os.environ, TMPDIR=str(temporary) + "/")
+        run = subprocess.run([str(out / "Tests")], text=True, capture_output=True, env=env)
         (out / "runtime.log").write_text(run.stdout + run.stderr)
         report["runtime_exit"] = run.returncode
         try:
@@ -262,7 +320,7 @@ def main():
         except json.JSONDecodeError:
             report["behavior"] = {"error": "No JSON behavior result"}
         if enhanced:
-            deletion = subprocess.run([str(out / "Tests"), "--queued-deletion"], text=True, capture_output=True)
+            deletion = subprocess.run([str(out / "Tests"), "--queued-deletion"], text=True, capture_output=True, env=env)
             (out / "queued-deletion.log").write_text(deletion.stdout + deletion.stderr)
             report["queued_deletion_exit"] = deletion.returncode
         report["passed"] = parse.returncode == 0 and run.returncode == 0 and report.get("queued_deletion_exit", 0) == 0
