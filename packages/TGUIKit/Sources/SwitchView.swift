@@ -34,18 +34,18 @@ struct SwitchGeometry {
     let bounds: CGRect
 
     var scale: CGFloat {
-        return max(0, min(bounds.width / 36, bounds.height / 20))
+        return max(0, min(bounds.width / 44, bounds.height / 24))
     }
 
     var track: CGRect {
-        return CGRect(x: bounds.midX - 18 * scale, y: bounds.midY - 8 * scale, width: 36 * scale, height: 16 * scale)
+        return CGRect(x: bounds.midX - 22 * scale, y: bounds.midY - 10 * scale, width: 44 * scale, height: 20 * scale)
     }
 
-    var travel: CGFloat { 13 * scale }
+    var travel: CGFloat { 14 * scale }
 
     func thumb(position: CGFloat, lifted: Bool) -> CGRect {
-        let size = CGSize(width: (lifted ? 32 : 20) * scale, height: (lifted ? 20 : 13) * scale)
-        let center = CGPoint(x: track.minX + 11.5 * scale + travel * position, y: track.midY)
+        let size = CGSize(width: (lifted ? 40 : 26) * scale, height: (lifted ? 24 : 16) * scale)
+        let center = CGPoint(x: track.minX + 15 * scale + travel * position, y: track.midY)
         return CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
     }
 }
@@ -100,7 +100,7 @@ enum SwitchMotion {
 }
 
 public class SwitchView: Control {
-    public static let preferredSize = CGSize(width: 36, height: 20)
+    public static let preferredSize = CGSize(width: 44, height: 24)
 
     public var autoswitch = true
     public var presentation: SwitchViewAppearance = switchViewAppearance {
@@ -209,6 +209,9 @@ public class SwitchView: Control {
     }
 
     public func setIsOn(_ isOn: Bool, animated: Bool = true) {
+        if isOn == self.isOn, pendingChange == nil {
+            return
+        }
         invalidateInteraction()
         let changed = self.isOn != isOn
         self.isOn = isOn
@@ -315,7 +318,7 @@ public class SwitchView: Control {
         render(animated: !reduceMotion() && window != nil)
     }
 
-    private func finishPendingChange() {
+    public func finishPendingChange() {
         guard let pendingChange else { return }
         self.pendingChange = nil
         activeMotions.removeAll()

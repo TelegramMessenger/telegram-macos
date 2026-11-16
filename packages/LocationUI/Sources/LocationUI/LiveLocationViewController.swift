@@ -11,6 +11,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 private final class LocationPreviewArguments {
     let context:any AccountContextProtocol
@@ -102,6 +103,7 @@ public func LocationModalPreview(_ context: any AccountContextProtocol, map mapV
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().locationPreviewTitle)
+    controller.analyticsScreen = .chatLocationPreview
     
     controller.afterDisappear = {
         disposable.dispose()

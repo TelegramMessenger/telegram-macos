@@ -21,6 +21,7 @@ import InputTextView
 import SwiftSignalKit
 import Postbox
 import TelegramCore
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -441,6 +442,7 @@ public func RequestJoinMemberListController(context: any AccountContextProtocol,
 
         return bar
     })
+    controller.analyticsScreen = .peerInfoJoinRequests
     
     controller.onDeinit = {
         actionsDisposable.dispose()

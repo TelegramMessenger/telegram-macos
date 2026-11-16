@@ -33,6 +33,7 @@ let package = Package(
         .package(name: "MessageTextUtils", path: "../MessageTextUtils"),
         .package(name: "InputView", path: "../InputView"),
         .package(name: "InlineStickerLayer", path: "../InlineStickerLayer"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
     ],
     targets: [
         .target(
@@ -62,6 +63,7 @@ let package = Package(
                 .product(name: "MessageTextUtils", package: "MessageTextUtils", condition: nil),
                 .product(name: "InputView", package: "InputView", condition: nil),
                 .product(name: "InlineStickerLayer", package: "InlineStickerLayer", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
             ],
             path: "Sources/BusinessUI"),
     ]

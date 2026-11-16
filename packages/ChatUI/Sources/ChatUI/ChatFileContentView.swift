@@ -94,20 +94,7 @@ public class ChatFileContentView: ChatMediaContentView {
                     return
                 }
 
-                let badExts = ["sh", "bash", "zsh", "csh", "tcsh", "command", "svg", "html", "htm", "xhtml", "app", "exe", "bin", "run", "pkg", "mpkg", "dmg", "iso", "docm", "xlsm", "pptm", "alias", "lnk", "plist", "conf", "ini", "md"]
-
-                let fileNameLower = (media.fileName ?? "").lowercased()
-                let badFilename = badExts.contains(where: {
-                    return fileNameLower.hasSuffix("." + $0)
-                })
-
-                if badExts.contains(media.mimeType.lowercased()) || badFilename {
-                    verifyAlert_button(for: context.window, information: strings().chatFileQuickLookMalf, successHandler: { _ in
-                        ChatMediaUIHooks.shared.showQuickLookPreview(context, media, parent.chatStableId, self.table)
-                    })
-                } else {
-                    ChatMediaUIHooks.shared.showQuickLookPreview(context, media, parent.chatStableId, self.table)
-                }
+                ChatMediaUIHooks.shared.showQuickLookPreview(context, media, parent.chatStableId, self.table)
             }
         }
     }

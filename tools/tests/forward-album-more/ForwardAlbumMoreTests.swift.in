@@ -1,0 +1,611 @@
+import Foundation
+
+enum NoError {}
+
+final class Disposable {}
+
+struct Signal<T, E> {
+    let value: T
+    static func single(_ value: T) -> Signal<T, E> {
+        return Signal(value: value)
+    }
+    func start(next: (T) -> Void) -> Disposable {
+        next(value)
+        return Disposable()
+    }
+}
+
+precedencegroup PipeRight {
+    associativity: left
+    higherThan: AssignmentPrecedence
+}
+
+infix operator |> : PipeRight
+
+func |> <T, U>(value: T, function: (T) -> U) -> U {
+    return function(value)
+}
+
+func deliverOnMainQueue<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
+    return signal
+}
+
+func mapToSignal<T, U, E>(_ f: @escaping (T) -> Signal<U, E>) -> (Signal<T, E>) -> Signal<U, E> {
+    return { signal in f(signal.value) }
+}
+
+final class AnalyticsScope {}
+
+final class AnalyticsPresentation {
+    func end() {}
+}
+
+final class AnalyticsContext {
+    let scope: AnalyticsScope? = nil
+    var isExcluded: Bool {
+        return false
+    }
+    func restricting(peerId: PeerId) -> AnalyticsContext {
+        return self
+    }
+    func beginPresentation() -> AnalyticsPresentation {
+        return AnalyticsPresentation()
+    }
+    func preservingPresentation<Value, Failure>(_ signal: Signal<Value, Failure>) -> Signal<Value, Failure> {
+        return signal
+    }
+}
+
+struct TelegramEngine {}
+
+final class Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> AnalyticsContext {
+        return AnalyticsContext()
+    }
+    func captureContext(engine: TelegramEngine, peerId: PeerId, inherited: AnalyticsContext? = nil) -> AnalyticsContext {
+        return inherited ?? AnalyticsContext()
+    }
+}
+
+enum AnalyticsFlows {
+    enum ChatForwardPicker {
+        enum EntryPoint {
+            case messageSelection
+            case messageMenu
+            case moreMenu
+            case replacementMenu
+            case rowAction
+        }
+    }
+}
+
+final class AnalyticsForwardPickerJourney {
+    init(context: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint) {}
+    func restrict(to context: AnalyticsContext) {}
+    func discard() {}
+}
+
+struct MessageId: Hashable {
+    let id: Int32
+    var peerId: PeerId {
+        return PeerId(namespace: Namespaces.Peer.CloudUser, id: 0)
+    }
+}
+
+protocol Media {}
+
+struct Photo: Media {}
+
+final class Message {
+    let id: MessageId
+    let groupingKey: Int64?
+    let media: [Media] = [Photo()]
+    let activeEphemeralReplacementMessage: Message? = nil
+    let containsSecretMedia = false
+    init(_ id: Int32, groupingKey: Int64? = nil) {
+        self.id = MessageId(id: id)
+        self.groupingKey = groupingKey
+    }
+}
+
+struct PeerId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Peer {
+        static let CloudUser: Int32 = 0
+        static let SecretChat: Int32 = 3
+    }
+}
+
+final class Peer {
+    let id: PeerId
+    let displayTitle: String
+    let isCommunity = false
+    let isDeleted = false
+    init(_ id: Int64, _ title: String, namespace: Int32 = Namespaces.Peer.CloudUser) {
+        self.id = PeerId(namespace: namespace, id: id)
+        self.displayTitle = title
+    }
+    func canSendMessage(media: Media?) -> Bool {
+        return true
+    }
+}
+
+extension String {
+    func prefixWithDots(_ count: Int) -> String {
+        return self
+    }
+}
+
+struct Strings {
+    let messageContextForward = "Forward"
+    let chatContextForwardMore = "More..."
+    let chatContextFolders = "Folders"
+    let peerSavedMessages = "Saved Messages"
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+enum MenuAnimation {
+    case menu_forward
+    case menu_more
+    case menu_folder
+    var value: Int {
+        return 0
+    }
+}
+
+class ContextMenuItem {
+    let title: String
+    let handler: (() -> Void)?
+    var submenu: ContextMenu?
+    var redraw: (() -> Void)?
+    init(_ title: String, handler: (() -> Void)? = nil, itemImage: Int? = nil) {
+        self.title = title
+        self.handler = handler
+    }
+}
+
+final class ContextSeparatorItem: ContextMenuItem {
+    init() {
+        super.init("")
+    }
+}
+
+final class ContextMenu {
+    var items: [ContextMenuItem] = []
+    var asyncItemsProvider: ((@escaping ([ContextMenuItem]) -> Void) -> Disposable)?
+    func addItem(_ item: ContextMenuItem) {
+        items.append(item)
+    }
+}
+
+var storedGroups: [MessageId: [Message]] = [:]
+var storedMessages: [MessageId: Message] = [:]
+
+final class Transaction {
+    func getMessageGroup(_ id: MessageId) -> [Message]? {
+        return storedGroups[id]
+    }
+    func getMessage(_ id: MessageId) -> Message? {
+        return storedMessages[id]
+    }
+}
+
+final class Postbox {
+    func transaction<T>(_ f: (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal(value: f(Transaction()))
+    }
+}
+
+final class Account {
+    let postbox = Postbox()
+}
+
+protocol AccountContextProtocol: AnyObject {
+    var account: Account { get }
+    var peerId: PeerId { get }
+}
+
+final class AccountContext: AccountContextProtocol {
+    let account = Account()
+    let peerId: PeerId
+    let window = 0
+    init(peerId: PeerId) {
+        self.peerId = peerId
+    }
+}
+
+extension AccountContextProtocol {
+    var concrete: AccountContext {
+        return self as! AccountContext
+    }
+    var engine: TelegramEngine {
+        return TelegramEngine()
+    }
+}
+
+__SELECTED_WITH_ALBUMS__
+
+protocol ChatCustomContents: AnyObject {
+    func messagesAtIds(_ ids: [MessageId], album: Bool) -> Signal<[Message], NoError>
+}
+
+struct HistoryEntry {
+    let message: Message
+}
+
+struct HistoryView {
+    let entries: [HistoryEntry]
+}
+
+final class HashtagSearchContents: ChatCustomContents {
+    let mergedHistoryView: HistoryView?
+    init(results: [Message]) {
+        self.mergedHistoryView = HistoryView(entries: results.map { HistoryEntry(message: $0) })
+    }
+    func messagesAtIds(_ ids: [MessageId], album: Bool) -> Signal<[Message], NoError> {
+        __HASHTAG_LOOKUP__
+    }
+}
+
+struct ChatMode {
+    let customChatContents: ChatCustomContents?
+}
+
+struct Presentation {
+    var reportMode: Int? = nil
+}
+
+var sent: [[Int32]] = []
+var reported: [[MessageId]] = []
+
+class ShareObject {
+    let context: any AccountContextProtocol
+    init(_ context: any AccountContextProtocol, emptyPerformOnClose: Bool = false) {
+        self.context = context
+    }
+}
+
+protocol ChatHistoryForwardMessagesObject: AnyObject {
+    func possibilityPerformTo(_ peer: Peer) -> Bool
+    func forwardedIds() -> [Int32]
+}
+
+final class ForwardMessagesObject: ShareObject, ChatHistoryForwardMessagesObject {
+    fileprivate let messages: [Message]
+    let forwardingAnalyticsContext: AnalyticsContext
+    __OBJECT_IDS__
+    private let album: Bool
+    private let getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?
+
+    __OBJECT_CONVENIENCE_INIT__
+
+    __OBJECT_INIT__
+
+    func possibilityPerformTo(_ peer: Peer) -> Bool {
+        return true
+    }
+
+    func forwardedIds() -> [Int32] {
+        let context = self.context
+        __OBJECT_ALBUM__
+        __OBJECT_IDS_LINE__
+        __OBJECT_LOOKUP__
+        var ids: [Int32] = []
+        _ = messages.start(next: { found in
+            ids = found.map { $0.id.id }
+        })
+        return ids
+    }
+}
+
+class ModalViewController {
+    var analyticsContext: AnalyticsContext?
+}
+
+final class ShareModalController: ModalViewController {
+    let share: ShareObject
+    init(_ share: ShareObject, analyticsContext: AnalyticsContext? = nil) {
+        self.share = share
+    }
+    func setAnalyticsForwardJourney(_ journey: AnalyticsForwardPickerJourney) {}
+}
+
+func showModal(with controller: ModalViewController, for window: Int) {
+    if let object = (controller as? ShareModalController)?.share as? ForwardMessagesObject {
+        sent.append(object.forwardedIds())
+    }
+}
+
+__MESSAGE_FOR_FORWARDING__
+
+final class ChatUIHooks {
+    static var shared: ChatUIHooks!
+    let makeForwardMessagesShareModal: (any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController
+    var makeForwardMessagesShareModalWithContext: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, AnalyticsContext) -> ModalViewController)?
+    var makeForwardMessagesShareModalWithSource: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, AnalyticsContext, AnalyticsFlows.ChatForwardPicker.EntryPoint) -> ModalViewController)?
+    var attachForwardJourney: (ModalViewController, AnalyticsForwardPickerJourney) -> Void = { _, journey in journey.discard() }
+    init(makeForwardMessagesShareModal: @escaping (any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController) {
+        self.makeForwardMessagesShareModal = makeForwardMessagesShareModal
+    }
+    __SHARE_MODAL_OBSERVED__
+}
+
+struct ChatListFilter {
+    let title: String
+}
+
+struct FolderIcon {
+    let emoticon = 0
+    init(_ filter: ChatListFilter) {}
+}
+
+final class ChatHistoryUIHooks {
+    static var shared: ChatHistoryUIHooks!
+    let makeForwardMessagesObject: (any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject
+    var makeForwardMessagesObjectWithContext: ((any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?, AnalyticsContext) -> ChatHistoryForwardMessagesObject)?
+    init(makeForwardMessagesObject: @escaping (any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject) {
+        self.makeForwardMessagesObject = makeForwardMessagesObject
+    }
+    func makeForwardMessagesObjectObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ album: Bool, _ getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?, analyticsContext: AnalyticsContext) -> ChatHistoryForwardMessagesObject {
+        __OBJECT_OBSERVED__
+    }
+    func chatListFilterTitle(_ filter: ChatListFilter) -> String {
+        return filter.title
+    }
+    func folderEmoticonDrawable(_ emoticon: Int) -> MenuAnimation {
+        return .menu_folder
+    }
+}
+
+let historyHooks = ChatHistoryUIHooks(makeForwardMessagesObject: { context, messages, album, getMessages in
+    __OBJECT_PLAIN__
+})
+historyHooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages, analyticsContext in
+    __OBJECT_WITH_CONTEXT__
+}
+ChatHistoryUIHooks.shared = historyHooks
+let uiHooks = ChatUIHooks(makeForwardMessagesShareModal: { context, messages, getMessages in
+    __SHARE_MODAL__
+})
+uiHooks.makeForwardMessagesShareModalWithContext = { context, messages, getMessages, analyticsContext in
+    __SHARE_MODAL_WITH_CONTEXT__
+}
+uiHooks.makeForwardMessagesShareModalWithSource = { context, messages, getMessages, analyticsContext, entry in
+    __SHARE_MODAL_WITH_SOURCE__
+}
+uiHooks.attachForwardJourney = { controller, journey in
+    __ATTACH_FORWARD_JOURNEY__
+}
+ChatUIHooks.shared = uiHooks
+
+__DEFERRED_SEND_ACTION__
+
+final class ChatInteraction {
+    let context: AccountContext
+    let mode: ChatMode
+    var presentation = Presentation()
+    var peerId: PeerId {
+        return context.peerId
+    }
+    __FORWARD_MESSAGES_OBSERVED__
+    init(context: AccountContext, mode: ChatMode) {
+        self.context = context
+        self.mode = mode
+    }
+    func getMessages(_ messageIds: [MessageId], _ album: Bool) -> Signal<[Message], NoError> {
+        __GET_MESSAGES__
+    }
+    func captureAnalyticsContext(sourcePeerId: PeerId? = nil) -> AnalyticsContext {
+        return Analytics.shared.unresolvedContext()
+    }
+    func captureDeferredSendAction() -> ChatDeferredSendAction {
+        return ChatDeferredSendAction(isCurrent: { true })
+    }
+    func quickForward(_ object: ChatHistoryForwardMessagesObject, peerId: PeerId, threadId: Int64?, analyticsContext: AnalyticsContext, action: ChatDeferredSendAction) {
+        guard action.takeIfCurrent() else {
+            return
+        }
+        sent.append(object.forwardedIds())
+    }
+    func reportMessages(_ report: Int, _ ids: [MessageId]) {
+        reported.append(ids)
+    }
+}
+
+__FORWARD_MENU_ACTION__
+
+final class ChatControllerStub {
+    let chatInteraction: ChatInteraction
+    init(context: AccountContext, chatInteraction: ChatInteraction) {
+        self.chatInteraction = chatInteraction
+        __CHAT_FORWARD_MESSAGES__
+    }
+}
+
+final class ReactionPeerMenu: ContextMenuItem {
+    enum Destination {
+        case forward(callback: (PeerId, Int64?) -> Void, canSelect: (Peer) -> Bool)
+    }
+    let peer: Peer
+    let destination: Destination
+    init(title: String, handler: @escaping () -> Void, peer: Peer, context: any AccountContextProtocol, reaction: Int?, message: Message, destination: Destination) {
+        self.peer = peer
+        self.destination = destination
+        super.init(title, handler: handler)
+    }
+}
+
+final class MenuData {
+    let message: Message
+    let chatInteraction: ChatInteraction
+    let groupped: [Message]?
+    let accountPeer: Peer
+    let recentUsedPeers: [Peer]
+    let favoritePeers: [Peer]
+    let dialogs: [Peer]
+    let folders: [ChatListFilter]
+    let folderPeers: (ChatListFilter) -> Signal<[Peer], NoError>
+    init(message: Message, chatInteraction: ChatInteraction, groupped: [Message]?, accountPeer: Peer, recentUsedPeers: [Peer], favoritePeers: [Peer], dialogs: [Peer], folders: [ChatListFilter], folderPeers: @escaping (ChatListFilter) -> Signal<[Peer], NoError>) {
+        self.message = message
+        self.chatInteraction = chatInteraction
+        self.groupped = groupped
+        self.accountPeer = accountPeer
+        self.recentUsedPeers = recentUsedPeers
+        self.favoritePeers = favoritePeers
+        self.dialogs = dialogs
+        self.folders = folders
+        self.folderPeers = folderPeers
+    }
+}
+
+func canForwardMessage(_ message: Message, chatInteraction: ChatInteraction) -> Bool {
+    return true
+}
+
+func forwardMenuItems(data: MenuData, message: Message, useGroupIfNeeded: Bool, chatInteraction: ChatInteraction, context: AccountContext) -> [ContextMenuItem] {
+    let isService = false
+    var secondBlock: [ContextMenuItem] = []
+    __FORWARD_BLOCK__
+    return secondBlock
+}
+
+struct Entry {
+    let name: String
+    let run: () -> Void
+}
+
+func entries(of forward: ContextMenuItem) -> [Entry] {
+    var result: [Entry] = []
+    if let handler = forward.handler {
+        result.append(Entry(name: forward.title, run: handler))
+    }
+    func walk(_ items: [ContextMenuItem], _ path: String) {
+        for item in items {
+            if let handler = item.handler {
+                result.append(Entry(name: path + item.title, run: handler))
+            }
+            if let row = item as? ReactionPeerMenu, case let .forward(callback, _) = row.destination {
+                result.append(Entry(name: path + item.title + " > topic", run: { callback(row.peer.id, 7) }))
+            }
+            if let submenu = item.submenu {
+                walk(submenu.items, path + item.title + " > ")
+                if let provider = submenu.asyncItemsProvider {
+                    var loaded: [ContextMenuItem] = []
+                    _ = provider { loaded = $0 }
+                    walk(loaded, path + item.title + " > ")
+                }
+            }
+        }
+    }
+    walk(forward.submenu?.items ?? [], forward.title + " > ")
+    return result
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+let me = Peer(1, "Me")
+let friend = Peer(2, "Friend")
+let secret = Peer(3, "Secret", namespace: Namespaces.Peer.SecretChat)
+let group = Peer(4, "Group")
+let channel = Peer(5, "Channel")
+let folderChat = Peer(6, "Folder chat")
+let work = ChatListFilter(title: "Work")
+let account = AccountContext(peerId: me.id)
+
+let albumKey: Int64 = 77
+let first = Message(11, groupingKey: albumKey)
+let second = Message(12, groupingKey: albumKey)
+let third = Message(13, groupingKey: albumKey)
+let album = [first, second, third]
+let single = Message(21)
+let missing = Message(31)
+
+for message in album {
+    storedMessages[message.id] = message
+    storedGroups[message.id] = album
+}
+storedMessages[single.id] = single
+storedGroups[single.id] = [single]
+
+let chat = ChatMode(customChatContents: nil)
+let hashtagFoundAlbum = ChatMode(customChatContents: HashtagSearchContents(results: album))
+let hashtagFoundCaption = ChatMode(customChatContents: HashtagSearchContents(results: [first]))
+
+struct Case {
+    let name: String
+    let mode: ChatMode
+    let message: Message
+    let groupped: [Message]?
+    let useGroupIfNeeded: Bool
+    let expected: [Int32]
+}
+
+let cases: [Case] = [
+    Case(name: "chat: album menu opened on the caption of the first item", mode: chat, message: first, groupped: album, useGroupIfNeeded: true, expected: [11, 12, 13]),
+    Case(name: "chat: album menu opened on the caption of the last item", mode: chat, message: third, groupped: album, useGroupIfNeeded: true, expected: [11, 12, 13]),
+    Case(name: "chat: menu of one item in an album", mode: chat, message: second, groupped: album, useGroupIfNeeded: false, expected: [12]),
+    Case(name: "chat: menu of the captioned item in an album", mode: chat, message: first, groupped: album, useGroupIfNeeded: false, expected: [11]),
+    Case(name: "chat: album item shown on its own row", mode: chat, message: second, groupped: album, useGroupIfNeeded: true, expected: [11, 12, 13]),
+    Case(name: "chat: message not in an album", mode: chat, message: single, groupped: [single], useGroupIfNeeded: true, expected: [21]),
+    Case(name: "chat: message missing from the database", mode: chat, message: missing, groupped: nil, useGroupIfNeeded: true, expected: []),
+    Case(name: "hashtag search: album menu opened on the caption", mode: hashtagFoundAlbum, message: first, groupped: album, useGroupIfNeeded: true, expected: [11, 12, 13]),
+    Case(name: "hashtag search: menu of one item in an album", mode: hashtagFoundAlbum, message: second, groupped: album, useGroupIfNeeded: false, expected: [12]),
+    Case(name: "hashtag search: only the captioned item found", mode: hashtagFoundCaption, message: first, groupped: album, useGroupIfNeeded: true, expected: [11]),
+]
+
+func makeForward(_ item: Case) -> (ContextMenuItem?, ChatControllerStub) {
+    let chatInteraction = ChatInteraction(context: account, mode: item.mode)
+    let controller = ChatControllerStub(context: account, chatInteraction: chatInteraction)
+    let data = MenuData(message: item.message, chatInteraction: chatInteraction, groupped: item.groupped, accountPeer: me, recentUsedPeers: [friend, secret], favoritePeers: [group], dialogs: [channel], folders: [work], folderPeers: { _ in .single([folderChat]) })
+    let block = forwardMenuItems(data: data, message: item.message, useGroupIfNeeded: item.useGroupIfNeeded, chatInteraction: chatInteraction, context: account)
+    return (block.first(where: { $0.title == "Forward" }), controller)
+}
+
+for item in cases {
+    let (forward, _) = makeForward(item)
+    check("\(item.name): the menu has Forward", forward != nil)
+    guard let forward = forward else {
+        continue
+    }
+    let names = entries(of: forward).map { $0.name }
+    check("\(item.name): Forward has More...", names.contains("Forward > More..."))
+    check("\(item.name): Forward lists the quick chats and the folder", ["Forward > Saved Messages", "Forward > Friend", "Forward > Group", "Forward > Channel", "Forward > Folders > Work > Folder chat"].allSatisfy(names.contains))
+    var results: [[Int32]] = []
+    for (index, name) in names.enumerated() {
+        let (fresh, controller) = makeForward(item)
+        let all = fresh.map { entries(of: $0) } ?? []
+        sent = []
+        withExtendedLifetime(controller) {
+            if index < all.count, all[index].name == name {
+                all[index].run()
+            }
+        }
+        check("\(item.name): \(name) sends one forward", sent.count == 1)
+        check("\(item.name): \(name) sends \(item.expected)", sent.first == item.expected)
+        results.append(sent.first ?? [])
+    }
+    check("\(item.name): every Forward entry sends the same messages", Set(results.map { $0.map(String.init).joined(separator: ",") }).count == 1)
+}
+
+check("nothing was reported instead of forwarded", reported.isEmpty)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

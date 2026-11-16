@@ -7,6 +7,7 @@ import Localization
 import Cocoa
 import TGUIKit
 import SwiftSignalKit
+import AppAnalytics
 
 
 private let pasteboardURLDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.link]).rawValue)
@@ -166,6 +167,7 @@ public func InputURLFormatterModalController(string: String, defaultUrl: String?
         }
         return .none
     })
+    controller.analyticsScreen = .appLinkInput
     
     let modalInteractions = ModalInteractions(acceptTitle: strings().modalOK, accept: { [weak controller] in
         controller?.validateInputValues()

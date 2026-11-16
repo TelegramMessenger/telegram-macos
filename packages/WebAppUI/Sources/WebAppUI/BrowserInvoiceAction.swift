@@ -1,3 +1,4 @@
+import AppAnalytics
 import Localization
 import SwiftSignalKit
 import TelegramContext
@@ -21,25 +22,30 @@ final class BrowserInvoiceAction {
         return true
     }
 
-    func open(context: any AccountContextProtocol, slug: String, window: Window, canPresent: @escaping () -> Bool, completion: @escaping (String) -> Void) {
+    func open(context: any AccountContextProtocol, slug: String, window: Window, analyticsContext: AnalyticsContext, canPresent: @escaping () -> Bool, completion: @escaping (String) -> Void) {
         guard !active, !slug.isEmpty else { return }
         active = true
         generation &+= 1
         let generation = self.generation
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let pending = MetaDisposable()
         request.set(pending)
         var receivedInvoice = false
         let signal = showModalProgress(signal: context.engine.payments.fetchBotPaymentInvoice(source: .slug(slug)) |> take(1) |> deliverOnMainQueue, for: window)
         guard active, self.generation == generation else { return }
-        pending.set((signal).start(next: { [weak self] invoice in
+        pending.set(origin.preservingPresentation(signal).start(next: { [weak self] invoice in
             guard let self else { return }
             receivedInvoice = true
             guard canPresent(), self.active, self.generation == generation else {
                 _ = self.finish(generation)
                 return
             }
-            BrowserHooks.shared.openInvoiceObserved(context, invoice, slug, window, completion: { [weak self] status in
+            BrowserHooks.shared.openInvoiceObserved(context, invoice, slug, window, analyticsContext: origin, completion: { [weak self] status in
                 guard let self, self.finish(generation) else { return }
+                let delivery = origin.beginPresentation()
+                defer { delivery.end() }
                 completion(status)
             })
         }, error: { [weak self] _ in

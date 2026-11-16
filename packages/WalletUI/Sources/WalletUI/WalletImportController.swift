@@ -11,6 +11,7 @@ import TGUIKit
 import SwiftSignalKit
 import WalletContext
 import PasscodeCore
+import AppAnalytics
 
 public struct WalletOnboardingStep {
     public let controller: InputDataController
@@ -846,6 +847,15 @@ public func WalletImportPage(context: any AccountContextProtocol, environment: W
     let controller = InputDataController(dataSignal: signal, title: strings().walletImportControllerTitle, hasDone: false, identifier: "wallet-import", getBackgroundColor: {
         theme.colors.background
     })
+    switch mode {
+    case .importWallet, .enterRecoveryPhrase:
+        controller.analyticsScreen = AnalyticsScreen.walletRecoveryPhraseEntry
+    case .enableBackup:
+        controller.analyticsScreen = AnalyticsScreen.walletBackup
+    case .verify:
+        controller.analyticsScreen = AnalyticsScreen.walletRecoveryPhraseVerify
+    }
+
     getController = { [weak controller] in
         return controller
     }

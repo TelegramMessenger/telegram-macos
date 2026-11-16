@@ -1,0 +1,26 @@
+{
+  "label": "baseline-exact",
+  "startedAt": "2026-10-28T07:32:59Z",
+  "entries": [
+    {
+      "metrics": {
+        "administrator": 0,
+        "boostsApplied": 1,
+        "boostsRequired": 1,
+        "canReact": 0,
+        "defaultReactionBan": 1,
+        "personalReactionBan": 0,
+        "pickerWindow": 0,
+        "rawPermission": 0,
+        "sendAsChat": 0,
+        "sendAsOther": 1
+      },
+      "notes": {
+        "chat": "Telegram macOS",
+        "messageId": "114419"
+      },
+      "run": 0,
+      "scenario": "reaction-picker"
+    }
+  ]
+}

@@ -91,6 +91,14 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
         }
     }
 
+    private struct SelectionGesture {
+        let start: NSPoint
+        let center: CGFloat
+        let range: ClosedRange<CGFloat>
+        var position: CGFloat
+        var isDragging = false
+    }
+
     private let glass = LiquidGlassView(frame: NSZeroRect, cornerRadius: PeerMediaTabsView.height / 2, hasShadow: true, hasBorder: true)
     private let clipView = View()
     private let contentView = View()
@@ -104,6 +112,14 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
     private var currentTheme: TelegramPresentationTheme = theme
     private var account: Account?
     private var focusSelectedOnLayout = false
+    private lazy var lens: GlassSelectionLens = {
+        let lens = GlassSelectionLens(host: self, selectionView: selectionView)
+        lens.onCancel = { [weak self] in
+            self?.cancelSelection(animated: true)
+        }
+        return lens
+    }()
+    private var gesture: SelectionGesture?
 
     var didSelect: ((Int64) -> Void)?
     var menuItems: ((Int64, Int) -> [ContextMenuItem])?
@@ -124,6 +140,19 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isHidden: Bool {
+        didSet {
+            if isHidden {
+                cancelSelection(animated: false)
+            }
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        cancelSelection(animated: false)
     }
 
     static func iconFile(_ gift: ProfileGiftsContext.State.StarGift) -> TelegramMediaFile? {
@@ -170,6 +199,9 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
         let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.4, curve: .spring) : .immediate
         let previousIds = Set(self.tabs.map { $0.id })
         let selectionChanged = self.selectedId != selected
+        if gesture != nil, self.tabs.map({ $0.id }) != tabs.map({ $0.id }) {
+            finishGesture()
+        }
 
         self.tabs = tabs
         self.selectedId = selected
@@ -225,6 +257,9 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
     }
 
     func setSelection(position: CGFloat, animated: Bool) {
+        if gesture != nil {
+            finishGesture()
+        }
         if !animated {
             selectionView.layer?.removeAllAnimations()
         }
@@ -255,11 +290,22 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
         return NSMakeRect(minX, 0, width, frames[lower].height)
     }
 
+    private func position(at x: CGFloat, frames: [NSRect]) -> CGFloat {
+        for index in 0 ..< max(0, frames.count - 1) where x < frames[index + 1].midX {
+            let distance = frames[index + 1].midX - frames[index].midX
+            return CGFloat(index) + min(1, max(0, (x - frames[index].midX) / max(1, distance)))
+        }
+        return CGFloat(max(0, frames.count - 1))
+    }
+
     private func clampedScrollOffset(_ offset: CGFloat, visibleWidth: CGFloat) -> CGFloat {
         return max(0, min(offset, contentWidth - visibleWidth))
     }
 
     private func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        if lens.updateMode(content: [clipView]) {
+            finishGesture()
+        }
         let focusSelected = focusSelectedOnLayout
         focusSelectedOnLayout = false
         selectionView.backgroundColor = currentTheme.colors.text.withAlphaComponent(currentTheme.colors.isDark ? 0.1 : 0.075)
@@ -298,6 +344,94 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
         } else {
             selectionView.isHidden = true
         }
+        updateLens(transition: transition)
+    }
+
+    private func updateLens(transition: ContainedViewLayoutTransition) {
+        let frames = itemFrames
+        let position = gesture?.position ?? selectionPosition
+        let selection = position.flatMap { frames.isEmpty ? nil : contentView.convert(selectionFrame(at: $0, frames: frames), to: self) }
+        let visible = clipView.bounds
+        let sources: [NSView] = tabs.compactMap { tab in
+            guard let view = itemViews[tab.id], visible.contains(view.convert(view.bounds, to: clipView)) else {
+                return nil
+            }
+            return view
+        }
+        lens.update(selection: selection, clip: clipView.frame, lifted: gesture != nil, sources: sources, appearance: currentTheme.appearance, transition: transition)
+    }
+
+    private func beginSelection(at point: NSPoint) -> Bool {
+        if lens.updateMode(content: [clipView]) {
+            finishGesture()
+        }
+        guard lens.liftsOnPress, !isHidden, let tab = tabId(at: point) else {
+            return false
+        }
+        finishGesture()
+        let frames = itemFrames
+        let visible = NSMakeRect(scrollOffset, 0, clipView.frame.width, clipView.frame.height)
+        let fullyVisible = frames.indices.filter { visible.contains(frames[$0]) }
+        let lower = min(fullyVisible.first ?? tab.index, tab.index)
+        let upper = max(fullyVisible.last ?? tab.index, tab.index)
+        gesture = SelectionGesture(start: point, center: frames[tab.index].midX, range: CGFloat(lower) ... CGFloat(upper), position: CGFloat(tab.index))
+        lens.startTracking()
+        updateLens(transition: .animated(duration: 0.4, curve: .spring))
+        return true
+    }
+
+    private func updateSelection(at point: NSPoint) {
+        guard var gesture, gesture.isDragging || abs(point.x - gesture.start.x) >= 3 else {
+            return
+        }
+        gesture.isDragging = true
+        let position = min(max(self.position(at: gesture.center + point.x - gesture.start.x, frames: itemFrames), gesture.range.lowerBound), gesture.range.upperBound)
+        let changed = gesture.position != position
+        gesture.position = position
+        self.gesture = gesture
+        if changed {
+            updateLens(transition: .immediate)
+        }
+    }
+
+    private func endSelection(at point: NSPoint) {
+        guard let current = gesture else {
+            return
+        }
+        if current.isDragging {
+            updateSelection(at: point)
+        } else if !bounds.contains(point) {
+            cancelSelection(animated: true)
+            return
+        }
+        let index = Int((gesture?.position ?? current.position).rounded())
+        finishGesture()
+        guard tabs.indices.contains(index) else {
+            updateLens(transition: .animated(duration: 0.4, curve: .spring))
+            return
+        }
+        let id = tabs[index].id
+        if CGFloat(index) != selectionPosition {
+            selectionPosition = CGFloat(index)
+            selectionView.layer?.removeAllAnimations()
+            selectionView.frame = itemFrames[index]
+            focusSelectedOnLayout = true
+        }
+        updateLayout(size: frame.size, transition: .animated(duration: 0.4, curve: .spring))
+        didSelect?(id)
+    }
+
+    private func cancelSelection(animated: Bool) {
+        guard gesture != nil else {
+            return
+        }
+        finishGesture()
+        updateLens(transition: animated ? .animated(duration: 0.4, curve: .spring) : .immediate)
+    }
+
+    private func finishGesture() {
+        gesture = nil
+        lens.stopTracking()
     }
 
     override func layout() {
@@ -324,14 +458,24 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control) {
             rightMouseDown(with: event)
+        } else {
+            _ = beginSelection(at: convert(event.locationInWindow, from: nil))
         }
     }
 
+    override func mouseDragged(with event: NSEvent) {
+        updateSelection(at: convert(event.locationInWindow, from: nil))
+    }
+
     override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if gesture != nil {
+            endSelection(at: point)
+            return
+        }
         guard !event.modifierFlags.contains(.control) else {
             return
         }
-        let point = convert(event.locationInWindow, from: nil)
         if bounds.contains(point), let tab = tabId(at: point) {
             didSelect?(tab.id)
         }
@@ -355,6 +499,7 @@ final class PeerMediaTabsView: View, HorizontalScrollConsuming {
             let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.scrollingDeltaX * 10
             scrollOffset = clampedScrollOffset(scrollOffset - delta, visibleWidth: visibleWidth)
             contentView.setFrameOrigin(NSMakePoint(-scrollOffset, 0))
+            updateLens(transition: .immediate)
         } else {
             super.scrollWheel(with: event)
         }

@@ -258,7 +258,7 @@ private enum RecentSessionsEntry: Comparable, Identifiable {
     public func item(_ arguments: RecentSessionsControllerArguments, initialSize: NSSize) -> TableRowItem {
         switch self {
         case let .currentSessionHeader(_, viewType):
-            return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().sessionsCurrentSessionHeader, viewType: viewType, rightItem: InputDataGeneralTextRightData(isLoading: false, text: .initialize(string: "Rename", color: theme.colors.accent, font: .medium(.small)), action: arguments.rename)) //TODOLANG
+            return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().sessionsCurrentSessionHeader, viewType: viewType, rightItem: InputDataGeneralTextRightData(isLoading: false, text: .initialize(string: strings().recentSessionsControllerRename, color: theme.colors.accent, font: .medium(.small)), action: arguments.rename))
         case let .currentSession(_, session, deviceModel, viewType):
             return RecentSessionRowItem(initialSize, session: session, deviceModel: deviceModel, stableId: stableId, viewType: viewType, icon: iconForSession(session), handler: {
                 arguments.preview(session, stableId)

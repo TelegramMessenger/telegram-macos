@@ -8,6 +8,7 @@ import InputDataUI
 import Localization
 import TelegramContext
 import TelegramTheme
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -108,6 +109,7 @@ public func RTMPStartController(context: any AccountContextProtocol, peerId: Pee
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().voiceChatRTMPTitle)
+    controller.analyticsScreen = .groupCallStreamSetup
     
     controller.onDeinit = {
         actionsDisposable.dispose()

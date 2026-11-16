@@ -246,6 +246,9 @@ fileprivate func prepareEntries(left:[AppearanceWrapperEntry<InputContextEntry>]
 
             return ShortPeerRowItem(initialSize, peer: peer, account: context.account, context: context, height: 42, photoSize: NSMakeSize(30, 30), titleStyle: titleStyle, statusStyle: statusStyle, status: status, borderType: [], drawCustomSeparator: true, inset: NSEdgeInsets(left: 7))
         case let .contextResult(results,result,index):
+            if case .widget = result.message {
+                return ContextWidgetRowItem(initialSize, results, result, index, context, chatInteraction)
+            }
             return ContextListRowItem(initialSize, results, result, index, context, chatInteraction)
         case let .contextMediaResult(_, results, result, stableId):
             return ContextMediaRowItem(initialSize, result, stableId, context, ContextMediaArguments(sendResult: { _, result, view in
@@ -853,7 +856,18 @@ public class InputContextHelper: NSObject {
 
     private let disposable:MetaDisposable = MetaDisposable()
 
-    public let controller:InputContextViewController
+    private var _controller: InputContextViewController?
+    public var controller: InputContextViewController {
+        if let controller = _controller {
+            return controller
+        }
+        let controller = InputContextViewController(context: chatInteraction.interactionContext, chatInteraction: chatInteraction, highlightInsteadOfSelect: highlightInsteadOfSelect, hasSeparator: hasSeparator)
+        _controller = controller
+        controller.loadViewIfNeeded()
+        return controller
+    }
+    private let highlightInsteadOfSelect: Bool
+    private let hasSeparator: Bool
     private let context:any AccountContextProtocol
     private let chatInteraction:ChatInteraction
     private let entries:Atomic<[AppearanceWrapperEntry<InputContextEntry>]?> = Atomic(value:nil)
@@ -877,12 +891,11 @@ public class InputContextHelper: NSObject {
     public init(chatInteraction:ChatInteraction, highlightInsteadOfSelect: Bool = false, hasSeparator: Bool = true) {
         self.chatInteraction = chatInteraction
         self.context = chatInteraction.interactionContext
-        controller = InputContextViewController(context: chatInteraction.interactionContext, chatInteraction: chatInteraction, highlightInsteadOfSelect: highlightInsteadOfSelect, hasSeparator: hasSeparator)
+        self.highlightInsteadOfSelect = highlightInsteadOfSelect
+        self.hasSeparator = hasSeparator
         super.init()
 
         accessoryContainerView.layer?.masksToBounds = false
-
-        controller.loadViewIfNeeded()
 
         self.listener = .init(dispatchWhenVisibleRangeUpdated: false, { [weak self] _ in
             self?.didScroll?()
@@ -890,7 +903,7 @@ public class InputContextHelper: NSObject {
     }
 
     public var accessoryView:NSView? {
-        return controller.isLoaded() && accessoryContainerView.superview != nil ? accessoryContainerView : nil
+        return _controller?.isLoaded() == true && accessoryContainerView.superview != nil ? accessoryContainerView : nil
     }
 
     fileprivate func layoutAccessoryContainer() {
@@ -912,7 +925,7 @@ public class InputContextHelper: NSObject {
     }
     
     public func viewWillRemove() {
-        self.controller.viewWillDisappear(false)
+        _controller?.viewWillDisappear(false)
     }
     
     public func reset() {
@@ -921,10 +934,19 @@ public class InputContextHelper: NSObject {
     }
     
     public func context(with result:ChatPresentationInputQueryResult?, for view: NSView, relativeView: NSView, position: InputContextPosition = .above, selectIndex:Int? = nil, animated:Bool, inset: CGFloat = 0) {
+        if result == nil, _controller == nil {
+            return
+        }
+        let gap: CGFloat = 10
         controller._frameRect = NSMakeRect(inset, 0, controller.anchorFrame(for: relativeView, in: view).width, view.frame.height)
-        controller.updatedSize = { [weak self] size, animated in
+        controller.updatedSize = { [weak self, weak view, weak relativeView] size, animated in
             guard let self = self else { return }
             self.accessoryContainerView.change(size: size, animated: animated)
+            if self.controller.markAsNeedShown, let view, let relativeView {
+                let relativeRect = self.controller.anchorFrame(for: relativeView, in: view)
+                let y = position == .above ? relativeRect.minY - size.height - gap : relativeRect.maxY + gap
+                self.accessoryContainerView._change(pos: NSMakePoint(relativeRect.minX, y), animated: animated)
+            }
             self.layoutAccessoryContainer()
             self.updatedSize?(size, animated)
         }
@@ -994,8 +1016,6 @@ public class InputContextHelper: NSObject {
 
             guard let self = self else { return }
             let container = self.accessoryContainerView
-            let gap: CGFloat = 10
-
             if show, let relativeView = relativeView, let view = view {
                 if previousIsEmpty {
                     self.controller.genericView.tableView.removeAll()
@@ -1089,7 +1109,11 @@ public class InputContextHelper: NSObject {
                             entries.append(.webView(botId: result.botId, text: webview.text, url: webview.url))
                         }
                         
-                        switch result.presentation {
+                        let hasWidgets = result.results.contains { result in
+                            if case .widget = result.message { return true }
+                            return false
+                        }
+                        switch hasWidgets ? .list : result.presentation {
                         case .list:
                             for i in 0 ..< result.results.count {
                                 entries.append(.contextResult(result,result.results[i],Int64(arc4random()) | ((Int64(entries.count) << 40))))

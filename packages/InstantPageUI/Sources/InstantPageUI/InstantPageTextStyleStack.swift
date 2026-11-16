@@ -71,7 +71,11 @@ private func instantPageSansFont(
 public final class InstantPageTextStyleStack {
     private var items: [InstantPageTextStyle] = []
 
-    public init() {}
+    public let buttonsEnabled: Bool
+
+    public init(buttonsEnabled: Bool = true) {
+        self.buttonsEnabled = buttonsEnabled
+    }
     
     public func push(_ item: InstantPageTextStyle) {
         items.append(item)

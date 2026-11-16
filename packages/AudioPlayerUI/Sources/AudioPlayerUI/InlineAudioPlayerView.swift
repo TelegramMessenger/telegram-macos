@@ -93,6 +93,7 @@ public class InlineAudioPlayerView: NavigationHeaderView, APDelegate {
     private var expansionAnimator: DisplayLinkAnimator?
     private var proximityTrackingArea: NSTrackingArea?
     private var windowDidResignKeyObserver: NSObjectProtocol?
+    private weak var immovableWindow: NSWindow?
 
 
     private var message:Message?
@@ -428,6 +429,12 @@ public class InlineAudioPlayerView: NavigationHeaderView, APDelegate {
         }
         expansionAnimator?.invalidate()
         bufferingStatusDisposable.dispose()
+        immovableWindow?.isMovable = true
+    }
+
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        setWindowMovable(true)
     }
 
     public override func viewDidMoveToWindow() {
@@ -684,6 +691,7 @@ public class InlineAudioPlayerView: NavigationHeaderView, APDelegate {
             return
         }
         self.isExpanded = isExpanded
+        setWindowMovable(!isExpanded)
         if !isExpanded {
             hoveredProgress = nil
         }
@@ -722,8 +730,19 @@ public class InlineAudioPlayerView: NavigationHeaderView, APDelegate {
         expansionAnimator?.invalidate()
         expansionAnimator = nil
         isExpanded = false
+        setWindowMovable(true)
         hoveredProgress = nil
         applyExpansionProgress(0)
+    }
+
+    private func setWindowMovable(_ movable: Bool) {
+        if movable {
+            immovableWindow?.isMovable = true
+            immovableWindow = nil
+        } else if let window, window.isMovable {
+            window.isMovable = false
+            immovableWindow = window
+        }
     }
 
     private func formattedDuration(_ duration: Double) -> String {

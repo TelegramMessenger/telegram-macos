@@ -13,6 +13,7 @@ import TelegramUtils
 import GeneralRows
 import InputDataUI
 import PhoneNumberUtils
+import AppAnalytics
 
 
 
@@ -161,6 +162,7 @@ public func VCardModalController(context: any AccountContextProtocol, vCard: CNC
 
     
     let controller = InputDataController(dataSignal: signal, title: name)
+    controller.analyticsScreen = .chatContactCard
     
     controller.onDeinit = {
         actionsDisposable.dispose()

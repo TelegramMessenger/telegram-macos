@@ -26,6 +26,7 @@ let package = Package(
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
+        .package(name: "TelegramMediaPlayer", path: "../../submodules/telegram-ios/submodules/MediaPlayer"),
     ] + deps.map { .package(name: $0.0, path: $0.1) },
     targets: [
         .target(
@@ -36,5 +37,15 @@ let package = Package(
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
             path: "Sources/AudioPlayerCore"),
+        .testTarget(
+            name: "AudioPlayerCoreTests",
+            dependencies: [
+                "AudioPlayerCore",
+                .product(name: "TelegramMedia", package: "TelegramMedia"),
+                .product(name: "SwiftSignalKit", package: "SSignalKit"),
+                .product(name: "Postbox", package: "Postbox"),
+                .product(name: "TelegramMediaPlayer", package: "TelegramMediaPlayer"),
+            ],
+            path: "Tests/AudioPlayerCoreTests"),
     ]
 )

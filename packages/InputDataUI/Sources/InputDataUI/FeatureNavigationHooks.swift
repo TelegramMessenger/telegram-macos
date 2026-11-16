@@ -7,6 +7,7 @@ import Postbox
 import SwiftSignalKit
 import TelegramContext
 import TelegramTheme
+import AppAnalytics
 
 public enum PremiumBoardingSource: Equatable {
     case settings
@@ -100,47 +101,52 @@ public enum FeatureModalKind {
 
 public struct FeatureNavigationHooks {
     public var showPremiumBoarding: (any AccountContextProtocol, Window, PremiumBoardingSource?, Bool, TelegramPresentationTheme?) -> Void = { _, _, _, _, _ in }
-    public var showPremiumBoardingWithContext: ((any AccountContextProtocol, Window, PremiumBoardingSource?, Bool, TelegramPresentationTheme?) -> Void)?
+    public var showPremiumBoardingWithContext: ((any AccountContextProtocol, Window, PremiumBoardingSource?, Bool, TelegramPresentationTheme?, AnalyticsContext) -> Void)?
 
-    public func showPremiumBoardingObserved(_ context: any AccountContextProtocol, _ window: Window, _ source: PremiumBoardingSource?, _ openFeatures: Bool, _ theme: TelegramPresentationTheme?) {
+    public func showPremiumBoardingObserved(_ context: any AccountContextProtocol, _ window: Window, _ source: PremiumBoardingSource?, _ openFeatures: Bool, _ theme: TelegramPresentationTheme?, analyticsContext: AnalyticsContext) {
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         if let showPremiumBoardingWithContext {
-            showPremiumBoardingWithContext(context, window, source, openFeatures, theme)
+            showPremiumBoardingWithContext(context, window, source, openFeatures, theme, analyticsContext)
         } else {
             showPremiumBoarding(context, window, source, openFeatures, theme)
         }
     }
     public var showPremiumLimit: (any AccountContextProtocol, PremiumLimitKind) -> Void = { _, _ in }
-    public var showPremiumLimitWithContext: ((any AccountContextProtocol, PremiumLimitKind) -> Void)?
+    public var showPremiumLimitWithContext: ((any AccountContextProtocol, PremiumLimitKind, AnalyticsContext) -> Void)?
 
-    public func showPremiumLimitObserved(_ context: any AccountContextProtocol, _ kind: PremiumLimitKind) {
+    public func showPremiumLimitObserved(_ context: any AccountContextProtocol, _ kind: PremiumLimitKind, analyticsContext: AnalyticsContext) {
         if let showPremiumLimitWithContext {
-            showPremiumLimitWithContext(context, kind)
+            showPremiumLimitWithContext(context, kind, analyticsContext)
         } else {
-            showPremiumLimit(context, kind)
+            let presentation = analyticsContext.beginPresentation()
+            withExtendedLifetime(presentation) { showPremiumLimit(context, kind) }
         }
     }
     public var makePremiumLockModal: () -> ModalViewController? = { nil }
     public var showStarsPurchase: (any AccountContextProtocol, Window, CurrencyAmount.Currency, String?, Int64?) -> Void = { _, _, _, _, _ in }
-    public var showStarsPurchaseWithContext: (any AccountContextProtocol, Window, CurrencyAmount.Currency, String?, Int64?) -> Void = { _, _, _, _, _ in }
+    public var showStarsPurchaseWithContext: (any AccountContextProtocol, Window, CurrencyAmount.Currency, String?, Int64?, AnalyticsContext) -> Void = { _, _, _, _, _, _ in }
+    public var showStarsPurchaseForStoryReply: (any AccountContextProtocol, Window, Int64, AnalyticsContext, @escaping (Bool) -> Void) -> Void = { _, _, _, _, completed in completed(false) }
     public var selectDate: (any AccountContextProtocol, Window, Date?, Int32?, DateSelectorRequest, @escaping (Date, Int32?) -> Void) -> Void = { _, _, _, _, _, _ in }
-    public var selectDateWithContext: ((any AccountContextProtocol, Window, Date?, Int32?, DateSelectorRequest, @escaping (Date, Int32?) -> Void, @escaping () -> Void) -> Void)?
-    public var selectDateWithDismissal: ((any AccountContextProtocol, Window, Date?, Int32?, DateSelectorRequest, @escaping (Date, Int32?) -> Void, @escaping () -> Void, @escaping () -> Void) -> Void)?
+    public var selectDateWithContext: ((any AccountContextProtocol, Window, Date?, Int32?, DateSelectorRequest, AnalyticsContext, @escaping (Date, Int32?) -> Void, @escaping () -> Void) -> Void)?
+    public var selectDateWithDismissal: ((any AccountContextProtocol, Window, Date?, Int32?, DateSelectorRequest, AnalyticsContext, @escaping (Date, Int32?) -> Void, @escaping () -> Void, @escaping () -> Void) -> Void)?
 
-    public func selectDateObserved(_ context: any AccountContextProtocol, _ window: Window, _ defaultDate: Date?, _ repeatPeriod: Int32?, _ request: DateSelectorRequest, selectedAt: @escaping (Date, Int32?) -> Void, cancelled: @escaping () -> Void, dismissed: @escaping () -> Void) {
+    public func selectDateObserved(_ context: any AccountContextProtocol, _ window: Window, _ defaultDate: Date?, _ repeatPeriod: Int32?, _ request: DateSelectorRequest, analyticsContext: AnalyticsContext, selectedAt: @escaping (Date, Int32?) -> Void, cancelled: @escaping () -> Void, dismissed: @escaping () -> Void) {
         if let selectDateWithDismissal {
-            selectDateWithDismissal(context, window, defaultDate, repeatPeriod, request, selectedAt, cancelled, dismissed)
+            selectDateWithDismissal(context, window, defaultDate, repeatPeriod, request, analyticsContext, selectedAt, cancelled, dismissed)
         } else {
             dismissed()
-            selectDateObserved(context, window, defaultDate, repeatPeriod, request, selectedAt: selectedAt, cancelled: cancelled)
+            selectDateObserved(context, window, defaultDate, repeatPeriod, request, analyticsContext: analyticsContext, selectedAt: selectedAt, cancelled: cancelled)
         }
     }
 
-    public func selectDateObserved(_ context: any AccountContextProtocol, _ window: Window, _ defaultDate: Date?, _ repeatPeriod: Int32?, _ request: DateSelectorRequest, selectedAt: @escaping (Date, Int32?) -> Void, cancelled: @escaping () -> Void) {
+    public func selectDateObserved(_ context: any AccountContextProtocol, _ window: Window, _ defaultDate: Date?, _ repeatPeriod: Int32?, _ request: DateSelectorRequest, analyticsContext: AnalyticsContext, selectedAt: @escaping (Date, Int32?) -> Void, cancelled: @escaping () -> Void) {
         if let selectDateWithContext = selectDateWithContext {
-            selectDateWithContext(context, window, defaultDate, repeatPeriod, request, selectedAt, cancelled)
+            selectDateWithContext(context, window, defaultDate, repeatPeriod, request, analyticsContext, selectedAt, cancelled)
         } else {
+            let presentation = analyticsContext.beginPresentation()
             selectDate(context, window, defaultDate, repeatPeriod, request, { date, period in
-                do {
+                withExtendedLifetime(presentation) {
                     selectedAt(date, period)
                 }
             })
@@ -148,11 +154,14 @@ public struct FeatureNavigationHooks {
     }
     public var selectTimeRange: (any AccountContextProtocol, Window, TimePickerOption, TimePickerOption, String, String, String, String, @escaping (TimePickerOption, TimePickerOption) -> Void) -> Void = { _, _, _, _, _, _, _, _, _ in }
     public var showInactiveChannels: (any AccountContextProtocol, InactiveChannelsReason) -> Void = { _, _ in }
-    public var showInactiveChannelsWithContext: ((any AccountContextProtocol, InactiveChannelsReason) -> Void)?
+    public var showInactiveChannelsWithContext: ((any AccountContextProtocol, InactiveChannelsReason, AnalyticsContext) -> Void)?
 
-    public func showInactiveChannelsObserved(_ context: any AccountContextProtocol, _ reason: InactiveChannelsReason) {
+    public func showInactiveChannelsObserved(_ context: any AccountContextProtocol, _ reason: InactiveChannelsReason, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showInactiveChannelsWithContext {
-            showInactiveChannelsWithContext(context, reason)
+            showInactiveChannelsWithContext(context, reason, origin)
         } else {
             showInactiveChannels(context, reason)
         }
@@ -166,10 +175,13 @@ public struct FeatureNavigationHooks {
     public var makeRequestJoinMembersController: (any AccountContextProtocol, PeerId, PeerInvitationImportersContext, @escaping () -> Void) -> ViewController? = { _, _, _, _ in nil }
     public var showInvitePrivacyLimited: (any AccountContextProtocol, PeerId, [PeerId], [TelegramForbiddenInvitePeer]) -> Void = { _, _, _, _ in }
     public var openStoryStats: (any AccountContextProtocol, EngineStoryItem, EnginePeer) -> Void = { _, _, _ in }
-    public var openStoryStatsWithContext: ((any AccountContextProtocol, EngineStoryItem, EnginePeer) -> Void)?
-    public func openStoryStatsObserved(_ context: any AccountContextProtocol, _ item: EngineStoryItem, _ peer: EnginePeer) {
+    public var openStoryStatsWithContext: ((any AccountContextProtocol, EngineStoryItem, EnginePeer, AnalyticsContext) -> Void)?
+    public func openStoryStatsObserved(_ context: any AccountContextProtocol, _ item: EngineStoryItem, _ peer: EnginePeer, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peer.id, inherited: analyticsContext)
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         if let openStoryStatsWithContext {
-            openStoryStatsWithContext(context, item, peer)
+            openStoryStatsWithContext(context, item, peer, origin)
         } else {
             openStoryStats(context, item, peer)
         }
@@ -180,26 +192,39 @@ public struct FeatureNavigationHooks {
     public var makeCalendarController: (Window, Date, Int, Bool, @escaping (Date) -> Void) -> ViewController? = { _, _, _, _, _ in nil }
     public var makeSelectCountriesController: (any AccountContextProtocol, [Country], @escaping ([Country]) -> Void) -> ModalViewController? = { _, _, _ in nil }
     public var makePaymentsCheckoutController: (any AccountContextProtocol, BotPaymentInvoiceSource, TelegramMediaInvoice, ((PaymentCheckoutResult) -> Void)?) -> ModalViewController? = { _, _, _, _ in nil }
-    public var makePaymentsCheckoutControllerWithContext: ((any AccountContextProtocol, BotPaymentInvoiceSource, TelegramMediaInvoice, ((PaymentCheckoutResult) -> Void)?) -> ModalViewController?)?
+    public var makePaymentsCheckoutControllerWithContext: ((any AccountContextProtocol, BotPaymentInvoiceSource, TelegramMediaInvoice, AnalyticsContext, ((PaymentCheckoutResult) -> Void)?) -> ModalViewController?)?
 
-    public func makePaymentsCheckoutObserved(_ context: any AccountContextProtocol, _ source: BotPaymentInvoiceSource, _ invoice: TelegramMediaInvoice, completion: ((PaymentCheckoutResult) -> Void)?) -> ModalViewController? {
+    public func makePaymentsCheckoutObserved(_ context: any AccountContextProtocol, _ source: BotPaymentInvoiceSource, _ invoice: TelegramMediaInvoice, analyticsContext inheritedAnalyticsContext: AnalyticsContext, completion: ((PaymentCheckoutResult) -> Void)?) -> ModalViewController? {
+        let analyticsContext: AnalyticsContext
+        if case let .message(messageId) = source {
+            analyticsContext = inheritedAnalyticsContext.restricting(peerId: messageId.peerId)
+        } else {
+            analyticsContext = inheritedAnalyticsContext
+        }
+        let lifetime = analyticsContext.beginPresentation()
         let observedCompletion: ((PaymentCheckoutResult) -> Void)? = completion.map { completion in
             return { result in
+                let delivery = analyticsContext.beginPresentation()
+                defer { delivery.end() }
                 completion(result)
             }
         }
         let controller: ModalViewController?
         if let makePaymentsCheckoutControllerWithContext {
-            controller = makePaymentsCheckoutControllerWithContext(context, source, invoice, observedCompletion)
+            controller = makePaymentsCheckoutControllerWithContext(context, source, invoice, analyticsContext, observedCompletion)
         } else {
             controller = makePaymentsCheckoutController(context, source, invoice, observedCompletion)
         }
         guard let controller else {
+            lifetime.end()
             return nil
         }
+        controller.analyticsContext = analyticsContext
+        (controller as? InputDataModalController)?.current.analyticsContext = analyticsContext
         let onDeinit = controller.onDeinit
         controller.onDeinit = {
             onDeinit?()
+            lifetime.end()
         }
         return controller
     }
@@ -213,11 +238,15 @@ public struct FeatureNavigationHooks {
     public var showFullExportModal: (any AccountContextProtocol) -> Void = { _ in }
     public var makeGigagroupLandingController: (any AccountContextProtocol, PeerId) -> ModalViewController? = { _, _ in nil }
     public var openJoinChatBotWebView: (any AccountContextProtocol, PeerId, String?, Int64, PeerId?) -> Void = { _, _, _, _, _ in }
-    public var openJoinChatBotWebViewWithContext: ((any AccountContextProtocol, PeerId, String?, Int64, PeerId?) -> Void)?
+    public var openJoinChatBotWebViewWithContext: ((any AccountContextProtocol, PeerId, String?, Int64, PeerId?, AnalyticsContext) -> Void)?
 
-    public func openJoinChatBotWebViewObserved(_ context: any AccountContextProtocol, _ botId: PeerId, _ url: String?, _ queryId: Int64, _ joinedPeerId: PeerId?) {
+    public func openJoinChatBotWebViewObserved(_ context: any AccountContextProtocol, _ botId: PeerId, _ url: String?, _ queryId: Int64, _ joinedPeerId: PeerId?, analyticsContext: AnalyticsContext) {
+        let inherited = joinedPeerId == nil ? Analytics.shared.unresolvedContext() : analyticsContext
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: joinedPeerId ?? botId, inherited: inherited).restricting(peerId: botId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let openJoinChatBotWebViewWithContext {
-            openJoinChatBotWebViewWithContext(context, botId, url, queryId, joinedPeerId)
+            openJoinChatBotWebViewWithContext(context, botId, url, queryId, joinedPeerId, origin)
         } else {
             openJoinChatBotWebView(context, botId, url, queryId, joinedPeerId)
         }
@@ -230,10 +259,13 @@ public struct FeatureNavigationHooks {
     public var createSupergroup: (any AccountContextProtocol, String) -> Signal<PeerId?, NoError> = { _, _ in .single(nil) }
     public var shareLink: (any AccountContextProtocol, Window, String) -> Void = { _, _, _ in }
     public var makeChannelAdminController: (any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatAdminRights?) -> Void, @escaping (PeerId, @escaping () -> Void) -> Void) -> ModalViewController? = { _, _, _, _, _, _ in nil }
-    public var makeChannelAdminControllerWithContext: ((any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatAdminRights?) -> Void, @escaping (PeerId, @escaping () -> Void) -> Void) -> ModalViewController?)?
-    public func makeChannelAdminControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ adminId: PeerId, _ participant: ChannelParticipant?, _ updated: @escaping (TelegramChatAdminRights?) -> Void, _ upgraded: @escaping (PeerId, @escaping () -> Void) -> Void) -> ModalViewController? {
+    public var makeChannelAdminControllerWithContext: ((any AccountContextProtocol, PeerId, PeerId, ChannelParticipant?, @escaping (TelegramChatAdminRights?) -> Void, @escaping (PeerId, @escaping () -> Void) -> Void, AnalyticsContext) -> ModalViewController?)?
+    public func makeChannelAdminControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ adminId: PeerId, _ participant: ChannelParticipant?, _ updated: @escaping (TelegramChatAdminRights?) -> Void, _ upgraded: @escaping (PeerId, @escaping () -> Void) -> Void, analyticsContext: AnalyticsContext) -> ModalViewController? {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext).restricting(peerId: adminId).restricting(peerId: participant?.peerId ?? adminId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let makeChannelAdminControllerWithContext {
-            return makeChannelAdminControllerWithContext(context, peerId, adminId, participant, updated, upgraded)
+            return makeChannelAdminControllerWithContext(context, peerId, adminId, participant, updated, upgraded, origin)
         } else {
             return makeChannelAdminController(context, peerId, adminId, participant, updated, upgraded)
         }
@@ -242,7 +274,7 @@ public struct FeatureNavigationHooks {
     public var fileSizeLimitExceed: (any AccountContextProtocol, Int64) -> Bool = { _, _ in true }
     public var showFileLimit: (any AccountContextProtocol, Int64?) -> Void = { _, _ in }
     public var makePreviewSender: ([URL], AnyObject, Bool, NSAttributedString?, TelegramPresentationTheme?) -> ModalViewController? = { _, _, _, _, _ in nil }
-    public var makePreviewSenderWithContext: ([URL], AnyObject, Bool, NSAttributedString?, TelegramPresentationTheme?) -> ModalViewController? = { _, _, _, _, _ in nil }
+    public var makePreviewSenderWithContext: ([URL], AnyObject, Bool, NSAttributedString?, TelegramPresentationTheme?, AnalyticsContext) -> ModalViewController? = { _, _, _, _, _, _ in nil }
     public var makeArchiveSettingsController: (any AccountContextProtocol, GlobalPrivacySettings?, @escaping (GlobalPrivacySettings) -> Void) -> ViewController? = { _, _, _ in nil }
     public var updateAccountBirthday: (Date, any AccountContextProtocol) -> Void = { _, _ in }
 

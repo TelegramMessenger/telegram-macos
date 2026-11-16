@@ -140,6 +140,7 @@ public class ChatContactRowItem: ChatRowItem {
                        textLayout.additionalSelections = [TextSelectedRange(range: range, color: theme.colors.accentIcon.withAlphaComponent(0.5), def: false)]
                    }
                 }
+                restrictCopying(textLayout.interactions, message: message, layout: textLayout, chatInteraction: chatInteraction)
                 return textLayout
             })
             

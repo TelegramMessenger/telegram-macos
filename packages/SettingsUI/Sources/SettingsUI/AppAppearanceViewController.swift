@@ -21,6 +21,7 @@ import TelegramLinks
 import ChatHistoryModel
 import FilePanels
 import WallpaperUI
+import AppAnalytics
 
 public func generateSingleColorImage(size: CGSize, color: NSColor) -> CGImage? {
     return generateImage(size, contextGenerator: { size, context in
@@ -554,7 +555,7 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
     sectionId += 1
     
     
-    #if BETA || STABLE
+    #if BETA || STABLE || DEBUG
     
     if !dockIcons.icons.isEmpty {
         struct DockTuple : Equatable {
@@ -709,22 +710,7 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
                 applyTheme(.cloud(cloudTheme, color.cachedTheme))
             } else {
                 updateDisposable.set(updateThemeInteractivetly(accountManager: context.sharedContext.accountManager, f: { settings in
-                    let clearPalette = settings.palette.withoutAccentColor()
-                    var settings = settings
-                    if color.accent.accent == settings.palette.basicAccent {
-                        settings = settings.withUpdatedPalette(clearPalette)
-                    } else {
-                        settings = settings.withUpdatedPalette(clearPalette.withAccentColor(color.accent))
-                    }
-                    
-                    let defaultTheme = DefaultTheme(local: settings.palette.parent, cloud: nil)
-                    if settings.palette.isDark {
-                        settings = settings.withUpdatedDefaultDark(defaultTheme)
-                    } else {
-                        settings = settings.withUpdatedDefaultDay(defaultTheme)
-                    }
-                    
-                    return settings.withUpdatedCloudTheme(nil).saveDefaultAccent(color: color.accent).installDefaultWallpaper().withSavedAssociatedTheme()
+                    return settings.withUpdatedAccentColor(color.accent)
                 }).start())
             }
         }
@@ -869,6 +855,7 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
         return view
         
     })
+    controller.analyticsScreen = .settingsAppearance
     
     controller.updateRightBarView = { view in
         if let view = view as? ImageBarView {
@@ -923,7 +910,9 @@ public func toggleDarkMode(context: any AccountContextProtocol) {
 }
 
 func sendThemeModeChange(dark: Bool) {
+    Analytics.shared.send(AnalyticsEvents.settingsChange(.appearanceThemeMode(dark ? .dark : .light)))
 }
 
 func sendThemeModeSystem() {
+    Analytics.shared.send(AnalyticsEvents.settingsChange(.appearanceThemeMode(.system)))
 }

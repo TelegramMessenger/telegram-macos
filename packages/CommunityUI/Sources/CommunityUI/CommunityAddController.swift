@@ -17,6 +17,7 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
 
 private enum CommunityAddVisibility: Equatable {
     case visible
@@ -118,6 +119,7 @@ public func CommunityAddController(_ context: (any AccountContextProtocol), comm
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().communityAddTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .communityAddChat
     controller.onDeinit = { actionsDisposable.dispose() }
 
     let performAdd: () -> Void = {

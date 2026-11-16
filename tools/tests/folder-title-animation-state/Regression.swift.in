@@ -1,0 +1,124 @@
+import Foundation
+
+public struct MessageTextEntity: Codable, Equatable {
+    let token: Int64
+    let lower: Int
+    let upper: Int
+}
+public struct ChatListFilterData: Equatable {
+    let token: Int
+}
+public struct StringCodingKey: CodingKey, ExpressibleByStringLiteral {
+    public let stringValue: String
+    public var intValue: Int? { nil }
+    public init(stringLiteral value: String) { stringValue = value }
+    public init?(stringValue: String) { self.stringValue = stringValue }
+    public init?(intValue: Int) { return nil }
+}
+struct ExportedChatFolderLink: Equatable {}
+struct Updated_ChatTextInputState: Equatable {
+    let string: String
+    let entities: [MessageTextEntity]
+    let selection: Range<Int>
+}
+struct Environment {
+    let inputStatesEqual: (Updated_ChatTextInputState, Updated_ChatTextInputState) -> Bool = { $0 == $1 }
+    let titleEntities: (Updated_ChatTextInputState) -> [MessageTextEntity] = { $0.entities }
+    func titleInputState(_ filter: ChatListFilter) -> Updated_ChatTextInputState {
+        switch filter {
+        case .allChats:
+            return .init(string: "", entities: [], selection: 0..<0)
+        case let .filter(_, title, _, _):
+            return .init(string: title.text, entities: title.entities, selection: 0..<0)
+        }
+    }
+}
+
+@@CORE_MODELS@@
+
+extension ChatListFilter {
+@@MODEL_HELPERS@@
+}
+
+@@STATE@@
+
+@@UPDATE_HELPER@@
+
+private let environment = Environment()
+private func open(_ filter: ChatListFilter, isNew: Bool = false) -> State {
+    let title = environment.titleInputState(filter)
+@@INITIAL@@
+    return initialState
+}
+private final class Editor {
+    var value: State
+    init(_ filter: ChatListFilter, isNew: Bool = false) { value = open(filter, isNew: isNew) }
+    func rename(_ input: Updated_ChatTextInputState) {
+        let updateState: ((State) -> State) -> Void = { self.value = $0(self.value) }
+        let apply: (Updated_ChatTextInputState) -> Void = @@TITLE_UPDATE@@
+        apply(input)
+    }
+    func toggle() {
+        let updateState: ((State) -> State) -> Void = { self.value = $0(self.value) }
+        let apply: () -> Void = @@TOGGLE@@
+        apply()
+    }
+}
+
+var passed = 0
+var failed = 0
+func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
+    if condition() { passed += 1; print("PASS " + name) }
+    else { failed += 1; print("FAIL " + name) }
+}
+let entities = [MessageTextEntity(token: 301, lower: 0, upper: 2)]
+let data = ChatListFilterData(token: 75)
+let disabled = ChatListFilter.filter(id: 33, title: .init(text: "Work", entities: entities, enableAnimations: false), emoticon: "folder", data: data)
+private let editor = Editor(disabled)
+expect(!editor.value.nameAnimation, "saved disabled title opens disabled")
+expect(editor.value.filter == disabled && editor.value.initialFilter == disabled, "opening does not mutate model")
+expect(editor.value.inputState.entities == entities && editor.value.inputState.string == "Work", "opening preserves title and entities")
+let renamed = Updated_ChatTextInputState(string: "Renamed", entities: entities, selection: 2..<4)
+editor.rename(renamed)
+expect(!editor.value.filter.enableAnimations, "rename preserves disabled animation")
+expect(!editor.value.nameAnimation, "rename preserves disabled editor flag")
+expect(editor.value.inputState == renamed, "rename preserves text entities and selection")
+expect(editor.value.changedName && editor.value.initialFilter == disabled, "rename tracks change without changing initial filter")
+if case let .filter(id, title, emoticon, updatedData) = editor.value.filter {
+    expect(id == 33 && emoticon == "folder" && updatedData == data, "rename preserves non-title folder fields")
+    expect(title.text == "Renamed" && title.entities == entities, "rename persists title entities")
+}
+private let reopened = Editor(editor.value.filter)
+expect(!reopened.value.nameAnimation, "reopening after rename stays disabled")
+reopened.toggle()
+expect(reopened.value.nameAnimation && reopened.value.filter.enableAnimations, "enable toggle writes saved flag")
+reopened.toggle()
+expect(!reopened.value.nameAnimation && !reopened.value.filter.enableAnimations, "disable toggle writes saved flag")
+expect(reopened.value.inputState.entities == entities, "toggle preserves entities")
+private let enabled = Editor(disabled.withUpdatedTitle(string: "Enabled", entities: entities, enableAnimations: true))
+expect(enabled.value.nameAnimation, "existing enabled folder stays enabled")
+enabled.rename(renamed)
+expect(enabled.value.filter.enableAnimations, "enabled rename stays enabled")
+enabled.toggle()
+private let afterDisable = Editor(enabled.value.filter)
+expect(!afterDisable.value.nameAnimation, "disable save reopen stays disabled")
+afterDisable.rename(renamed)
+expect(!afterDisable.value.filter.enableAnimations, "disable save reopen rename stays disabled")
+let newTitle: ChatFolderTitle = @@NEW_TITLE@@
+expect(!newTitle.enableAnimations, "real new-folder title seed is disabled")
+private let fresh = Editor(.filter(id: 9, title: newTitle, emoticon: nil, data: data), isNew: true)
+expect(fresh.value.nameAnimation && !fresh.value.changedName && fresh.value.isNew, "new-folder editor defaults remain enabled")
+fresh.rename(renamed)
+expect(fresh.value.filter.enableAnimations, "new-folder first title edit keeps old animation default")
+fresh.toggle()
+private let savedNew = Editor(fresh.value.filter)
+expect(!savedNew.value.nameAnimation, "new-folder disabled setting survives first save")
+let encoded = try JSONEncoder().encode(ChatFolderTitle(text: "Persisted", entities: entities, enableAnimations: false))
+let decoded = try JSONDecoder().decode(ChatFolderTitle.self, from: encoded)
+expect(!decoded.enableAnimations && decoded.entities == entities, "real title model serialization retains disabled flag and entities")
+let legacy = try JSONDecoder().decode(ChatFolderTitle.self, from: Data("{\"text\":\"Legacy\",\"entities\":[]}".utf8))
+expect(legacy.enableAnimations, "real legacy model default remains enabled")
+private let legacyEditor = Editor(.filter(id: 4, title: legacy, emoticon: nil, data: data))
+expect(legacyEditor.value.nameAnimation, "legacy title editor remains enabled")
+print("RESULT \(passed) passed \(failed) failed")
+exit(failed == 0 ? 0 : 1)

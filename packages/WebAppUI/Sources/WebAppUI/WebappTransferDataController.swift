@@ -27,6 +27,7 @@ import PremiumStatusUI
 import SystemPermissions
 import Svg
 import LocalAuthentication
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     fileprivate let peer: EnginePeer
@@ -207,6 +208,7 @@ public func WebappTransferDataController(context: (any AccountContextProtocol), 
     }
     
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsScreen = .botMiniAppDataTransfer
     
     
     controller.centerModalHeader = .init(title: strings().webAppTransferDataImportData)

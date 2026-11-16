@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import ColorPalette
 import Postbox
@@ -125,8 +126,20 @@ public enum ChatHistoryLink {
     }
 
     public static func execute(inapp: Any) {
+        ChatHistoryUIHooks.shared.executeLink(inapp)
+    }
+
+    public static func execute(inapp: Any, morphSource: (() -> NSView?)?) {
+        ModalMorphContextSource.withSource(morphSource) {
+            execute(inapp: inapp)
+        }
+    }
+
+    public static func execute(inapp: Any, analyticsContext: AnalyticsContext) {
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         if let executeLinkWithContext = ChatHistoryUIHooks.shared.executeLinkWithContext {
-            executeLinkWithContext(inapp)
+            executeLinkWithContext(inapp, analyticsContext)
         } else {
             ChatHistoryUIHooks.shared.executeLink(inapp)
         }
@@ -229,31 +242,41 @@ public struct ChatHistoryUIHooks {
     public let giftLink: (String, String, any AccountContextProtocol) -> ChatHistoryInAppLinkValue
     public let inAppLink: (NSString, (any AccountContextProtocol)?, PeerId?, MessageId?, ((PeerId, Bool, MessageId?, ChatInitialAction?) -> Void)?, ((String) -> Void)?, ((String) -> Void)?, ((ProxyServerSettings) -> Void)?, Bool) -> ChatHistoryInAppLinkValue
     public let executeLink: (Any) -> Void
-    public var executeLinkWithContext: ((Any) -> Void)?
+    public var executeLinkWithContext: ((Any, AnalyticsContext) -> Void)?
     public let detectLinks: (NSMutableAttributedString, ParsingType, Bool, (any AccountContextProtocol)?, NSColor, ((PeerId, Bool, MessageId?, ChatInitialAction?) -> Void)?, ((String) -> Void)?, ((String) -> Void)?, ((ProxyServerSettings) -> Void)?, Bool) -> Void
     public let copyContextText: (LinkType) -> String
     public let applyCodeSyntax: (NSMutableAttributedString, NSRange, String?, Message?, Bool, Bool, Bool, NSColor, CGFloat, [CodeSyntaxKey : CodeSyntaxResult], @escaping (MessageId, NSRange, String, String, ChatInterfaceSyntaxTheme) -> Void) -> Void
     public let generateSyntaxThemeParams: (TelegramPresentationTheme, Bool, Bool) -> [String: NSColor]
     public let makeShareMessageModal: (any AccountContextProtocol, Message) -> ModalViewController
     public let makeShareGroupedMessagesModal: (any AccountContextProtocol, Message, [Message]) -> ModalViewController
-    public var makeShareMessagesModalWithContext: ((any AccountContextProtocol, Message, [Message]?) -> ModalViewController)?
+    public var makeShareMessagesModalWithContext: ((any AccountContextProtocol, Message, [Message]?, AnalyticsContext) -> ModalViewController)?
 
-    public func makeShareMessagesModalObserved(_ context: any AccountContextProtocol, _ message: Message, groupedMessages: [Message]? = nil) -> ModalViewController {
+    public func makeShareMessagesModalObserved(_ context: any AccountContextProtocol, _ message: Message, groupedMessages: [Message]? = nil, analyticsContext: AnalyticsContext) -> ModalViewController {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext).restricting(peerId: message.id.peerId)
+        for groupedMessage in groupedMessages ?? [] {
+            origin = origin.restricting(peerId: groupedMessage.id.peerId)
+        }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let controller: ModalViewController
         if let makeShareMessagesModalWithContext {
-            controller = makeShareMessagesModalWithContext(context, message, groupedMessages)
+            controller = makeShareMessagesModalWithContext(context, message, groupedMessages, origin)
         } else if let groupedMessages {
             controller = makeShareGroupedMessagesModal(context, message, groupedMessages)
         } else {
             controller = makeShareMessageModal(context, message)
         }
+        controller.analyticsContext = origin
         return controller
     }
     public let pushReactionPeerInfo: (NavigationViewController, any AccountContextProtocol, PeerId, MessageId) -> Void
-    public var pushReactionPeerInfoWithContext: ((NavigationViewController, any AccountContextProtocol, PeerId, MessageId) -> Void)?
-    public func pushReactionPeerInfoObserved(_ navigation: NavigationViewController, _ context: any AccountContextProtocol, _ peerId: PeerId, _ messageId: MessageId) {
+    public var pushReactionPeerInfoWithContext: ((NavigationViewController, any AccountContextProtocol, PeerId, MessageId, AnalyticsContext) -> Void)?
+    public func pushReactionPeerInfoObserved(_ navigation: NavigationViewController, _ context: any AccountContextProtocol, _ peerId: PeerId, _ messageId: MessageId, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: messageId.peerId, inherited: analyticsContext).restricting(peerId: peerId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let pushReactionPeerInfoWithContext {
-            pushReactionPeerInfoWithContext(navigation, context, peerId, messageId)
+            pushReactionPeerInfoWithContext(navigation, context, peerId, messageId, origin)
         } else {
             pushReactionPeerInfo(navigation, context, peerId, messageId)
         }
@@ -261,10 +284,13 @@ public struct ChatHistoryUIHooks {
     public let pushEditPeerInfo: (NavigationViewController, any AccountContextProtocol, PeerId) -> Void
     public let openTopic: (Int64, PeerId, any AccountContextProtocol, MessageId?) -> Signal<Bool, NoError>
     public let makeChannelParticipantController: (any AccountContextProtocol, PeerId, RenderedChannelParticipant) -> InputDataModalController
-    public var makeChannelParticipantControllerWithContext: ((any AccountContextProtocol, PeerId, RenderedChannelParticipant) -> InputDataModalController)?
-    public func makeChannelParticipantControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ participant: RenderedChannelParticipant) -> InputDataModalController {
+    public var makeChannelParticipantControllerWithContext: ((any AccountContextProtocol, PeerId, RenderedChannelParticipant, AnalyticsContext) -> InputDataModalController)?
+    public func makeChannelParticipantControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, _ participant: RenderedChannelParticipant, analyticsContext: AnalyticsContext) -> InputDataModalController {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext).restricting(peerId: participant.peer.id).restricting(peerId: participant.participant.peerId)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let makeChannelParticipantControllerWithContext {
-            return makeChannelParticipantControllerWithContext(context, peerId, participant)
+            return makeChannelParticipantControllerWithContext(context, peerId, participant, origin)
         } else {
             return makeChannelParticipantController(context, peerId, participant)
         }
@@ -279,21 +305,30 @@ public struct ChatHistoryUIHooks {
     public let makeMessageTranslateModal: (any AccountContextProtocol, String?, String, String, [MessageTextEntity], MessageId?, ((TranslationTone) -> Void)?, (() -> Void)?) -> InputDataModalController
     public let makeSelectedTextTranslateModal: (any AccountContextProtocol, String?, String, String, [MessageTextEntity], ((TranslationTone) -> Void)?, (() -> Void)?) -> InputDataModalController
     public let makeTranscriptionTranslateModal: (any AccountContextProtocol, String?, String, String, MessageId?, ((TranslationTone) -> Void)?, (() -> Void)?) -> InputDataModalController
-    public var makeTranslateModalWithContext: ((any AccountContextProtocol, String?, String, String, [MessageTextEntity], ChatHistoryTranslationSource, ((TranslationTone) -> Void)?, (() -> Void)?) -> InputDataModalController)?
+    public var makeTranslateModalWithContext: ((any AccountContextProtocol, String?, String, String, [MessageTextEntity], ChatHistoryTranslationSource, ((TranslationTone) -> Void)?, (() -> Void)?, AnalyticsContext) -> InputDataModalController)?
 
-    public func makeTranslateModalObserved(_ context: any AccountContextProtocol, _ from: String?, _ toLang: String, _ text: String, _ entities: [MessageTextEntity], source: ChatHistoryTranslationSource, onToneChanged: ((TranslationTone) -> Void)?, translateEntireChat: (() -> Void)?) -> InputDataModalController {
+    public func makeTranslateModalObserved(_ context: any AccountContextProtocol, _ from: String?, _ toLang: String, _ text: String, _ entities: [MessageTextEntity], source: ChatHistoryTranslationSource, analyticsContext: AnalyticsContext, onToneChanged: ((TranslationTone) -> Void)?, translateEntireChat: (() -> Void)?) -> InputDataModalController {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: source.messageId?.peerId ?? context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let tone: ((TranslationTone) -> Void)? = onToneChanged.map { callback in
             return { value in
+                let current = Analytics.shared.captureContext(engine: context.engine, peerId: source.messageId?.peerId ?? context.peerId, inherited: origin)
+                let presentation = current.beginPresentation()
+                defer { presentation.end() }
                 callback(value)
             }
         }
         let entire: (() -> Void)? = translateEntireChat.map { callback in
             return {
+                let current = Analytics.shared.captureContext(engine: context.engine, peerId: source.messageId?.peerId ?? context.peerId, inherited: origin)
+                let presentation = current.beginPresentation()
+                defer { presentation.end() }
                 callback()
             }
         }
         if let makeTranslateModalWithContext {
-            return makeTranslateModalWithContext(context, from, toLang, text, entities, source, tone, entire)
+            return makeTranslateModalWithContext(context, from, toLang, text, entities, source, tone, entire, origin)
         }
         switch source {
         case let .richMessage(id, page): return makeRichMessageTranslateModal(context, from, toLang, text, entities, id, page, tone, entire)
@@ -311,16 +346,25 @@ public struct ChatHistoryUIHooks {
     public let makeDownloadSearch: (any AccountContextProtocol) -> Void
     public let folderEmoticonDrawable: (FolderEmoticon) -> MenuAnimation
     public let makeForwardMessagesObject: (any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject
-    public var makeForwardMessagesObjectWithContext: ((any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject)?
+    public var makeForwardMessagesObjectWithContext: ((any AccountContextProtocol, [Message], Bool, (([MessageId], Bool) -> Signal<[Message], NoError>)?, AnalyticsContext) -> ChatHistoryForwardMessagesObject)?
 
-    public func makeForwardMessagesObjectObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ album: Bool, _ getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?) -> ChatHistoryForwardMessagesObject {
+    public func makeForwardMessagesObjectObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ album: Bool, _ getMessages: (([MessageId], Bool) -> Signal<[Message], NoError>)?, analyticsContext: AnalyticsContext) -> ChatHistoryForwardMessagesObject {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        for message in messages {
+            if message.containsSecretMedia { origin = Analytics.shared.unresolvedContext() }
+            origin = origin.restricting(peerId: message.id.peerId)
+        }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let lookup = getMessages.map { lookup in
             return { (ids: [MessageId], album: Bool) -> Signal<[Message], NoError> in
-                return (lookup(ids, album))
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
+                return origin.preservingPresentation(lookup(ids, album))
             }
         }
         if let makeForwardMessagesObjectWithContext {
-            return makeForwardMessagesObjectWithContext(context, messages, album, lookup)
+            return makeForwardMessagesObjectWithContext(context, messages, album, lookup, origin)
         }
         return makeForwardMessagesObject(context, messages, album, lookup)
     }

@@ -389,6 +389,7 @@ public class ChatAccessoryView : Button {
     private let borderLayer = DashLayer()
 
     public override var accessibilityDefaultLabel: String? {
+        if model is ChatLoadingReferenceModel { return strings().messagesReplyLoadingLoading }
         let parts = [headerContent.textLayout?.attributedString.string, messageContent.textLayout?.attributedString.string].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: ". ")
     }

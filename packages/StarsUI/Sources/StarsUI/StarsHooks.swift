@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -56,15 +57,16 @@ public struct StarsHooks {
     public let openTonBalance: (any AccountContextProtocol, Int64?) -> Void
     public let giftTransferBlockchainOption: (any AccountContextProtocol, Window, StarGift.UniqueGift, StarGiftReference, ProfileGiftsContext) -> (title: String, icon: NSImage, action: () -> Void)?
     public let giftMoveToGiftsAction: (any AccountContextProtocol, Window, StarGift.UniqueGift) -> (() -> Void)?
-    public var giftTransferBlockchainOptionWithContext: ((any AccountContextProtocol, Window, StarGift.UniqueGift, StarGiftReference, ProfileGiftsContext) -> (title: String, icon: NSImage, action: () -> Void)?)?
+    public var giftTransferBlockchainOptionWithContext: ((any AccountContextProtocol, Window, StarGift.UniqueGift, StarGiftReference, ProfileGiftsContext, AnalyticsContext) -> (title: String, icon: NSImage, action: () -> Void)?)?
 
-    public func giftTransferBlockchainOptionObserved(_ context: any AccountContextProtocol, _ window: Window, _ gift: StarGift.UniqueGift, _ reference: StarGiftReference, _ giftsContext: ProfileGiftsContext) -> (title: String, icon: NSImage, action: () -> Void)? {
+    public func giftTransferBlockchainOptionObserved(_ context: any AccountContextProtocol, _ window: Window, _ gift: StarGift.UniqueGift, _ reference: StarGiftReference, _ giftsContext: ProfileGiftsContext, analyticsContext: AnalyticsContext) -> (title: String, icon: NSImage, action: () -> Void)? {
         if let giftTransferBlockchainOptionWithContext {
-            return giftTransferBlockchainOptionWithContext(context, window, gift, reference, giftsContext)
+            return giftTransferBlockchainOptionWithContext(context, window, gift, reference, giftsContext, analyticsContext)
         }
+        let presentation = analyticsContext.beginPresentation()
         guard let option = giftTransferBlockchainOption(context, window, gift, reference, giftsContext) else { return nil }
         return (title: option.title, icon: option.icon, action: {
-            option.action()
+            withExtendedLifetime(presentation) { option.action() }
         })
     }
 

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spanish Flashcards</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1f2937; --muted: #6b7280; --front: #a21caf; --back: #faf5ff; --backfg: #581c87; --line: #e9d5ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #f3f4f6; --muted: #9ca3af; --front: #86198f; --back: #1f2937; --backfg: #e9d5ff; --line: #581c87; } }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); text-align: center; }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  .prog { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .scene { perspective: 1000px; width: 100%; height: 170px; }
+  .card { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .5s; cursor: pointer; border: none; padding: 0; background: none; }
+  .card.flipped { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 30px; font-weight: 600; }
+  .front { background: var(--front); color: #fff; }
+  .back { background: var(--back); color: var(--backfg); transform: rotateY(180deg); border: 2px solid var(--line); }
+  .face small { font-size: 12px; font-weight: 400; opacity: .7; margin-top: 8px; }
+  .btns { display: flex; justify-content: center; gap: 10px; margin-top: 16px; }
+  .btns button { padding: 10px 18px; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; color: #fff; }
+  .no { background: #ef4444; } .yes { background: #22c55e; }
+  .done { padding: 24px 10px; }
+  .done b { font-size: 40px; display: block; color: var(--front); }
+</style>
+</head>
+<body>
+<h2>🇪🇸 Spanish Flashcards</h2>
+<div class="prog" id="prog"></div>
+<div id="stage">
+  <div class="scene"><button class="card" id="card" aria-label="flip card"><div class="face front" id="front"></div><div class="face back" id="back"></div></button></div>
+  <div class="btns"><button class="no" id="no">✗ Don't know</button><button class="yes" id="yes">✓ Know</button></div>
+</div>
+<script>
+  var words = [['hola', 'hello'], ['gracias', 'thank you'], ['perro', 'dog'], ['gato', 'cat'], ['agua', 'water'], ['libro', 'book'], ['casa', 'house'], ['amigo', 'friend']];
+  var i = 0, known = 0, missed = [];
+  var card = document.getElementById('card');
+  function show() {
+    card.classList.remove('flipped');
+    document.getElementById('prog').textContent = 'Card ' + (i + 1) + ' of ' + words.length + ' · ' + known + ' known';
+    document.getElementById('front').innerHTML = words[i][0] + '<small>tap to flip</small>';
+    document.getElementById('back').innerHTML = words[i][1] + '<small>' + words[i][0] + '</small>';
+  }
+  card.onclick = function () { card.classList.toggle('flipped'); };
+  function next(k) {
+    if (k) known++; else missed.push(words[i][0]);
+    i++;
+    if (i < words.length) return show();
+    document.getElementById('prog').textContent = 'Done';
+    document.getElementById('stage').innerHTML = '<div class="done">You know<b>' + known + ' / ' + words.length + '</b>words. ' + (known === words.length ? '¡Excelente!' : '¡Sigue practicando!') + '</div>';
+    if (window.TelegramWidget) TelegramWidget.sendMessage('Flashcards: ' + known + '/' + words.length + (missed.length ? ' · review: ' + missed.join(', ') : ''));
+  }
+  document.getElementById('yes').onclick = function () { next(true); };
+  document.getElementById('no').onclick = function () { next(false); };
+  show();
+</script>
+</body>
+</html>

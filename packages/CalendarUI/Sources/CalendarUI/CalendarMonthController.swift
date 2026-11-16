@@ -3,6 +3,7 @@ import TGUIKit
 import CalendarUtils
 import TelegramTheme
 import GeneralRows
+import Localization
 
 public struct CalendarMonthInteractions {
     public let lowYear: Int
@@ -39,6 +40,13 @@ public final class CalendarMonthStruct {
     public let limitedBy: Date?
     
     public let dayPreview:(Int)->NSView?
+    public var isSelecting: Bool = false
+    public var selectedRange: ClosedRange<Int>?
+    public var fitsWeeks: Bool = false
+
+    public var weeksCount: Int {
+        return (currentStartDay - 1 + lastDayOfMonth + 6) / 7
+    }
     
     public var linesCount: Int {
         switch mode {
@@ -55,7 +63,7 @@ public final class CalendarMonthStruct {
             let result = Int(ceil(Float(count) / 7))
             return result
         case .normal:
-            return 6
+            return fitsWeeks ? weeksCount : 6
         }
        
     }
@@ -117,14 +125,13 @@ open class CalendarMonthView : View {
     private var month:CalendarMonthStruct?
 
     private var dayPreviews: [Int : NSView] = [:]
+    private let rangeViews = View()
     private let dayPreviewsViews = View()
     private let dayViews = View()
+    private let weekdaysView = View()
     private let containerView = View()
 
-    /// Vertical offset reserved at the top of the view for the controller's
-    /// navigation bar. The container holding day cells / previews starts at
-    /// this y so that bar chrome doesn't overlap the calendar grid.
-    open var navigationBarHeight: CGFloat = 64 {
+    open var navigationBarHeight: CGFloat = 56 {
         didSet {
             if navigationBarHeight != oldValue {
                 needsLayout = true
@@ -132,12 +139,23 @@ open class CalendarMonthView : View {
         }
     }
 
+    private static let weekdaysHeight: CGFloat = 24
+    public static let rowHeight: CGFloat = 42
+
+    public static func fittingHeight(weeks: Int, navigationBarHeight: CGFloat = 56) -> CGFloat {
+        return navigationBarHeight + weekdaysHeight + 4 + rowHeight * CGFloat(weeks)
+    }
+    private static let sideInset: CGFloat = 12
+
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        addSubview(weekdaysView)
         addSubview(containerView)
+        containerView.addSubview(rangeViews)
         containerView.addSubview(dayPreviewsViews)
         containerView.addSubview(dayViews)
-
+        rangeViews.isEventLess = true
+        weekdaysView.isEventLess = true
         backgroundColor = .clear
     }
     
@@ -151,6 +169,24 @@ open class CalendarMonthView : View {
             }
         }
     }
+
+    private func updateWeekdays() {
+        weekdaysView.removeAllSubviews()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: appAppearance.language.languageCode)
+        formatter.calendar = Calendar(identifier: .gregorian)
+        let symbols = formatter.shortWeekdaySymbols ?? []
+        guard symbols.count == 7 else { return }
+        for symbol in Array(symbols[1...]) + [symbols[0]] {
+            let label = TextView()
+            label.userInteractionEnabled = false
+            label.isSelectable = false
+            let layout = TextViewLayout(.initialize(string: symbol.uppercased(), color: theme.colors.grayText, font: .normal(.small)), maximumNumberOfLines: 1, alignment: .center)
+            layout.measure(width: 60)
+            label.update(layout)
+            weekdaysView.addSubview(label)
+        }
+    }
     
     open func layout(for month:CalendarMonthStruct) {
         dayPreviewsViews.removeAllSubviews()
@@ -158,34 +194,33 @@ open class CalendarMonthView : View {
         if self.month?.month != month.month {
             self.dayPreviews.removeAll()
         }
+        if weekdaysView.subviews.isEmpty {
+            updateWeekdays()
+        }
         self.month = month
+
+        let calendar = Calendar(identifier: .gregorian)
+        let today = calendar.startOfDay(for: Date())
 
         for i in 0 ..< 7 * 6 {
             let day = TextButton()
-            day.set(font: .normal(.text), for: .Normal)
+            day.textOffset = NSMakePoint(0, 2)
+            day.set(font: .normal(15), for: .Normal)
             day.scaleOnClick = true
-            let hideExcess: Bool
-            switch month.mode {
-            case .media:
-                hideExcess = true
-            case .normal:
-                hideExcess = false
-            }
             let current:Int
             
             if i + 1 < month.currentStartDay {
                 current = (month.lastDayOfPrevMonth - month.currentStartDay) + i + 2
-                day.set(color: theme.colors.grayText, for: .Normal)
-                day.isHidden = hideExcess
+                day.isHidden = true
             } else if (i + 2) - month.currentStartDay > month.lastDayOfMonth {
                 current = (i + 2) - (month.currentStartDay + month.lastDayOfMonth)
-                day.set(color: theme.colors.grayText, for: .Normal)
-                day.isHidden = hideExcess
+                day.isHidden = true
             } else {
                 current = (i + 1) - month.currentStartDay + 1
                 
                 let skipDay = !month.isDayEnabled(current)
-                let dayTimeinterval = CalendarUtils.monthDay(current, date: month.month).timeIntervalSince1970
+                let dayDate: Date = CalendarUtils.monthDay(current, date: month.month)
+                let dayTimeinterval = dayDate.timeIntervalSince1970
                 
                 let dayPreview = self.dayPreviews[current] ?? month.dayPreview(Int(dayTimeinterval))
                 if let dayPreview = dayPreview {
@@ -194,37 +229,32 @@ open class CalendarMonthView : View {
                 }
                 day.contextObject = current
                 
+                let inRange = month.selectedRange?.contains(current) == true
+                let isSelected = !month.isSelecting && month.mode == .normal && month.selectedDay == current
+                let isToday = calendar.startOfDay(for: dayDate) == today
+                
                 if !skipDay {
-                    day.set(color: theme.colors.underSelectedColor, for: .Highlight)
-                    if (i + 1) % 7 == 0 || (i + 2) % 7 == 0 {
-                        day.set(color: theme.colors.redUI, for: .Normal)
+                    if dayPreview != nil || inRange || isSelected {
+                        day.set(color: .white, for: .Normal)
+                        day.set(color: .white, for: .Highlight)
+                        day.set(font: .medium(15), for: .Normal)
+                    } else if isToday {
+                        day.set(color: theme.colors.accent, for: .Normal)
+                        day.set(color: theme.colors.accent, for: .Highlight)
+                        day.set(font: .medium(15), for: .Normal)
                     } else {
                         day.set(color: theme.colors.text, for: .Normal)
+                        day.set(color: theme.colors.text, for: .Highlight)
                     }
-                    if dayPreview != nil {
+                    if isSelected {
+                        day.set(background: theme.colors.accent, for: .Normal)
+                        day.set(background: theme.colors.accent, for: .Highlight)
+                    } else if dayPreview != nil || inRange {
                         day.set(background: .clear, for: .Normal)
                         day.set(background: .clear, for: .Highlight)
-                        day.set(color: .white, for: .Normal)
-                        day.set(font: .medium(.text), for: .Normal)
                     } else {
-                        switch month.mode {
-                        case .media:
-                            day.set(background: .clear, for: .Normal)
-                            day.set(background: theme.colors.background, for: .Highlight)
-                            day.set(color: theme.colors.text, for: .Highlight)
-                        case .normal:
-                            if let selectedDay = month.selectedDay, current == selectedDay {
-                               // day.isSelected = true
-                                day.set(color: theme.colors.underSelectedColor, for: .Normal)
-                                
-                                day.set(background: theme.colors.accent, for: .Normal)
-                                day.set(background: theme.colors.accent, for: .Highlight)
-                            } else {
-                                day.set(background: .clear, for: .Normal)
-                                day.set(background: theme.colors.accent, for: .Highlight)
-                            }
-                        }
-                        
+                        day.set(background: .clear, for: .Normal)
+                        day.set(background: theme.colors.grayBackground, for: .Highlight)
                     }
                    
                     day.set(handler: { [weak self] (control) in
@@ -237,6 +267,7 @@ open class CalendarMonthView : View {
                     }, for: .Click)
                 } else {
                     day.set(color: theme.colors.grayText, for: .Normal)
+                    day.set(color: theme.colors.grayText, for: .Highlight)
                 }
             }
             day.set(text: "\(current)", for: .Normal)
@@ -252,7 +283,7 @@ open class CalendarMonthView : View {
         layoutSubtreeIfNeeded()
         let animated = animated && window != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         for case let day as TextButton in dayViews.subviews {
-            guard let current = day.contextObject as? Int, month.isDayEnabled(current), dayPreviews[current] == nil else { continue }
+            guard !day.isHidden, let current = day.contextObject as? Int, month.isDayEnabled(current), dayPreviews[current] == nil else { continue }
             let timestamp = Int(CalendarUtils.monthDay(current, date: month.month).timeIntervalSince1970)
             guard let preview = month.dayPreview(timestamp) else { continue }
             let previous: View?
@@ -272,7 +303,8 @@ open class CalendarMonthView : View {
             day.set(background: .clear, for: .Normal)
             day.set(background: .clear, for: .Highlight)
             day.set(color: .white, for: .Normal)
-            day.set(font: .medium(.text), for: .Normal)
+            day.set(color: .white, for: .Highlight)
+            day.set(font: .medium(15), for: .Normal)
             day.layoutSubtreeIfNeeded()
             if animated {
                 preview.layer?.animateAlpha(from: 0, to: 1, duration: 0.2)
@@ -287,7 +319,17 @@ open class CalendarMonthView : View {
     open override func layout() {
         super.layout()
 
-        containerView.frame = NSMakeRect(0, navigationBarHeight - 10, frame.width, max(0, frame.height - (navigationBarHeight - 10)))
+        let inset = CalendarMonthView.sideInset
+        let cellWidth = floorToScreenPixels(backingScaleFactor, (frame.width - inset * 2) / 7)
+
+        weekdaysView.frame = NSMakeRect(0, navigationBarHeight, frame.width, CalendarMonthView.weekdaysHeight)
+        for (i, label) in weekdaysView.subviews.enumerated() {
+            label.setFrameOrigin(NSMakePoint(inset + CGFloat(i) * cellWidth + floorToScreenPixels(backingScaleFactor, (cellWidth - label.frame.width) / 2), floorToScreenPixels(backingScaleFactor, (CalendarMonthView.weekdaysHeight - label.frame.height) / 2)))
+        }
+
+        let top = weekdaysView.frame.maxY
+        containerView.frame = NSMakeRect(0, top, frame.width, max(0, frame.height - top))
+        rangeViews.frame = containerView.bounds
         dayViews.frame = containerView.bounds
         dayPreviewsViews.frame = containerView.bounds
 
@@ -295,34 +337,41 @@ open class CalendarMonthView : View {
             return
         }
 
-        let containerSize = containerView.frame.size
+        let lines = CGFloat(month.linesCount)
+        let rowHeight = month.fitsWeeks ? CalendarMonthView.rowHeight : floorToScreenPixels(backingScaleFactor, (containerView.frame.height - 4) / lines)
+        let side = min(cellWidth, rowHeight) - 4
 
-        let oneSize:NSSize
-        var inset:NSPoint
-        switch month.mode {
-        case .normal:
-            oneSize = NSMakeSize(floorToScreenPixels(backingScaleFactor, (containerSize.width - 20) / 7), floorToScreenPixels(backingScaleFactor, (containerSize.height - 20) / CGFloat(month.linesCount)))
-            inset = NSMakePoint(10, 10)
-        case .media:
-            oneSize = NSMakeSize(floorToScreenPixels(backingScaleFactor, (containerSize.width - 20) / 7), floorToScreenPixels(backingScaleFactor, containerSize.height / CGFloat(month.linesCount)))
-            inset = NSMakePoint(10, 0)
-        }
-
+        var rowRanges: [Int: (first: NSRect, last: NSRect)] = [:]
         for i in 0 ..< dayViews.subviews.count {
             if let view = dayViews.subviews[i] as? TextButton {
-                view.frame = NSMakeRect(inset.x, inset.y, oneSize.width, oneSize.height)
-                view.layer?.cornerRadius = view.frame.height / 2
-                if let currentDay = view.contextObject as? Int {
+                let column = CGFloat(i % 7)
+                let row = CGFloat(i / 7)
+                let cell = NSMakeRect(inset + column * cellWidth, 2 + row * rowHeight, cellWidth, rowHeight)
+                view.frame = NSMakeRect(floorToScreenPixels(backingScaleFactor, cell.midX - side / 2), floorToScreenPixels(backingScaleFactor, cell.midY - side / 2), side, side)
+                view.layer?.cornerRadius = side / 2
+                if let currentDay = view.contextObject as? Int, !view.isHidden {
                     if let preview = self.dayPreviews[currentDay] {
-                        preview.setFrameOrigin(inset.x + (view.frame.width - preview.frame.width) / 2, inset.y + (view.frame.height - preview.frame.height) / 2)
+                        preview.setFrameOrigin(floorToScreenPixels(backingScaleFactor, view.frame.midX - preview.frame.width / 2), floorToScreenPixels(backingScaleFactor, view.frame.midY - preview.frame.height / 2))
+                    }
+                    if month.selectedRange?.contains(currentDay) == true {
+                        let key = i / 7
+                        if let existing = rowRanges[key] {
+                            rowRanges[key] = (existing.first, view.frame)
+                        } else {
+                            rowRanges[key] = (view.frame, view.frame)
+                        }
                     }
                 }
-                inset.x += oneSize.width
-                if (i + 1) % 7 == 0 {
-                    inset.x = 10
-                    inset.y += oneSize.height
-                }
             }
+        }
+
+        rangeViews.removeAllSubviews()
+        for (_, segment) in rowRanges {
+            let band = View(frame: NSMakeRect(segment.first.minX, segment.first.minY, segment.last.maxX - segment.first.minX, segment.first.height))
+            band.isEventLess = true
+            band.backgroundColor = theme.colors.accent
+            band.layer?.cornerRadius = segment.first.height / 2
+            rangeViews.addSubview(band)
         }
     }
     
@@ -352,7 +401,7 @@ open class CalendarMonthController: GenericViewController<CalendarMonthView> {
         self.interactions = interactions
         
         super.init()
-        self.bar = NavigationBarStyle(height: 64)
+        self.bar = NavigationBarStyle(height: 56)
     }
     
     open override func getCenterBarViewOnce() -> TitledBarView {
@@ -369,13 +418,20 @@ open class CalendarMonthController: GenericViewController<CalendarMonthView> {
             yearString = formatter.string(from: month.month)
         }
         
-        let barView = TitledBarView(controller: self, .initialize(string: monthString, color: theme.colors.text, font:.medium(.text)), .initialize(string:yearString, color: theme.colors.grayText, font:.normal(.small)))
-        barView.removeAllHandlers()
+        let barView = CalendarMonthHeaderView(controller: self, title: monthString + " " + yearString, isPrevEnabled: isPrevEnabled, isNextEnabled: isNextEnabled, back: { [weak self] in
+            if let backAction = self?.interactions.backAction, let month = self?.month.month {
+                backAction(month)
+            }
+        }, next: { [weak self] in
+            if let nextAction = self?.interactions.nextAction, let month = self?.month.month {
+                nextAction(month)
+            }
+        })
         
         let lowYear = self.interactions.lowYear
         let canBeNoYear = self.interactions.canBeNoYear
 
-        barView.contextMenu = { [weak self] in
+        barView.titleMenu = { [weak self] in
             guard let `self` = self else {
                 return nil
             }
@@ -416,6 +472,7 @@ open class CalendarMonthController: GenericViewController<CalendarMonthView> {
         }
         
         
+        barView.showsChevron = !self.onlyFuture
         return barView
     }
     
@@ -443,35 +500,11 @@ open class CalendarMonthController: GenericViewController<CalendarMonthView> {
     }
     
     open override func getLeftBarViewOnce() -> BarView {
-        let bar = ImageBarView(controller: self, theme.icons.calendarBack)
-        bar.button.isEnabled = isPrevEnabled
-        
-        if isPrevEnabled {
-            bar.button.set(handler: { [weak self] (control) in
-                if let backAction = self?.interactions.backAction, let month = self?.month.month {
-                    backAction(month)
-                }
-            }, for: .Click)
-        }
-        
-        bar.set(image: bar.button.isEnabled ? theme.icons.calendarBack : theme.icons.calendarBackDisabled)
-        return bar
+        return BarView(0, controller: self)
     }
     
     open override func getRightBarViewOnce() -> BarView {
-        let bar = ImageBarView(controller: self, theme.icons.calendarNext)
-        bar.button.isEnabled = isNextEnabled
-
-        if isNextEnabled {
-            bar.button.set(handler: { [weak self] (control) in
-                if let nextAction = self?.interactions.nextAction, let month = self?.month.month {
-                    nextAction(month)
-                }
-            }, for: .Click)
-        }
-       
-        bar.set(image: bar.button.isEnabled ? theme.icons.calendarNext : theme.icons.calendarNextDisabled)
-        return bar
+        return BarView(0, controller: self)
     }
     
     open override var removeAfterDisapper: Bool {
@@ -494,3 +527,73 @@ open class CalendarMonthController: GenericViewController<CalendarMonthView> {
     
 }
 
+final class CalendarMonthHeaderView: TitledBarView {
+    private let titleControl = Control()
+    private let titleView = TextView()
+    private let chevronView = ImageView()
+    private let prev = ImageButton()
+    private let next = ImageButton()
+    var titleMenu: (() -> ContextMenu?)? {
+        didSet {
+            titleControl.contextMenu = titleMenu
+        }
+    }
+    var showsChevron: Bool = false {
+        didSet {
+            chevronView.isHidden = !showsChevron
+            needsLayout = true
+        }
+    }
+
+    init(controller: ViewController, title: String, isPrevEnabled: Bool, isNextEnabled: Bool, back: @escaping () -> Void, next: @escaping () -> Void) {
+        super.init(controller: controller, nil, nil)
+        let layout = TextViewLayout(.initialize(string: title, color: theme.colors.text, font: .medium(.header)), maximumNumberOfLines: 1)
+        layout.measure(width: 220)
+        titleView.update(layout)
+        titleView.userInteractionEnabled = false
+        titleView.isSelectable = false
+        chevronView.image = TelegramThemeHooks.shared.image(.iconGeneralNext).precomposed(theme.colors.accent)
+        chevronView.sizeToFit()
+        chevronView.isHidden = true
+        titleControl.addSubview(titleView)
+        titleControl.addSubview(chevronView)
+        titleControl.scaleOnClick = true
+        titleControl.setAccessibilityLabel(title)
+        addSubview(titleControl)
+
+        self.prev.set(image: isPrevEnabled ? theme.icons.calendarBack : theme.icons.calendarBackDisabled, for: .Normal)
+        self.prev.isEnabled = isPrevEnabled
+        self.prev.autohighlight = false
+        self.prev.scaleOnClick = true
+        self.prev.sizeToFit(.zero, NSMakeSize(32, 32), thatFit: true)
+        self.prev.setAccessibilityLabel(strings().voiceOverCommonBack)
+        self.prev.set(handler: { _ in back() }, for: .Click)
+        self.next.set(image: isNextEnabled ? theme.icons.calendarNext : theme.icons.calendarNextDisabled, for: .Normal)
+        self.next.isEnabled = isNextEnabled
+        self.next.autohighlight = false
+        self.next.scaleOnClick = true
+        self.next.sizeToFit(.zero, NSMakeSize(32, 32), thatFit: true)
+        self.next.setAccessibilityLabel(strings().voiceOverCommonNext)
+        self.next.set(handler: { _ in next() }, for: .Click)
+        addSubview(self.prev)
+        addSubview(self.next)
+    }
+
+    required init(frame frameRect: NSRect) {
+        fatalError("init(frame:) has not been implemented")
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let size = NSMakeSize(titleView.frame.width + 6 + chevronView.frame.width, max(titleView.frame.height, chevronView.frame.height))
+        titleControl.frame = NSMakeRect(18, floorToScreenPixels(backingScaleFactor, (frame.height - size.height) / 2), size.width, size.height)
+        titleView.setFrameOrigin(NSMakePoint(0, floorToScreenPixels(backingScaleFactor, (size.height - titleView.frame.height) / 2)))
+        chevronView.setFrameOrigin(NSMakePoint(titleView.frame.maxX + 6, floorToScreenPixels(backingScaleFactor, (size.height - chevronView.frame.height) / 2)))
+        next.setFrameOrigin(NSMakePoint(frame.width - next.frame.width - 12, floorToScreenPixels(backingScaleFactor, (frame.height - next.frame.height) / 2)))
+        prev.setFrameOrigin(NSMakePoint(next.frame.minX - prev.frame.width - 8, next.frame.minY))
+    }
+}

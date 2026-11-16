@@ -1299,8 +1299,9 @@ int64_t SystemIdleTime(void) {
 NSDictionary<NSString *, NSString *> *audioTags(AVURLAsset *asset) {
     
     __block NSString *artistName = @"";
+    __block NSString *fallbackArtistName = @"";
     __block NSString *songName = @"";
-    
+
     [asset.availableMetadataFormats enumerateObjectsUsingBlock:^(NSString *obj, NSUInteger idx, BOOL *stop) {
         
         NSArray *metadata = [asset metadataForFormat:obj];
@@ -1310,15 +1311,15 @@ NSDictionary<NSString *, NSString *> *audioTags(AVURLAsset *asset) {
                 artistName = (NSString *) metaItem.value;
             } else if([metaItem.identifier isEqualToString:AVMetadataIdentifierID3MetadataTitleDescription]) {
                 songName = (NSString *) metaItem.value;
-            } else if([metaItem.identifier isEqualToString:AVMetadataiTunesMetadataKeyArtist]) {
+            } else if([metaItem.identifier isEqualToString:AVMetadataIdentifieriTunesMetadataArtist]) {
                 if (artistName.length == 0)
                     artistName = (NSString *) metaItem.value;
-            } else if([metaItem.identifier isEqualToString:AVMetadataiTunesMetadataKeySongName]) {
+            } else if([metaItem.identifier isEqualToString:AVMetadataIdentifieriTunesMetadataSongName]) {
                 songName = (NSString *) metaItem.value;
-            } else if([metaItem.identifier isEqualToString:AVMetadataQuickTimeUserDataKeyArtist]) {
+            } else if([metaItem.identifier isEqualToString:AVMetadataIdentifierQuickTimeUserDataArtist]) {
                 if (artistName.length == 0)
                     artistName = (NSString *) metaItem.value;
-            } else if([metaItem.identifier isEqualToString:AVMetadataQuickTimeUserDataKeyTrackName]) {
+            } else if([metaItem.identifier isEqualToString:AVMetadataIdentifierQuickTimeUserDataTrackName]) {
                 songName = (NSString *)metaItem.value;
             } else if([metaItem.identifier isEqualToString:AVMetadataCommonIdentifierArtist]) {
                 if (artistName.length == 0)
@@ -1326,11 +1327,11 @@ NSDictionary<NSString *, NSString *> *audioTags(AVURLAsset *asset) {
             } else if([metaItem.identifier isEqualToString:AVMetadataCommonIdentifierTitle]) {
                 songName = (NSString *) metaItem.value;
             } else if([metaItem.identifier hasSuffix:@"aART"]) {
-                if (artistName.length == 0)
-                    artistName = (NSString *)metaItem.value;
+                if (fallbackArtistName.length == 0)
+                    fallbackArtistName = (NSString *)metaItem.value;
             } else if([metaItem.identifier hasSuffix:@"wrt"]) {
-                if (artistName.length == 0)
-                    artistName = (NSString *)metaItem.value;
+                if (fallbackArtistName.length == 0)
+                    fallbackArtistName = (NSString *)metaItem.value;
             } else if([metaItem.identifier hasSuffix:@"nam"]) {
                 songName = (NSString *)metaItem.value;
             }
@@ -1342,7 +1343,7 @@ NSDictionary<NSString *, NSString *> *audioTags(AVURLAsset *asset) {
         
     }];
     
-    return @{@"performer":artistName,@"title":songName};
+    return @{@"performer":artistName.length > 0 ? artistName : fallbackArtistName,@"title":songName};
 }
 
 

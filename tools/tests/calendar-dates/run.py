@@ -39,7 +39,7 @@ fixture = fixture.replace('__SUGGESTED__', chat[a:b].replace('Calendar.current',
 
 for key, marker in [('__NEXT__', '    open var isNextEnabled:'), ('__PREV__', '    open var isPrevEnabled:')]:
     fixture = fixture.replace(key, block(s, marker).replace('open ', '').replace('Date()', 'now'))
-a = s.index('        let formatter:DateFormatter');b = s.index('        let barView = TitledBarView', a)
+a = s.index('        let formatter:DateFormatter');b = s.index('        let barView = ', a)
 fixture = fixture.replace('__LABEL__', s[a:b] + '\nreturn (monthString, yearString)')
 handler = block(s, 'items.append(.init("—", handler:')
 fixture = fixture.replace('__NO_YEAR__', handler.split('handler: ', 1)[1])

@@ -27,13 +27,13 @@ private func entries(_ state: State) -> [InputDataEntry] {
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("DEVICE NAME"), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem))) //TODOLANG
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().renameDeviceControllerDeviceNameHeader), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
     index += 1
 
     entries.append(.input(sectionId: sectionId, index: index, value: .string(state.value), error: nil, identifier: _id_input, mode: .plain, data: .init(viewType: .singleItem), placeholder: nil, inputPlaceholder: state.systemDeviceModel ?? "", filter: { $0 }, limit: Int32(ApiEnvironment.deviceModelMaxLength)))
     index += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("This name is shown in the list of active sessions on your other devices."), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem))) //TODOLANG
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().renameDeviceControllerDeviceNameInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
@@ -59,7 +59,7 @@ func RenameDeviceController(context: any AccountContextProtocol) -> InputDataMod
         return InputDataSignalValue(entries: entries(state))
     }
 
-    let controller = InputDataController(dataSignal: signal, title: "Rename Device") //TODOLANG
+    let controller = InputDataController(dataSignal: signal, title: strings().renameDeviceControllerTitle)
 
     controller.updateDatas = { data in
         updateState { current in

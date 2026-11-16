@@ -16,6 +16,7 @@ import InputDataUI
 import ShortPeerRow
 import AvatarUI
 import SceneEffects
+import AppAnalytics
 
 
 private final class ReassignHeaderRowItem : GeneralRowItem {
@@ -217,6 +218,7 @@ public func BoostReassignController(context: any AccountContextProtocol, peer: P
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().boostReassignTitle)
+    controller.analyticsScreen = .boostsReassign
     
     let timer = SwiftSignalKit.Timer(timeout: 0.5, repeat: true, completion: {
         updateState { current in

@@ -14,6 +14,7 @@ import FoundationUtils
 import AlertsUI
 import InAppSettings
 import Postbox
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -156,6 +157,7 @@ public func ArchiveSettingsController(context: any AccountContextProtocol, priva
         update(privacy.globalSettings)
     }))
     let controller = InputDataController(dataSignal: signal, title: strings().archiveTitle, hasDone: false)
+    controller.analyticsScreen = .settingsPrivacyArchive
     
     controller.onDeinit = {
         actionsDisposable.dispose()

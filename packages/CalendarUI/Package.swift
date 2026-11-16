@@ -19,6 +19,7 @@ let package = Package(
         .package(name: "CalendarUtils", path: "../CalendarUtils"),
         .package(name: "TelegramContext", path: "../TelegramContext"),
         .package(name: "TelegramMediaUtils", path: "../TelegramMediaUtils"),
+        .package(name: "AlertsUI", path: "../AlertsUI"),
     ],
     targets: [
         .target(
@@ -34,6 +35,7 @@ let package = Package(
                 .product(name: "CalendarUtils", package: "CalendarUtils", condition: nil),
                 .product(name: "TelegramContext", package: "TelegramContext"),
                 .product(name: "TelegramMediaUtils", package: "TelegramMediaUtils"),
+                .product(name: "AlertsUI", package: "AlertsUI"),
             ],
             path: "Sources/CalendarUI"),
     ]

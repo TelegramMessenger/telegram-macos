@@ -14,6 +14,7 @@ import InputDataUI
 import TGModernGrowingTextView
 import AlertsUI
 import PremiumUI
+import AppAnalytics
 
 private struct UsernameCheck: Equatable {
     let username: String
@@ -343,7 +344,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func CreateBotModalController(context: any AccountContextProtocol, managerUsername: String, botUsername: String, botTitle: String?, openAutomatically: Bool = true, completion: @escaping (PeerId?) -> Void = { _ in }) -> InputDataModalController {
+public func CreateBotModalController(context: any AccountContextProtocol, managerUsername: String, botUsername: String, botTitle: String?, openAutomatically: Bool = true, viaDeeplink: Bool = false, completion: @escaping (PeerId?) -> Void = { _ in }) -> InputDataModalController {
 
     let actionsDisposable = DisposableSet()
     let availabilityDisposable = MetaDisposable()
@@ -443,6 +444,7 @@ public func CreateBotModalController(context: any AccountContextProtocol, manage
     }
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .createBot
 
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -496,7 +498,7 @@ public func CreateBotModalController(context: any AccountContextProtocol, manage
         }
         let resolvedUsername = CreateBotUsername(typedText: state.botUsername, endings: endings)
         return .fail(.doSomething(next: { f in
-            let signal = context.engine.peers.createBot(name: state.botTitle, username: resolvedUsername.username, managerPeerId: managerPeer.peer.id, viaDeeplink: true)
+            let signal = context.engine.peers.createBot(name: state.botTitle, username: resolvedUsername.username, managerPeerId: managerPeer.peer.id, viaDeeplink: viaDeeplink)
             _ = showModalProgress(signal: signal, for: context.window).start(next: { peer in
                 close?()
                 showModalText(for: context.window, text: strings().createBotSuccessInfo(state.managerUsername), title: strings().createBotSuccessTitle(state.botTitle))

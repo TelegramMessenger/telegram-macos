@@ -218,6 +218,7 @@ public class TokenizedView: ScrollView, AppearanceViewProtocol, NSTextViewDelega
     }
     
     public func removeTokens(uniqueIds: [Int64], animated: Bool) {
+        let selected = selectedIndex.map { tokens[$0] }
         for uniqueId in uniqueIds {
             var index:Int? = nil
             for i in 0 ..< tokens.count {
@@ -241,6 +242,9 @@ public class TokenizedView: ScrollView, AppearanceViewProtocol, NSTextViewDelega
                     }
                 }
             }
+        }
+        if let selected = selected {
+            selectedIndex = tokens.firstIndex(of: selected)
         }
         layoutContainer(animated: animated)
         _tokensUpdater.set(.single(tokens))
@@ -308,7 +312,7 @@ public class TokenizedView: ScrollView, AppearanceViewProtocol, NSTextViewDelega
             if commandSelector == #selector(moveLeft(_:)) {
                 if let index = selectedIndex {
                     selectedIndex = max(index - 1, 0)
-                } else {
+                } else if !tokens.isEmpty {
                     selectedIndex = tokens.count - 1
                 }
                 return true

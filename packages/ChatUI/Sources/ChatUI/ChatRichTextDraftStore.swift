@@ -33,9 +33,10 @@ private final class WeakChatRichTextDraftRevision {
     }
 }
 
-final class ChatRichTextDraftStore<Value: Equatable> {
+final class ChatRichTextDraftStore<Value: Equatable, Origin: AnyObject> {
     private let lock = NSLock()
     private var values: [ChatRichTextDraftKey: Value] = [:]
+    private var origins: [ChatRichTextDraftKey: Origin] = [:]
     private var revisions: [ChatRichTextDraftKey: [WeakChatRichTextDraftRevision]] = [:]
 
     func value(for key: ChatRichTextDraftKey) -> Value? {
@@ -44,13 +45,21 @@ final class ChatRichTextDraftStore<Value: Equatable> {
         return values[key]
     }
 
-
-    @discardableResult
-    func set(_ value: Value?, for key: ChatRichTextDraftKey) -> Bool {
+    func entry(for key: ChatRichTextDraftKey) -> (value: Value, origin: Origin?)? {
         lock.lock()
         defer { lock.unlock() }
-        guard values[key] != value else { return false }
+        guard let value = values[key] else { return nil }
+        return (value, origins[key])
+    }
+
+    @discardableResult
+    func set(_ value: Value?, for key: ChatRichTextDraftKey, origin: Origin? = nil) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let origin = value == nil ? nil : origin
+        guard values[key] != value || origins[key] !== origin else { return false }
         values[key] = value
+        origins[key] = origin
         for revision in revisions.removeValue(forKey: key) ?? [] {
             revision.value?.invalidate()
         }

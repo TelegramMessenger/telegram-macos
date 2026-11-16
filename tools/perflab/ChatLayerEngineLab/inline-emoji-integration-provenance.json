@@ -1,0 +1,19 @@
+{
+  "source_sha256": {
+    "packages/ChatUI/Sources/ChatUI/ChatLayerInlineEmoji.swift": "a00f4b0bac0c9a77a2d1cad4b6f55f92157c04dc865bd5a8741b8ff943aec468",
+    "packages/ChatUI/Sources/ChatUI/ChatLayerMessageTextView.swift": "4510b771f3ab50a4028031cd55915d73a3cce2c14436df1b0c6e63df9986871a",
+    "packages/ChatUI/Sources/ChatUI/ChatLayerMessageText+Layout.swift": "2509913bebc240f1b2abaf991b6de6fe3f1912c3043ad1ab51b87bcee0c2ec87",
+    "packages/ChatUI/Sources/ChatUI/ChatMessageView.swift": "0514eb4cc429516c0198382e4eee8be16b5f212b59723a8a885b95b91c807440",
+    "packages/ChatUI/Sources/ChatUI/ChatRowView.swift": "b812bc031c0e3c8fe0d400848cd3389629dfa8f3d1e0a92c63ca088e6f15bb3f",
+    "tools/perflab/ChatLayerEngineLab/Sources/TelegramContext/Context.swift": "e7b4d8efedb1414c7827e0243cd16fe260863a78afa938748e84de73a5b2c876",
+    "tools/perflab/ChatLayerEngineLab/Sources/InputView/Emoji.swift": "e6a1b53db3276fc7122bb92b154111c8d129602419c60f3e503b28786bd48e59",
+    "tools/perflab/ChatLayerEngineLab/Sources/InlineStickerLayer/Media.swift": "dec02cf3e9f25c3d53cc4ebb661407691f928d9094d745b3c16a6ee249ba97b4",
+    "tools/perflab/ChatLayerEngineLab/Sources/FoldingViewHarness/ChatTextDependencies.swift": "0937436181af532da15e80fa76422c51ef98b2cc84c9db84a70940aa4eb939b5",
+    "tools/perflab/ChatLayerEngineLab/Sources/FoldingViewHarness/CaptionDependencies.swift": "1f5b98611109c5c2eb62da308259c0ee10e5fb857aedbb033c8832e39807affb",
+    "tools/perflab/ChatLayerEngineLab/Tests/FoldingViewTests/LiveInlineEmojiTests.swift": "4395ed3d890056d44b2e3ece6391bdc4c7f53dababa6891d8a7739988d1d843c",
+    "tools/perflab/ChatLayerEngineLab/prepare.py": "ea56a8f80add90b6bdc39e3f5e3d1950344a8e6bfa3e65176dbb10f8799694de",
+    "tools/perflab/ChatLayerEngineLab/prepare-captions.py": "69435f99915dc6c4b154dde94c64111f8ae51c05e4199982d92e002f629c32a1",
+    "tools/perflab/ChatLayerEngineLab/Package.swift": "45f798440e00da5f3fcee52343549bd699e7401d24329a325f0fa3c724b3c431"
+  },
+  "scope": "Exact production helper and host; extracted production body/caption methods; real TGUIKit; deterministic media/account stand-ins; no real decoding or asynchronous fetching"
+}

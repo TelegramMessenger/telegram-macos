@@ -38,7 +38,7 @@ final class TableScrollGeometryTests: XCTestCase {
         table.setSecondary(stickClass: ScrollGeometrySecondaryHeader.self, handler: { _ in })
         spy.rangeQueries = 0
         table.updateStickAfterScroll(false)
-        XCTAssertEqual(spy.rangeQueries, 2)
+        XCTAssertEqual(spy.rangeQueries, 0)
         table.set(stickClass: nil, handler: { _ in })
         spy.rangeQueries = 0
         table.updateStickAfterScroll(false)

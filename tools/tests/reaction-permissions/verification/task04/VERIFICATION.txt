@@ -1,0 +1,71 @@
+Task 04: restore the reaction picker for boosted group members
+Date: 2026-10-28
+Base macOS revision: 5148bdc0b
+Local iOS/shared revision: f1efe3b56c3922a54ee59f73ee11a1ac68a05f7c
+
+Root cause
+Commit e5b2c221a48e85a1e7f8f77d14f2d4f50472180e (#83) added direct
+canSendReactionsToPeer checks with ignoreDefault left false. This rejected
+members whose applied boosts lift default restrictions. The baseline full-client
+harness recorded a default reaction ban, no personal ban, 1 required boost,
+1 applied boost, no administrator status, and a non-account send-as identity.
+canReact was false and ChatRowItem.menuAdditionView returned nil.
+
+Fix and iOS parity
+Use the local iOS canBypassRestrictions policy: required boosts must exist and
+be positive, and applied boosts must exist and meet that threshold. Pass the
+result as ignoreDefault to the shared TelegramCore permission helper. Personal
+bans still apply; administrator and creator rules remain in the shared helper.
+Send-as identity does not grant a permission exemption.
+The picker, quick action, existing chips, paid-reaction chooser, and open-picker
+callbacks now use the same live permission decision. A different presentation
+peer cannot supply boost exemptions for the message's chat. Saved-message tag
+filtering and updates retain their separate existing route.
+The service-message media decision follows the local iOS
+canAddMessageReactions function, including the server reaction flag and fallback
+service-action rules. Cloud secret media and story mentions follow that helper
+rather than macOS-only exclusions. Existing local presentation guards still
+exclude fake, pending, failed, ad, unsupported, and ephemeral replacement rows;
+non-cloud message namespaces, unresolved message peers, and secret chats remain
+ineligible. Allowed reaction
+sets, reaction counts, custom emoji, Stars, and Premium filtering are unchanged.
+
+Verification
+- The new boost regression cases failed on the original source: 38/40 passed;
+  the equal-threshold and above-threshold cases failed (before-boost-tests.txt).
+- python3 tools/tests/reaction-permissions/run.py: 133/133 passed.
+  The suite compiles production getters/callbacks against fixture collaborators
+  and compares boost and service decisions with function bodies read directly
+  from the local iOS sources. It also checks live rights/boost changes and guards
+  for quick, chip, expanded, ordinary, large, paid, and saved-tag entry points.
+- Xcode Debug build passed with the final production changes and harness.
+- The authenticated full-client harness passed 18/18 cases using actual
+  TelegramCore group/channel models, Postbox messages, ChatInteraction, and
+  production ChatRowItem: default and personal bans, boost thresholds (including
+  missing/zero/negative), creators/admins, anonymous send-as, broadcast channels,
+  and legacy groups.
+- The full-client harness requested menuAdditionView for the same ordinary cloud
+  message (114419) in the exact Telegram macOS supergroup before and after.
+  Before: canReact=0, pickerWindow=0. After: canReact=1, pickerWindow=1.
+  Group/account permission data stayed the same, including applied/required 1/1.
+  The raw helper without ignoreDefault still returned false after the fix.
+- git diff --check passed.
+
+Reproduction through the existing app harness
+Build the Debug app, then launch it with:
+-PerfLab chat-navigation -PerfLabScenarios reaction-picker
+-PerfLabPeerTitle "Telegram macOS" -PerfLabLabel task04
+-PerfLabOpenWait 10 -PerfLabStartDelay 1 -PerfLabQuit
+Optionally set -PerfLabOutput to a task-specific absolute directory.
+The scenario checks local native models and requests/dismisses the production
+picker window. It does not invoke any reaction callbacks or submit messages.
+
+Limits
+The user chose code and harness checks only after computer-use approval was
+rejected. No manual right-click, rendered-strip screenshot, or menu-positioning
+verification was performed. The before/after evidence proves the production
+picker window is returned for the real chat, not its onscreen positioning.
+No messages/reactions were submitted and no live group permissions were changed.
+The initial generic harness run found no ordinary message; it is excluded from
+before/after evidence. The reaction scenario now selects the exact local
+supergroup instead of the generic harness's preferred broadcast channel.

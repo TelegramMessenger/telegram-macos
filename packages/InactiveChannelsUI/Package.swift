@@ -13,7 +13,7 @@ let deps: [(String, String)] = [
     ("ShortPeerRow", "../ShortPeerRow"),
     ("DateUtils", "../DateUtils"),
     ("PremiumUI", "../PremiumUI"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

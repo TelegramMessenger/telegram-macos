@@ -26,8 +26,8 @@ func installChatMediaUIHooks() {
     }, makeStickerPackPreview: { context, peerId, references in
         return StickerPackPreviewModalController(context as! AccountContext, peerId: peerId, references: references.map(mapChatMediaStickerPackPreviewSource))
     })
-    hooks.makeStickerPackPreviewWithContext = { context, peerId, references in
-        return StickerPackPreviewModalController(context, peerId: peerId, references: references.map(mapChatMediaStickerPackPreviewSource))
+    hooks.makeStickerPackPreviewWithContext = { context, peerId, references, analyticsContext in
+        return StickerPackPreviewModalController(context, peerId: peerId, references: references.map(mapChatMediaStickerPackPreviewSource), analyticsContext: analyticsContext)
     }
     ChatMediaUIHooks.install(hooks)
 }

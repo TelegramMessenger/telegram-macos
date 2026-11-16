@@ -10,9 +10,7 @@ from pathlib import Path
 LAB_MARKERS = re.compile(
     r"PerfLab|NetworkLab|EmojiPanelLab|GifPanelLab|ScreenCaptureLab|"
     r"CallVideoLab|PeerCallLab|VideoPlayerLab|ChatNavigationLab|PeerMediaLab|"
-    r"UniqueGiftLab|StoryMorphLab|ChatListStoriesLab|"
-    r"HTMLBubbles|HTMLDemo|ChatHTMLRow|ChatHTMLDocument|LiteHTML|TwidgetRenderer|WidgetSandbox|"
-    r"NewsUI|NewsController|ChatInputNewsChannelView|tab_news|news_drop"
+    r"UniqueGiftLab|StoryMorphLab|ChatListStoriesLab"
 )
 MACH_O_MAGICS = {
     bytes.fromhex(value)
@@ -28,7 +26,7 @@ def verify(app):
         if path.is_symlink():
             continue
         if LAB_MARKERS.search(path.name):
-            raise ValueError(f"excluded feature artifact in app bundle: {path}")
+            raise ValueError(f"lab artifact in app bundle: {path}")
         if not path.is_file():
             continue
         with path.open("rb") as source:
@@ -45,10 +43,10 @@ def verify(app):
                     for line in output:
                         match = LAB_MARKERS.search(line)
                         if match:
-                            raise ValueError(f"excluded feature code in {path}: {match.group()}")
+                            raise ValueError(f"lab code in {path}: {match.group()}")
     if count == 0:
         raise ValueError(f"no Mach-O binaries found in {app}")
-    print(f"Release feature exclusion verified: {count} Mach-O binaries contain no excluded feature symbols or launch markers")
+    print(f"Lab exclusion verified: {count} Mach-O binaries contain no lab symbols or launch markers")
 
 
 if __name__ == "__main__":

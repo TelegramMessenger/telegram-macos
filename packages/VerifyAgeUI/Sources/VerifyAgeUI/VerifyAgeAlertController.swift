@@ -12,6 +12,7 @@ import LocalAnimations
 import TelegramCore
 import Postbox
 import WebAppUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -96,6 +97,7 @@ public func VerifyAgeAlertController(context: any AccountContextProtocol) -> Inp
     
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .appAgeVerification
     
     getController = { [weak controller] in
         return controller

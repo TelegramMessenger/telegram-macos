@@ -40,7 +40,7 @@ enum ChatMode: Equatable {
     var isSavedMessagesThread: Bool { self == .thread(.savedMessages) }
 }
 struct CustomLink { let name: String; let link: String }
-struct CustomContents { struct Kind { let text: String }; let kind: Kind }
+struct CustomContents { struct Kind { let text: String; var status: String = "" }; let kind: Kind }
 struct ThreadInfo { struct Info { let title: String }; let info: Info }
 struct PinnedMessage { let totalCount: Int }
 struct ChatPresentationInterfaceState {
@@ -114,6 +114,8 @@ final class HeaderFixture: View {
     var leftStatusControl: View?
     var titleImageView: ImageView?
     var layoutPasses = 0
+    var titleNaturalWidth: CGFloat = 0
+    var statusNaturalWidth: CGFloat = 0
 
     __CONNECTION_PROPERTY__
 

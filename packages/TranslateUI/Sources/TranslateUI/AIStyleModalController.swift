@@ -15,6 +15,7 @@ import InputDataUI
 import AlertsUI
 import ChatHistoryModel
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class NewStyleIconRowItem : GeneralRowItem {
@@ -210,10 +211,18 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 }
 
 
-func AIStyleModalController(context: any AccountContextProtocol, editing: TelegramComposeAIMessageMode.CloudStyle? = nil, onCompleted: ((Int64?) -> Void)? = nil) -> InputDataModalController {
+func AIStyleModalController(context: any AccountContextProtocol, editing: TelegramComposeAIMessageMode.CloudStyle? = nil, onCompleted: ((Int64?) -> Void)? = nil, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
 
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
+    let getAnalyticsContext: () -> AnalyticsContext = {
+        Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+    }
     let onCompleted: ((Int64?) -> Void)? = onCompleted.map { callback in
         return { id in
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             callback(id)
         }
     }
@@ -245,6 +254,8 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         statePromise.set(stateValue.modify(f))
     }
 
@@ -270,7 +281,11 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
             return current
         }
     }, pickEmoji: { control in
-        TranslateUIHooks.shared.showStyleEmojiPickerObserved(context, control, selected: { file in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
+        TranslateUIHooks.shared.showStyleEmojiPickerObserved(context, control, analyticsContext: getAnalyticsContext(), selected: { file in
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             var packReference: StickerPackReference?
             for attr in file.attributes {
                 if case let .CustomEmoji(_, _, _, ref) = attr {
@@ -288,29 +303,46 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
         })
     }, deleteStyle: (editStyleId != nil && editAccessHash != nil) ? {
         guard let editStyleId, let editAccessHash else { return }
+        let analyticsContext = getAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
+        let confirmationPresentation = analyticsContext.beginPresentation()
         verifyAlert(for: context.window, header: strings().aiStyleModalDeleteStyleHeader, information: strings().aiStyleModalDeleteStyleConfirm, ok: strings().modalDelete, option: strings().aiStyleModalDeleteStyleForAll, successHandler: { result in
+            let analyticsContext = getAnalyticsContext()
+            let presentation = analyticsContext.beginPresentation()
+            defer { presentation.end() }
             switch result {
             case .thrid:
-                _ = (context.engine.messages.deleteAITextStyle(id: editStyleId, accessHash: editAccessHash)).startStandalone()
+                _ = analyticsContext.preservingPresentation(context.engine.messages.deleteAITextStyle(id: editStyleId, accessHash: editAccessHash)).startStandalone()
             case .basic:
-                _ = (context.engine.messages.unsaveAITextStyle(id: editStyleId, accessHash: editAccessHash)).startStandalone()
+                _ = analyticsContext.preservingPresentation(context.engine.messages.unsaveAITextStyle(id: editStyleId, accessHash: editAccessHash)).startStandalone()
             }
             onCompleted?(nil)
             close?()
+        }, onDeinit: {
+            confirmationPresentation.end()
         })
     } : nil)
 
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = getAnalyticsContext().preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
 
     let controller = InputDataController(dataSignal: signal, title: editing != nil ? strings().aiStyleModalEditStyleTitle : strings().aiStyleModalNewStyleTitle)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .chatAiEditorStyle
 
     controller.onDeinit = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         actionsDisposable.dispose()
     }
 
     controller.updateDatas = { data in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         if let name = data[_id_name]?.stringValue {
             updateState { current in
                 var current = current
@@ -322,17 +354,24 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
     }
 
     let modalInteractions = ModalInteractions(acceptTitle: editing != nil ? strings().aiStyleModalSave : strings().aiStyleModalCreate, accept: { [weak controller] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         _ = controller?.returnKeyAction()
     }, singleButton: true)
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(360, 0))
 
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     })
 
     controller.validateData = { data in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         let state = stateValue.with { $0 }
         let trimmedName = state.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPrompt = state.instructions.inputText.string.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -360,6 +399,8 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
             |> take(1)
             |> castError(CreateStyleError.self)
             |> mapToSignal { cloudStyles -> Signal<Int64?, CreateStyleError> in
+                let presentation = getAnalyticsContext().beginPresentation()
+                defer { presentation.end() }
                 let customCount = cloudStyles.reduce(Int32(0)) { acc, style -> Int32 in
                     if case .custom = style.content { return acc + 1 }
                     return acc
@@ -385,7 +426,7 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
             }
         }
 
-        _ = (showModalProgress(signal: (createOrEdit), for: context.window)).start(next: { newStyleId in
+        _ = getAnalyticsContext().preservingPresentation(showModalProgress(signal: getAnalyticsContext().preservingPresentation(createOrEdit), for: context.window)).start(next: { newStyleId in
             onCompleted?(newStyleId)
             close?()
         }, error: { error in
@@ -396,7 +437,10 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
                 } else {
                     let limitText = strings().aiStyleModalSavedLimitPremiumOther(Int(savedLimit), Int(savedLimitPremium))
                     showModalText(for: context.window, text: limitText, button: strings().premiumLimitIncrease, callback: { _ in
-                        FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, nil, false, nil)
+                        let analyticsContext = getAnalyticsContext()
+                        let presentation = analyticsContext.beginPresentation()
+                        defer { presentation.end() }
+                        FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, nil, false, nil, analyticsContext: analyticsContext)
                     })
                 }
             case .generic:
@@ -408,6 +452,8 @@ func AIStyleModalController(context: any AccountContextProtocol, editing: Telegr
     }
 
     close = { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.modal?.close()
     }
     getController = { [weak controller] in controller }

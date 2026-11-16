@@ -104,49 +104,56 @@ public final class InAppPurchaseManager: NSObject {
         case deferred
     }
     
-    private let engine: TelegramEngine
+    private let environment: InAppPurchaseEnvironment
     
     private var products: [Product] = []
     private var productsPromise = Promise<[Product]>([])
     private var productRequest: SKProductsRequest?
     
-    private let stateQueue = Queue()
+    let stateQueue = Queue()
     private var paymentContexts: [String: PaymentTransactionContext] = [:]
+    private var assignments = TransactionAssignments()
         
     private var onRestoreCompletion: ((RestoreState) -> Void)?
     
     private let disposableSet = DisposableDict<String>()
     
-    public init(engine: TelegramEngine) {
-        self.engine = engine
+    public convenience init(engine: TelegramEngine) {
+        self.init(environment: .live(engine: engine))
+    }
+
+    init(environment: InAppPurchaseEnvironment) {
+        self.environment = environment
                 
         super.init()
         
-        SKPaymentQueue.default().add(self)
+        environment.paymentQueue.add(self)
         self.requestProducts()
     }
     
     deinit {
-        SKPaymentQueue.default().remove(self)
+        self.environment.paymentQueue.remove(self)
     }
     
     public var canMakePayments: Bool {
-        return SKPaymentQueue.canMakePayments()
+        return self.environment.canMakePayments()
     }
     
     private func requestProducts() {
-        Logger.shared.log("InAppPurchaseManager", "Requesting products")
-        let productRequest = SKProductsRequest(productIdentifiers: Set(productIdentifiers))
-        productRequest.delegate = self
-        productRequest.start()
-        
-        self.productRequest = productRequest
+        Queue.mainQueue().async { [weak self] in
+            guard let self, self.products.isEmpty, self.productRequest == nil else {
+                return
+            }
+            Logger.shared.log("InAppPurchaseManager", "Requesting products")
+            let productRequest = self.environment.makeProductsRequest(Set(productIdentifiers))
+            productRequest.delegate = self
+            self.productRequest = productRequest
+            productRequest.start()
+        }
     }
     
     public var availableProducts: Signal<[Product], NoError> {
-        if self.products.isEmpty && self.productRequest == nil {
-            self.requestProducts()
-        }
+        self.requestProducts()
         return self.productsPromise.get()
     }
     
@@ -154,14 +161,14 @@ public final class InAppPurchaseManager: NSObject {
         Logger.shared.log("InAppPurchaseManager", "Restoring purchases")
         self.onRestoreCompletion = completion
         
-        let paymentQueue = SKPaymentQueue.default()
+        let paymentQueue = self.environment.paymentQueue
         paymentQueue.restoreCompletedTransactions()
     }
     
     public func finishAllTransactions() {
         Logger.shared.log("InAppPurchaseManager", "Finishing all transactions")
         
-        let paymentQueue = SKPaymentQueue.default()
+        let paymentQueue = self.environment.paymentQueue
         let transactions = paymentQueue.transactions
         for transaction in transactions {
             paymentQueue.finishTransaction(transaction)
@@ -173,7 +180,7 @@ public final class InAppPurchaseManager: NSObject {
             return .fail(.cantMakePayments)
         }
                 
-        let accountPeerId = "\(self.engine.account.peerId.toInt64())"
+        let accountPeerId = self.environment.accountPeerId
         
         Logger.shared.log("InAppPurchaseManager", "Buying: account \(accountPeerId), product \(product.skProduct.productIdentifier), price \(product.price)")
         
@@ -182,7 +189,7 @@ public final class InAppPurchaseManager: NSObject {
         let payment = SKMutablePayment(product: product.skProduct)
         payment.applicationUsername = accountPeerId
         payment.quantity = Int(quantity)
-        SKPaymentQueue.default().add(payment)
+        self.environment.paymentQueue.add(payment)
         
         let productIdentifier = payment.productIdentifier
         let signal = Signal<PurchaseState, PurchaseError> { subscriber in
@@ -244,7 +251,7 @@ public final class InAppPurchaseManager: NSObject {
     }
     
     public func getReceiptPurchases() -> [ReceiptPurchase] {
-        guard let data = getReceiptData(), let receipt = parseReceipt(data) else {
+        guard let data = self.environment.receiptData(), let receipt = parseReceipt(data) else {
             return []
         }
         return receipt.purchases.map { ReceiptPurchase(productId: $0.productId, transactionId: $0.transactionId, expirationDate: $0.expirationDate) }
@@ -253,13 +260,21 @@ public final class InAppPurchaseManager: NSObject {
 
 extension InAppPurchaseManager: SKProductsRequestDelegate {
     public func productsRequest(_ request: SKProductsRequest, didReceive response: SKProductsResponse) {
-        self.productRequest = nil
-        
         Queue.mainQueue().async {
+            self.productRequest = nil
+            
             let products = response.products.map { Product(skProduct: $0) }
              
             Logger.shared.log("InAppPurchaseManager", "Received products \(products.map({ $0.skProduct.productIdentifier }).joined(separator: ", "))")
+            self.products = products
             self.productsPromise.set(.single(products))
+        }
+    }
+    
+    public func request(_ request: SKRequest, didFailWithError error: Error) {
+        Queue.mainQueue().async {
+            self.productRequest = nil
+            Logger.shared.log("InAppPurchaseManager", "Product request failed: \(error.localizedDescription)")
         }
     }
 }
@@ -279,7 +294,7 @@ private func getReceiptData() -> Data? {
 extension InAppPurchaseManager: SKPaymentTransactionObserver {
     public func paymentQueue(_ queue: SKPaymentQueue, updatedTransactions transactions: [SKPaymentTransaction]) {
         self.stateQueue.async { [self] in
-            let accountPeerId = "\(self.engine.account.peerId.toInt64())"
+            let accountPeerId = self.environment.accountPeerId
             
             let paymentContexts = self.paymentContexts
             
@@ -293,9 +308,17 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
                 let transactionState: TransactionState?
                 switch transaction.transactionState {
                     case .purchased:
-                        Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transaction \(transaction.transactionIdentifier ?? ""), original transaction \(transaction.original?.transactionIdentifier ?? "none") purchased")
                         transactionState = .purchased(transactionId: transaction.transactionIdentifier)
-                        transactionsToAssign.append(transaction)
+                        switch self.assignments.status(of: transaction.transactionIdentifier) {
+                        case .new:
+                            Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transaction \(transaction.transactionIdentifier ?? ""), original transaction \(transaction.original?.transactionIdentifier ?? "none") purchased")
+                            transactionsToAssign.append(transaction)
+                        case .inProgress:
+                            Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transaction \(transaction.transactionIdentifier ?? "") is already being assigned")
+                        case .finished:
+                            Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transaction \(transaction.transactionIdentifier ?? "") was already assigned, finishing")
+                            queue.finishTransaction(transaction)
+                        }
                     case .restored:
                         Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transaction \(transaction.transactionIdentifier ?? ""), original transaction \(transaction.original?.transactionIdentifier ?? "") restroring")
                         let transactionIdentifier = transaction.transactionIdentifier
@@ -308,10 +331,9 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
                         Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transaction \(transaction.transactionIdentifier ?? "") purchasing")
                         transactionState = .purchasing
                         if let paymentContext = self.paymentContexts[transaction.payment.productIdentifier] {
-                            let _ = updatePendingInAppPurchaseState(
-                                engine: self.engine,
-                                productId: transaction.payment.productIdentifier,
-                                content: PendingInAppPurchaseState(
+                            let _ = self.environment.updatePendingState(
+                                transaction.payment.productIdentifier,
+                                PendingInAppPurchaseState(
                                     productId: transaction.payment.productIdentifier,
                                     purpose: paymentContext.purpose
                                 )
@@ -339,8 +361,6 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
                 }
                 let productIdentifier = transaction.payment.productIdentifier
                 
-                var completion: Signal<Never, NoError> = .never()
-                
                 let products = self.availableProducts
                 |> filter { products in
                     return !products.isEmpty
@@ -366,7 +386,7 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
                 } else {
                     purpose = combineLatest(
                         product,
-                        pendingInAppPurchaseState(engine: self.engine, productId: productIdentifier)
+                        self.environment.pendingState(productIdentifier)
                     )
                     |> mapToSignal { product, state -> Signal<AppStoreTransactionPurpose, NoError> in
                         if let state = state {
@@ -376,46 +396,49 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
                         }
                     }
                 }
-                completion = updatePendingInAppPurchaseState(engine: self.engine, productId: productIdentifier, content: nil)
                 
-                let receiptData = getReceiptData() ?? Data()
+                let receiptData = self.environment.receiptData() ?? Data()
                 
-#if DEBUG
-                let id = Int64.random(in: Int64.min ... Int64.max)
-                let fileResource = LocalFileMediaResource(fileId: id, size: Int64(receiptData.count), isSecretRelated: false)
-                self.engine.account.postbox.mediaBox.storeResourceData(fileResource.id, data: receiptData)
-
-                let file = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: id), partialReference: nil, resource: fileResource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "application/text", size: Int64(receiptData.count), attributes: [.FileName(fileName: "Receipt.dat")], alternativeRepresentations: [])
-                let message: EnqueueMessage = .message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: file), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-
-                let _ = enqueueMessages(account: self.engine.account, peerId: self.engine.account.peerId, messages: [message]).start()
-#endif
+                self.environment.saveDebugReceipt(receiptData)
                 
+                self.assignments.begin(transactionsToAssign.compactMap { $0.transactionIdentifier })
+                
+                let assignedTransactions = transactionsToAssign
                 self.disposableSet.set(
                     (purpose
                     |> castError(AssignAppStoreTransactionError.self)
                     |> mapToSignal { purpose -> Signal<Never, AssignAppStoreTransactionError> in
-                        return self.engine.payments.sendAppStoreReceipt(receipt: receiptData, purpose: purpose)
+                        return self.environment.sendReceipt(receiptData, purpose)
                     }).start(error: { [weak self] _ in
                         Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transactions [\(transactionIds)] failed to assign")
-                        for transaction in transactions {
-                            self?.stateQueue.async {
-                                if let strongSelf = self, let context = strongSelf.paymentContexts[transaction.payment.productIdentifier] {
-                                    context.subscriber(.assignFailed)
-                                }
-                            }
-                            queue.finishTransaction(transaction)
-                        }
-                    }, completed: {
+                        self?.completeAssignment(of: assignedTransactions, paymentContexts: paymentContexts, failed: true, queue: queue)
+                    }, completed: { [weak self] in
                         Logger.shared.log("InAppPurchaseManager", "Account \(accountPeerId), transactions [\(transactionIds)] successfully assigned")
-                        for transaction in transactions {
-                            queue.finishTransaction(transaction)
-                        }
-                        
-                        let _ = completion.start()
+                        self?.completeAssignment(of: assignedTransactions, paymentContexts: paymentContexts, failed: false, queue: queue)
                     }),
                     forKey: transactionIds
                 )
+            }
+        }
+    }
+    
+    private func completeAssignment(of transactions: [SKPaymentTransaction], paymentContexts: [String: PaymentTransactionContext], failed: Bool, queue: SKPaymentQueue) {
+        self.stateQueue.async {
+            self.assignments.end(transactions.compactMap { $0.transactionIdentifier })
+            
+            for productIdentifier in Set(transactions.map { $0.payment.productIdentifier }) {
+                let context = self.paymentContexts[productIdentifier]
+                if let context, context !== paymentContexts[productIdentifier] {
+                    continue
+                }
+                if failed, let context {
+                    context.subscriber(.assignFailed)
+                }
+                let _ = self.environment.updatePendingState(productIdentifier, nil).start()
+            }
+            
+            for transaction in transactions {
+                queue.finishTransaction(transaction)
             }
         }
     }
@@ -426,9 +449,9 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
                 Logger.shared.log("InAppPurchaseManager", "Transactions restoration finished")
                 self.onRestoreCompletion = nil
                 
-                if let receiptData = getReceiptData() {
+                if let receiptData = self.environment.receiptData() {
                     self.disposableSet.set(
-                        self.engine.payments.sendAppStoreReceipt(receipt: receiptData, purpose: .restore).start(error: { error in
+                        self.environment.sendReceipt(receiptData, .restore).start(error: { error in
                             Queue.mainQueue().async {
                                 if case .serverProvided = error {
                                     onRestoreCompletion(.succeed(true))
@@ -464,7 +487,7 @@ extension InAppPurchaseManager: SKPaymentTransactionObserver {
 
 
 
-private final class PendingInAppPurchaseState: Codable {
+final class PendingInAppPurchaseState: Codable {
     enum CodingKeys: String, CodingKey {
         case productId
         case purpose
@@ -722,6 +745,55 @@ private func updatePendingInAppPurchaseState(engine: TelegramEngine, productId: 
         return engine.itemCache.put(collectionId: ApplicationSpecificItemCacheCollectionId.pendingInAppPurchaseState, id: key, item: content)
     } else {
         return engine.itemCache.remove(collectionId: ApplicationSpecificItemCacheCollectionId.pendingInAppPurchaseState, id: key)
+    }
+}
+
+struct InAppPurchaseEnvironment {
+    let accountPeerId: String
+    let paymentQueue: SKPaymentQueue
+    let canMakePayments: () -> Bool
+    let makeProductsRequest: (Set<String>) -> SKProductsRequest
+    let receiptData: () -> Data?
+    let saveDebugReceipt: (Data) -> Void
+    let sendReceipt: (Data, AppStoreTransactionPurpose) -> Signal<Never, AssignAppStoreTransactionError>
+    let pendingState: (String) -> Signal<PendingInAppPurchaseState?, NoError>
+    let updatePendingState: (String, PendingInAppPurchaseState?) -> Signal<Never, NoError>
+
+    static func live(engine: TelegramEngine) -> InAppPurchaseEnvironment {
+        return InAppPurchaseEnvironment(
+            accountPeerId: "\(engine.account.peerId.toInt64())",
+            paymentQueue: SKPaymentQueue.default(),
+            canMakePayments: {
+                return SKPaymentQueue.canMakePayments()
+            },
+            makeProductsRequest: { productIdentifiers in
+                return SKProductsRequest(productIdentifiers: productIdentifiers)
+            },
+            receiptData: {
+                return getReceiptData()
+            },
+            saveDebugReceipt: { receiptData in
+#if DEBUG
+                let id = Int64.random(in: Int64.min ... Int64.max)
+                let fileResource = LocalFileMediaResource(fileId: id, size: Int64(receiptData.count), isSecretRelated: false)
+                engine.account.postbox.mediaBox.storeResourceData(fileResource.id, data: receiptData)
+
+                let file = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: id), partialReference: nil, resource: fileResource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "application/text", size: Int64(receiptData.count), attributes: [.FileName(fileName: "Receipt.dat")], alternativeRepresentations: [])
+                let message: EnqueueMessage = .message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: file), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
+
+                let _ = enqueueMessages(account: engine.account, peerId: engine.account.peerId, messages: [message]).start()
+#endif
+            },
+            sendReceipt: { receiptData, purpose in
+                return engine.payments.sendAppStoreReceipt(receipt: receiptData, purpose: purpose)
+            },
+            pendingState: { productId in
+                return pendingInAppPurchaseState(engine: engine, productId: productId)
+            },
+            updatePendingState: { productId, content in
+                return updatePendingInAppPurchaseState(engine: engine, productId: productId, content: content)
+            }
+        )
     }
 }
 

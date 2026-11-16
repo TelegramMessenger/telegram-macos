@@ -372,7 +372,7 @@ func feedBlankReason(view: NSView, visible: CGRect) -> String? {
 }
 
 func loadFeedCorpus(limit: Int) -> [(String, String)] {
-    let root = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath().deletingLastPathComponent().appendingPathComponent("../../../../../packages/HTMLBubbles/Sources/HTMLBubbles/Resources").standardized
+    let root = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath().deletingLastPathComponent().appendingPathComponent("../../../../../packages/HTMLBubbles/Tests/HTMLBubblesTests/Fixtures").standardized
     func files(_ dir: URL, _ prefix: String) -> [(String, String)] {
         guard let e = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil) else { return [] }
         var out: [(String, URL)] = []

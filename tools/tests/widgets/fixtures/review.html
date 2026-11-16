@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;padding:12px;color:var(--tg-theme-text-color);background:var(--tg-theme-bg-color);font-family:system-ui}h3{margin:0 0 8px}button{padding:8px;margin:4px;border:0;border-radius:8px;background:var(--tg-theme-button-color);color:var(--tg-theme-button-text-color)}#rows div{height:28px;border-bottom:1px solid #999}#track{height:48px;background:#2878d8;color:white;touch-action:none;user-select:none}#status{font-size:12px;overflow-wrap:anywhere}.select{user-select:text}
+</style></head><body><h3>Widget review probe</h3><p id="status"></p><button id="count"></button><button id="reset">Reset counter</button><button id="anchor">Anchor: top</button><button id="add">Add row</button><button id="remove">Remove row</button><div id="rows"></div><div id="track">Click and drag: 0</div><p class="select">Select and copy this text.</p><button id="copy">Copy counter</button><p id="copied"></p><script>
+var W=TelegramWidget,n=Number(localStorage.getItem('review-count')||0),edge='top',rows=document.getElementById('rows'),drag=false,total=0;
+function status(){document.getElementById('status').textContent='profile '+W.profile+' / '+W.colorScheme+' / '+(W.isActive?'active':'hidden')+' / '+(W.isPreview?'preview':W.isForward?'copy':W.chatType||'unknown')+' / chat '+W.chatData+' / public '+W.publicData;}
+function count(){document.getElementById('count').textContent='Count: '+n;localStorage.setItem('review-count',String(n));}
+document.getElementById('count').onclick=function(){n++;count();};
+document.getElementById('reset').onclick=function(){n=0;count();};
+document.getElementById('anchor').onclick=function(){edge=edge==='top'?'bottom':'top';W.setResizeAnchor(edge);this.textContent='Anchor: '+edge;};
+document.getElementById('add').onclick=function(){if(rows.children.length<5){var row=document.createElement('div');row.textContent='Row '+(rows.children.length+1);rows.appendChild(row);}};
+document.getElementById('remove').onclick=function(){if(rows.lastChild)rows.removeChild(rows.lastChild);};
+var track=document.getElementById('track');
+track.onpointerdown=function(e){drag=true;total=0;track.setPointerCapture(e.pointerId);};
+track.onpointermove=function(e){if(drag){total+=e.movementX;track.textContent='Click and drag: '+Math.round(total);}};
+track.onpointerup=track.onpointercancel=function(){drag=false;};
+document.getElementById('copy').onclick=function(){W.copyText('Widget counter: '+n);document.getElementById('copied').textContent='Requested copy: '+n;};
+['themeChanged','activated','deactivated','chatDataChanged','publicDataChanged'].forEach(function(e){W.onEvent(e,status);});
+W.setResizeAnchor('top');W.ready();count();status();
+</script></body></html>

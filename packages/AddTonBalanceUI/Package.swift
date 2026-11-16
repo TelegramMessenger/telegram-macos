@@ -13,7 +13,7 @@ let deps: [(String, String)] = [
     ("ColorPalette", "../ColorPalette"),
     ("LocalAnimations", "../LocalAnimations"),
     ("CurrencyFormat", "../CurrencyFormat"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

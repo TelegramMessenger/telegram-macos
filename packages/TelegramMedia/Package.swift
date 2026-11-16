@@ -27,6 +27,7 @@ let package = Package(
         .package(name: "ObjcUtils", path: "../ObjcUtils"),
         .package(name: "TelegramMediaResources", path: "../TelegramMediaResources"),
         .package(name: "TelegramMediaPlayer", path: "../../submodules/telegram-ios/submodules/MediaPlayer"),
+        .package(name: "HLSPlayback", path: "../HLSPlayback"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -45,6 +46,7 @@ let package = Package(
                            .product(name: "TelegramMediaPlayer", package: "TelegramMediaPlayer", condition: nil),
                            .product(name: "OpusBinding", package: "OpusBinding", condition: nil),
                            .product(name: "TelegramVoip", package: "TelegramVoip", condition: nil),
+                           .product(name: "HLSPlayback", package: "HLSPlayback", condition: nil),
                           ],
             path: "Sources"),
     ]

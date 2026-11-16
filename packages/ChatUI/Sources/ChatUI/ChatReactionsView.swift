@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import TGUIKit
 import TelegramCore
 import Postbox
@@ -17,6 +18,21 @@ import Strings
 import TelegramContext
 import TelegramTheme
 import TelegramUtils
+
+private enum ReactionCountTooltip {
+    private static var cache: [Int32: String] = [:]
+
+    static func string(_ count: Int32) -> String {
+        if let cached = cache[count] {
+            return cached
+        }
+        let string = "\(count.formattedWithSeparator)"
+        if count >= 0, count < 10_000 {
+            cache[count] = string
+        }
+        return string
+    }
+}
 import InlineStickerLayer
 
 private func tagImage(_ color: NSColor)->NSImage? {
@@ -234,6 +250,7 @@ public final class ChatReactionsLayout {
         public let canViewList: Bool
         public let avatars:[Avatar]
         public var rect: CGRect = .zero
+        fileprivate let analyticsContext: AnalyticsContext
         public let starReact:()->Void
         
         public static func ==(lhs: Reaction, rhs: Reaction) -> Bool {
@@ -256,7 +273,9 @@ public final class ChatReactionsLayout {
             return self.value.value
         }
         
-        public init(value: MessageReaction, recentPeers:[Peer], canViewList: Bool, message: Message, savedMessageTags: SavedMessageTags?, currentTag: MessageReaction.Reaction?, context: any AccountContextProtocol, mode: ChatReactionsLayout.Mode, index: Int, source: Source, presentation: Theme, action:@escaping(MessageReaction.Reaction, Bool)->Void, openInfo: @escaping (PeerId)->Void, runEffect:@escaping(MessageReaction.Reaction, Bool)->Void, starReact: @escaping()->Void) {
+        public init(value: MessageReaction, recentPeers:[Peer], canViewList: Bool, message: Message, savedMessageTags: SavedMessageTags?, currentTag: MessageReaction.Reaction?, context: any AccountContextProtocol, mode: ChatReactionsLayout.Mode, index: Int, source: Source, presentation: Theme, action:@escaping(MessageReaction.Reaction, Bool)->Void, openInfo: @escaping (PeerId)->Void, runEffect:@escaping(MessageReaction.Reaction, Bool)->Void, starReact: @escaping()->Void, analyticsContext: AnalyticsContext? = nil) {
+            let inherited = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : (analyticsContext ?? Analytics.shared.unresolvedContext())
+            self.analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: inherited)
             self.value = value
             self.index = index
             self.message = message
@@ -351,6 +370,9 @@ public final class ChatReactionsLayout {
             let context = self.context
             let tag = self.value.value
             let label = self.text?.attributedString.string
+            let origin = self.analyticsContext
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             if message.id.peerId == context.peerId {
                 if let menu = menu {
                     return menu
@@ -368,7 +390,7 @@ public final class ChatReactionsLayout {
                         }
                         
                         menu.addItem(ContextMenuItem(label != nil ? strings().chatReactionContextEditTag : strings().chatReactionContextAddLabel, handler: {
-                            ChatNavigationHooks.shared.showEditTagLabelObserved(context, tag, label, context.window)
+                            ChatNavigationHooks.shared.showEditTagLabelObserved(context, tag, label, context.window, analyticsContext: origin, entry: .reactionMenu)
                         }, itemImage: MenuAnimation.menu_tag_rename.value))
                         
                         menu.addItem(ContextSeparatorItem())
@@ -407,7 +429,7 @@ public final class ChatReactionsLayout {
                     self.reactions = current
                 }
                 let signal = current.state |> deliverOnMainQueue
-                self.disposable.set((signal).start(next: { [weak self] state in
+                self.disposable.set(origin.preservingPresentation(signal).start(next: { [weak self] state in
                     self?.applyState(state)
                 }))
                 
@@ -416,6 +438,9 @@ public final class ChatReactionsLayout {
         }
         private var state: EngineMessageReactionListContext.State?
         public func applyState(_ state: EngineMessageReactionListContext.State) {
+            let origin = Analytics.shared.captureContext(engine: self.context.engine, peerId: self.message.id.peerId, inherited: self.analyticsContext)
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             self.state = state
             let account = self.context.account
             let context = self.context
@@ -434,14 +459,19 @@ public final class ChatReactionsLayout {
             let avatarDisposables = DisposableSet()
             self.avatarDisposable.set(avatarDisposables)
             let makeItem:(_ peer: Peer, _ readTimestamp: Int32?) -> ContextMenuItem = { peer, readTimestamp in
+                let peerOrigin = origin.restricting(peerId: peer.id)
+                let presentation = peerOrigin.beginPresentation()
+                defer { presentation.end() }
                 let title = peer.displayTitle.prefixWithDots(25)
                 let item = ReactionPeerMenu(title: title, handler: {
+                    let presentation = peerOrigin.beginPresentation()
+                    defer { presentation.end() }
                     weakSelf?.openInfo(peer.id)
-                }, peer: peer, context: context, reaction: source, readTimestamp: readTimestamp, message: message, canDelete: canDeleteReactions)
+                }, peer: peer, context: context, reaction: source, readTimestamp: readTimestamp, message: message, canDelete: canDeleteReactions, analyticsContext: peerOrigin)
                 
                 let signal:Signal<(CGImage?, Bool), NoError>
                 signal = peerAvatarImage(account: account, photo: .peer(peer, peer.smallProfileImage, peer.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer), nil, nil), displayDimensions: NSMakeSize(18 * System.backingScale, 18 * System.backingScale), font: .avatar(13), genCap: true, synchronousLoad: false) |> deliverOnMainQueue
-                avatarDisposables.add((signal).start(next: { [weak item] image, _ in
+                avatarDisposables.add(peerOrigin.preservingPresentation(signal).start(next: { [weak item] image, _ in
                     if let image = image {
                         item?.image = NSImage(cgImage: image, size: NSMakeSize(18, 18))
                     }
@@ -450,6 +480,8 @@ public final class ChatReactionsLayout {
             }
             menu?.loadMore = { [weak self] in
                 guard let self, self.state?.canLoadMore == true else { return }
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
                 self.reactions?.loadMore()
             }
             
@@ -466,7 +498,9 @@ public final class ChatReactionsLayout {
                     let text = strings().chatContextMessageContainsEmojiOther(1)
                     
                     let item = MessageContainsPacksMenuItem(title: text, handler: {
-                        showModal(with: ChatMediaUIHooks.shared.makeStickerPackPreviewObserved(context, message.id.peerId, sources), for: context.window)
+                        let presentation = origin.beginPresentation()
+                        defer { presentation.end() }
+                        showModal(with: ChatMediaUIHooks.shared.makeStickerPackPreviewObserved(context, message.id.peerId, sources, analyticsContext: origin), for: context.window)
                     }, packs: [reference], context: context)
                     
                     items.append(item)
@@ -485,6 +519,7 @@ public final class ChatReactionsLayout {
     }
     fileprivate let context: any AccountContextProtocol
     fileprivate let message: Message
+    private let analyticsContext: AnalyticsContext
     fileprivate let renderType: ChatItemRenderType
     fileprivate let available: AvailableReactions?
     fileprivate let engine: Reactions
@@ -503,8 +538,11 @@ public final class ChatReactionsLayout {
     public let mode: Mode
     
     
-    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, sendStars: @escaping () -> Void, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}) {
+    public init(context: any AccountContextProtocol, message: Message, available: AvailableReactions?, peerAllowed: PeerAllowedReactions?, savedMessageTags: SavedMessageTags?, engine:Reactions, theme: TelegramPresentationTheme, renderType: ChatItemRenderType, currentTag: MessageReaction.Reaction?, isIncoming: Bool, isOutOfBounds: Bool, hasWallpaper: Bool, stateOverlayTextColor: NSColor, canSendReactions: @escaping () -> Bool, sendStars: @escaping () -> Void, openInfo:@escaping(PeerId)->Void, runEffect: @escaping(MessageReaction.Reaction, Bool)->Void, tagAction:@escaping(MessageReaction.Reaction)->Void, starReact:@escaping()->Void, reactionsDisabled:@escaping()->Void = {}, analyticsContext: AnalyticsContext? = nil) {
         
+        let inherited = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : (analyticsContext ?? Analytics.shared.unresolvedContext())
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: inherited)
+        self.analyticsContext = origin
         var mode: Mode = .full
         if message.id.peerId == context.peerId {
             mode = .tag
@@ -600,23 +638,31 @@ public final class ChatReactionsLayout {
                     if message.id.peerId == context.peerId, !isFilterTag, mode == .tag {
                        tagAction(value)
                     } else {
-                        guard canSendReactions() else {
+                        let isRemoving = value != .stars && reaction.isSelected
+                        guard isRemoving || canSendReactions() else {
                             reactionsDisabled()
                             return
                         }
+                        chatAnalyticsReact(value, message: message, isTags: mode == .tag, via: .click)
                         if value == .stars {
                             sendStars()
                         } else {
-                            engine.react(message.id, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(source.file), context.peerId == message.id.peerId))
+                            engine.react(message.id, reaction: value, values: ChatHistoryUIHooks.shared.messageNewReactions(message, value.toUpdate(source.file), context.peerId == message.id.peerId))
                         }
                     }
-                }, openInfo: openInfo, runEffect: runEffect, starReact: starReact)
+                }, openInfo: openInfo, runEffect: runEffect, starReact: starReact, analyticsContext: origin)
             } else {
                 return nil
             }
         }
     }
     
+    fileprivate func restrictPreviousAnalyticsContexts(_ previous: [Reaction]) {
+        guard analyticsContext.isExcluded else { return }
+        for reaction in previous where reaction.message.id == message.id {
+            reaction.analyticsContext.scope?.exclude()
+        }
+    }
 
     public var lastLineSize: NSSize {
         if let line = lines.last {
@@ -1014,6 +1060,7 @@ fileprivate protocol ReactionChipElement: ReactionViewImpl {
     func chipCancelPendingEffect()
     func install(in container: ChatReactionsView)
     func removeFromContainer(_ container: ChatReactionsView, animated: Bool)
+    func chipVisibilityChanged()
     func updateChipFrame(_ frame: NSRect, transition: ContainedViewLayoutTransition)
 }
 
@@ -1106,7 +1153,7 @@ final class ChatReactionsView : ChatLayerSceneView {
             imageView.updateAnimatableContent()
         }
 
-        @objc private func updateEmojiVisibility() {
+        @objc fileprivate func updateEmojiVisibility() {
             imageView.updateAnimatableContent()
         }
 
@@ -1231,7 +1278,7 @@ final class ChatReactionsView : ChatLayerSceneView {
             let tooltip = reaction.avatars.map { $0.peer.displayTitle }.joined(separator: ", ")
             
             if tooltip.isEmpty {
-                self.toolTip = "\(reaction.value.count.formattedWithSeparator)"
+                self.toolTip = ReactionCountTooltip.string(reaction.value.count)
             } else {
                 self.toolTip = tooltip
             }
@@ -1499,6 +1546,9 @@ final class ChatReactionsView : ChatLayerSceneView {
         fileprivate func cancelPendingEffect() {
             self.effectDisposable.set(nil)
         }
+        #if DEBUG
+        var debugEmojiPlayable: Bool { emoji.isContentPlayable }
+        #endif
         private let emoji: ChatReactionEmojiLayer = {
             let layer = ChatReactionEmojiLayer()
             layer.frame = NSMakeRect(0, 0, 16, 16)
@@ -1580,7 +1630,7 @@ final class ChatReactionsView : ChatLayerSceneView {
             textLayer?.updateScale(hostScale)
         }
 
-        @objc private func updateEmojiVisibility() {
+        @objc fileprivate func updateEmojiVisibility() {
             emoji.updateAnimatableContent()
         }
 
@@ -1684,7 +1734,7 @@ final class ChatReactionsView : ChatLayerSceneView {
             let tooltip = reaction.avatars.map { $0.peer.displayTitle }.joined(separator: ", ")
 
             if tooltip.isEmpty {
-                node.toolTip = "\(reaction.value.count.formattedWithSeparator)"
+                node.toolTip = ReactionCountTooltip.string(reaction.value.count)
             } else {
                 node.toolTip = tooltip
             }
@@ -1993,7 +2043,7 @@ final class ChatReactionsView : ChatLayerSceneView {
             imageView.updateAnimatableContent()
         }
 
-        @objc private func updateEmojiVisibility() {
+        @objc fileprivate func updateEmojiVisibility() {
             imageView.updateAnimatableContent()
         }
 
@@ -2241,6 +2291,13 @@ final class ChatReactionsView : ChatLayerSceneView {
     private let usesNodes: Bool = !ChatRowView.usesLegacyRowChrome
     #if DEBUG
     var debugChipNodeCount: Int { views.filter { $0 is ReactionChip }.count }
+    var debugPlayableChipCount: Int {
+        var count = 0
+        for case let chip as ReactionChip in views where chip.debugEmojiPlayable {
+            count += 1
+        }
+        return count
+    }
     func debugChipHitChecks() -> (ok: Int, total: Int) {
         var ok = 0, total = 0
         for case let chip as ReactionChip in views {
@@ -2315,6 +2372,7 @@ final class ChatReactionsView : ChatLayerSceneView {
     }
     
     public func update(with layout: ChatReactionsLayout, animated: Bool) {
+        layout.restrictPreviousAnalyticsContexts(self.reactions)
                 
         
         let previous = self.reactions
@@ -2440,62 +2498,83 @@ final class ChatReactionsView : ChatLayerSceneView {
         self.updateLayout(size: layout.size, transition: transition)
         
                 
+        let previousSelections = previous.filter { $0.message.id == layout.message.id }
         let new = reactions.filter { $0.value.isSelected }.filter { value in
-            var prev = previous.first(where: { $0.value.value == value.value.value && $0.value.isSelected })
+            var prev = previousSelections.first(where: { $0.value.value == value.value.value && $0.value.isSelected })
             if value.value.value == .stars {
-                prev = previous.first(where: { $0.value.value == value.value.value && $0.value.count == value.value.count })
+                prev = previousSelections.first(where: { $0.value.value == value.value.value && $0.value.count == value.value.count })
             }
             return prev == nil
         }
-        
-        DispatchQueue.main.async { [self] in
-            if let selected = new.first {
-                let interactive = layout.context.reactions.interactive
-                if let interactive = interactive {
-                    let stars = selected.value.value == .stars
-                    if interactive.messageId == layout.message.id, !stars || interactive.reaction == .stars  {
-                        let view = self.getView(selected.value.value)
-                        if let view = view {
-                            if let fromRect = interactive.rect {
-                                let current = view.getView()
-                                
-                                let layer = selected.getInlineLayer(selected.mode)
 
-                                let toRect = current.convert(current.bounds, to: nil)
-                                
-                                let from = fromRect.origin.offsetBy(dx: fromRect.width / 2, dy: fromRect.height / 2)
-                                let to = toRect.origin.offsetBy(dx: toRect.width / 2, dy: toRect.height / 2)
-                                if selected.value.count == 1 {
-                                    view.lockVisibility()
-                                }
-                                
-                                let completed: (Bool)->Void = { [weak view, weak self] _ in
-                                    view?.unlockVisibility()
-                                    DispatchQueue.main.async {
-                                        if !interactive.isLarge {
-                                            view?.playEffect()
-                                        }
-                                        selected.runEffect(selected.value.value, interactive.isLarge)
-                                        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
-                                        if selected.value.value == .stars, let window = self?.window as? Window {
-                                            PlayConfetti(for: window, stars: true)
-                                        }
-                                    }
-                                }
-                                parabollicReactionAnimation(layer, fromPoint: from, toPoint: to, window: layout.context.window, completion: completed, duration: interactive.isLarge ? 0.5 : 0.2)
-                            } else {
-                                if !interactive.isLarge {
-                                    view.playEffect()
-                                }
-                                selected.runEffect(selected.value.value, interactive.isLarge)
+        guard !new.isEmpty else {
+            return
+        }
+
+        DispatchQueue.main.async { [self] in
+            guard currentLayout?.message.id == layout.message.id, !isHidden else {
+                return
+            }
+            for selected in new {
+                let reaction = selected.value.value
+                guard self.reactions.contains(where: { $0.value.value == reaction && $0.value.isSelected }),
+                      let view = self.getView(reaction),
+                      let interactive = layout.context.reactions.takeInteractive(layout.message.id, reaction: reaction) else {
+                    continue
+                }
+                if let fromRect = interactive.rect {
+                    let current = view.getView()
+
+                    let layer = selected.getInlineLayer(selected.mode)
+
+                    let toRect = current.convert(current.bounds, to: nil)
+
+                    let from = fromRect.origin.offsetBy(dx: fromRect.width / 2, dy: fromRect.height / 2)
+                    let to = toRect.origin.offsetBy(dx: toRect.width / 2, dy: toRect.height / 2)
+                    let handoff = selected.value.count == 1 ? ChatReactionIconHandoff(hide: { [weak view] in view?.lockVisibility() }, show: { [weak view] in view?.unlockVisibility() }) : nil
+                    let previousUpdate = layer.contentDidUpdate
+                    layer.contentDidUpdate = { image in
+                        previousUpdate?(image)
+                        DispatchQueue.main.async { handoff?.contentDidDraw() }
+                    }
+                    if layer.contents != nil { handoff?.contentDidDraw() }
+
+                    let completed: (Bool)->Void = { [weak view, weak self] _ in
+                        handoff?.finish()
+                        layer.contentDidUpdate = previousUpdate
+                        view?.unlockVisibility()
+                        DispatchQueue.main.async {
+                            if !interactive.isLarge {
+                                view?.playEffect()
+                            }
+                            selected.runEffect(selected.value.value, interactive.isLarge)
+                            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                            if selected.value.value == .stars, let window = self?.window as? Window {
+                                PlayConfetti(for: window, stars: true)
                             }
                         }
                     }
+                    parabollicReactionAnimation(layer, fromPoint: from, toPoint: to, window: layout.context.window, completion: completed, duration: interactive.isLarge ? 0.5 : 0.2)
+                } else {
+                    if !interactive.isLarge {
+                        view.playEffect()
+                    }
+                    selected.runEffect(selected.value.value, interactive.isLarge)
                 }
             }
         }
     }
     
+    override var isHidden: Bool {
+        didSet {
+            if isHidden != oldValue {
+                for view in views {
+                    view.chipVisibilityChanged()
+                }
+            }
+        }
+    }
+
     public func playSeenReactionEffect(_ checkUnseen: Bool) {
         guard let currentLayout = currentLayout else {
             return
@@ -2543,6 +2622,7 @@ extension ChatReactionsView.ReactionView: ReactionChipElement {
         return false
     }
     func chipCancelPendingEffect() { cancelPendingEffect() }
+    func chipVisibilityChanged() { updateEmojiVisibility() }
     func install(in container: ChatReactionsView) {
         if superview !== container { container.addSubview(self) }
     }
@@ -2569,6 +2649,7 @@ extension ChatReactionsView.TagReactionView: ReactionChipElement {
         return false
     }
     func chipCancelPendingEffect() { cancelPendingEffect() }
+    func chipVisibilityChanged() { updateEmojiVisibility() }
     func install(in container: ChatReactionsView) {
         if superview !== container { container.addSubview(self) }
     }
@@ -2595,6 +2676,7 @@ extension ChatReactionsView.ReactionChip: ReactionChipElement {
         return false
     }
     func chipCancelPendingEffect() { cancelPendingEffect() }
+    func chipVisibilityChanged() { updateEmojiVisibility() }
     func install(in container: ChatReactionsView) {
         container.attach(self)
     }

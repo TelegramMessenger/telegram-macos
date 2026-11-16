@@ -145,18 +145,18 @@ public class MessageActionsPanelView: Control, Notifable {
     
     private static func restrictionText(for presentation: ChatPresentationInterfaceState) -> String {
         if presentation.peer is TelegramGroup {
-            return "Forwards from this group are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledGroup
+            return strings().conversationCopyProtectionForwardingDisabledGroup
         }
         if let peer = presentation.peer as? TelegramChannel {
             if case .broadcast = peer.info {
-                return "Forwards from this channel are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledChannel
+                return strings().conversationCopyProtectionForwardingDisabledChannel
             }
-            return "Forwards from this group are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledGroup
+            return strings().conversationCopyProtectionForwardingDisabledGroup
         }
         if let peer = presentation.peer as? TelegramUser, peer.botInfo != nil {
-            return "Forwards from this bot are restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledBot
+            return strings().conversationCopyProtectionForwardingDisabledBot
         }
-        return "Forwarding is restricted" //TODOLANG Conversation.CopyProtectionForwardingDisabledSecret
+        return strings().conversationCopyProtectionForwardingDisabledSecret
     }
 
     private func updateUI(_ canDelete:Bool , _ canForward:Bool, _ count:Int, forwardingRestrictionText: String? = nil) -> Void {
@@ -218,7 +218,7 @@ public class MessageActionsPanelView: Control, Notifable {
                 return
             }
             if !chatInteraction.presentation.canInvokeBasicActions.forward, let text = self?.forwardingRestrictionText {
-                chatInteraction.showAnimatedToaster(.banned, text)
+                chatInteraction.showRestrictionToast(text)
             } else {
                 chatInteraction.forwardSelectedMessages()
             }

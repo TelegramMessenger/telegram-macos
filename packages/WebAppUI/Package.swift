@@ -39,6 +39,7 @@ let package = Package(
         .package(name: "Svg", path: "../../submodules/telegram-ios/submodules/Svg"),
         .package(name: "InlineStickerLayer", path: "../InlineStickerLayer"),
         .package(name: "InstantPageUI", path: "../InstantPageUI"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
     ],
     targets: [
         .target(
@@ -72,6 +73,7 @@ let package = Package(
                 .product(name: "Svg", package: "Svg", condition: nil),
                 .product(name: "InlineStickerLayer", package: "InlineStickerLayer", condition: nil),
                 .product(name: "InstantPageUI", package: "InstantPageUI", condition: nil),
+                .product(name: "AppAnalytics", package: "AppAnalytics", condition: nil),
             ],
             path: "Sources/WebAppUI"),
     ]

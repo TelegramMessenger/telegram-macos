@@ -10,6 +10,7 @@ import Localization
 import GeneralRows
 import InputDataUI
 import ShortPeerRow
+import AppAnalytics
 
 
 
@@ -565,6 +566,7 @@ func ChannelEventFilterModalController(context: any AccountContextProtocol, peer
     let controller = InputDataController(dataSignal: signal, title: strings().channelAdminsRecentActions, getBackgroundColor: {
         theme.colors.listBackground
     })
+    controller.analyticsScreen = .peerInfoRecentActionsEventTypes
 
     let modalInteractions = ModalInteractions(acceptTitle: strings().modalDone, accept: {
         updated(stateValue.with { $0 })

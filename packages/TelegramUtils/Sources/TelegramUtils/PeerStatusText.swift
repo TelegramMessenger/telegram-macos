@@ -77,7 +77,7 @@ public func ==(lhs: PeerStatusStringResult, rhs: PeerStatusStringResult) -> Bool
     return true
 }
 
-public func stringStatus(for peerView:PeerView, context: any AccountContextProtocol, theme:PeerStatusStringTheme = PeerStatusStringTheme(), onlineMemberCount: Int32? = nil, expanded: Bool = false, ignoreActivity: Bool = false) -> PeerStatusStringResult {
+public func stringStatus(for peerView:PeerView, context: any AccountContextProtocol, theme:PeerStatusStringTheme = PeerStatusStringTheme(), onlineMemberCount: Int32? = nil, memberCount preciseMemberCount: Int32? = nil, expanded: Bool = false, ignoreActivity: Bool = false) -> PeerStatusStringResult {
 
 
     let mainPeer = peerViewMainPeer(peerView)
@@ -146,7 +146,7 @@ public func stringStatus(for peerView:PeerView, context: any AccountContextProto
         } else if let channel = peer as? TelegramChannel {
 
             let onlineCount: Int = Int(onlineMemberCount ?? 0)
-            if let cachedChannelData = peerView.cachedData as? CachedChannelData, let memberCount = cachedChannelData.participantsSummary.memberCount {
+            if let cachedChannelData = peerView.cachedData as? CachedChannelData, let memberCount = preciseMemberCount ?? cachedChannelData.participantsSummary.memberCount {
 
 
                 let membersLocalized: String

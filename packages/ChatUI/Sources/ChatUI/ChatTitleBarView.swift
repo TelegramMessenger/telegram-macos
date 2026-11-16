@@ -500,7 +500,8 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
         }
         
         if let statusControl = leftStatusControl, let titleRect = titleRect {
-            statusControl.setFrameOrigin(NSMakePoint(titleRect.minX - statusControl.frame.width - 2, titleRect.minY + 1))
+            let lockWidth = titleImage.map { $0.0.backingSize.width }
+            statusControl.frame = ChatTitleLeadingIcons.verificationFrame(title: titleRect, lockWidth: lockWidth, badgeSize: statusControl.frame.size)
         }
         
         reportPlaceholder?.frame = bounds
@@ -519,7 +520,7 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
     }
 
     override var inset:CGFloat {
-        return 36 + 50 + (callButton.isHidden ? 10 : callButton.frame.width + 35) + (statusControl?.frame.width ?? 0)
+        return 36 + 50 + (callButton.isHidden ? 10 : callButton.frame.width + 35) + (statusControl?.frame.width ?? 0) + ChatTitleLeadingIcons.badgeInset(leftStatusControl?.frame.width)
     }
     
     
@@ -555,7 +556,8 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
             self.photoContainer.isHidden = !hasPhoto
 
             
-            self.textInset = !hasPhoto && !presentation.isTopicMode ? 24 : hasBackButton ? 66 : 46
+            let baseTextInset: CGFloat = !hasPhoto && !presentation.isTopicMode ? 24 : hasBackButton ? 66 : 46
+            self.textInset = baseTextInset
             
             
             switch chatInteraction.mode {
@@ -610,6 +612,11 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
             var leftStatusControl: PremiumStatusControl? = nil
             if peerView.peers[peerView.peerId] is TelegramSecretChat {
                 titleImage = (theme.icons.chatSecretTitle, .left(topInset: 0))
+                let context = chatInteraction.interactionContext
+                if let peer = ChatTitleLeadingIcons.badgePeer(peerViewMainPeer(peerView), allowed: chatInteraction.mode == .history && presentation.reportMode == nil) {
+                    leftStatusControl = PremiumStatusControl.control(peer, account: context.account, inlinePacksContext: context.inlinePacksContext, left: true, isSelected: false, cached: self.leftStatusControl, animated: false)
+                }
+                callButton.setAccessibilityLabel(strings().voiceOverCommonCall)
                 callButton.set(image: theme.icons.chatCall, for: .Normal)
                 callButton.set(image: theme.icons.chatCallActive, for: .Highlight)
             } else if let peer = peerViewMainPeer(peerView), chatInteraction.mode == .history || chatInteraction.mode.isSavedMessagesThread {
@@ -617,9 +624,13 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
                 
                 let context = chatInteraction.interactionContext
                 
-                if let peer = (peerViewMonoforumMainPeer(peerView) ?? peerViewMainPeer(peerView)) {
+                if var peer = (peerViewMonoforumMainPeer(peerView) ?? peerViewMainPeer(peerView)) {
+                    let hideEmojiStatus = (peerView.cachedData as? CachedUserData)?.isSuspiciousPeer == true
+                    if hideEmojiStatus, let user = peer as? TelegramUser {
+                        peer = user.withUpdatedEmojiStatus(nil)
+                    }
                     if chatInteraction.interactionContext.peerId != chatInteraction.peerId || chatInteraction.mode.isSavedMessagesThread, presentation.reportMode == nil {
-                        statusControl = PremiumStatusControl.control(peer, account: context.account, inlinePacksContext: context.inlinePacksContext, left: false, isSelected: false, cached: self.statusControl, animated: false)
+                        statusControl = PremiumStatusControl.control(peer, account: context.account, inlinePacksContext: context.inlinePacksContext, left: false, isSelected: false, cached: self.statusControl, animated: false, autoupdate: !hideEmojiStatus)
                     }
                     
                     if chatInteraction.interactionContext.peerId != chatInteraction.peerId || chatInteraction.mode.isSavedMessagesThread, presentation.reportMode == nil {
@@ -657,7 +668,9 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
                 self.leftStatusControl = nil
             }
             
-            self.titleInset = leftStatusControl != nil ? leftStatusControl!.frame.width + 2 : 0
+            let leadingInsets = ChatTitleLeadingIcons.insets(base: baseTextInset, badgeWidth: leftStatusControl?.frame.width, hasLock: titleImage != nil)
+            self.textInset = leadingInsets.text
+            self.titleInset = leadingInsets.title
 
             
             callButton.sizeToFit()
@@ -718,7 +731,7 @@ class ChatTitleBarView: TitledBarView, InteractionContentViewProtocol {
             } else if let customLinkContents = chatInteraction.mode.customChatLink {
                 result = result.withUpdatedTitle(customLinkContents.name.isEmpty ? customLinkContents.link : customLinkContents.name).withUpdatedStatus(customLinkContents.name.isEmpty ? "" : customLinkContents.link)
             } else if let customChatContents = chatInteraction.mode.customChatContents {
-                result = result.withUpdatedTitle(customChatContents.kind.text).withUpdatedStatus("")
+                result = result.withUpdatedTitle(customChatContents.kind.text).withUpdatedStatus(customChatContents.kind.status)
             } else if chatInteraction.mode == .pinned {
                 result = result.withUpdatedTitle(strings().chatTitlePinnedMessagesOther(presentation.pinnedMessageId?.totalCount ?? 0)).withUpdatedStatus("")
             } else if chatInteraction.mode == .scheduled {

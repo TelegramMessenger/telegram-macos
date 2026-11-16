@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Budget</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root { color-scheme: light dark; --fg: #111; --muted: #555; --bg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f3f4f6; --muted: #9ca3af; --bg: #111827; } }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .wrap { position: relative; width: 100%; height: 260px; }
+  .total { text-align: center; font-size: 14px; color: var(--muted); margin-top: 8px; }
+  .total b { color: var(--fg); font-size: 17px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 6px 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
+  td:last-child { text-align: right; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  .barrow { height: 6px; background: rgba(128,128,128,.2); border-radius: 3px; margin-top: 4px; }
+  .barrow div { height: 100%; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h2>💰 Weekly Budget</h2>
+<div class="wrap" id="chartWrap"><canvas id="budget"></canvas></div>
+<div id="fallback" hidden></div>
+<div class="total">Total: <b>$2,450</b> / week</div>
+<script>
+  var items = [['Rent', 1200, '#6366f1'], ['Groceries', 450, '#22c55e'], ['Transport', 180, '#f59e0b'], ['Entertainment', 220, '#ec4899'], ['Savings', 400, '#06b6d4']];
+  var total = 2450;
+  var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  if (typeof Chart !== 'undefined') {
+    var chart = new Chart(document.getElementById('budget'), {
+      type: 'doughnut',
+      data: { labels: items.map(function (i) { return i[0]; }), datasets: [{ data: items.map(function (i) { return i[1]; }), backgroundColor: items.map(function (i) { return i[2]; }), borderWidth: 2, borderColor: dark ? '#111827' : '#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { position: 'bottom', labels: { color: dark ? '#f3f4f6' : '#111' } }, tooltip: { callbacks: { label: function (c) { return ' $' + c.parsed + ' (' + Math.round(c.parsed / total * 100) + '%)'; } } } } }
+    });
+    if (window.TelegramWidget && TelegramWidget.onTheme) TelegramWidget.onTheme(function (t) { var d = t === 'dark'; chart.options.plugins.legend.labels.color = d ? '#f3f4f6' : '#111'; chart.data.datasets[0].borderColor = d ? '#111827' : '#fff'; chart.update(); });
+  } else {
+    document.getElementById('chartWrap').hidden = true;
+    var fb = document.getElementById('fallback'); fb.hidden = false;
+    fb.innerHTML = '<table>' + items.map(function (i) { return '<tr><td><span class="dot" style="background:' + i[2] + '"></span>' + i[0] + '<div class="barrow"><div style="width:' + (i[1] / total * 100) + '%;background:' + i[2] + '"></div></div></td><td>$' + i[1] + ' · ' + Math.round(i[1] / total * 100) + '%</td></tr>'; }).join('') + '</table>';
+  }
+</script>
+</body>
+</html>

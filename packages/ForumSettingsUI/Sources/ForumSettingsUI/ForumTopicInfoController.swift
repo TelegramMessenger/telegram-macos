@@ -14,6 +14,7 @@ import InputDataUI
 import AlertsUI
 import EntertainmentUI
 import ChatListUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -225,6 +226,7 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
             }
         }
     }, hasDone: true, identifier: "ForumTopic")
+    controller.analyticsScreen = .chatForumTopicEditor
     
     controller.validateData = { data in
         

@@ -25,7 +25,11 @@ public final class ChatGiveawayGiftRowItem : ChatRowItem {
         public let starsAmount: Int?
         public let fromGiveaway: Bool
         public let boostPeerId: PeerId?
-        public let months: Int32
+        public let days: Int32
+
+        public var months: Int32 {
+            return max(3, Int32(round(Float(days) / 30.0)))
+        }
         public let unclaimed: Bool
         public let media: TelegramMediaAction
     }
@@ -46,10 +50,10 @@ public final class ChatGiveawayGiftRowItem : ChatRowItem {
 
         
         switch media.action {
-        case let .giftCode(slug, fromGiveaway, isUnclaimed, boostPeerId, months, _, _, _, _, _, _):
-            self.data = .init(slug: slug, starsAmount: nil, fromGiveaway: fromGiveaway, boostPeerId: boostPeerId, months: months, unclaimed: isUnclaimed, media: media)
+        case let .giftCode(slug, fromGiveaway, isUnclaimed, boostPeerId, days, _, _, _, _, _, _):
+            self.data = .init(slug: slug, starsAmount: nil, fromGiveaway: fromGiveaway, boostPeerId: boostPeerId, days: days, unclaimed: isUnclaimed, media: media)
         case let .prizeStars(amount, isUnclaimed, boostPeerId, _, _):
-            self.data = .init(slug: nil, starsAmount: Int(amount), fromGiveaway: true, boostPeerId: boostPeerId, months: 0, unclaimed: isUnclaimed, media: media)
+            self.data = .init(slug: nil, starsAmount: Int(amount), fromGiveaway: true, boostPeerId: boostPeerId, days: 0, unclaimed: isUnclaimed, media: media)
         default:
             fatalError()
         }
@@ -167,7 +171,7 @@ public final class ChatGiveawayGiftRowItem : ChatRowItem {
                 
             }
         } else {
-            prem(with: PremiumBoardingController(context: context, source: .gift(from: fromId, to: toId, months: data.months, slug: data.slug, unclaimed: data.unclaimed)), for: context.window)
+            prem(with: PremiumBoardingController(context: context, source: .gift(from: fromId, to: toId, months: data.days, slug: data.slug, unclaimed: data.unclaimed)), for: context.window)
         }
     }
     

@@ -21,6 +21,7 @@ import TelegramLinks
 import ChatHistoryModel
 import FilePanels
 import WallpaperUI
+import AppAnalytics
 
 private let _id_input_name = InputDataIdentifier("_id_input_name")
 
@@ -154,6 +155,7 @@ public func NewThemeController(context: any AccountContextProtocol, palette: Col
     }, afterDisappear: {
         disposable.dispose()
     })
+    controller.analyticsScreen = .settingsAppearanceThemeCreation
     
     let modalInteractions = ModalInteractions(acceptTitle: strings().newThemeCreate, accept: { [weak controller] in
         _ = controller?.returnKeyAction()

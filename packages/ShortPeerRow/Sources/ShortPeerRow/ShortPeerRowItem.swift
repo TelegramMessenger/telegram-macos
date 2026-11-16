@@ -32,6 +32,7 @@ public final class SelectPeerPresentation : Equatable {
     }
     public let premiumRequired:Set<PeerId>
     public let selected:Set<PeerId>
+    public let orderedSelected: [PeerId]
     public let peers:[PeerId: Peer]
     public let limit:Int32
     public let inputQueryResult: ChatPresentationInputQueryResult?
@@ -39,11 +40,13 @@ public final class SelectPeerPresentation : Equatable {
     public let multipleSelection: Bool
     private let someFlagsAsNotice: Bool
     public static func ==(lhs:SelectPeerPresentation, rhs:SelectPeerPresentation) -> Bool {
-        return lhs.selected == rhs.selected && lhs.limit == rhs.limit && lhs.someFlagsAsNotice == rhs.someFlagsAsNotice && lhs.inputQueryResult == rhs.inputQueryResult && lhs.comment == rhs.comment && lhs.multipleSelection == rhs.multipleSelection && lhs.premiumRequired == rhs.premiumRequired
+        return lhs.selected == rhs.selected && lhs.orderedSelected == rhs.orderedSelected && lhs.limit == rhs.limit && lhs.someFlagsAsNotice == rhs.someFlagsAsNotice && lhs.inputQueryResult == rhs.inputQueryResult && lhs.comment == rhs.comment && lhs.multipleSelection == rhs.multipleSelection && lhs.premiumRequired == rhs.premiumRequired
     }
     
-    public init(_ selected:Set<PeerId> = Set(), peers:[PeerId: Peer] = [:], limit: Int32 = 0, someFlagsAsNotice:Bool = false, inputQueryResult: ChatPresentationInputQueryResult? = nil, comment: Comment = Comment(string: "", range: NSMakeRange(0, 0)), multipleSelection: Bool = true, premiumRequired: Set<PeerId> = Set()) {
+    public init(_ selected:Set<PeerId> = Set(), peers:[PeerId: Peer] = [:], limit: Int32 = 0, someFlagsAsNotice:Bool = false, inputQueryResult: ChatPresentationInputQueryResult? = nil, comment: Comment = Comment(string: "", range: NSMakeRange(0, 0)), multipleSelection: Bool = true, premiumRequired: Set<PeerId> = Set(), orderedSelected: [PeerId]? = nil) {
         self.selected = selected
+        var remaining = selected
+        self.orderedSelected = (orderedSelected ?? []).filter { remaining.remove($0) != nil } + remaining.sorted()
         self.peers = peers
         self.limit = limit
         self.someFlagsAsNotice = someFlagsAsNotice
@@ -59,7 +62,7 @@ public final class SelectPeerPresentation : Equatable {
         selectedIds.formUnion(selected)
         let _ = selectedIds.remove(peerId)
         peers.removeValue(forKey: peerId)
-        return SelectPeerPresentation(selectedIds, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: self.multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selectedIds, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: self.multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected.filter { $0 != peerId })
     }
     
     public var isLimitReached: Bool {
@@ -67,41 +70,44 @@ public final class SelectPeerPresentation : Equatable {
     }
     
     public func withUpdateLimit(_ limit: Int32) -> SelectPeerPresentation {
-        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected)
     }
     public func withUpdatedMultipleSelection(_ multipleSelection: Bool) -> SelectPeerPresentation {
-        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected)
     }
     
     public func updatedInputQueryResult(_ f: (ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult?) -> SelectPeerPresentation {
-        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: f(inputQueryResult), comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: f(inputQueryResult), comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected)
     }
     
     public func withUpdatedComment(_ comment: Comment) -> SelectPeerPresentation {
-        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected)
     }
     
     public func withUpdatedPremiumRequired(_ premiumRequired: Set<PeerId>) -> SelectPeerPresentation {
-        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selected, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected)
     }
     
     public func withToggledSelected(_ peerId: PeerId, peer:Peer, toggle: Bool? = nil) -> SelectPeerPresentation {
         var someFlagsAsNotice: Bool = self.someFlagsAsNotice
         var selectedIds:Set<PeerId> = Set<PeerId>()
         var peers:[PeerId: Peer] = self.peers
+        var orderedSelected = self.orderedSelected
         selectedIds.formUnion(selected)
         if selectedIds.contains(peerId), toggle == nil || toggle == false {
             let _ = selectedIds.remove(peerId)
             peers.removeValue(forKey: peerId)
+            orderedSelected.removeAll { $0 == peerId }
         } else if !selectedIds.contains(peerId), toggle == nil || toggle == true {
             if limit == 0 || selected.count < limit {
                 selectedIds.insert(peerId)
+                orderedSelected.append(peerId)
                 peers[peerId] = peer
             } else {
                 someFlagsAsNotice = !someFlagsAsNotice
             }
         }
-        return SelectPeerPresentation(selectedIds, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired)
+        return SelectPeerPresentation(selectedIds, peers: peers, limit: limit, someFlagsAsNotice: someFlagsAsNotice, inputQueryResult: inputQueryResult, comment: comment, multipleSelection: multipleSelection, premiumRequired: premiumRequired, orderedSelected: orderedSelected)
     }
     
 }

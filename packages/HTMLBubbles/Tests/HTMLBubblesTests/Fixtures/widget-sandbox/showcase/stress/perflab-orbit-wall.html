@@ -1,0 +1,10 @@
+<style>
+body{margin:0;background:#101722;color:#e7edf6;font:12px -apple-system,sans-serif}header{padding:16px;display:flex;align-items:center;justify-content:space-between}h2{margin:0;font-size:21px}button{background:#24344c;color:#fff;border:0;border-radius:8px;padding:8px 14px}.wall{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:0 12px 12px}.scene{height:94px;background:linear-gradient(140deg,#24344c,#152031);border-radius:14px;overflow:hidden;position:relative;border:1px solid #34435b}.ring{position:absolute;left:14px;top:12px;width:62px;height:62px;border:3px solid #34435b;border-top-color:#28d8b0;border-radius:50%;animation:spin 2.4s linear infinite}.satellite{position:absolute;left:26px;top:26px;width:10px;height:10px;background:#e9bf67;border-radius:50%;transform-origin:5px 5px;animation:orbit 3s linear infinite}.label{position:absolute;bottom:4px;left:7px;font:9px monospace;color:#9aaec7}.paused .ring,.paused .satellite{animation-play-state:paused}.frozen .ring{animation:none;transform:rotate(73deg)}.frozen .satellite{animation:none;transform:rotate(115deg) translateX(24px)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes orbit{from{transform:rotate(0deg) translateX(24px)}to{transform:rotate(360deg) translateX(24px)}}
+</style>
+<header><h2>Orbital telemetry</h2><button id="pause">Pause</button></header><div id="wall" class="wall"></div>
+<script>
+const wall=document.getElementById('wall');
+for(let i=0;i<64;i++){const scene=document.createElement('div');scene.className='scene';scene.innerHTML='<div class="ring" style="animation-delay:-'+(i*.13).toFixed(2)+'s"><div class="satellite"></div></div><div class="label">SAT-'+String(i+1).padStart(3,'0')+'</div>';wall.appendChild(scene);}
+const button=document.getElementById('pause');let paused=false;button.onclick=function(){paused=!paused;wall.className='wall'+(paused?' paused':'');button.textContent=paused?'Resume':'Pause';};
+window.stress={freeze:function(){wall.className='wall frozen';paused=true;button.textContent='Resume';},resume:function(){wall.className='wall';paused=false;button.textContent='Pause';}};
+</script>

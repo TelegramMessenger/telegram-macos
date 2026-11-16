@@ -68,7 +68,10 @@ extension DocumentCanvasView {
         if box.mediaIDs.count <= 1 {
             editing { deleteMediaBox(at: i) }            // last tile → remove the whole group
         } else {
-            editing { box.mediaIDs.remove(at: index) }
+            editing {
+                box.mediaIDs.remove(at: index)
+                box.spoilers.remove(at: index)
+            }
         }
         needsLayout = true
     }
@@ -257,7 +260,8 @@ extension DocumentCanvasView {
                 present.insert(key)
                 let frame = CGRect(origin: CGPoint(x: origin.x + tile.minX, y: origin.y + tile.minY), size: tile.size)
                 let hosted: HostedMediaBlock
-                if let h = mediaGroupTileViews[key],
+                if let h = mediaGroupTileViews[key], h.mediaID == box.mediaIDs[i],
+                   h.spoiler == (box.spoilers.indices.contains(i) ? box.spoilers[i] : false),
                    abs(h.canvasFrame.width - tile.width) < 0.5, abs(h.canvasFrame.height - tile.height) < 0.5 {
                     hosted = h
                 } else {
@@ -265,6 +269,8 @@ extension DocumentCanvasView {
                     if let old = mediaGroupTileViews[key] { mediaBlockViewWillRemove?(old.view); old.view.removeFromSuperview() }
                     guard let v = mediaGroupTileProvider(box.mediaIDs[i], box.spoilers.indices.contains(i) ? box.spoilers[i] : false, tile.size) else { mediaGroupTileViews[key] = nil; continue }
                     let h = HostedMediaBlock(view: v, canvasFrame: .zero)
+                    h.mediaID = box.mediaIDs[i]
+                    h.spoiler = box.spoilers.indices.contains(i) ? box.spoilers[i] : false
                     mediaGroupTileViews[key] = h
                     mediaBlockHost.addSubview(v)
                     hosted = h

@@ -117,3 +117,31 @@ func walletRestoreSigningAccess(
         })
     })
 }
+
+@available(macOS 10.15, *)
+public func walletEnsureSigningAccess(context: any AccountContextProtocol, environment: WalletUIEnvironment, walletContext: WalletContext, window: Window, next: @escaping () -> Void) {
+    guard case let .wallet(info) = walletContext.stateValue.phase, !info.canSign else {
+        next()
+        return
+    }
+    if info.canExportPhrase {
+        let authorization = WalletFlowAuthorization(walletContext: walletContext, reason: walletRestoreFlowReason)
+        let disposable = MetaDisposable()
+        var restore: (() -> Void)?
+        restore = {
+            disposable.set(walletRestoreSigningAccess(context: context, environment: environment, window: window, walletContext: walletContext, authorization: authorization, retry: {
+                restore?()
+            }, next: {
+                restore = nil
+                next()
+            }, failed: {
+                restore = nil
+            }))
+        }
+        restore?()
+    } else {
+        environment.verifyAlert(for: window, header: strings().walletTransactionControllerSecretPhraseRequiredTitle, information: strings().walletTonConnectSecretPhraseRequiredInfo, ok: strings().walletTransactionControllerProceed, cancel: strings().walletTransactionControllerCancel, successHandler: { _ in
+            showModal(with: WalletImportController(context: context, environment: environment, walletContext: walletContext, mode: .enterRecoveryPhrase, onImported: next), for: window)
+        })
+    }
+}

@@ -1,0 +1,65 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}h2{margin:0;font-size:20px;flex:1}
+button{border:0;border-radius:8px;padding:8px 10px;background:#293d58;color:white}
+.summary{margin:0 14px 12px;color:#a6b8cf}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 12px;box-sizing:border-box}
+.panel{padding:6px;min-width:0;border:1px solid #39516e;border-radius:12px;background:#1c2c40;box-shadow:0 3px 6px #0006}
+.caption{display:flex;justify-content:space-between;margin-bottom:6px;font:10px Menlo,monospace}
+.clip{position:relative;height:112px;overflow:hidden;border-radius:9px;background:#080e18}
+.track{position:relative;width:1537px;height:769px;background:linear-gradient(110deg,#163c42b0,#26385890)}
+.row{height:46px;box-sizing:border-box;padding:8px;display:flex;gap:12px;border-bottom:1px solid #ffffff24;font:12px Menlo,monospace}
+.cell{width:156px;flex-shrink:0;border-radius:7px;padding:4px;background:linear-gradient(90deg,#163c42a0,#263858c0);color:#92e5c4}
+.row:nth-child(2n) .cell{background:linear-gradient(120deg,#634c2b80,#3d3357d0);color:#ffd08e}
+.stamp{position:absolute;width:110px;height:34px;padding:6px;box-sizing:border-box;background:#5c47c5c0;border:1px solid #bdb0ff;border-radius:8px;box-shadow:2px 3px 9px #0008;color:white;transform:rotate(7deg);font-weight:bold}
+</style>
+<header><h2>Clipped panels</h2><button id=pause>Pause</button><button id=count>24 panels</button><button id=reveal>Reveal distant</button><button id=reset>Reset</button><button id=freeze>Freeze</button></header>
+<p class=summary id=status>Large translucent text panels inside small rounded viewports</p>
+<div class=grid id=grid></div>
+<script>
+const grid=document.getElementById('grid'),pause=document.getElementById('pause'),count=document.getElementById('count'),reveal=document.getElementById('reveal'),status=document.getElementById('status');
+let panels=24,windows=[],tracks=[],stamps=[],running=true,distant=false,frames=0,start=0,epoch=0,buildVersion=0,building=false;
+function build(incremental){
+  const version=++buildVersion;building=true;
+  grid.innerHTML='';windows=[];tracks=[];stamps=[];
+  distant=false;reveal.textContent='Reveal distant';count.textContent=panels+' panels';
+  let next=0;
+  function append(){
+    if(version!==buildVersion)return;
+    const end=incremental?Math.min(panels,next+4):panels;
+    for(;next<end;next++){
+      const i=next,panel=document.createElement('div');panel.className='panel';
+      let rows='';
+      for(let r=0;r<16;r++){
+        rows+='<div class="row">';
+        for(let c=0;c<8;c++)rows+='<span class="cell">P'+i+' R'+r+' C'+c+' · ready</span>';
+        rows+='</div>';
+      }
+      panel.innerHTML='<div class="caption"><span>Panel '+(i+1)+'</span><span>1537×769</span></div><div class="clip"><div class="track">'+rows+'</div><div class="stamp">Frame 0</div></div>';
+      grid.appendChild(panel);windows.push(panel.querySelector('.clip'));tracks.push(panel.querySelector('.track'));stamps.push(panel.querySelector('.stamp'));
+    }
+    building=next<panels;
+    if(incremental)draw(1.25);
+    if(building)setTimeout(append,100);
+  }
+  append();
+}
+function draw(t){
+  grid.style.width=(95+5*Math.sin(t*.7)).toFixed(3)+'%';
+  for(let i=0;i<tracks.length;i++){
+    const x=-40-30*Math.sin(t+i*.31),y=-20-15*Math.cos(t*.8+i*.17);
+    tracks[i].style.transform='translate('+x.toFixed(3)+'px,'+y.toFixed(3)+'px)';
+    stamps[i].style.left=(distant?524.25:10.25)+'px';stamps[i].style.top=(distant?272.5:12.5)+'px';
+    stamps[i].textContent='Frame '+frames;
+  }
+  status.textContent=building?'Building '+windows.length+'/'+panels+' panels':panels+' panels · frame '+frames+' · '+(distant?'scrolled':'clipped')+' · epoch '+epoch;
+}
+function frame(ms){if(!start)start=ms;if(running&&!building){frames++;draw((ms-start)/1000);}requestAnimationFrame(frame);}
+pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};
+count.onclick=function(){panels=panels===12?24:panels===24?48:12;epoch++;build(panels>24);draw(1.25);};
+reveal.onclick=function(){if(building)return;distant=!distant;for(let i=0;i<windows.length;i++){windows[i].scrollLeft=distant?512.25:0;windows[i].scrollTop=distant?260.5:0;}reveal.textContent=distant?'Return':'Reveal distant';draw(1.25);};
+document.getElementById('reset').onclick=function(){epoch++;build(panels>24);draw(1.25);};
+function freeze(){running=false;frames=25;epoch=0;panels=24;build();draw(1.25);pause.textContent='Resume';}
+document.getElementById('freeze').onclick=freeze;
+window.stress={freeze:freeze,resume:function(){running=true;pause.textContent='Pause';}};
+build();draw(0);requestAnimationFrame(frame);
+</script>

@@ -87,6 +87,8 @@ open class InputDataRowItem: GeneralRowItem, InputDataRowDataValue {
     
     fileprivate let inputPlaceholder: NSAttributedString
     fileprivate let filter:(String)->String
+    fileprivate let allowsReplacementText: ((String) -> Bool)?
+    fileprivate let shouldShakeOnFilterCorrection: ((String) -> Bool)?
     public let limit:Int32
     private let updated:(String)->Void
     private var updatedText: String?
@@ -182,8 +184,10 @@ open class InputDataRowItem: GeneralRowItem, InputDataRowDataValue {
     fileprivate let canMakeTransformations: Bool
     fileprivate let pasteFilter:((String)->(Bool, String))?
     private let maxBlockWidth: CGFloat?
-    public init(_ initialSize: NSSize, stableId: AnyHashable, mode: InputDataInputMode, error: InputDataValueError?, viewType: GeneralViewType = .legacy, currentText: String, currentAttributedText: NSAttributedString? = nil, placeholder: InputDataInputPlaceholder?, inputPlaceholder: String, defaultText: String? = nil, rightItem: InputDataRightItem? = nil, canMakeTransformations: Bool = false, insets: NSEdgeInsets = NSEdgeInsets(left: 20, right: 20), maxBlockWidth: CGFloat? = nil, filter:@escaping(String)->String, updated:@escaping(String)->Void, pasteFilter:((String)->(Bool, String))? = nil, limit: Int32, customTheme: GeneralRowItem.Theme? = nil) {
+    public init(_ initialSize: NSSize, stableId: AnyHashable, mode: InputDataInputMode, error: InputDataValueError?, viewType: GeneralViewType = .legacy, currentText: String, currentAttributedText: NSAttributedString? = nil, placeholder: InputDataInputPlaceholder?, inputPlaceholder: String, defaultText: String? = nil, rightItem: InputDataRightItem? = nil, canMakeTransformations: Bool = false, insets: NSEdgeInsets = NSEdgeInsets(left: 20, right: 20), maxBlockWidth: CGFloat? = nil, filter:@escaping(String)->String, updated:@escaping(String)->Void, pasteFilter:((String)->(Bool, String))? = nil, limit: Int32, allowsReplacementText: ((String) -> Bool)? = nil, shouldShakeOnFilterCorrection: ((String) -> Bool)? = nil, customTheme: GeneralRowItem.Theme? = nil) {
         self.filter = filter
+        self.allowsReplacementText = allowsReplacementText
+        self.shouldShakeOnFilterCorrection = shouldShakeOnFilterCorrection
         self.limit = limit
         self.updated = updated
         self.placeholder = placeholder
@@ -545,7 +549,11 @@ open class InputDataRowView : GeneralRowView, TGModernGrowingDelegate, NSTextFie
             let textX = innerInsets.left + item.textFieldLeftInset - 3
             
             placeholderTextView.setFrameOrigin(NSMakePoint(innerInsets.left, innerInsets.top))
-            placeholderAction?.setFrameOrigin(NSMakePoint(innerInsets.left, innerInsets.top - 5))
+            if item.placeholder?.centersIconVertically == true {
+                placeholderAction?.centerY(x: innerInsets.left)
+            } else {
+                placeholderAction?.setFrameOrigin(NSMakePoint(innerInsets.left, innerInsets.top - 5))
+            }
             
             separator.frame = separatorFrame
         
@@ -686,11 +694,22 @@ open class InputDataRowView : GeneralRowView, TGModernGrowingDelegate, NSTextFie
         
     }
     
+    public func textViewAllowsReplacementText(_ replacementText: String) -> Bool {
+        return (item as? InputDataRowItem)?.allowsReplacementText?(replacementText) ?? true
+    }
+
     open func textViewTextDidChange(_ string: String) {
         if let item = item as? InputDataRowItem {
             let updated = item.filter(string)
             if updated != string {
                 textView.setString(updated, animated: true)
+                if let shouldShake = item.shouldShakeOnFilterCorrection {
+                    textView.setSelectedRange(NSRange(location: updated.utf16.count, length: 0))
+                    item.currentText = textView.attributedString()
+                    if shouldShake(string) {
+                        textView.shake(beep: false)
+                    }
+                }
             } else {
                 item.currentText = textView.attributedString()
             }

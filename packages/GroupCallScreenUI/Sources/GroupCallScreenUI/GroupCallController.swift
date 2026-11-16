@@ -1,5 +1,6 @@
 import Cocoa
 import Foundation
+import AVFoundation
 import TGUIKit
 import SwiftSignalKit
 import Postbox
@@ -791,6 +792,10 @@ public final class GroupCallUIController : ViewController {
     private let requestPermissionDisposable = MetaDisposable()
     private var pushToTalk: PushToTalk?
     private let actionsDisposable = DisposableSet()
+    private let invitationFailureDisposable = MetaDisposable()
+    private var invitationFailures = ConferenceInvitationFailureBatch()
+    private var latestInvitationLink: String?
+    private var acceptsInvitationErrors = true
     private var canManageCall: Bool = false
     private let connecting = MetaDisposable()
     private let isFullScreen = ValuePromise(false, ignoreRepeated: true)
@@ -848,6 +853,29 @@ public final class GroupCallUIController : ViewController {
     
     public override func viewDidLoad() {
         super.viewDidLoad()
+        self.actionsDisposable.add((self.data.call.inviteLinks |> deliverOnMainQueue).start(next: { [weak self] links in
+            self?.latestInvitationLink = links?.listenerLink
+        }))
+        self.actionsDisposable.add((self.data.call.invitationErrors |> deliverOnMainQueue).start(next: { [weak self] error in
+            guard let self, self.acceptsInvitationErrors else {
+                return
+            }
+            switch error {
+            case let .privacy(peer):
+                if let peer {
+                    self.invitationFailures.append(peer)
+                    self.invitationFailureDisposable.set((Signal<Void, NoError>.single(()) |> delay(0.5, queue: .mainQueue())).start(next: { [weak self] in
+                        self?.presentInvitationFailures()
+                    }))
+                } else if let window = self.window {
+                    alert(for: window, info: strings().unknownError)
+                }
+            case .generic:
+                if let window = self.window {
+                    alert(for: window, info: strings().unknownError)
+                }
+            }
+        }))
                 
         NotificationCenter.default.addObserver(self, selector: #selector(_viewFrameChanged(_:)), name: NSView.frameDidChangeNotification, object: genericView.peersTable)
         
@@ -964,10 +992,10 @@ public final class GroupCallUIController : ViewController {
                 _ = self.data.call.sharedContext.endGroupCall(terminate: false).start()
             }
         }, settings: { [weak self] in
-            guard let `self` = self else {
+            guard let self, let window = self.window else {
                 return
             }
-            self.navigationController?.push(GroupCallSettingsController(sharedContext: sharedContext, context: context, callState: callState.get(), call: self.data.call))
+            showModal(with: GroupCallSettingsController(sharedContext: sharedContext, context: context, callState: callState.get(), call: self.data.call), for: window)
         }, message: { [weak self] input in
             
             
@@ -987,7 +1015,9 @@ public final class GroupCallUIController : ViewController {
             
             if let messagesAreEnabled = state.messagesEnabled {
                 if !messagesAreEnabled.isEnabled {
-                    self.navigationController?.push(GroupCallSettingsController(sharedContext: sharedContext, context: context, callState: callState.get(), call: self.data.call))
+                    if let window = self.window {
+                        showModal(with: GroupCallSettingsController(sharedContext: sharedContext, context: context, callState: callState.get(), call: self.data.call), for: window)
+                    }
                     return
                 }
             }
@@ -997,7 +1027,7 @@ public final class GroupCallUIController : ViewController {
                 current.input = !current.input
                 return current
             }
-            if let input {
+            if let input, !input.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 self.data.call.sendMessage(text: input.string, entities: input.textInputState().messageTextEntities(), paidStars: nil)
             }
             
@@ -1088,10 +1118,17 @@ public final class GroupCallUIController : ViewController {
                 return
             }
             actionsDisposable.add(GroupCallAddmembers(data, window: window).start(next: { [weak window, weak self] peerId, isVideo in
-                if let peerId = peerId.first, let window = window, let `self` = self {
-                    if self.data.call.invitePeer(peerId, isVideo: isVideo) {
-                        _ = showModalSuccess(for: window, icon: theme.icons.successModalProgress, delay: 2.0).start()
-                    } else {
+                if let window = window, let self {
+                    let peerIds = conferenceInvitationPeerIds(peerId)
+                    var invited = false
+                    for peerId in peerIds {
+                        invited = self.data.call.invitePeer(peerId, isVideo: isVideo) || invited
+                    }
+                    if invited {
+                        if !self.data.call.isConference {
+                            _ = showModalSuccess(for: window, icon: theme.icons.successModalProgress, delay: 2.0).start()
+                        }
+                    } else if !peerIds.isEmpty {
                         showModalText(for: window, text: strings().unknownError)
                     }
                 }
@@ -1883,7 +1920,7 @@ public final class GroupCallUIController : ViewController {
                                             
                         
                         
-                        for type in types {
+                        for type in endpointId == "unified" && state.isStream ? [.main] : types {
                            
                             strongSelf.data.call.makeVideoView(endpointId: endpointId, videoMode: takeVideoMode, completion: { videoView in
                                 guard let videoView = videoView else {
@@ -2153,8 +2190,6 @@ public final class GroupCallUIController : ViewController {
             }
         }))
         
-        var hasMicroPermission: Bool? = nil
-        
         let alertPermission = { [weak self] in
             guard let window = self?.window else {
                 return
@@ -2169,24 +2204,27 @@ public final class GroupCallUIController : ViewController {
             }, presentation: TelegramThemeHooks.shared.darkAppearance())
         }
         
-        data.call.permissions = { action, f in
+        data.call.permissions = { [weak self] action, f in
             switch action {
             case .unmuted, .muted(isPushToTalkActive: true):
-                if let permission = hasMicroPermission {
-                    f(permission)
-                    if !permission {
-                        alertPermission()
-                    }
+                let hasMicroPermission: Bool
+                if #available(macOS 10.14, *) {
+                    hasMicroPermission = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
                 } else {
-                    _ = requestMicrophonePermission().start(next: { permission in
-                        hasMicroPermission = permission
-                        f(permission)
+                    hasMicroPermission = true
+                }
+                if hasMicroPermission {
+                    f(true)
+                } else {
+                    self?.requestPermissionDisposable.set(requestMicrophonePermission().start(next: { permission in
+                        f(false)
                         if !permission {
                             alertPermission()
                         }
-                    })
+                    }))
                 }
             default:
+                self?.requestPermissionDisposable.set(nil)
                 f(true)
             }
         }
@@ -2242,7 +2280,6 @@ public final class GroupCallUIController : ViewController {
         }, with: self, for: .E, priority: .modal, modifierFlags: [.command])
         
         window.set(handler: { [weak arguments, weak self] event in
-            let settings = self?.navigationController?.controller as? GroupCallSettingsController
             let isInMessage = messagesState.with { $0.input }
             if isInMessage {
                 arguments?.message(nil)
@@ -2252,22 +2289,10 @@ public final class GroupCallUIController : ViewController {
                 self?.showConferenceKey.set(false)
                 return .invoked
             }
-            if let _ = settings {
-                self?.navigationController?.back()
-            } else {
-                arguments?.focusVideo(nil)
-            }
+            arguments?.focusVideo(nil)
             return .invokeNext
         }, with: self, for: .Escape, priority: .modal)
         
-    }
-    
-    public override func readyOnce() {
-        let was = self.didSetReady
-        super.readyOnce()
-        if didSetReady, !was {
-            requestPermissionDisposable.set(requestMicrophonePermission().start())
-        }
     }
     
     private var pushToTalkIsActive: Bool = false
@@ -2289,7 +2314,28 @@ public final class GroupCallUIController : ViewController {
 //        
     }
     
+    private func presentInvitationFailures() {
+        let peers = self.invitationFailures.take()
+        guard self.acceptsInvitationErrors, !peers.isEmpty, let window = self.window else {
+            return
+        }
+        let names = peers.map { $0._asPeer().compactDisplayTitle }.joined(separator: ", ")
+        let information = strings().callPrivacyErrorMessage(names)
+        guard let link = self.latestInvitationLink, !link.isEmpty else {
+            alert(for: window, info: information)
+            return
+        }
+        verifyAlert(for: window, information: information, ok: strings().groupCallInviteLinksShareLink, cancel: strings().modalCancel, successHandler: { [weak self, weak window] _ in
+            guard let self, self.acceptsInvitationErrors, let window else {
+                return
+            }
+            let controller = GroupCallUIHooks.shared.makeShareLinkModal(self.data.call.accountContext, link, TelegramThemeHooks.shared.darkAppearance(), Set(peers.map { $0.id }))
+            showModal(with: controller, for: window)
+        }, presentation: TelegramThemeHooks.shared.darkAppearance())
+    }
+
     deinit {
+        self.invitationFailureDisposable.dispose()
         self.data.call.setSuspendVideoChannelRequests(true)
         disposable.dispose()
         pushToTalkDisposable.dispose()
@@ -2304,12 +2350,16 @@ public final class GroupCallUIController : ViewController {
     
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        self.acceptsInvitationErrors = true
     }
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
     }
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        self.acceptsInvitationErrors = false
+        self.invitationFailureDisposable.set(nil)
+        _ = self.invitationFailures.take()
     }
     public override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)

@@ -18,6 +18,7 @@ import AvatarUI
 import AlertsUI
 import LocalAnimations
 import SceneEffects
+import AppAnalytics
 
 
 public func requiredBoostSubjectLevel(subject: BoostSubject, group: Bool, context: any AccountContextProtocol, configuration: any BoostPremiumConfiguration) -> Int32 {
@@ -1142,6 +1143,7 @@ public func BoostChannelModalController(context: any AccountContextProtocol, pee
     
         
     let controller = InputDataController(dataSignal: signal, title: initialState.title)
+    controller.analyticsScreen = onlyFeatures ? AnalyticsScreen.boostsFeatures : AnalyticsScreen.boostsOverview
     
     controller.onDeinit = {
         actionsDisposable.dispose()

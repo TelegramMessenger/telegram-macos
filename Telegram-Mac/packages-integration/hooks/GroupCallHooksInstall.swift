@@ -41,7 +41,7 @@ func installGroupCallUIHooks() {
         applyGroupCallResult(sharedContext.concrete, callContext)
     }, makeRTMPStartController: { context, peerId, scheduleDate, completion in
         return RTMPStartController(context: context.concrete, peerId: peerId, scheduleDate: scheduleDate, completion: completion)
-    }, makeShareLinkModal: { context, link, presentation in
-        return ShareModalController(ShareLinkObject(context.concrete, link: link), presentation: presentation)
+    }, makeShareLinkModal: { context, link, presentation, peerIds in
+        return ShareModalController(ShareLinkObject(context.concrete, link: link, defaultSelectedIds: peerIds), presentation: presentation)
     }))
 }

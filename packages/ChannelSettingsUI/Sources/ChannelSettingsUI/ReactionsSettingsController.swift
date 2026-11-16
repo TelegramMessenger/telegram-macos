@@ -9,6 +9,7 @@ import TelegramTheme
 import Localization
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -285,6 +286,7 @@ public func ReactionsSettingsController(context: any AccountContextProtocol, pee
     }
     
     let controller = InputDataController(dataSignal: signal, title: mode == .quick ? strings().reactionSettingsQuickTitle : strings().reactionSettingsTitle, hasDone: false)
+    controller.analyticsScreen = .peerInfoReactions
     
     controller.onDeinit = {
         actionsDisposable.dispose()

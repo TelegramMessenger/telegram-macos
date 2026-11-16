@@ -953,54 +953,7 @@ public func chatTranslationState(context: any AccountContextProtocol, peerId: En
                     }
                     |> take(1)
                     |> map { messageHistoryView, _, _ -> ChatTranslationState? in
-                        let messages = messageHistoryView.entries.map(\.message)
-
-                        var fromLangs: [String: Int] = [:]
-                        var count = 0
-                        for message in messages {
-                            if message.text.count > 10 {
-                                var text = String(message.text.prefix(256))
-                                if var entities = message.textEntitiesAttribute?.entities.filter({ $0.type.isCode }) {
-                                    entities = entities.sorted(by: { $0.range.lowerBound > $1.range.lowerBound })
-                                    var ranges: [Range<String.Index>] = []
-                                    for entity in entities {
-                                        if entity.range.lowerBound > text.count || entity.range.upperBound > text.count {
-                                            continue
-                                        }
-                                        ranges.append(text.index(text.startIndex, offsetBy: entity.range.lowerBound) ..< text.index(text.startIndex, offsetBy: entity.range.upperBound))
-                                    }
-                                    for range in ranges {
-                                        text.removeSubrange(range)
-                                    }
-                                }
-                                if text.count < 10 {
-                                    continue
-                                }
-
-                                let fromLang = Translate.detectLanguage(for: text)
-                                if let fromLang = fromLang {
-                                    fromLangs[fromLang] = (fromLangs[fromLang] ?? 0) + 1
-                                    count += 1
-                                }
-                            }
-                            if count >= 16 {
-                                break
-                            }
-                        }
-
-                        var mostFrequent: (String, Int)?
-                        if count >= 5 {
-                            for (lang, count) in fromLangs {
-                                if let current = mostFrequent {
-                                    if count > current.1 {
-                                        mostFrequent = (lang, count)
-                                    }
-                                } else {
-                                    mostFrequent = (lang, count)
-                                }
-                            }
-                        }
-                        if let fromLang = mostFrequent?.0 {
+                        if let fromLang = mostFrequentLanguage(in: messageHistoryView.entries.map(\.message), minimumCount: 5) {
                             let state = ChatTranslationState(baseLang: baseLang, fromLang: fromLang, toLang: nil, isEnabled: nil, paywall: false)
                             let _ = updateChatTranslationState(engine: context.engine, peerId: peerId, state: state).start()
                             if !dontTranslateLanguages.contains(fromLang) {
@@ -1018,3 +971,71 @@ public func chatTranslationState(context: any AccountContextProtocol, peerId: En
     }
 }
 
+private func mostFrequentLanguage(in messages: [Message], minimumCount: Int) -> String? {
+    var fromLangs: [String: Int] = [:]
+    var count = 0
+    for message in messages {
+        if message.text.count > 10 {
+            var text = String(message.text.prefix(256))
+            if var entities = message.textEntitiesAttribute?.entities.filter({ $0.type.isCode }) {
+                entities = entities.sorted(by: { $0.range.lowerBound > $1.range.lowerBound })
+                var ranges: [Range<String.Index>] = []
+                for entity in entities {
+                    if entity.range.lowerBound > text.count || entity.range.upperBound > text.count {
+                        continue
+                    }
+                    ranges.append(text.index(text.startIndex, offsetBy: entity.range.lowerBound) ..< text.index(text.startIndex, offsetBy: entity.range.upperBound))
+                }
+                for range in ranges {
+                    text.removeSubrange(range)
+                }
+            }
+            if text.count < 10 {
+                continue
+            }
+
+            let fromLang = Translate.detectLanguage(for: text)
+            if let fromLang = fromLang {
+                fromLangs[fromLang] = (fromLangs[fromLang] ?? 0) + 1
+                count += 1
+            }
+        }
+        if count >= 16 {
+            break
+        }
+    }
+
+    var mostFrequent: (String, Int)?
+    if count >= minimumCount {
+        for (lang, count) in fromLangs {
+            if let current = mostFrequent {
+                if count > current.1 {
+                    mostFrequent = (lang, count)
+                }
+            } else {
+                mostFrequent = (lang, count)
+            }
+        }
+    }
+    return mostFrequent?.0
+}
+
+public func chatDictationLanguage(context: any AccountContextProtocol, peerId: EnginePeer.Id) -> Signal<String?, NoError> {
+    return cachedChatTranslationState(engine: context.engine, peerId: peerId)
+    |> take(1)
+    |> mapToSignal { cached -> Signal<String?, NoError> in
+        if let fromLang = cached?.fromLang, !fromLang.isEmpty {
+            return .single(fromLang)
+        }
+        return context.account.viewTracker.aroundMessageHistoryViewForLocation(.peer(peerId: peerId, threadId: nil), index: .upperBound, anchorIndex: .upperBound, count: 32, fixedCombinedReadStates: nil)
+        |> filter { messageHistoryView -> Bool in
+            return !messageHistoryView.0.isLoading
+        }
+        |> take(1)
+        |> deliverOn(prepareQueue)
+        |> map { messageHistoryView, _, _ -> String? in
+            return mostFrequentLanguage(in: messageHistoryView.entries.map(\.message), minimumCount: 2)
+        }
+    }
+    |> timeout(0.5, queue: prepareQueue, alternate: .single(nil))
+}

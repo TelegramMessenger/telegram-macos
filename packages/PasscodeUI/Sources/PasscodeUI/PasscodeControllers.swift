@@ -16,6 +16,7 @@ import BuildConfig
 import LocalAuthentication
 import InputDataUI
 import GeneralRows
+import AppAnalytics
 
 
 public enum PasscodeMode : Equatable {
@@ -208,6 +209,14 @@ public func PasscodeController(sharedContext: (any SharedAccountContextProtocol)
         actionsDisposable.add((sharedContext.accountManager.transaction { transaction in
             transaction.setAccessChallengeData(challenge)
         } |> deliverOnMainQueue).start(completed: {
+            switch mode {
+            case .install:
+                Analytics.shared.send(AnalyticsEvents.settingsChange(.privacyPasscode(.enabled)))
+            case .disable:
+                Analytics.shared.send(AnalyticsEvents.settingsChange(.privacyPasscode(.disabled)))
+            default:
+                break
+            }
             f(.success(.navigationBackWithPushAnimation))
             if case .failure = result {
                 alertSyncFailure(passcodeSyncFailedText)
@@ -429,6 +438,13 @@ public func PasscodeController(sharedContext: (any SharedAccountContextProtocol)
     })
 
     weakController = controller
+
+    switch mode {
+    case .walletProtection, .walletBiometrics:
+        controller.analyticsScreen = .walletProtection
+    default:
+        controller.analyticsScreen = .settingsPrivacyPasscodeSetup
+    }
 
     return controller
     

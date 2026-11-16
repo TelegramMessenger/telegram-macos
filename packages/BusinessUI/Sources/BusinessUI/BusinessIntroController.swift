@@ -22,6 +22,7 @@ import Postbox
 import TelegramMediaResources
 import DateUtils
 import InlineStickerLayer
+import AppAnalytics
 
 private final class PreviewRowItem : GeneralRowItem {
     public let title: TextViewLayout?
@@ -355,6 +356,7 @@ public func BusinessIntroController(context: any AccountContextProtocol) -> Inpu
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessIntroTitle, identifier: "business_intro")
+    controller.analyticsScreen = .settingsBusinessIntro
     
     controller.updateDatas = { data in
         updateState { current in

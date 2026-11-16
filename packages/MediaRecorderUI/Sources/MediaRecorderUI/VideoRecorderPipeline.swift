@@ -24,7 +24,7 @@ private func roundVideoDecoration() -> (watermark: CGImage, planeFrames: CGImage
     guard let watermark = NSImage(named: "RoundVideoCorner")?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
         return nil
     }
-    guard let data = NSDataAsset(name: "PlaneLogoPlain")?.data, let unzipped = TGGUnzipData(data, 5 * 1024 * 1024), let json = String(data: unzipped, encoding: .utf8), let animation = LottieRenderHooks.shared.makeRenderer(json, "PlaneLogoPlain") else {
+    guard let data = NSDataAsset(name: "PlaneLogoPlain")?.data, let unzipped = TGGUnzipData(data, 5 * 1024 * 1024), let json = String(data: unzipped, encoding: .utf8), let animation = LottieRenderHooks.shared.makeRenderer(json) else {
         return nil
     }
     let frameSize = 68

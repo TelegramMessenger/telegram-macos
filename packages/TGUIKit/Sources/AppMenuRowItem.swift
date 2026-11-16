@@ -172,10 +172,11 @@ open class AppMenuRowItem : AppMenuBasicItem {
         
         self.text = TextViewLayout(attr, maximumNumberOfLines: item.removeTail ? 1 : .max)
         
-        if item.keyEquivalent.isEmpty {
+        let keyEquivalent = item.keyEquivalentValue.rawValue
+        if keyEquivalent.isEmpty {
             keyEquivalentText = nil
         } else {
-            keyEquivalentText = TextViewLayout(.initialize(string: item.keyEquivalent, color: presentation.secondaryColor(item), font: .medium(.text)))
+            keyEquivalentText = TextViewLayout(.initialize(string: keyEquivalent, color: presentation.secondaryColor(item), font: .medium(.text)))
         }
         super.init(initialSize, presentation: presentation, menuItem: item, interaction: interaction)
         self.menuItem = item

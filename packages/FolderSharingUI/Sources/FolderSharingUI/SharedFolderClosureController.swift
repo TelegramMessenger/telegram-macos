@@ -8,6 +8,7 @@ import TGUIKit
 import SwiftSignalKit
 import Postbox
 import TelegramCore
+import AppAnalytics
 
 private final class JoinCloudFolderHeaderItem : GeneralRowItem {
     let nameLayout: TextViewLayout
@@ -773,6 +774,12 @@ public func SharedFolderClosureController(context: any AccountContextProtocol, e
 
 
     let controller = InputDataController(dataSignal: signal, title: "title")
+    if case .sharedLinks = content {
+        controller.analyticsScreen = .settingsFoldersSharingLinks
+    } else {
+        controller.analyticsScreen = .chatListSharedFolderInvite
+    }
+
     controller.onDeinit = {
         actionsDisposable.dispose()
     }

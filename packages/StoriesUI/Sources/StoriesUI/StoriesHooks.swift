@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -33,10 +34,14 @@ public struct StoriesHooks {
     public let pushStoryMedia: (any AccountContextProtocol, PeerId, PeerStoryListContext, Bool, Bool) -> Void
     public let generateLiveStreamBadge: (CGFloat, NSColor?) -> CGImage
     public let showListStory: (any AccountContextProtocol, StoryListContext, PeerId, StoryInitialIndex?) -> Void
-    public var showListStoryWithContext: ((any AccountContextProtocol, StoryListContext, PeerId, StoryInitialIndex?) -> Void)?
-    public func showListStoryObserved(_ context: any AccountContextProtocol, _ listContext: StoryListContext, _ peerId: PeerId, _ initialId: StoryInitialIndex?) {
+    public var showListStoryWithContext: ((any AccountContextProtocol, StoryListContext, PeerId, StoryInitialIndex?, AnalyticsContext) -> Void)?
+    public func showListStoryObserved(_ context: any AccountContextProtocol, _ listContext: StoryListContext, _ peerId: PeerId, _ initialId: StoryInitialIndex?, analyticsContext: AnalyticsContext) {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        if let initialId { origin = origin.restricting(peerId: initialId.peerId) }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showListStoryWithContext {
-            showListStoryWithContext(context, listContext, peerId, initialId)
+            showListStoryWithContext(context, listContext, peerId, initialId, origin)
         } else {
             showListStory(context, listContext, peerId, initialId)
         }

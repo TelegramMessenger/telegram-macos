@@ -13,6 +13,7 @@ import GeneralRows
 import InputDataUI
 import InlineStickerLayer
 import InputView
+import AppAnalytics
 
 
 public struct StylePreviewInfo: Equatable {
@@ -23,7 +24,10 @@ public struct StylePreviewInfo: Equatable {
     var authorUsername: String?
 }
 
-public func fetchAiStylePreviewInfo(context: any AccountContextProtocol, slug: String) -> Signal<StylePreviewInfo?, NoError> {
+public func fetchAiStylePreviewInfo(context: any AccountContextProtocol, slug: String, analyticsContext: AnalyticsContext? = nil) -> Signal<StylePreviewInfo?, NoError> {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let url = context.meUrlPrefix + "addstyle/\(slug)"
     let signal = webpagePreview(account: context.account, urls: [url])
     |> filter { result in
@@ -32,6 +36,8 @@ public func fetchAiStylePreviewInfo(context: any AccountContextProtocol, slug: S
     }
     |> take(1)
     |> map { result -> StylePreviewInfo? in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         guard case let .result(resolved) = result, let resolved else {
             return nil
         }
@@ -53,7 +59,7 @@ public func fetchAiStylePreviewInfo(context: any AccountContextProtocol, slug: S
         }
         return info
     }
-    return (signal)
+    return origin.preservingPresentation(signal)
 }
 
 private typealias StyleExample = TelegramAIComposeToneExample
@@ -370,8 +376,14 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
 }
 
 
-public func AiStylePreviewModalController(context: any AccountContextProtocol, slug: String, info: StylePreviewInfo) -> InputDataModalController {
+public func AiStylePreviewModalController(context: any AccountContextProtocol, slug: String, info: StylePreviewInfo, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
 
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
+    let getAnalyticsContext: () -> AnalyticsContext = {
+        Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: origin)
+    }
     let actionsDisposable = DisposableSet()
 
     let examplesNum = context.appConfiguration.getGeneralValue("aicompose_tone_examples_num", orElse: 3)
@@ -382,12 +394,16 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         statePromise.set(stateValue.modify(f))
     }
 
     var close:(()->Void)? = nil
 
     let fetchExample: (Int32) -> Void = { num in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         if num >= examplesNum {
             updateState { current in
                 var current = current
@@ -397,7 +413,7 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
             return
         }
         let signal = context.engine.messages.getAIComposeToneExample(slug: slug, num: num) |> deliverOnMainQueue
-        actionsDisposable.add((signal).start(next: { example in
+        actionsDisposable.add(getAnalyticsContext().preservingPresentation(signal).start(next: { example in
             updateState { current in
                 var current = current
                 if let example {
@@ -415,15 +431,20 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
     }
 
     let arguments = Arguments(context: context, requestAnother: {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         let nextNum = stateValue.with { $0.exampleNum } + 1
         fetchExample(nextNum)
     }, openAuthor: { handle, username in
-        TranslateUIHooks.shared.followResolvedNameObserved(handle, username, context)
+        let analyticsContext = getAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
+        TranslateUIHooks.shared.followResolvedNameObserved(handle, username, context, analyticsContext: analyticsContext)
     })
 
     if let fileId = info.emojiFileId {
         let resolve = context.engine.stickers.resolveInlineStickers(fileIds: [fileId]) |> deliverOnMainQueue
-        actionsDisposable.add((resolve).start(next: { files in
+        actionsDisposable.add(getAnalyticsContext().preservingPresentation(resolve).start(next: { files in
             guard let file = files[fileId] else { return }
             updateState { current in
                 var current = current
@@ -438,7 +459,7 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
 
     fetchExample(0)
 
-    actionsDisposable.add((context.engine.messages.composeAIMessageStyles() |> take(1) |> deliverOnMainQueue).start(next: { cloudStyles in
+    actionsDisposable.add(getAnalyticsContext().preservingPresentation(context.engine.messages.composeAIMessageStyles() |> take(1) |> deliverOnMainQueue).start(next: { cloudStyles in
         let installed = cloudStyles.contains(where: { style in
             if case let .custom(custom) = style.content, custom.slug == slug {
                 return true
@@ -452,17 +473,25 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
         }
     }))
 
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = getAnalyticsContext().preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
 
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .chatAiEditorStylePreview
 
     controller.onDeinit = {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         actionsDisposable.dispose()
     }
 
     let modalInteractions = ModalInteractions(acceptTitle: strings().aiStylePreviewAddStyle, accept: {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         if stateValue.with({ $0.isInstalled }) {
             close?()
         } else {
@@ -473,8 +502,11 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(360, 0))
 
+    modalController.analyticsContext = origin
 
     controller.afterTransaction = { [weak modalInteractions] _ in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         guard let modalInteractions else { return }
         let isInstalled = stateValue.with { $0.isInstalled }
         modalInteractions.updateDone({ button in
@@ -483,10 +515,14 @@ public func AiStylePreviewModalController(context: any AccountContextProtocol, s
     }
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.close()
     })
 
     close = { [weak modalController] in
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         modalController?.modal?.close()
     }
 

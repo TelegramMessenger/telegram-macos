@@ -16,6 +16,7 @@ Read the matching document before starting the task.
 | Task | Document |
 |---|---|
 | Creating a new screen or controller | [docs/swift/TemplateController/README.md](docs/swift/TemplateController/README.md), template in [TemplateController.swift](docs/swift/TemplateController/TemplateController.swift) |
+| HLS (adaptive) video playback | [packages/HLSPlayback/README.md](packages/HLSPlayback/README.md) |
 
 
 ## Architecture Overview

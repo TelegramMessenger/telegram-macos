@@ -215,6 +215,8 @@ public class ChatEmptyPeerItem: TableRowItem {
             content.standImage = (TelegramThemeHooks.shared.image(.iconBusinessChatGreetings).precomposed(accentTint), Metrics.standImageSmall)
         case .searchHashtag:
             attr.append(string: strings().chatEmptySearchHashtag, color: textColor, font: .medium(.text))
+        case .htmlDemo:
+            attr.append(string: strings().chatEmptyChat, color: textColor, font: .medium(.text))
         }
     }
 

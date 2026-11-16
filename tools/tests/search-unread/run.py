@@ -12,15 +12,18 @@ s=source('SearchPeerReadMenuItem')
 helper='\n'.join(line for line in s.splitlines() if not line.startswith('import ')) if s else 'func searchPeerReadMenuItem(context:any AccountContextProtocol,peerId:PeerId)->Signal<ContextMenuItem?,NoError> { .single(nil) }'
 if 'target: SearchControllerTarget' not in helper:
  helper+='\nfunc searchPeerReadMenuItem(context:any AccountContextProtocol,peerId:PeerId,target:SearchControllerTarget)->Signal<ContextMenuItem?,NoError> { searchPeerReadMenuItem(context:context,peerId:peerId) }'
-s=source('PopularPeersRowItem');marker='override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {';start=s.index(marker)+len(marker);end=start;depth=1
-while depth:
- depth+=(s[end]=='{')-(s[end]=='}');end+=1
-fixture=Path(__file__).with_name('Checks.swift').read_text().replace('__HELPER__',helper).replace('__POPULAR_BODY__',s[start:end-1])
+fixture=Path(__file__).with_name('Checks.swift').read_text().replace('__HELPER__',helper)
 harness=Path(__file__).with_name('SearchUnreadHarness.swift').read_text()
 lease=harness[harness.index('private enum SearchReadRunLease'):harness.index('private final class SearchReadButton')]
 fixture=fixture.replace('__LEASE__',lease)
 if not args.revision:
- assert 'searchPeerReadMenuItem(context: arguments.context, peerId: peerId, target: arguments.target)' in source('SearchController')
+ assert 'searchPeerContextMenuItems(peer: peer, context: arguments.context, target: arguments.target, canPin: true, remove: remove, adPeer: adPeer)' in source('SearchController')
+ context=source('SearchPeerContextMenu')
+ assert 'searchPeerReadMenuItem(context: context, peerId: peerId, target: target ?? .common(.root))' in context
+ assert context.index('if case let .savedMessages(savedPeerId)? = target') < context.index('let readItem = searchPeerReadMenuItem(')
+ popular=source('PopularPeersRowItem')
+ assert 'searchPeerContextMenuItems(peer: peer, context: context, remove: items.first)' in popular
+ assert 'case let .savedMessages(peer):\n            return searchPeerReadMenuItem(context: context, peerId: peer.id)' in popular
 
 with tempfile.TemporaryDirectory() as t:
  t=Path(t);(t/'main.swift').write_text(fixture)

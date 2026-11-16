@@ -78,6 +78,6 @@ The demo intentionally runs as a single authoritative process with a persistent 
 
 ## Sources
 
-Edit `public/game.js` and `public/style.css`, then run **`npm run pack`** to regenerate `packages/HTMLBubbles/Sources/HTMLBubbles/Resources/multiplayer/voxel-clash.html`. `public/bridge.js` provides browser sessions and WebSockets; `HTMLMultiplayerDemoClient.swift` supplies the native equivalent. `engine.mjs` contains deterministic game rules, `store.mjs` persistence, and `api.mjs` HTTP/WebSocket transport.
+Edit `public/game.js` and `public/style.css`, then run **`npm run pack`** to regenerate `packages/HTMLBubbles/Tests/HTMLBubblesTests/Fixtures/multiplayer/voxel-clash.html`. `public/bridge.js` provides browser sessions and WebSockets; `HTMLMultiplayerDemoClient.swift` supplies the native equivalent. `engine.mjs` contains deterministic game rules, `store.mjs` persistence, and `api.mjs` HTTP/WebSocket transport.
 
 `public/assets/three.js` is copied from the repository’s existing HTMLBubbles library. Three.js is MIT licensed, copyright 2010–2023 Three.js Authors; see `THIRD_PARTY_NOTICES.md`.

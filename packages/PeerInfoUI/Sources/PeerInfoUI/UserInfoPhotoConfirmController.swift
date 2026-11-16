@@ -9,6 +9,7 @@ import TelegramTheme
 import TelegramUtils
 import Localization
 import InputDataUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -103,6 +104,7 @@ func UserInfoPhotoConfirmController(context: any AccountContextProtocol, peerId:
     }
     
     let controller = InputDataController(dataSignal: signal, title: titleText)
+    controller.analyticsScreen = .peerInfoPhotoSuggestion
     
     controller.onDeinit = {
         actionsDisposable.dispose()

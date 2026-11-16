@@ -13,7 +13,7 @@ public let internal_isHardwareAv1Supported: Bool = {
     return value
 }()
 
-struct ChunkMediaPlayerVideoGeometry: Equatable {
+public struct ChunkMediaPlayerVideoGeometry: Equatable {
     let rotationAngle: Double
     let dimensions: CGSize
 
@@ -27,7 +27,7 @@ struct ChunkMediaPlayerVideoGeometry: Equatable {
     }
 }
 
-protocol ChunkMediaPlayerSourceImpl: AnyObject {
+public protocol ChunkMediaPlayerSourceImpl: AnyObject {
     var partsState: Signal<ChunkMediaPlayerPartsState, NoError> { get }
     var videoGeometry: ChunkMediaPlayerVideoGeometry? { get }
     
@@ -35,7 +35,7 @@ protocol ChunkMediaPlayerSourceImpl: AnyObject {
     func updatePlaybackState(seekTimestamp: Double, position: Double, isPlaying: Bool)
 }
 
-extension ChunkMediaPlayerSourceImpl {
+public extension ChunkMediaPlayerSourceImpl {
     var videoGeometry: ChunkMediaPlayerVideoGeometry? {
         return nil
     }
@@ -79,6 +79,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         
         case externalParts(Signal<ChunkMediaPlayerPartsState, NoError>)
         case directFetch(ResourceDescription)
+        case custom(ChunkMediaPlayerSourceImpl)
     }
     
     public struct MediaDataReaderParams {
@@ -261,6 +262,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var audioStarvationBackoff: Double = 0.0
 
     private let source: ChunkMediaPlayerSourceImpl
+    private let minimumPlayableDuration: Double
     private var didSetSourceSeek: Bool = false
     private var partsStateDisposable: Disposable?
     private var updateTimer: Foundation.Timer?
@@ -282,12 +284,14 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         continuePlayingWithoutSoundOnLostAudioSession: Bool = false,
         isAudioVideoMessage: Bool = false,
         onSeeked: (() -> Void)? = nil,
+        minimumPlayableDuration: Double = 1.0,
         playerNode: MediaPlayerView
     ) {
         self.dataQueue = ChunkMediaPlayerV2.sharedDataQueue
         
         self.mediaDataReaderParams = params
         self.onSeeked = onSeeked
+        self.minimumPlayableDuration = minimumPlayableDuration
         self.playerNode = playerNode
         
         self.loadedPartsMediaData = QueueLocalObject(queue: self.dataQueue, generate: {
@@ -314,6 +318,8 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             self.source = ChunkMediaPlayerExternalSourceImpl(partsState: partsState)
         case let .directFetch(resource):
             self.source = ChunkMediaPlayerDirectFetchSourceImpl(resource: resource)
+        case let .custom(source):
+            self.source = source
         }
         
         self.updateTimerState()
@@ -662,7 +668,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             if let previousValidPartEndTime, previousValidPartEndTime >= duration - 0.5 {
                 isBuffering = false
             } else {
-                isBuffering = playableDuration < 1.0
+                isBuffering = playableDuration < self.minimumPlayableDuration
             }
         case let .directReader(directReader):
             var readerImpl: ChunkMediaPlayerPartsState.DirectReader.Impl?
@@ -1295,7 +1301,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                     loadedPartsMediaData.lastVideoSeekFrame = nil
                     return result
                 }
-                if !isVideo && !selectedMedia.direct {
+                if !isVideo {
                     sample = normalizeAudioSampleBuffer(sample, state: &loadedPartsMediaData.audioBufferTimingState)
                 }
                 guard enqueue(sample) else {

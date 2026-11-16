@@ -1,3 +1,4 @@
+import AppAnalytics
 import SwiftSignalKit
 
 final class SharePickerAction {
@@ -23,7 +24,7 @@ final class SharePickerAction {
         return true
     }
 
-    func start<Value, Failure>(request: () -> Signal<Value, Failure>, next: @escaping (Value) -> Void, error: @escaping (Failure) -> Void, completed: @escaping () -> Void) {
+    func start<Value, Failure>(context: AnalyticsContext, request: () -> Signal<Value, Failure>, next: @escaping (Value) -> Void, error: @escaping (Failure) -> Void, completed: @escaping () -> Void) {
         guard !closed, pending == nil else { return }
         generation &+= 1
         let generation = self.generation
@@ -31,9 +32,11 @@ final class SharePickerAction {
         let subscription = MetaDisposable()
         disposable.set(subscription)
         guard !closed, pending == generation else { return }
+        let presentation = context.beginPresentation()
+        defer { presentation.end() }
         let signal = request()
         guard !closed, pending == generation else { return }
-        subscription.set((signal |> take(1) |> deliverOnMainQueue).start(next: { [weak self] value in
+        subscription.set(context.preservingPresentation(signal |> take(1) |> deliverOnMainQueue).start(next: { [weak self] value in
             guard self?.finish(generation) == true else { return }
             next(value)
         }, error: { [weak self] failure in

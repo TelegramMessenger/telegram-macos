@@ -11,6 +11,7 @@ import ColorPalette
 import FoundationUtils
 import TelegramCore
 import Postbox
+import AppAnalytics
 
 private func shortcutEntires() -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
@@ -97,7 +98,19 @@ private func shortcutEntires() -> [InputDataEntry] {
     entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_url"), data: InputDataGeneralData(name: strings().shortcutsControllerMarkdownHyperlink, color: theme.colors.text, icon: nil, type: .context("⌘U"), viewType: .innerItem, enabled: true, description: nil)))
     index += 1
     
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_strikethrough"), data: InputDataGeneralData(name: strings().shortcutsControllerMarkdownStrikethrough, color: theme.colors.text, icon: nil, type: .context("~~"), viewType: .lastItem, enabled: true, description: nil)))
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_strikethrough"), data: InputDataGeneralData(name: strings().shortcutsControllerMarkdownStrikethrough, color: theme.colors.text, icon: nil, type: .context("⇧⌘X / ~~"), viewType: .innerItem, enabled: true, description: nil)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_underline"), data: InputDataGeneralData(name: strings().textViewTransformUnderline, color: theme.colors.text, icon: nil, type: .context("⇧⌘U"), viewType: .innerItem, enabled: true, description: nil)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_spoiler"), data: InputDataGeneralData(name: strings().textViewTransformSpoiler, color: theme.colors.text, icon: nil, type: .context("⇧⌘P"), viewType: .innerItem, enabled: true, description: nil)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_quote"), data: InputDataGeneralData(name: strings().textViewTransformQuote, color: theme.colors.text, icon: nil, type: .context("⇧⌘I"), viewType: .innerItem, enabled: true, description: nil)))
+    index += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: InputDataIdentifier("markdown_remove_formatting"), data: InputDataGeneralData(name: strings().textViewTransformRemoveAll, color: theme.colors.text, icon: nil, type: .context("⌘\\"), viewType: .lastItem, enabled: true, description: nil)))
     index += 1
     
     // OTHERS
@@ -163,6 +176,7 @@ public func ShortcutListController(context: any AccountContextProtocol) -> ViewC
     let controller = InputDataController(dataSignal: .single(InputDataSignalValue(entries: shortcutEntires())), title: strings().shortcutsControllerTitle, validateData: { data in
         return .fail(.none)
     }, removeAfterDisappear: true, hasDone: false, identifier: "shortcuts")
+    controller.analyticsScreen = .settingsShortcuts
     
     controller._abolishWhenNavigationSame = true
     

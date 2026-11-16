@@ -1,6 +1,6 @@
 # Read/unread actions in search
 
-`python3 tools/tests/search-unread/run.py` compiles actual menu factories/decision methods with controlled engine and Postbox snapshots. 46 checks cover read/manual-mark round trips, group membership, archives, namespace exclusions, ordinary and forum modes, Saved Messages and top-peer removal.
+`python3 tools/tests/search-unread/run.py` compiles the unchanged production read-action helper with controlled engine and Postbox snapshots. It checks read/manual-mark round trips, group membership, archives, namespace exclusions, ordinary and forum modes, Saved Messages and diagnostic leases. Source checks follow the expanded search/popular menu routing to this shared helper. Native `SearchPeerContextMenuTests` in the ChatListUITests target cover expanded menu composition, read-item identity/callbacks, Saved Messages account placement, and preservation of the original popular Delete action; the read fixture no longer extracts the expanded popular-menu factory.
 
 Secret-chat peers have no read action. Ordinary peers use engine PeerReadCounters; forums handled as regular chats use the peer-level CombinedPeerReadState, because thread counters omit their manual unread mark. Forums not handled as regular chats only offer Mark as Read while unread. The fixture independently models thread counters and raw peer marks and executes the menu handlers through a complete mark/unmark/reopen round trip.
 

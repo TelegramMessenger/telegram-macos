@@ -65,7 +65,7 @@ private final class EditImageCutoutView: View {
     init(frame frameRect: NSRect, image: CGImage) {
         self.imageSize = image.size
         self.hint = makeGlassTextButton(strings().editImageCutoutControllerHint)
-        self.undo = makeGlassIconButton(NSImage(resource: .iconEditImageUndo).precomposed(.white))
+        self.undo = makeGlassIconButton(NSImage(resource: .iconEditImageUndo).precomposed(.white), label: strings().voiceOverCommonUndo)
         self.outline = makeGlassTextButton(strings().editImageCutoutControllerAddOutline)
         super.init(frame: frameRect)
 
@@ -88,8 +88,6 @@ private final class EditImageCutoutView: View {
         photoControl.setAccessibilityLabel(strings().editImageCutoutControllerCutOutObject)
 
         hint.isEventLess = true
-
-        undo.setAccessibilityLabel(strings().voiceOverCommonUndo)
 
         cancel.autohighlight = false
         cancel.scaleOnClick = true

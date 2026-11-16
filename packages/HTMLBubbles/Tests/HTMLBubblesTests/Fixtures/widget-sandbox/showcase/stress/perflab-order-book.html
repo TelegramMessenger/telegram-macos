@@ -1,0 +1,15 @@
+<style>
+body{margin:0;background:#111924;color:#e9eff9;font:12px -apple-system,sans-serif}header{padding:16px;display:flex;align-items:center;justify-content:space-between}h2{margin:0;font-size:20px}button{background:#293b55;color:white;border:0;border-radius:8px;padding:8px 12px}.summary{padding:0 16px 12px;color:#9eb0c8}.book{padding:0 12px 12px}.row{display:grid;grid-template-columns:58px 1fr 1fr 1fr;gap:8px;border-bottom:1px solid #283a51;align-items:center;height:27px}.symbol{font-size:10px;color:#9eb0c8}.quote{position:relative;text-align:right;font:11px Menlo,monospace;padding:3px;overflow:hidden}.depth{position:absolute;inset:0;background:#29c5a430;transform-origin:right center}.number{position:relative}.ask .depth{background:#eb718530}.ask .number{color:#ff9eaf}.bid .number{color:#74ddbd}.overlay{position:fixed;inset:0;background:#0009;padding:100px 24px 0;box-sizing:border-box}.sheet{padding:24px;background:#23344c;border:1px solid #4b6585;border-radius:16px;box-shadow:0 16px 40px #0008}.sheet p{line-height:1.5}[hidden]{display:none}
+</style>
+<header><h2>Exchange depth</h2><button id="pause">Pause</button><button id="details">Details</button></header>
+<div class="summary">96 instruments · 288 quotes · updates at 20 Hz</div><div id="book" class="book"></div>
+<div id="modal" class="overlay" hidden><div class="sheet"><h2>Order stream</h2><p>The full order book continues updating under this modal.</p><button id="close">Close</button></div></div>
+<script>
+const rows=[],book=document.getElementById('book');
+for(let i=0;i<96;i++){const row=document.createElement('div');row.className='row';row.innerHTML='<span class="symbol">PAIR '+String(i+1).padStart(2,'0')+'</span>';const cells=[];for(let j=0;j<3;j++){const cell=document.createElement('div');cell.className='quote '+(j===1?'ask':'bid');cell.innerHTML='<div class="depth"></div><span class="number">0000.00</span>';row.appendChild(cell);cells.push({text:cell.querySelector('.number').firstChild,depth:cell.querySelector('.depth')});}rows.push(cells);book.appendChild(row);}
+let running=true,start=0,last=-1;
+function draw(step,all){for(let i=0;i<96;i++){if(!all&&i%4!==step%4)continue;for(let j=0;j<3;j++){const phase=step*.07+i*.21+j;rows[i][j].text.data=(1000+i*8+j+Math.sin(phase)*.49).toFixed(2);rows[i][j].depth.style.transform='scaleX('+(0.5+Math.sin(phase)*.45).toFixed(4)+')';}}}
+function frame(ms){if(!start)start=ms;const step=Math.floor((ms-start)/50);if(running&&step!==last){last=step;draw(step,false);}requestAnimationFrame(frame);}
+const pause=document.getElementById('pause');pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};document.getElementById('details').onclick=function(){document.getElementById('modal').hidden=false;};document.getElementById('close').onclick=function(){document.getElementById('modal').hidden=true;};
+window.stress={freeze:function(){running=false;draw(25,true);pause.textContent='Resume';},resume:function(){running=true;pause.textContent='Pause';}};draw(0,true);requestAnimationFrame(frame);
+</script>

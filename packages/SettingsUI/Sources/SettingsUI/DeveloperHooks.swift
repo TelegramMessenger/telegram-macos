@@ -2,13 +2,9 @@ import Cocoa
 
 public struct DeveloperHooks {
     public let updateGraphicContext: () -> Void
-    public let forceRLottieBackend: () -> Bool
-    public let toggleForceRLottieBackend: () -> Void
 
-    public init(updateGraphicContext: @escaping () -> Void, forceRLottieBackend: @escaping () -> Bool, toggleForceRLottieBackend: @escaping () -> Void) {
+    public init(updateGraphicContext: @escaping () -> Void) {
         self.updateGraphicContext = updateGraphicContext
-        self.forceRLottieBackend = forceRLottieBackend
-        self.toggleForceRLottieBackend = toggleForceRLottieBackend
     }
 
     private static var _shared: DeveloperHooks?
@@ -31,8 +27,6 @@ public struct DeveloperHooks {
     }
 
     public static let placeholder = DeveloperHooks(
-        updateGraphicContext: { },
-        forceRLottieBackend: { false },
-        toggleForceRLottieBackend: { }
+        updateGraphicContext: { }
     )
 }

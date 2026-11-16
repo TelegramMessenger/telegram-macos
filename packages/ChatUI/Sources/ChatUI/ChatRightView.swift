@@ -97,7 +97,7 @@ public class ChatRightView: View, ViewDisplayDelegate {
     }
 
     public var canHostContent: Bool {
-        return subviews.isEmpty && blurBackground == nil
+        return blurBackground == nil && subviews.allSatisfy { $0 === visualEffect }
     }
 
     public func hostContent(in parent: CALayer) {
@@ -453,7 +453,9 @@ public class ChatRightView: View, ViewDisplayDelegate {
     private var visualEffect: VisualEffect? = nil
     public var blurBackground: NSColor? = nil {
         didSet {
-            updateBackgroundBlur()
+            if blurBackground != oldValue {
+                updateBackgroundBlur()
+            }
             if blurBackground != nil {
                 self.backgroundColor = .clear
             }
@@ -461,7 +463,14 @@ public class ChatRightView: View, ViewDisplayDelegate {
     }
     
     private func updateBackgroundBlur() {
-        updateVisualEffectBackground(for: self, visualEffect: &visualEffect, blurBackground: blurBackground)
+        if let blurBackground, let visualEffect {
+            visualEffect.isHidden = false
+            visualEffect.bgColor = blurBackground
+        } else if blurBackground == nil, let visualEffect {
+            visualEffect.isHidden = true
+        } else {
+            updateVisualEffectBackground(for: self, visualEffect: &visualEffect, blurBackground: blurBackground)
+        }
         needsLayout = true
     }
     

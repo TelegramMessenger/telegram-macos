@@ -376,6 +376,8 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         }
         public let navigationBar: NavigationBarView
         public let contentView: View
+        let trailingContentView: View
+        var trailingContentInset: CGFloat?
         public let backdropView: BackgroundView
         public let navigationEdgeBlur: EdgeEffectView
         private let clippingView: View
@@ -385,6 +387,7 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         public required init(frame frameRect: NSRect) {
             self.navigationBar = NavigationBarView(frame: .zero)
             self.contentView = View(frame: .zero)
+            self.trailingContentView = View(frame: .zero)
             self.clippingView = View(frame: .zero)
             self.backdropView = BackgroundView(frame: .zero)
             self.navigationEdgeBlur = EdgeEffectView(frame: .zero)
@@ -408,11 +411,20 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
             navigationEdgeBlur.isEventLess = true
             clippingView.addSubview(navigationEdgeBlur)
             clippingView.addSubview(navigationBar)
+            trailingContentView.isEventLess = true
+            addSubview(trailingContentView)
 
             self.navigationBar.navigationEdgeBlur = navigationEdgeBlur
 
             //better make true if possible.
             contentView.layer?.masksToBounds = false
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            if !isHidden, alphaValue > 0, let hit = trailingContentView.hitTest(convert(point, from: superview)) {
+                return hit
+            }
+            return super.hitTest(point)
         }
 
         func updateBackgroundMode(_ mode: TableBackgroundMode) {
@@ -463,6 +475,7 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
             transition.updateFrame(view: navigationBar, frame: NSMakeRect(slotLeadingInset, barOffset, max(0, rect.width - slotLeadingInset - slotTrailingInset), barHeight))
             navigationBar.isHidden = barHeight == 0
             transition.updateFrame(view: contentView, frame: NSMakeRect(0, contentTop, rect.width, max(0, rect.height - contentTop)))
+            transition.updateFrame(view: trailingContentView, frame: NSMakeRect(0, -inset, rect.width, max(0, rect.height + inset)))
 
             edgeBlurLayout = (rect: NSMakeRect(0, 0, rect.width, max(0, barHeight + barOffset)), hasBar: barHeight > 0, barIsReal: barIsReal)
             transition.updateFrame(view: navigationEdgeBlur, frame: edgeBlurLayout.rect)
@@ -550,13 +563,32 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
     /// `(0, barHeight, w, h - barHeight)`.
     internal func setControllerFrame(_ controller: ViewController, frame: NSRect) {
         let container = containerOf(controller)
+        let trailingInset = self.trailingInset(for: container)
         container.frame = frame
         let chromeOffset = barOffset(for: controller)
-        container.updateInternalLayout(barHeight: controller.barHeight, slotLeadingInset: self.slotLeadingInset, slotTrailingInset: self.slotTrailingInset, inset: frame.minY, barOffset: chromeOffset)
+        container.updateInternalLayout(barHeight: controller.barHeight, slotLeadingInset: self.slotLeadingInset, slotTrailingInset: trailingInset, inset: frame.minY, barOffset: chromeOffset)
         let contentBounds = container.contentView.bounds
         let inset = self.slotLeadingInset
-        controller.view.frame = NSMakeRect(inset, 0, max(0, contentBounds.width - inset - self.slotTrailingInset), contentBounds.height)
+        controller.view.frame = NSMakeRect(inset, 0, max(0, contentBounds.width - inset - trailingInset), contentBounds.height)
         controller.updateNavigationHeaderOverflow(chromeOffset, transition: .immediate)
+    }
+
+    public func trailingContentHost(for owner: ViewController, reservedWidth: CGFloat?) -> NSView {
+        let container = containerOf(owner)
+        if container.trailingContentInset != reservedWidth {
+            container.trailingContentInset = reservedWidth
+            if owner === controller {
+                updateActiveControllerLayout(barHeight: owner.barHeight, transition: .immediate)
+            }
+        }
+        return container.trailingContentView
+    }
+
+    private func trailingInset(for container: ControllerContainer) -> CGFloat {
+        if let inset = container.trailingContentInset {
+            return inset
+        }
+        return controllerContainers.values.contains(where: { $0.trailingContentInset != nil }) ? 0 : slotTrailingInset
     }
 
     /// Scales an `animationStyle.duration` up by the share of total width that
@@ -573,13 +605,14 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         updateHeaderFrames(transition: transition)
 
         let activeContainer = containerOf(controller)
+        let trailingInset = self.trailingInset(for: activeContainer)
         let newFrame = controllerFrame(for: controller)
         transition.updateFrame(view: activeContainer, frame: newFrame)
         let chromeOffset = barOffset(for: controller)
-        activeContainer.updateInternalLayout(barHeight: barHeight, slotLeadingInset: slotLeadingInset, slotTrailingInset: slotTrailingInset, inset: newFrame.minY, barOffset: chromeOffset, transition: transition)
+        activeContainer.updateInternalLayout(barHeight: barHeight, slotLeadingInset: slotLeadingInset, slotTrailingInset: trailingInset, inset: newFrame.minY, barOffset: chromeOffset, transition: transition)
         let contentBounds = activeContainer.contentView.bounds
         let inset = slotLeadingInset
-        controller.updateFrame(NSMakeRect(inset, 0, max(0, contentBounds.width - inset - slotTrailingInset), contentBounds.height), inset: newFrame.minY, transition: transition)
+        controller.updateFrame(NSMakeRect(inset, 0, max(0, contentBounds.width - inset - trailingInset), contentBounds.height), inset: newFrame.minY, transition: transition)
         controller.updateNavigationHeaderOverflow(chromeOffset, transition: transition)
     }
 
@@ -617,7 +650,7 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
             updateActiveControllerLayout(barHeight: controller.barHeight, transition: transition)
         } else {
             let activeContainer = containerOf(controller)
-            activeContainer.updateInternalLayout(barHeight: controller.barHeight, slotLeadingInset: slotLeadingInset, slotTrailingInset: slotTrailingInset, inset: activeContainer.frame.minY, barOffset: headerOverflow, transition: transition)
+            activeContainer.updateInternalLayout(barHeight: controller.barHeight, slotLeadingInset: slotLeadingInset, slotTrailingInset: trailingInset(for: activeContainer), inset: activeContainer.frame.minY, barOffset: headerOverflow, transition: transition)
             controller.updateNavigationHeaderOverflow(headerOverflow, transition: transition)
         }
     }
@@ -637,6 +670,22 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
             var bp = 0
             bp += 1
         }
+    }
+
+    func discardContainerAfterCommit(for controller: ViewController) {
+        guard let container = controllerContainers.removeValue(forKey: controller.internalId) else {
+            return
+        }
+        container.isHidden = true
+        let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue, false, 2000001, { _, _ in
+            autoreleasepool {
+                container.removeFromSuperview()
+                if controller.isLoaded(), controller.view.superview === container.contentView {
+                    controller.view.removeFromSuperview()
+                }
+            }
+        })
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
     }
 
     /// Removes the controller from the navigation's bookkeeping: discards its
@@ -911,9 +960,7 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
                 } else {
                     newStyle = animated && strongSelf.stack.count > 1 ? .push : .none
                 }
-                CATransaction.begin()
                 strongSelf.show(controller, newStyle)
-                CATransaction.commit()
             }
         }))
     }
@@ -927,11 +974,6 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         if style == .none {
             window.abortSwiping()
         }
-        defer {
-            CATransaction.commit()
-        }
-
-        CATransaction.begin()
 
         let keepLeft = frame.width == controller.stake.keepLeft ? 0 : controller.stake.keepLeft
 
@@ -1040,8 +1082,43 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         
         var pfrom:CGFloat = 0, pto:CGFloat = 0, nto:CGFloat = 0, nfrom:CGFloat = 0;
 
-        let previousContainer = containerOf(previous)
         let controllerContainer = containerOf(controller)
+
+        if style == .none {
+            CATransaction.begin()
+
+            previous.viewWillDisappear(false);
+            controllerContainers[previous.internalId]?.removeFromSuperview()
+            containerView.addSubview(controllerContainer)
+
+            if let index = stack.firstIndex(of: previous) {
+                if previous.removeAfterDisapper {
+                    self.stack.remove(at: index)
+                } else if previous.stake.keepLeft > 0 {
+                    self.stack.remove(at: index)
+                }
+            }
+
+            if !self.stack.contains(where: { $0 === previous }) {
+                self.discardContainer(for: previous)
+            }
+
+            self.controller = controller
+
+            controller.viewWillAppear(false);
+            previous.viewDidDisappear(false);
+            controller.viewDidAppear(false);
+            _ = controller.becomeFirstResponder();
+            lock = false
+
+            reloadHeaders()
+
+            CATransaction.commit()
+
+            return
+        }
+
+        let previousContainer = containerOf(previous)
 
         switch style {
         case .push:
@@ -1064,8 +1141,6 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
                 pto = -round((self.frame.width - slotLeadingInset - slotTrailingInset)/3.0)
             }
 
-            previousContainer.setFrameOrigin(NSMakePoint(pfrom, previousContainer.frame.minY))
-            controllerContainer.setFrameOrigin(NSMakePoint(nfrom, controllerContainer.frame.minY))
 
 
             if popInteractiveInset == nil {
@@ -1073,7 +1148,6 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
                 previousContainer.backdropView.layer?.opacity = 1
             }
 
-            containerView.addSubview(controllerContainer, positioned: .above, relativeTo: previousContainer)
 
 
         case .pop:
@@ -1097,54 +1171,16 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
             pfrom = previousContainer.frame.minX
             pto = frame.width
 
-            previousContainer.setFrameOrigin(NSMakePoint(pfrom, previousContainer.frame.minY))
-            controllerContainer.setFrameOrigin(NSMakePoint(nfrom, controllerContainer.frame.minY))
 
             if popInteractiveInset == nil {
                 controllerContainer.backdropView.layer?.opacity = 1
                 previousContainer.backdropView.layer?.opacity = 1
             }
 
-            containerView.addSubview(controllerContainer, positioned: .below, relativeTo: previousContainer)
 
 
         case .none:
-
-
-            CATransaction.begin()
-            
-            
-            previous.viewWillDisappear(false);
-            previousContainer.removeFromSuperview()
-            containerView.addSubview(controllerContainer)
-            
-            if let index = stack.firstIndex(of: previous) {
-                if previous.removeAfterDisapper {
-                    self.stack.remove(at: index)
-                } else if previous.stake.keepLeft > 0 {
-                    self.stack.remove(at: index)
-                }
-            }
-            
-            if !self.stack.contains(where: { $0 === previous }) {
-                self.discardContainer(for: previous)
-            }
-
-            self.controller = controller
-
-            controller.viewWillAppear(false);
-            previous.viewDidDisappear(false);
-            controller.viewDidAppear(false);
-            _ = controller.becomeFirstResponder();
-            lock = false
-
-            reloadHeaders()
-
-            
-            CATransaction.commit()
-            
-
-            return // without animations
+            break
         }
 
         self.controller = controller
@@ -1172,12 +1208,19 @@ open class NavigationViewController: ViewController, CALayerDelegate,CAAnimation
         }
 
 
-        reloadHeaders()
+        let revealController = prepareLayerAnimation([controllerContainer]) {
+            containerView.addSubview(controllerContainer, positioned: style == .push ? .above : .below, relativeTo: previousContainer)
+            reloadHeaders()
+        }
 
+        CATransaction.begin()
+        defer {
+            revealController()
+            CATransaction.commit()
+        }
+        previousContainer.setFrameOrigin(NSMakePoint(pfrom, previousContainer.frame.minY))
+        controllerContainer.setFrameOrigin(NSMakePoint(nfrom, controllerContainer.frame.minY))
 
-
-
-        
         // Each container has its own bar with its own items already installed at
         // creation; nothing to switch here.
 

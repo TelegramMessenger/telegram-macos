@@ -6,11 +6,11 @@ import MtProtoKit
 import Colors
 import Strings
 
-private func hTmeParseDuration(_ durationStr: String) -> Int {
+private func hTmeParseDuration(_ durationStr: String) -> Int32? {
     let pattern = "^(?:(\\d+)h)?(?:(\\d+)m)?(?:(\\d+)s)?$"
 
     guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-        return Int(durationStr) ?? 0
+        return Int32(exactly: Int(durationStr) ?? 0)
     }
 
     let range = NSRange(durationStr.startIndex..., in: durationStr)
@@ -19,22 +19,24 @@ private func hTmeParseDuration(_ durationStr: String) -> Int {
         let minutesRange = match.range(at: 2)
         let secondsRange = match.range(at: 3)
 
-        func intValue(_ nsRange: NSRange) -> Int {
+        func intValue(_ nsRange: NSRange) -> Int? {
             guard nsRange.location != NSNotFound,
                   let substringRange = Range(nsRange, in: durationStr) else {
                 return 0
             }
-            return Int(durationStr[substringRange]) ?? 0
+            return Int32(durationStr[substringRange]).map(Int.init)
         }
 
-        let hours = intValue(hoursRange)
-        let minutes = intValue(minutesRange)
-        let seconds = intValue(secondsRange)
+        guard let hours = intValue(hoursRange),
+              let minutes = intValue(minutesRange),
+              let seconds = intValue(secondsRange) else {
+            return nil
+        }
 
-        return hours * 3600 + minutes * 60 + seconds
+        return Int32(exactly: hours * 3600 + minutes * 60 + seconds)
     }
 
-    return Int(durationStr) ?? 0
+    return Int32(exactly: Int(durationStr) ?? 0)
 }
 
 public let telegram_me:[String] = ["telegram.me/","telegram.dog/","t.me/"]
@@ -580,11 +582,8 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                     let forceProfile = false
 
                                     var action: ParsedChatLinkAction? = nil
-                                    if let t = params[keyURLTimecode] {
-                                        let timemark = hTmeParseDuration(t)
-                                        if Int(timemark) < Int32.max {
-                                            action = .openMedia(Int32(timemark))
-                                        }
+                                    if let t = params[keyURLTimecode], let timemark = hTmeParseDuration(t) {
+                                        action = .openMedia(timemark)
                                     }
                                     if let optionId = params["option"] {
                                         let padded = optionId.padding(toLength: ((optionId.count + 3) / 4) * 4, withPad: "=", startingAt: 0)
@@ -629,9 +628,8 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                             var action: ParsedChatLinkAction? = nil
 
                             if let t = params[keyURLTimecode] {
-                                let timemark = Double(hTmeParseDuration(t))
-                                if Int(timemark) < Int32.max {
-                                    action = .openMedia(Int32(timemark))
+                                if let timemark = hTmeParseDuration(t) {
+                                    action = .openMedia(timemark)
                                 }
                             } else if (userAndPost.count == 2 && post == nil) || (userAndPost.count == 3 && params[keyURLStartapp] != nil) {
                                 var appname = userAndPost[1]
@@ -643,11 +641,8 @@ public func parseInAppLink(_ url: NSString, options: InAppLinkParsingOptions = I
                                 }
                             }
 
-                            if let t = params[keyURLTimecode], action == nil {
-                                let timemark = hTmeParseDuration(t)
-                                if Int(timemark) < Int32.max {
-                                    action = .openMedia(Int32(timemark))
-                                }
+                            if let t = params[keyURLTimecode], action == nil, let timemark = hTmeParseDuration(t) {
+                                action = .openMedia(timemark)
                             }
 
                             if let optionId = params["option"] {

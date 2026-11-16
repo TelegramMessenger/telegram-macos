@@ -17,6 +17,7 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -151,6 +152,7 @@ public func CommunityAdminsController(_ context: (any AccountContextProtocol), c
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().communityAdminsTitle, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .communityAdmins
     controller.onDeinit = { actionsDisposable.dispose() }
     return controller
 }

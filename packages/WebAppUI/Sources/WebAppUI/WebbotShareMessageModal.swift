@@ -10,11 +10,14 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 
 
 private final class Arguments {
     let context: any AccountContextProtocol
+    weak var modalController: InputDataModalController?
+
     init(context: any AccountContextProtocol) {
         self.context = context
     }
@@ -26,20 +29,24 @@ private struct State : Equatable {
 }
 
 private final class HeaderItem : GeneralRowItem {
-    let context: any AccountContextProtocol
+    private let arguments: Arguments
     fileprivate let message: Message
-    fileprivate let messageItem: TableRowItem
-    init(_ initialSize: NSSize, stableId: AnyHashable, context: any AccountContextProtocol, message: Message) {
-        self.context = context
+    fileprivate lazy var messageItem = BrowserHooks.shared.makeSharePreviewMessageItem(initialSize, arguments.context, message) { [weak self] in
+        guard let self, self.table?.item(stableId: self.stableId) === self else { return }
+        self.noteHeightOfRow()
+        self.arguments.modalController?.updateSize(false)
+    }
+
+    init(_ initialSize: NSSize, stableId: AnyHashable, arguments: Arguments, message: Message) {
+        self.arguments = arguments
         self.message = message
-        messageItem = BrowserHooks.shared.makeSharePreviewMessageItem(initialSize, context, message)
         super.init(initialSize, stableId: stableId, viewType: .singleItem)
     }
     
     override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
         _ = super.makeSize(width, oldWidth: oldWidth)
         
-        _ = messageItem.makeSize(width)
+        _ = messageItem.makeSize(max(1, width - inset.left - inset.right))
         
         return true
     }
@@ -88,17 +95,27 @@ private final class HeaderRowView: GeneralContainableRowView {
         guard let item = item as? HeaderItem else {
             return
         }
+        if tableView.count == 3, tableView.item(at: 1) === item.messageItem {
+            return
+        }
+        tableView.removeAll()
         _ = tableView.addItem(item: GeneralRowItem(containerView.frame.size, height: 10, stableId: arc4random64(), backgroundColor: .clear))
         _ = tableView.addItem(item: item.messageItem)
         _ = tableView.addItem(item: GeneralRowItem(containerView.frame.size, height: 10, stableId: arc4random64(), backgroundColor: .clear))
     }
     
-    override func layout() {
-        super.layout()
-        
-        self.backgroundView.frame = containerView.bounds
-        self.tableView.frame = containerView.bounds
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        if hit != nil, (item as? HeaderItem)?.message.media.first is TelegramMediaWidget {
+            return self
+        }
+        return hit
+    }
 
+    override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
+        super.updateLayout(size: size, transition: transition)
+        transition.updateFrame(view: backgroundView, frame: containerView.bounds)
+        transition.updateFrame(view: tableView, frame: containerView.bounds)
     }
 }
 
@@ -117,7 +134,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     index += 1
     
     entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_custom, equatable: nil, comparable: nil, item: { initialSize, stableId in
-        return HeaderItem(initialSize, stableId: stableId, context: arguments.context, message: state.message._asMessage())
+        return HeaderItem(initialSize, stableId: stableId, arguments: arguments, message: state.message._asMessage())
     }))
     entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().webappShareMessageBotInfo(state.peer._asPeer().displayTitle)), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
 
@@ -135,9 +152,18 @@ public enum WebbotShareMessageStatus {
     case failed
 }
 
-
-
 public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: EnginePeer, preparedMessage: PreparedInlineMessage, window: Window, callback: @escaping(WebbotShareMessageStatus)->Void) -> InputDataModalController {
+    return WebbotShareMessageModal(context: context, bot: bot, preparedMessage: preparedMessage, window: window, analyticsContext: nil, callback: callback)
+}
+
+public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: EnginePeer, preparedMessage: PreparedInlineMessage, window: Window, analyticsContext: AnalyticsContext?, callback: @escaping(WebbotShareMessageStatus)->Void) -> InputDataModalController {
+    return WebbotShareMessageModal(context: context, bot: bot, preparedMessage: preparedMessage, window: window, analyticsContext: analyticsContext, analyticsJourney: nil, callback: callback)
+}
+
+public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: EnginePeer, preparedMessage: PreparedInlineMessage, window: Window, analyticsContext: AnalyticsContext?, analyticsJourney: AnalyticsPreparedShareJourney?, callback: @escaping(WebbotShareMessageStatus)->Void) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: bot.id).restricting(peerId: preparedMessage.botId)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
 
     let actionsDisposable = DisposableSet()
     
@@ -146,53 +172,37 @@ public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: En
     var entities: TextEntitiesMessageAttribute?
     var media: [Media] = []
     
-    switch preparedMessage.result {
-    case let .internalReference(reference):
-        switch reference.message {
-        case let .auto(textValue, entitiesValue, _):
-            text = textValue
-            entities = entitiesValue
+    switch preparedMessage.result.message {
+    case let .auto(textValue, entitiesValue, _):
+        text = textValue
+        entities = entitiesValue
+        switch preparedMessage.result {
+        case let .internalReference(reference):
             if let file = reference.file {
                 media = [file]
             } else if let image = reference.image {
                 media = [image]
             }
-        case let .text(textValue, entitiesValue, _, disableUrlPreview, previewParameters, _):
-            text = textValue
-            entities = entitiesValue
-            let _ = disableUrlPreview
-            let _ = previewParameters
-        case let .contact(contact, _):
-            media = [contact]
-        case let .mapLocation(map, _):
-            media = [map]
-        case let .invoice(invoice, _):
-            media = [invoice]
-        default:
-            break
-        }
-    case let .externalReference(reference):
-        switch reference.message {
-        case let .auto(textValue, entitiesValue, _):
-            text = textValue
-            entities = entitiesValue
+        case let .externalReference(reference):
             if let content = reference.content {
                 media = [content]
             }
-        case let .text(textValue, entitiesValue, _, disableUrlPreview, previewParameters, _):
-            text = textValue
-            entities = entitiesValue
-            let _ = disableUrlPreview
-            let _ = previewParameters
-        case let .contact(contact, _):
-            media = [contact]
-        case let .mapLocation(map, _):
-            media = [map]
-        case let .invoice(invoice, _):
-            media = [invoice]
-        default:
-            break
         }
+    case let .text(textValue, entitiesValue, _, _, _, _):
+        text = textValue
+        entities = entitiesValue
+    case let .contact(contact, _):
+        media = [contact]
+    case let .mapLocation(map, _):
+        media = [map]
+    case let .invoice(invoice, _):
+        media = [invoice]
+    case let .widget(widget, caption, captionEntities, _):
+        text = caption
+        entities = captionEntities
+        media = [widget]
+    default:
+        break
     }
 
     var attributes: [MessageAttribute] = []
@@ -220,17 +230,22 @@ public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: En
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
-    let controller = InputDataController(dataSignal: (signal), title: strings().webappShareMessageShare)
+    let controller = InputDataController(dataSignal: origin.preservingPresentation(signal), title: strings().webappShareMessageShare)
+    controller.analyticsScreen = .botMiniAppShareMessage
     
     
+    controller.analyticsContext = origin
     let action = PreparedSharePreviewAction()
     weak var childPicker: ModalViewController?
     var closePreview: (() -> Void)?
     let complete: (WebbotShareMessageStatus) -> Void = { status in
+        let delivery = origin.beginPresentation()
+        defer { delivery.end() }
         callback(status)
     }
 
     controller.onDeinit = {
+        analyticsJourney?.discard()
         actionsDisposable.dispose()
         if action.cancel() { complete(.failed) }
         childPicker?.close()
@@ -238,13 +253,23 @@ public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: En
 
     controller.validateData = { [weak window] _ in
         guard let window else {
+            analyticsJourney?.discard()
             if action.cancel() { complete(.failed) }
             closePreview?()
             return .none
         }
         guard let attempt = action.begin() else { return .none }
-        let picker = BrowserHooks.shared.makeShareChatContextResultModalObservedResult(context, preparedMessage, completion: { value in
+        analyticsJourney?.pickerOpened()
+        let picker = BrowserHooks.shared.makeShareChatContextResultModalObservedResult(context, preparedMessage, analyticsContext: origin, completion: { value in
             guard action.finish(attempt) else { return }
+            switch value {
+            case .accepted: analyticsJourney?.pickerFinished(result: .accepted)
+            case .partiallyAccepted: analyticsJourney?.pickerFinished(result: .partiallyAccepted)
+            case .rejected: analyticsJourney?.pickerFinished(result: .rejected)
+            case .unknown: analyticsJourney?.pickerFinished(result: .unknown)
+            case .cancelled: analyticsJourney?.pickerFinished(result: .cancelled)
+            case .notAccepted: analyticsJourney?.pickerFinished(result: .notAccepted)
+            }
             if case .accepted = value { complete(.success) } else { complete(.failed) }
             closePreview?()
         })
@@ -261,11 +286,14 @@ public func WebbotShareMessageModal(context: any AccountContextProtocol, bot: En
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, closeHandler: { close in
         guard action.beginClose() else { return }
         if action.cancel() {
+            analyticsJourney?.cancelPreview()
             complete(.failed)
         }
         childPicker?.close()
         close()
     })
+    arguments.modalController = modalController
+    modalController.analyticsContext = origin
     closePreview = { [weak modalController] in modalController?.close() }
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in

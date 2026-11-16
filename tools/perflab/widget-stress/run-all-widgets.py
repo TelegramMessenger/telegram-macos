@@ -67,7 +67,7 @@ def main():
     if args.seconds <= args.warmup or args.warmup < 0 or args.rounds < 1:
         parser.error('Require seconds > warmup >= 0 and rounds >= 1')
     root = Path(__file__).resolve().parents[3]
-    resources = root / 'packages/HTMLBubbles/Sources/HTMLBubbles/Resources'
+    resources = root / 'packages/HTMLBubbles/Tests/HTMLBubblesTests/Fixtures'
     groups = [(resources / 'ported', 'ported/')] + [
         (resources / 'widget-sandbox' / group, group + '/')
         for group in ['showcase', 'generated', 'common', 'compat']

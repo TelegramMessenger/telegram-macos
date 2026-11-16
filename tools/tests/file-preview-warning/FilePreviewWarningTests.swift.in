@@ -1,0 +1,281 @@
+import Foundation
+
+protocol Media: AnyObject {
+}
+
+final class TelegramMediaFile: Media {
+    let fileName: String?
+    let mimeType: String
+    var isGraphicFile = false
+    var isVideoFile = false
+
+    init(fileName: String?, mimeType: String) {
+        self.fileName = fileName
+        self.mimeType = mimeType
+    }
+}
+
+final class TelegramMediaImage: Media {
+}
+
+final class Window {
+}
+
+protocol AccountContextProtocol: AnyObject {
+    var window: Window { get }
+}
+
+final class TestContext: AccountContextProtocol {
+    let window = Window()
+}
+
+struct ChatHistoryEntryId {
+}
+
+protocol InteractionContentViewProtocol: AnyObject {
+}
+
+final class Table: InteractionContentViewProtocol {
+}
+
+enum ConfirmResult {
+    case basic
+}
+
+final class Strings {
+    let chatFileQuickLookMalf = "warning"
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+final class Message {
+    let chatStableId = ChatHistoryEntryId()
+}
+
+struct MessageReference {
+    init(_ message: Message) {
+    }
+}
+
+enum FileMediaReference {
+    case message(message: MessageReference, media: TelegramMediaFile)
+}
+
+enum BrowserTab {
+    case instantView(url: String, webPage: Int, anchor: String?)
+}
+
+final class Parameters {
+    func showMedia(_ message: Message) {
+        shownInGallery += 1
+    }
+}
+
+var alerts = 0
+var alertText: String?
+var previews = 0
+var previewedMedia: Media?
+var previewedStableId: ChatHistoryEntryId?
+var previewedDelegate: InteractionContentViewProtocol?
+var shownInGallery = 0
+var browserTabs = 0
+var pendingAlert: ((ConfirmResult) -> Void)?
+var markdownPage: (Int, URL)?
+
+func verifyAlert_button(for window: Window, information: String?, successHandler: @escaping (ConfirmResult) -> Void) {
+    alerts += 1
+    alertText = information
+    pendingAlert = successHandler
+}
+
+func markdownWebpage(context: any AccountContextProtocol, file: FileMediaReference) -> (Int, URL)? {
+    return markdownPage
+}
+
+let mimeTypes: [String: String] = [__MIME_TYPES__]
+
+func fileExt(_ mimeType: String) -> String? {
+    return mimeTypes[mimeType]
+}
+
+extension String {
+    var nsstring: NSString {
+        return self as NSString
+    }
+}
+
+final class ChatNavigationHooks {
+    static let shared = ChatNavigationHooks()
+
+    func openBrowserTab(_ context: any AccountContextProtocol, _ tab: BrowserTab) {
+        browserTabs += 1
+    }
+}
+
+final class ChatMediaUIHooks {
+    static let shared = ChatMediaUIHooks()
+
+    func showQuickLookPreview(_ context: any AccountContextProtocol, _ media: Media, _ stableId: ChatHistoryEntryId?, _ delegate: InteractionContentViewProtocol?) {
+        QuickLookPreview.current.show(context: context, with: media, stableId: stableId, delegate)
+    }
+}
+
+__WARNING__
+
+final class QuickLookPreview {
+    static let current = QuickLookPreview()
+
+__SHOW__
+
+    private func present(context: any AccountContextProtocol, with media:Media, stableId:ChatHistoryEntryId?,  _ delegate:InteractionContentViewProtocol?) {
+        previews += 1
+        previewedMedia = media
+        previewedStableId = stableId
+        previewedDelegate = delegate
+    }
+}
+
+final class ChatFileContentView {
+    var context: (any AccountContextProtocol)? = TestContext()
+    var media: Media?
+    var parent: Message? = Message()
+    var parameters: Parameters? = Parameters()
+    let table = Table()
+
+    init(_ media: Media) {
+        self.media = media
+    }
+
+__OPEN__
+}
+
+func reset() {
+    alerts = 0
+    alertText = nil
+    previews = 0
+    previewedMedia = nil
+    previewedStableId = nil
+    previewedDelegate = nil
+    shownInGallery = 0
+    browserTabs = 0
+    pendingAlert = nil
+    markdownPage = nil
+}
+
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+    if !passed {
+        failures += 1
+    }
+}
+
+func openFromChat(_ file: Media) {
+    reset()
+    ChatFileContentView(file).open()
+}
+
+func openFromFilesTab(_ file: Media) {
+    reset()
+    QuickLookPreview.current.show(context: TestContext(), with: file, stableId: nil, Table())
+}
+
+func confirm() {
+    pendingAlert?(.basic)
+}
+
+let risky = ["sh", "bash", "zsh", "csh", "tcsh", "command", "svg", "html", "htm", "shtml", "xhtml", "app", "exe", "bin", "run", "pkg", "mpkg", "dmg", "iso", "docm", "xlsm", "pptm", "alias", "lnk", "plist", "conf", "ini", "md"].map { "file.\($0)" }
+let safe = ["note.txt", "paper.pdf", "archive.zip", "song.mp3", "table.xlsx"]
+let octet = "application/x-unknown-test"
+
+for name in risky {
+    openFromFilesTab(TelegramMediaFile(fileName: name, mimeType: octet))
+    check("Files tab warns before \(name)", alerts == 1 && previews == 0 && alertText == strings().chatFileQuickLookMalf)
+    confirm()
+    check("Files tab opens \(name) after OK", previews == 1)
+}
+
+for name in safe {
+    openFromFilesTab(TelegramMediaFile(fileName: name, mimeType: octet))
+    check("Files tab opens \(name) with no warning", alerts == 0 && previews == 1)
+}
+
+for name in risky where name != "file.md" {
+    openFromChat(TelegramMediaFile(fileName: name, mimeType: octet))
+    check("chat warns once before \(name)", alerts == 1 && previews == 0)
+    confirm()
+    check("chat opens \(name) after OK", alerts == 1 && previews == 1)
+}
+
+for name in safe {
+    openFromChat(TelegramMediaFile(fileName: name, mimeType: octet))
+    check("chat opens \(name) with no warning", alerts == 0 && previews == 1)
+}
+
+let forwarded = TelegramMediaFile(fileName: "page.html", mimeType: "text/html")
+let forwardedDelegate = Table()
+reset()
+QuickLookPreview.current.show(context: TestContext(), with: forwarded, stableId: ChatHistoryEntryId(), forwardedDelegate)
+confirm()
+check("OK keeps the file, the row and the delegate", previewedMedia === forwarded && previewedStableId != nil && previewedDelegate === forwardedDelegate)
+
+reset()
+QuickLookPreview.current.show(context: TestContext(), with: TelegramMediaFile(fileName: "note.txt", mimeType: "text/plain"), stableId: ChatHistoryEntryId(), forwardedDelegate)
+check("a safe file keeps the row and the delegate", previewedStableId != nil && previewedDelegate === forwardedDelegate)
+
+openFromFilesTab(TelegramMediaFile(fileName: "PAGE.HTML", mimeType: "text/html"))
+check("an upper case name warns", alerts == 1 && previews == 0)
+
+openFromFilesTab(TelegramMediaFile(fileName: "page.html", mimeType: "text/html"))
+check("nothing opens until OK", alerts == 1 && previews == 0 && previewedMedia == nil)
+
+openFromFilesTab(TelegramMediaFile(fileName: nil, mimeType: octet))
+check("a file with no name and an unknown type opens with no warning", alerts == 0 && previews == 1)
+
+openFromFilesTab(TelegramMediaFile(fileName: "page", mimeType: "text/html"))
+check("no extension, text/html warns", alerts == 1 && previews == 0)
+
+openFromFilesTab(TelegramMediaFile(fileName: nil, mimeType: "text/html"))
+check("no name, text/html warns", alerts == 1 && previews == 0)
+
+openFromFilesTab(TelegramMediaFile(fileName: "setup", mimeType: "application/x-sh"))
+check("no extension, application/x-sh warns", alerts == 1 && previews == 0)
+
+openFromChat(TelegramMediaFile(fileName: "page", mimeType: "text/html"))
+check("chat: no extension, text/html warns once", alerts == 1 && previews == 0)
+
+openFromFilesTab(TelegramMediaFile(fileName: "notes", mimeType: "text/plain"))
+check("no extension, text/plain opens with no warning", alerts == 0 && previews == 1)
+
+openFromFilesTab(TelegramMediaFile(fileName: "note.txt", mimeType: "text/html"))
+check("a safe extension wins over a risky type", alerts == 0 && previews == 1)
+
+openFromFilesTab(TelegramMediaImage())
+check("an image opens with no warning", alerts == 0 && previews == 1)
+
+let graphic = TelegramMediaFile(fileName: "picture.svg", mimeType: "image/png")
+graphic.isGraphicFile = true
+openFromChat(graphic)
+check("a graphic file in a chat goes to the gallery", shownInGallery == 1 && alerts == 0 && previews == 0)
+
+reset()
+markdownPage = (1, URL(fileURLWithPath: "/tmp/note.md"))
+ChatFileContentView(TelegramMediaFile(fileName: "note.md", mimeType: "text/markdown")).open()
+check("markdown in a chat warns once before the article view", alerts == 1 && previews == 0 && browserTabs == 0)
+confirm()
+check("markdown opens as an article after OK", browserTabs == 1 && previews == 0)
+
+reset()
+ChatFileContentView(TelegramMediaFile(fileName: "note.md", mimeType: "text/markdown")).open()
+check("markdown with no article warns once before Quick Look", alerts == 1 && previews == 0)
+confirm()
+check("markdown with no article opens after OK", alerts == 1 && previews == 1)
+
+check("the Files tab, polls and Storage Usage all go through QuickLookPreview.show", __ROUTED__)
+check("present does what show did", __KEEPS_PREVIEW__)
+
+print("\(failures) failed")
+exit(failures == 0 ? 0 : 1)

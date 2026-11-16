@@ -14,6 +14,7 @@ import InputDataUI
 import AlertsUI
 import LocalAnimations
 import ShortPeerRow
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -253,7 +254,7 @@ func DataStorageExceptions(context: any AccountContextProtocol, category: CacheS
         actionsDisposable.add(signal.start())
     }, removeAll: {
         verifyAlert_button(for: context.window, information: strings().storageExceptionsRemoveAllConfirm, ok: strings().alertYes, successHandler: { _ in
-            let exceptions = stateValue.with { $0.exceptions.map { $0.peer.peer.id }}
+            let exceptions = stateValue.with { filterStorageCacheExceptions($0.exceptions, for: $0.category).map { $0.peer.peer.id }}
             let signal = updateAccountSpecificCacheStorageSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.peerStorageTimeoutExceptions.removeAll(where: { exceptions.contains($0.key )})
@@ -269,6 +270,7 @@ func DataStorageExceptions(context: any AccountContextProtocol, category: CacheS
     }
     
     let controller = InputDataController(dataSignal: signal, title: category.titleString, hasDone: true)
+    controller.analyticsScreen = .settingsStorageUsageExceptions
     controller.updateDoneValue = { data in
         return { f in
             if !stateValue.with({ $0.editing }) {

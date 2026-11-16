@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSignalKit
+import TelegramMediaResources
 
 public final class PendingVideoRenderInfo {
     public let duration: Double
@@ -25,64 +26,108 @@ public final class PendingVideoRenderInfo {
     }
 }
 
+public enum PendingVideoRenderEvent {
+    public static let minimumStreamingSize: Int64 = 10 * 1024 * 1024
+    case progress(path: String, size: Int64, headerSize: Int64)
+    case completed(Bool)
+}
+
 public final class PendingVideoRenders {
     public static let shared = PendingVideoRenders()
 
     private final class Entry {
         let info: PendingVideoRenderInfo
         let result = Promise<Bool>()
+        let events = Promise<PendingVideoRenderEvent>()
         let disposable = MetaDisposable()
+        let finished = Atomic<Bool>(value: false)
 
         init(info: PendingVideoRenderInfo) {
             self.info = info
         }
+
+        func finish(_ success: Bool) {
+            guard !finished.swap(true) else { return }
+            events.set(.single(.completed(success)))
+            result.set(.single(success))
+        }
     }
 
-    private let entries = Atomic<[String: Entry]>(value: [:])
+    private let lock = NSRecursiveLock()
+    private var entries: [String: Entry] = [:]
 
     public func add(path: String, info: PendingVideoRenderInfo, render: Signal<Bool, NoError>) {
+        add(path: path, info: info, rendering: render |> map { .completed($0) })
+    }
+
+    public func add(path: String, info: PendingVideoRenderInfo, rendering: Signal<PendingVideoRenderEvent, NoError>) {
         let entry = Entry(info: info)
-        var previous: Entry?
-        _ = entries.modify { current in
-            var current = current
-            previous = current[path]
-            current[path] = entry
-            return current
+        lock.lock()
+        let previous = entries.updateValue(entry, forKey: path)
+        updateStreamingVideoHeaderSize(nil, path: path)
+        previous?.finish(false)
+        guard entries[path] === entry, !entry.finished.with({ $0 }) else {
+            lock.unlock()
+            previous?.disposable.dispose()
+            return
         }
-        if let previous = previous {
-            previous.disposable.dispose()
-            previous.result.set(.single(false))
-        }
-        entry.disposable.set(render.start(next: { [weak entry] success in
-            entry?.result.set(.single(success))
-        }, completed: { [weak entry] in
-            entry?.disposable.set(nil)
+        entry.disposable.set(rendering.start(next: { [weak self, weak entry] event in
+            guard let self, let entry else { return }
+            self.lock.lock()
+            guard self.entries[path] === entry, !entry.finished.with({ $0 }) else {
+                self.lock.unlock()
+                return
+            }
+            switch event {
+            case let .progress(_, size, headerSize):
+                guard headerSize > 0, headerSize <= Int64(Int32.max), size >= headerSize else {
+                    entry.finish(false)
+                    self.lock.unlock()
+                    Queue.concurrentDefaultQueue().async { entry.disposable.dispose() }
+                    return
+                }
+                updateStreamingVideoHeaderSize(headerSize, path: path)
+                entry.events.set(.single(event))
+            case let .completed(success):
+                entry.finish(success)
+            }
+            self.lock.unlock()
+        }, completed: { [weak self, weak entry] in
+            guard let self, let entry else { return }
+            self.lock.lock()
+            if self.entries[path] === entry { entry.finish(false) }
+            self.lock.unlock()
+            entry.disposable.dispose()
         }))
+        lock.unlock()
+        previous?.disposable.dispose()
     }
 
     public func info(for path: String) -> PendingVideoRenderInfo? {
-        return entries.with { $0[path]?.info }
+        lock.lock()
+        defer { lock.unlock() }
+        return entries[path]?.info
     }
 
     public func result(for path: String) -> Signal<Bool, NoError>? {
-        guard let entry = entries.with({ $0[path] }) else {
-            return nil
-        }
-        return entry.result.get() |> take(1)
+        lock.lock()
+        defer { lock.unlock() }
+        return entries[path].map { $0.result.get() |> take(1) }
+    }
+
+    public func events(for path: String) -> Signal<PendingVideoRenderEvent, NoError>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries[path]?.events.get()
     }
 
     public func cancel(path: String) {
-        var removed: Entry?
-        _ = entries.modify { current in
-            var current = current
-            removed = current.removeValue(forKey: path)
-            return current
-        }
-        guard let removed = removed else {
-            return
-        }
-        removed.disposable.dispose()
-        removed.result.set(.single(false))
-        try? FileManager.default.removeItem(atPath: path)
+        lock.lock()
+        let removed = entries.removeValue(forKey: path)
+        updateStreamingVideoHeaderSize(nil, path: path)
+        if removed != nil { try? FileManager.default.removeItem(atPath: path) }
+        removed?.finish(false)
+        lock.unlock()
+        removed?.disposable.dispose()
     }
 }

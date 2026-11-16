@@ -90,6 +90,10 @@ open class TextButton: ImageButton {
         didSet { if direction != oldValue { updateLayout() } }
     }
 
+    public var textOffset: NSPoint = .zero {
+        didSet { if textOffset != oldValue { updateLayout() } }
+    }
+
     public var buttonImageInset: CGFloat = 6 {
         didSet { if buttonImageInset != oldValue { updateLayout() } }
     }
@@ -353,8 +357,8 @@ open class TextButton: ImageButton {
         }
 
         guard let _ = imageView.image else {
-            let x = round((size.width - blockSize.width) / 2.0)
-            let y = floor((size.height - blockSize.height) / 2.0)
+            let x = round((size.width - blockSize.width) / 2.0) + textOffset.x
+            let y = floor((size.height - blockSize.height) / 2.0) + textOffset.y
             placeBlock(originX: x, originY: y, centerLines: hasSubtext)
             return
         }

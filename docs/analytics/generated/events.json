@@ -1,0 +1,3452 @@
+{
+  "schema_version": 1,
+  "platforms": [
+    "macos",
+    "ios",
+    "android",
+    "tdesktop",
+    "web"
+  ],
+  "sections": {
+    "app": "App lifecycle",
+    "screen": "Generic screen visibility",
+    "menu": "Generic context and action menus",
+    "flow": "Step-by-step journeys through one task, sent as one event",
+    "chat_list": "Chat list, folders, archive",
+    "news": "Recommended and added news feeds",
+    "chat": "An open chat, its input and its messages",
+    "search": "Global search",
+    "contacts": "Contacts list",
+    "peer_info": "Profile of a user, bot, group or channel",
+    "settings": "App and account settings",
+    "stories": "Stories",
+    "media_viewer": "Full-screen photo and video viewer",
+    "call": "One-to-one calls",
+    "group_call": "Voice chats, live streams, conference calls",
+    "premium": "Telegram Premium",
+    "stars": "Telegram Stars",
+    "gifts": "Gifts",
+    "wallet": "Wallet",
+    "bot": "Bots and mini apps",
+    "link": "Opening t.me and external links",
+    "share": "Forwarding and sharing to chats",
+    "create": "Creating groups, channels, secret chats",
+    "stickers": "Sticker and emoji sets",
+    "shortcut": "Keyboard shortcuts",
+    "auth": "Login and signup",
+    "passcode": "Local passcode lock",
+    "community": "Communities, groups of chats",
+    "affiliate": "Bot affiliate programs",
+    "boosts": "Boosting groups and channels, giveaways",
+    "payments": "Bot payments and checkout",
+    "passport": "Telegram Passport",
+    "report": "Reporting content",
+    "export": "Exporting chat history and account data",
+    "media_editor": "Editing photos, drawings and avatars",
+    "media_player": "Music and audio playback",
+    "instant_view": "Instant View articles",
+    "browser": "In-app web browser",
+    "system": "Operating system pickers and panels",
+    "ton": "TON balance in Telegram"
+  },
+  "actions": {
+    "show": "A screen became visible",
+    "hide": "A screen stopped being visible",
+    "open": "The user opened something that is not a screen (a menu, a picker, a link)",
+    "close": "The user closed something that is not a screen",
+    "select": "The user picked one option among several",
+    "change": "A setting or mode changed value",
+    "send": "Something was sent",
+    "start": "A process began",
+    "end": "A process finished, whatever the outcome",
+    "success": "A process finished successfully",
+    "fail": "A process finished with an error",
+    "cancel": "The user abandoned a process",
+    "join": "The user joined something",
+    "leave": "The user left something",
+    "accept": "The user accepted an incoming request",
+    "decline": "The user declined an incoming request",
+    "view": "The user viewed content that is not a screen",
+    "react": "The user added a reaction",
+    "reply": "The user replied",
+    "forward": "The user forwarded",
+    "edit": "The user edited",
+    "delete": "The user deleted",
+    "translate": "The user translated",
+    "use": "The user used a tool or shortcut",
+    "launch": "The app started",
+    "foreground": "The app became active",
+    "background": "The app stopped being active"
+  },
+  "glossary": {
+    "folder": {
+      "meaning": "A chat list folder.",
+      "avoid": [
+        "filter",
+        "dialog_filter",
+        "tab"
+      ]
+    },
+    "archive": {
+      "meaning": "The archived chats list."
+    },
+    "chat": {
+      "meaning": "Any conversation with a user, bot, group or channel.",
+      "avoid": [
+        "dialog",
+        "conversation"
+      ]
+    },
+    "thread": {
+      "meaning": "Replies to one message, including channel comments.",
+      "avoid": [
+        "replies",
+        "comments"
+      ]
+    },
+    "forum_topic": {
+      "meaning": "A topic in a forum group."
+    },
+    "peer_info": {
+      "meaning": "The profile screen of a user, bot, group or channel.",
+      "avoid": [
+        "user_info",
+        "chat_info"
+      ]
+    },
+    "saved_messages": {
+      "meaning": "The chat with yourself."
+    },
+    "story": {
+      "meaning": "A story.",
+      "avoid": [
+        "moment"
+      ]
+    },
+    "mini_app": {
+      "meaning": "A bot web app.",
+      "avoid": [
+        "web_app",
+        "web_view",
+        "webapp"
+      ]
+    },
+    "visibility": {
+      "meaning": "Whether a group or channel is public (has a username) or private (invite link only), plus who can write and whether content can be saved.",
+      "avoid": [
+        "channel_type",
+        "privacy_type"
+      ]
+    },
+    "inline_button": {
+      "meaning": "A button attached to a message (inline keyboard), a product concept rather than a UI widget."
+    },
+    "quick_replies": {
+      "meaning": "Telegram Business saved replies sent with a shortcut."
+    },
+    "media_composer": {
+      "meaning": "The screen where attached media is previewed and captioned before sending.",
+      "avoid": [
+        "preview_sender"
+      ]
+    }
+  },
+  "common_params": {
+    "platform": {
+      "type": "enum",
+      "values": [
+        "macos",
+        "ios",
+        "android",
+        "tdesktop",
+        "web"
+      ]
+    },
+    "app_version": {
+      "type": "string",
+      "description": "Marketing version, e.g. 11.12."
+    },
+    "build": {
+      "type": "string",
+      "description": "Build number."
+    },
+    "schema_version": {
+      "type": "int"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Random UUID, new on every app.foreground."
+    },
+    "seq": {
+      "type": "int",
+      "description": "0-based order of the event within the session."
+    },
+    "layout": {
+      "type": "enum",
+      "values": [
+        "compact",
+        "regular",
+        "wide"
+      ]
+    }
+  },
+  "params": {
+    "screen": {
+      "type": "screen_id",
+      "description": "Id from `screens`.",
+      "ref": "screen"
+    },
+    "source": {
+      "type": "screen_id",
+      "description": "The screen that was visible before. Filled in automatically by the analytics layer.",
+      "ref": "source"
+    },
+    "menu": {
+      "type": "menu_id",
+      "description": "Id from `menus`.",
+      "ref": "menu"
+    },
+    "item": {
+      "type": "menu_item",
+      "description": "Item id from the `items` of the menu in `menu`.",
+      "ref": "item"
+    },
+    "via": {
+      "type": "enum",
+      "values": [
+        "click",
+        "tap",
+        "right_click",
+        "long_press",
+        "shortcut",
+        "swipe",
+        "drag_drop",
+        "other"
+      ],
+      "description": "How the user triggered the action.",
+      "ref": "via"
+    },
+    "peer_type": {
+      "type": "enum",
+      "values": [
+        "user",
+        "bot",
+        "group",
+        "channel",
+        "forum",
+        "saved_messages",
+        "secret_chat"
+      ],
+      "ref": "peer_type"
+    },
+    "duration_ms": {
+      "type": "ms",
+      "ref": "duration_ms"
+    },
+    "count": {
+      "type": "bucket",
+      "values": [
+        "1",
+        "2_5",
+        "6_20",
+        "21_100",
+        "101_plus"
+      ],
+      "ref": "count"
+    },
+    "message_kind": {
+      "type": "enum",
+      "values": [
+        "text",
+        "photo",
+        "video",
+        "album",
+        "file",
+        "music",
+        "voice",
+        "video_message",
+        "sticker",
+        "gif",
+        "poll",
+        "checklist",
+        "location",
+        "live_location",
+        "contact",
+        "dice"
+      ],
+      "ref": "message_kind"
+    },
+    "call_duration": {
+      "type": "bucket",
+      "values": [
+        "under_10s",
+        "10s_1m",
+        "1m_5m",
+        "5m_30m",
+        "30m_plus"
+      ],
+      "ref": "call_duration"
+    }
+  },
+  "screens": {
+    "affiliate.link": {
+      "description": "Your referral link for an affiliate program."
+    },
+    "affiliate.program": {
+      "description": "Terms of one bot's affiliate program."
+    },
+    "affiliate.programs": {
+      "description": "Affiliate programs you can join, and the ones you joined."
+    },
+    "affiliate.programs.existing": {
+      "description": "Affiliate programs of other mini apps, opened from a bot's affiliate setup."
+    },
+    "app.about": {
+      "description": "About Telegram: version and links."
+    },
+    "app.age_verification": {
+      "description": "Age verification before opening restricted content."
+    },
+    "app.alert": {
+      "description": "Generic in-app alert or confirmation with a title, text and buttons."
+    },
+    "app.calendar": {
+      "description": "Calendar to pick a date: jump to a date in a chat, birthday, export range, or a future date when scheduling."
+    },
+    "app.country_picker": {
+      "description": "Pick one or more countries."
+    },
+    "app.crash_recovery": {
+      "description": "Shown after a crash: update, reset data or continue."
+    },
+    "app.crash_recovery.reset_confirmation": {
+      "description": "Confirm resetting local data after a crash."
+    },
+    "app.date_picker": {
+      "description": "Pick a date and time."
+    },
+    "app.emoji_picker": {
+      "description": "Pick an emoji in a standalone popover, e.g. to insert into text, or as a profile background or AI style icon."
+    },
+    "app.feature_info": {
+      "description": "Explanation of a feature with icon, bullet points and a button."
+    },
+    "app.frozen_account": {
+      "description": "Your account is frozen, with an option to appeal."
+    },
+    "app.language_suggestion": {
+      "description": "Suggestion to switch the app language to the system language."
+    },
+    "app.link_input": {
+      "description": "Enter a link for selected text."
+    },
+    "app.location_picker": {
+      "description": "Pick a place on a map, e.g. for a poll or a business address."
+    },
+    "app.login_prevented": {
+      "description": "Warning that a suspicious new login was blocked."
+    },
+    "app.low_disk_space": {
+      "description": "Warning that the disk is almost full, with a link to storage settings."
+    },
+    "app.no_chat_selected": {
+      "description": "Content area when no chat is open, with shortcut cards."
+    },
+    "app.number_input": {
+      "description": "Enter a number; on macOS used for the invite link user limit."
+    },
+    "app.option_picker": {
+      "description": "Choose one or more options from a list, reused by several features."
+    },
+    "app.password_prompt": {
+      "description": "Enter your password to confirm a sensitive action."
+    },
+    "app.peer_picker": {
+      "description": "Search and pick one or more chats or users (add members, admins, etc.)."
+    },
+    "app.qr_studio": {
+      "description": "Preview and customize a profile or chat QR code. Never include QR contents or styling values.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "app.server_notice": {
+      "description": "Alert with a message pushed by the server to this account."
+    },
+    "app.sticker_picker": {
+      "description": "Pick a sticker, e.g. for a business start page or a poll."
+    },
+    "app.terms_of_service": {
+      "description": "Updated Terms of Service the user must accept."
+    },
+    "app.text_input": {
+      "description": "Enter a short text; on macOS used to name a folder invite link."
+    },
+    "app.time_range_picker": {
+      "description": "Pick a from/to time range."
+    },
+    "app.too_many_chats": {
+      "description": "Limit reached: leave inactive chats or upgrade."
+    },
+    "app.value_picker": {
+      "description": "Pick one value from a searchable list."
+    },
+    "app.wallpaper_preview": {
+      "description": "Preview a wallpaper from settings, a chat, a group or channel, a message or a link, and apply it."
+    },
+    "auth.code": {
+      "description": "Enter the login code sent by SMS, Telegram, call, email or Fragment."
+    },
+    "auth.email_code": {
+      "description": "Enter the recovery code sent to the email."
+    },
+    "auth.email_setup": {
+      "description": "Add a login email, when the server requires one."
+    },
+    "auth.password": {
+      "description": "Enter the two-step verification password."
+    },
+    "auth.phone": {
+      "description": "Enter the phone number to log in, or switch to QR or passkey."
+    },
+    "auth.qr": {
+      "description": "Log in by scanning a QR code with another device."
+    },
+    "auth.reset_wait": {
+      "description": "Waiting for, or confirming, an account reset after a forgotten password."
+    },
+    "auth.signup": {
+      "description": "New account: enter first and last name."
+    },
+    "auth.website_login": {
+      "description": "Confirm logging in to a website or app with Telegram."
+    },
+    "auth.website_login.match_code": {
+      "description": "Pick the code shown on the website to confirm a login."
+    },
+    "auth.word": {
+      "description": "Enter the word or phrase sent as the login code."
+    },
+    "boosts.features": {
+      "description": "Features a group unlocks at each boost level."
+    },
+    "boosts.gift_link": {
+      "description": "A Premium gift code and how to use it."
+    },
+    "boosts.giveaway_create": {
+      "description": "Create a Premium or Stars giveaway."
+    },
+    "boosts.overview": {
+      "description": "Boost a group or channel: level progress, boost link, giveaways."
+    },
+    "boosts.reassign": {
+      "description": "Move your boosts from other groups or channels."
+    },
+    "bot.game": {
+      "description": "An HTML5 game from a bot."
+    },
+    "bot.mini_app": {
+      "description": "A mini app."
+    },
+    "bot.mini_app.data_transfer": {
+      "description": "Let a mini app import its data from a previous Telegram account on this device."
+    },
+    "bot.mini_app.emoji_status_request": {
+      "description": "A mini app asks to set your emoji status."
+    },
+    "bot.mini_app.popup": {
+      "description": "A popup a mini app asked to show."
+    },
+    "bot.mini_app.share_message": {
+      "description": "Share a message prepared by a mini app."
+    },
+    "browser.tonsite": {
+      "description": "A TON site (tonsite:// or .ton domain) in the in-app browser."
+    },
+    "call.active": {
+      "description": "A one-to-one voice or video call."
+    },
+    "call.conference_incoming": {
+      "description": "An incoming conference call."
+    },
+    "call.feedback": {
+      "description": "Describe what went wrong in a call."
+    },
+    "call.history": {
+      "description": "Recent calls."
+    },
+    "call.rating": {
+      "description": "Rate a call after it ends."
+    },
+    "call.share_screen": {
+      "description": "Choose a screen, window or camera to share in a call."
+    },
+    "chat": {
+      "description": "A chat with a user, bot, group or channel, including Saved Messages.",
+      "params": [
+        "peer_type"
+      ]
+    },
+    "chat.ai_editor": {
+      "description": "Rewrite text with AI."
+    },
+    "chat.ai_editor.style": {
+      "description": "Create or change an AI writing style."
+    },
+    "chat.ai_editor.style_preview": {
+      "description": "Preview an AI writing style and add it."
+    },
+    "chat.attach.audio": {
+      "description": "Pick audio files from shared media to send."
+    },
+    "chat.attach.location": {
+      "description": "Map to send the current location, a pin or a venue."
+    },
+    "chat.auto_delete": {
+      "description": "Set the auto-delete timer of a chat."
+    },
+    "chat.birthday_suggestion": {
+      "description": "Accept a birthday someone suggested for you."
+    },
+    "chat.checklist_add_task": {
+      "description": "Add tasks to an existing checklist."
+    },
+    "chat.checklist_create": {
+      "description": "Create or edit a checklist."
+    },
+    "chat.contact_card": {
+      "description": "Details of a shared contact card."
+    },
+    "chat.delete_options": {
+      "description": "Delete messages or a reaction in a group, with options to ban, report or delete all from the user."
+    },
+    "chat.dice_stake": {
+      "description": "Emoji dice game: set the stake and roll."
+    },
+    "chat.fact_check": {
+      "description": "Add or change a fact-check note on a channel message."
+    },
+    "chat.forum_topic_editor": {
+      "description": "Create or change a forum topic's name and icon."
+    },
+    "chat.forum_topics": {
+      "description": "List of topics in a forum group."
+    },
+    "chat.input.emoji": {
+      "description": "Emoji and custom emoji in the input's emoji, sticker and GIF panel, in chats and story replies."
+    },
+    "chat.input.gifs": {
+      "description": "GIFs in the input's emoji, sticker and GIF panel, in chats and story replies."
+    },
+    "chat.input.stickers": {
+      "description": "Stickers in the input's emoji, sticker and GIF panel, in chats and story replies."
+    },
+    "chat.location_preview": {
+      "description": "Map preview of a shared or live location."
+    },
+    "chat.media_composer": {
+      "description": "Preview and caption media or files before sending."
+    },
+    "chat.media_composer.price": {
+      "description": "Set a Stars price to unlock paid media."
+    },
+    "chat.member_tag_info": {
+      "description": "What a member's owner, admin or member tag in a group means."
+    },
+    "chat.message_effect_picker": {
+      "description": "The full list of message effects, opened from the send button's effect bar."
+    },
+    "chat.message_stats": {
+      "description": "Statistics of a message: views, forwards, reactions."
+    },
+    "chat.pinned": {
+      "description": "All pinned messages of a chat."
+    },
+    "chat.poll_add_option": {
+      "description": "Add an option to an existing poll."
+    },
+    "chat.poll_create": {
+      "description": "Create a poll or quiz."
+    },
+    "chat.poll_results": {
+      "description": "Who voted for each option of a poll or quiz."
+    },
+    "chat.poll_stats": {
+      "description": "Statistics of a poll."
+    },
+    "chat.preview": {
+      "description": "Read-only preview of a chat in a small window, opened from the chat list."
+    },
+    "chat.reaction_picker": {
+      "description": "The full reaction and emoji picker opened from the quick reaction bar."
+    },
+    "chat.rich_editor": {
+      "description": "Rich-text editor for formatted messages and posts."
+    },
+    "chat.rich_editor.ai_compose": {
+      "description": "Generate text, formulas or tables with AI in the rich-text editor."
+    },
+    "chat.rich_editor.code_language": {
+      "description": "Set the language of a code block in the rich-text editor."
+    },
+    "chat.rich_editor.formula": {
+      "description": "Enter or change a formula in the rich-text editor."
+    },
+    "chat.rich_editor.inline_button": {
+      "description": "Create or change a message button in the rich-text editor: label, URL, style."
+    },
+    "chat.saved_chat": {
+      "description": "Saved Messages from one source chat."
+    },
+    "chat.saved_chats": {
+      "description": "Saved Messages split by the chats they came from, as a chat list."
+    },
+    "chat.saved_tag_name": {
+      "description": "Name a Saved Messages tag."
+    },
+    "chat.schedule_message": {
+      "description": "Choose when to send a message, with repeat and send-when-online."
+    },
+    "chat.scheduled": {
+      "description": "Scheduled messages of a chat."
+    },
+    "chat.sponsored_info": {
+      "description": "About sponsored messages."
+    },
+    "chat.suggested_post.editor": {
+      "description": "Suggest or change a paid post offer: price and publish time."
+    },
+    "chat.suggested_post.rejection": {
+      "description": "Reject a suggested post, with an optional reason."
+    },
+    "chat.theme": {
+      "description": "Pick a chat theme."
+    },
+    "chat.thread": {
+      "description": "Replies to one message: channel comments, reply threads and forum topics.",
+      "params": [
+        "peer_type"
+      ]
+    },
+    "chat.translation": {
+      "description": "Translate text."
+    },
+    "chat.video_message_recorder": {
+      "description": "Camera recorder for round video messages."
+    },
+    "chat.view_once": {
+      "description": "Viewer for view-once voice messages and round video messages."
+    },
+    "chat.wallpaper": {
+      "description": "Pick a wallpaper for a chat."
+    },
+    "chat_list": {
+      "description": "The main chat list."
+    },
+    "chat_list.archive": {
+      "description": "Archived chats."
+    },
+    "chat_list.downloads": {
+      "description": "Recent and in-progress downloads."
+    },
+    "chat_list.shared_folder_invite": {
+      "description": "Join, update or leave a shared folder: choose which chats to add or remove."
+    },
+    "community": {
+      "description": "A community: its chats and actions."
+    },
+    "community.add_chat": {
+      "description": "Confirm adding a chat to a community and choose whether it is visible."
+    },
+    "community.admins": {
+      "description": "Administrators of a community."
+    },
+    "community.admins.rights": {
+      "description": "A community administrator's rights."
+    },
+    "community.chats": {
+      "description": "Chat list of a community."
+    },
+    "community.creation": {
+      "description": "Create a community from this chat: name and whether the chat is visible."
+    },
+    "community.intro": {
+      "description": "Create a community or add this chat to one."
+    },
+    "community.private_chat": {
+      "description": "An invite-only chat of a community, with a way to message the owner."
+    },
+    "community.removed_users": {
+      "description": "Users removed from a community."
+    },
+    "community.requests": {
+      "description": "Chats that members suggested adding to the community."
+    },
+    "community.settings": {
+      "description": "Change a community's name and photo, who can add chats, its admins, members and chats."
+    },
+    "contacts": {
+      "description": "Contacts list."
+    },
+    "contacts.add": {
+      "description": "Add a new contact: name and phone number."
+    },
+    "contacts.add_known_user": {
+      "description": "Add a user you are chatting with to your contacts."
+    },
+    "create.bot": {
+      "description": "Create a managed bot: name and username."
+    },
+    "create.channel": {
+      "description": "Create a channel: name, description, photo."
+    },
+    "create.channel.intro": {
+      "description": "What channels are, before creating one."
+    },
+    "create.channel.visibility": {
+      "description": "Choose whether a new channel is public or private."
+    },
+    "create.group": {
+      "description": "Create a group: name, photo, members."
+    },
+    "create.group.members": {
+      "description": "Choose members for a new group."
+    },
+    "create.secret_chat": {
+      "description": "Start a secret chat.",
+      "platforms": [
+        "macos",
+        "ios",
+        "android"
+      ]
+    },
+    "export.account": {
+      "description": "Export all your Telegram data."
+    },
+    "export.account.progress": {
+      "description": "Progress of an account data export; can be reopened while it runs."
+    },
+    "export.chat": {
+      "description": "Export the history of one chat."
+    },
+    "export.chat.progress": {
+      "description": "Progress of a chat export; can be reopened while it runs."
+    },
+    "gifts.about": {
+      "description": "What Telegram gifts are."
+    },
+    "gifts.attributes": {
+      "description": "Models, backdrops and symbols of a gift collection."
+    },
+    "gifts.auction": {
+      "description": "A gift auction: schedule, rounds, quantity."
+    },
+    "gifts.auction.about": {
+      "description": "How gift auctions work."
+    },
+    "gifts.auction.acquired": {
+      "description": "Items you won in an auction."
+    },
+    "gifts.auction.bid": {
+      "description": "Bid in a gift auction."
+    },
+    "gifts.auction.custom_bid": {
+      "description": "Enter a custom bid."
+    },
+    "gifts.auction.list": {
+      "description": "Active gift auctions."
+    },
+    "gifts.auction.self_bid": {
+      "description": "Preview the upgraded look of an auction gift and place a bid, early or regular."
+    },
+    "gifts.catalog": {
+      "description": "Pick a gift to send or buy."
+    },
+    "gifts.collection_picker": {
+      "description": "Choose gifts to add to a collection."
+    },
+    "gifts.craft": {
+      "description": "Craft a unique gift from other gifts."
+    },
+    "gifts.craft.about": {
+      "description": "How gift crafting works."
+    },
+    "gifts.craft.picker": {
+      "description": "Choose gifts to use for crafting."
+    },
+    "gifts.gift": {
+      "description": "A received or sent gift: convert, upgrade, show on profile."
+    },
+    "gifts.marketplace": {
+      "description": "Gifts of a collection on sale."
+    },
+    "gifts.offer": {
+      "description": "Offer to buy a unique gift."
+    },
+    "gifts.preview": {
+      "description": "Preview a gift with your message before sending."
+    },
+    "gifts.purchase_message": {
+      "description": "Add a message when buying a resale unique gift for someone else."
+    },
+    "gifts.sale": {
+      "description": "Set a price to sell a unique gift."
+    },
+    "gifts.sold_out": {
+      "description": "A sold-out gift: availability and sale dates."
+    },
+    "gifts.transfer.confirmation": {
+      "description": "Confirm transferring a unique gift to the selected recipient.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "gifts.transfer.recipient": {
+      "description": "Choose a recipient for transferring a unique gift.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "gifts.unique": {
+      "description": "A unique gift: attributes, owner and actions."
+    },
+    "gifts.upgrade": {
+      "description": "Preview and upgrade a gift to a unique one."
+    },
+    "gifts.value": {
+      "description": "Value of a unique gift."
+    },
+    "gifts.wear_preview": {
+      "description": "Try a unique gift on as your emoji status."
+    },
+    "group_call.active": {
+      "description": "A voice chat, video chat, live stream or conference call."
+    },
+    "group_call.conference_invitation": {
+      "description": "Invitation to join a conference call from a call link."
+    },
+    "group_call.display_as": {
+      "description": "Choose to appear as yourself or a channel before starting, scheduling or joining a voice or video chat."
+    },
+    "group_call.invitation": {
+      "description": "Prompt to join a voice or video chat opened from a link."
+    },
+    "group_call.invite_link": {
+      "description": "Link of a new conference call."
+    },
+    "group_call.settings": {
+      "description": "Settings of a group call: identity, devices, permissions, link."
+    },
+    "group_call.share_link": {
+      "description": "Listener link of a running voice chat, video chat or live stream."
+    },
+    "group_call.stream_setup": {
+      "description": "Server URL and key to stream with an external app."
+    },
+    "instant_view": {
+      "description": "An Instant View article."
+    },
+    "link.invite_preview": {
+      "description": "Preview of a chat from an invite link, with Join."
+    },
+    "link.join_request": {
+      "description": "Ask to join a chat that requires approval."
+    },
+    "macos.account_switcher": {
+      "description": "Switch between your logged-in accounts (Cmd+Shift+M).",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "macos.chat_switcher": {
+      "description": "Ctrl+Tab overlay switching between recent chats.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "macos.quick_switcher": {
+      "description": "Search box to jump to any chat (Cmd+K).",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "media_editor.avatar_constructor": {
+      "description": "Build a profile photo from an emoji or sticker on a background."
+    },
+    "media_editor.drawing": {
+      "description": "Draw on a photo."
+    },
+    "media_editor.image": {
+      "description": "Crop, rotate and draw on a photo."
+    },
+    "media_editor.image.cutout": {
+      "description": "Select a photo subject cutout and optionally add an outline.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "media_editor.video": {
+      "description": "Trim and edit an outgoing video before sending.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "media_editor.video.crop": {
+      "description": "Crop and rotate a video inside the video editor.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "media_editor.video.tools": {
+      "description": "Adjust video color and image controls inside the video editor.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "media_editor.video_avatar": {
+      "description": "Trim a video and choose its cover for a profile video."
+    },
+    "media_player.playlist": {
+      "description": "Tracks in the current music queue."
+    },
+    "media_viewer": {
+      "description": "Full-screen photo and video viewer."
+    },
+    "media_viewer.pip": {
+      "description": "Floating picture-in-picture video."
+    },
+    "news": {
+      "description": "Browse recommended or added news feeds. Never include posts, search terms or selected interests.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "passcode.lock": {
+      "description": "Enter the local passcode to unlock the app."
+    },
+    "passport": {
+      "description": "Telegram Passport: share identity data with a service."
+    },
+    "passport.address": {
+      "description": "Passport: residential address and documents."
+    },
+    "passport.email": {
+      "description": "Passport: enter and verify an email."
+    },
+    "passport.identity": {
+      "description": "Passport: identity document and personal details."
+    },
+    "passport.password_recovery": {
+      "description": "Passport: enter the password recovery code."
+    },
+    "passport.password_setup": {
+      "description": "Passport: create a password and recovery email."
+    },
+    "passport.phone": {
+      "description": "Passport: enter a phone number."
+    },
+    "passport.phone_code": {
+      "description": "Passport: enter the phone verification code."
+    },
+    "passport.settings": {
+      "description": "Manage your saved Telegram Passport data, outside of a bot request."
+    },
+    "payments.card": {
+      "description": "Enter new card details."
+    },
+    "payments.checkout": {
+      "description": "Checkout to pay an invoice: a bot's invoice, Stars, a Premium subscription, Premium gifts or giveaways."
+    },
+    "payments.method": {
+      "description": "Pick a payment method."
+    },
+    "payments.receipt": {
+      "description": "Receipt of a payment."
+    },
+    "payments.shipping_info": {
+      "description": "Shipping address and contact details."
+    },
+    "payments.shipping_method": {
+      "description": "Pick a shipping method."
+    },
+    "payments.verification": {
+      "description": "Payment provider's verification page, e.g. 3-D Secure."
+    },
+    "peer_info": {
+      "description": "Profile of a user, bot, group or channel.",
+      "params": [
+        "peer_type"
+      ]
+    },
+    "peer_info.admins": {
+      "description": "Administrators of a group or channel."
+    },
+    "peer_info.admins.bot": {
+      "description": "Add a bot to a group or channel, as an administrator with chosen rights or as a member."
+    },
+    "peer_info.admins.rights": {
+      "description": "An administrator's rights and custom title."
+    },
+    "peer_info.affiliate_program": {
+      "description": "Set up a bot's affiliate program: commission and duration."
+    },
+    "peer_info.boosts": {
+      "description": "Boost level, boosters, boost links and giveaways of a group or channel."
+    },
+    "peer_info.bot_usernames": {
+      "description": "Usernames of a bot."
+    },
+    "peer_info.broadcast_group_intro": {
+      "description": "Convert a large group to a broadcast group."
+    },
+    "peer_info.collectible": {
+      "description": "A collectible username or number sold on Fragment."
+    },
+    "peer_info.color": {
+      "description": "Appearance of a group or channel: colors, emoji and wallpaper."
+    },
+    "peer_info.direct_messages": {
+      "description": "Enable a channel's direct messages and set their price."
+    },
+    "peer_info.discussion": {
+      "description": "Link a discussion group to a channel, or see the linked channel."
+    },
+    "peer_info.discussion.confirmation": {
+      "description": "Confirm linking a discussion group to a channel."
+    },
+    "peer_info.emoji_pack": {
+      "description": "Custom emoji pack of a group."
+    },
+    "peer_info.encryption_key": {
+      "description": "Encryption key of a secret chat."
+    },
+    "peer_info.groups_in_common": {
+      "description": "Groups you share with this user, opened on its own from a chat."
+    },
+    "peer_info.history_visibility": {
+      "description": "Whether new members see earlier chat history."
+    },
+    "peer_info.invite_links": {
+      "description": "Invite links of a group or channel."
+    },
+    "peer_info.invite_links.editor": {
+      "description": "Create or change an invite link: name, expiry, limit, approval, price."
+    },
+    "peer_info.invite_links.link": {
+      "description": "One invite link: creator, fee, people who joined and pending requests."
+    },
+    "peer_info.invite_restricted": {
+      "description": "Users could not be added because of their privacy; send them an invite link."
+    },
+    "peer_info.join_requests": {
+      "description": "Pending requests to join, to approve or dismiss."
+    },
+    "peer_info.manage": {
+      "description": "Change a group's or channel's settings, your contact's details, or a bot you own."
+    },
+    "peer_info.media.archived_stories": {
+      "description": "Archived stories, shown as a tab of your own or a managed group's or channel's profile."
+    },
+    "peer_info.media.files": {
+      "description": "Shared files of a chat."
+    },
+    "peer_info.media.gifs": {
+      "description": "Shared GIFs of a chat."
+    },
+    "peer_info.media.gifts": {
+      "description": "Gifts shown on a profile, with collections."
+    },
+    "peer_info.media.groups_in_common": {
+      "description": "Groups you share with this user."
+    },
+    "peer_info.media.links": {
+      "description": "Shared links of a chat."
+    },
+    "peer_info.media.members": {
+      "description": "Members of a group, shown as a tab of its profile."
+    },
+    "peer_info.media.music": {
+      "description": "Shared music of a chat."
+    },
+    "peer_info.media.photos": {
+      "description": "Shared photos and videos of a chat."
+    },
+    "peer_info.media.polls": {
+      "description": "Polls in a chat."
+    },
+    "peer_info.media.saved": {
+      "description": "Your saved messages from this chat."
+    },
+    "peer_info.media.saved_chats": {
+      "description": "Saved Messages chats, shown as a tab of your Saved Messages shared media."
+    },
+    "peer_info.media.similar_bots": {
+      "description": "Bots similar to this one, shown as a tab of a bot's profile."
+    },
+    "peer_info.media.similar_channels": {
+      "description": "Channels similar to this one, shown as a tab of a channel's profile."
+    },
+    "peer_info.media.stories": {
+      "description": "Stories posted by this user, group or channel, with albums; for a bot, its mini app preview media."
+    },
+    "peer_info.media.voice": {
+      "description": "Shared voice and video messages of a chat."
+    },
+    "peer_info.member": {
+      "description": "One member's role and actions in a group or channel."
+    },
+    "peer_info.members": {
+      "description": "Members or subscribers of a group or channel, as a separate list."
+    },
+    "peer_info.monetization": {
+      "description": "Ad revenue and TON balance of a channel or bot."
+    },
+    "peer_info.monetization.about": {
+      "description": "How channels and bots earn from ads."
+    },
+    "peer_info.permissions": {
+      "description": "What members of a group can do, slow mode, exceptions."
+    },
+    "peer_info.permissions.exception": {
+      "description": "Restrictions for one member and their duration."
+    },
+    "peer_info.photo_suggestion": {
+      "description": "Suggest or set a photo for a contact."
+    },
+    "peer_info.rating": {
+      "description": "Explanation of a user's rating level."
+    },
+    "peer_info.reactions": {
+      "description": "Which reactions are allowed in a group or channel."
+    },
+    "peer_info.recent_actions": {
+      "description": "Admin log of recent actions."
+    },
+    "peer_info.recent_actions.event_types": {
+      "description": "Choose which event types and admins the admin log shows."
+    },
+    "peer_info.removed_users": {
+      "description": "Users removed from a group or channel."
+    },
+    "peer_info.stars_balance": {
+      "description": "Stars earned by you, a channel or a bot."
+    },
+    "peer_info.stars_balance.withdraw": {
+      "description": "Withdraw Stars."
+    },
+    "peer_info.stats": {
+      "description": "Statistics of a group or channel."
+    },
+    "peer_info.sticker_set": {
+      "description": "Sticker set of a group."
+    },
+    "peer_info.topic": {
+      "description": "Info of one forum topic."
+    },
+    "peer_info.topics": {
+      "description": "Enable topics in a group and choose their layout."
+    },
+    "peer_info.visibility": {
+      "description": "Public or private, usernames, invite link, who can write, content protection.",
+      "params": [
+        "peer_type"
+      ]
+    },
+    "peer_info.wallpaper": {
+      "description": "Wallpaper of a group or channel."
+    },
+    "peer_info.welcome_messages": {
+      "description": "Write the welcome messages new users see."
+    },
+    "premium.business": {
+      "description": "Telegram Business and its features, for users without Premium."
+    },
+    "premium.emoji_status": {
+      "description": "Choose an emoji status."
+    },
+    "premium.feature": {
+      "description": "One Premium feature in detail."
+    },
+    "premium.gift": {
+      "description": "Gift Telegram Premium."
+    },
+    "premium.limit": {
+      "description": "A free limit was reached; compare with Premium."
+    },
+    "premium.privacy_upsell": {
+      "description": "See hidden last-seen or read times with Premium."
+    },
+    "premium.promo": {
+      "description": "Telegram Premium and its features."
+    },
+    "report.details": {
+      "description": "Add a comment and send the report."
+    },
+    "report.option": {
+      "description": "Choose a more specific report option."
+    },
+    "report.reason": {
+      "description": "Choose why you are reporting."
+    },
+    "search": {
+      "description": "Global search: chats, messages, channels, apps, media."
+    },
+    "search.ad_info": {
+      "description": "About ads shown in search results and in the media viewer."
+    },
+    "search.hashtag": {
+      "description": "Messages and posts with a hashtag."
+    },
+    "settings": {
+      "description": "Settings home."
+    },
+    "settings.account": {
+      "description": "Your profile: name, bio, username, birthday."
+    },
+    "settings.account.color": {
+      "description": "Your name and profile colors."
+    },
+    "settings.account.personal_channel": {
+      "description": "Choose a channel to show on your profile."
+    },
+    "settings.account.phone_number": {
+      "description": "About changing your phone number."
+    },
+    "settings.account.phone_number.code": {
+      "description": "Enter the code sent to the new phone number."
+    },
+    "settings.account.phone_number.entry": {
+      "description": "Enter the new phone number."
+    },
+    "settings.account.reset_cancellation": {
+      "description": "Cancel a pending account reset."
+    },
+    "settings.account.username": {
+      "description": "Your username and collectible usernames."
+    },
+    "settings.app_update": {
+      "description": "App updates."
+    },
+    "settings.appearance": {
+      "description": "Appearance: themes, colors, text size, wallpaper."
+    },
+    "settings.appearance.accent_color": {
+      "description": "Custom accent or bubble color."
+    },
+    "settings.appearance.auto_night": {
+      "description": "Automatic night mode."
+    },
+    "settings.appearance.theme_creation": {
+      "description": "Create a theme."
+    },
+    "settings.appearance.theme_editor": {
+      "description": "Change a theme's name and link."
+    },
+    "settings.appearance.theme_preview": {
+      "description": "Preview a theme and apply it."
+    },
+    "settings.appearance.wallpaper": {
+      "description": "Pick the app-wide chat wallpaper."
+    },
+    "settings.business": {
+      "description": "Telegram Business settings."
+    },
+    "settings.business.away": {
+      "description": "Away message."
+    },
+    "settings.business.away.messages": {
+      "description": "Write the away messages."
+    },
+    "settings.business.chatbots": {
+      "description": "Connect a bot to answer customer chats."
+    },
+    "settings.business.greeting": {
+      "description": "Greeting message."
+    },
+    "settings.business.greeting.messages": {
+      "description": "Write the greeting messages."
+    },
+    "settings.business.hours": {
+      "description": "Opening hours."
+    },
+    "settings.business.hours.day": {
+      "description": "Opening hours of one weekday."
+    },
+    "settings.business.intro": {
+      "description": "Start page shown in new chats."
+    },
+    "settings.business.links": {
+      "description": "Links to chat."
+    },
+    "settings.business.links.message": {
+      "description": "Write the prefilled message of a link to chat."
+    },
+    "settings.business.links.name": {
+      "description": "Name of a link to chat."
+    },
+    "settings.business.location": {
+      "description": "Business location."
+    },
+    "settings.business.quick_replies": {
+      "description": "Quick replies."
+    },
+    "settings.business.quick_replies.messages": {
+      "description": "Write the messages of a quick reply."
+    },
+    "settings.business.quick_replies.name": {
+      "description": "Name of a quick reply."
+    },
+    "settings.business.timezone": {
+      "description": "Timezone of the opening hours."
+    },
+    "settings.calls": {
+      "description": "Microphone, speaker and camera for calls."
+    },
+    "settings.data_storage": {
+      "description": "Data and storage."
+    },
+    "settings.data_storage.auto_download": {
+      "description": "Auto-download settings for one media type."
+    },
+    "settings.devices": {
+      "description": "Active sessions."
+    },
+    "settings.devices.session": {
+      "description": "One active session."
+    },
+    "settings.devices.websites": {
+      "description": "Websites you logged in to with Telegram."
+    },
+    "settings.folders": {
+      "description": "Chat folders."
+    },
+    "settings.folders.folder": {
+      "description": "Create or change a chat folder."
+    },
+    "settings.folders.icon": {
+      "description": "Pick an icon for a chat folder."
+    },
+    "settings.folders.sharing": {
+      "description": "Invite link and chats of a shared folder."
+    },
+    "settings.folders.sharing.links": {
+      "description": "Invite links of a shared folder."
+    },
+    "settings.general": {
+      "description": "General settings."
+    },
+    "settings.language": {
+      "description": "Interface language and translation."
+    },
+    "settings.language.preview": {
+      "description": "Switch to a language from a link."
+    },
+    "settings.logout": {
+      "description": "Alternatives to logging out, and log out."
+    },
+    "settings.network_usage": {
+      "description": "Network usage."
+    },
+    "settings.notifications": {
+      "description": "Notification settings."
+    },
+    "settings.notifications.sound": {
+      "description": "Pick a notification sound."
+    },
+    "settings.power_saving": {
+      "description": "Power saving."
+    },
+    "settings.privacy": {
+      "description": "Privacy and security."
+    },
+    "settings.privacy.archive": {
+      "description": "Which chats stay archived."
+    },
+    "settings.privacy.auto_delete": {
+      "description": "Default auto-delete timer for new chats."
+    },
+    "settings.privacy.bio": {
+      "description": "Privacy rule: bio."
+    },
+    "settings.privacy.birthday": {
+      "description": "Privacy rule: birthday."
+    },
+    "settings.privacy.blocked": {
+      "description": "Blocked users."
+    },
+    "settings.privacy.calls": {
+      "description": "Privacy rule: calls."
+    },
+    "settings.privacy.exceptions": {
+      "description": "Users always or never allowed by a privacy rule."
+    },
+    "settings.privacy.forwards": {
+      "description": "Privacy rule: forwarded messages."
+    },
+    "settings.privacy.gifts": {
+      "description": "Privacy rule: gifts."
+    },
+    "settings.privacy.groups": {
+      "description": "Privacy rule: invites to groups."
+    },
+    "settings.privacy.last_seen": {
+      "description": "Privacy rule: last seen and online."
+    },
+    "settings.privacy.login_email": {
+      "description": "Set the login email."
+    },
+    "settings.privacy.login_email.code": {
+      "description": "Enter the code sent to the new login email."
+    },
+    "settings.privacy.messages": {
+      "description": "Privacy rule: who can message you."
+    },
+    "settings.privacy.messages.fee_exceptions": {
+      "description": "Users who can message you without paying."
+    },
+    "settings.privacy.passcode": {
+      "description": "Local passcode settings."
+    },
+    "settings.privacy.passcode.setup": {
+      "description": "Set, change or turn off the local passcode."
+    },
+    "settings.privacy.passkeys": {
+      "description": "Passkeys for logging in."
+    },
+    "settings.privacy.phone_number": {
+      "description": "Privacy rule: phone number."
+    },
+    "settings.privacy.profile_photo": {
+      "description": "Privacy rule: profile photo."
+    },
+    "settings.privacy.saved_music": {
+      "description": "Privacy rule: who can see your saved music."
+    },
+    "settings.privacy.two_step": {
+      "description": "Two-step verification: manage the password and recovery email, or turn it on."
+    },
+    "settings.privacy.two_step.password": {
+      "description": "Enter the two-step verification password."
+    },
+    "settings.privacy.two_step.reset": {
+      "description": "Reset the two-step password with an email code."
+    },
+    "settings.privacy.two_step.setup": {
+      "description": "Set up or change the two-step verification password, hint and recovery email."
+    },
+    "settings.privacy.voice_messages": {
+      "description": "Privacy rule: voice messages."
+    },
+    "settings.proxy": {
+      "description": "Proxy list."
+    },
+    "settings.proxy.server": {
+      "description": "Add or change a proxy server."
+    },
+    "settings.quick_reaction": {
+      "description": "Choose the quick reaction."
+    },
+    "settings.search": {
+      "description": "Search results across settings, shown in place of the settings list."
+    },
+    "settings.shortcuts": {
+      "description": "Keyboard shortcuts."
+    },
+    "settings.stickers_emoji": {
+      "description": "Installed sticker sets and sticker options."
+    },
+    "settings.stickers_emoji.archived": {
+      "description": "Archived sticker sets."
+    },
+    "settings.stickers_emoji.custom_emoji": {
+      "description": "Installed custom emoji packs."
+    },
+    "settings.stickers_emoji.trending": {
+      "description": "Trending sticker sets."
+    },
+    "settings.storage_usage": {
+      "description": "Storage usage and cache."
+    },
+    "settings.storage_usage.chat": {
+      "description": "Storage used by one chat."
+    },
+    "settings.storage_usage.exceptions": {
+      "description": "Per-chat exceptions to how long media is kept."
+    },
+    "share.extension": {
+      "description": "Share from another app: pick chats and add a comment."
+    },
+    "share.extension_logged_out": {
+      "description": "Share extension opened while logged out: asks you to open Telegram and log in."
+    },
+    "share.peer_picker": {
+      "description": "Pick chats to forward or share to, with a comment."
+    },
+    "stars.about": {
+      "description": "What Stars are."
+    },
+    "stars.app_examples": {
+      "description": "Mini apps that accept Stars."
+    },
+    "stars.balance": {
+      "description": "Your Stars balance, top-up options and history."
+    },
+    "stars.gift": {
+      "description": "Gift Stars to a contact: pick an amount."
+    },
+    "stars.payment": {
+      "description": "Pay Stars for an item, subscription or media."
+    },
+    "stars.purchase": {
+      "description": "Buy Stars."
+    },
+    "stars.reaction": {
+      "description": "Send a paid Star reaction."
+    },
+    "stars.subscription": {
+      "description": "A Stars subscription."
+    },
+    "stars.transaction": {
+      "description": "A Stars transaction."
+    },
+    "stickers.set": {
+      "description": "Preview a sticker or emoji pack and add it."
+    },
+    "stickers.set.title": {
+      "description": "Name a new sticker pack or rename an existing one. Never include the entered title.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "stories.album_picker": {
+      "description": "Choose stories to add to an album."
+    },
+    "stories.archive": {
+      "description": "Archived stories of you, or of a group or channel you manage."
+    },
+    "stories.live": {
+      "description": "Watch a live stream posted as a story, with comments and paid Star messages."
+    },
+    "stories.live.star_message": {
+      "description": "Highlight and pin a paid message in a live stream."
+    },
+    "stories.live.stars": {
+      "description": "Send Stars to a live stream, with a preview of the paid message."
+    },
+    "stories.post": {
+      "description": "Repost a story or post one shared by a mini app: preview, caption, privacy."
+    },
+    "stories.privacy": {
+      "description": "Who can see a story."
+    },
+    "stories.search_results": {
+      "description": "Stories found by hashtag or location."
+    },
+    "stories.stats": {
+      "description": "Statistics of a story."
+    },
+    "stories.stealth_mode": {
+      "description": "Hide your story views (Premium)."
+    },
+    "stories.viewer": {
+      "description": "Full-screen story viewer."
+    },
+    "stories.viewers": {
+      "description": "Who viewed and reacted to your story."
+    },
+    "system.file_picker": {
+      "description": "The system file chooser (attach or insert files and media)."
+    },
+    "system.file_save": {
+      "description": "The system save dialog (save a file as)."
+    },
+    "system.folder_picker": {
+      "description": "The system folder chooser (download or export folder)."
+    },
+    "system.photo_picker": {
+      "description": "The system picture chooser (pick or take a photo)."
+    },
+    "ton.add_funds": {
+      "description": "How to add TON to your balance."
+    },
+    "ton.balance": {
+      "description": "Your TON balance and history."
+    },
+    "wallet": {
+      "description": "Wallet home: balance, send, receive, transactions."
+    },
+    "wallet.authorize": {
+      "description": "Unlock the wallet with a passcode or Touch ID."
+    },
+    "wallet.backup": {
+      "description": "Turn on wallet backup."
+    },
+    "wallet.collectible": {
+      "description": "A collectible in the wallet."
+    },
+    "wallet.collectible.confirmation": {
+      "description": "Confirm sending a collectible."
+    },
+    "wallet.collectible.recipient": {
+      "description": "Choose who to send a collectible to."
+    },
+    "wallet.connected_app": {
+      "description": "One connected app."
+    },
+    "wallet.connected_apps": {
+      "description": "Apps connected to the wallet."
+    },
+    "wallet.info": {
+      "description": "Wallet explanations and onboarding."
+    },
+    "wallet.password": {
+      "description": "Enter the Telegram password to authorize a wallet operation."
+    },
+    "wallet.peer_balance": {
+      "description": "View a peer's wallet card and open a transfer. Never include the balance, address or peer identity.",
+      "platforms": [
+        "macos"
+      ]
+    },
+    "wallet.protection": {
+      "description": "Protect the wallet with a passcode or Touch ID."
+    },
+    "wallet.receive": {
+      "description": "Receive funds: address and QR."
+    },
+    "wallet.recovery_phrase": {
+      "description": "Your secret recovery phrase."
+    },
+    "wallet.recovery_phrase.entry": {
+      "description": "Enter a secret recovery phrase."
+    },
+    "wallet.recovery_phrase.verify": {
+      "description": "Check that you saved the recovery phrase by entering some of its words."
+    },
+    "wallet.recovery_phrase.warning": {
+      "description": "Security warning before showing the recovery phrase."
+    },
+    "wallet.replace": {
+      "description": "Replace the wallet with another one."
+    },
+    "wallet.settings": {
+      "description": "Wallet keys and backup."
+    },
+    "wallet.ton_connect.confirmation": {
+      "description": "Confirm an app's transaction."
+    },
+    "wallet.ton_connect.connect": {
+      "description": "An app asks to connect to the wallet."
+    },
+    "wallet.ton_connect.operation": {
+      "description": "An app asks to send a transfer."
+    },
+    "wallet.ton_connect.sign_data": {
+      "description": "An app asks to sign data."
+    },
+    "wallet.transaction": {
+      "description": "A wallet transaction."
+    },
+    "wallet.transfer": {
+      "description": "Send funds: amount."
+    },
+    "wallet.transfer.comment": {
+      "description": "Comment for a transfer."
+    },
+    "wallet.transfer.confirmation": {
+      "description": "Confirm a transfer."
+    },
+    "wallet.transfer.recipient": {
+      "description": "Choose who to send funds to."
+    }
+  },
+  "menus": {
+    "chat_list.item": {
+      "items": [
+        "pin",
+        "unpin",
+        "mute",
+        "unmute",
+        "archive",
+        "unarchive",
+        "mark_read",
+        "mark_unread",
+        "add_to_folder",
+        "clear_history",
+        "delete"
+      ]
+    },
+    "chat.message": {
+      "items": [
+        "reply",
+        "forward",
+        "copy",
+        "copy_link",
+        "edit",
+        "delete",
+        "pin",
+        "unpin",
+        "select",
+        "save",
+        "translate",
+        "report",
+        "react",
+        "read_by"
+      ]
+    },
+    "chat.header": {
+      "items": [
+        "search",
+        "mute",
+        "unmute",
+        "call",
+        "video_call",
+        "clear_history",
+        "delete",
+        "report",
+        "add_to_folder",
+        "peer_info"
+      ]
+    },
+    "peer_info.more": {
+      "items": [
+        "share",
+        "block",
+        "unblock",
+        "report",
+        "leave",
+        "delete",
+        "stats",
+        "boosts",
+        "edit"
+      ]
+    }
+  },
+  "settings": {
+    "notifications.private_chats": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "notifications.groups": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "notifications.channels": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "notifications.sound": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "appearance.theme_mode": {
+      "values": [
+        "light",
+        "dark",
+        "system"
+      ]
+    },
+    "privacy.last_seen": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.phone_number": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.profile_photo": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.forwards": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.calls": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.groups": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.voice_messages": {
+      "values": [
+        "everybody",
+        "contacts",
+        "nobody"
+      ]
+    },
+    "privacy.passcode": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "privacy.two_step": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "data.autoplay_gifs": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "data.autoplay_videos": {
+      "values": [
+        "enabled",
+        "disabled"
+      ]
+    },
+    "chat.send_with": {
+      "values": [
+        "enter",
+        "cmd_enter"
+      ],
+      "platforms": [
+        "macos",
+        "tdesktop",
+        "web"
+      ]
+    }
+  },
+  "flow_outcomes": {
+    "success": "The user finished the task (saved, created, sent)",
+    "cancelled": "The user explicitly cancelled or discarded changes",
+    "abandoned": "The screen was closed without finishing or cancelling",
+    "fail": "The task ended with an error",
+    "interrupted": "The app quit or crashed during the flow; sent on the next launch"
+  },
+  "flows": {
+    "chat.media_edit": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "A media replacement task inside an existing message edit. Preserve the first acquisition route and bounded later replacements. Local draft application is not success; success requires an applied edit result. Unconfirmed results, stale sessions and privacy revocation discard silently. No message identifiers, paths or media content are collected.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "paste",
+        "drop",
+        "open_picker",
+        "attach",
+        "open_editor",
+        "supersede_replacement",
+        "apply_replacement",
+        "cancel_selection",
+        "cancel_editor",
+        "blocked",
+        "retry",
+        "submit",
+        "cancel_submission",
+        "supersede_submission",
+        "applied",
+        "rejected",
+        "cancel"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "clipboard",
+            "drop_target",
+            "replacement_picker",
+            "attachment",
+            "photo_editor"
+          ],
+          "required": true
+        },
+        "media_mode": {
+          "type": "enum",
+          "values": [
+            "media",
+            "file"
+          ],
+          "required": true
+        },
+        "replacement_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_3",
+            "4_plus"
+          ],
+          "required": true
+        },
+        "retry_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_3",
+            "4_plus"
+          ],
+          "required": true
+        },
+        "scheduled": {
+          "type": "bool"
+        },
+        "last_blocker": {
+          "type": "enum",
+          "values": [
+            "preparation",
+            "caption_limit",
+            "permission",
+            "request_failed",
+            "size_limit",
+            "file_unavailable",
+            "empty_selection"
+          ]
+        }
+      }
+    },
+    "chat.share": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "One deliberate share task from an audited source route through optional source lookup and recipient picker. Success means every requested part was locally accepted, never remote delivery. Unknown acceptance is distinct from rejection; cancellation means observed picker closure, not proof that an in-flight send was undone. Observed picker blockers retain only the last categorical reason; retries after blockers or explicit payment cancellation use capped buckets. Unknown payment dismissal, teardown, superseded submissions and privacy revocation discard silently. No message, contact, chat or recipient identifiers, prices or content are collected.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "request",
+        "source_ready",
+        "source_unavailable",
+        "open_picker",
+        "blocked",
+        "retry",
+        "open_payment_confirmation",
+        "confirm_payment",
+        "cancel_payment_confirmation",
+        "open_top_up",
+        "submit",
+        "accepted",
+        "partially_accepted",
+        "rejected",
+        "acceptance_unknown",
+        "cancel"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "message_action",
+            "album_action",
+            "profile_contact",
+            "gallery_selection",
+            "gallery_group"
+          ],
+          "required": true
+        },
+        "retry_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_3",
+            "4_plus"
+          ],
+          "required": true
+        },
+        "last_blocker": {
+          "type": "enum",
+          "values": [
+            "premium_required",
+            "slow_mode_wait",
+            "slow_mode_comment",
+            "pending_messages",
+            "insufficient_balance"
+          ]
+        },
+        "result": {
+          "type": "enum",
+          "values": [
+            "accepted",
+            "partially_accepted",
+            "rejected",
+            "acceptance_unknown",
+            "source_unavailable"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "chat.forward_picker": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "One forwarding task from an explicit client route. Selected-message actions can include source lookup, identified by source_lookup; other routes begin at picker construction with available messages. An observed empty source lookup fails before opening a picker. Report-mode actions are excluded. Legacy handoffs can discard the source phase and begin a separate picker-only observation, so compare source_lookup strata separately. Search usage is a Boolean, with at most one search step; navigation records requested forum/community openings and return actions, not successful loading. Draft preparation, destination readiness and local enqueue acceptance are distinct; none proves remote delivery. Explicit closure records a cancellation request, not reversal of accepted content. Premium and poll restrictions or operational errors permit bounded retry observation. Unknown teardown and privacy revocation discard silently. No identifiers, message content, comments, queries or raw errors are collected. Optional client routes are not proof of human intent.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "lookup_source",
+        "source_ready",
+        "open_picker",
+        "search",
+        "open_forum",
+        "open_community",
+        "back",
+        "choose_chat",
+        "choose_topic",
+        "blocked",
+        "retry",
+        "draft_prepared",
+        "destination_ready",
+        "accepted",
+        "partially_accepted",
+        "rejected",
+        "acceptance_unknown",
+        "source_unavailable",
+        "target_unavailable",
+        "cancel"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "message_selection",
+            "message_menu",
+            "more_menu",
+            "replacement_menu",
+            "row_action"
+          ],
+          "required": true
+        },
+        "destination": {
+          "type": "enum",
+          "values": [
+            "chat",
+            "topic"
+          ]
+        },
+        "search_used": {
+          "type": "bool",
+          "required": true
+        },
+        "source_lookup": {
+          "type": "bool",
+          "required": true
+        },
+        "source_coverage": {
+          "type": "enum",
+          "values": [
+            "complete",
+            "partial",
+            "unexpected"
+          ]
+        },
+        "activation": {
+          "type": "enum",
+          "values": [
+            "row_action",
+            "return_key",
+            "number_shortcut",
+            "saved_messages_shortcut",
+            "send_button",
+            "send_menu"
+          ]
+        },
+        "retry_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_3",
+            "4_plus"
+          ],
+          "required": true
+        },
+        "last_blocker": {
+          "type": "enum",
+          "values": [
+            "premium_required",
+            "poll_restriction",
+            "operation_failed"
+          ]
+        },
+        "result": {
+          "type": "enum",
+          "values": [
+            "draft_prepared",
+            "destination_ready",
+            "accepted",
+            "partially_accepted",
+            "rejected",
+            "acceptance_unknown",
+            "source_unavailable",
+            "target_unavailable"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "chat.quick_forward": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "A chosen quick-forward target from a message menu. Menu construction is not intent. A directly updated draft in an existing chat, readiness of a new/topic destination with a queued initial action, and local enqueue acceptance in Saved Messages are distinct. Readiness does not prove draft application, and none proves remote delivery. Metadata failure, restrictions and unknown acceptance remain separate. Supersession, teardown and missing callbacks discard silently. No message, peer, topic or menu-title data are collected, and client actions do not prove human intent.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "request",
+        "draft_prepared",
+        "destination_ready",
+        "accepted",
+        "partially_accepted",
+        "rejected",
+        "acceptance_unknown",
+        "source_unavailable",
+        "target_unavailable",
+        "restricted",
+        "completion_unknown",
+        "operation_failed"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "direct_target",
+            "topic_target"
+          ],
+          "required": true
+        },
+        "result": {
+          "type": "enum",
+          "values": [
+            "draft_prepared",
+            "destination_ready",
+            "accepted",
+            "partially_accepted",
+            "rejected",
+            "acceptance_unknown",
+            "source_unavailable",
+            "target_unavailable",
+            "restricted",
+            "completion_unknown",
+            "operation_failed"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "peer_info.share_own_contact": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "An explicit profile action to share the signed-in user's contact with that profile peer, through metadata, confirmation and local enqueue. Distinct from choosing destinations in a contact picker. Cancellation requires an explicit dialog callback; unexplained dismissal, replacement and owner loss discard silently. Missing metadata is distinct from rejected or unknown local acceptance. No names, phone numbers, contact data or peer identifiers are collected. This client action does not prove human intent.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "request",
+        "target_ready",
+        "target_unavailable",
+        "open_confirmation",
+        "confirm",
+        "cancel",
+        "source_ready",
+        "source_unavailable",
+        "submit",
+        "accepted",
+        "rejected",
+        "acceptance_unknown"
+      ],
+      "params": {
+        "result": {
+          "type": "enum",
+          "values": [
+            "target_unavailable",
+            "source_unavailable",
+            "accepted",
+            "rejected",
+            "acceptance_unknown"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "bot.prepared_share": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "One mini-app prepared-message request from metadata lookup through preview and recipient picker. The request may be automated and does not prove human intent. Success means observed local enqueue acceptance, never delivery. Typed picker results distinguish cancellation, rejection, partial local acceptance and unknown acceptance. Legacy Boolean callbacks retain not_accepted when they cannot distinguish these. Explicit preview cancellation is separate. Missing callbacks, page replacement, teardown and privacy revocation discard silently. No bot, message, recipient or request identifiers are collected.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "request",
+        "metadata_ready",
+        "open_preview",
+        "open_picker",
+        "accepted",
+        "partially_accepted",
+        "rejected",
+        "acceptance_unknown",
+        "not_accepted",
+        "metadata_unavailable",
+        "cancel_preview",
+        "cancel_picker"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "mini_app_request"
+          ],
+          "required": true
+        },
+        "result": {
+          "type": "enum",
+          "values": [
+            "accepted",
+            "partially_accepted",
+            "rejected",
+            "acceptance_unknown",
+            "not_accepted",
+            "metadata_unavailable"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "stickers.edit": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "One deliberate sticker creation or pack-edit task, preserving acquisition and recovery before the observed result. A send succeeds only on local enqueue acceptance. Missing callbacks and privacy revocation discard silently; no content, titles, emoji or pack identifiers are collected.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "attempt",
+        "open_image_picker",
+        "image_selected",
+        "open_editor",
+        "apply_editor",
+        "prepared",
+        "open_sticker_picker",
+        "sticker_selected",
+        "choose_destination",
+        "open_name",
+        "accept_name",
+        "cancel_name",
+        "blocked",
+        "retry",
+        "prepare_send",
+        "open_schedule",
+        "cancel_schedule",
+        "open_confirmation",
+        "cancel_confirmation",
+        "submit",
+        "accepted",
+        "rejected",
+        "cancel"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "composer_create",
+            "pack_add_image",
+            "pack_add_existing",
+            "pack_replace",
+            "pack_rename"
+          ],
+          "required": true
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        },
+        "destination": {
+          "type": "enum",
+          "values": [
+            "send",
+            "favorites",
+            "new_pack",
+            "existing_pack",
+            "replacement",
+            "rename"
+          ]
+        },
+        "image_mode": {
+          "type": "enum",
+          "values": [
+            "cutout",
+            "whole_image"
+          ]
+        },
+        "retry_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_3",
+            "4_plus"
+          ],
+          "required": true
+        },
+        "scheduled": {
+          "type": "bool"
+        },
+        "silent": {
+          "type": "bool"
+        },
+        "last_blocker": {
+          "type": "enum",
+          "values": [
+            "image_unreadable",
+            "preparation",
+            "empty_name",
+            "pack_limit",
+            "favorites_limit",
+            "request_failed",
+            "chat_permission",
+            "slow_mode",
+            "payment_required",
+            "enqueue_rejected"
+          ]
+        }
+      }
+    },
+    "chat.recording": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "One deliberate recording attempt including review and transcription. Success is an observed media/text enqueue or text insertion into a draft, distinguished by result. Missing callbacks and privacy revocation discard silently.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "attempt",
+        "permission_granted",
+        "permission_denied",
+        "start",
+        "lock",
+        "pause",
+        "review",
+        "trim",
+        "resume",
+        "one_time_on",
+        "one_time_off",
+        "open_confirmation",
+        "cancel_confirmation",
+        "open_schedule",
+        "cancel_schedule",
+        "blocked",
+        "transcribe",
+        "prepare_submission",
+        "submit",
+        "accepted",
+        "partially_accepted",
+        "rejected",
+        "draft_inserted",
+        "cancel"
+      ],
+      "params": {
+        "recording_kind": {
+          "type": "enum",
+          "values": [
+            "voice",
+            "video"
+          ],
+          "required": true
+        },
+        "surface": {
+          "type": "enum",
+          "values": [
+            "chat",
+            "story_reply"
+          ],
+          "required": true
+        },
+        "initial_mode": {
+          "type": "enum",
+          "values": [
+            "hold",
+            "locked"
+          ],
+          "required": true
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        },
+        "submit_via": {
+          "type": "enum",
+          "values": [
+            "release",
+            "send_control",
+            "keyboard",
+            "duration_limit",
+            "unknown"
+          ]
+        },
+        "scheduled": {
+          "type": "bool"
+        },
+        "one_time": {
+          "type": "bool"
+        },
+        "last_blocker": {
+          "type": "enum",
+          "values": [
+            "permission",
+            "chat_permission",
+            "slow_mode",
+            "preparation",
+            "enqueue_rejected"
+          ]
+        },
+        "result": {
+          "type": "enum",
+          "values": [
+            "media_accepted",
+            "text_accepted",
+            "text_partially_accepted",
+            "draft_inserted",
+            "rejected"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "chat.media_compose": {
+      "since": 1,
+      "platforms": [
+        "macos"
+      ],
+      "description": "One media task from acquisition to explicit dismissal or acknowledged local enqueue. Success means every submission part was locally accepted, never remote delivery. Missing results and privacy revocation discard the task silently. Add-paste/drop unchanged steps describe nonempty preview additions whose normalized selection did not change; they do not imply a send failure or retry.",
+      "timing_resolution_ms": 1000,
+      "steps": [
+        "acquire",
+        "acquired",
+        "prepare",
+        "preview",
+        "add_paste",
+        "add_drop",
+        "add_picker",
+        "add_paste_unchanged",
+        "add_drop_unchanged",
+        "remove_media",
+        "reorder_media",
+        "open_cover_picker",
+        "cancel_cover_picker",
+        "apply_cover",
+        "remove_cover",
+        "open_price",
+        "apply_price",
+        "cancel_price",
+        "remove_price",
+        "open_effect_premium",
+        "open_editor",
+        "apply_editor",
+        "cancel_editor",
+        "select_media",
+        "select_file",
+        "select_archive",
+        "select_grouped",
+        "select_ungrouped",
+        "toggle_spoiler",
+        "open_schedule",
+        "cancel_schedule",
+        "open_confirmation",
+        "cancel_confirmation",
+        "blocked",
+        "retry",
+        "submit",
+        "accepted",
+        "partially_accepted",
+        "rejected",
+        "cancel",
+        "close"
+      ],
+      "params": {
+        "entry_point": {
+          "type": "enum",
+          "values": [
+            "attach_file",
+            "attach_photo_video",
+            "image_picker",
+            "clipboard",
+            "drop_target",
+            "unknown"
+          ],
+          "required": true
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        },
+        "media_mode": {
+          "type": "enum",
+          "values": [
+            "media",
+            "file",
+            "archive",
+            "mixed"
+          ],
+          "required": true
+        },
+        "attachment_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_5",
+            "6_20",
+            "21_100",
+            "101_plus"
+          ],
+          "required": true
+        },
+        "submit_via": {
+          "type": "enum",
+          "values": [
+            "send_control",
+            "enter",
+            "cmd_enter",
+            "send_menu",
+            "direct",
+            "unknown"
+          ]
+        },
+        "scheduled": {
+          "type": "bool"
+        },
+        "silent": {
+          "type": "bool"
+        },
+        "last_blocker": {
+          "type": "enum",
+          "values": [
+            "empty_selection",
+            "size_limit",
+            "unsupported_format",
+            "permission",
+            "preparation",
+            "slow_mode",
+            "caption_limit",
+            "missing_files",
+            "file_unavailable",
+            "enqueue_rejected"
+          ]
+        },
+        "retry_count": {
+          "type": "bucket",
+          "values": [
+            "0",
+            "1",
+            "2_3",
+            "4_plus"
+          ],
+          "required": true
+        },
+        "submission_result": {
+          "type": "enum",
+          "values": [
+            "accepted",
+            "partially_accepted",
+            "rejected"
+          ],
+          "outcomes": [
+            "success",
+            "fail"
+          ]
+        }
+      }
+    },
+    "peer_info.manage": {
+      "description": "Editing a group or channel from its edit screen, until it is saved or closed.",
+      "screen": "peer_info.manage",
+      "steps": [
+        "change_photo",
+        "remove_photo",
+        "change_title",
+        "change_description",
+        "change_type",
+        "change_username",
+        "toggle_sign_messages",
+        "toggle_history_visible",
+        "toggle_forum",
+        "toggle_join_requests",
+        "open_permissions",
+        "open_admins",
+        "open_members",
+        "open_invite_links",
+        "open_reactions",
+        "open_slow_mode",
+        "open_linked_chat",
+        "open_color",
+        "open_stickers",
+        "delete"
+      ],
+      "params": {}
+    },
+    "peer_info.visibility": {
+      "description": "Changing whether a group or channel is public or private, its usernames, links, who can write and content protection; from opening the screen until Done succeeds or the screen is closed.",
+      "screen": "peer_info.visibility",
+      "steps": [
+        "select_public",
+        "select_private",
+        "edit_username",
+        "username_available",
+        "username_purchase_available",
+        "username_taken",
+        "username_invalid",
+        "revoke_other_public_link",
+        "toggle_extra_username",
+        "reorder_usernames",
+        "copy_link",
+        "share_link",
+        "open_link",
+        "revoke_link",
+        "manage_links",
+        "set_write_everyone",
+        "set_write_members",
+        "toggle_approve_members",
+        "toggle_restrict_forwarding",
+        "save",
+        "save_failed_limit",
+        "save_failed"
+      ],
+      "params": {
+        "peer_type": {
+          "type": "enum",
+          "values": [
+            "channel",
+            "group"
+          ],
+          "description": "channel or group.",
+          "ref": "peer_type"
+        },
+        "entry": {
+          "type": "enum",
+          "values": [
+            "create",
+            "edit"
+          ]
+        },
+        "initial": {
+          "type": "enum",
+          "values": [
+            "public",
+            "private"
+          ]
+        },
+        "result": {
+          "type": "enum",
+          "values": [
+            "public",
+            "private"
+          ],
+          "description": "Only with outcome success.",
+          "outcomes": [
+            "success"
+          ]
+        }
+      }
+    },
+    "create.group": {
+      "description": "Creating a group, from opening the screen until the group exists or the user gives up.",
+      "screen": "create.group",
+      "steps": [
+        "add_member",
+        "remove_member",
+        "search_members",
+        "change_title",
+        "change_photo",
+        "set_auto_delete"
+      ],
+      "params": {}
+    },
+    "settings.privacy.rule": {
+      "description": "Changing one privacy rule (last seen, phone number, etc.), from opening its settings.privacy.<rule> screen until it is closed.",
+      "steps": [
+        "select_everybody",
+        "select_contacts",
+        "select_nobody",
+        "open_always_allow",
+        "open_never_allow",
+        "add_exception",
+        "remove_exception"
+      ],
+      "params": {
+        "rule": {
+          "type": "enum",
+          "values": [
+            "last_seen",
+            "phone_number",
+            "profile_photo",
+            "forwards",
+            "calls",
+            "groups",
+            "voice_messages",
+            "messages",
+            "bio",
+            "birthday",
+            "gifts"
+          ]
+        }
+      }
+    }
+  },
+  "events": {
+    "app.launch": {
+      "description": "The app finished launching and showed its first screen.",
+      "params": {
+        "start": {
+          "type": "enum",
+          "values": [
+            "cold",
+            "warm"
+          ]
+        },
+        "duration_ms": {
+          "type": "ms",
+          "ref": "duration_ms"
+        }
+      }
+    },
+    "app.foreground": {
+      "description": "The app became active. Starts a new session_id.",
+      "params": {}
+    },
+    "app.background": {
+      "description": "The app stopped being active.",
+      "params": {
+        "duration_ms": {
+          "type": "ms",
+          "description": "Time since the matching app.foreground.",
+          "ref": "duration_ms"
+        }
+      }
+    },
+    "screen.show": {
+      "description": "A screen became visible. Sent automatically by the navigation layer.",
+      "params": {
+        "screen": {
+          "type": "screen_id",
+          "description": "Id from `screens`.",
+          "required": true,
+          "ref": "screen"
+        },
+        "source": {
+          "type": "screen_id",
+          "description": "The screen that was visible before. Filled in automatically by the analytics layer.",
+          "ref": "source"
+        },
+        "peer_type": {
+          "type": "enum",
+          "values": [
+            "user",
+            "bot",
+            "group",
+            "channel",
+            "forum",
+            "saved_messages",
+            "secret_chat"
+          ],
+          "description": "Only for screens that list peer_type.",
+          "ref": "peer_type"
+        }
+      }
+    },
+    "screen.hide": {
+      "description": "A screen stopped being visible.",
+      "params": {
+        "screen": {
+          "type": "screen_id",
+          "description": "Id from `screens`.",
+          "required": true,
+          "ref": "screen"
+        },
+        "duration_ms": {
+          "type": "ms",
+          "ref": "duration_ms"
+        }
+      }
+    },
+    "menu.open": {
+      "description": "A context or action menu was opened.",
+      "params": {
+        "menu": {
+          "type": "menu_id",
+          "description": "Id from `menus`.",
+          "required": true,
+          "ref": "menu"
+        },
+        "screen": {
+          "type": "screen_id",
+          "description": "Id from `screens`.",
+          "ref": "screen"
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        }
+      }
+    },
+    "menu.select": {
+      "description": "An item in a menu was chosen.",
+      "params": {
+        "menu": {
+          "type": "menu_id",
+          "description": "Id from `menus`.",
+          "required": true,
+          "ref": "menu"
+        },
+        "item": {
+          "type": "menu_item",
+          "description": "Item id from the `items` of the menu in `menu`.",
+          "required": true,
+          "ref": "item"
+        },
+        "screen": {
+          "type": "screen_id",
+          "description": "Id from `screens`.",
+          "ref": "screen"
+        }
+      }
+    },
+    "flow.end": {
+      "description": "One finished journey through a flow from `flows`. Steps are collected locally while the flow runs and sent once, when it ends.\n",
+      "params": {
+        "flow": {
+          "type": "flow_id",
+          "required": true
+        },
+        "outcome": {
+          "type": "flow_outcome",
+          "required": true
+        },
+        "steps": {
+          "type": "step_list",
+          "description": "Up to 50 steps in order, as [step_id, ms_since_flow_start] pairs, e.g. [[\"change_title\", 2100], [\"open_permissions\", 5400]]. Steps are ids from the flow's `steps`; never values.\n",
+          "required": true
+        },
+        "step_count": {
+          "type": "int",
+          "description": "Total steps, including any dropped past the 50 cap.",
+          "required": true
+        },
+        "duration_ms": {
+          "type": "ms",
+          "required": true,
+          "ref": "duration_ms"
+        },
+        "source": {
+          "type": "screen_id",
+          "description": "The screen that was visible before. Filled in automatically by the analytics layer.",
+          "ref": "source"
+        }
+      }
+    },
+    "chat_list.folder.select": {
+      "description": "The user switched the chat list to another folder.",
+      "params": {
+        "folder_kind": {
+          "type": "enum",
+          "values": [
+            "all_chats",
+            "custom"
+          ]
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        }
+      }
+    },
+    "chat.message.send": {
+      "description": "The user's submission was fully accepted into the local outgoing queue. This does not prove server delivery. Albums count as one event.",
+      "params": {
+        "kind": {
+          "type": "enum",
+          "values": [
+            "text",
+            "photo",
+            "video",
+            "album",
+            "file",
+            "music",
+            "voice",
+            "video_message",
+            "sticker",
+            "gif",
+            "poll",
+            "checklist",
+            "location",
+            "live_location",
+            "contact",
+            "dice"
+          ],
+          "required": true,
+          "ref": "message_kind"
+        },
+        "peer_type": {
+          "type": "enum",
+          "values": [
+            "user",
+            "bot",
+            "group",
+            "channel",
+            "forum",
+            "saved_messages",
+            "secret_chat"
+          ],
+          "ref": "peer_type"
+        },
+        "has_reply": {
+          "type": "bool"
+        },
+        "scheduled": {
+          "type": "bool"
+        },
+        "silent": {
+          "type": "bool"
+        }
+      }
+    },
+    "chat.message.forward": {
+      "description": "The user forwarded messages.",
+      "params": {
+        "count": {
+          "type": "bucket",
+          "values": [
+            "1",
+            "2_5",
+            "6_20",
+            "21_100",
+            "101_plus"
+          ],
+          "description": "Number of messages.",
+          "ref": "count"
+        },
+        "target_count": {
+          "type": "bucket",
+          "values": [
+            "1",
+            "2_5",
+            "6_20",
+            "21_100",
+            "101_plus"
+          ],
+          "description": "Number of chats forwarded to.",
+          "ref": "count"
+        }
+      }
+    },
+    "chat.message.edit": {
+      "params": {
+        "kind": {
+          "type": "enum",
+          "values": [
+            "text",
+            "photo",
+            "video",
+            "album",
+            "file",
+            "music",
+            "voice",
+            "video_message",
+            "sticker",
+            "gif",
+            "poll",
+            "checklist",
+            "location",
+            "live_location",
+            "contact",
+            "dice"
+          ],
+          "ref": "message_kind"
+        }
+      }
+    },
+    "chat.message.delete": {
+      "params": {
+        "count": {
+          "type": "bucket",
+          "values": [
+            "1",
+            "2_5",
+            "6_20",
+            "21_100",
+            "101_plus"
+          ],
+          "ref": "count"
+        },
+        "for_everyone": {
+          "type": "bool"
+        }
+      }
+    },
+    "chat.message.react": {
+      "params": {
+        "reaction_kind": {
+          "type": "enum",
+          "values": [
+            "emoji",
+            "custom_emoji",
+            "paid"
+          ]
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        }
+      }
+    },
+    "chat.message.translate": {
+      "params": {}
+    },
+    "chat.attach.open": {
+      "description": "The attachment picker was opened, however the platform presents it.",
+      "params": {
+        "peer_type": {
+          "type": "enum",
+          "values": [
+            "user",
+            "bot",
+            "group",
+            "channel",
+            "forum",
+            "saved_messages",
+            "secret_chat"
+          ],
+          "ref": "peer_type"
+        },
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        }
+      }
+    },
+    "chat.attach.select": {
+      "params": {
+        "kind": {
+          "type": "enum",
+          "values": [
+            "photo_video",
+            "camera",
+            "file",
+            "location",
+            "poll",
+            "checklist",
+            "contact",
+            "gift",
+            "mini_app"
+          ]
+        }
+      }
+    },
+    "chat.search.open": {
+      "description": "Search inside a chat was opened.",
+      "params": {
+        "via": {
+          "type": "enum",
+          "values": [
+            "click",
+            "tap",
+            "right_click",
+            "long_press",
+            "shortcut",
+            "swipe",
+            "drag_drop",
+            "other"
+          ],
+          "description": "How the user triggered the action.",
+          "ref": "via"
+        }
+      }
+    },
+    "search.result.select": {
+      "description": "The user opened a result from global search.",
+      "params": {
+        "result_kind": {
+          "type": "enum",
+          "values": [
+            "recent",
+            "chat",
+            "message",
+            "media",
+            "link",
+            "file",
+            "music",
+            "voice",
+            "global_peer",
+            "global_post"
+          ]
+        }
+      }
+    },
+    "chat.saved_tag.edit.select": {
+      "description": "An eligible Saved Messages tag edit command was selected from a message reaction menu, a search-tag menu or an accessibility action. This is intent, not editor readiness, local persistence or server success. No label, reaction, custom emoji or message identifiers. Menu creation, rendering, input changes and save feedback are not edit selections. The accessibility entry describes the invoked API, not a user's identity or abilities.\n",
+      "params": {
+        "entry": {
+          "type": "enum",
+          "values": [
+            "reaction_menu",
+            "search_tag_menu",
+            "accessibility"
+          ],
+          "required": true
+        }
+      }
+    },
+    "peer_info.recommendation.select": {
+      "description": "An eligible channel or bot recommendation-list callback selected a peer or the Premium entry. This is intent, not chat readiness, joining, starting a bot or purchasing. No peer identifiers, recommendation contents, ranking or input modality. Rendering and refreshes are not selections.\n",
+      "params": {
+        "kind": {
+          "type": "enum",
+          "values": [
+            "channel",
+            "bot"
+          ],
+          "required": true
+        },
+        "selection": {
+          "type": "enum",
+          "values": [
+            "peer",
+            "premium"
+          ],
+          "required": true
+        }
+      }
+    },
+    "stories.view": {
+      "description": "The user viewed a story for at least one second.",
+      "params": {
+        "owner": {
+          "type": "enum",
+          "values": [
+            "self",
+            "other"
+          ]
+        },
+        "peer_type": {
+          "type": "enum",
+          "values": [
+            "user",
+            "bot",
+            "group",
+            "channel",
+            "forum",
+            "saved_messages",
+            "secret_chat"
+          ],
+          "ref": "peer_type"
+        }
+      }
+    },
+    "stories.react": {
+      "params": {}
+    },
+    "stories.reply": {
+      "params": {}
+    },
+    "call.start": {
+      "params": {
+        "video": {
+          "type": "bool"
+        }
+      }
+    },
+    "call.accept": {
+      "params": {
+        "video": {
+          "type": "bool"
+        }
+      }
+    },
+    "call.decline": {
+      "params": {}
+    },
+    "call.end": {
+      "params": {
+        "duration": {
+          "type": "bucket",
+          "values": [
+            "under_10s",
+            "10s_1m",
+            "1m_5m",
+            "5m_30m",
+            "30m_plus"
+          ],
+          "ref": "call_duration"
+        },
+        "video": {
+          "type": "bool"
+        },
+        "reason": {
+          "type": "enum",
+          "values": [
+            "hangup",
+            "missed",
+            "busy",
+            "failed",
+            "disconnected"
+          ]
+        }
+      }
+    },
+    "group_call.join": {
+      "params": {
+        "kind": {
+          "type": "enum",
+          "values": [
+            "voice_chat",
+            "live_stream",
+            "conference"
+          ]
+        }
+      }
+    },
+    "group_call.leave": {
+      "params": {
+        "duration": {
+          "type": "bucket",
+          "values": [
+            "under_10s",
+            "10s_1m",
+            "1m_5m",
+            "5m_30m",
+            "30m_plus"
+          ],
+          "ref": "call_duration"
+        }
+      }
+    },
+    "settings.change": {
+      "description": "A setting from `settings` changed value.",
+      "params": {
+        "setting": {
+          "type": "setting_id",
+          "required": true
+        },
+        "value": {
+          "type": "setting_value",
+          "required": true
+        }
+      }
+    },
+    "bot.mini_app.open": {
+      "params": {
+        "entry": {
+          "type": "enum",
+          "values": [
+            "menu_button",
+            "attach",
+            "inline_button",
+            "link",
+            "main_app",
+            "side_menu"
+          ]
+        }
+      }
+    },
+    "link.open": {
+      "params": {
+        "link_kind": {
+          "type": "enum",
+          "values": [
+            "peer",
+            "message",
+            "invite",
+            "stickers",
+            "theme",
+            "proxy",
+            "mini_app",
+            "external",
+            "other"
+          ]
+        }
+      }
+    },
+    "stars.purchase.success": {
+      "params": {
+        "stars": {
+          "type": "bucket",
+          "values": [
+            "under_100",
+            "100_999",
+            "1000_9999",
+            "10000_plus"
+          ]
+        }
+      }
+    },
+    "shortcut.use": {
+      "platforms": [
+        "macos",
+        "tdesktop",
+        "web"
+      ],
+      "params": {
+        "shortcut": {
+          "type": "enum",
+          "values": [
+            "global_search",
+            "chat_search",
+            "next_chat",
+            "previous_chat",
+            "next_unread_chat",
+            "edit_last_message",
+            "reply",
+            "settings",
+            "lock"
+          ]
+        }
+      }
+    }
+  },
+  "legacy": {
+    "premium.promo_screen_show": {
+      "params": [
+        "premium_promo_order",
+        "source"
+      ]
+    },
+    "premium.promo_screen_tap": {
+      "params": [
+        "item"
+      ]
+    },
+    "premium.promo_screen_accept": {},
+    "premium.promo_screen_fail": {},
+    "channels.open_recommended_channel": {
+      "params": [
+        "ref_channel_id",
+        "open_channel_id"
+      ]
+    },
+    "bots.open_recommended_bot": {
+      "params": [
+        "ref_bot_id",
+        "open_bot_id"
+      ]
+    },
+    "image_editor_used": {}
+  }
+}

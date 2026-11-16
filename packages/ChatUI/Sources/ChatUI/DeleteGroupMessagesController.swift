@@ -14,6 +14,7 @@ import InputDataUI
 import AlertsUI
 import AvatarUI
 import ShortPeerRow
+import AppAnalytics
 
 private struct Option : Equatable {
     class Function : Equatable {
@@ -588,8 +589,22 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     return entries
 }
 
-public func DeleteGroupMessagesController(context: any AccountContextProtocol, channel: TelegramChannel, messages: [Message], allPeers:Set<PeerId>, reactionAuthor: PeerId? = nil, onComplete:@escaping()->Void) -> InputDataModalController {
+public func DeleteGroupMessagesController(context: any AccountContextProtocol, channel: TelegramChannel, messages: [Message], allPeers:Set<PeerId>, reactionAuthor: PeerId? = nil, analyticsContext: AnalyticsContext? = nil, onComplete:@escaping()->Void) -> InputDataModalController {
 
+    let inherited = messages.contains(where: { $0.containsSecretMedia }) ? Analytics.shared.unresolvedContext() : (analyticsContext ?? Analytics.shared.unresolvedContext())
+    var origin = Analytics.shared.captureContext(engine: context.engine, peerId: channel.id, inherited: inherited)
+    for message in messages {
+        origin = origin.restricting(peerId: message.id.peerId)
+        if let author = message.author {
+            origin = origin.restricting(peerId: author.id)
+        }
+    }
+    for peerId in allPeers.union([reactionAuthor, channel.linkedCommunityId, channel.linkedMonoforumId].compactMap { $0 }) {
+        origin = origin.restricting(peerId: peerId)
+    }
+    let analyticsOrigin = origin
+    let presentation = analyticsOrigin.beginPresentation()
+    defer { presentation.end() }
     let actionsDisposable = DisposableSet()
 
     let initialState = State(channel: channel, messages: messages, allPeers: allPeers, reactionAuthor: reactionAuthor)
@@ -599,6 +614,8 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
     let updateState: ((State) -> State) -> Void = { f in
+        let presentation = analyticsOrigin.beginPresentation()
+        defer { presentation.end() }
         statePromise.set(stateValue.modify (f))
     }
     
@@ -762,10 +779,17 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
             context.engine.peers.communityParticipantJoinedChats(communityId: communityId, participantId: participantId)
         )
         |> mapToSignal { communityPeer, joinedChats -> Signal<(EnginePeer?, CommunityParticipantJoinedChats, [PeerId: Int32]), NoError> in
+            let peerIds = [communityPeer?.id].compactMap { $0 } + joinedChats.creatorChatIds + joinedChats.joinedChatIds + Array(joinedChats.peers.keys) + joinedChats.peers.values.map { $0.id }
+            let resolvedOrigin = peerIds.reduce(analyticsOrigin) { $0.restricting(peerId: $1) }
+            if resolvedOrigin.isExcluded {
+                analyticsOrigin.scope?.exclude()
+            }
+            let presentation = resolvedOrigin.beginPresentation()
+            defer { presentation.end() }
             if joinedChats.creatorChatIds.isEmpty {
                 return .single((communityPeer, joinedChats, [:]))
             }
-            return (context.engine.data.subscribe(EngineDataMap(joinedChats.creatorChatIds.map { TelegramEngine.EngineData.Item.Peer.ParticipantCount(id: $0) })))
+            return resolvedOrigin.preservingPresentation(context.engine.data.subscribe(EngineDataMap(joinedChats.creatorChatIds.map { TelegramEngine.EngineData.Item.Peer.ParticipantCount(id: $0) })))
             |> map { countsMap -> (EnginePeer?, CommunityParticipantJoinedChats, [PeerId: Int32]) in
                 var counts: [PeerId: Int32] = [:]
                 for id in joinedChats.creatorChatIds {
@@ -776,7 +800,7 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
                 return (communityPeer, joinedChats, counts)
             }
         }
-        actionsDisposable.add((contextSignal).start(next: { communityPeer, joinedChats, creatorCounts in
+        actionsDisposable.add(analyticsOrigin.preservingPresentation(contextSignal).start(next: { communityPeer, joinedChats, creatorCounts in
             var available = false
             var totalCount = 0
             if case let .community(community) = communityPeer, community.hasPermission(.banUsers) {
@@ -797,7 +821,7 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
         }))
     }
 
-    let signal = (statePromise.get() |> deliverOnPrepareQueue) |> map { state in
+    let signal = analyticsOrigin.preservingPresentation(statePromise.get() |> deliverOnPrepareQueue) |> map { state in
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
@@ -808,6 +832,8 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
         controllerTitle = strings().supergroupDeleteRestrictionMultiTitleOther(messages.count)
     }
     let controller = InputDataController(dataSignal: signal, title: controllerTitle)
+    controller.analyticsContext = analyticsOrigin
+    controller.analyticsScreen = .chatDeleteOptions
     
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -818,11 +844,18 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
     
     controller.validateData = { _ in
         let state = stateValue.with { $0 }
+        let selectedPeers = state.allPeers.union(state.banPeerSelected).union(state.spamPeerSelected).union(state.deletePeerSelected).union(state.deleteReactionsPeerSelected).union([state.communityId].compactMap { $0 }).union(state.communityCreatorChatIds).union(state.communityChatPeers.keys).union(state.communityChatPeers.values.map { $0.id })
+        let operationOrigin = selectedPeers.reduce(Analytics.shared.captureContext(engine: context.engine, peerId: messagesPeerId, inherited: analyticsOrigin)) { $0.restricting(peerId: $1) }
+        if operationOrigin.isExcluded {
+            analyticsOrigin.scope?.exclude()
+        }
+        let presentation = operationOrigin.beginPresentation()
+        defer { presentation.end() }
         var signals:[Signal<Void, NoError>] = []
 
         if state.deleteListSelected {
             if let reactionAuthor, let messageId = messageIds.first {
-                _ = (context.engine.messages.deleteReaction(messageId: messageId, authorId: reactionAuthor)).start()
+                _ = operationOrigin.preservingPresentation(context.engine.messages.deleteReaction(messageId: messageId, authorId: reactionAuthor)).start()
             } else {
                 signals.append(context.engine.messages.deleteMessagesInteractively(messageIds: messageIds, type: .forEveryone))
             }
@@ -880,17 +913,20 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
 
         if state.deleteReactionsSelected {
             for memberId in state.deleteReactionsPeerSelected {
-                _ = (context.engine.messages.deleteAllReactionsWithAuthor(peerId: messagesPeerId, authorId: memberId)).start()
+                _ = operationOrigin.preservingPresentation(context.engine.messages.deleteAllReactionsWithAuthor(peerId: messagesPeerId, authorId: memberId)).start()
             }
         }
 
         let commit: () -> Void = {
+            let presentation = operationOrigin.beginPresentation()
+            defer { presentation.end() }
             if state.banFromCommunity, let communityId = state.communityId, let participantId = state.allPeers.first {
-                _ = (context.engine.peers.toggleCommunityParticipantBanned(communityId: communityId, participantId: participantId, banned: true)).start()
+                _ = operationOrigin.preservingPresentation(context.engine.peers.toggleCommunityParticipantBanned(communityId: communityId, participantId: participantId, banned: true)).start()
             }
             if state.deleteListSelected, reactionAuthor == nil {
+                Analytics.shared.send(AnalyticsEvents.chatMessageDelete(count: AnalyticsValues.Count(bucketing: messageIds.count), forEveryone: true))
             }
-            _ = (combineLatest(signals)).start()
+            _ = operationOrigin.preservingPresentation(combineLatest(signals)).start()
             close?()
             onComplete()
         }
@@ -914,10 +950,15 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
             let count = state.communityCreatorChatIds.count
             let info = strings().deleteGroupMessagesCommunityBanWarningOther(count, userName)
             let header = ModalAlertData.Header(id: "community_ban_warning") { initialSize, stableId, _ in
+                let presentation = operationOrigin.beginPresentation()
+                defer { presentation.end() }
                 return CommunityBanWarningItem(initialSize, stableId: stableId, context: context, chats: chats)
             }
+            let confirmationPresentation = operationOrigin.beginPresentation()
             verifyAlert(for: context.window, header: strings().deleteGroupMessagesWarningTitle, information: info, ok: strings().deleteGroupMessagesBan, successHandler: { _ in
                 commit()
+            }, onDeinit: {
+                confirmationPresentation.end()
             }, headerItem: header)
         } else {
             commit()
@@ -930,8 +971,11 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
     }, singleButton: true)
     
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
+    modalController.analyticsContext = analyticsOrigin
     
     controller.afterTransaction = { [weak modalInteractions] _ in
+        let presentation = analyticsOrigin.beginPresentation()
+        defer { presentation.end() }
         modalInteractions?.updateDone { button in
             let state = stateValue.with { $0 }
             button.isEnabled = !state.isEmpty
@@ -945,6 +989,8 @@ public func DeleteGroupMessagesController(context: any AccountContextProtocol, c
     })
     
     close = { [weak modalController] in
+        let presentation = analyticsOrigin.beginPresentation()
+        defer { presentation.end() }
         modalController?.modal?.close()
     }
 

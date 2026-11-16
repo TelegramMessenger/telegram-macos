@@ -17,7 +17,7 @@ let deps: [(String, String)] = [
     ("AlertsUI", "../AlertsUI"),
     ("AvatarUI", "../AvatarUI"),
     ("LocalAnimations", "../LocalAnimations"),
-
+    ("AppAnalytics", "../AppAnalytics"),
     ("LocationUI", "../LocationUI"),
     ("ObjcUtils", "../ObjcUtils"),
     ("ChatUI", "../ChatUI"),
@@ -79,6 +79,8 @@ let package = Package(
                 .product(name: "TGUIKit", package: "TGUIKit", condition: nil),
                 .product(name: "AvatarUI", package: "AvatarUI", condition: nil),
                 .product(name: "ColorPalette", package: "ColorPalette", condition: nil),
+                .product(name: "TelegramTheme", package: "TelegramTheme", condition: nil),
+                .product(name: "Localization", package: "Localization", condition: nil),
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "Postbox", package: "Postbox", condition: nil),
                 .product(name: "rnoise", package: "rnoise"),

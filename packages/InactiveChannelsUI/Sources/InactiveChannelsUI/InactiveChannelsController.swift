@@ -12,6 +12,7 @@ import ColorPalette
 import ShortPeerRow
 import DateUtils
 import PremiumUI
+import AppAnalytics
 
 
 private func localizedInactiveDate(_ timestamp: Int32) -> String {
@@ -140,8 +141,14 @@ private func inactiveEntries(state: InactiveChannelsState, arguments: InactiveCh
     return entries
 }
 
-
 public func InactiveChannelsController(context: any AccountContextProtocol, source: InactiveSource) -> InputDataModalController {
+    return InactiveChannelsController(context: context, source: source, analyticsContext: nil)
+}
+
+public func InactiveChannelsController(context: any AccountContextProtocol, source: InactiveSource, analyticsContext: AnalyticsContext?) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let closed = Atomic(value: false)
     let initialState = InactiveChannelsState(channels: nil)
     let statePromise = ValuePromise<InactiveChannelsState>(initialState, ignoreRepeated: true)
@@ -153,7 +160,7 @@ public func InactiveChannelsController(context: any AccountContextProtocol, sour
     
     let disposable = MetaDisposable()
     
-    disposable.set((context.engine.peers.inactiveChannelList() |> delay(0.5, queue: .mainQueue()) |> deliverOnMainQueue).start(next: { channels in
+    disposable.set(origin.preservingPresentation(context.engine.peers.inactiveChannelList() |> delay(0.5, queue: .mainQueue()) |> deliverOnMainQueue).start(next: { channels in
         guard !closed.with({ $0 }) else { return }
         updateState {
             $0.withUpdatedChannels(channels)
@@ -162,7 +169,9 @@ public func InactiveChannelsController(context: any AccountContextProtocol, sour
     
     let arguments = InactiveChannelsArguments(context: context, select: SelectPeerInteraction(), premium: {
         guard !closed.with({ $0 }) else { return }
-        prem(with: PremiumBoardingController(context: context, source: .double_limits(.channels)), for: context.window)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        prem(with: PremiumBoardingController(context: context, source: .double_limits(.channels), analyticsContext: origin), for: context.window)
     })
     
     let signal = statePromise.get() |> map { state in
@@ -170,6 +179,8 @@ public func InactiveChannelsController(context: any AccountContextProtocol, sour
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().inactiveChannelsTitle)
+    controller.analyticsScreen = .appTooManyChats
+    controller.analyticsContext = origin
     
     var close: (()->Void)? = nil
     
@@ -177,12 +188,16 @@ public func InactiveChannelsController(context: any AccountContextProtocol, sour
         guard !closed.swap(true) else { return }
         let selected = arguments.select.presentation.selected
         let peers = arguments.select.presentation.peers.map { $0.value }
+        var removalContext = selected.reduce(origin) { $0.restricting(peerId: $1) }
+        removalContext = peers.reduce(removalContext) { $0.restricting(peerId: $1.id) }
+        let presentation = removalContext.beginPresentation()
+        defer { presentation.end() }
         close?()
 
         if !selected.isEmpty {
             let removeSignal = combineLatest(selected.map { context.engine.peers.removePeerChat(peerId: $0, reportChatSpam: false)}) |> ignoreValues
             let signal = context.engine.peers.ensurePeersAreLocallyAvailable(peers: peers.map(EnginePeer.init)) |> then(removeSignal)
-            _ = (showModalProgress(signal: signal, for: context.window)).start()
+            _ = removalContext.preservingPresentation(showModalProgress(signal: signal, for: context.window)).start()
         }
         
     }, singleButton: true)
@@ -224,6 +239,7 @@ public func InactiveChannelsController(context: any AccountContextProtocol, sour
         disposable.dispose()
         f()
     }, size: NSMakeSize(400, 300))
+    modalController.analyticsContext = origin
     
     close = { [weak modalController] in
         _ = closed.swap(true)
@@ -257,7 +273,13 @@ public enum InactiveSource {
     }
 }
 
-
 public func showInactiveChannels(context: any AccountContextProtocol, source: InactiveSource) {
-    showModal(with: InactiveChannelsController(context: context, source: source), for: context.window)
+    showInactiveChannels(context: context, source: source, analyticsContext: nil)
+}
+
+public func showInactiveChannels(context: any AccountContextProtocol, source: InactiveSource, analyticsContext: AnalyticsContext?) {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
+    showModal(with: InactiveChannelsController(context: context, source: source, analyticsContext: origin), for: context.window)
 }

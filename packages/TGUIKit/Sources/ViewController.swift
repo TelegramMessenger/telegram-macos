@@ -468,6 +468,8 @@ public enum ViewControllerLifecycleHooks {
 
 open class ViewController : NSObject {
     
+    public var analyticsScreenId: String?
+    public var analyticsPeerType: String?
     
     public struct StakeSettings {
         
@@ -1395,6 +1397,7 @@ open class ModalController : ModalViewController {
     public init(_ controller: NavigationViewController) {
         self.controller = controller
         super.init(frame: controller._frameRect)
+        bar = .init(height: 0)
     }
 
     open override var handleEvents: Bool {

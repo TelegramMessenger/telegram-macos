@@ -13,6 +13,7 @@ import TelegramContext
 import TelegramUtils
 import AlertsUI
 import ShortPeerRow
+import HTMLBubbles
 
 extension WebpagePreviewResult {
     public var result: TelegramMediaWebpage? {
@@ -255,6 +256,11 @@ private func makeInlineResult(_ inputQuery: ChatPresentationInputQuery, chatPres
     case let .command(query):
         let normalizedQuery = query.lowercased()
 
+        if let contents = chatPresentationInterfaceState.chatMode.customChatContents as? HTMLDemoChatContents {
+            let bot = EnginePeer(contents.botPeer)
+            let commands = contents.botCommands.filter { $0.text.hasPrefix(normalizedQuery) }.map { ChatInputCommand(peer: bot, command: $0) }
+            return (inputQuery, .single({ _ in return .commands(commands) }))
+        }
 
         if let peer = chatPresentationInterfaceState.peer {
             if peer.isUser, !peer.isBot {

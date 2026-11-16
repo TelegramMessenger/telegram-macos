@@ -1,0 +1,839 @@
+{
+ "schema_version": 1,
+ "about": "Conformance vectors for flow recording (RULES.md, Flows). Every client must produce exactly `expect` for each case. Compare the event data with the common params (see events.yaml common_params) removed.",
+ "ops": {
+  "start": "create the flow; its clock starts at at_ms",
+  "set": "set a flow param; value null removes it",
+  "set_if_absent": "set a flow param only if it has no value",
+  "step": "record a step",
+  "finish": "end the flow with an outcome",
+  "dispose": "the flow's owner is destroyed (screen deallocated) without calling finish"
+ },
+ "flow": "peer_info.visibility",
+ "cases": [
+  {
+   "name": "success with timings and params",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 0,
+     "op": "set",
+     "key": "entry",
+     "value": "edit"
+    },
+    {
+     "at_ms": 120,
+     "op": "set_if_absent",
+     "key": "peer_type",
+     "value": "channel"
+    },
+    {
+     "at_ms": 1200,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 2900,
+     "op": "step",
+     "step": "edit_username"
+    },
+    {
+     "at_ms": 3400,
+     "op": "step",
+     "step": "username_available"
+    },
+    {
+     "at_ms": 9700,
+     "op": "step",
+     "step": "save"
+    },
+    {
+     "at_ms": 9700,
+     "op": "set",
+     "key": "result",
+     "value": "public"
+    },
+    {
+     "at_ms": 9900,
+     "op": "finish",
+     "outcome": "success"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "success",
+      "entry": "edit",
+      "peer_type": "channel",
+      "result": "public",
+      "steps": [
+       [
+        "select_public",
+        1200
+       ],
+       [
+        "edit_username",
+        2900
+       ],
+       [
+        "username_available",
+        3400
+       ],
+       [
+        "save",
+        9700
+       ]
+      ],
+      "step_count": 4,
+      "duration_ms": 9900
+     }
+    }
+   ]
+  },
+  {
+   "name": "consecutive repeats collapse, non-consecutive repeats are kept",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 100,
+     "op": "step",
+     "step": "edit_username"
+    },
+    {
+     "at_ms": 200,
+     "op": "step",
+     "step": "edit_username"
+    },
+    {
+     "at_ms": 300,
+     "op": "step",
+     "step": "username_taken"
+    },
+    {
+     "at_ms": 400,
+     "op": "step",
+     "step": "edit_username"
+    },
+    {
+     "at_ms": 500,
+     "op": "step",
+     "step": "edit_username"
+    },
+    {
+     "at_ms": 600,
+     "op": "finish",
+     "outcome": "cancelled"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "cancelled",
+      "steps": [
+       [
+        "edit_username",
+        100
+       ],
+       [
+        "username_taken",
+        300
+       ],
+       [
+        "edit_username",
+        400
+       ]
+      ],
+      "step_count": 3,
+      "duration_ms": 600
+     }
+    }
+   ]
+  },
+  {
+   "name": "at most 50 steps are sent, step_count keeps the real total",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 10,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 20,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 30,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 40,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 50,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 60,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 70,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 80,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 90,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 100,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 110,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 120,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 130,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 140,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 150,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 160,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 170,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 180,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 190,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 200,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 210,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 220,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 230,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 240,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 250,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 260,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 270,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 280,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 290,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 300,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 310,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 320,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 330,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 340,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 350,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 360,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 370,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 380,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 390,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 400,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 410,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 420,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 430,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 440,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 450,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 460,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 470,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 480,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 490,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 500,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 510,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 520,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 530,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 540,
+     "op": "step",
+     "step": "select_private"
+    },
+    {
+     "at_ms": 550,
+     "op": "step",
+     "step": "select_public"
+    },
+    {
+     "at_ms": 1000,
+     "op": "finish",
+     "outcome": "abandoned"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "abandoned",
+      "steps": [
+       [
+        "select_public",
+        10
+       ],
+       [
+        "select_private",
+        20
+       ],
+       [
+        "select_public",
+        30
+       ],
+       [
+        "select_private",
+        40
+       ],
+       [
+        "select_public",
+        50
+       ],
+       [
+        "select_private",
+        60
+       ],
+       [
+        "select_public",
+        70
+       ],
+       [
+        "select_private",
+        80
+       ],
+       [
+        "select_public",
+        90
+       ],
+       [
+        "select_private",
+        100
+       ],
+       [
+        "select_public",
+        110
+       ],
+       [
+        "select_private",
+        120
+       ],
+       [
+        "select_public",
+        130
+       ],
+       [
+        "select_private",
+        140
+       ],
+       [
+        "select_public",
+        150
+       ],
+       [
+        "select_private",
+        160
+       ],
+       [
+        "select_public",
+        170
+       ],
+       [
+        "select_private",
+        180
+       ],
+       [
+        "select_public",
+        190
+       ],
+       [
+        "select_private",
+        200
+       ],
+       [
+        "select_public",
+        210
+       ],
+       [
+        "select_private",
+        220
+       ],
+       [
+        "select_public",
+        230
+       ],
+       [
+        "select_private",
+        240
+       ],
+       [
+        "select_public",
+        250
+       ],
+       [
+        "select_private",
+        260
+       ],
+       [
+        "select_public",
+        270
+       ],
+       [
+        "select_private",
+        280
+       ],
+       [
+        "select_public",
+        290
+       ],
+       [
+        "select_private",
+        300
+       ],
+       [
+        "select_public",
+        310
+       ],
+       [
+        "select_private",
+        320
+       ],
+       [
+        "select_public",
+        330
+       ],
+       [
+        "select_private",
+        340
+       ],
+       [
+        "select_public",
+        350
+       ],
+       [
+        "select_private",
+        360
+       ],
+       [
+        "select_public",
+        370
+       ],
+       [
+        "select_private",
+        380
+       ],
+       [
+        "select_public",
+        390
+       ],
+       [
+        "select_private",
+        400
+       ],
+       [
+        "select_public",
+        410
+       ],
+       [
+        "select_private",
+        420
+       ],
+       [
+        "select_public",
+        430
+       ],
+       [
+        "select_private",
+        440
+       ],
+       [
+        "select_public",
+        450
+       ],
+       [
+        "select_private",
+        460
+       ],
+       [
+        "select_public",
+        470
+       ],
+       [
+        "select_private",
+        480
+       ],
+       [
+        "select_public",
+        490
+       ],
+       [
+        "select_private",
+        500
+       ]
+      ],
+      "step_count": 55,
+      "duration_ms": 1000
+     }
+    }
+   ]
+  },
+  {
+   "name": "steps and finishes after finish are ignored",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 100,
+     "op": "step",
+     "step": "save"
+    },
+    {
+     "at_ms": 200,
+     "op": "finish",
+     "outcome": "success"
+    },
+    {
+     "at_ms": 300,
+     "op": "step",
+     "step": "copy_link"
+    },
+    {
+     "at_ms": 400,
+     "op": "finish",
+     "outcome": "fail"
+    },
+    {
+     "at_ms": 500,
+     "op": "dispose"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "success",
+      "steps": [
+       [
+        "save",
+        100
+       ]
+      ],
+      "step_count": 1,
+      "duration_ms": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "dispose without finish sends abandoned",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 700,
+     "op": "step",
+     "step": "manage_links"
+    },
+    {
+     "at_ms": 4000,
+     "op": "dispose"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "abandoned",
+      "steps": [
+       [
+        "manage_links",
+        700
+       ]
+      ],
+      "step_count": 1,
+      "duration_ms": 4000
+     }
+    }
+   ]
+  },
+  {
+   "name": "set overrides, set_if_absent does not, set null removes",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 0,
+     "op": "set",
+     "key": "initial",
+     "value": "private"
+    },
+    {
+     "at_ms": 10,
+     "op": "set_if_absent",
+     "key": "initial",
+     "value": "public"
+    },
+    {
+     "at_ms": 20,
+     "op": "set",
+     "key": "result",
+     "value": "public"
+    },
+    {
+     "at_ms": 30,
+     "op": "set",
+     "key": "result",
+     "value": null
+    },
+    {
+     "at_ms": 40,
+     "op": "set",
+     "key": "entry",
+     "value": "edit"
+    },
+    {
+     "at_ms": 50,
+     "op": "set",
+     "key": "entry",
+     "value": "create"
+    },
+    {
+     "at_ms": 60,
+     "op": "finish",
+     "outcome": "success"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "success",
+      "initial": "private",
+      "entry": "create",
+      "steps": [],
+      "step_count": 0,
+      "duration_ms": 60
+     }
+    }
+   ]
+  },
+  {
+   "name": "no steps still sends the event",
+   "ops": [
+    {
+     "at_ms": 0,
+     "op": "start"
+    },
+    {
+     "at_ms": 1500,
+     "op": "dispose"
+    }
+   ],
+   "expect": [
+    {
+     "type": "flow.end",
+     "data": {
+      "flow": "peer_info.visibility",
+      "outcome": "abandoned",
+      "steps": [],
+      "step_count": 0,
+      "duration_ms": 1500
+     }
+    }
+   ]
+  }
+ ]
+}

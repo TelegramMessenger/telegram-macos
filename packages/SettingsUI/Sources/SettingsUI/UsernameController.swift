@@ -12,6 +12,7 @@ import TelegramUtils
 import GeneralRows
 import InputDataUI
 import AlertsUI
+import AppAnalytics
 
 private let _id_username = InputDataIdentifier("_id_username")
 private func _id_external(_ username: TelegramPeerUsername) -> InputDataIdentifier {
@@ -211,6 +212,7 @@ public func UsernameController(_ context: (any AccountContextProtocol)) -> Input
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().telegramUsernameSettingsViewController)
+    controller.analyticsScreen = .settingsAccountUsername
     
     controller.updateDatas = { data in
         let username = data[_id_username]?.stringValue ?? ""

@@ -15,6 +15,7 @@ import LocalAnimations
 import ColorPalette
 import TelegramIconsTheme
 import Postbox
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -213,24 +214,24 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("Device"), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem))) //TODOLANG
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().sessionModalControllerDeviceHeader), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
     index += 1
 
     let isOfficial = state.session.flags.contains(.isOfficial)
-    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("application"), name: strings().sessionPreviewApp, value: state.session.appName, viewType: .firstItem, accessoryImage: isOfficial ? theme.icons.verifyDialog : nil, accessoryTooltip: isOfficial ? "This session is from the official Telegram app" : nil)) //TODOLANG
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("application"), name: strings().sessionPreviewApp, value: state.session.appName, viewType: .firstItem, accessoryImage: isOfficial ? theme.icons.verifyDialog : nil, accessoryTooltip: isOfficial ? strings().sessionModalControllerOfficialApp : nil))
     index += 1
 
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("version"), data: InputDataGeneralData(name: "Version", color: theme.colors.text, type: .context(state.session.appVersion), viewType: .innerItem, enabled: true))) //TODOLANG
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("version"), data: InputDataGeneralData(name: strings().sessionModalControllerVersion, color: theme.colors.text, type: .context(state.session.appVersion), viewType: .innerItem, enabled: true)))
     index += 1
 
     let system = [state.session.platform, state.session.systemVersion].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " ")
-    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("os"), data: InputDataGeneralData(name: "OS", color: theme.colors.text, type: .context(system), viewType: .lastItem, enabled: true))) //TODOLANG
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: .init("os"), data: InputDataGeneralData(name: strings().sessionModalControllerOS, color: theme.colors.text, type: .context(system), viewType: .lastItem, enabled: true)))
     index += 1
 
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
 
-    entries.append(.desc(sectionId: sectionId, index: index, text: .plain("Connection"), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem))) //TODOLANG
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().sessionModalControllerConnectionHeader), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
     index += 1
 
     let ip = state.session.ip.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -255,10 +256,10 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     dateFormatter.timeStyle = .medium
     dateFormatter.doesRelativeDateFormatting = false
 
-    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("first_signed_at"), name: "First Signed At", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.creationDate))), viewType: ip.isEmpty && location.isEmpty ? .firstItem : .innerItem)) //TODOLANG
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("first_signed_at"), name: strings().sessionModalControllerFirstSignedAt, value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.creationDate))), viewType: ip.isEmpty && location.isEmpty ? .firstItem : .innerItem))
     index += 1
 
-    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("last_active"), name: "Last Active", value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.activityDate))), viewType: .lastItem)) //TODOLANG
+    entries.append(sessionDetailEntry(sectionId: sectionId, index: index, identifier: .init("last_active"), name: strings().sessionModalControllerLastActive, value: dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(state.session.activityDate))), viewType: .lastItem))
     index += 1
 
     if !location.isEmpty {
@@ -353,7 +354,7 @@ public func SessionModalController(context: any AccountContextProtocol, session:
             if let controller {
                 showModal(with: controller, for: context.window)
             } else {
-                alert(for: context.window, info: "Couldn't find this location. Please try again.") //TODOLANG
+                alert(for: context.window, info: strings().sessionModalControllerLocationNotFound)
             }
         }))
     }, rename: { source in
@@ -373,6 +374,7 @@ public func SessionModalController(context: any AccountContextProtocol, session:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().sessionPreviewTitle)
+    controller.analyticsScreen = .settingsDevicesSession
     controller.onDeinit = {
         locationDisposable.dispose()
         deviceModelDisposable.dispose()

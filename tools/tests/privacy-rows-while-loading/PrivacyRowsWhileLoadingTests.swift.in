@@ -1,0 +1,232 @@
+import Foundation
+
+final class Disposable {
+    var isDisposed = false
+
+    func dispose() {
+        self.isDisposed = true
+    }
+}
+
+final class MetaDisposable {
+    private var current: Disposable?
+
+    func set(_ disposable: Disposable?) {
+        self.current?.dispose()
+        self.current = disposable
+    }
+}
+
+final class Signal<T> {
+    let start: (@escaping (T) -> Void) -> Disposable
+
+    init(_ start: @escaping (@escaping (T) -> Void) -> Disposable) {
+        self.start = start
+    }
+
+    func start(next: @escaping (T) -> Void) -> Disposable {
+        return self.start(next)
+    }
+}
+
+precedencegroup PipeRight {
+    associativity: left
+}
+
+infix operator |>: PipeRight
+
+func |> <A, B>(value: A, function: (A) -> B) -> B {
+    return function(value)
+}
+
+func filter<T>(_ predicate: @escaping (T) -> Bool) -> (Signal<T>) -> Signal<T> {
+    return { signal in
+        return Signal { next in
+            return signal.start(next: { value in
+                if predicate(value) {
+                    next(value)
+                }
+            })
+        }
+    }
+}
+
+func take<T>(_ count: Int) -> (Signal<T>) -> Signal<T> {
+    return { signal in
+        return Signal { next in
+            var remaining = count
+            var inner: Disposable?
+            let outer = Disposable()
+            inner = signal.start(next: { value in
+                if remaining > 0, !outer.isDisposed {
+                    remaining -= 1
+                    next(value)
+                    if remaining == 0 {
+                        inner?.dispose()
+                    }
+                }
+            })
+            return outer
+        }
+    }
+}
+
+func deliverOnMainQueue<T>(_ signal: Signal<T>) -> Signal<T> {
+    return signal
+}
+
+final class Promise<T> {
+    private var value: T?
+    private var subscribers: [(id: Int, Disposable, (T) -> Void)] = []
+    private var nextId = 0
+
+    func set(_ value: T) {
+        self.value = value
+        for (_, disposable, next) in self.subscribers where !disposable.isDisposed {
+            next(value)
+        }
+    }
+
+    func get() -> Signal<T> {
+        return Signal { next in
+            let disposable = Disposable()
+            self.nextId += 1
+            self.subscribers.append((self.nextId, disposable, next))
+            if let value = self.value {
+                next(value)
+            }
+            return disposable
+        }
+    }
+}
+
+struct Settings {
+}
+
+class ViewController {
+    func readyToDetach() {
+    }
+}
+
+final class Window {
+}
+
+final class Context {
+    let window = Window()
+}
+
+var modalsOpen = false
+
+func hasModals(_ window: Window) -> Bool {
+    return modalsOpen
+}
+
+final class Navigation {
+    var controller: ViewController?
+    var pushes = 0
+}
+
+final class Page: ViewController {
+    let navigationController = Navigation() as Navigation?
+    let privacySettingsPromise = Promise<Settings?>()
+    let currentInfoDisposable = MetaDisposable()
+    let context = Context()
+    var opened: [String] = []
+
+    override init() {
+        super.init()
+        self.navigationController?.controller = self
+    }
+
+__DETACH__
+
+    lazy var signalUnderTest: Signal<Settings?> = {
+        let privacySettingsPromise = self.privacySettingsPromise
+        let context = self.context
+        return __SIGNAL__
+    }()
+
+    func click(_ row: String) {
+        self.currentInfoDisposable.set(self.signalUnderTest.start(next: { [weak self] info in
+            if info != nil {
+                self?.opened.append(row)
+            }
+        }))
+    }
+}
+
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+    if !passed {
+        failures += 1
+    }
+}
+
+var page = Page()
+page.privacySettingsPromise.set(nil)
+page.click("bio")
+check("a click while loading opens nothing yet", page.opened.isEmpty)
+page.privacySettingsPromise.set(Settings())
+check("a click while loading opens the page once settings arrive", page.opened == ["bio"])
+page.privacySettingsPromise.set(Settings())
+check("later updates do not open it again", page.opened == ["bio"])
+
+page = Page()
+page.privacySettingsPromise.set(Settings())
+page.click("bio")
+check("a click after loading opens at once", page.opened == ["bio"])
+
+page = Page()
+page.privacySettingsPromise.set(nil)
+page.privacySettingsPromise.set(Settings())
+check("loading alone opens nothing", page.opened.isEmpty)
+
+page = Page()
+page.privacySettingsPromise.set(nil)
+page.click("bio")
+page.click("calls")
+page.privacySettingsPromise.set(Settings())
+check("the last click wins while loading", page.opened == ["calls"])
+
+page = Page()
+page.privacySettingsPromise.set(nil)
+page.click("bio")
+page.navigationController?.controller = ViewController()
+page.privacySettingsPromise.set(Settings())
+check("a covered page opens nothing when settings arrive", page.opened.isEmpty)
+page.navigationController?.controller = page
+page.privacySettingsPromise.set(Settings())
+check("coming back later opens nothing", page.opened.isEmpty)
+
+page = Page()
+page.privacySettingsPromise.set(nil)
+page.click("bio")
+page.currentInfoDisposable.set(nil)
+page.privacySettingsPromise.set(Settings())
+check("a disposed click opens nothing", page.opened.isEmpty)
+
+page = Page()
+page.privacySettingsPromise.set(nil)
+page.click("bio")
+page.readyToDetach()
+page.navigationController?.controller = ViewController()
+page.navigationController?.controller = page
+page.privacySettingsPromise.set(Settings())
+check("leaving and coming back cancels the click", page.opened.isEmpty)
+
+page = Page()
+page.privacySettingsPromise.set(nil)
+page.click("bio")
+modalsOpen = true
+page.privacySettingsPromise.set(Settings())
+modalsOpen = false
+check("an open modal stops the page from opening behind it", page.opened.isEmpty)
+
+check("every row that opens a page waits for settings", __ALL_HANDLERS__)
+check("settings reach the main queue before the page checks", __MAIN_QUEUE_FIRST__)
+check("the account auto-delete menu keeps its own signal", __MENU_UNCHANGED__)
+
+print("\(failures) failed")
+exit(failures == 0 ? 0 : 1)

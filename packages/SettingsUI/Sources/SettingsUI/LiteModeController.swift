@@ -14,6 +14,7 @@ import AlertsUI
 import ThemeSettings
 import TelegramCore
 import Postbox
+import AppAnalytics
 
 private extension LiteModeKey {
     var title: String {
@@ -230,6 +231,7 @@ public func LiteModeController(context: any AccountContextProtocol) -> InputData
     }))
     
     let controller = InputDataController(dataSignal: signal, title: strings().liteModeTitle, hasDone: false)
+    controller.analyticsScreen = .settingsPowerSaving
     
     controller.onDeinit = {
         actionsDisposable.dispose()

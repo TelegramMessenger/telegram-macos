@@ -91,6 +91,13 @@ public class FireTimerControl: Control {
         self.updateValues()
     }
     
+    public func stop() {
+        self.animator?.invalidate()
+        self.animator = nil
+        self.currentParams = nil
+        self.currentContentState = nil
+    }
+
     public override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
         self.animator?.isPaused = newWindow == nil

@@ -1,5 +1,23 @@
 import Cocoa
 
+func prepareLayerAnimation(_ views: [NSView], attach: () -> Void) -> () -> Void {
+    assert(Thread.isMainThread)
+    let layers = views.compactMap { $0.layer }.filter { $0.superlayer == nil }
+    let opacities = layers.map { $0.opacity }
+    for layer in layers {
+        layer.opacity = 0
+    }
+    attach()
+    if !layers.isEmpty {
+        CATransaction.flush()
+    }
+    return {
+        for (layer, opacity) in zip(layers, opacities) {
+            layer.opacity = opacity
+        }
+    }
+}
+
 @objc public class CALayerAnimationDelegate: NSObject, CAAnimationDelegate {
     var completion: ((Bool) -> Void)?
     

@@ -24,6 +24,7 @@ import AvatarEditorUI
 import PhoneNumberUtils
 import FilePanels
 import InlineStickerLayer
+import AppAnalytics
 
 
 
@@ -739,17 +740,9 @@ public func EditAccountInfoController<Context: AccountContextProtocol>(context: 
                 guard let controller, let window else { return false }
                 return controller.isLoaded() && controller.view.window === window
             }
-            var signal: Signal<Never, EditAccountProfileSaveError> = .complete()
-            if let name = updates.0 {
-                signal = signal |> then(context.engine.accountData.updateAccountPeerName(firstName: name.fn, lastName: name.ln)
-                |> castError(EditAccountProfileSaveError.self)
-                |> ignoreValues)
-            }
-            if let about = updates.1 {
-                signal = signal |> then(context.engine.accountData.updateAbout(about: about)
-                |> mapError { _ -> EditAccountProfileSaveError in .generic }
-                |> ignoreValues)
-            }
+            let signal = context.engine.accountData.updateProfile(firstName: updates.0?.fn, lastName: updates.0?.ln, about: updates.1)
+            |> mapError { _ -> EditAccountProfileSaveError in .generic }
+            |> ignoreValues
             profileSaveAction.perform(signal: signal, window: window, canPresent: canPresent, failed: { _ in
                 f(.fail(.none))
                 if canPresent() {
@@ -784,6 +777,7 @@ public func EditAccountInfoController<Context: AccountContextProtocol>(context: 
             }
         }
     }, removeAfterDisappear: false, identifier: "account")
+    controller.analyticsScreen = .settingsAccount
     
     controller.didLoad = { controller, _ in
         if let focusOnItemTag = focusOnItemTag {

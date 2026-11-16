@@ -15,6 +15,7 @@ import AlertsUI
 import LocalAnimations
 import SceneEffects
 import ObjcUtils
+import AppAnalytics
 
 
 private final class AffiliateRowItem: GeneralRowItem {
@@ -626,6 +627,7 @@ public func Affiliate_PeerController(context: (any AccountContextProtocol), peer
     }
     
     let controller = InputDataController(dataSignal: signal, title: onlyDemo ? strings().affiliateProgramsExistingPrograms : strings().affiliateSetupTitleJoin, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = onlyDemo ? AnalyticsScreen.affiliateProgramsExisting : AnalyticsScreen.affiliatePrograms
     
     controller.contextObject = contextObject
     

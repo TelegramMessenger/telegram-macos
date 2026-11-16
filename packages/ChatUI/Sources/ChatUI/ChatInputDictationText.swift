@@ -28,7 +28,160 @@ struct ChatInputDictationDraft {
     }
 }
 
+struct ChatInputDictationInsertion {
+    private let text: NSAttributedString
+    private let selection: Range<Int>
+    private let draft: ChatInputDictationDraft
+    private let consumedTranscript: String
+
+    init(text: NSAttributedString, selection: Range<Int>, consumedTranscript: String = "", excludingAttribute: (NSAttributedString.Key, Any) -> Bool = { _, _ in false }) {
+        self.text = text
+        let lower = max(0, min(selection.lowerBound, text.length))
+        let upper = max(lower, min(selection.upperBound, text.length))
+        self.selection = lower ..< upper
+        self.draft = ChatInputDictationDraft(text: text, selection: self.selection, excludingAttribute: excludingAttribute)
+        self.consumedTranscript = consumedTranscript
+    }
+
+    func compose(_ transcript: String) -> (text: NSAttributedString, selection: Range<Int>) {
+        let remainder = ChatInputDictationText.remainder(transcript, after: consumedTranscript)
+        guard !remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return (text, selection)
+        }
+        let result = draft.compose(remainder)
+        return (result.text, result.cursor ..< result.cursor)
+    }
+
+    var start: Int {
+        return draft.prefix.length
+    }
+
+    func insertedRange(_ transcript: String) -> NSRange {
+        let remainder = ChatInputDictationText.remainder(transcript, after: consumedTranscript)
+        guard !remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return NSRange(location: start, length: 0)
+        }
+        let result = draft.compose(remainder)
+        return NSRange(location: start, length: max(0, result.text.length - start - draft.suffix.length))
+    }
+}
+
+struct ChatDictationHeightHold {
+    private(set) var floor: CGFloat = 0
+
+    mutating func fit(_ height: CGFloat, transcribing: Bool) -> CGFloat {
+        guard transcribing else {
+            return height
+        }
+        floor = max(floor, height)
+        return floor
+    }
+
+    mutating func release() {
+        floor = 0
+    }
+}
+
 enum ChatInputDictationText {
+    static func changedCharacters(from old: String, to new: String, limit: Int = 640_000) -> [NSRange] {
+        let before = Array(old)
+        let after = Array(new)
+        var prefix = 0
+        while prefix < before.count, prefix < after.count, before[prefix] == after[prefix] {
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < before.count - prefix, suffix < after.count - prefix, before[before.count - 1 - suffix] == after[after.count - 1 - suffix] {
+            suffix += 1
+        }
+        let removed = Array(before[prefix ..< before.count - suffix])
+        let added = Array(after[prefix ..< after.count - suffix])
+        var changed = [Bool](repeating: true, count: added.count)
+        if !removed.isEmpty, !added.isEmpty, removed.count * added.count <= limit {
+            let width = added.count + 1
+            var table = [UInt16](repeating: 0, count: (removed.count + 1) * width)
+            for i in stride(from: removed.count - 1, through: 0, by: -1) {
+                for j in stride(from: added.count - 1, through: 0, by: -1) {
+                    table[i * width + j] = removed[i] == added[j] ? table[(i + 1) * width + j + 1] &+ 1 : max(table[(i + 1) * width + j], table[i * width + j + 1])
+                }
+            }
+            var i = 0
+            var j = 0
+            while i < removed.count, j < added.count {
+                if removed[i] == added[j] {
+                    changed[j] = false
+                    i += 1
+                    j += 1
+                } else if table[(i + 1) * width + j] >= table[i * width + j + 1] {
+                    i += 1
+                } else {
+                    j += 1
+                }
+            }
+        }
+        var ranges: [NSRange] = []
+        var offset = String(after[0 ..< prefix]).utf16.count
+        for (index, character) in added.enumerated() {
+            let length = String(character).utf16.count
+            if changed[index] {
+                if let last = ranges.last, NSMaxRange(last) == offset {
+                    ranges[ranges.count - 1].length += length
+                } else {
+                    ranges.append(NSRange(location: offset, length: length))
+                }
+            }
+            offset += length
+        }
+        return ranges
+    }
+
+    static func enhanceableText(_ segment: String) -> String? {
+        let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split(whereSeparator: { $0.isWhitespace }).count
+        guard words >= 2, trimmed.utf16.count <= 4096 else {
+            return nil
+        }
+        return trimmed
+    }
+
+    static func replacingSegment(_ text: NSAttributedString, range: NSRange, with improved: String) -> (text: NSAttributedString, range: NSRange)? {
+        guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else {
+            return nil
+        }
+        let segment = (text.string as NSString).substring(with: range)
+        let core = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let replacement = improved.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !core.isEmpty, !replacement.isEmpty, replacement != core else {
+            return nil
+        }
+        let leading = String(segment.prefix(while: { $0.isWhitespace })).utf16.count
+        let trailing = String(segment.reversed().prefix(while: { $0.isWhitespace })).utf16.count
+        let coreRange = NSRange(location: range.location + leading, length: range.length - leading - trailing)
+        let attributes = text.attributes(at: coreRange.location, effectiveRange: nil)
+        let result = NSMutableAttributedString(attributedString: text)
+        result.replaceCharacters(in: coreRange, with: NSAttributedString(string: replacement, attributes: attributes))
+        return (result, NSRange(location: range.location, length: leading + replacement.utf16.count + trailing))
+    }
+
+    static func selection(_ selection: Range<Int>, afterReplacing range: NSRange, length: Int) -> Range<Int> {
+        let delta = length - range.length
+        if selection.lowerBound >= NSMaxRange(range) {
+            return (selection.lowerBound + delta) ..< (selection.upperBound + delta)
+        }
+        if selection.upperBound <= range.location {
+            return selection
+        }
+        let caret = range.location + length
+        return caret ..< caret
+    }
+
+    static func sessionRange(_ inserted: NSRange, from sessionStart: Int?) -> NSRange {
+        guard let sessionStart, sessionStart <= inserted.location else {
+            return inserted
+        }
+        return NSRange(location: sessionStart, length: NSMaxRange(inserted) - sessionStart)
+    }
+
     private static let opening: Set<Character> = ["(", "[", "{", "«", "“", "‘", "\"", "'", "@", "#", "/"]
     private static let closing: Set<Character> = [".", ",", "!", "?", ";", ":", ")", "]", "}", "»", "”", "’", "…"]
     private static let primaryRegion: [String: String] = [
@@ -36,6 +189,7 @@ enum ChatInputDictationText {
         "sv": "se", "da": "dk", "he": "il", "el": "gr", "cs": "cz", "hi": "in", "vi": "vn", "ms": "my",
         "ca": "es", "nb": "no", "yue": "cn", "wuu": "cn", "fa": "ir", "kk": "kz", "et": "ee"
     ]
+    private static let languageAliases: [String: String] = ["no": "nb", "tl": "fil", "iw": "he"]
 
     static func insertion(prefix: String, transcript: String, suffix: String) -> String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -43,13 +197,30 @@ enum ChatInputDictationText {
             return ""
         }
         var result = trimmed
-        if let last = prefix.last, !last.isWhitespace, !opening.contains(last) {
+        if let last = prefix.last, !last.isWhitespace, !opening.contains(last), let first = trimmed.first, !closing.contains(first) {
             result = " " + result
         }
         if let first = suffix.first, !first.isWhitespace, !closing.contains(first) {
             result += " "
         }
         return result
+    }
+
+    static func remainder(_ transcript: String, after consumed: String) -> String {
+        if transcript.hasPrefix(consumed) {
+            return String(transcript.dropFirst(consumed.count))
+        }
+        let previous = consumed.split(whereSeparator: { $0.isWhitespace })
+        let current = transcript.split(whereSeparator: { $0.isWhitespace })
+        guard !previous.isEmpty, current.count >= previous.count else { return "" }
+        let last = current[previous.count - 1]
+        let boundary: String.Index
+        if last.hasPrefix(previous[previous.count - 1]) {
+            boundary = transcript.index(last.startIndex, offsetBy: previous[previous.count - 1].count)
+        } else {
+            boundary = last.endIndex
+        }
+        return String(transcript[boundary...])
     }
 
     static func join(_ head: String, _ tail: String) -> String {
@@ -60,6 +231,19 @@ enum ChatInputDictationText {
             return head + tail
         }
         return head + " " + tail
+    }
+
+    static func appending(_ transcript: NSAttributedString, selection: Range<Int>, to draft: NSAttributedString) -> (text: NSAttributedString, selection: Range<Int>) {
+        let merged = join(draft.string, transcript.string)
+        let offset = (merged as NSString).length - transcript.length
+        let result = NSMutableAttributedString(attributedString: draft)
+        if offset > result.length {
+            result.append(NSAttributedString(string: " "))
+        }
+        result.append(transcript)
+        let lower = max(0, min(selection.lowerBound, transcript.length))
+        let upper = max(lower, min(selection.upperBound, transcript.length))
+        return (result, (offset + lower) ..< (offset + upper))
     }
 
     static func resolveLocale(preferred: [String], supported: [String]) -> String? {
@@ -105,6 +289,36 @@ enum ChatInputDictationText {
         return String(new[0 ..< position])
     }
 
+    static func resolveLanguage(_ codes: [String], preferred: [String], supported: [String]) -> String? {
+        var candidates: [String] = []
+        for code in codes {
+            let key = normalize(code)
+            for variant in [key] + (languageAliases[key].map { [$0] } ?? []) {
+                if !variant.contains("-") {
+                    let language = languageCode(of: variant)
+                    candidates += preferred.filter { languageCode(of: $0) == language }
+                }
+                candidates.append(variant)
+            }
+        }
+        return resolveLocale(preferred: candidates, supported: supported)
+    }
+
+    static func flag(for identifier: String) -> String? {
+        let parts = normalize(identifier).split(separator: "-")
+        guard parts.count > 1, let region = parts.dropFirst().last(where: { $0.count == 2 && $0.allSatisfy({ $0 >= "a" && $0 <= "z" }) }) else {
+            return nil
+        }
+        var flag = ""
+        for scalar in region.uppercased().unicodeScalars {
+            guard let indicator = Unicode.Scalar(127397 + scalar.value) else {
+                return nil
+            }
+            flag.unicodeScalars.append(indicator)
+        }
+        return flag
+    }
+
     static func automaticLocales(preferred: [String], supported: [String], limit: Int) -> [String] {
         var result: [String] = []
         var languages: Set<String> = []
@@ -119,10 +333,37 @@ enum ChatInputDictationText {
         return result
     }
 
+    static func preferences(chatLanguage: String?, system: [String]) -> [String] {
+        guard let chatLanguage, !chatLanguage.isEmpty else {
+            return system
+        }
+        let language = languageCode(of: chatLanguage)
+        let regional = system.first(where: { languageCode(of: $0) == language }) ?? chatLanguage
+        return [regional] + system
+    }
+
     static func languageCode(of identifier: String) -> String {
         let key = normalize(identifier)
         let language = key.split(separator: "-").first.map(String.init) ?? key
         return language.uppercased()
+    }
+
+    static func languageGroup(of identifier: String) -> String {
+        let parts = normalize(identifier).split(separator: "-").map(String.init)
+        guard let language = parts.first else {
+            return ""
+        }
+        guard language == "zh", parts.count > 1 else {
+            return language
+        }
+        switch parts[1] {
+        case "hk":
+            return "yue"
+        case "tw", "mo", "hant":
+            return "zh-hant"
+        default:
+            return "zh-hans"
+        }
     }
 
     static func score(stability: Double, confidence: Double?, priority: Int) -> Double {

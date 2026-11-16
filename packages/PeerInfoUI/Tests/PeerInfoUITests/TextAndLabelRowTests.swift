@@ -112,6 +112,51 @@ final class TextAndLabelRowTests: XCTestCase {
         XCTAssertEqual(ViewSnapshot.render(row).differingPixels(from: ViewSnapshot.render(legacy), tolerance: 0), 0)
     }
 
+    func testShareLinkDoesNotActivateInOuterMargins() throws {
+        for width: CGFloat in [420, 900] {
+            for viewType: GeneralViewType in [.singleItem, .firstItem, .innerItem, .lastItem] {
+                var shared = 0
+                let fixture = ShareLinkClickFixture(width: width, viewType: viewType, share: { shared += 1 })
+                defer { fixture.window.close() }
+                let block = container(fixture.row).frame
+                let points = [
+                    NSPoint(x: block.minX / 2, y: block.midY),
+                    NSPoint(x: (block.maxX + width) / 2, y: block.midY)
+                ]
+                for point in points {
+                    XCTAssertTrue(fixture.row.bounds.contains(point))
+                    XCTAssertFalse(block.contains(point))
+                    try fixture.click(point)
+                    XCTAssertEqual(shared, 0, "width: \(width), viewType: \(viewType), point: \(point)")
+                }
+                try fixture.click(NSPoint(x: block.midX, y: block.midY))
+                XCTAssertEqual(shared, 1)
+            }
+        }
+    }
+
+    func testShareLinkActionsStillWorkInsideTheBlock() throws {
+        for viewType: GeneralViewType in [.singleItem, .legacy] {
+            var shared = 0
+            var copied = 0
+            var qrOpened = 0
+            let fixture = ShareLinkClickFixture(width: width, viewType: viewType, share: { shared += 1 }, copy: { copied += 1 }, qr: { qrOpened += 1 })
+            defer { fixture.window.close() }
+            let block = container(fixture.row)
+            try fixture.click(NSPoint(x: block.frame.midX, y: block.frame.midY))
+            XCTAssertEqual(shared, 1)
+            let buttons = block.subviews.compactMap { $0 as? ImageButton }
+            XCTAssertEqual(buttons.count, 2)
+            for button in buttons {
+                let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: fixture.row)
+                try fixture.click(point)
+            }
+            XCTAssertEqual(shared, 1)
+            XCTAssertEqual(copied, 1)
+            XCTAssertEqual(qrOpened, 1)
+        }
+    }
+
     func testButtonsReachTheirActions() {
         var copied = 0
         var toggled = 0
@@ -123,5 +168,45 @@ final class TextAndLabelRowTests: XCTestCase {
         XCTAssertEqual(copied, 1)
         XCTAssertEqual(toggled, 1)
         XCTAssertTrue(buttons.allSatisfy { $0.scaleOnClick && !$0.autohighlight })
+    }
+}
+
+private final class ShareLinkClickWindow: NSWindow {
+    var pointerLocation = NSPoint.zero
+
+    override var mouseLocationOutsideOfEventStream: NSPoint {
+        return pointerLocation
+    }
+}
+
+private final class ShareLinkClickFixture {
+    let row: TextAndLabelRowView
+    let window: ShareLinkClickWindow
+
+    init(width: CGFloat, viewType: GeneralViewType, share: @escaping () -> Void, copy: @escaping () -> Void = {}, qr: @escaping () -> Void = {}) {
+        let item = TextAndLabelItem(NSSize(width: width, height: 50), stableId: 0, label: "share link", copyMenuText: "Copy", text: "@bloodysx", context: nil, viewType: viewType, isTextSelectable: false, callback: share, _copyToClipboard: copy, linkInteractions: TextViewInteractions(), qrCode: { _ in qr() })
+        _ = item.makeSize(width, oldWidth: 0)
+        row = TextAndLabelRowView(frame: NSRect(x: 30, y: 20, width: width, height: item.height))
+        window = ShareLinkClickWindow(contentRect: NSRect(x: 0, y: 0, width: width + 60, height: item.height + 40), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
+        window.contentView?.addSubview(row)
+        row.set(item: item, animated: false)
+        row.layoutSubtreeIfNeeded()
+        row.layout()
+    }
+
+    func click(_ point: NSPoint) throws {
+        let location = row.convert(point, to: nil)
+        window.pointerLocation = location
+        let target = try XCTUnwrap(window.contentView?.hitTest(location))
+        for type: NSEvent.EventType in [.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+            if type == .leftMouseDown {
+                target.mouseDown(with: event)
+            } else {
+                target.mouseUp(with: event)
+            }
+        }
     }
 }

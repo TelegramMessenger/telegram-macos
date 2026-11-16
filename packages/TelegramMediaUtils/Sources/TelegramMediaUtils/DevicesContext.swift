@@ -211,13 +211,11 @@ public final class DevicesContext : NSObject {
         NotificationCenter.default.addObserver(forName: NSNotification.Name.AVCaptureDeviceWasDisconnected, object: nil, queue: nil, using: { [weak self] _ in
             self?.update()
         })
-        AudioListener.retainOutputListener()
-        
-
-        
-        AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &AudioAddress.inputDevice, AudioListener.input, nil)
-        
-        AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &AudioAddress.devices, AudioListener.devices, nil)
+        devicesQueue.async {
+            AudioListener.retainOutputListener()
+            AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &AudioAddress.inputDevice, AudioListener.input, nil)
+            AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &AudioAddress.devices, AudioListener.devices, nil)
+        }
         
         NotificationCenter.default.addObserver(forName: AudioNotification.audioDevicesDidChange.notificationName, object: nil, queue: nil, using: { [weak self] _ in
             self?.update()

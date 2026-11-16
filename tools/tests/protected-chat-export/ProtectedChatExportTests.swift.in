@@ -1,0 +1,294 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let namespace: Int32
+    let id: Int64
+}
+
+enum Namespaces {
+    enum Peer {
+        static let CloudUser: Int32 = 0
+        static let CloudChannel: Int32 = 2
+    }
+}
+
+class Peer {
+    var isCopyProtectionEnabled: Bool {
+        return false
+    }
+}
+
+final class TelegramSecretChat: Peer {
+}
+
+final class TelegramGroup: Peer {
+    let protected: Bool
+
+    init(protected: Bool = false) {
+        self.protected = protected
+    }
+
+    override var isCopyProtectionEnabled: Bool {
+        return self.protected
+    }
+}
+
+final class TelegramChannel: Peer {
+    let protected: Bool
+
+    init(protected: Bool = false) {
+        self.protected = protected
+    }
+
+    override var isCopyProtectionEnabled: Bool {
+        return self.protected
+    }
+}
+
+final class TelegramUser: Peer {
+}
+
+class CachedPeerData {
+}
+
+struct CachedUserFlags: OptionSet {
+    let rawValue: Int
+    static let copyProtectionEnabled = CachedUserFlags(rawValue: 1)
+    static let myCopyProtectionEnabled = CachedUserFlags(rawValue: 2)
+}
+
+final class CachedUserData: CachedPeerData {
+    let flags: CachedUserFlags
+
+    init(flags: CachedUserFlags = []) {
+        self.flags = flags
+    }
+}
+
+final class CachedChannelData: CachedPeerData {
+}
+
+class Media {
+}
+
+final class TelegramMediaAction: Media {
+}
+
+struct ReplyAttribute {
+    let messageId: Int
+}
+
+final class Message {
+    var containsSecretMedia = false
+    var protected = false
+    var media: [Media] = []
+    var replyAttribute: ReplyAttribute?
+    var associatedMessages: [Int: Message] = [:]
+
+    init(protected: Bool = false, containsSecretMedia: Bool = false) {
+        self.protected = protected
+        self.containsSecretMedia = containsSecretMedia
+    }
+
+    func isCopyProtected() -> Bool {
+        return self.protected
+    }
+}
+
+final class Transaction {
+    var peers: [PeerId: Peer] = [:]
+    var cached: [PeerId: CachedPeerData] = [:]
+
+    func getPeer(_ id: PeerId) -> Peer? {
+        return self.peers[id]
+    }
+
+    func getPeerCachedData(peerId: PeerId) -> CachedPeerData? {
+        return self.cached[peerId]
+    }
+}
+
+final class Postbox {
+    let value = Transaction()
+
+    func transaction<T>(_ f: @escaping (Transaction) -> T) -> Signal<T, NoError> {
+        return Signal { subscriber in
+            subscriber.putNext(f(self.value))
+            subscriber.putCompletion()
+            return EmptyDisposable
+        }
+    }
+}
+
+final class Peers {
+    var fetches = 0
+    var answer: Bool? = true
+    var onFetch: () -> Void = {}
+    var pending: [() -> Void] = []
+
+    func fetchAndUpdateCachedPeerData(peerId: PeerId) -> Signal<Bool, NoError> {
+        return Signal { subscriber in
+            self.fetches += 1
+            self.pending.append {
+                self.onFetch()
+                if let answer = self.answer {
+                    subscriber.putNext(answer)
+                }
+                subscriber.putCompletion()
+            }
+            return EmptyDisposable
+        }
+    }
+
+    func deliver() {
+        let pending = self.pending
+        self.pending = []
+        pending.forEach { $0() }
+    }
+}
+
+final class Engine {
+    let peers = Peers()
+}
+
+final class Account {
+    let postbox = Postbox()
+}
+
+protocol AccountContextProtocol {
+    var peerId: PeerId { get }
+    var account: Account { get }
+    var engine: Engine { get }
+}
+
+final class Context: AccountContextProtocol {
+    let peerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: 1)
+    let account = Account()
+    let engine = Engine()
+}
+
+__RULES__
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+enum Outcome: Equatable {
+    case nothing
+    case unverified
+    case restricted
+    case free
+}
+
+func verified(_ context: Context, _ id: PeerId, before: (Outcome) -> Void = { _ in }) -> Outcome {
+    var outcome = Outcome.nothing
+    _ = chatExportVerifiedRestriction(context: context, peerId: id).start(next: { value in
+        switch value {
+        case nil:
+            outcome = .unverified
+        case true?:
+            outcome = .restricted
+        case false?:
+            outcome = .free
+        }
+    })
+    before(outcome)
+    context.engine.peers.deliver()
+    return outcome
+}
+
+let user = PeerId(namespace: Namespaces.Peer.CloudUser, id: 2)
+let channel = PeerId(namespace: Namespaces.Peer.CloudChannel, id: 3)
+
+func service(target: Message?) -> Message {
+    let message = Message()
+    message.media = [TelegramMediaAction()]
+    message.replyAttribute = ReplyAttribute(messageId: 7)
+    if let target = target {
+        message.associatedMessages[7] = target
+    }
+    return message
+}
+
+check("protected-channel-is-restricted", chatExportIsRestricted(peer: TelegramChannel(protected: true), cachedData: nil))
+check("protected-group-is-restricted", chatExportIsRestricted(peer: TelegramGroup(protected: true), cachedData: nil))
+check("private-chat-protected-by-the-other-side", chatExportIsRestricted(peer: TelegramUser(), cachedData: CachedUserData(flags: .copyProtectionEnabled)))
+check("private-chat-protected-by-me", chatExportIsRestricted(peer: TelegramUser(), cachedData: CachedUserData(flags: .myCopyProtectionEnabled)))
+check("secret-chat-is-restricted", chatExportIsRestricted(peer: TelegramSecretChat(), cachedData: CachedUserData()))
+check("free-channel-exports", !chatExportIsRestricted(peer: TelegramChannel(), cachedData: CachedChannelData()))
+check("free-group-exports", !chatExportIsRestricted(peer: TelegramGroup(), cachedData: nil))
+check("free-private-chat-exports", !chatExportIsRestricted(peer: TelegramUser(), cachedData: CachedUserData()))
+
+do {
+    let context = Context()
+    context.account.postbox.value.peers[user] = TelegramUser()
+    context.account.postbox.value.cached[user] = CachedUserData()
+    context.engine.peers.onFetch = {
+        context.account.postbox.value.cached[user] = CachedUserData(flags: .copyProtectionEnabled)
+    }
+    var early = Outcome.free
+    let outcome = verified(context, user, before: { early = $0 })
+    check("nothing-is-decided-before-the-refresh-answers", early == .nothing)
+    check("refresh-runs-before-the-flags-are-read", outcome == .restricted)
+}
+do {
+    let context = Context()
+    context.account.postbox.value.peers[user] = TelegramUser()
+    context.account.postbox.value.cached[user] = CachedUserData()
+    context.engine.peers.answer = false
+    check("failed-refresh-is-unverified", verified(context, user) == .unverified)
+}
+do {
+    let context = Context()
+    context.account.postbox.value.peers[user] = TelegramUser()
+    context.account.postbox.value.cached[user] = CachedUserData()
+    context.engine.peers.answer = nil
+    check("refresh-with-no-answer-decides-nothing", verified(context, user) == .nothing)
+}
+do {
+    let context = Context()
+    context.account.postbox.value.peers[user] = TelegramUser()
+    context.account.postbox.value.cached[user] = CachedUserData()
+    check("free-private-chat-passes-after-refresh", verified(context, user) == .free && context.engine.peers.fetches == 1)
+}
+do {
+    let context = Context()
+    context.account.postbox.value.peers[channel] = TelegramChannel()
+    check("channel-needs-no-refresh", verified(context, channel) == .free && context.engine.peers.fetches == 0)
+}
+do {
+    let context = Context()
+    context.account.postbox.value.peers[channel] = TelegramChannel(protected: true)
+    check("protected-channel-is-refused", verified(context, channel) == .restricted)
+}
+do {
+    let context = Context()
+    context.account.postbox.value.peers[context.peerId] = TelegramUser()
+    check("saved-messages-need-no-refresh", verified(context, context.peerId) == .free && context.engine.peers.fetches == 0)
+}
+do {
+    let context = Context()
+    check("unknown-peer-is-unverified", verified(context, channel) == .unverified)
+}
+
+check("protected-message-is-skipped", chatExportSkipsMessage(Message(protected: true)))
+check("timed-media-is-skipped", chatExportSkipsMessage(Message(containsSecretMedia: true)))
+check("plain-message-exports", !chatExportSkipsMessage(Message()))
+check("service-about-a-protected-message-is-skipped", chatExportSkipsMessage(service(target: Message(protected: true))))
+check("service-about-timed-media-is-skipped", chatExportSkipsMessage(service(target: Message(containsSecretMedia: true))))
+check("service-about-a-plain-message-exports", !chatExportSkipsMessage(service(target: Message())))
+check("service-with-a-missing-target-exports", !chatExportSkipsMessage(service(target: nil)))
+do {
+    let reply = Message()
+    reply.replyAttribute = ReplyAttribute(messageId: 7)
+    reply.associatedMessages[7] = Message(protected: true)
+    check("reply-to-a-protected-message-exports", !chatExportSkipsMessage(reply))
+}
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)

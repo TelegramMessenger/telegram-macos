@@ -10,6 +10,7 @@ import TGUIKit
 import SwiftSignalKit
 import TelegramCore
 import WalletContext
+import AppAnalytics
 
 public enum WalletInfoMode {
     case wallet
@@ -325,6 +326,7 @@ public func WalletInfoController(context: any AccountContextProtocol, environmen
     let controller = InputDataController(dataSignal: signal, title: "", hasDone: false, getBackgroundColor: {
         theme.colors.background
     })
+    controller.analyticsScreen = mode == .recovery ? AnalyticsScreen.walletRecoveryPhraseWarning : AnalyticsScreen.walletInfo
 
     controller.onDeinit = {
         actionsDisposable.dispose()

@@ -16,6 +16,7 @@ import AlertsUI
 import InAppSettings
 import LocalAnimations
 import AvatarUI
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -336,6 +337,7 @@ public func networkUsageStatsController(context: any AccountContextProtocol) -> 
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().networkUsageNetworkUsage, removeAfterDisappear: true, hasDone: false, identifier: "networkUsage")
+    controller.analyticsScreen = .settingsNetworkUsage
     
     actionDisposable.add(promise.get().start(next: { value in
         updateState { current in

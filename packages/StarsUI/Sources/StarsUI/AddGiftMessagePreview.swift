@@ -14,6 +14,8 @@ import InputTextView
 import InlineStickerLayer
 
 public final class AddGiftMessagePreviewItem: GeneralRowItem {
+    static let stickerSize = NSMakeSize(120, 120)
+
     fileprivate let context: any AccountContextProtocol
     fileprivate let gift: StarGift.UniqueGift
     fileprivate let headerLayout: TextViewLayout
@@ -86,7 +88,7 @@ public final class AddGiftMessagePreviewItem: GeneralRowItem {
 
     public override var height: CGFloat {
         typealias Metrics = GiftMessage
-        var height: CGFloat = 10 + 150 + 10
+        var height: CGFloat = 10 + Self.stickerSize.height + 10
         height += headerLayout.layoutSize.height
         height += 4
         height += titleLayout.layoutSize.height
@@ -115,7 +117,7 @@ final class AddGiftMessagePreviewView: TableRowView {
     private let card = Control(frame: NSMakeRect(0, 0, 220, 0))
     private let backgroundView = UniqueGiftBackgroundView(frame: .zero)
     private let ribbonView = ImageView()
-    private let stickerView = StarsHooks.shared.makeStickerView(NSMakeRect(0, 0, 150, 150))
+    private let stickerView = StarsHooks.shared.makeStickerView(NSRect(origin: .zero, size: AddGiftMessagePreviewItem.stickerSize))
     private let headerView = TextView()
     private let titleView = TextView()
     private let messageView = GiftMessageView(frame: .zero)
@@ -172,7 +174,7 @@ final class AddGiftMessagePreviewView: TableRowView {
         ribbonView.sizeToFit()
 
         if let file = item.stickerFile {
-            (stickerView as? StarsStickerView)?.updateStarsSticker(file: file, size: NSMakeSize(150, 150), context: item.context, colors: [], playback: .onceEnd, animated: animated)
+            (stickerView as? StarsStickerView)?.updateStarsSticker(file: file, size: stickerView.frame.size, context: item.context, colors: [], playback: .onceEnd, animated: animated)
         }
 
         headerView.update(item.headerLayout)

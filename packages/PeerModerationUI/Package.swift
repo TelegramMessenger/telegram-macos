@@ -18,7 +18,7 @@ let deps: [(String, String)] = [
     ("InputDataUI", "../InputDataUI"),
     ("AlertsUI", "../AlertsUI"),
     ("SelectPeersUI", "../SelectPeersUI"),
-
+    ("AppAnalytics", "../AppAnalytics"),
 ]
 
 let package = Package(

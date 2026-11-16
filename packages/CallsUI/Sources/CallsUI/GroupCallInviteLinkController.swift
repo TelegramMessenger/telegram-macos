@@ -14,6 +14,7 @@ import TelegramTheme
 import TelegramUtils
 import ColorPalette
 import TelegramIconsTheme
+import AppAnalytics
 
 private func generate(_ color: NSColor) -> CGImage {
     return generateImage(NSMakeSize(20, 20), contextGenerator: { size, ctx in
@@ -470,7 +471,7 @@ public func GroupCallInviteLinkController(context: any AccountContextProtocol, s
         
         let initialState = stateValue.with { $0 }
         
-        showModal(with: GroupCallUIHooks.shared.makeShareLinkModal(context, initialState.link, presentation), for: window)
+        showModal(with: GroupCallUIHooks.shared.makeShareLinkModal(context, initialState.link, presentation, []), for: window)
     }, openLink: {
         
         let initialState = stateValue.with { $0 }
@@ -519,6 +520,7 @@ public func GroupCallInviteLinkController(context: any AccountContextProtocol, s
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = mode == .share ? AnalyticsScreen.groupCallShareLink : AnalyticsScreen.groupCallInviteLink
     controller.getBackgroundColor = {
         presentation.colors.background
     }

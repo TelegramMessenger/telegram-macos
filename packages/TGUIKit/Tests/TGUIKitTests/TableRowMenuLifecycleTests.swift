@@ -61,6 +61,10 @@ private final class MenuCallbackRow: TableRowView {
     override func onCloseContextMenu() { closed += 1 }
 }
 
+private final class RightClickMenuRow: TableRowView {
+    override func mouseInside() -> Bool { true }
+}
+
 final class TableRowMenuLifecycleTests: XCTestCase {
     private var previousLegacyMenu = true
 
@@ -172,6 +176,20 @@ final class TableRowMenuLifecycleTests: XCTestCase {
 
     private func event() -> NSEvent {
         NSEvent.mouseEvent(with: .rightMouseDown, location: NSPoint(x: 5, y: 5), modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 1, clickCount: 1, pressure: 0)!
+    }
+
+    func testRightClickRequestsOnlyTheTelegramMenu() {
+        let view = RightClickMenuRow(frame: .zero)
+        let item = LifecycleMenuItem(.zero, stableId: 1)
+        view.set(item: item)
+
+        let click = event()
+        let nativeMenu = view.menu(for: click)
+        XCTAssertNil(nativeMenu)
+        guard nativeMenu == nil else { return }
+
+        view.rightMouseDown(with: click)
+        XCTAssertEqual(item.starts, 1)
     }
 
     func testReuseCancelsBothPendingSources() {

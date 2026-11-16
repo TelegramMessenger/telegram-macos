@@ -237,11 +237,11 @@ final class WalletReceiveQrSubmoduleCompatibilityTests: XCTestCase {
         XCTAssertEqual(walletReceiveQrDiamondIntroFrame(elapsed: 0.0)?.openingScale ?? 0, 5.0, accuracy: 1e-9)
     }
 
-    func testSubmoduleDropInIsStillTheCopiedOne() throws {
+    func testNativeDropInAndReviewedIOSRevealVariant() throws {
         let screen = collapsed(try source(submoduleReceivePath))
         for line in [
             "private static let introDelay = 0.03",
-            "private static let qrRevealDuration = 0.5",
+            "private static let qrRevealDuration = WalletReceiveQrRevealView.revealTime",
             "private static let diamondIntroSpeed = 1.5",
             "return Self.introDelay + (InteractiveDiamondIntro.duration - InteractiveDiamondIntro.delay) / Self.diamondIntroSpeed",
             "guard elapsed < max(Self.diamondIntroDuration, Self.introDelay + Self.qrRevealDuration),",
@@ -291,7 +291,7 @@ final class WalletReceiveQrSubmoduleCompatibilityTests: XCTestCase {
             XCTAssertTrue(qrCode.contains(collapsed(line)), line)
         }
         let reveal = collapsed(try source(submoduleRevealPath))
-        XCTAssertTrue(reveal.contains(collapsed("let padding = round((imageSize.width - moduleSide * CGFloat(self.moduleCount)) * 0.5 * self.image.scale) / self.image.scale")))
+        XCTAssertTrue(reveal.contains(collapsed("let padding = round((imageSize.width - moduleSide * CGFloat(n)) * 0.5 * self.image.scale) / self.image.scale")))
     }
 
     func testRevealPlanMatchesSubmodule() {
@@ -320,18 +320,18 @@ final class WalletReceiveQrSubmoduleCompatibilityTests: XCTestCase {
         XCTAssertGreaterThan(meanDistance(Array(nonEmpty.prefix(6)).flatMap { $0 }), meanDistance(Array(nonEmpty.suffix(6)).flatMap { $0 }))
     }
 
-    func testRevealTimingMatchesSubmodule() throws {
+    func testNativeRevealTimingAndReviewedIOSCenteredVariant() throws {
         for index in 0 ..< 48 {
             XCTAssertEqual(walletReceiveQrRevealBatchDelay(index: index, delay: 0.03, duration: 0.5), submoduleRevealBatchDelay(index: index, delay: 0.03, duration: 0.5), accuracy: 1e-12)
         }
         XCTAssertEqual(walletReceiveQrRevealBatchCount, 48)
         let submodule = collapsed(try source(submoduleRevealPath))
         for line in [
-            "let batchCount = 48",
-            "batchLayer.animateAlpha( from: 0.0, to: 1.0, duration: 0.12, delay: delay + Double(index) / Double(batchCount - 1) * max(0.0, duration - 0.12), timingFunction: CAMediaTimingFunctionName.easeOut.rawValue )",
-            "markerLayer.animateScale(from: 0.01, to: 1.0, duration: 0.5, delay: delay, timingFunction: kCAMediaTimingFunctionSpring)",
-            "markerLayer.animateAlpha(from: 0.0, to: 1.0, duration: 0.12, delay: delay)",
-            "let phase = inwardProgress * 0.55 + spiralPhase * 0.4 + Double.random(in: 0.0 ... 0.05)"
+            "static let revealTime: Double = 0.6",
+            "let k = Self.clamp01(time / Self.revealTime)",
+            "let center = Double(n - 1) / 2.0",
+            "let reach = hypot(center, center)",
+            "width: 7.0 * moduleSide,"
         ] {
             XCTAssertTrue(submodule.contains(collapsed(line)), line)
         }

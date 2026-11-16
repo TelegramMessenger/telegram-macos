@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -31,7 +32,11 @@ func installStatisticsUIHooks() {
         guard let context = context as? AccountContext else {
             return
         }
+        let origin = Analytics.shared.unresolvedContext()
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
         let controller = ChatAdditionController(context: context, chatLocation: .peer(messageId.peerId), focusTarget: .init(messageId: messageId))
+        controller.inheritAnalyticsContext(origin)
         context.bindings.rootNavigation().push(controller) },
         showStory: { context, peerId, storyId in
         StoryModalController.ShowSingleStory(context: context as! AccountContext, storyId: .init(peerId: peerId, id: storyId), initialId: nil) },
@@ -40,17 +45,18 @@ func installStatisticsUIHooks() {
         openGiftSlug: { context, slug in
         execute(inapp: .gift(link: "", slug: slug, context: context as! AccountContext)) }
     )
-    hooks.showStoryWithContext = { context, peerId, storyId in
-        StoryModalController.ShowSingleStory(context: context as! AccountContext, storyId: .init(peerId: peerId, id: storyId), initialId: nil)
+    hooks.showStoryWithContext = { context, peerId, storyId, analyticsContext in
+        StoryModalController.ShowSingleStory(context: context as! AccountContext, storyId: .init(peerId: peerId, id: storyId), initialId: nil, analyticsContext: analyticsContext)
     }
-    hooks.openMessageWithContext = { context, messageId in
+    hooks.openMessageWithContext = { context, messageId, analyticsContext in
         guard let context = context as? AccountContext else { return }
         let controller = ChatAdditionController(context: context, chatLocation: .peer(messageId.peerId), focusTarget: .init(messageId: messageId))
+        controller.inheritAnalyticsContext(analyticsContext)
         context.bindings.rootNavigation().push(controller)
     }
-    hooks.openPeerInfoWithContext = { context, peerId in
+    hooks.openPeerInfoWithContext = { context, peerId, analyticsContext in
         guard let context = context as? AccountContext else { return }
-        PeerInfoController.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId)
+        PeerInfoController.push(navigation: context.bindings.rootNavigation(), context: context, peerId: peerId, analyticsContext: analyticsContext)
     }
     StatisticsHooks.install(hooks)
 }

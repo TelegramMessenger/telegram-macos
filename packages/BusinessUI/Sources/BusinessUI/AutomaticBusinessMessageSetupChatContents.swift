@@ -242,6 +242,8 @@ final class AutomaticBusinessMessageSetupChatContents: ChatCustomContentsProtoco
             fatalError()
         case .searchHashtag:
             fatalError()
+        case .htmlDemo:
+            fatalError()
         }
         
         let queue = Queue()
