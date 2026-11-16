@@ -62,7 +62,7 @@ public class ChatInputAccessory: View {
         }
         dismissUrlPreview = { [weak self] in
             self?.chatInteraction.update({ state -> ChatPresentationInterfaceState in
-                return state.updatedInterfaceState({$0.withUpdatedComposeDisableUrlPreview(state.urlPreview?.0)})
+                return state.updatedInterfaceState({$0.withUpdatedEffectiveComposeDisableUrlPreview(state.urlPreview?.0)})
             })
         }
         dismissSuggestPost = { [weak self] in
@@ -103,7 +103,7 @@ public class ChatInputAccessory: View {
         if state.interfaceState.suggestPost != nil {
             availableKeys.append(.suggestPost)
         } else {
-            if let preview = state.urlPreview, state.interfaceState.composeDisableUrlPreview != preview.0,
+            if let preview = state.urlPreview, state.interfaceState.effectiveComposeDisableUrlPreview != preview.0,
                let peer = state.peer, !peer.webUrlRestricted {
                 availableKeys.append(.urlPreview(preview.0, state.interfaceState.editState?.message.id))
             }
@@ -236,7 +236,7 @@ public class ChatInputAccessory: View {
                             $0.updatedInterfaceState {
                                 $0.updatedEditState { value in
                                     if let value = value {
-                                        return .init(message: value.message.withUpdatedMedia([]), draftDisableUrlPreview: value.draftDisableUrlPreview)
+                                        return .init(message: value.message.withUpdatedMedia([]), disableUrlPreview: value.disableUrlPreview)
                                     } else {
                                         return nil
                                     }
