@@ -215,16 +215,14 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             return (accountsAndPeers.1.count + 1 < maximumNumberOfAccounts, !accountsAndPeers.1.isEmpty)
     }
     
-    let privacySettings = privacySettings
-        |> take(1)
-    
     let baseSettings = baseAppSettings(accountManager: context.sharedContext.accountManager)
         |> take(1)
     
     let contentConfiguration: Signal<ContentSettingsConfiguration?, NoError> = .single(nil) |> then(contentSettingsConfiguration(network: context.account.network) |> map(Optional.init))
     
-    let webSessions = context.webSessions.state
-        |> take(1)
+    let hasWebSessions = context.webSessions.state
+        |> map { !$0.sessions.isEmpty }
+        |> distinctUntilChanged
     
     let hasPassport: Signal<Bool, NoError> = .single(false) |> then(context.engine.auth.twoStepVerificationConfiguration() |> map { configuration -> Bool in
         if case let .set(_, _, _, hasSecureValues, _) = configuration {
@@ -290,11 +288,11 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
             return .single(false)
         })
     
-    let facts = combineLatest(baseSettings, contentConfiguration, webSessions, combineLatest(hasPassport, hasLoginEmail))
+    let facts = combineLatest(baseSettings, contentConfiguration, hasWebSessions, combineLatest(hasPassport, hasLoginEmail))
     
     return combineLatest(accountsInfo, localizations, proxyServers, privacySettings, facts)
         |> map { accountsInfo, localizations, proxyServers, privacySettings, facts in
-            let (baseSettings, contentConfiguration, webSessions, passportAndEmail) = facts
+            let (baseSettings, contentConfiguration, hasWebSessions, passportAndEmail) = facts
             let (hasPassport, hasLoginEmail) = passportAndEmail
             
             var allItems: [SettingsSearchableItem<Context>] = []
@@ -315,7 +313,7 @@ func settingsSearchableItems<Context: AccountContextProtocol>(context: Context, 
                 canAdjustSensitiveContent: contentConfiguration?.canAdjustSensitiveContent ?? false,
                 passkeysAvailable: privacyPasskeysAvailable(context: context),
                 loginEmailAvailable: loginEmailAvailable,
-                hasWebSessions: !webSessions.sessions.isEmpty,
+                hasWebSessions: hasWebSessions,
                 secretChatWebPreviewAvailable: FastSettings.isSecretChatWebPreviewAvailable(for: context.account.id.int64) != nil,
                 chatBackgroundAvailable: theme.bubbled,
                 dockIconAvailable: dockIconAvailable,

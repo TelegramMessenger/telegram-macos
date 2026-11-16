@@ -232,7 +232,12 @@ private let selectivePrivacyRequest = MetaDisposable()
 
 private func presentSelectivePrivacy<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, loaded: AccountPrivacySettings?, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
     let open: (AccountPrivacySettings) -> Void = { settings in
-        present(.push, selectivePrivacyController(context, kind: kind, settings: settings, updated: { _, _, _, _ in }))
+        present(.push, selectivePrivacyController(context, kind: kind, settings: settings, updated: { updated, _, _, globalSettings in
+            SettingsHooks.shared.updatePrivacy(context, updated, kind)
+            if let globalSettings = globalSettings {
+                context.updateMessagesPrivacy(noPaidMessages: settings.noPaidMessages, globalSettings: globalSettings)
+            }
+        }))
     }
     if let loaded = loaded {
         open(loaded)
