@@ -586,7 +586,7 @@ public class SVideoController: GenericViewController<SVideoView>, PictureInPictu
         genericView.interactions = SVideoInteractions(playOrPause: { [weak self] in
             self?.playOrPause()
         }, rewind: { [weak self] timestamp in
-            self?.frameStepTimestamp = nil
+            self?.frameStepTimestamp = timestamp
             self?.frameStepDisposable?.dispose()
             self?.frameStepDisposable = nil
             self?.genericView.hideFrameStepOverlay()

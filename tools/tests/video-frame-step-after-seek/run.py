@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory(prefix='video-frame-step-') as temporary:
     with lock as handle:
         if args.compiler_lock:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        compile_command = ['xcrun', 'swiftc', '-module-cache-path', str(output / 'module-cache'), str(source), '-o', str(binary)]
+        compile_command = ['xcrun', 'swiftc', '-j1', '-module-cache-path', str(output / 'module-cache'), str(source), '-o', str(binary)]
         compiled = subprocess.run(compile_command, capture_output=True, text=True, env=env)
         (output / 'compile.log').write_text(compiled.stdout + compiled.stderr)
         if compiled.returncode:

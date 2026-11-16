@@ -150,7 +150,7 @@ for hls in [false, true] {
                 }
                 let selected = c.genericView.status!.timestamp
                 expect(abs(selected - target) < 0.00001, "timeline updates current status")
-                expect(c.frameStepTimestamp == nil, "seek clears accumulated step origin")
+                expect(near(c.frameStepTimestamp, selected), "seek replaces accumulated step origin with requested target")
                 expect(near(c.mediaPlayer.seeks.last, selected), "seek passes new target to player")
                 expect(!c.genericView.overlayVisible, "seek hides old step overlay")
                 if hls {
@@ -191,12 +191,49 @@ for hls in [false, true] {
             } else {
                 if forward { c.genericView.rewindForward() } else { c.genericView.rewindBackward() }
             }
-            expect(near(c.mediaPlayer.seeks.last, forward ? 65 : 35), "15-second controls retain target")
-            expect(c.frameStepTimestamp == nil, "button seek invalidates frame-step origin")
+            let target = forward ? 65.0 : 35.0
+            expect(near(c.mediaPlayer.seeks.last, target), "15-second controls retain target")
+            expect(near(c.frameStepTimestamp, target), "button seek seeds requested frame-step origin")
             expect(!c.genericView.overlayVisible, "button seek clears old overlay")
             if hls { expect(old?.disposed == true, "button seek cancels frame preview") }
+            expect(near(c.genericView.status?.timestamp, 50), "player status remains delayed after button seek")
+            c.stepFrameForward()
+            expect(near(c.mediaPlayer.seeks.last, target + step), "immediate step uses button target before status delivery")
+            c.genericView.status = c.genericView.status?.withUpdatedTimestamp(50)
+            c.stepFrameForward()
+            expect(near(c.mediaPlayer.seeks.last, target + step * 2), "stale status cannot rewind consecutive frame steps")
+            c.genericView.status = c.genericView.status?.withUpdatedTimestamp(target)
+            c.stepFrameBackward()
+            expect(near(c.mediaPlayer.seeks.last, target + step), "delayed requested status preserves accumulated frame steps")
+            if hls { expect(near(c.previewRequests.last, target + step), "HLS preview follows requested target during delayed status") }
         }
     }
+}
+
+for hls in [false, true] {
+    for forward in [false, true] {
+        for target in [0.0, 65.0, 165.0] {
+            let c = Controller(timestamp: 50, hls: hls)
+            c.stepFrameForward()
+            c.rewind?(target)
+            expect(near(c.genericView.status?.timestamp, 50), "direct seek does not require immediate status mutation")
+            if forward { c.stepFrameForward() } else { c.stepFrameBackward() }
+            let expected = forward ? min(165, target + step) : max(0, target - step)
+            expect(near(c.mediaPlayer.seeks.last, expected), "direct seek seeds delayed-status step and clamps boundaries")
+            if hls { expect(near(c.previewRequests.last, expected), "direct-seek preview uses pending target") }
+        }
+    }
+    let c = Controller(timestamp: 50, hls: hls)
+    c.rewind?(65)
+    c.rewind?(100)
+    c.stepFrameBackward()
+    expect(near(c.mediaPlayer.seeks.last, 100 - step), "latest requested seek wins before any status update")
+    c.play()
+    expect(c.frameStepTimestamp == nil, "resuming playback clears pending seek accumulator")
+    c.genericView.status = c.genericView.status?.withUpdatedTimestamp(110)
+    c.pause()
+    c.stepFrameForward()
+    expect(near(c.mediaPlayer.seeks.last, 110 + step), "pause after playback uses fresh status rather than old seek target")
 }
 
 let repeated = Controller()
