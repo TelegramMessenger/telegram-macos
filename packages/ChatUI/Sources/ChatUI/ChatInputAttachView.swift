@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import InputView
 import TGUIKit
 import SwiftSignalKit
@@ -26,22 +27,42 @@ import StarsUI
 
 @available(macOS 10.15, *)
 func showWalletSendMoney(chatInteraction: ChatInteraction, user: TelegramUser, flyIntoChat: Bool, morphSource: (() -> NSView?)? = nil) {
+    showWalletSendMoney(chatInteraction: chatInteraction, recipient: .peer(user), flyIntoChat: flyIntoChat, morphSource: morphSource)
+}
+
+@available(macOS 10.15, *)
+func showWalletSendMoney(chatInteraction: ChatInteraction, recipient: ChatWalletSendRecipient, flyIntoChat: Bool, morphSource: (() -> NSView?)? = nil) {
     let context = chatInteraction.context
+    let peerId: PeerId
+    switch recipient {
+    case let .peer(user):
+        peerId = user.id
+    case .address:
+        peerId = chatInteraction.peerId
+    }
+    let analyticsContext = chatInteraction.captureAnalyticsContext().restricting(peerId: peerId)
+    let presentation = analyticsContext.beginPresentation()
+    defer { withExtendedLifetime(presentation) {} }
     guard let walletContext = ChatInputUIHooks.shared.walletHooks.walletContext(context) else {
         return
     }
     var acceptedTransferAnimation = false
     let handlers = ChatWalletSendHandlers(transferAnimationWillStart: !flyIntoChat ? nil : { [weak chatInteraction] id in
-        chatInteraction?.walletTransferAnimation?.prepare(id: id)
+        let presentation = analyticsContext.beginPresentation()
+        withExtendedLifetime(presentation) { chatInteraction?.walletTransferAnimation?.prepare(id: id) }
     }, transferAnimation: !flyIntoChat ? nil : { [weak chatInteraction] id, source in
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         acceptedTransferAnimation = chatInteraction?.walletTransferAnimation?.receive(id: id, source: source) ?? false
         return acceptedTransferAnimation
     }, completed: { [weak chatInteraction] in
+        let presentation = analyticsContext.beginPresentation()
+        defer { withExtendedLifetime(presentation) {} }
         if !acceptedTransferAnimation {
             chatInteraction?.scrollToLatest(true)
         }
     })
-    showModal(with: ChatInputUIHooks.shared.walletHooks.makeWalletSendControllerObserved(context, walletContext, user, handlers), for: context.window, morphSource: morphSource)
+    showModal(with: ChatInputUIHooks.shared.walletHooks.makeWalletSendControllerObserved(context, walletContext, recipient, handlers, analyticsContext: analyticsContext), for: context.window, morphSource: morphSource)
 }
 
 public final class ChatInputAttachButton: View, MorphHoldObserving {
@@ -132,31 +153,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
     }
 
     private func runAITranslate() {
-        let chatInteraction = self.chatInteraction
-        let presentation = chatInteraction.presentation
-        let text = presentation.effectiveInput.inputText
-        let editMessageId = presentation.interfaceState.editState?.message.id
-        guard !text.isEmpty else { return }
-        let context = chatInteraction.interactionContext
-        let language = Translate.detectLanguage(for: text)
-        let apply: (NSAttributedString, Bool) -> Void = { [weak chatInteraction] translated, send in
-            guard let chatInteraction,
-                  chatInteraction.presentation.state == .normal || chatInteraction.presentation.state == .editing,
-                  (chatInteraction.presentation.interfaceState.editState?.loadingState ?? EditStateLoading.none) == EditStateLoading.none,
-                  chatInteraction.presentation.interfaceState.editState?.message.id == editMessageId else {
-                return
-            }
-            let inputState = ChatTextInputState(attributedText: translated, selectionRange: translated.length ..< translated.length)
-            chatInteraction.update { $0.withUpdatedEffectiveInputState(inputState) }
-            if send {
-                chatInteraction.sendMessage(true, nil, nil)
-            }
-        }
-        showModal(with: ChatInputUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, text, onUse: { translated in
-            apply(translated, false)
-        }, onSend: { translated in
-            apply(translated, true)
-        }), for: context.window, morphSource: { [weak self] in self?.aiButton })
+        chatInteraction.openAIEditor(morphSource: { [weak self] in self?.aiButton })
     }
 
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
@@ -186,6 +183,9 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
             guard let peer = chatInteraction.presentation.peer else {
                 return nil
             }
+            let analyticsContext = chatInteraction.captureAnalyticsContext()
+            let analyticsPresentation = analyticsContext.beginPresentation()
+            defer { analyticsPresentation.end() }
             var items: [ContextMenuItem] = []
             if let editState = chatInteraction.presentation.interfaceState.editState, editState.message.pendingProcessingAttribute == nil {
                 if let media = editState.originalMedia, media is TelegramMediaFile || media is TelegramMediaImage {
@@ -329,7 +329,7 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                         if canAddAttach {
                             let bot = attach
                             items.append(ContextMenuItem(attach.shortName, handler: {
-                                chatOpenAttachMenuBot(bot, context: context, peerId: peerId, threadId: threadId, replyId: replyTo)
+                                chatOpenAttachMenuBot(bot, context: context, peerId: peerId, threadId: threadId, replyId: replyTo, analyticsContext: analyticsContext)
                             }, itemImage: value))
                         }
                     }
@@ -446,10 +446,13 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
             if !items.isEmpty {
                 let menu = ContextMenu(betterInside: true)
                 menu.delegate = menu
-
+                var menuPresentation: AnalyticsPresentation? = analyticsContext.beginPresentation()
                 menu.onShow = { _ in
+                    menuPresentation = analyticsContext.beginPresentation()
                 }
                 menu.onClose = {
+                    menuPresentation?.end()
+                    menuPresentation = nil
                 }
                 for item in items {
                     menu.addItem(item)
@@ -458,5 +461,45 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
             }
             return nil
         }
+    }
+}
+
+extension ChatInteraction {
+    func openAIEditor(morphSource: (() -> NSView?)?) {
+        let draft = presentation.effectiveInput
+        let text = draft.inputText
+        let editMessageId = presentation.interfaceState.editState?.message.id
+        guard !text.isEmpty else { return }
+        let analyticsContext = captureAnalyticsContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
+        let context = interactionContext
+        let language = Translate.detectLanguage(for: text)
+        let apply: (NSAttributedString, Bool) -> Void = { [weak self] translated, send in
+            guard let self,
+                  self.presentation.state == .normal || self.presentation.state == .editing,
+                  (self.presentation.interfaceState.editState?.loadingState ?? EditStateLoading.none) == EditStateLoading.none,
+                  self.presentation.interfaceState.editState?.message.id == editMessageId else {
+                return
+            }
+            let current = self.captureAnalyticsContext(inherited: analyticsContext)
+            let presentation = current.beginPresentation()
+            defer { presentation.end() }
+            let input = current.isExcluded || current.scope?.isValid != true ? chatInputTextExcludingAnalytics(translated) : translated
+            let inputState = ChatTextInputState(attributedText: input, selectionRange: input.length ..< input.length)
+            self.applyAIEditorDraft(inputState)
+            if send {
+                if let sendAIEditorResult = self.sendAIEditorResult {
+                    sendAIEditorResult()
+                } else {
+                    self.sendMessage(true, nil, nil)
+                }
+            }
+        }
+        showModal(with: ChatInputUIHooks.shared.makeTranslateModalObserved(context, language, appAppearance.languageCode, draft, alwaysUsePeerId: editMessageId == nil ? alwaysUseAIEditorPeerId : nil, analyticsContext: analyticsContext, onUse: { translated in
+            apply(translated, false)
+        }, onSend: { translated in
+            apply(translated, true)
+        }), for: context.window, morphSource: morphSource)
     }
 }

@@ -9,6 +9,7 @@ import StarsUI
 import TelegramContext
 import TelegramTheme
 import TelegramUtils
+import AppAnalytics
 
 private final class HeaderItem : GeneralRowItem {
     
@@ -376,6 +377,7 @@ func StoryStreamStarMessageController(context: any AccountContextProtocol, story
         dataSignal: signal,
         title: strings().storyLiveStreamStarMessageHighlightAndPin
     )
+    controller.analyticsScreen = .storiesLiveStarMessage
 
     controller.validateData = { _ in
         

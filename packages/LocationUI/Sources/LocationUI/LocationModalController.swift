@@ -13,6 +13,7 @@ import GeneralRows
 import InputDataUI
 import AvatarUI
 import ObjcUtils
+import AppAnalytics
 
 private enum PickLocationState : Equatable {
     case user(CLLocation?)
@@ -522,17 +523,25 @@ public class LocationModalController: ModalViewController {
     private let requestDisposable = MetaDisposable()
     private let statePromise:Promise<LocationViewState> = Promise()
     private let destination: SelectLocationDestination
+    private let getAnalyticsContext: () -> AnalyticsContext
     private var isClosed = false
     private var hasSelected = false
     public var selectCallback: ((TelegramMediaMap) -> Void)?
     private var collapseNearby: (() -> Void)?
-    public init(_ chatInteraction: any LocationChatInteraction, destination: SelectLocationDestination = .chat) {
+    public init(_ chatInteraction: any LocationChatInteraction, destination: SelectLocationDestination = .chat, analyticsContext: AnalyticsContext? = nil) {
         let context = chatInteraction.locationContext
         let peerId = destination == .chat ? chatInteraction.locationPeerId : context.peerId
-
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+        self.getAnalyticsContext = {
+            Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: origin)
+        }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         self.chatInteraction = chatInteraction
         self.destination = destination
         super.init(frame: NSMakeRect(0, 0, 360, 380))
+        self.analyticsContext = origin
+        self.analyticsScreen = destination == .chat ? AnalyticsScreen.chatAttachLocation : AnalyticsScreen.appLocationPicker
     }
     
     public override var dynamicSize: Bool {
@@ -554,21 +563,29 @@ public class LocationModalController: ModalViewController {
     }
     
     public override func viewWillDisappear(_ animated: Bool) {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         super.viewWillDisappear(animated)
         genericView.mapView.showsUserLocation = false
         window?.removeAllHandlers(for: self)
     }
     
     public override func viewDidAppear(_ animated: Bool) {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         super.viewDidAppear(animated)
         window?.set(mouseHandler: { [weak self] _ -> KeyHandlerResult in
             guard let self else { return .rejected }
+            let presentation = self.getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             self.delegate.isPinRaised = true
             return .rejected
         }, with: self, for: .leftMouseDragged, priority: .modal)
         
         let collapseOnMapEvent: (NSEvent) -> KeyHandlerResult = { [weak self] event in
             guard let self else { return .rejected }
+            let presentation = self.getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             if self.genericView.hitsMapWhileExpanded(event) {
                 self.collapseNearby?()
             }
@@ -579,6 +596,8 @@ public class LocationModalController: ModalViewController {
     }
     
     public override func close(animationType: ModalAnimationCloseBehaviour = .common) {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         isClosed = true
         disposable.set(nil)
         sendDisposable.set(nil)
@@ -588,8 +607,13 @@ public class LocationModalController: ModalViewController {
 
     private func sendLocation(_ media: TelegramMediaMap? = nil) {
         guard !isClosed, !hasSelected else { return }
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         let invoke: () -> Void = { [weak self] in
             guard let self, !self.isClosed, !self.hasSelected else { return }
+            let origin = self.getAnalyticsContext()
+            let presentation = origin.beginPresentation()
+            defer { presentation.end() }
             let selection = self.statePromise.get() |> map { state -> TelegramMediaMap? in
                 switch state {
                 case let .normal(picked):
@@ -601,7 +625,7 @@ public class LocationModalController: ModalViewController {
                     return TelegramMediaMap(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, heading: nil, accuracyRadius: nil, venue: nil, liveBroadcastingTimeout: nil, liveProximityNotificationRadius: nil)
                 }
             } |> filter { $0 != nil } |> take(1) |> deliverOnMainQueue
-            self.sendDisposable.set((selection).start(next: { [weak self] media in
+            self.sendDisposable.set(origin.preservingPresentation(selection).start(next: { [weak self] media in
                 guard let self, let media, !self.isClosed, !self.hasSelected else { return }
                 self.hasSelected = true
                 if let selectCallback = self.selectCallback {
@@ -612,7 +636,7 @@ public class LocationModalController: ModalViewController {
                 self.close()
             }))
         }
-        LocationHooks.shared.confirmSendObserved(self.chatInteraction, invoke: invoke)
+        LocationHooks.shared.confirmSendObserved(self.chatInteraction, analyticsContext: getAnalyticsContext(), invoke: invoke)
     }
 
     public override func returnKeyAction() -> KeyHandlerResult {
@@ -621,6 +645,9 @@ public class LocationModalController: ModalViewController {
     }
     
     public override func viewDidLoad() {
+        let getAnalyticsContext = self.getAnalyticsContext
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         super.viewDidLoad()
                 
         genericView.mapView.delegate = delegate
@@ -633,6 +660,8 @@ public class LocationModalController: ModalViewController {
         
         genericView.locateButton.set(handler: { [weak self] _ in
             guard let `self` = self else {return}
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             self.delegate.focusUserLocation(self.genericView.mapView)
             self.delegate.isPinRaised = false
         }, for: .Click)
@@ -656,6 +685,8 @@ public class LocationModalController: ModalViewController {
         
         delegate.willChangeRegion = { [weak self] in
             guard let `self` = self, handleRegion else {return}
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             if self.delegate.isPinRaised {
                 state.set(.normal(.custom(nil, named: nil)))
             } else {
@@ -664,6 +695,8 @@ public class LocationModalController: ModalViewController {
         }
         delegate.didChangeRegion = { [weak self] in
             guard let `self` = self, handleRegion else {return}
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             if self.delegate.isPinRaised {
                 state.set(.normal(.custom(self.genericView.getSelectedLocation(), named: nil)))
             } else {
@@ -682,6 +715,8 @@ public class LocationModalController: ModalViewController {
         
         
         let peerSignal: Signal<PeerId?, NoError> = .single(nil) |> then(context.engine.peers.resolvePeerByName(name: "foursquare", referrer: nil) |> mapToSignal { result in
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             switch result {
             case .progress:
                 return .never()
@@ -691,12 +726,16 @@ public class LocationModalController: ModalViewController {
         })
         let requestSignal = combineLatest(peerSignal |> deliverOnPrepareQueue, delegate.location.get() |> take(1) |> deliverOnPrepareQueue, search.get() |> distinctUntilChanged |> deliverOnPrepareQueue)
             |> mapToSignal { botId, location, query -> Signal<(ChatContextResultCollection?, CLLocation?, Bool, Bool), NoError> in
+                let presentation = getAnalyticsContext().beginPresentation()
+                defer { presentation.end() }
                 if let botId = botId, let location = location {
                     let first = Signal<(ChatContextResultCollection?, CLLocation?, Bool, Bool), NoError>.single((cachedData[query] ?? previousResult.modify {$0}, location.location, cachedData[query] == nil, !query.isEmpty))
                     if cachedData[query] == nil {
                         return first |> then(context.engine.messages.requestChatContextResults(botId: botId, peerId: peerId, query: query, location: .single((location.coordinate.latitude, location.coordinate.longitude)), offset: "")
                             |> `catch` { _ in return .complete() }
                             |> deliverOnPrepareQueue |> map { result in
+                                let presentation = getAnalyticsContext().beginPresentation()
+                                defer { presentation.end() }
                                 var value = result?.results
                                 if let result = result {
                                     cachedData[query] = result.results
@@ -725,6 +764,8 @@ public class LocationModalController: ModalViewController {
             self?.sendLocation(venue)
         }, searchVenues: { query in
             prepareQueue.async {
+                let presentation = getAnalyticsContext().beginPresentation()
+                defer { presentation.end() }
                 if cachedData[query] != nil {
                     search.set(.single(query))
                 } else {
@@ -734,12 +775,16 @@ public class LocationModalController: ModalViewController {
         })
         
         let stateModified = state.get() |> mapToSignal { state -> Signal<LocationViewState, NoError> in
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             switch state {
             case let .normal(pick):
                 switch pick {
                 case let .custom(location, _):
                     if let location = location {
                         return .single(state) |> then(reverseGeocodeLocation(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude) |> map { value in
+                            let presentation = getAnalyticsContext().beginPresentation()
+                            defer { presentation.end() }
                             return .normal(.custom(location, named: value?.fullAddress))
                         })
                     }
@@ -753,6 +798,8 @@ public class LocationModalController: ModalViewController {
         } |> distinctUntilChanged
         
         let transition:Signal<(TableUpdateTransition, Bool, LocationViewState, Bool), NoError> = combineLatest(queue: prepareQueue, signal, appearanceSignal, stateModified) |> map { data, appearance, state in
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             let results:[ChatContextResult] = data.0?.results ?? []
             let entries = mapEntries(result: results, loading: data.2, location: data.1, state: state).map{AppearanceWrapperEntry(entry: $0, appearance: appearance)}
             return (prepareTransition(left: previous.swap(entries), right: entries, initialSize: initialSize.modify{$0}, arguments: arguments), data.2, state, !results.isEmpty || data.3)
@@ -761,6 +808,8 @@ public class LocationModalController: ModalViewController {
         let animated:Atomic<Bool> = Atomic(value: false)
         
         let toggleExpand: (LocationViewState) -> Void = { [weak self] viewState in
+            let presentation = getAnalyticsContext().beginPresentation()
+            defer { presentation.end() }
             self?.genericView.tableView.clipView.scroll(to: NSMakePoint(0, 0), animated: false)
             search.set(.single(""))
             state.set(viewState)
@@ -773,7 +822,7 @@ public class LocationModalController: ModalViewController {
             toggleExpand(.normal(.user(self.genericView.mapView.userLocation.location)))
         }
         
-        disposable.set((transition).start(next: { [weak self] transition, loading, expanded, hasVenues in
+        disposable.set(getAnalyticsContext().preservingPresentation(transition).start(next: { [weak self] transition, loading, expanded, hasVenues in
             guard let `self` = self else {return}
             self.genericView.tableView.merge(with: transition)
             switch expanded {
@@ -787,7 +836,7 @@ public class LocationModalController: ModalViewController {
         }))
 
         let request = requestUserLocation() |> deliverOnMainQueue
-        requestDisposable.set((request).start(next: { [weak self] result in
+        requestDisposable.set(getAnalyticsContext().preservingPresentation(request).start(next: { [weak self] result in
             self?.genericView.mapView.showsUserLocation = true
         }, error: { [weak self] error in
             self?.delegate.cancelRequestLocation()
@@ -796,6 +845,8 @@ public class LocationModalController: ModalViewController {
     }
     
     deinit {
+        let presentation = getAnalyticsContext().beginPresentation()
+        defer { presentation.end() }
         disposable.dispose()
         sendDisposable.dispose()
         requestDisposable.dispose()

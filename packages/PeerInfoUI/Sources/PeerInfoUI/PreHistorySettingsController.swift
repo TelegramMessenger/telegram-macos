@@ -13,6 +13,7 @@ import ColorPalette
 import AlertsUI
 import InAppSettings
 import InactiveChannelsUI
+import AppAnalytics
 
 
 private final class Arguments {
@@ -128,6 +129,7 @@ public func PreHistorySettingsController(context: any AccountContextProtocol, pe
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().peerInfoPreHistory, hasDone: true)
+    controller.analyticsScreen = .peerInfoHistoryVisibility
 
 
     controller.onDeinit = {

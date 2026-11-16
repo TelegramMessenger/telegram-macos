@@ -17,6 +17,7 @@ import AlertsUI
 import FilePanels
 import AvatarEditorUI
 import InactiveChannelsUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -330,6 +331,7 @@ public func CreateChannelController(context: any AccountContextProtocol, require
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().channelNewChannel, hasDone: true, doneString: { strings().navigationNext })
+    controller.analyticsScreen = .createChannel
     
     controller.validateData = { _ in
         let state = stateValue.with { $0 }

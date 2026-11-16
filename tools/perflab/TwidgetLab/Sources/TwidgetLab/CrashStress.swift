@@ -54,7 +54,7 @@ private final class StressState {
         if let running = running {
             made = running
         } else {
-            guard let p = WidgetPreparer.prepare(html: html, theme: theme, width: width, options: options) else {
+            guard let p = WidgetPreparer.prepare(html: html, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else {
                 WidgetShellPool.shared.prewarm(width: width)
                 return
             }
@@ -261,7 +261,7 @@ func runCrashStress(_ args: [String], option: (String) -> String?) {
                     stressBridgeCount += 1
                     stressBridgeCalls.unlock()
                 }
-                if Bool.random() { host.setTheme(p.theme == "dark" ? "light" : "dark") }
+                if Bool.random() { host.setTheme(p.theme.colorScheme == .dark ? "light" : "dark") }
                 if let lite = host.rendererObject as? LiteHTMLWidgetRenderer {
                     for k in 0..<4 {
                         DispatchQueue.main.asyncAfter(deadline: .now() + Double(k) * hold / 4) { stressClick(lite.view, window: content.window) }
@@ -287,26 +287,26 @@ func runCrashStress(_ args: [String], option: (String) -> String?) {
                 let theme = Bool.random() ? "light" : "dark"
                 switch Int.random(in: 0..<9) {
                 case 0:
-                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: theme, width: width, options: options) else { count("no-shell"); usleep(2000); continue }
+                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else { count("no-shell"); usleep(2000); continue }
                     p.discard()
                     count("discard-now")
                 case 1:
-                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: theme, width: width, options: options) else { count("no-shell"); usleep(2000); continue }
+                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else { count("no-shell"); usleep(2000); continue }
                     usleep(UInt32.random(in: 0...40_000))
                     p.discard()
                     count("discard-later")
                 case 2:
-                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: theme, width: width, options: options) else { count("no-shell"); usleep(2000); continue }
+                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else { count("no-shell"); usleep(2000); continue }
                     p.host.setTheme(theme == "dark" ? "light" : "dark")
                     p.host.setVisible(Bool.random())
                     _ = p.wait(timeout: Double.random(in: 0...0.05))
                     adoptOnMain(p, hold: Double.random(in: 0...0.4))
                 case 3:
-                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: theme, width: width, options: options) else { count("no-shell"); usleep(2000); continue }
+                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else { count("no-shell"); usleep(2000); continue }
                     count("left-for-eviction")
                     _ = p
                 case 4:
-                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: theme, width: width, options: options) else { count("no-shell"); usleep(2000); continue }
+                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: WidgetTheme(colorScheme: theme), width: width, options: options) else { count("no-shell"); usleep(2000); continue }
                     DispatchQueue.concurrentPerform(iterations: 3) { k in
                         if k == 0 { p.discard() } else if k == 1 { adoptOnMain(p, hold: 0.05) } else { _ = p.wait(timeout: 0.01); p.onReady = { _ in count("ready") } }
                     }
@@ -326,7 +326,7 @@ func runCrashStress(_ args: [String], option: (String) -> String?) {
                     _ = dropped
                     count("state-release-offmain")
                 default:
-                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: theme, width: width, options: options, tracked: false) else { count("no-shell"); usleep(2000); continue }
+                    guard let p = WidgetPreparer.prepare(html: pick.1, theme: WidgetTheme(colorScheme: theme), width: width, options: options, tracked: false) else { count("no-shell"); usleep(2000); continue }
                     _ = p.wait(timeout: 0.2)
                     p.discard()
                     count("untracked")
@@ -436,7 +436,7 @@ private func runGatePhase(content: NSView, options: WidgetHost.Options, rounds: 
                 var done = false
                 let html = widget.1
                 DispatchQueue.global(qos: .userInitiated).async {
-                    let made = WidgetPreparer.prepare(html: html, theme: "light", width: 440, options: options, tracked: false)
+                    let made = WidgetPreparer.prepare(html: html, theme: WidgetTheme(colorScheme: "light"), width: 440, options: options, tracked: false)
                     DispatchQueue.main.async {
                         p = made
                         done = true

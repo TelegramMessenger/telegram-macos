@@ -149,7 +149,7 @@ private enum SubmodulePendingTransfer {
     static func showsAnimation(_ transaction: WalletContext.Transaction) -> Bool {
         return transaction.status == .pending && transaction.currency == .ton
             && transaction.direction == .outgoing && transaction.kind != .deployContract && transaction.kind != .keyChange
-            && transaction.collectible == nil && transaction.isVisibleInWalletHistory
+            && transaction.isVisibleInWalletHistory
     }
 
     static func observe(_ transaction: WalletContext.Transaction?, isFlying: Bool, isVisible: Bool, transferScreenVisible: Bool, transferApplicationActive: Bool) -> WalletPendingTransferObservation {
@@ -269,7 +269,7 @@ final class WalletPendingTransferSubmoduleCompatibilityTests: XCTestCase {
             "let iconScale = reduced ? 1.0 : finish.map { 0.2 + 0.8 * Self.spring($0 - 0.32, damping: 8.0, frequency: 17.0) } ?? 0.2",
             "content.applyTransferPresentation(expansion: big, iconAlpha: iconAlpha, iconScale: iconScale, clockAlpha: clockAlpha, time: reduced ? 0.0 : elapsed)",
             "self.updateSheen(elapsed: elapsed, opacity: !reduced && finish == nil ? 1.0 : 0.0)",
-            "let pending = CGPoint(x: row.bounds.width - 34.5, y: row.bounds.height * 0.5)",
+            "var pending = CGPoint(x: row.bounds.width - 34.5, y: row.bounds.height * 0.5)",
             "if let finish, finish < 0.34 { slot.y -= CGFloat(sin(.pi * finish / 0.34)) * 11.0 }",
             "let t = min(1.0, max(0.0, now - start) / 0.5)",
             "let rise = 44.0 + max(0.0, -d)",
@@ -306,7 +306,7 @@ final class WalletPendingTransferSubmoduleCompatibilityTests: XCTestCase {
         ])
         try assertSubmodule("Wallet/WalletTransactionItemComponent/Sources/WalletTransactionItemComponent.swift", contains: [
             "let scale = 1.0 + 0.33 * expansion",
-            "tx: -23.0 * expansion - (scale - 1.0) * view.bounds.width * 0.5, ty: 20.35 * expansion)",
+            "tx: offset * expansion - (scale - 1.0) * view.bounds.width * 0.5, ty: 20.35 * expansion)",
             "self.clockMinute.setAffineTransform(CGAffineTransform(rotationAngle: time * 4.2))",
             "self.clockHour.setAffineTransform(CGAffineTransform(rotationAngle: time * 4.2 / 12.0 - .pi / 2.0))",
             "if isPending && !component.animatesPendingTransfer {",
@@ -483,7 +483,7 @@ final class WalletPendingTransferSubmoduleCompatibilityTests: XCTestCase {
 
     func testWhichTransfersAnimateMatchesSubmodule() throws {
         try assertSubmodule("Wallet/WalletScreen/Sources/WalletScreen.swift", contains: [
-            "for transaction in state.transactions.items where transaction.status == .pending && transaction.currency == .ton && transaction.direction == .outgoing && transaction.kind != .deployContract && transaction.kind != .keyChange && transaction.collectible == nil && transaction.isVisibleInWalletHistory {",
+            "for transaction in state.transactions.items where transaction.status == .pending && transaction.currency == .ton && transaction.direction == .outgoing && transaction.kind != .deployContract && transaction.kind != .keyChange && transaction.isVisibleInWalletHistory {",
             "guard let transaction = transactions[id], transaction.status != .failed else {",
             "animation.isPending = transaction.status == .pending",
             "if !animation.isPending && !animation.isFlying && (!animation.isVisible || !self.transferScreenVisible || !self.transferApplicationInForeground) {",

@@ -32,6 +32,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class HeaderItem : GeneralRowItem {
@@ -595,6 +596,7 @@ public func StarGift_SelfAuction_Controller(context: (any AccountContextProtocol
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsAuctionSelfBid
     
     getController = { [weak controller] in
         return controller

@@ -25,7 +25,7 @@ public class ChatFileMediaItem: ChatMediaItem {
                 type = .secret
             }
                         
-            showChatGallery(context: context, message: message, self.table, self.parameters as? ChatMediaGalleryParameters, type: type, chatMode: self.chatInteraction.mode, chatLocation: self.chatInteraction.chatLocation, contextHolder: self.chatInteraction.contextHolder(), cachedPeerData: self.chatInteraction.presentation.cachedData)
+            showChatGallery(context: context, message: message, self.table, self.parameters as? ChatMediaGalleryParameters, type: type, chatMode: self.chatInteraction.mode, chatLocation: self.chatInteraction.chatLocation, contextHolder: self.chatInteraction.contextHolder(), cachedPeerData: self.chatInteraction.presentation.cachedData, analyticsContext: self.chatInteraction.captureAnalyticsContext())
         }
             
         (self.parameters as? ChatFileLayoutParameters)?.showMessage = { [weak self] message in

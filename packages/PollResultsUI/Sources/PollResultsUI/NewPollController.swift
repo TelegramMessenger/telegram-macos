@@ -21,6 +21,7 @@ import FilePanels
 import LocalAnimations
 import LocationUI
 import AlertsUI
+import AppAnalytics
 
 private let maxTextLength:Int32 = 255
 private let maxOptionLength: Int32 = 100
@@ -540,7 +541,7 @@ private struct NewPollState : Equatable {
         }
 
         let effectiveCountries: [String] = self.limitByCountry ? self.countries.map { $0.id } : []
-        return TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.LocalPoll, id: arc4random64()), publicity: mode.publicity, kind: mode.kind, text: title.trimmed, textEntities: self.textState.textInputState().messageTextEntities(), options: options, correctAnswers: answers, results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: solution, hasUnseenVotes: nil, canViewStats: false), isClosed: false, deadlineTimeout: computedDeadlineTimeout, deadlineDate: deadlineDate.flatMap({ Int32($0.timeIntervalSince1970) }), pollHash: 0, openAnswers: self.allowAddingOptions, revotingDisabled: !self.allowRevoting, shuffleAnswers: self.shuffleOptions, hideResultsUntilClose: self.hideResults, attachedMedia: pollAttachedMedia, restrictToSubscribers: self.restrictToSubscribers, countries: effectiveCountries)
+        return TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.LocalPoll, id: arc4random64()), publicity: mode.publicity, kind: mode.kind, text: title.trimmed, textEntities: self.textState.textInputState().messageTextEntities(), options: options, correctAnswers: answers, results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: solution, hasUnseenVotes: nil, canViewStats: false), isClosed: false, deadlineTimeout: computedDeadlineTimeout, deadlineDate: limitDuration ? deadlineDate.flatMap({ Int32($0.timeIntervalSince1970) }) : nil, pollHash: 0, openAnswers: self.allowAddingOptions, revotingDisabled: !self.allowRevoting, shuffleAnswers: self.shuffleOptions, hideResultsUntilClose: limitDuration && self.hideResults, attachedMedia: pollAttachedMedia, restrictToSubscribers: self.restrictToSubscribers, countries: effectiveCountries)
     }
 }
 
@@ -1778,6 +1779,13 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
         
         return .default
     })
+    if isAddOption {
+        controller.analyticsScreen = .chatPollAddOption
+    } else {
+        controller.analyticsScreen = .chatPollCreate
+    }
+    
+    
     let modalController = InputDataModalController(controller, modalInteractions: interactions, closeHandler: { f in
         let state = stateValue.with { $0 }
         

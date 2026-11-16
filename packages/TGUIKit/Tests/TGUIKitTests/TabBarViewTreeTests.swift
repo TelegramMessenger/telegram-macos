@@ -129,6 +129,213 @@ final class TabBarViewTreeTests: XCTestCase {
         XCTAssertNotNil(bar.nativeLens)
     }
 
+    func testQuickSlideKeepsTheNativeLensAndNeverBecomesAReorder() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar()
+        bar.allowsReordering = true
+        try enableNativeLens(bar)
+        let lens = try XCTUnwrap(bar.nativeLens)
+        let delegate = TabSelectionDelegate()
+        bar.delegate = delegate
+        let controls = bar.itemControls
+        let start = center(bar, 0)
+        let firstTarget = center(bar, 1)
+        let finalTarget = center(bar, 3)
+
+        bar.beginSelection(at: start, timestamp: 1)
+        bar.updateSelection(at: firstTarget, timestamp: 1.25)
+        XCTAssertTrue(lens.hasActiveSurface)
+        XCTAssertEqual(lens.currentLensFrame?.midX, firstTarget.x)
+        XCTAssertEqual(bar.selectedIndex, 0)
+        bar.updateSelection(at: finalTarget, timestamp: 1.4)
+        XCTAssertEqual(lens.currentLensFrame?.midX, finalTarget.x)
+        bar.endSelection(at: finalTarget)
+
+        XCTAssertEqual(bar.itemControls, controls)
+        XCTAssertEqual(bar.selectedIndex, 3)
+        XCTAssertEqual(delegate.changes, [3])
+    }
+
+    func testHeldClickAndEarlyJitterDoNotChangeTabOrder() {
+        let bar = makeBar()
+        bar.allowsReordering = true
+        let controls = bar.itemControls
+        let start = center(bar, 1)
+        bar.beginSelection(at: start, timestamp: 1)
+        bar.updateSelection(at: NSPoint(x: start.x + 2, y: start.y), timestamp: 1.1)
+        bar.updateSelection(at: start, timestamp: 1.4)
+        bar.endSelection(at: start)
+        XCTAssertEqual(bar.selectedIndex, 1)
+        XCTAssertEqual(bar.itemControls, controls)
+
+        let target = center(bar, 3)
+        bar.beginSelection(at: start, timestamp: 2)
+        bar.updateSelection(at: NSPoint(x: start.x + 2, y: start.y), timestamp: 2.1)
+        bar.updateSelection(at: target, timestamp: 2.251)
+        bar.endSelection(at: target)
+        XCTAssertEqual(bar.selectedIndex, 3)
+        XCTAssertTrue(bar.itemControls[3] === controls[1])
+    }
+
+    func testReorderKeepsWidthsFixedAndSlidesNeighborsOnlyAfterCrossingTheDeadZone() throws {
+        let bar = makeBar(width: 333, selected: 2)
+        bar.allowsReordering = true
+        let first = bar.control(for: 0)
+        let neighbor = bar.control(for: 1)
+        let start = center(bar, 0)
+        let neighborCenter = center(bar, 1)
+        let midpoint = (start.x + neighborCenter.x) / 2
+        let sizes = bar.itemControls.map { $0.frame.size }
+        bar.beginSelection(at: NSPoint(x: start.x + 10, y: start.y), timestamp: 1)
+
+        bar.updateSelection(at: NSPoint(x: midpoint + 11, y: start.y), timestamp: 1.251)
+        XCTAssertEqual(first.frame.midX, midpoint + 1, accuracy: 0.001)
+        XCTAssertEqual(center(bar, 1), neighborCenter)
+
+        bar.updateSelection(at: NSPoint(x: midpoint + 16, y: start.y))
+        XCTAssertEqual(center(bar, 1), start)
+        let slide = try XCTUnwrap(neighbor.layer?.animation(forKey: "position") as? CABasicAnimation)
+        XCTAssertNil(neighbor.layer?.animation(forKey: "bounds"))
+
+        bar.updateSelection(at: NSPoint(x: midpoint + 9, y: start.y))
+        XCTAssertEqual(center(bar, 1), start)
+        XCTAssertEqual((neighbor.layer?.animation(forKey: "position") as? CABasicAnimation)?.fromValue as? NSValue, slide.fromValue as? NSValue)
+        XCTAssertEqual(bar.itemControls.map { $0.frame.size }, sizes)
+        bar.cancelSelection(animated: false)
+        XCTAssertEqual(center(bar, 1), neighborCenter)
+        XCTAssertTrue(bar.control(for: 0) === first)
+    }
+
+    func testNeighborReversalStartsAtItsPresentedPosition() throws {
+        let bar = makeBar()
+        bar.allowsReordering = true
+        let first = center(bar, 0)
+        let second = center(bar, 1)
+        let layer = TabSelectionTestLayer()
+        bar.control(for: 1).layer = layer
+
+        bar.beginSelection(at: first, timestamp: 1)
+        bar.updateSelection(at: second, timestamp: 1.251)
+        let position = layer.position
+        let shown = TabSelectionTestLayer()
+        shown.position = NSPoint(x: position.x + (second.x - first.x) * 0.35, y: position.y)
+        layer.displayedLayer = shown
+
+        bar.updateSelection(at: first)
+        let reverse = try XCTUnwrap(layer.animation(forKey: "position") as? CABasicAnimation)
+        XCTAssertEqual((reverse.fromValue as? NSValue)?.pointValue, shown.position)
+        XCTAssertNil(layer.animation(forKey: "bounds"))
+        bar.cancelSelection(animated: false)
+    }
+
+    func testDropKeepsGlassAndBadgeOnTheSameControlWhileSettling() throws {
+        defer { System.liquidGlass = false }
+        let bar = makeBar(selected: 0)
+        bar.allowsReordering = true
+        try enableNativeLens(bar)
+        let delegate = TabSelectionDelegate()
+        bar.delegate = delegate
+        var drops = 0
+        bar.didReorderTabs = { drops += 1 }
+        let dragged = bar.control(for: 2)
+        let neighbor = bar.control(for: 3)
+        let selected = bar.control(for: 0)
+        let badge = try XCTUnwrap(bar.tab(at: 2).subNode?.view)
+        let start = center(bar, 2)
+        let target = center(bar, 3)
+        let release = NSPoint(x: target.x - 12, y: target.y)
+        let backdrop = try XCTUnwrap(bar.nativeLens?.subviews.first?.layer?.sublayers?.first { $0.name == "lensRestingBackground" })
+        XCTAssertEqual(backdrop.opacity, 1)
+        bar.beginSelection(at: start, timestamp: 1)
+        XCTAssertTrue(bar.nativeLens?.hasActiveSurface == true)
+        bar.updateSelection(at: release, timestamp: 1.251)
+        let pickup = try XCTUnwrap(dragged.subviews.compactMap { $0 as? LiquidGlassLensView }.first)
+        let pickupFrame = pickup.frame
+        XCTAssertTrue(pickup.hasActiveSurface)
+        XCTAssertEqual(pickup.currentInteractionProgress, 1)
+        XCTAssertEqual(pickup.activePortalCount, 0)
+        XCTAssertFalse(bar.nativeLens?.hasActiveSurface == true)
+        XCTAssertEqual(backdrop.opacity, 0)
+        let shown = dragged.layer?.position
+        let neighborBeforeDrop = neighbor.layer?.animation(forKey: "position") as? CABasicAnimation
+        XCTAssertEqual(dragged.frame.midX, release.x, accuracy: 0.001)
+        XCTAssertEqual(dragged.frame.midY, start.y)
+        bar.endSelection(at: release)
+
+        XCTAssertEqual(bar.selectedIndex, 0)
+        XCTAssertTrue(bar.control(for: 0) === selected)
+        XCTAssertTrue(bar.control(for: 3) === dragged)
+        XCTAssertTrue(badge.superview === dragged)
+        XCTAssertTrue(pickup.superview === dragged)
+        XCTAssertEqual(pickup.frame, pickupFrame)
+        XCTAssertEqual(pickup.currentInteractionProgress, 0)
+        XCTAssertEqual(pickup.currentLensFrame, pickup.bounds.insetBy(dx: 10, dy: 8))
+        XCTAssertEqual(pickup.activePortalCount, 0)
+        XCTAssertEqual(bar.nativeLens?.activePortalCount, 0)
+        let tintFade = try XCTUnwrap(backdrop.animation(forKey: "opacity") as? CABasicAnimation)
+        XCTAssertEqual((tintFade.fromValue as? NSNumber)?.floatValue, 0)
+        XCTAssertEqual((tintFade.toValue as? NSNumber)?.floatValue, 1)
+        let settle = try XCTUnwrap(dragged.layer?.animation(forKey: "position") as? CABasicAnimation)
+        XCTAssertEqual((settle.fromValue as? NSValue)?.pointValue, shown)
+        XCTAssertEqual((settle.toValue as? NSValue)?.pointValue, dragged.layer?.position)
+        XCTAssertNil(dragged.layer?.animation(forKey: "bounds"))
+        XCTAssertEqual((neighbor.layer?.animation(forKey: "position") as? CABasicAnimation)?.fromValue as? NSValue, neighborBeforeDrop?.fromValue as? NSValue)
+        XCTAssertEqual(drops, 1)
+        XCTAssertEqual(delegate.changes, [])
+        XCTAssertEqual(delegate.scrollCount, 0)
+
+        let settled = expectation(description: "The resting highlight returns after the lift settles")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            XCTAssertNil(pickup.superview)
+            XCTAssertEqual(backdrop.opacity, 1)
+            settled.fulfill()
+        }
+        wait(for: [settled], timeout: 1)
+    }
+
+    func testRegrabbingASettlingTabKeepsThePointerOffset() throws {
+        let bar = makeBar()
+        bar.allowsReordering = true
+        let tab = bar.itemControls[1]
+        let layer = TabSelectionTestLayer()
+        tab.layer = layer
+        let start = center(bar, 1)
+        let target = center(bar, 2)
+        let release = NSPoint(x: target.x - 16, y: target.y)
+        bar.beginSelection(at: start, control: tab, timestamp: 1)
+        bar.updateSelection(at: release, timestamp: 1.251)
+        bar.endSelection(at: release)
+        let shown = TabSelectionTestLayer()
+        shown.position = NSPoint(x: layer.position.x - 12, y: layer.position.y)
+        layer.displayedLayer = shown
+        let grab = NSPoint(x: target.x - 12, y: target.y)
+
+        XCTAssertTrue(bar.hitTest(grab) === tab)
+        bar.beginSelection(at: grab, control: tab, timestamp: 2)
+        XCTAssertEqual(tab.frame.midX, grab.x, accuracy: 0.001)
+        XCTAssertNil(layer.animation(forKey: "position"))
+        bar.updateSelection(at: NSPoint(x: grab.x + 7, y: grab.y), timestamp: 2.251)
+        XCTAssertEqual(tab.frame.midX, grab.x + 7, accuracy: 0.001)
+        bar.cancelSelection(animated: false)
+    }
+
+    func testReduceMotionAndOutsideDropKeepSelectionAndOrder() {
+        let bar = makeBar(selected: 2)
+        bar.allowsReordering = true
+        bar.reduceMotion = { true }
+        let controls = bar.itemControls
+        let start = center(bar, 0)
+        let target = center(bar, 3)
+        bar.beginSelection(at: start, timestamp: 1)
+        bar.updateSelection(at: target, timestamp: 1.251)
+        XCTAssertEqual(controls[0].subviews.count, 1)
+        XCTAssertNil(controls[1].layer?.animation(forKey: "position"))
+        bar.endSelection(at: NSPoint(x: target.x, y: target.y + 100))
+        XCTAssertEqual(bar.itemControls, controls)
+        XCTAssertEqual(center(bar, 0), start)
+        XCTAssertEqual(bar.selectedIndex, 2)
+    }
+
     func testDisabledGlassKeepsTheExistingInteractionWithoutConstructingALens() {
         let bar = makeBar()
         var attempts = 0
@@ -257,7 +464,7 @@ final class TabBarViewTreeTests: XCTestCase {
                 let copies = portals(in: root, source: try XCTUnwrap(icon.layer))
                 XCTAssertEqual(copies.count, 2)
                 for copy in copies {
-                    let color = copy.superlayer?.name == "lensUnlensedContent" ? (palette.isDark ? NSColor.white : palette.grayIcon) : palette.accentIcon
+                    let color = copy.superlayer?.name == "lensUnlensedContent" ? palette.text : palette.accentIcon
                     try assertTint(copy, matches: color)
                 }
                 XCTAssertNil(icon.layer?.filters)

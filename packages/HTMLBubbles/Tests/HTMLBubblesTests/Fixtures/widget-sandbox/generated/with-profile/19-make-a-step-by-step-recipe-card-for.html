@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pancake Recipe</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1f2937; --muted: #6b7280; --accent: #ea580c; --line: #fed7aa; --hero1: #fdba74; --hero2: #f97316; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #f3f4f6; --muted: #9ca3af; --accent: #fb923c; --line: #7c2d12; --hero1: #9a3412; --hero2: #c2410c; } }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 12px; background: var(--bg); color: var(--fg); }
+  .hero { height: 90px; border-radius: 14px; background: linear-gradient(135deg, var(--hero1), var(--hero2)); display: flex; align-items: flex-end; padding: 12px; color: #fff; font-size: 22px; font-weight: 700; box-sizing: border-box; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin: 14px 0 6px; }
+  .ing label { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 14px; cursor: pointer; }
+  .ing input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .ing label.checked { text-decoration: line-through; color: var(--muted); }
+  .step { display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .step .n { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; font-size: 13px; }
+  .step .t { flex: 1; }
+  .timer { margin-top: 6px; display: inline-flex; align-items: center; gap: 8px; }
+  .timer button { padding: 4px 10px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .timer button.running { background: var(--accent); color: #fff; }
+  .timer span { font-family: ui-monospace, monospace; font-size: 13px; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="hero">🥞 Fluffy Pancakes</div>
+<div class="meta">⏱ 25 min · 🍽 Serves 4 · 🔥 Easy</div>
+<h3>Ingredients</h3>
+<div class="ing" id="ing"></div>
+<h3>Steps</h3>
+<div id="steps"></div>
+<script>
+  var ingredients = ['1½ cups all-purpose flour', '3½ tsp baking powder', '1 tbsp sugar', '¼ tsp salt', '1¼ cups milk', '1 egg', '3 tbsp melted butter'];
+  var steps = [
+    { t: 'Whisk flour, baking powder, sugar and salt in a large bowl.', m: 0 },
+    { t: 'Add milk, egg and melted butter; stir until just combined (lumps are fine).', m: 0 },
+    { t: 'Let the batter rest.', m: 5 },
+    { t: 'Heat a lightly oiled pan over medium heat.', m: 2 },
+    { t: 'Pour ¼ cup batter per pancake; cook until bubbles form, then flip.', m: 2 },
+    { t: 'Cook the other side until golden. Repeat with remaining batter.', m: 1 },
+  ];
+  document.getElementById('ing').innerHTML = ingredients.map(function (i, k) { return '<label><input type="checkbox" id="ing-' + k + '"> ' + i + '</label>'; }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('.ing input'), function (c) { c.onchange = function () { c.parentElement.classList.toggle('checked', c.checked); }; });
+  document.getElementById('steps').innerHTML = steps.map(function (s, i) {
+    return '<div class="step"><div class="n">' + (i + 1) + '</div><div class="t">' + s.t + (s.m ? '<div class="timer"><button id="timer-' + i + '" data-m="' + s.m + '">▶ ' + s.m + ' min</button><span></span></div>' : '') + '</div></div>';
+  }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('.timer button'), function (b) {
+    var left = 0, iv = null, out = b.nextElementSibling, mins = +b.getAttribute('data-m');
+    var show = function () { out.textContent = Math.floor(left / 60) + ':' + (left % 60 < 10 ? '0' : '') + (left % 60); };
+    b.onclick = function () {
+      if (iv) { clearInterval(iv); iv = null; b.classList.remove('running'); b.textContent = '▶ ' + mins + ' min'; out.textContent = ''; return; }
+      left = mins * 60; b.classList.add('running'); b.textContent = '■ Stop'; show();
+      iv = setInterval(function () {
+        left--; show();
+        if (left <= 0) { clearInterval(iv); iv = null; b.classList.remove('running'); b.textContent = '✓ Done'; out.textContent = ''; if (window.TelegramWidget) TelegramWidget.sendMessage('⏰ Pancakes: ' + mins + '-minute step is done'); }
+      }, 1000);
+    };
+  });
+</script>
+</body>
+</html>

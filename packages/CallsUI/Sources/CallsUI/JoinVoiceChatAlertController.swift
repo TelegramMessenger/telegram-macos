@@ -12,6 +12,7 @@ import TelegramContext
 import TelegramTheme
 import TelegramUtils
 import TelegramIconsTheme
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -69,6 +70,7 @@ public func JoinVoiceChatAlertController(context: any AccountContextProtocol, gr
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().chatVoiceChatJoinLinkTitle)
+    controller.analyticsScreen = .groupCallInvitation
     
     controller.onDeinit = {
         actionsDisposable.dispose()

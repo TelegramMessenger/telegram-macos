@@ -1,0 +1,355 @@
+import Foundation
+
+let star_sub_period: Int32 = 2592000
+
+struct StarsAmount: Equatable {
+    let value: Int64
+    let nanos: Int32
+}
+
+struct StarsSubscriptionPricing: Equatable {
+    let period: Int32
+    let amount: StarsAmount
+}
+
+struct Updated_ChatTextInputState: Equatable {
+    let string: String
+
+    init(inputText: String) {
+        self.string = inputText
+    }
+}
+
+extension String {
+    static func initialize(string: String) -> String {
+        return string
+    }
+}
+
+struct _ExportedInvitation: Equatable {
+    var title: String?
+    var requestApproval = false
+    var isRevoked = false
+    var date: Int32 = 0
+    var startDate: Int32?
+    var expireDate: Int32?
+    var usageLimit: Int32?
+    var count: Int32?
+    var pricing: StarsSubscriptionPricing?
+
+    var isExpired: Bool {
+        if let expireDate = self.expireDate {
+            return expireDate < Int32(Date().timeIntervalSince1970)
+        }
+        return false
+    }
+
+    var isLimitReached: Bool {
+        return false
+    }
+}
+
+enum InviteLinkClosureMode: Equatable {
+    case new
+    case edit(_ExportedInvitation)
+}
+
+__STATE__
+
+func initialInviteLinkState(mode: InviteLinkClosureMode) -> ClosureInviteLinkState {
+__INITIAL_STATE__
+    return initialState
+}
+
+func periodStops(_ state: ClosureInviteLinkState) -> [Int32] {
+__PERIOD_STOPS__
+    return sizes
+}
+
+func countStops(_ state: ClosureInviteLinkState) -> [Int32] {
+__COUNT_STOPS__
+    return sizes
+}
+
+struct NSColor: Equatable {
+    var redComponent: CGFloat
+    var greenComponent: CGFloat
+    var blueComponent: CGFloat
+    var alphaComponent: CGFloat
+
+    static let white = NSColor(deviceRed: 1, green: 1, blue: 1, alpha: 1)
+
+    init(deviceRed: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        self.redComponent = deviceRed
+        self.greenComponent = green
+        self.blueComponent = blue
+        self.alphaComponent = alpha
+    }
+
+    func darker() -> NSColor {
+        return self
+    }
+
+    func lighter() -> NSColor {
+        return self
+    }
+}
+
+struct ThemeColors {
+    let grayIcon = NSColor(deviceRed: 0.5, green: 0.5, blue: 0.5, alpha: 1)
+    let redUI = NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1)
+    let greenUI = NSColor(deviceRed: 0, green: 1, blue: 0, alpha: 1)
+    let peerAvatarOrangeBottom = NSColor(deviceRed: 1, green: 0.5, blue: 0, alpha: 1)
+    let accent = NSColor(deviceRed: 0, green: 0, blue: 1, alpha: 1)
+}
+
+struct Theme {
+    let colors = ThemeColors()
+}
+
+let theme = Theme()
+let linkIcon = 0
+
+final class FireTimerControl {
+    var reachedTimeout: (() -> Void)?
+    var reachedHalf: (() -> Void)?
+    var updateValue: ((CGFloat) -> Void)?
+    var isHidden = false
+    var isRunning = false
+
+    func updateColor(_ color: NSColor) {
+    }
+
+    func update(color: NSColor, timeout: Double, deadlineTimestamp: Double?) {
+        self.isRunning = true
+    }
+
+    func stop() {
+        self.isRunning = false
+    }
+
+    func tick() {
+        if self.isRunning {
+            self.updateValue?(0.5)
+        }
+    }
+}
+
+final class Circle {
+    var backgroundColor: NSColor = .white
+}
+
+final class RowImage {
+    var image: Int?
+
+    func sizeToFit() {
+    }
+}
+
+final class RowIcon {
+    let circle = Circle()
+    let progressView = FireTimerControl()
+    let imageView = RowImage()
+
+__ROW_ICON_UPDATE__
+}
+
+enum ValidationResult {
+    case custom(() -> Void)
+}
+
+enum Validation {
+    case success(ValidationResult)
+}
+
+final class Controller {
+    var validateData: ((Int) -> Validation)?
+}
+
+final class ModalController {
+    var closed = false
+
+    func close() {
+        self.closed = true
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+final class Signal {
+}
+
+struct Edit: Equatable {
+    let title: String?
+    let expireDate: Int32?
+    let usageLimit: Int32?
+    let requestNeeded: Bool?
+}
+
+final class Manager {
+    var edits: [Edit] = []
+
+    func editPeerExportedInvitation(link: _ExportedInvitation, title: String?, expireDate: Int32?, usageLimit: Int32?, requestNeeded: Bool? = nil) -> Signal {
+        self.edits.append(Edit(title: title, expireDate: expireDate, usageLimit: usageLimit, requestNeeded: requestNeeded))
+        return Signal()
+    }
+}
+
+func listEdit(link: _ExportedInvitation, updated: ClosureInviteLinkState, manager: Manager?) {
+    _ = __LIST_CALL__
+}
+
+func linkScreenEdit(link: _ExportedInvitation, updated: ClosureInviteLinkState, manager: Manager?) {
+    _ = __LINK_SCREEN_CALL__
+}
+
+func runValidate(state: ClosureInviteLinkState, save: @escaping (ClosureInviteLinkState) -> Void) -> Bool {
+    let controller = Controller()
+    let modal = ModalController()
+    let stateValue = Atomic(value: state)
+    let getModalController: (() -> ModalController?)? = { modal }
+__VALIDATE__
+    if case let .success(.custom(action)) = controller.validateData!(0) {
+        action()
+    }
+    return modal.closed
+}
+
+struct Change {
+    var date: Int32?
+    var count: Int32?
+    var requestApproval: Bool?
+    var title: String?
+    var isPublic = false
+}
+
+func edited(_ link: _ExportedInvitation, _ change: Change = Change(), screen: @escaping (_ExportedInvitation, ClosureInviteLinkState, Manager?) -> Void) -> Edit? {
+    var state = initialInviteLinkState(mode: .edit(link))
+    if let date = change.date {
+        state.date = date
+    }
+    if let count = change.count {
+        state.count = count
+    }
+    if let requestApproval = change.requestApproval {
+        state.requestApproval = requestApproval
+    }
+    if let title = change.title {
+        state.title = title
+    }
+    if change.isPublic {
+        state.isPublic = true
+        state.requestApproval = false
+    }
+    let manager = Manager()
+    _ = runValidate(state: state, save: { updated in
+        screen(link, updated, manager)
+    })
+    return manager.edits.first
+}
+
+func both(_ link: _ExportedInvitation, _ change: Change = Change()) -> [Edit?] {
+    return [edited(link, change, screen: listEdit), edited(link, change, screen: linkScreenEdit)]
+}
+
+func nearly(_ value: Int32?, _ expected: Int32) -> Bool {
+    if let value {
+        return abs(value - expected) < 5
+    }
+    return false
+}
+
+var cases = 0
+var failures = 0
+
+func check(_ name: String, _ passed: Bool) {
+    cases += 1
+    failures += passed ? 0 : 1
+    print("\(passed ? "PASS" : "FAIL") \(name)")
+}
+
+let now = Int32(Date().timeIntervalSince1970)
+let day: Int32 = 24 * 60 * 60
+let week = day * 7
+
+let plain = _ExportedInvitation(title: "old")
+let expiring = _ExportedInvitation(title: "old", expireDate: now + day)
+let expired = _ExportedInvitation(title: "old", expireDate: now - day)
+let limited = _ExportedInvitation(title: "old", usageLimit: 10, count: 3)
+let full = _ExportedInvitation(title: "old", usageLimit: 10, count: 10)
+let approval = _ExportedInvitation(title: "old", requestApproval: true)
+let untitled = _ExportedInvitation()
+
+check("no-expiry-opens-as-never", initialInviteLinkState(mode: .edit(plain)).date == .max)
+check("no-expiry-keeps-every-slider-stop", periodStops(initialInviteLinkState(mode: .edit(plain))) == [3600, day, week, .max])
+check("expired-link-keeps-every-slider-stop", periodStops(initialInviteLinkState(mode: .edit(expired))) == [3600, day, week, .max])
+check("limit-on-a-stop-keeps-every-slider-stop", countStops(initialInviteLinkState(mode: .edit(_ExportedInvitation(usageLimit: 10)))) == [1, 10, 50, 100, .max])
+check("limit-between-stops-gets-its-own-stop", countStops(initialInviteLinkState(mode: .edit(limited))) == [7, 10, 50, 100, .max])
+var weekState = initialInviteLinkState(mode: .edit(plain))
+weekState.tempDate = week
+weekState.date = week
+check("date-on-a-stop-keeps-every-slider-stop", periodStops(weekState) == [3600, day, week, .max])
+check("expiring-link-opens-with-its-date", nearly(initialInviteLinkState(mode: .edit(expiring)).date, day))
+check("expired-link-opens-with-a-week", initialInviteLinkState(mode: .edit(expired)).date == week)
+check("new-link-opens-as-never", initialInviteLinkState(mode: .new).date == .max && initialInviteLinkState(mode: .new).count == .max)
+
+check("rename-sends-only-the-title", both(plain, Change(title: "new")).allSatisfy { $0 == Edit(title: "new", expireDate: nil, usageLimit: nil, requestNeeded: nil) })
+check("rename-keeps-an-expiry-date", both(expiring, Change(title: "new")).allSatisfy { $0?.expireDate == nil })
+check("rename-keeps-a-partly-used-limit", both(limited, Change(title: "new")).allSatisfy { $0?.usageLimit == nil })
+check("rename-keeps-a-used-up-limit", both(full, Change(title: "new")).allSatisfy { $0?.usageLimit == nil })
+check("rename-keeps-approval", both(approval, Change(title: "new")).allSatisfy { $0 == Edit(title: "new", expireDate: nil, usageLimit: nil, requestNeeded: nil) })
+check("clearing-the-title-is-sent", both(plain, Change(title: "")).allSatisfy { $0?.title == "" })
+check("other-edits-keep-the-title", both(plain, Change(date: day)).allSatisfy { $0?.title == nil })
+
+check("never-clears-an-expiry-date", both(expiring, Change(date: .max)).allSatisfy { $0?.expireDate == 0 })
+check("unlimited-clears-a-limit", both(limited, Change(count: .max)).allSatisfy { $0?.usageLimit == 0 })
+check("new-date-is-sent", both(plain, Change(date: day)).allSatisfy { nearly($0?.expireDate, now + day) })
+check("new-limit-is-sent", both(plain, Change(count: 5)).allSatisfy { $0?.usageLimit == 5 })
+check("changed-limit-is-sent", both(limited, Change(count: 5)).allSatisfy { $0?.usageLimit == 5 })
+
+check("approval-on-is-sent", both(plain, Change(requestApproval: true)).allSatisfy { $0?.requestNeeded == true })
+check("approval-off-is-sent", both(approval, Change(requestApproval: false)).allSatisfy { $0?.requestNeeded == false })
+check("approval-on-clears-a-limit", both(limited, Change(requestApproval: true)).allSatisfy { $0?.requestNeeded == true && $0?.usageLimit == 0 })
+check("approval-link-ignores-a-hidden-limit", both(approval, Change(count: 5)).allSatisfy { $0 == nil })
+check("public-chat-keeps-approval", both(approval, Change(title: "new", isPublic: true)).allSatisfy { $0?.requestNeeded == nil })
+check("public-chat-limit-turns-approval-off", both(approval, Change(count: 5, isPublic: true)).allSatisfy { $0?.usageLimit == 5 && $0?.requestNeeded == false })
+
+check("expired-link-gets-the-shown-week", both(expired).allSatisfy { nearly($0?.expireDate, now + week) })
+check("expired-link-can-be-cleared", both(expired, Change(date: .max)).allSatisfy { $0?.expireDate == 0 })
+
+check("save-without-changes-sends-nothing", both(plain).allSatisfy { $0 == nil })
+check("save-without-changes-on-an-untitled-link", both(untitled).allSatisfy { $0 == nil })
+check("empty-title-stays-unchanged-on-an-untitled-link", both(untitled, Change(title: "")).allSatisfy { $0 == nil })
+check("save-without-changes-closes-the-editor", runValidate(state: initialInviteLinkState(mode: .edit(plain)), save: { _ in }))
+
+let expiringIcon = _ExportedInvitation(startDate: now, expireDate: now + day)
+let plainIcon = _ExportedInvitation()
+
+let removedExpiry = RowIcon()
+removedExpiry.update(link: expiringIcon)
+removedExpiry.update(link: plainIcon)
+removedExpiry.progressView.tick()
+check("removed-expiry-stops-the-old-timer", removedExpiry.circle.backgroundColor == theme.colors.accent.lighter() && removedExpiry.progressView.isHidden)
+
+let addedExpiry = RowIcon()
+addedExpiry.update(link: plainIcon)
+addedExpiry.update(link: expiringIcon)
+addedExpiry.progressView.tick()
+check("added-expiry-runs-the-timer", addedExpiry.progressView.isRunning && !addedExpiry.progressView.isHidden && addedExpiry.circle.backgroundColor != theme.colors.accent.lighter())
+
+var created: ClosureInviteLinkState?
+let closed = runValidate(state: initialInviteLinkState(mode: .new), save: { created = $0 })
+check("new-link-is-always-saved", created != nil && closed)
+
+print("\(cases - failures) passed; \(failures) failed (extracted production code with Foundation adapters; no application/UI session)")
+exit(failures == 0 ? 0 : 1)

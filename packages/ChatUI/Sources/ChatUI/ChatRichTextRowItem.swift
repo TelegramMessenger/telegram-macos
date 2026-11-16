@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TelegramCore
 import Postbox
 import TGUIKit
@@ -31,7 +32,7 @@ private final class InstantPageGalleryDelegate: InteractionContentViewProtocol {
     init(richView: InstantPageV2View) { self.richView = richView }
     func contentInteractionView(for stableId: AnyHashable, animateIn: Bool) -> NSView? {
         if let index = stableId.base as? Int {
-            return self.richView?.mediaContentView(forMediaIndex: index)
+            return self.richView?.mediaContentView(forMediaIndex: index, selectSlideshowPage: animateIn)
         }
         return nil
     }
@@ -41,7 +42,7 @@ private final class InstantPageGalleryDelegate: InteractionContentViewProtocol {
     func applyTimebase(for stableId: AnyHashable, timebase: CMTimebase?) {}
 }
 
-private var instantPageStreamRevealCursors: [AnyHashable: Int] = [:]
+private let instantPageStreamRevealCursors = Atomic<[AnyHashable: Int]>(value: [:])
 private var instantPageShowMoreExpandedMessageIds: Set<MessageId> = []
 private let instantPageShowMoreTopInset: CGFloat = 2.0
 
@@ -72,14 +73,19 @@ public final class ChatRichTextRowItem: ChatMessageItem {
         return lastTextLineFrameV2IfLastItemIsText(in: self.richLayout) == nil
     }
 
+    private let senderPage = ChatRichTextSenderPage()
+
     private var effectiveInstantPage: InstantPage? {
         guard let attribute = self.richAttribute else {
             return nil
         }
+        let page: InstantPage
         if self.isShowMoreExpanded, let fullInstantPage = attribute.fullInstantPage {
-            return fullInstantPage
+            page = fullInstantPage
+        } else {
+            page = attribute.instantPage
         }
-        return attribute.instantPage
+        return self.senderPage.resolve(page, isIncoming: self.isIncoming, allowsLinks: self.entry.additionalData.canHighlightLinks)
     }
 
     private var shouldShowMore: Bool {
@@ -154,14 +160,14 @@ public final class ChatRichTextRowItem: ChatMessageItem {
         if let cursor = self.revealCursor {
             return cursor
         }
-        if let cursor = instantPageStreamRevealCursors[self.stableId] {
+        if let cursor = instantPageStreamRevealCursors.with({ $0[self.stableId] }) {
             return cursor
         }
         return self.isStreaming ? 0 : nil
     }
 
     public var isRevealAnimationActive: Bool {
-        return self.isStreaming || instantPageStreamRevealCursors[self.stableId] != nil
+        return self.isStreaming || instantPageStreamRevealCursors.with { $0[self.stableId] != nil }
     }
 
     fileprivate var revealedRichContentSize: CGSize {
@@ -275,7 +281,8 @@ public final class ChatRichTextRowItem: ChatMessageItem {
                 codeTextColor: self.presentation.chat.monospacedPreColor(self.isIncoming, self.isBubbled),
                 collageMosaic: collageMosaic,
                 mediaBleed: self.effectiveMediaBleed,
-                unsupportedStyle: ChatUnsupportedPapercutStyle.make(presentation: self.presentation, isBubbled: self.isBubbled && self.hasBubble, tornEdges: true)
+                unsupportedStyle: ChatUnsupportedPapercutStyle.make(presentation: self.presentation, isBubbled: self.isBubbled && self.hasBubble, tornEdges: true),
+                buttonsEnabled: self.entry.additionalData.canHighlightLinks || !self.isIncoming
             )
             self.richLayout = layout
             self.hasFullBleedMedia = layout.items.contains { $0.frame.minX < -0.5 }
@@ -417,7 +424,7 @@ public final class ChatRichTextRowItem: ChatMessageItem {
         let buttonPrimaryFill = isIncoming ? palette.accent : theme.chat.activityBackground(isIncoming, isBubbled)
         let buttonPrimaryForeground: NSColor
         if isIncoming {
-            // Hex, not `.white`: this reaches RLottie as the tint for a monochrome custom emoji in a
+            // Hex, not `.white`: this reaches TLottie as the tint for a monochrome custom emoji in a
             // button label, and its component readers raise on a Generic Gray colour.
             buttonPrimaryForeground = NSColor(rgb: 0xffffff)
         } else if isDark && isBubbled {
@@ -444,7 +451,7 @@ public final class ChatRichTextRowItem: ChatMessageItem {
                 paragraph: InstantPageTextAttributes(font: InstantPageFont(style: .sans, size: bodyFont.pointSize, lineSpacingFactor: bodyLineSpacingFactor), color: primary),
                 caption: InstantPageTextAttributes(font: InstantPageFont(style: .sans, size: 12.0, lineSpacingFactor: 1.0), color: secondary),
                 credit: InstantPageTextAttributes(font: InstantPageFont(style: .sans, size: 11.0, lineSpacingFactor: 1.0), color: secondary),
-                table: InstantPageTextAttributes(font: InstantPageFont(style: .sans, size: 13.0, lineSpacingFactor: 1.0), color: primary),
+                table: InstantPageTextAttributes(font: InstantPageFont(style: .sans, size: bodyFont.pointSize, lineSpacingFactor: 1.0), color: primary),
                 article: InstantPageTextAttributes(font: InstantPageFont(style: .sans, size: 14.0, lineSpacingFactor: 1.0), color: primary)
             ),
             serif: false,
@@ -555,7 +562,7 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
     public override func interactionContentView(for innerId: AnyHashable, animateIn: Bool) -> NSView {
         if self.item is ChatRichTextRowItem,
            let index = innerId.base as? Int,
-           let view = self.richView.mediaContentView(forMediaIndex: index) {
+           let view = self.richView.mediaContentView(forMediaIndex: index, selectSlideshowPage: animateIn) {
             return view
         }
         return super.interactionContentView(for: innerId, animateIn: animateIn)
@@ -691,7 +698,11 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
         self.stopRevealLink()
         self.revealController = nil
         if let stableId = self.lastRevealStableId {
-            instantPageStreamRevealCursors.removeValue(forKey: stableId)
+            _ = instantPageStreamRevealCursors.modify { values in
+                var updated = values
+                updated.removeValue(forKey: stableId)
+                return updated
+            }
         }
         self.lastRevealStableId = nil
         self.lastBoundRichStableId = nil
@@ -741,8 +752,11 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
 
         let interaction = item.chatInteraction
         self.richView.openUrl = { [weak item] urlItem, confirm in
+            guard let item, ChatRichTextSenderPage.allowsOpenURL(urlItem.url, isIncoming: item.isIncoming, allowsLinks: item.entry.additionalData.canHighlightLinks) else {
+                return
+            }
             if let address = urlItem.tonAddress {
-                guard let item, address.utf8.count == 48, item.entry.additionalData.canHighlightLinks || !item.isIncoming else {
+                guard address.utf8.count == 48 else {
                     return
                 }
                 interaction.openTonAddressContextMenu(address)
@@ -750,10 +764,10 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
             }
             // Mention by peer id (see InstantPageTextItem .textMentionName): open the profile directly,
             // since `inApp` doesn't resolve a `tg://user?id=` URL.
-            if urlItem.url.hasPrefix("tg://user?id="),
-               let idString = urlItem.url.components(separatedBy: "id=").last,
-               let rawId = Int64(idString) {
-                interaction.openInfo(PeerId(rawId), false, nil, nil)
+            if urlItem.url.hasPrefix("tg://user?id=") {
+                if let peerId = chatRichMessageMentionPeerId(urlItem.url) {
+                    interaction.openInfo(peerId, false, nil, nil)
+                }
                 return
             }
             // Phone: mirror the standard chat (a context menu) — `inApp` has no scheme for it, so route
@@ -780,6 +794,7 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
         // and cannot appear on a page button.
         self.richView.buttonTapped = { [weak item] button in
             guard let message = item?.message else { return }
+            guard interaction.allowMessageButtonAction(message) else { return }
             let context = interaction.interactionContext
             let callbackTargetMessageId = message.callbackTargetMessageId
             switch button.action {
@@ -1049,7 +1064,11 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
             self.stopRevealLink()
             self.revealController = nil
             if let old = self.lastRevealStableId {
-                instantPageStreamRevealCursors.removeValue(forKey: old)
+                _ = instantPageStreamRevealCursors.modify { values in
+                    var updated = values
+                    updated.removeValue(forKey: old)
+                    return updated
+                }
             }
             self.lastRevealStableId = item.stableId
         }
@@ -1093,7 +1112,11 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
         self.richView.setRevealCostMap(costMap)
         let seed = self.revealController?.currentGlyphCount ?? 0
         item.revealCursor = seed
-        instantPageStreamRevealCursors[item.stableId] = seed
+        _ = instantPageStreamRevealCursors.modify { values in
+            var updated = values
+            updated[item.stableId] = seed
+            return updated
+        }
         self.richView.applyReveal(cursor: seed)
 
         if let controller = self.revealController,
@@ -1111,7 +1134,11 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
         self.revealController = nil
         self.stopRevealLink()
         item.revealCursor = nil
-        instantPageStreamRevealCursors.removeValue(forKey: item.stableId)
+        _ = instantPageStreamRevealCursors.modify { values in
+            var updated = values
+            updated.removeValue(forKey: item.stableId)
+            return updated
+        }
         self.richView.setRevealCostMap(nil)
         self.richView.applyReveal(cursor: nil)
         self.rightView.change(opacity: 1.0, animated: animateStatus, duration: 0.2, timingFunction: .easeInEaseOut)
@@ -1171,7 +1198,11 @@ public final class ChatRichTextRowView: ChatMessageView, ChatBubbleCustomTextSel
             return
         }
         item.revealCursor = count
-        instantPageStreamRevealCursors[item.stableId] = count
+        _ = instantPageStreamRevealCursors.modify { values in
+            var updated = values
+            updated[item.stableId] = count
+            return updated
+        }
         self.richView.applyReveal(cursor: count)
 
         if let previousRevealedSize, previousRevealedSize != item.revealedRichContentSize {
@@ -1420,6 +1451,9 @@ public final class RichTextDraftPreviewView: View {
             editor.showsTableControls = false
             editor.pasteFragmentProvider = { ChatHistoryUIHooks.shared.richTextHooks.blocksFromInAppPasteboard() }
             editor.withPasteContext = { [weak self] paste in
+                let presentation = Analytics.shared.unresolvedContext().beginPresentation()
+                defer { presentation.end() }
+                self?.chatInteraction?.excludeRichTextDraftAnalytics()
                 paste()
             }
             // Return follows the plain-input send preference: the configured send combo (Enter, or ⌘/⇧-Enter)

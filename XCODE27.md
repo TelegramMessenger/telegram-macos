@@ -20,7 +20,6 @@ Set **macOS Deployment Target** (`MACOSX_DEPLOYMENT_TARGET`) to **12.0** for eve
 
 - `Telegram.xcodeproj` (Telegram, TelegramShare)
 - `submodules/CodeSyntax/CodeSyntax/CodeSyntax.xcodeproj`
-- `submodules/RLottie_Xcode/RLottie_Xcode.xcodeproj`
 - `submodules/Sparkle/Sparkle.xcodeproj`
 - Before running `scripts/configure_frameworks.sh`, also the native library projects it builds:
   `core-xprojects/{OpenH264,openssl,libopus,libvpx,Mozjpeg,libwebp,dav1d,ffmpeg,webrtc,tde2e,wallet-engine}/*.xcodeproj`

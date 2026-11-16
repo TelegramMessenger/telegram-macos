@@ -13,6 +13,7 @@ import TelegramContext
 import TelegramTheme
 import TelegramUtils
 import TelegramMediaUtils
+import AppAnalytics
 
 
 private class LoadingItem: TableRowItem {
@@ -187,7 +188,10 @@ private func getNextId() -> Int32 {
     return OSAtomicIncrement32(&nextId)
 }
 
-public func PeerMediaSavedMessagesController<Context: AccountContextProtocol>(context: Context, peerId: PeerId) -> InputDataController {
+public func PeerMediaSavedMessagesController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, analyticsContext: AnalyticsContext? = nil) -> InputDataController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     
     let actionsDisposable = DisposableSet()
     let pollOptionDisposable = DisposableDict<MessageId>()
@@ -210,6 +214,7 @@ public func PeerMediaSavedMessagesController<Context: AccountContextProtocol>(co
     let mode: ChatMode = .thread(mode: .saved(origin: .init(peerId: peerId, namespace: 0, id: 0)))
     
     let chatInteraction = ChatInteraction(chatLocation: location, context: context, mode: mode, isPeerSavedMessages: true)
+    chatInteraction.inheritedAnalyticsContext = origin
     
     var selectText: ChatSelectText? = nil
     
@@ -218,18 +223,25 @@ public func PeerMediaSavedMessagesController<Context: AccountContextProtocol>(co
 
     
     
-    let openInfo: (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void = { peerId, toChat, postId, action in
+    let openInfo: (PeerId, Bool, MessageId?, ChatInitialAction?, AnalyticsContext) -> Void = { peerId, toChat, postId, action, analyticsContext in
         let navigation = context.bindings.rootNavigation()
         if toChat {
-            ChatUIHooks.shared.navigateToChatObserved(navigation, context, .peer(peerId), .init(messageId: postId), action, false)
+            ChatUIHooks.shared.navigateToChatObserved(navigation, context, .peer(peerId), .init(messageId: postId), action, false, analyticsContext: analyticsContext)
         } else {
-            ChatUIHooks.shared.pushPeerInfoObserved(navigation, context, peerId, nil, nil, nil, nil)
+            ChatUIHooks.shared.pushPeerInfoObserved(navigation, context, peerId, nil, nil, nil, nil, analyticsContext: analyticsContext)
         }
     }
-    chatInteraction.openInfo = openInfo
+    chatInteraction.openInfo = { peerId, toChat, postId, action in
+        openInfo(peerId, toChat, postId, action, Analytics.shared.unresolvedContext())
+    }
+    chatInteraction.openInfoWithAnalytics = openInfo
     chatInteraction.focusMessageId = { fromId, focusTarget, state in
         let navigation = context.bindings.rootNavigation()
+        let targetOrigin = origin.restricting(peerId: focusTarget.messageId.peerId)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
         let controller = ChatAdditionController(context: context, chatLocation: .peer(focusTarget.messageId.peerId), focusTarget: focusTarget)
+        controller.inheritAnalyticsContext(targetOrigin)
         navigation.push(controller)
     }
     chatInteraction.runReactionEffect = { value, messageId, isLarge in
@@ -507,6 +519,8 @@ public func PeerMediaSavedMessagesController<Context: AccountContextProtocol>(co
     }
     
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoMediaSaved
     controller.bar = .init(height: 0)
     
     

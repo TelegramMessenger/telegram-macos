@@ -1,0 +1,153 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:12px 12px 8px}h2{font-size:20px;margin:0 0 8px}.controls{display:flex;gap:6px;flex-wrap:wrap}
+button{background:#293d58;color:#fff;border:0;border-radius:7px;padding:7px 9px;font:11px -apple-system,sans-serif}
+.summary{margin:0 12px 6px;color:#a6b8cf;font-size:11px;line-height:15px}.status{margin:0 12px 10px;color:#bcebdc;font:10px/14px Menlo,monospace}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 12px;box-sizing:border-box}
+.card{min-width:0;padding:6px;background:#1b2b3d;border:1px solid #3a526b;border-radius:11px}
+.label{display:flex;justify-content:space-between;gap:3px;height:12px;margin-bottom:4px;font:9px/12px Menlo,monospace;white-space:nowrap}.phase{color:#a3c1d8}
+.viewport{position:relative;overflow:hidden;width:100%;height:112px;border-radius:10px;background:#0a1421}
+.plane{position:relative;width:1025px;height:513px;background:#152e43}
+.rim{position:absolute;left:4px;top:4px;width:1017px;height:505px;overflow:hidden;border-radius:19px;background:#30465b}
+.window{position:absolute;left:4px;top:4px;width:1009px;height:497px;overflow:hidden;border-radius:13px;background:#0e2133}
+.track{position:absolute;left:-12px;top:12px;display:flex;width:1056px;height:360px;z-index:1}
+.track.second{top:116px;z-index:2}
+.segment{flex-shrink:0;width:132px;height:360px;box-sizing:border-box;padding:0 5px;background:linear-gradient(90deg,rgba(24,126,112,.84),rgba(58,83,153,.68));color:#d9fff1}
+.segment:nth-child(even){background:linear-gradient(90deg,rgba(51,89,151,.8),rgba(107,64,126,.62))}
+.second .segment{background:linear-gradient(180deg,rgba(181,108,54,.72),rgba(130,57,123,.76));color:#fff1cc}
+.second .segment:nth-child(even){background:linear-gradient(180deg,rgba(142,65,135,.72),rgba(47,106,149,.68))}
+.stream{white-space:pre;font:10px/30px Menlo,monospace}
+.seam-x{position:absolute;left:511px;top:0;width:2px;height:513px;background:rgba(255,255,255,.6);z-index:3}
+.seam-y{position:absolute;left:0;top:255px;width:1025px;height:2px;background:rgba(255,255,255,.6);z-index:3}
+.stamp{position:absolute;left:7px;top:7px;height:16px;box-sizing:border-box;padding:2px 3px;border:1px solid #daedfa;border-radius:4px;background:#245b62;color:#fff;font:8px/10px Menlo,monospace;white-space:nowrap;z-index:4}
+.patch{position:absolute;left:4px;top:487px;width:1017px;height:18px;border-radius:5px;background:#447963;z-index:2}
+.offset{height:12px;margin-top:4px;color:#a6b8cf;font:8px/12px Menlo,monospace;white-space:nowrap}
+</style>
+<header><h2>Tile crossing monitors</h2><div class="controls"><button id="pause">Pause</button><button id="resize">Lock width</button><button id="count">24 panels</button><button id="mode">Mixed phases</button><button id="freeze">Freeze</button><button id="step">Step</button><button id="reset">Reset owners</button></div></header>
+<p class="summary" id="summary">24 scroll owners, nested clips, overlapping alpha and contiguous text. Twelve panels fit in the comparison viewport.</p>
+<p class="status" id="status">Applied state 0000</p>
+<div class="grid" id="grid" data-state="0" data-owner-epoch="0"></div>
+<script>
+const grid=document.getElementById('grid'),pauseButton=document.getElementById('pause'),resizeButton=document.getElementById('resize'),countButton=document.getElementById('count'),modeButton=document.getElementById('mode'),summary=document.getElementById('summary'),status=document.getElementById('status');
+const phaseNames=['integer','fractional','churn'],modeNames=['mixed','integer','fractional'];
+let panels=[],count=24,step=0,ownerEpoch=0,mode='mixed',running=true,resizing=true,widthStep=0,frameID=0,current=null,appliedToken='';
+function boundedStep(value){
+  const number=Number(value);
+  return Number.isFinite(number)?Math.max(0,Math.min(1000000000,Math.floor(number))):0;
+}
+function selectedCount(value){
+  const number=Number(value);
+  return number<=12?12:number<=24?24:48;
+}
+function streamText(panel,track,column){
+  let text='';
+  for(let row=0;row<12;row++)text+=(row?'\n':'')+(track?'Queue ':'Flow  ')+String(panel+1).padStart(2,'0')+' '+String(column*12+row).padStart(3,'0');
+  return text;
+}
+function build(next){
+  count=next;
+  let html='';
+  for(let i=0;i<count;i++){
+    let tracks='';
+    for(let j=0;j<2;j++){
+      let segments='';
+      for(let column=0;column<8;column++)segments+='<div class="segment"><div class="stream">'+streamText(i,j,column)+'</div></div>';
+      tracks+='<div class="track'+(j?' second':'')+'">'+segments+'</div>';
+    }
+    html+='<div class="card"><div class="label"><span>T'+String(i+1).padStart(2,'0')+'</span><span class="phase">I 0000</span></div><div class="viewport" id="owner-'+i+'"><div class="plane"><div class="rim"><div class="window">'+tracks+'</div></div><div class="seam-x"></div><div class="seam-y"></div><div class="patch"></div><div class="stamp">0:0000</div></div></div><div class="offset">x 0 / y 0</div></div>';
+  }
+  grid.innerHTML=html;
+  panels=Array.from(grid.querySelectorAll('.card'),function(card){return {owner:card.querySelector('.viewport'),rim:card.querySelector('.rim'),window:card.querySelector('.window'),tracks:card.querySelectorAll('.track'),patch:card.querySelector('.patch'),stamp:card.querySelector('.stamp'),stampText:card.querySelector('.stamp').firstChild,phase:card.querySelector('.phase').firstChild,offset:card.querySelector('.offset').firstChild};});
+  countButton.textContent=count+' panels';
+  summary.textContent=count+' scroll owners, '+count*3+' rounded clips and '+count*192+' contiguous text lines. Overlapping alpha, tile boundaries and local paint churn.';
+  grid.setAttribute('data-owner-epoch',String(ownerEpoch));
+}
+function phaseFor(value){
+  return mode==='mixed'?phaseNames[Math.floor(value%60/20)]:mode;
+}
+function columnsFor(value){
+  const base=Math.max(52,Math.floor(((Number(window.innerWidth)||390)-40)/3));
+  const phase=phaseFor(value),fraction=phase==='integer'?0:(value%4)*.25;
+  return base-((value*3)%7)+fraction;
+}
+function describe(){
+  return {version:1,state:step,token:appliedToken,panels:count,columns:3,ownerEpoch:ownerEpoch,mode:mode,phase:phaseFor(step),running:running,resizing:resizing,widthStep:resizing?step:widthStep,contentWidth:1025,contentHeight:513,roundedClips:count*3,tracks:count*2,textLines:count*192,columnWidth:current?current.columnWidth:0,expected:current?current.expected:[]};
+}
+function draw(value){
+  step=boundedStep(value);
+  const phase=phaseFor(step),fractional=phase!=='integer',sizeStep=resizing?step:widthStep,columnWidth=columnsFor(sizeStep),expected=[];
+  grid.style.width=(columnWidth*3+40)+'px';
+  for(let i=0;i<count;i++){
+    const panel=panels[i],local=step+i*7,size=sizeStep+i*3,fraction=fractional?(local%4)*.25:0,sizeFraction=phaseFor(sizeStep)==='integer'?0:(size%4)*.25;
+    const width=Math.max(34,columnWidth-14-(size%3)*2-sizeFraction),height=104+(local%3)*4+fraction;
+    const maximumX=1025-width,maximumY=513-height,xStops=[0,384,447,495,511,512,513,640,768,880,maximumX-1,maximumX],yStops=[0,128,192,239,255,256,257,320,maximumY-1,maximumY];
+    const x=Math.max(0,Math.min(maximumX,xStops[local%xStops.length]+fraction)),y=Math.max(0,Math.min(maximumY,yStops[(step*3+i)%yStops.length]+fraction));
+    const firstX=(local*5)%25-12+fraction,firstY=local%5-2+fraction,secondX=12-(local*7)%25-fraction,secondY=2-local%5-fraction;
+    const rimWidth=1017-(size%5)*3-sizeFraction,innerWidth=rimWidth-8-(size%4)*2-sizeFraction,innerHeight=497-(local%4)*2-fraction;
+    const order=Math.floor(local/3)%2,color=(step*17+i*29)%256,paint=phase==='churn'?step:Math.floor(step/4),text=ownerEpoch+':'+String(step%10000).padStart(4,'0');
+    panel.owner.style.width=width+'px';panel.owner.style.height=height+'px';
+    panel.rim.style.width=rimWidth+'px';panel.window.style.width=innerWidth+'px';panel.window.style.height=innerHeight+'px';
+    panel.tracks[0].style.transform='translate('+firstX+'px,'+firstY+'px)';
+    panel.tracks[1].style.transform='translate('+secondX+'px,'+secondY+'px)';
+    panel.tracks[0].style.zIndex=String(order+1);panel.tracks[1].style.zIndex=String(2-order);
+    panel.patch.style.backgroundColor='rgba('+(56+(paint*13+i*7)%96)+','+(88+(paint*7+i*11)%96)+','+(104+(paint*11+i*3)%96)+',0.78)';
+    panel.patch.style.transform='translateY('+(-((local*11)%49)-fraction)+'px)';
+    panel.stamp.style.left=(x+6)+'px';panel.stamp.style.top=(y+6)+'px';panel.stamp.style.width=Math.min(76,width-12)+'px';
+    panel.stamp.style.backgroundColor='rgb('+(32+color%96)+','+(80+(color*3)%96)+','+(96+(color*7)%96)+')';
+    panel.stampText.data=text;panel.phase.data=phase.charAt(0).toUpperCase()+' '+String(step%10000).padStart(4,'0');
+    panel.offset.data='x '+x+' / y '+y;
+    panel.owner.scrollLeft=x;panel.owner.scrollTop=y;
+    panel.owner.setAttribute('data-paint-state',String(step));
+    expected.push({id:'owner-'+i,epoch:ownerEpoch,state:step,width:width,height:height,x:x,y:y,rimWidth:rimWidth,innerWidth:innerWidth,innerHeight:innerHeight,firstX:firstX,firstY:firstY,secondX:secondX,secondY:secondY,frontTrack:order?0:1,stamp:text,stampColor:[32+color%96,80+(color*3)%96,96+(color*7)%96]});
+  }
+  current={columnWidth:columnWidth,expected:expected};
+  grid.setAttribute('data-state',String(step));grid.setAttribute('data-phase',phase);grid.setAttribute('data-token',appliedToken);
+  status.textContent='Applied state '+String(step).padStart(4,'0')+' / '+phase+' / owners v'+ownerEpoch;
+}
+function setRunning(value){
+  running=Boolean(value);
+  if(frameID){cancelAnimationFrame(frameID);frameID=0;}
+  pauseButton.textContent=running?'Pause':'Resume';
+  if(running)frameID=requestAnimationFrame(frame);
+}
+function frame(){
+  frameID=0;
+  if(!running)return;
+  appliedToken='';draw(step+1);frameID=requestAnimationFrame(frame);
+}
+function applyState(value,options){
+  options=options&&typeof options==='object'?options:{};
+  setRunning(false);
+  if(modeNames.indexOf(options.mode)!==-1)mode=options.mode;
+  if(typeof options.widthLocked==='boolean'){
+    resizing=!options.widthLocked;
+    if(!resizing)widthStep=boundedStep(options.widthStep);
+  }
+  if(options.count!==undefined&&selectedCount(options.count)!==count){ownerEpoch++;build(selectedCount(options.count));}
+  appliedToken=options.token===undefined?'':String(options.token).slice(0,64);
+  modeButton.textContent=mode.charAt(0).toUpperCase()+mode.slice(1)+' phases';resizeButton.textContent=resizing?'Lock width':'Unlock width';
+  draw(value);
+  return describe();
+}
+function resetOwners(){
+  setRunning(false);ownerEpoch++;build(count);draw(step);return describe();
+}
+function freeze(){return applyState(25,{mode:'mixed',widthLocked:false,token:'freeze-25'});}
+pauseButton.onclick=function(){setRunning(!running);};
+resizeButton.onclick=function(){resizing=!resizing;widthStep=step;resizeButton.textContent=resizing?'Lock width':'Unlock width';draw(step);};
+countButton.onclick=function(){ownerEpoch++;build(count===12?24:count===24?48:12);draw(step);};
+modeButton.onclick=function(){mode=modeNames[(modeNames.indexOf(mode)+1)%modeNames.length];modeButton.textContent=mode.charAt(0).toUpperCase()+mode.slice(1)+' phases';draw(step);};
+document.getElementById('freeze').onclick=freeze;
+document.getElementById('step').onclick=function(){applyState(step+1);};
+document.getElementById('reset').onclick=resetOwners;
+window.addEventListener('resize',function(){draw(step);});
+window.stress={freeze:freeze,pause:function(){setRunning(false);return describe();},resume:function(){appliedToken='';setRunning(true);return describe();},applyState:applyState,resetOwners:resetOwners,setCount:function(value){const next=selectedCount(value);if(next!==count){ownerEpoch++;build(next);draw(step);}return describe();},describe:describe};
+if(window.TelegramWidget&&typeof window.TelegramWidget.on==='function'){
+  window.TelegramWidget.on('stress-step',function(data){
+    if(data&&typeof data==='object')applyState(data.step,data);
+    else applyState(data);
+  });
+  window.TelegramWidget.on('stress-reset',function(){resetOwners();});
+}
+build(count);draw(0);frameID=requestAnimationFrame(frame);
+</script>

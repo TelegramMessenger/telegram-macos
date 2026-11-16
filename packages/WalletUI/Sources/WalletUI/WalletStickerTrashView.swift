@@ -22,6 +22,7 @@ final class WalletStickerTrashView: View {
         layer?.masksToBounds = false
         layer?.opacity = 0
         iconView.isEventLess = true
+        iconView.isAccessibilityDecorative = true
         textView.userInteractionEnabled = false
         textView.isSelectable = false
         textView.isEventLess = true

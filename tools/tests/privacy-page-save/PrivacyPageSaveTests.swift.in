@@ -1,0 +1,802 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let id: Int64
+}
+
+final class SelectivePrivacyPeer: Equatable {
+    let peerId: PeerId
+    let participantCount: Int32?
+
+    init(_ id: Int64, participantCount: Int32? = nil) {
+        self.peerId = PeerId(id: id)
+        self.participantCount = participantCount
+    }
+
+    static func ==(lhs: SelectivePrivacyPeer, rhs: SelectivePrivacyPeer) -> Bool {
+        return lhs.peerId == rhs.peerId && lhs.participantCount == rhs.participantCount
+    }
+}
+
+enum SelectivePrivacySettings: Equatable {
+    case enableEveryone(disableFor: [PeerId: SelectivePrivacyPeer])
+    case enableContacts(enableFor: [PeerId: SelectivePrivacyPeer], disableFor: [PeerId: SelectivePrivacyPeer], enableForPremium: Bool, enableForBots: Bool)
+    case disableEveryone(enableFor: [PeerId: SelectivePrivacyPeer], enableForCloseFriends: Bool, enableForPremium: Bool, enableForBots: Bool)
+}
+
+struct TelegramDisallowedGifts: OptionSet {
+    var rawValue: Int32
+
+    static let unlimited = TelegramDisallowedGifts(rawValue: 1 << 0)
+    static let limited = TelegramDisallowedGifts(rawValue: 1 << 1)
+    static let unique = TelegramDisallowedGifts(rawValue: 1 << 2)
+    static let premium = TelegramDisallowedGifts(rawValue: 1 << 3)
+    static let channel = TelegramDisallowedGifts(rawValue: 1 << 4)
+}
+
+struct GlobalPrivacySettings: Equatable {
+    enum NonContactChatsPrivacy: Equatable {
+        case everybody
+        case requirePremium
+        case paidMessages(Int64)
+    }
+
+    var automaticallyArchiveAndMuteNonContacts: Bool
+    var keepArchivedUnmuted: Bool
+    var keepArchivedFolders: Bool
+    var hideReadTime: Bool
+    var nonContactChatsPrivacy: NonContactChatsPrivacy
+    var disallowedGifts: TelegramDisallowedGifts
+    var displayGiftButton: Bool
+}
+
+enum UpdateSelectiveAccountPrivacySettingsType: Equatable {
+    case presence
+    case groupInvitations
+    case voiceCalls
+    case voiceCallsP2P
+    case profilePhoto
+    case forwards
+    case phoneNumber
+    case voiceMessages
+    case bio
+    case birthday
+    case giftsAutoSave
+    case noPaidMessages
+    case savedMusic
+}
+
+final class TelegramMediaImage: Equatable {
+    static func ==(lhs: TelegramMediaImage, rhs: TelegramMediaImage) -> Bool {
+        return lhs === rhs
+    }
+}
+
+struct PeerInfoUpdatingPhotoState: Equatable {
+}
+
+final class ViewController {
+}
+
+enum NoError {
+}
+
+final class Disposable {
+}
+
+final class Queue {
+    static func mainQueue() -> Queue {
+        return Queue()
+    }
+}
+
+final class Signal<T, E> {
+    private let run: (@escaping () -> Void) -> Void
+
+    init(_ run: @escaping (@escaping () -> Void) -> Void) {
+        self.run = run
+    }
+
+    static func complete() -> Signal<T, E> {
+        return Signal { completed in
+            completed()
+        }
+    }
+
+    func start(completed: @escaping () -> Void = {}) -> Disposable {
+        self.run(completed)
+        return Disposable()
+    }
+}
+
+func combineLatest<A, B, C, E>(queue: Queue, _ a: Signal<A, E>, _ b: Signal<B, E>, _ c: Signal<C, E>) -> Signal<(A, B, C), E> {
+    return Signal { completed in
+        var remaining = 3
+        let finish = {
+            remaining -= 1
+            if remaining == 0 {
+                completed()
+            }
+        }
+        _ = a.start(completed: finish)
+        _ = b.start(completed: finish)
+        _ = c.start(completed: finish)
+    }
+}
+
+final class MetaDisposable {
+    func set(_ disposable: Disposable?) {
+    }
+}
+
+final class Atomic<T> {
+    private var value: T
+
+    init(value: T) {
+        self.value = value
+    }
+
+    func modify(_ f: (T) -> T) -> T {
+        self.value = f(self.value)
+        return self.value
+    }
+
+    func with<R>(_ f: (T) -> R) -> R {
+        return f(self.value)
+    }
+}
+
+final class ValuePromise<T> {
+    init(_ value: T, ignoreRepeated: Bool = false) {
+    }
+
+    func set(_ value: T) {
+    }
+}
+
+enum Write: Equatable {
+    case selective(UpdateSelectiveAccountPrivacySettingsType, SelectivePrivacySettings)
+    case phoneDiscovery(Bool)
+    case global(GlobalPrivacySettings)
+}
+
+final class Server {
+    var writes: [Write] = []
+    var pendingAnswers: [() -> Void] = []
+
+    func request<T>(_ write: Write) -> Signal<T, NoError> {
+        return Signal { completed in
+            self.writes.append(write)
+            self.pendingAnswers.append(completed)
+        }
+    }
+
+    func answer() {
+        self.pendingAnswers.forEach { $0() }
+        self.pendingAnswers = []
+    }
+}
+
+final class Privacy {
+    let server: Server
+
+    init(_ server: Server) {
+        self.server = server
+    }
+
+    func updatePhoneNumberDiscovery(value: Bool) -> Signal<Void, NoError> {
+        return self.server.request(.phoneDiscovery(value))
+    }
+
+    func updateSelectiveAccountPrivacySettings(type: UpdateSelectiveAccountPrivacySettingsType, settings: SelectivePrivacySettings) -> Signal<Void, NoError> {
+        return self.server.request(.selective(type, settings))
+    }
+
+    func updateGlobalPrivacySettings(settings: GlobalPrivacySettings) -> Signal<Never, NoError> {
+        return self.server.request(.global(settings))
+    }
+}
+
+final class Engine {
+    let privacy: Privacy
+
+    init(_ server: Server) {
+        self.privacy = Privacy(server)
+    }
+}
+
+final class Context {
+    let engine: Engine
+    let isPremium = true
+
+    init(_ server: Server) {
+        self.engine = Engine(server)
+    }
+}
+
+__TYPES__
+
+__STATE__
+
+struct Report {
+    let settings: SelectivePrivacySettings
+    let callSettings: SelectivePrivacySettings?
+    let phoneDiscoveryEnabled: Bool?
+    let globalSettings: GlobalPrivacySettings?
+}
+
+final class Page {
+    let server = Server()
+    let context: Context
+    let kind: SelectivePrivacySettingsKind
+    let current: SelectivePrivacySettings
+    let callSettings: SelectivePrivacySettings?
+    let phoneDiscoveryEnabled: Bool?
+    let globalSettings: GlobalPrivacySettings?
+    var reports: [Report] = []
+    var savePressed: (() -> Void)?
+    var edit: (((SelectivePrivacySettingsControllerState) -> SelectivePrivacySettingsControllerState) -> Void)!
+    var state: (() -> SelectivePrivacySettingsControllerState)!
+    var dismissed = 0
+    var isLeaving = false
+
+    init(_ kind: SelectivePrivacySettingsKind, current: SelectivePrivacySettings, callSettings: SelectivePrivacySettings? = nil, phoneDiscoveryEnabled: Bool? = nil, globalSettings: GlobalPrivacySettings? = nil) {
+        self.context = Context(self.server)
+        self.kind = kind
+        self.current = current
+        self.callSettings = callSettings
+        self.phoneDiscoveryEnabled = phoneDiscoveryEnabled
+        self.globalSettings = globalSettings
+        self.viewDidLoad()
+    }
+
+    func viewDidLoad() {
+        let context = self.context
+        let kind = self.kind
+        let current = self.current
+        let updated: (SelectivePrivacySettings, SelectivePrivacySettings?, Bool?, GlobalPrivacySettings?) -> Void = { [unowned self] settings, callSettings, phoneDiscoveryEnabled, globalSettings in
+            self.reports.append(Report(settings: settings, callSettings: callSettings, phoneDiscoveryEnabled: phoneDiscoveryEnabled, globalSettings: globalSettings))
+        }
+
+        __LOAD__
+
+        let updateSettingsDisposable = MetaDisposable()
+        let globalSettings = self.globalSettings
+
+        __SAVE__
+
+        dismissImpl = { [unowned self] in
+            self.dismissed += 1
+            wentBackWhileLeaving = wentBackWhileLeaving || self.isLeaving
+        }
+        self.edit = updateState
+        self.state = { stateValue.with { $0 } }
+    }
+
+    func didRemovedFromStack() {
+        self.isLeaving = true
+        __REMOVED__
+        self.isLeaving = false
+    }
+
+    func change(_ f: @escaping (inout SelectivePrivacySettingsControllerState) -> Void) {
+        self.edit { current in
+            var current = current
+            f(&current)
+            return current
+        }
+    }
+
+    var writes: [Write] {
+        return self.server.writes
+    }
+}
+
+__MESSAGES_STATE__
+
+final class InputDataController {
+    var afterDisappear: () -> Void = {}
+
+    func didRemovedFromStack() {
+        self.afterDisappear()
+    }
+}
+
+final class MessagesPage {
+    let server = Server()
+    let controller: InputDataController
+    var edit: (((State) -> State) -> Void)!
+    var reports: [(SelectivePrivacySettings, GlobalPrivacySettings)] = []
+
+    init(noPaidMessages: SelectivePrivacySettings, globalSettings: GlobalPrivacySettings) {
+        let context = Context(self.server)
+        let controller = InputDataController()
+        self.controller = controller
+        let updated: (SelectivePrivacySettings, GlobalPrivacySettings) -> Void = { [unowned self] noPaidMessages, globalSettings in
+            self.reports.append((noPaidMessages, globalSettings))
+        }
+
+        __MESSAGES_LOAD__
+
+        __MESSAGES_DISAPPEAR__
+
+        self.edit = updateState
+    }
+
+    func change(_ f: @escaping (inout State) -> Void) {
+        self.edit { current in
+            var current = current
+            f(&current)
+            return current
+        }
+    }
+}
+
+var failures = 0
+var passed = 0
+var wentBackWhileLeaving = false
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+func peers(_ ids: Int64...) -> [PeerId: SelectivePrivacyPeer] {
+    var result: [PeerId: SelectivePrivacyPeer] = [:]
+    for id in ids {
+        result[PeerId(id: id)] = SelectivePrivacyPeer(id)
+    }
+    return result
+}
+
+func global(hideReadTime: Bool = false, disallowedGifts: TelegramDisallowedGifts = [], displayGiftButton: Bool = false) -> GlobalPrivacySettings {
+    return GlobalPrivacySettings(automaticallyArchiveAndMuteNonContacts: true, keepArchivedUnmuted: false, keepArchivedFolders: true, hideReadTime: hideReadTime, nonContactChatsPrivacy: .paidMessages(25), disallowedGifts: disallowedGifts, displayGiftButton: displayGiftButton)
+}
+
+func nobody(_ enableFor: [PeerId: SelectivePrivacyPeer] = [:], closeFriends: Bool = false, premium: Bool = false, bots: Bool = false) -> SelectivePrivacySettings {
+    return .disableEveryone(enableFor: enableFor, enableForCloseFriends: closeFriends, enableForPremium: premium, enableForBots: bots)
+}
+
+func contacts(_ enableFor: [PeerId: SelectivePrivacyPeer] = [:], disableFor: [PeerId: SelectivePrivacyPeer] = [:], premium: Bool = false, bots: Bool = false) -> SelectivePrivacySettings {
+    return .enableContacts(enableFor: enableFor, disableFor: disableFor, enableForPremium: premium, enableForBots: bots)
+}
+
+func everybody(_ disableFor: [PeerId: SelectivePrivacyPeer] = [:]) -> SelectivePrivacySettings {
+    return .enableEveryone(disableFor: disableFor)
+}
+
+let kinds: [(SelectivePrivacySettingsKind, UpdateSelectiveAccountPrivacySettingsType)] = [
+    (.presence, .presence),
+    (.groupInvitations, .groupInvitations),
+    (.voiceCalls, .voiceCalls),
+    (.profilePhoto, .profilePhoto),
+    (.forwards, .forwards),
+    (.phoneNumber, .phoneNumber),
+    (.voiceMessages, .voiceMessages),
+    (.bio, .bio),
+    (.birthday, .birthday),
+    (.gifts, .giftsAutoSave),
+    (.savedMusic, .savedMusic)
+]
+let pagesWithCallSettings: [SelectivePrivacySettingsKind] = [.voiceCalls, .voiceMessages, .gifts, .savedMusic]
+let rules: [SelectivePrivacySettings] = [
+    everybody(),
+    everybody(peers(1, 2)),
+    contacts(),
+    contacts(peers(1), disableFor: peers(2), premium: true, bots: true),
+    nobody(),
+    nobody(peers(1), closeFriends: true, premium: true, bots: true),
+    nobody(closeFriends: true)
+]
+let callRules: [SelectivePrivacySettings] = [
+    everybody(peers(3)),
+    contacts(peers(3), disableFor: peers(4), premium: false, bots: true),
+    contacts(premium: true),
+    nobody(peers(3), closeFriends: true),
+    nobody(premium: true, bots: true)
+]
+let globals = [global(), global(hideReadTime: true), global(hideReadTime: true, disallowedGifts: [.limited, .channel], displayGiftButton: true)]
+
+for (kind, _) in kinds {
+    var quiet = true
+    var leftIdle = true
+    for rule in rules {
+        for callRule in callRules {
+            for globalSettings in globals {
+                var pages = [Page(kind, current: rule, callSettings: kind == .voiceCalls ? callRule : nil)]
+                if kind == .phoneNumber {
+                    pages.append(Page(kind, current: rule, phoneDiscoveryEnabled: false))
+                    pages.append(Page(kind, current: rule, phoneDiscoveryEnabled: true))
+                } else {
+                    pages.append(Page(kind, current: rule, callSettings: pagesWithCallSettings.contains(kind) ? callRule : nil, globalSettings: globalSettings))
+                }
+                for page in pages {
+                    page.didRemovedFromStack()
+                    quiet = quiet && page.writes.isEmpty && page.reports.isEmpty
+                    leftIdle = leftIdle && !page.state().saving
+                }
+            }
+        }
+    }
+    check("\(kind): leaving without a change sends nothing and reports nothing", quiet)
+    check("\(kind): leaving without a change does not stay saving", leftIdle)
+}
+
+do {
+    let page = Page(.bio, current: nobody(), globalSettings: global(hideReadTime: true))
+    page.didRemovedFromStack()
+    check("viewing another page does not turn Hide Read Time off", !page.writes.contains(.global(global())))
+}
+
+do {
+    let page = Page(.forwards, current: nobody(closeFriends: true))
+    page.didRemovedFromStack()
+    check("viewing Nobody does not drop Close Friends", !page.writes.contains(.selective(.forwards, nobody())))
+}
+
+for (kind, type) in kinds {
+    let page = Page(kind, current: nobody(closeFriends: true), globalSettings: kind == .phoneNumber ? nil : global())
+    page.change { $0.setting = .contacts }
+    page.didRemovedFromStack()
+    check("\(kind): a rule change sends one request of its own type", page.writes == [.selective(type, contacts())])
+    check("\(kind): a rule change reports the new rule once", page.reports.count == 1 && page.reports.first?.settings == contacts())
+}
+
+do {
+    let page = Page(.forwards, current: nobody(closeFriends: true))
+    page.change { $0.enableFor = peers(7) }
+    page.didRemovedFromStack()
+    check("a peer added to Nobody keeps Close Friends", page.writes == [.selective(.forwards, nobody(peers(7), closeFriends: true))])
+    check("the report keeps Close Friends", page.reports.first?.settings == nobody(peers(7), closeFriends: true))
+}
+
+do {
+    let page = Page(.forwards, current: nobody(peers(1), closeFriends: true, premium: true, bots: true))
+    page.change { $0.enableForBots = false }
+    page.didRemovedFromStack()
+    check("a Nobody extra can change on its own", page.writes == [.selective(.forwards, nobody(peers(1), closeFriends: true, premium: true))])
+}
+
+do {
+    let page = Page(.forwards, current: nobody(closeFriends: true))
+    page.change { $0.setting = .contacts }
+    page.change { $0.setting = .nobody }
+    page.didRemovedFromStack()
+    check("Nobody to Contacts and back to Nobody keeps Close Friends and sends nothing", page.writes.isEmpty)
+}
+
+do {
+    let page = Page(.forwards, current: nobody(closeFriends: true))
+    page.change { $0.setting = .everybody }
+    page.didRemovedFromStack()
+    check("leaving Nobody for Everybody sends Everybody", page.writes == [.selective(.forwards, everybody())])
+}
+
+do {
+    let page = Page(.forwards, current: contacts(peers(1)))
+    page.change { $0.setting = .nobody }
+    page.didRemovedFromStack()
+    check("a new Nobody starts without Close Friends", page.writes == [.selective(.forwards, nobody(peers(1)))])
+}
+
+do {
+    let page = Page(.forwards, current: contacts(peers(1), disableFor: peers(2), premium: true))
+    page.change { $0.setting = .nobody }
+    page.didRemovedFromStack()
+    check("Contacts to Nobody keeps Always and Premium", page.writes == [.selective(.forwards, nobody(peers(1), premium: true))])
+}
+
+do {
+    let page = Page(.groupInvitations, current: contacts(premium: true, bots: true))
+    page.change { $0.enableForBots = false }
+    page.didRemovedFromStack()
+    check("Contacts keeps Premium and Bots apart", page.writes == [.selective(.groupInvitations, contacts(premium: true))])
+}
+
+do {
+    let page = Page(.forwards, current: contacts(peers(1), disableFor: peers(2)))
+    page.change { $0.enableFor = peers(1, 3) }
+    page.didRemovedFromStack()
+    check("a peer added to Always keeps the Never list", page.writes == [.selective(.forwards, contacts(peers(1, 3), disableFor: peers(2)))])
+}
+
+do {
+    let page = Page(.forwards, current: contacts(peers(1), disableFor: peers(2)))
+    page.change { $0.disableFor = peers(2, 3) }
+    page.didRemovedFromStack()
+    check("a peer added to Never keeps the Always list", page.writes == [.selective(.forwards, contacts(peers(1), disableFor: peers(2, 3)))])
+}
+
+do {
+    let page = Page(.bio, current: everybody(peers(1)))
+    page.change { $0.disableFor = peers(1, 2) }
+    page.didRemovedFromStack()
+    check("Everybody sends its Never list", page.writes == [.selective(.bio, everybody(peers(1, 2)))])
+}
+
+let roundTrips: [(String, SelectivePrivacySettings, (Page) -> Void)] = [
+    ("Everybody to Nobody and back", everybody(peers(1)), { page in
+        page.change { $0.setting = .nobody }
+        page.change { $0.setting = .everybody }
+    }),
+    ("Contacts to Everybody and back", contacts(peers(1), disableFor: peers(2)), { page in
+        page.change { $0.setting = .everybody }
+        page.change { $0.setting = .contacts }
+    }),
+    ("a peer added and removed", contacts(peers(1)), { page in
+        page.change { $0.enableFor = peers(1, 2) }
+        page.change { $0.enableFor = peers(1) }
+    }),
+    ("a list edited while it is hidden on Everybody", everybody(), { page in
+        page.change { $0.setting = .contacts }
+        page.change { $0.enableFor = peers(9) }
+        page.change { $0.enableForPremium = true }
+        page.change { $0.setting = .everybody }
+    }),
+    ("a list edited while it is hidden on Nobody", nobody(peers(1)), { page in
+        page.change { $0.setting = .contacts }
+        page.change { $0.disableFor = peers(9) }
+        page.change { $0.setting = .nobody }
+    })
+]
+for (name, rule, edit) in roundTrips {
+    let page = Page(.presence, current: rule, globalSettings: global())
+    edit(page)
+    page.didRemovedFromStack()
+    check("\(name) sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let loaded = global(disallowedGifts: [.limited], displayGiftButton: true)
+    let page = Page(.presence, current: everybody(), globalSettings: loaded)
+    page.change { $0.hideReadTime = true }
+    page.didRemovedFromStack()
+    var expected = loaded
+    expected.hideReadTime = true
+    check("Hide Read Time sends one global request", page.writes == [.global(expected)])
+    check("Hide Read Time does not rewrite Last Seen", !page.writes.contains { if case .selective = $0 { return true } else { return false } })
+    check("Hide Read Time is reported", page.reports.first?.globalSettings == expected)
+}
+
+do {
+    let page = Page(.presence, current: everybody(), globalSettings: global(hideReadTime: true))
+    page.change { $0.hideReadTime = false }
+    page.didRemovedFromStack()
+    check("Hide Read Time can be turned off", page.writes == [.global(global())])
+}
+
+do {
+    let page = Page(.presence, current: everybody(), globalSettings: global(hideReadTime: true))
+    page.change { $0.hideReadTime = false }
+    page.change { $0.hideReadTime = true }
+    page.didRemovedFromStack()
+    check("Hide Read Time switched twice sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = Page(.presence, current: everybody())
+    page.change { $0.setting = .nobody }
+    page.didRemovedFromStack()
+    check("a page opened without global settings never sends them", page.writes == [.selective(.presence, nobody())])
+    check("a page opened without global settings reports none", page.reports.count == 1 && page.reports[0].globalSettings == nil)
+}
+
+for (kind, type) in kinds where kind != .presence && kind != .phoneNumber {
+    let page = Page(kind, current: everybody(), globalSettings: global(hideReadTime: true))
+    page.change { $0.setting = .contacts }
+    page.didRemovedFromStack()
+    check("\(kind): a rule change leaves Hide Read Time alone", page.writes == [.selective(type, contacts())])
+    check("\(kind): a rule change reports no global settings", page.reports.count == 1 && page.reports[0].globalSettings == nil)
+}
+
+let giftEdits: [(String, TelegramDisallowedGifts)] = [("unlimited", .unlimited), ("limited", .limited), ("unique", .unique), ("premium", .premium), ("channel", .channel)]
+for (name, gift) in giftEdits {
+    let page = Page(.gifts, current: everybody(), callSettings: everybody(), globalSettings: global(hideReadTime: true))
+    page.change { $0.gifts.insert(gift) }
+    page.didRemovedFromStack()
+    let expected = global(hideReadTime: true, disallowedGifts: gift)
+    check("the \(name) gift switch sends one global request and keeps Hide Read Time", page.writes == [.global(expected)])
+    check("the \(name) gift switch is reported without call settings", page.reports.count == 1 && page.reports[0].globalSettings == expected && page.reports[0].callSettings == nil)
+
+    let twice = Page(.gifts, current: everybody(), callSettings: everybody(), globalSettings: global(hideReadTime: true))
+    twice.change { $0.gifts.insert(gift) }
+    twice.change { $0.gifts.remove(gift) }
+    twice.didRemovedFromStack()
+    check("the \(name) gift switch used twice sends nothing", twice.writes.isEmpty && twice.reports.isEmpty)
+}
+
+do {
+    let page = Page(.gifts, current: everybody(), callSettings: everybody(), globalSettings: global(hideReadTime: true))
+    page.change { $0.showGiftButton = true }
+    page.didRemovedFromStack()
+    let expected = global(hideReadTime: true, displayGiftButton: true)
+    check("Show Gift Button sends one global request and keeps Hide Read Time", page.writes == [.global(expected)])
+    check("Show Gift Button is reported without call settings", page.reports.count == 1 && page.reports[0].globalSettings == expected && page.reports[0].callSettings == nil)
+}
+
+do {
+    let page = Page(.gifts, current: contacts(), callSettings: everybody(), globalSettings: global(hideReadTime: true))
+    page.change { $0.setting = .nobody }
+    page.change { $0.gifts.insert(.unique) }
+    page.didRemovedFromStack()
+    check("a rule and a gift change send both", page.writes.count == 2 && page.writes.contains(.selective(.giftsAutoSave, nobody())) && page.writes.contains(.global(global(hideReadTime: true, disallowedGifts: .unique))))
+}
+
+do {
+    let page = Page(.phoneNumber, current: nobody(), phoneDiscoveryEnabled: true)
+    page.change { $0.phoneDiscoveryEnabled = false }
+    page.didRemovedFromStack()
+    check("the discovery choice sends only itself", page.writes == [.phoneDiscovery(false)])
+    check("the discovery choice is reported", page.reports.count == 1 && page.reports[0].phoneDiscoveryEnabled == false)
+}
+
+do {
+    let page = Page(.phoneNumber, current: nobody(), phoneDiscoveryEnabled: true)
+    page.change { $0.phoneDiscoveryEnabled = false }
+    page.change { $0.phoneDiscoveryEnabled = true }
+    page.didRemovedFromStack()
+    check("the discovery choice made twice sends nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = Page(.phoneNumber, current: nobody(), phoneDiscoveryEnabled: false)
+    page.change { $0.setting = .contacts }
+    page.didRemovedFromStack()
+    check("a phone rule change does not resend discovery", page.writes == [.selective(.phoneNumber, contacts())])
+    check("a phone rule change still reports discovery, the caller unwraps it", page.reports.count == 1 && page.reports[0].phoneDiscoveryEnabled == false)
+}
+
+do {
+    let page = Page(.phoneNumber, current: nobody())
+    page.change { $0.phoneDiscoveryEnabled = false }
+    page.didRemovedFromStack()
+    check("discovery chosen after opening without a value is sent", page.writes == [.phoneDiscovery(false)])
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(peers(3)), globalSettings: global(hideReadTime: true))
+    page.change { $0.callP2PMode = .nobody }
+    page.didRemovedFromStack()
+    check("a peer-to-peer change leaves the call rule alone", !page.writes.contains { if case .selective(.voiceCalls, _) = $0 { return true } else { return false } })
+    check("a peer-to-peer change leaves global settings alone", !page.writes.contains { if case .global = $0 { return true } else { return false } })
+    check("a peer-to-peer change is reported", page.reports.count == 1 && page.reports[0].callSettings == nobody())
+    check("a peer-to-peer change reports no global settings", page.reports.first?.globalSettings == nil)
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(peers(3)), globalSettings: global())
+    page.change { $0.callP2PDisableFor = peers(3, 4) }
+    page.didRemovedFromStack()
+    check("a peer-to-peer Never list is reported", page.reports.first?.callSettings == everybody(peers(3, 4)))
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: contacts(peers(3), disableFor: peers(4)), globalSettings: global())
+    page.change { $0.callP2PDisableFor = peers(4, 5) }
+    page.didRemovedFromStack()
+    check("peer-to-peer Contacts keeps both lists", page.reports.first?.callSettings == contacts(peers(3), disableFor: peers(4, 5)))
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: nobody(peers(3), closeFriends: true), globalSettings: global())
+    page.change { $0.callP2PEnableFor = peers(3, 4) }
+    page.didRemovedFromStack()
+    check("a peer-to-peer list edit keeps Close Friends", page.reports.first?.callSettings == nobody(peers(3, 4), closeFriends: true))
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: nobody(closeFriends: true), globalSettings: global())
+    page.change { $0.callP2PMode = .contacts }
+    page.change { $0.callP2PMode = .nobody }
+    page.didRemovedFromStack()
+    check("a peer-to-peer mode changed and restored sends and reports nothing", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+for callRule in [contacts(peers(3)), nobody(peers(3))] {
+    let page = Page(.gifts, current: contacts(), callSettings: callRule, globalSettings: global())
+    page.change { $0.enableForPremium = true }
+    page.change { $0.enableForBots = true }
+    page.didRemovedFromStack()
+    check("exceptions of the main rule do not touch peer-to-peer", page.writes == [.selective(.giftsAutoSave, contacts(premium: true, bots: true))] && page.reports.first?.callSettings == nil)
+}
+
+do {
+    let page = Page(.voiceCalls, current: contacts(), callSettings: nobody(peers(3)), globalSettings: global())
+    page.change { $0.setting = .nobody }
+    page.didRemovedFromStack()
+    check("a call rule change reports no peer-to-peer settings", page.reports.count == 1 && page.reports[0].callSettings == nil)
+}
+
+do {
+    let page = Page(.bio, current: nobody())
+    page.change { $0.fallbackPhoto = TelegramMediaImage() }
+    page.change { $0.hasBirthday = false }
+    page.didRemovedFromStack()
+    check("state that is not a setting does not count as a change", page.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = Page(.bio, current: nobody())
+    page.change { $0.setting = .contacts }
+    page.didRemovedFromStack()
+    check("the page is saving while the request runs", page.state().saving)
+    page.didRemovedFromStack()
+    check("a second leave during a save sends nothing more", page.writes.count == 1 && page.reports.count == 1)
+    check("the page waits for the answer", page.dismissed == 0)
+    page.server.answer()
+    check("the save ends with the answer", !page.state().saving && page.dismissed == 1)
+}
+
+do {
+    let page = Page(.phoneNumber, current: nobody(), phoneDiscoveryEnabled: true)
+    page.change { $0.setting = .contacts }
+    page.change { $0.phoneDiscoveryEnabled = false }
+    page.didRemovedFromStack()
+    check("two requests are both sent", page.writes.count == 2)
+    check("the save waits for both requests", page.server.pendingAnswers.count == 2 && page.dismissed == 0)
+    page.server.answer()
+    check("the save ends after both requests", !page.state().saving && page.dismissed == 1)
+}
+
+do {
+    let page = Page(.voiceCalls, current: everybody(), callSettings: everybody(), globalSettings: global())
+    page.change { $0.callP2PMode = .contacts }
+    page.didRemovedFromStack()
+    check("a peer-to-peer change does not stay saving", !page.state().saving)
+    check("a peer-to-peer change does not go back a second time", page.dismissed == 0)
+}
+
+check("a save never finishes while the page is being removed", !wentBackWhileLeaving)
+
+let noExceptions = contacts()
+let exceptions = contacts(peers(5))
+
+do {
+    let page = MessagesPage(noPaidMessages: noExceptions, globalSettings: global(hideReadTime: true))
+    page.controller.didRemovedFromStack()
+    check("the Messages page sends nothing without a change", page.server.writes.isEmpty)
+    check("the Messages page reports nothing without a change", page.reports.isEmpty)
+}
+
+do {
+    var expected = global(hideReadTime: true)
+    expected.nonContactChatsPrivacy = .requirePremium
+    let page = MessagesPage(noPaidMessages: noExceptions, globalSettings: global(hideReadTime: true))
+    page.change { $0.globalSettings.nonContactChatsPrivacy = .requirePremium }
+    page.controller.didRemovedFromStack()
+    check("the Messages page sends a new choice once", page.server.writes == [.global(expected)])
+    check("the Messages page reports a new choice", page.reports.count == 1 && page.reports[0].1 == expected)
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: noExceptions, globalSettings: global())
+    page.change { $0.globalSettings.nonContactChatsPrivacy = .everybody }
+    page.change { $0.globalSettings.nonContactChatsPrivacy = .paidMessages(25) }
+    page.controller.didRemovedFromStack()
+    check("the Messages page sends nothing after a choice is restored", page.server.writes.isEmpty && page.reports.isEmpty)
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: noExceptions, globalSettings: global())
+    page.change { $0.noPaidMessages = exceptions }
+    page.controller.didRemovedFromStack()
+    check("Messages exceptions do not rewrite global settings", page.server.writes.isEmpty)
+    check("Messages exceptions are reported", page.reports.count == 1 && page.reports[0].0 == exceptions)
+}
+
+do {
+    let page = MessagesPage(noPaidMessages: noExceptions, globalSettings: global())
+    page.change { $0.noPaidMessages = exceptions }
+    page.change { $0.noPaidMessages = noExceptions }
+    page.controller.didRemovedFromStack()
+    check("Messages exceptions restored report nothing", page.server.writes.isEmpty && page.reports.isEmpty)
+}
+
+check("every privacy section caller of the page keeps its own value when a part is not reported", __CALLERS_KEEP_FRESH_VALUES__)
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

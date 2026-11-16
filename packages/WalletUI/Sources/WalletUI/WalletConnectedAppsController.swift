@@ -8,6 +8,7 @@ import Cocoa
 import TGUIKit
 import SwiftSignalKit
 import WalletContext
+import AppAnalytics
 
 @available(macOS 10.15, *)
 func walletConnectedAppSessions(_ sessions: [WalletContext.TonConnectSession]) -> [WalletContext.TonConnectSession] {
@@ -317,6 +318,7 @@ public func WalletConnectedAppsController(context: any AccountContextProtocol, e
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().walletConnectedAppsControllerTitle, hasDone: false)
+    controller.analyticsScreen = .walletConnectedApps
     getController = { [weak controller] in
         controller
     }
@@ -414,6 +416,7 @@ func WalletConnectedAppInfoController(context: any AccountContextProtocol, envir
     let controller = InputDataController(dataSignal: signal, title: "", hasDone: false, getBackgroundColor: {
         theme.colors.background
     })
+    controller.analyticsScreen = .walletConnectedApp
     controller.onDeinit = {
         iconDisposable.dispose()
         closed()

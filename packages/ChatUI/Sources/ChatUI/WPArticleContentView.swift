@@ -221,6 +221,7 @@ public class WPArticleContentView: WPContentView {
     private var durationView:VideoDurationView?
     private var progressIndicator:ProgressIndicator?
     public private(set) var imageView:TransformImageView?
+    private var storyLoadingPlaceholder: ShimmerView?
     public private(set) var gradientView: BackgroundView?
     private var playIcon:ImageView?
     private let openExternalDisposable:MetaDisposable = MetaDisposable()
@@ -292,6 +293,7 @@ public class WPArticleContentView: WPContentView {
     }
     
     public func open() {
+        if (content as? WPArticleLayout)?.isLoadingStory == true { return }
         if let content = content?.content, let layout = self.content {
             
             if layout.hasInstantPage {
@@ -299,7 +301,7 @@ public class WPArticleContentView: WPContentView {
                 return
             }
             if layout.isGalleryAssemble {
-            showChatGallery(context: layout.context, message: layout.parent, layout.table, type: .alone, chatMode: layout.chatInteraction.mode, chatLocation: layout.chatInteraction.chatLocation, cachedPeerData: layout.chatInteraction.presentation.cachedData)
+            showChatGallery(context: layout.context, message: layout.parent, layout.table, type: .alone, chatMode: layout.chatInteraction.mode, chatLocation: layout.chatInteraction.chatLocation, cachedPeerData: layout.chatInteraction.presentation.cachedData, analyticsContext: layout.chatInteraction.captureAnalyticsContext())
             } else if layout.isStory {
                 layout.openStory()
             } else if let wallpaper = layout.wallpaper {
@@ -722,6 +724,28 @@ public class WPArticleContentView: WPContentView {
             
         }
         
+        if let layout = layout as? WPArticleLayout, layout.isLoadingStory {
+            let placeholder: ShimmerView
+            if let current = storyLoadingPlaceholder { placeholder = current } else {
+                placeholder = ShimmerView()
+                placeholder.isEventLess = true
+                placeholder.layer?.cornerRadius = 4
+                placeholder.layer?.masksToBounds = true
+                placeholder.setAccessibilityElement(true)
+                placeholder.setAccessibilityLabel(strings().messagesReplyLoadingLoading)
+                placeholder.setAccessibilityRole(.staticText)
+                addSubview(placeholder)
+                storyLoadingPlaceholder = placeholder
+            }
+            let size = layout.imageArguments?.boundingSize ?? .zero
+            placeholder.backgroundColor = theme.colors.grayForeground
+            placeholder.update(backgroundColor: .clear, data: nil, size: size, imageSize: size)
+            placeholder.updateAbsoluteRect(CGRect(origin: .zero, size: size), within: size)
+        } else {
+            storyLoadingPlaceholder?.removeFromSuperview()
+            storyLoadingPlaceholder = nil
+        }
+
         super.update(with: layout, animated: animated)
         
         if let layout = layout as? WPArticleLayout, layout.isAutoDownloable {
@@ -773,6 +797,11 @@ public class WPArticleContentView: WPContentView {
                 giftAuctionPreviewView.setFrameOrigin(origin.x, origin.y)
             }
             
+            if let placeholder = storyLoadingPlaceholder, let arguments = layout.imageArguments {
+                let y = layout.textLayout?.cutout == nil ? (layout.textLayout?.layoutSize.height ?? 0) + layout.imageInsets.top : layout.imageInsets.top
+                placeholder.frame = CGRect(origin: CGPoint(x: layout.textLayout?.cutout == nil ? 0 : layout.contentRect.width - arguments.boundingSize.width, y: y), size: arguments.boundingSize)
+            }
+
             if let imageView = imageView {
                 
                 if let arguments = layout.imageArguments {

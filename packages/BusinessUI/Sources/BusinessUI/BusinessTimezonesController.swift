@@ -21,6 +21,7 @@ import ChatModeTypes
 import MapKit
 import FoundationUtils
 import MessageTextUtils
+import AppAnalytics
 
 private final class Arguments {
     let context: (any AccountContextProtocol)
@@ -115,6 +116,7 @@ public func BusinessTimezonesController(context: (any AccountContextProtocol), t
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessHoursTimezone, identifier: "business_timezones")
+    controller.analyticsScreen = .settingsBusinessTimezone
     
     controller.onDeinit = {
         actionsDisposable.dispose()

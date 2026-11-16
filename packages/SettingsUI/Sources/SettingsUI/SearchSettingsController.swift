@@ -9,6 +9,7 @@ import Localization
 import TelegramContext
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 private func searchSettingsEntries<Context: AccountContextProtocol>(context: Context, items:[SettingsSearchableItem<Context>], recent: Bool) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
@@ -162,6 +163,7 @@ public func SearchSettingsController<Context: AccountContextProtocol>(context: C
     }
     
     let controller = InputDataController(dataSignal: entries, title: "")
+    controller.analyticsScreen = .settingsSearch
     
     
     controller.didLoad = { controller, _ in

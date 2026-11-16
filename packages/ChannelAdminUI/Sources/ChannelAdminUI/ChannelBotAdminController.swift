@@ -13,6 +13,7 @@ import GeneralRows
 import InputDataUI
 import ShortPeerRow
 import AlertsUI
+import AppAnalytics
 
 public func addBotAsMember(context: any AccountContextProtocol, peer: Peer, to: Peer, completion:@escaping(PeerId)->Void, error: @escaping(String)->Void) -> Void {
     if to.isGroup {
@@ -22,7 +23,34 @@ public func addBotAsMember(context: any AccountContextProtocol, peer: Peer, to: 
             completion(to.id)
         })
     } else {
-        completion(to.id)
+        _ = showModalProgress(signal: context.peerChannelMemberCategoriesContextsManager.addMembers(peerId: to.id, memberIds: [peer.id]), for: context.window).start(error: { value in
+            error(addBotErrorText(value))
+        }, completed: {
+            completion(to.id)
+        })
+    }
+}
+
+private func addBotErrorText(_ error: AddChannelMemberError) -> String {
+    switch error {
+    case .notMutualContact:
+        return strings().channelInfoAddUserLeftError
+    case .limitExceeded:
+        return strings().channelErrorAddTooMuch
+    case .botDoesntSupportGroups:
+        return strings().channelBotDoesntSupportGroups
+    case .tooMuchBots:
+        return strings().channelTooMuchBots
+    case .tooMuchJoined:
+        return strings().inviteChannelsTooMuch
+    case .generic:
+        return strings().unknownError
+    case .bot:
+        return strings().channelAddBotErrorHaveRights
+    case .restricted:
+        return strings().channelErrorAddBlocked
+    case .kicked:
+        return strings().channelAddUserKickedError
     }
 }
 
@@ -315,7 +343,9 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
                 }
                 
                 entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_admin_right(rights), data: .init(name: text, color: theme.colors.text, type: .switchable(state.rights.contains(right)), viewType: bestGeneralViewType(rightsOrder, for: i), enabled: enabled, action: {
-                    // arguments.toggleAdminRight(right)
+                    arguments.toggleRight(rights, !state.rights.contains(right))
+                }, switchAction: {
+                    arguments.toggleRight(rights, !state.rights.contains(right))
                 })))
             case let .sub(type, subRights):
                 
@@ -452,6 +482,7 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().channelAddBotTitle)
+    controller.analyticsScreen = .peerInfoAdminsBot
     
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -502,21 +533,20 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
             
             verifyAlert_button(for: context.window, header: title, information: info, ok: ok, cancel: cancel, successHandler: { _ in
                 
-                var signal: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)>
+                var signal: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)>
                 
                 if isAdmin {
-                    let add:(PeerId)->Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)> = { peerId in
+                    let add:(PeerId)->Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)> = { peerId in
                         return context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: admin.id, adminRights: .init(rights: rights), rank: rank)
                         |> map { _ in
                             return peerId
                         }
-                        |> castError(AddChannelMemberError.self)
-                        |> mapError { (nil, $0, nil) }
+                        |> mapError { (nil, nil, nil, $0) }
                     }
                     
                     if peer.id.namespace == Namespaces.Peer.CloudGroup {
-                        let convert: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?)> = context.engine.peers.convertGroupToSupergroup(peerId: peer.id)
-                        |> mapError { (nil, nil, $0) }
+                        let convert: Signal<PeerId, (AddGroupMemberError?, AddChannelMemberError?, ConvertGroupToSupergroupError?, UpdateChannelAdminRightsError?)> = context.engine.peers.convertGroupToSupergroup(peerId: peer.id)
+                        |> mapError { (nil, nil, $0, nil) }
                         signal = convert |> mapToSignal {
                             add($0)
                         }
@@ -526,11 +556,12 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                 } else {
                     if peer.id.namespace == Namespaces.Peer.CloudGroup {
                         signal = context.engine.peers.addGroupMember(peerId: peer.id, memberId: admin.id)
-                        |> mapError { ($0, nil, nil) }
+                        |> mapError { ($0, nil, nil, nil) }
                         |> map { peer.id }
                     } else {
-                        signal = .single(peer.id)
-                        |> mapError { (nil, $0, nil) }
+                        signal = context.peerChannelMemberCategoriesContextsManager.addMembers(peerId: peer.id, memberIds: [admin.id])
+                        |> map { _ in peer.id }
+                        |> mapError { (nil, $0, nil, nil) }
                     }
                 }
                 _ = showModalProgress(signal: signal, for: context.window).start(next: { peerId in
@@ -542,28 +573,7 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                     if let _ = error.0 {
                         alert(for: context.window, info: strings().unknownError)
                     } else if let error = error.1 {
-                        let text: String
-                        switch error {
-                        case .notMutualContact:
-                            text = strings().channelInfoAddUserLeftError
-                        case .limitExceeded:
-                            text = strings().channelErrorAddTooMuch
-                        case .botDoesntSupportGroups:
-                            text = strings().channelBotDoesntSupportGroups
-                        case .tooMuchBots:
-                            text = strings().channelTooMuchBots
-                        case .tooMuchJoined:
-                            text = strings().inviteChannelsTooMuch
-                        case .generic:
-                            text = strings().unknownError
-                        case .bot:
-                            text = strings().channelAddBotErrorHaveRights
-                        case .restricted:
-                            text = strings().channelErrorAddBlocked
-                        case .kicked:
-                            text = strings().channelAddUserKickedError
-                        }
-                        alert(for: context.window, info: text)
+                        alert(for: context.window, info: addBotErrorText(error))
                     } else if let error = error.2 {
                         switch error {
                         case .generic:
@@ -571,6 +581,8 @@ public func ChannelBotAdminController(context: any AccountContextProtocol, peer:
                         case .tooManyChannels:
                             FeatureNavigationHooks.shared.showInactiveChannels(context, .upgrade)
                         }
+                    } else if let error = error.3 {
+                        alert(for: context.window, info: channelAdminRightsErrorText(error, isGroup: peer.isGroup || peer.isSupergroup))
                     }
                 })
             })

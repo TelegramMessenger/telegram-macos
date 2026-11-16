@@ -3,6 +3,9 @@ import TGUIKit
 import InlineStickerLayer
 
 final class ChatReactionEmojiLayer: SimpleLayer {
+    #if DEBUG
+    static var debugIgnoresKeyWindow = false
+    #endif
     private(set) var imageLayer: InlineStickerItemLayer?
     private(set) var isContentPlayable: Bool = false
     var contentPlayableUpdated: ((Bool) -> Void)?
@@ -58,6 +61,11 @@ final class ChatReactionEmojiLayer: SimpleLayer {
             var isKeyWindow = false
             if let window = superview.window {
                 isKeyWindow = window.canBecomeKey ? window.isKeyWindow : true
+                #if DEBUG
+                if ChatReactionEmojiLayer.debugIgnoresKeyWindow {
+                    isKeyWindow = true
+                }
+                #endif
             }
             let isPlayable = !superview.visibleRect.isEmpty && isKeyWindow && !self.isLite
             value.isPlayable = isPlayable

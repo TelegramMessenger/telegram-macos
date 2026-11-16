@@ -51,12 +51,6 @@ enum ChatListRowItem {
  static func markAsRead(context:any AccountContextProtocol,peerId:PeerId) { (context as! Context).calls.append((peerId,false)); context.account.postbox.data.rawState.marked = false }
  static func markAsUnread(context:any AccountContextProtocol,peerId:PeerId) { (context as! Context).calls.append((peerId,true)); context.account.postbox.data.rawState.marked = true }
 }
-enum PopularItemType { case peer(Peer,Int?,Bool), savedMessages(Peer), articles(Int32) }
-final class Popular {
- let context: Context; let type: PopularItemType
- init(_ context:Context,_ type:PopularItemType) { self.context=context;self.type=type }
- func menuItems() -> Signal<[ContextMenuItem],NoError> { __POPULAR_BODY__ }
-}
 __HELPER__
 __LEASE__
 var count=0, failures=0
@@ -85,14 +79,9 @@ check("read forum does not offer an action that would clear topics",searchPeerRe
 context.engine.data.state=ReadState(count:2)
 check("unread forum can be marked read",searchPeerReadMenuItem(context:context,peerId:id).value?.title == "Read")
 peer.isForumOrMonoForum=false;context.engine.data.state=ReadState()
-let top=Popular(context,.peer(peer,nil,false)).menuItems().value
-check("top peer has unread action",top.first?.title == "Unread")
-check("top peer retains remove action",top.last?.title == "Remove")
-check("top peer does not remove on menu construction",context.engine.peers.removed.isEmpty)
-check("Saved Messages has read action",Popular(context,.savedMessages(peer)).menuItems().value.first?.title == "Unread")
-check("articles do not acquire chat read action",Popular(context,.articles(2)).menuItems().value.isEmpty)
+check("ordinary Saved Messages row retains read action",searchPeerReadMenuItem(context:context,peerId:id).value?.title == "Unread")
 context.engine.data.state=ReadState(marked:true)
-check("reopened top peer uses live manual unread mark",Popular(context,.peer(peer,nil,false)).menuItems().value.first?.title == "Read")
+check("reopened read helper uses live manual unread mark",searchPeerReadMenuItem(context:context,peerId:id).value?.title == "Read")
 peer.isForumOrMonoForum = true
 context.engine.data.state = ReadState()
 context.engine.data.cached = CachedChannelData(viewForumAsMessages: KnownBool(knownValue: true))

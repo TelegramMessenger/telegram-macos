@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unit Converter</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111827; --muted: #6b7280; --line: #d1d5db; --accent: #2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #f3f4f6; --muted: #9ca3af; --line: #374151; --accent: #60a5fa; } }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); }
+  h2 { margin: 0 0 12px; font-size: 17px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tabs button { flex: 1; padding: 8px; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 8px; }
+  input, select { padding: 9px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  input { width: 100%; box-sizing: border-box; }
+  .swap { text-align: center; margin: 2px 0 8px; }
+  .swap button { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--accent); }
+  .out { font-size: 14px; color: var(--muted); text-align: center; margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+<h2>🔄 Unit Converter</h2>
+<div class="tabs"><button class="active" data-c="length" id="tab-length">Length</button><button data-c="weight" id="tab-weight">Weight</button><button data-c="temperature" id="tab-temp">Temperature</button></div>
+<div class="row"><input type="number" id="from" value="1"><select id="fromU"></select></div>
+<div class="swap"><button id="swap" title="Swap units">⇅</button></div>
+<div class="row"><input type="number" id="to" readonly><select id="toU"></select></div>
+<div class="out" id="formula"></div>
+<script>
+  var units = {
+    length: { m: 1, km: 1000, cm: 0.01, mm: 0.001, mi: 1609.344, yd: 0.9144, ft: 0.3048, 'in': 0.0254 },
+    weight: { kg: 1, g: 0.001, mg: 1e-6, t: 1000, lb: 0.45359237, oz: 0.028349523 },
+    temperature: { '°C': 1, '°F': 1, K: 1 },
+  };
+  var cat = 'length';
+  var $ = function (id) { return document.getElementById(id); };
+  function fill() {
+    var keys = Object.keys(units[cat]);
+    [$('fromU'), $('toU')].forEach(function (s, i) { s.innerHTML = keys.map(function (k) { return '<option>' + k + '</option>'; }).join(''); s.selectedIndex = i === 0 ? 0 : 1; });
+    convert();
+  }
+  function toC(v, u) { return u === '°C' ? v : u === '°F' ? (v - 32) * 5 / 9 : v - 273.15; }
+  function fromC(v, u) { return u === '°C' ? v : u === '°F' ? v * 9 / 5 + 32 : v + 273.15; }
+  function convert() {
+    var v = parseFloat($('from').value), a = $('fromU').value, b = $('toU').value;
+    if (isNaN(v)) { $('to').value = ''; $('formula').textContent = ''; return; }
+    var r = cat === 'temperature' ? fromC(toC(v, a), b) : v * units[cat][a] / units[cat][b];
+    $('to').value = +r.toPrecision(8);
+    $('formula').textContent = v + ' ' + a + ' = ' + (+r.toPrecision(6)) + ' ' + b;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
+    b.onclick = function () { cat = b.getAttribute('data-c'); Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) { x.classList.toggle('active', x === b); }); fill(); };
+  });
+  ['from', 'fromU', 'toU'].forEach(function (id) { $(id).addEventListener('input', convert); $(id).addEventListener('change', convert); });
+  $('swap').onclick = function () { var i = $('fromU').selectedIndex; $('fromU').selectedIndex = $('toU').selectedIndex; $('toU').selectedIndex = i; convert(); };
+  fill();
+</script>
+</body>
+</html>

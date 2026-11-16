@@ -12,7 +12,21 @@ import TelegramTheme
 import TelegramContext
 import TelegramMediaUtils
 import ChatModeTypes
+import AlertsUI
 
+
+private let previewWarningExtensions = ["sh", "bash", "zsh", "csh", "tcsh", "command", "svg", "html", "htm", "shtml", "xhtml", "app", "exe", "bin", "run", "pkg", "mpkg", "dmg", "iso", "docm", "xlsm", "pptm", "alias", "lnk", "plist", "conf", "ini", "md"]
+
+private func needsPreviewWarning(_ file: TelegramMediaFile) -> Bool {
+    let fileName = (file.fileName ?? "").lowercased()
+    if previewWarningExtensions.contains(where: { fileName.hasSuffix("." + $0) }) {
+        return true
+    }
+    guard fileName.nsstring.pathExtension.isEmpty, let ext = fileExt(file.mimeType) else {
+        return false
+    }
+    return previewWarningExtensions.contains(ext)
+}
 
 private class QuickLookPreviewItem : NSObject, QLPreviewItem {
     let media:Media
@@ -62,6 +76,16 @@ public class QuickLookPreview : NSObject, QLPreviewPanelDelegate, QLPreviewPanel
     }
     
     public func show(context: any AccountContextProtocol, with media:Media, stableId:ChatHistoryEntryId?,  _ delegate:InteractionContentViewProtocol? = nil) {
+        if let file = media as? TelegramMediaFile, needsPreviewWarning(file) {
+            verifyAlert_button(for: context.window, information: strings().chatFileQuickLookMalf, successHandler: { [weak self] _ in
+                self?.present(context: context, with: media, stableId: stableId, delegate)
+            })
+        } else {
+            self.present(context: context, with: media, stableId: stableId, delegate)
+        }
+    }
+
+    private func present(context: any AccountContextProtocol, with media:Media, stableId:ChatHistoryEntryId?,  _ delegate:InteractionContentViewProtocol?) {
         self.context = context
         self.media = media
         self.delegate = delegate

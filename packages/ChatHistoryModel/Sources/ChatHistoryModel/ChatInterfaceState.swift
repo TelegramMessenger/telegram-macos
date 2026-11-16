@@ -428,7 +428,7 @@ public struct ChatInterfaceState: Codable, Equatable {
                 inputState = self.inputState.withUpdatedRange(selectRange)
             } else {
                 let restored = ChatTextInputState(inputText: state.text, selectionRange: selectRange, attributes: chatTextAttributes(from: TextEntitiesMessageAttribute(entities: state.entities)))
-                inputState = ChatTextInputState(attributedText: restored.attributedString(), selectionRange: selectRange)
+                inputState = ChatTextInputState(attributedText: chatInputTextExcludingAnalytics(restored.attributedString()), selectionRange: selectRange)
             }
             result = result.withUpdatedInputState(inputState)
                 .withUpdatedReplyMessageId(state.replySubject)
@@ -586,7 +586,8 @@ public struct ChatInterfaceState: Codable, Equatable {
     }
 
     public func withUpdatedForwardMessageIds(_ forwardMessageIds: [MessageId]) -> ChatInterfaceState {
-        return ChatInterfaceState(timestamp: self.timestamp, inputState: self.inputState, replyMessageId: self.replyMessageId, replyMessage: self.replyMessage, forwardMessageIds: forwardMessageIds, messageActionsState:self.messageActionsState, dismissedPinnedMessageId: self.dismissedPinnedMessageId, composeDisableUrlPreview: self.composeDisableUrlPreview, historyScrollState: self.historyScrollState, dismissedForceReplyId: self.dismissedForceReplyId, editState: self.editState, forwardMessages: self.forwardMessages, hideSendersName: forwardMessageIds.isEmpty ? false : self.hideSendersName, themeEditing: self.themeEditing, hideCaptions: forwardMessageIds.isEmpty ? false : self.hideCaptions, revealedSpoilers: self.revealedSpoilers, tempSenderName: self.tempSenderName,  linkBelowMessage: self.linkBelowMessage, largeMedia: self.largeMedia, messageEffect: self.messageEffect, suggestPost: self.suggestPost)
+        let keepOptions = !forwardMessageIds.isEmpty && !self.forwardMessageIds.isEmpty
+        return ChatInterfaceState(timestamp: self.timestamp, inputState: self.inputState, replyMessageId: self.replyMessageId, replyMessage: self.replyMessage, forwardMessageIds: forwardMessageIds, messageActionsState:self.messageActionsState, dismissedPinnedMessageId: self.dismissedPinnedMessageId, composeDisableUrlPreview: self.composeDisableUrlPreview, historyScrollState: self.historyScrollState, dismissedForceReplyId: self.dismissedForceReplyId, editState: self.editState, forwardMessages: self.forwardMessages, hideSendersName: keepOptions ? self.hideSendersName : false, themeEditing: self.themeEditing, hideCaptions: keepOptions ? self.hideCaptions : false, revealedSpoilers: self.revealedSpoilers, tempSenderName: keepOptions ? self.tempSenderName : nil,  linkBelowMessage: self.linkBelowMessage, largeMedia: self.largeMedia, messageEffect: self.messageEffect, suggestPost: self.suggestPost)
     }
 
     public func withUpdatedForwardMessages(_ forwardMessages: [Message]) -> ChatInterfaceState {
@@ -596,7 +597,7 @@ public struct ChatInterfaceState: Codable, Equatable {
    
 
     public func withoutForwardMessages() -> ChatInterfaceState {
-        return ChatInterfaceState(timestamp: self.timestamp, inputState: self.inputState, replyMessageId: self.replyMessageId, replyMessage: self.replyMessage, forwardMessageIds: [], messageActionsState:self.messageActionsState, dismissedPinnedMessageId: self.dismissedPinnedMessageId, composeDisableUrlPreview: self.composeDisableUrlPreview, historyScrollState: self.historyScrollState, dismissedForceReplyId: self.dismissedForceReplyId, editState: self.editState, forwardMessages: self.forwardMessages, hideSendersName: self.hideSendersName, themeEditing: self.themeEditing, hideCaptions: self.hideCaptions, revealedSpoilers: self.revealedSpoilers, tempSenderName: self.tempSenderName,  linkBelowMessage: self.linkBelowMessage, largeMedia: self.largeMedia, messageEffect: self.messageEffect, suggestPost: self.suggestPost)
+        return self.withUpdatedForwardMessageIds([])
     }
 
     public func withUpdatedTimestamp(_ timestamp: Int32) -> ChatInterfaceState {

@@ -18,6 +18,7 @@ import ColorPalette
 import FoundationUtils
 import AvatarUI
 import TelegramMediaResources
+import AppAnalytics
 
 private final class Arguments {
     public let context: any AccountContextProtocol
@@ -351,9 +352,13 @@ private extension SearchStoryListContext.Source {
     }
 }
 
-public func StoryFoundListController(context: any AccountContextProtocol, source: SearchStoryListContext.Source, presentation: TelegramPresentationTheme, existingsContext: SearchStoryListContext? = nil) -> InputDataModalController {
+public func StoryFoundListController(context: any AccountContextProtocol, source: SearchStoryListContext.Source, presentation: TelegramPresentationTheme, existingsContext: SearchStoryListContext? = nil, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
     if case let .hashtag(peerId, _) = source, let peerId {
+        origin = origin.restricting(peerId: peerId)
     }
+    let lifetime = origin.beginPresentation()
+    defer { lifetime.end() }
 
     let actionsDisposable = DisposableSet()
 
@@ -399,7 +404,7 @@ public func StoryFoundListController(context: any AccountContextProtocol, source
 
     let arguments = Arguments(context: context, presentaiton: presentation, openStory: { [weak contextObject] initialId in
         if let contextObject {
-            StoriesHooks.shared.showListStoryObserved(context, contextObject, context.peerId, initialId)
+            StoriesHooks.shared.showListStoryObserved(context, contextObject, context.peerId, initialId, analyticsContext: origin)
         }
     }, loadMore: { [weak contextObject] in
         contextObject?.loadMore()
@@ -410,6 +415,8 @@ public func StoryFoundListController(context: any AccountContextProtocol, source
     }
     
     let controller = InputDataController(dataSignal: signal, title: source.title)
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .storiesSearchResults
     
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -435,6 +442,7 @@ public func StoryFoundListController(context: any AccountContextProtocol, source
 
     
     let modalController = InputDataModalController(controller, modalInteractions: nil, size: NSMakeSize(350, 300), presentation: presentation)
+    modalController.analyticsContext = origin
     
    
     

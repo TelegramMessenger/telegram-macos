@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 private final class BoostText : GeneralRowItem {
     fileprivate let textLayout: TextViewLayout
@@ -586,6 +587,7 @@ public func PremiumGiftingController(context: (any AccountContextProtocol), peer
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().premiumGiftTitle)
+    controller.analyticsScreen = .premiumGift
     
     controller.didLoad = { controller, _ in
         controller.genericView.layer?.masksToBounds = false

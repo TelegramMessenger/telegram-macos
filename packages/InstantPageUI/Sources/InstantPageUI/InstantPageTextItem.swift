@@ -439,10 +439,22 @@ public final class InstantPageTextItem: InstantPageItem {
     }
 
     public func drawInTile(context: CGContext) {
+        self.drawInTile(context: context, backingScaleFactor: nil)
+    }
+
+    public func drawInTile(context: CGContext, backingScaleFactor: CGFloat?) {
         context.saveGState()
         context.textMatrix = CGAffineTransform(scaleX: 1.0, y: -1.0)
         context.translateBy(x: self.frame.minX, y: self.frame.minY)
-        
+        let transform = context.ctm
+        let smoothFonts = backingScaleFactor.map { $0 == 1.0 } ?? (hypot(transform.a, transform.b) <= 1.0)
+        context.setAllowsAntialiasing(true)
+        context.setShouldAntialias(true)
+        context.setAllowsFontSmoothing(smoothFonts)
+        context.setShouldSmoothFonts(smoothFonts)
+        context.setAllowsFontSubpixelPositioning(true)
+        context.setShouldSubpixelPositionFonts(true)
+
         let clipRect = context.boundingBoxOfClipPath
         
         let upperOriginBound = clipRect.minY - 10.0
@@ -958,6 +970,9 @@ private func renderedAttributedStringForRichText(_ text: RichText, styleStack: I
         styleStack.pop()
         return result
     case let .textMentionName(text, peerId):
+        guard peerId > 0, peerId < (1 << 52) else {
+            return attributedStringForRichText(text, styleStack: styleStack, inlineButtonMaxWidth: inlineButtonMaxWidth, isInsideTableCell: isInsideTableCell)
+        }
         // Mention by peer id (no username): route to a peer URL so the run is a real link (clickable +
         // tooltip). The rich-text host intercepts `tg://user?id=` and opens the peer's profile.
         styleStack.push(.link(false))
@@ -1067,7 +1082,8 @@ private func renderedAttributedStringForRichText(_ text: RichText, styleStack: I
             presentation: presentation,
             labelString: labelString,
             maxWidth: inlineButtonMaxWidth,
-            allowBareEmoji: isInsideTableCell
+            allowBareEmoji: isInsideTableCell,
+            isEnabled: styleStack.buttonsEnabled
         )
 
         struct RunStruct {

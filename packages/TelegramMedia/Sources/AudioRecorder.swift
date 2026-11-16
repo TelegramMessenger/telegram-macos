@@ -393,6 +393,7 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
     private var convertor: CustomAudioConverter!
     
     private var recordingStateUpdateTimestamp: Double?
+    private var pcmTap: ((Data) -> Void)?
     
     
     init(queue: Queue, micLevel: ValuePromise<Float>, recordingState: ValuePromise<AudioRecordingState>, liveUploading: PreUploadManager?, dataItem: DataItem) {
@@ -789,6 +790,7 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
                     self.processWaveformPreview(samples: currentEncoderPacket.assumingMemoryBound(to: Int16.self), count: currentEncoderPacketSize / 2)
                     
                     self.oggWriter.writeFrame(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(currentEncoderPacketSize))
+                    self.pcmTap?(Data(bytes: currentEncoderPacket, count: currentEncoderPacketSize))
                     liveUploading?.fileDidChangedSize(false)
                     let timestamp = CACurrentMediaTime()
                     if self.recordingStateUpdateTimestamp == nil || self.recordingStateUpdateTimestamp! + 0.1 < timestamp {
@@ -884,6 +886,28 @@ final class ManagedAudioRecorderContext : RecoderContextRenderer {
         }
 
         return AudioWaveform(samples: result, peak: Int32(ceiling))
+    }
+
+    func compressedSnapshot() -> Data {
+        assert(self.queue.isCurrent())
+
+        if !self.paused {
+            _ = self.oggWriter.pause()
+            self.liveUploading?.fileDidChangedSize(false)
+        }
+        return Data(self.dataItem.data())
+    }
+
+    func beginPCMTap(_ tap: @escaping (Data) -> Void) -> Data {
+        let snapshot = self.compressedSnapshot()
+        self.pcmTap = tap
+        return snapshot
+    }
+
+    func endPCMTap() {
+        assert(self.queue.isCurrent())
+
+        self.pcmTap = nil
     }
 
     func takeData() -> RecordedAudioData? {
@@ -1005,6 +1029,18 @@ public final class ManagedAudioRecorder {
         return self.query(false) { $0.applyTrim(range) }
     }
     
+    public func compressedSnapshot() -> Signal<Data?, NoError> {
+        return self.query(nil) { $0.compressedSnapshot() }
+    }
+
+    public func beginPCMTap(_ tap: @escaping (Data) -> Void) -> Signal<Data?, NoError> {
+        return self.query(nil) { $0.beginPCMTap(tap) }
+    }
+
+    public func endPCMTap() {
+        self.perform { $0.endPCMTap() }
+    }
+
     public func previewData() -> Signal<RecordedAudioData?, NoError> {
         return self.query(nil) { $0.takePreviewData() }
     }

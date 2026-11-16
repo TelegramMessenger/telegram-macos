@@ -261,6 +261,11 @@ struct PollOption {
     let contentSize = NSSize(width: 100, height: 20)
 }
 struct PollOptionValue { let opaqueIdentifier: Data }
+var copyRestrictionNotices = 0
+func showCopyRestriction(_ message: Message, chatInteraction: ChatInteraction) -> Bool {
+    copyRestrictionNotices += 1
+    return true
+}
 final class ChatPollItem: MenuItem {
     var message: Message?
     var chatInteraction = ChatInteraction()
@@ -607,16 +612,20 @@ case "question-clipboard", "option-clipboard":
     check(copiedPlain.last == attr.string, "plain-text fallback retained")
 case "description-actions":
     let item = ChatPollItem()
+    let notices = copyRestrictionNotices
     item.message = Message(peers: [1: TelegramUser()])
     item.configureDescription()
     item.layout.interactions.processURL(LinkType.code)
     check(executedLinks == 1, "unprotected code copy permitted")
+    check(copyRestrictionNotices == notices, "unprotected code copy shows no notice")
     item.message?.flags = .CopyProtected
     item.layout.interactions.processURL(LinkType.code)
     check(executedLinks == 1, "live protection blocks inline code copy")
+    check(copyRestrictionNotices == notices + 1, "blocked inline code shows the restriction notice")
     item.layout.interactions.processURL(LinkType.plain)
     check(executedLinks == 2, "ordinary links remain executable in protected chat")
     check(item.layout.interactions.copy?() == true, "description keyboard copy blocked")
+    check(copyRestrictionNotices == notices + 2, "blocked keyboard copy shows the restriction notice")
 case "description-menu":
     let item = ChatPollItem()
     item.message = Message(peers: [1: TelegramUser()])

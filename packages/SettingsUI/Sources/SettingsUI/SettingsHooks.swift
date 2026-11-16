@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import ChatHistoryModel
 import ColorPalette
 import GeneralRows
@@ -191,10 +192,13 @@ public struct SettingsHooks {
     public let pushAppUpdate: (MajorNavigationController) -> Void
     public let openFaq: (any AccountContextProtocol) -> Void
     public let showStories: (any AccountContextProtocol, Bool, StoryInitialIndex?, Bool) -> Void
-    public var showStoriesWithContext: ((any AccountContextProtocol, Bool, StoryInitialIndex?, Bool) -> Void)?
-    public func showStoriesObserved(_ context: any AccountContextProtocol, _ isHidden: Bool, _ initialId: StoryInitialIndex?, _ singlePeer: Bool) {
+    public var showStoriesWithContext: ((any AccountContextProtocol, Bool, StoryInitialIndex?, Bool, AnalyticsContext) -> Void)?
+    public func showStoriesObserved(_ context: any AccountContextProtocol, _ isHidden: Bool, _ initialId: StoryInitialIndex?, _ singlePeer: Bool, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: initialId?.peerId ?? context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showStoriesWithContext {
-            showStoriesWithContext(context, isHidden, initialId, singlePeer)
+            showStoriesWithContext(context, isHidden, initialId, singlePeer, origin)
         } else {
             showStories(context, isHidden, initialId, singlePeer)
         }

@@ -52,6 +52,7 @@ private enum PollStatus: CustomStringConvertible {
 public final class MediaPlayerView: View {
     
     private struct PollState {
+        let generation: Int
         var numFrames: Int
         var maxTakenTime: Double
     }
@@ -98,12 +99,16 @@ public final class MediaPlayerView: View {
     var takeFrameAndQueue: (Queue, () -> MediaTrackFrameResult)?
     var timer: SwiftSignalKit.Timer?
     var polling = false
+    private var pollingGeneration = 0
     
     var currentRotationAngle = 0.0
     var currentAspect = 1.0
     
     public var state: (timebase: CMTimebase, requestFrames: Bool, rotationAngle: Double, aspect: Double)? {
         didSet {
+            if oldValue?.timebase !== self.state?.timebase {
+                self.invalidatePolling()
+            }
             self.updateState()
         }
     }
@@ -211,13 +216,14 @@ public final class MediaPlayerView: View {
     private func startPolling() {
         if !self.polling, let (pollingTimebase, _, _, _) = self.state {
             self.polling = true
+            let pollingGeneration = self.pollingGeneration
             MediaPlayerView.poll(node: self, completion: { [weak self] status in
                 self?.polling = false
                 
                 if let strongSelf = self, let (currentTimebase, requestFrames, _, _) = strongSelf.state, requestFrames {
                     strongSelf.timer?.invalidate()
                     strongSelf.timer = nil
-                    if currentTimebase !== pollingTimebase {
+                    if strongSelf.pollingGeneration != pollingGeneration || currentTimebase !== pollingTimebase {
                         if strongSelf.videoInHierarchy {
                             strongSelf.startPolling()
                         }
@@ -246,10 +252,10 @@ public final class MediaPlayerView: View {
     private static func pollInner(node: MediaPlayerView, layerTime: Double, state: PollState, completion: @escaping (PollStatus) -> Void) {
         assert(Queue.mainQueue().isCurrent())
         
-        guard let (takeFrameQueue, takeFrame) = node.takeFrameAndQueue else {
-            return
-        }
-        guard let videoLayer = node.videoLayer else {
+        guard node.pollingGeneration == state.generation, node.state != nil, node.videoInHierarchy,
+              let (takeFrameQueue, takeFrame) = node.takeFrameAndQueue,
+              let videoLayer = node.videoLayer else {
+            completion(.finished)
             return
         }
         if !videoLayer.isReadyForMoreMediaData {
@@ -264,7 +270,7 @@ public final class MediaPlayerView: View {
             case let .restoreState(frames, atTime, soft):
                 if !soft {
                     Queue.mainQueue().async {
-                        guard let strongSelf = node, let videoLayer = strongSelf.videoLayer else {
+                        guard let strongSelf = node, strongSelf.pollingGeneration == state.generation, let videoLayer = strongSelf.videoLayer else {
                             return
                         }
                         videoLayer.flush()
@@ -289,7 +295,7 @@ public final class MediaPlayerView: View {
                         }
                     }
                     Queue.mainQueue().async {
-                        guard let strongSelf = node, let videoLayer = strongSelf.videoLayer else {
+                        guard let strongSelf = node, strongSelf.pollingGeneration == state.generation, let videoLayer = strongSelf.videoLayer else {
                             return
                         }
                         videoLayer.enqueue(frame.sampleBuffer)
@@ -313,7 +319,7 @@ public final class MediaPlayerView: View {
                 let frameTime = CMTimeGetSeconds(frame.position)
                 if frame.resetDecoder {
                     Queue.mainQueue().async {
-                        guard let strongSelf = node, let videoLayer = strongSelf.videoLayer else {
+                        guard let strongSelf = node, strongSelf.pollingGeneration == state.generation, let videoLayer = strongSelf.videoLayer else {
                             return
                         }
                         videoLayer.flush()
@@ -330,7 +336,7 @@ public final class MediaPlayerView: View {
                 } else {
                     state.maxTakenTime = frameTime
                     Queue.mainQueue().async {
-                        guard let strongSelf = node, let videoLayer = strongSelf.videoLayer else {
+                        guard let strongSelf = node, strongSelf.pollingGeneration == state.generation, let videoLayer = strongSelf.videoLayer else {
                             return
                         }
                         videoLayer.enqueue(frame.sampleBuffer)
@@ -376,7 +382,7 @@ public final class MediaPlayerView: View {
                 }
                 MediaPlayerView.pollInner(node: node, layerTime: layerTime, state: state, completion: completion)
             }
-            loopImpl(PollState(numFrames: 0, maxTakenTime: layerTime + 0.1))
+            loopImpl(PollState(generation: node.pollingGeneration, numFrames: 0, maxTakenTime: layerTime + 0.1))
         }
     }
 
@@ -535,7 +541,15 @@ public final class MediaPlayerView: View {
         }
     }
     
+    private func invalidatePolling() {
+        self.pollingGeneration += 1
+        self.timer?.invalidate()
+        self.timer = nil
+    }
+
     public func reset() {
+        self.invalidatePolling()
         self.videoLayer?.flush()
+        self.updateState()
     }
 }

@@ -1,0 +1,99 @@
+{
+  "arguments": {
+    "-PerfLab": "chat-navigation",
+    "-PerfLabLabel": "rescue-bot",
+    "-PerfLabOpenWait": "4",
+    "-PerfLabOutput": "/tmp/widget-rescue/bot",
+    "-PerfLabPeerTitle": "Widget Bot",
+    "-PerfLabQuit": "",
+    "-PerfLabScenarios": "widgets",
+    "-PerfLabStartDelay": "2",
+    "-PerfLabWidgetActions": "/tmp/widget-rescue/actions.json",
+    "-PerfLabWidgetActionWait": "0.6",
+    "-PerfLabWidgetCaptureActions": "1",
+    "-PerfLabWidgetSources": "/tmp/widget-rescue/returned-html",
+    "-PerfLabWidgetWait": "0.8"
+  },
+  "entries": [
+    {
+      "metrics": {
+        "actions": 9,
+        "endUnixTime": 1792999959.24,
+        "frames": 336,
+        "heightMismatch": 0,
+        "hitches": 8,
+        "longHitches": 2,
+        "missingActions": 0,
+        "startUnixTime": 1792999953.429,
+        "worstGapMs": 49.998
+      },
+      "notes": {
+        "actions": "0: data-cat=1 found=true height=199 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-row=0 found=true height=229 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 229.0) scale=2.0 doc=true h=229 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=38 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-cat=0 found=true height=423 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 423.0) scale=2.0 doc=true h=423 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-cat=1 found=true height=229 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 229.0) scale=2.0 doc=true h=229 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-row=0 found=true height=199 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-cat=2 found=true height=199 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-cat=0 found=true height=394 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 394.0) scale=2.0 doc=true h=394 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-cat=3 found=true height=199 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 199.0) scale=2.0 doc=true h=199 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n8: data-cat=0 found=true height=394 mismatch=false\n8 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 394.0) scale=2.0 doc=true h=394 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=39 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141274",
+        "state": "loaded=true rendered=true dead=- lastError=- height=394 nodes=280 diags=boot:1 errors=",
+        "widget": "Survival Portuguese"
+      },
+      "run": 0,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 10,
+        "endUnixTime": 1792999966.632,
+        "frames": 372,
+        "heightMismatch": 0,
+        "hitches": 10,
+        "longHitches": 5,
+        "missingActions": 0,
+        "startUnixTime": 1792999960.141,
+        "worstGapMs": 49.998
+      },
+      "notes": {
+        "actions": "0: data-cat=all found=true height=409 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n1: data-id=2 found=true height=409 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n2: data-id=3 found=true height=409 mismatch=false\n2 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n3: data-cat=docs found=true height=206 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 206.0) scale=2.0 doc=true h=206 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n4: data-cat=all found=true height=409 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n5: data-cat=clothes found=true height=206 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 206.0) scale=2.0 doc=true h=206 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n6: data-cat=all found=true height=409 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n7: data-cat=gear found=true height=235 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 235.0) scale=2.0 doc=true h=235 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n8: data-id=9 found=true height=235 mismatch=false\n8 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 235.0) scale=2.0 doc=true h=235 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0\n9: data-cat=all found=true height=409 mismatch=false\n9 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 409.0) scale=2.0 doc=true h=409 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=0 posted=0 canvas: fast=0 gpu-batches=0 cg-batches=0 gpu-buffers=0 gpu-ms=0.000/buffer presented=0 layers=0 skipped=0",
+        "message": "141273",
+        "state": "loaded=true rendered=true dead=- lastError=- height=409 nodes=133 diags=boot:1 errors=",
+        "widget": "🧳 Packing list"
+      },
+      "run": 1,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "actions": 9,
+        "endUnixTime": 1792999973.415,
+        "frames": 337,
+        "heightMismatch": 0,
+        "hitches": 12,
+        "longHitches": 6,
+        "missingActions": 0,
+        "startUnixTime": 1792999967.514,
+        "worstGapMs": 66.664
+      },
+      "notes": {
+        "actions": "0: data-action=queue found=true height=473 mismatch=false\n0 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 473.0) scale=2.0 doc=true h=473 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=935 posted=934 canvas: fast=170 gpu-batches=0 cg-batches=933 gpu-buffers=927 gpu-ms=0.191/buffer presented=927 layers=1 skipped=1\n1: data-action=next found=true height=473 mismatch=false\n1 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 473.0) scale=2.0 doc=true h=473 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=975 posted=974 canvas: fast=174 gpu-batches=0 cg-batches=974 gpu-buffers=968 gpu-ms=0.184/buffer presented=968 layers=1 skipped=1\n2: data-action=next found=true height=473 mismatch=false\n2 renderer: detached=true preparing=true held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 473.0) scale=2.0 doc=true h=473 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1016 posted=1014 canvas: fast=185 gpu-batches=0 cg-batches=1015 gpu-buffers=1007 gpu-ms=0.177/buffer presented=1007 layers=1 skipped=2\n3: data-action=prev found=true height=473 mismatch=false\n3 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 473.0) scale=2.0 doc=true h=473 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1055 posted=1053 canvas: fast=189 gpu-batches=0 cg-batches=1055 gpu-buffers=1047 gpu-ms=0.171/buffer presented=1047 layers=1 skipped=2\n4: data-action=queue found=true height=255 mismatch=false\n4 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1093 posted=1090 canvas: fast=192 gpu-batches=0 cg-batches=1092 gpu-buffers=1084 gpu-ms=0.171/buffer presented=1084 layers=1 skipped=2\n5: data-action=queue found=true height=473 mismatch=false\n5 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=16 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 473.0) scale=2.0 doc=true h=473 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1132 posted=1129 canvas: fast=197 gpu-batches=0 cg-batches=1131 gpu-buffers=1123 gpu-ms=0.172/buffer presented=1123 layers=1 skipped=2\n6: data-action=queue found=true height=255 mismatch=false\n6 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1171 posted=1168 canvas: fast=201 gpu-batches=0 cg-batches=1170 gpu-buffers=1163 gpu-ms=0.172/buffer presented=1163 layers=1 skipped=2\n7: data-action=play found=true height=255 mismatch=false\n7 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1210 posted=1207 canvas: fast=240 gpu-batches=0 cg-batches=1209 gpu-buffers=1202 gpu-ms=0.167/buffer presented=1202 layers=1 skipped=2\n8: data-action=play found=true height=255 mismatch=false\n8 renderer: detached=true preparing=false held=0 throttle-ms=0 tiles=8 trimmed=false flushScheduled=false gridFails=0 size=(450.0, 255.0) scale=2.0 doc=true h=255 inWindow=true onScreen=true hostVisible=true frozen=false destroyed=false ticks=1249 posted=1246 canvas: fast=244 gpu-batches=0 cg-batches=1248 gpu-buffers=1241 gpu-ms=0.162/buffer presented=1241 layers=1 skipped=2",
+        "message": "141272",
+        "state": "loaded=true rendered=true dead=- lastError=- height=255 nodes=125 diags=boot:1,profile:1 errors=",
+        "widget": "artist:\"The Box Model\""
+      },
+      "run": 2,
+      "scenario": "widget-interactions"
+    },
+    {
+      "metrics": {
+        "dead": 0,
+        "errors": 0,
+        "heightMismatch": 0,
+        "unavailable": 0,
+        "widgets": 22
+      },
+      "notes": {
+        "rows": "#0 id=141274 content=450x394 itemHeight=423 viewHeight=423 laid=450x394 unavailable=false loaded=true rendered=true dead=- lastError=- height=394 nodes=280 diags=boot:1 errors=\n#1 id=141273 content=450x409 itemHeight=438 viewHeight=438 laid=450x409 unavailable=false loaded=true rendered=true dead=- lastError=- height=409 nodes=133 diags=boot:1 errors=\n#2 id=141272 content=450x255 itemHeight=284 viewHeight=284 laid=450x255 unavailable=false loaded=true rendered=true dead=- lastError=- height=255 nodes=125 diags=boot:1,profile:1 errors=\n#3 id=141265 content=450x273 itemHeight=302 viewHeight=302 laid=450x273 unavailable=false loaded=true rendered=true dead=- lastError=- height=273 nodes=48 diags=boot:1 errors=\n#4 id=141264 content=450x248 itemHeight=277 viewHeight=277 laid=450x248 unavailable=false loaded=true rendered=true dead=- lastError=- height=248 nodes=80 diags=boot:1 errors=\n#5 id=141257 content=450x282 itemHeight=311 viewHeight=311 laid=450x282 unavailable=false loaded=true rendered=true dead=- lastError=- height=282 nodes=81 diags=boot:1 errors=\n#6 id=141256 content=450x369 itemHeight=398 viewHeight=398 laid=450x369 unavailable=false loaded=true rendered=true dead=- lastError=- height=369 nodes=77 diags=boot:1 errors=\n#7 id=141255 content=450x349 itemHeight=378 viewHeight=378 laid=450x349 unavailable=false loaded=true rendered=true dead=- lastError=- height=349 nodes=93 diags=boot:1 errors=\n#8 id=141254 content=450x299 itemHeight=328 viewHeight=328 laid=450x299 unavailable=false loaded=true rendered=true dead=- lastError=- height=299 nodes=140 diags=boot:1 errors=\n#9 id=141252 content=450x409 itemHeight=438 viewHeight=438 laid=450x409 unavailable=false loaded=true rendered=true dead=- lastError=- height=409 nodes=133 diags=boot:1 errors=\n#10 id=141251 content=450x394 itemHeight=423 viewHeight=423 laid=450x394 unavailable=false loaded=true rendered=true dead=- lastError=- height=394 nodes=280 diags=boot:1 errors=\n#11 id=141250 content=450x197 itemHeight=226 viewHeight=226 laid=450x197 unavailable=false loaded=true rendered=true dead=- lastError=- height=197 nodes=184 diags=boot:1 errors=\n#12 id=141241 content=450x261 itemHeight=290 viewHeight=290 laid=450x261 unavailable=false loaded=true rendered=true dead=- lastError=- height=261 nodes=36 diags=boot:1 errors=\n#13 id=141240 content=450x284 itemHeight=313 viewHeight=313 laid=450x284 unavailable=false loaded=true rendered=true dead=- lastError=- height=284 nodes=106 diags=boot:1,profile:1 errors=\n#14 id=141239 content=450x384 itemHeight=413 viewHeight=413 laid=450x384 unavailable=false loaded=true rendered=true dead=- lastError=- height=384 nodes=327 diags=boot:1 errors=\n#15 id=141238 content=450x333 itemHeight=362 viewHeight=362 laid=450x333 unavailable=false loaded=true rendered=true dead=- lastError=- height=333 nodes=282 diags=boot:1 errors=\n#16 id=141237 content=450x169 itemHeight=198 viewHeight=198 laid=450x169 unavailable=false loaded=true rendered=true dead=- lastError=- height=169 nodes=82 diags=boot:1 errors=\n#17 id=141236 content=450x225 itemHeight=254 viewHeight=254 laid=450x225 unavailable=false loaded=true rendered=true dead=- lastError=- height=225 nodes=113 diags=boot:1 errors=\n#18 id=141235 content=450x374 itemHeight=403 viewHeight=403 laid=450x374 unavailable=false loaded=true rendered=true dead=- lastError=- height=374 nodes=125 diags=boot:1 errors=\n#19 id=141234 content=450x378 itemHeight=407 viewHeight=407 laid=450x378 unavailable=false loaded=true rendered=true dead=- lastError=- height=378 nodes=106 diags=boot:1,profile:1 errors=\n#20 id=141233 content=450x282 itemHeight=311 viewHeight=311 laid=450x282 unavailable=false loaded=true rendered=true dead=- lastError=- height=282 nodes=180 diags=boot:1 errors=\n#21 id=141232 content=450x440 itemHeight=469 viewHeight=469 laid=450x440 unavailable=false loaded=true rendered=true dead=- lastError=- height=440 nodes=138 diags=boot:1 errors="
+      },
+      "run": 0,
+      "scenario": "widgets"
+    }
+  ],
+  "lab": "chat-navigation",
+  "label": "rescue-bot",
+  "startedAt": "2026-10-26T07:32:28Z"
+}

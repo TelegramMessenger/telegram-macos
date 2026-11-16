@@ -8,6 +8,7 @@ import TGUIKit
 import SwiftSignalKit
 import TelegramCore
 import Postbox
+import AppAnalytics
 
 
 
@@ -355,6 +356,7 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
     }
 
     let controller = InputDataController(dataSignal: signal, title: title)
+    controller.analyticsScreen = .settingsFoldersSharing
 
     controller.onDeinit = {
         actionsDisposable.dispose()

@@ -21,6 +21,7 @@ import TelegramLinks
 import ChatHistoryModel
 import FilePanels
 import WallpaperUI
+import AppAnalytics
 
 
 public enum ThemePreviewSource {
@@ -383,6 +384,7 @@ public func ThemePreviewModalController(context: any AccountContextProtocol, sou
     }
 
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .settingsAppearanceThemePreview
     controller.bar = .init(height: 0)
 
     controller.onDeinit = {

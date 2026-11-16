@@ -11,6 +11,7 @@ import TelegramMediaUtils
 import AudioPlayerCore
 import ChatHistoryModel
 import ChatModeTypes
+import AppAnalytics
 
 public struct ChatUIEmojiSelectedItem : Equatable {
     public enum Selection : Equatable {
@@ -54,9 +55,58 @@ public struct ChatUIHooks {
     public let updateEntertainment: (any AccountContextProtocol, ChatInteraction) -> Void
     public let showMessageEffectsWindow: (any AccountContextProtocol, PeerId, [ChatUIEmojiSelectedItem], @escaping (StickerPackItem, NSRect?) -> Void, NSView & StickerFramesCollector) -> Void
     public let makeForwardMessagesShareModal: (any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController
-    public var makeForwardMessagesShareModalWithContext: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController)?
-    public func makeForwardMessagesShareModalObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ getMessages: @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController {
-        return makeForwardMessagesShareModal(context, messages, getMessages)
+    public var makeForwardMessagesShareModalWithContext: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, AnalyticsContext) -> ModalViewController)?
+    public var makeForwardMessagesShareModalWithSource: ((any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, AnalyticsContext, AnalyticsFlows.ChatForwardPicker.EntryPoint) -> ModalViewController)?
+    public var attachForwardJourney: (ModalViewController, AnalyticsForwardPickerJourney) -> Void = { _, journey in journey.discard() }
+    public func makeForwardMessagesShareModalObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ getMessages: @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, analyticsContext: AnalyticsContext) -> ModalViewController {
+        return makeForwardMessagesShareModalObserved(context, messages, getMessages, analyticsContext: analyticsContext, entry: nil)
+    }
+    public func makeForwardMessagesShareModalObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ getMessages: @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, analyticsContext: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint?) -> ModalViewController {
+        return makeForwardMessagesShareModalObserved(context, messages, getMessages, analyticsContext: analyticsContext, entry: entry, journey: nil)
+    }
+    public func makeForwardMessagesShareModalObserved(_ context: any AccountContextProtocol, _ messages: [Message], _ getMessages: @escaping ([MessageId], Bool) -> Signal<[Message], NoError>, analyticsContext: AnalyticsContext, entry: AnalyticsFlows.ChatForwardPicker.EntryPoint?, journey: AnalyticsForwardPickerJourney?) -> ModalViewController {
+        var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
+        for message in messages {
+            if message.containsSecretMedia { origin = Analytics.shared.unresolvedContext() }
+            origin = origin.restricting(peerId: message.id.peerId)
+        }
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        let lookup: ([MessageId], Bool) -> Signal<[Message], NoError> = { ids, album in
+            var lookupOrigin = origin
+            for id in ids { lookupOrigin = lookupOrigin.restricting(peerId: id.peerId) }
+            let presentation = lookupOrigin.beginPresentation()
+            defer { presentation.end() }
+            return lookupOrigin.preservingPresentation(getMessages(ids, album) |> mapToSignal { messages in
+                var resultOrigin = lookupOrigin
+                for message in messages {
+                    if message.containsSecretMedia { resultOrigin = Analytics.shared.unresolvedContext() }
+                    resultOrigin = resultOrigin.restricting(peerId: message.id.peerId)
+                }
+                return resultOrigin.preservingPresentation(.single(messages))
+            })
+        }
+        let controller: ModalViewController
+        if journey == nil, let entry, let makeForwardMessagesShareModalWithSource {
+            controller = makeForwardMessagesShareModalWithSource(context, messages, lookup, origin, entry)
+        } else if let makeForwardMessagesShareModalWithContext {
+            controller = makeForwardMessagesShareModalWithContext(context, messages, lookup, origin)
+        } else {
+            controller = makeForwardMessagesShareModal(context, messages, lookup)
+        }
+        var controllerOrigin = origin
+        if !origin.isExcluded, let childContext = controller.analyticsContext {
+            let childOrigin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: childContext)
+            if childOrigin.isExcluded || childOrigin.scope == nil { controllerOrigin = childOrigin }
+        }
+        controller.analyticsContext = controllerOrigin
+        if let journey {
+            let lifetime = controllerOrigin.beginPresentation()
+            defer { lifetime.end() }
+            journey.restrict(to: controllerOrigin)
+            attachForwardJourney(controller, journey)
+        }
+        return controller
     }
     public let makeReplyForwardShareModal: (any AccountContextProtocol, Message, EngineMessageReplySubject) -> ModalViewController
     public let navigateToChat: (NavigationViewController?, any AccountContextProtocol, ChatLocation) -> Void
@@ -65,49 +115,69 @@ public struct ChatUIHooks {
     public let makeThreadPeerMediaController: (any AccountContextProtocol, PeerId, ThreadInfo?, Bool) -> ViewController
     public let makePeerMediaController: (any AccountContextProtocol, PeerId, Bool) -> ViewController
     public let pushPeerInfo: (NavigationViewController, any AccountContextProtocol, PeerId, ThreadInfo?, PeerExpiringStoryListContext?, PeerMediaCollectionMode?, Int32?) -> Void
-    public var navigateToChatWithContext: ((NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?, Bool) -> Void)?
-    public func navigateToChatObserved(_ navigation: NavigationViewController?, _ context: any AccountContextProtocol, _ location: ChatLocation, _ focus: ChatFocusTarget?, _ action: ChatInitialAction?, _ additional: Bool) {
+    public var navigateToChatWithContext: ((NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?, Bool, AnalyticsContext) -> Void)?
+    public func navigateToChatObserved(_ navigation: NavigationViewController?, _ context: any AccountContextProtocol, _ location: ChatLocation, _ focus: ChatFocusTarget?, _ action: ChatInitialAction?, _ additional: Bool, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: location.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let navigateToChatWithContext {
-            navigateToChatWithContext(navigation, context, location, focus, action, additional)
+            navigateToChatWithContext(navigation, context, location, focus, action, additional, origin)
         } else if additional {
             navigateToChatWithFocusAdditional(navigation, context, location, focus, action, additional)
         } else {
             navigateToChatWithFocus(navigation, context, location, focus, action)
         }
     }
-    public var pushPeerInfoWithContext: ((NavigationViewController, any AccountContextProtocol, PeerId, ThreadInfo?, PeerExpiringStoryListContext?, PeerMediaCollectionMode?, Int32?) -> Void)?
-    public func pushPeerInfoObserved(_ navigation: NavigationViewController, _ context: any AccountContextProtocol, _ peerId: PeerId, _ thread: ThreadInfo?, _ stories: PeerExpiringStoryListContext?, _ mode: PeerMediaCollectionMode?, _ album: Int32?) {
+    public var pushPeerInfoWithContext: ((NavigationViewController, any AccountContextProtocol, PeerId, ThreadInfo?, PeerExpiringStoryListContext?, PeerMediaCollectionMode?, Int32?, AnalyticsContext) -> Void)?
+    public func pushPeerInfoObserved(_ navigation: NavigationViewController, _ context: any AccountContextProtocol, _ peerId: PeerId, _ thread: ThreadInfo?, _ stories: PeerExpiringStoryListContext?, _ mode: PeerMediaCollectionMode?, _ album: Int32?, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let pushPeerInfoWithContext {
-            pushPeerInfoWithContext(navigation, context, peerId, thread, stories, mode, album)
+            pushPeerInfoWithContext(navigation, context, peerId, thread, stories, mode, album, origin)
         } else {
             pushPeerInfo(navigation, context, peerId, thread, stories, mode, album)
         }
     }
-    public var makePeerMediaControllerWithContext: ((any AccountContextProtocol, PeerId, ThreadInfo?, Bool) -> ViewController)?
-    public func makePeerMediaControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, threadInfo: ThreadInfo? = nil, isBot: Bool) -> ViewController {
+    public var makePeerMediaControllerWithContext: ((any AccountContextProtocol, PeerId, ThreadInfo?, Bool, AnalyticsContext) -> ViewController)?
+    public func makePeerMediaControllerObserved(_ context: any AccountContextProtocol, _ peerId: PeerId, threadInfo: ThreadInfo? = nil, isBot: Bool, analyticsContext: AnalyticsContext) -> ViewController {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let controller: ViewController
         if let makePeerMediaControllerWithContext {
-            controller = makePeerMediaControllerWithContext(context, peerId, threadInfo, isBot)
+            controller = makePeerMediaControllerWithContext(context, peerId, threadInfo, isBot, origin)
         } else if let threadInfo {
             controller = makeThreadPeerMediaController(context, peerId, threadInfo, isBot)
         } else {
             controller = makePeerMediaController(context, peerId, isBot)
         }
+        if let current = controller.analyticsContext, current.isExcluded || (!origin.isExcluded && current.scope?.isValid != true) {
+            controller.analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: current)
+        } else {
+            controller.analyticsContext = origin
+        }
         return controller
     }
     public let showSingleStory: (any AccountContextProtocol, StoryId, StoryInitialIndex?, (() -> Void)?) -> Void
-    public var showSingleStoryWithContext: ((any AccountContextProtocol, StoryId, StoryInitialIndex?, (() -> Void)?) -> Void)?
-    public func showSingleStoryObserved(_ context: any AccountContextProtocol, _ storyId: StoryId, _ initialId: StoryInitialIndex?, _ emptyCallback: (() -> Void)?) {
+    public var showSingleStoryWithContext: ((any AccountContextProtocol, StoryId, StoryInitialIndex?, (() -> Void)?, AnalyticsContext) -> Void)?
+    public func showSingleStoryObserved(_ context: any AccountContextProtocol, _ storyId: StoryId, _ initialId: StoryInitialIndex?, _ emptyCallback: (() -> Void)?, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: storyId.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showSingleStoryWithContext {
-            showSingleStoryWithContext(context, storyId, initialId, emptyCallback)
+            showSingleStoryWithContext(context, storyId, initialId, emptyCallback, origin)
         } else {
             showSingleStory(context, storyId, initialId, emptyCallback)
         }
     }
-    public var showStoriesWithContext: ((any AccountContextProtocol, Bool, StoryInitialIndex?, Bool) -> Void)?
-    public func showStoriesObserved(_ context: any AccountContextProtocol, _ isHidden: Bool, _ initialId: StoryInitialIndex?, _ singlePeer: Bool) {
+    public var showStoriesWithContext: ((any AccountContextProtocol, Bool, StoryInitialIndex?, Bool, AnalyticsContext) -> Void)?
+    public func showStoriesObserved(_ context: any AccountContextProtocol, _ isHidden: Bool, _ initialId: StoryInitialIndex?, _ singlePeer: Bool, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: initialId?.peerId ?? context.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let showStoriesWithContext {
-            showStoriesWithContext(context, isHidden, initialId, singlePeer)
+            showStoriesWithContext(context, isHidden, initialId, singlePeer, origin)
         } else {
             showStories(context, isHidden, initialId, singlePeer)
         }
@@ -117,7 +187,8 @@ public struct ChatUIHooks {
     public let getAudioPlayer: (any AccountContextProtocol) -> APController?
     public let makeInlineAudioPlayerContextObject: (APController, any AccountContextProtocol, TableView?) -> Any
     public let makeSendAudioModal: (any AccountContextProtocol, ChatInteraction) -> ModalViewController
-    public let makePreviewSender: ([URL], ChatInteraction, Bool, NSAttributedString?) -> ModalViewController
+    public let makePreviewSender: ([URL], ChatInteraction, Bool, NSAttributedString?, AnalyticsContext) -> ModalViewController
+    public var attachPreviewJourney: (ModalViewController, AnalyticsMediaJourney) -> Void = { _, journey in journey.discard() }
     public var bindPreviewSendValidation: (ModalViewController, @escaping () -> Bool) -> Bool = { _, _ in false }
     public let removeChatInteractively: (any AccountContextProtocol, PeerId, PeerId?) -> Signal<Bool, NoError>
     public let removeThreadInteractively: (any AccountContextProtocol, PeerId, Int64?, PeerId?) -> Signal<Bool, NoError>
@@ -134,6 +205,10 @@ public struct ChatUIHooks {
     public let getGroupCallPanelData: (any AccountContextProtocol, PeerId) -> Signal<GroupCallPanelData?, NoError>
     public let savedMessagesChatListItems: (PeerId, Account) -> Signal<[EngineChatList.Item]?, NoError>
     public let forumChatListItems: (PeerId, Account) -> Signal<[EngineChatList.Item]?, NoError>
+    public var addForumMembers: ((any AccountContextProtocol, PeerId) -> Disposable)? = nil
+    public var forumSidebarToggleImage: ((Bool) -> NSImage)? = nil
+    public var makeForumSidebarRows: ((any AccountContextProtocol, @escaping (Int64?, MessageId?) -> Void) -> any ForumSidebarRowsContent)? = nil
+    public var updateForumSidebarPane: ((any AccountContextProtocol, ViewController, ViewController?, Bool) -> Void)? = nil
     public let botForumChatListItems: (PeerId, Account) -> Signal<[EngineChatList.Item]?, NoError>
     public let createGroupDirectly: (any AccountContextProtocol, [PeerId]) -> Void
     public let openSpamBot: (any AccountContextProtocol, @escaping (PeerId, Bool, MessageId?, ChatInitialAction?) -> Void) -> Void
@@ -164,7 +239,7 @@ public struct ChatUIHooks {
                 getAudioPlayer: @escaping (any AccountContextProtocol) -> APController?,
                 makeInlineAudioPlayerContextObject: @escaping (APController, any AccountContextProtocol, TableView?) -> Any,
                 makeSendAudioModal: @escaping (any AccountContextProtocol, ChatInteraction) -> ModalViewController,
-                makePreviewSender: @escaping ([URL], ChatInteraction, Bool, NSAttributedString?) -> ModalViewController,
+                makePreviewSender: @escaping ([URL], ChatInteraction, Bool, NSAttributedString?, AnalyticsContext) -> ModalViewController,
                 removeChatInteractively: @escaping (any AccountContextProtocol, PeerId, PeerId?) -> Signal<Bool, NoError>,
                 removeThreadInteractively: @escaping (any AccountContextProtocol, PeerId, Int64?, PeerId?) -> Signal<Bool, NoError>,
                 joinChannel: @escaping (any AccountContextProtocol, PeerId) -> Void,
@@ -282,7 +357,7 @@ public struct ChatUIHooks {
         controller
     }, makeSendAudioModal: { _, _ in
         ModalViewController()
-    }, makePreviewSender: { _, _, _, _ in
+    }, makePreviewSender: { _, _, _, _, _ in
         ModalViewController()
     }, removeChatInteractively: { _, _, _ in
         .single(false)

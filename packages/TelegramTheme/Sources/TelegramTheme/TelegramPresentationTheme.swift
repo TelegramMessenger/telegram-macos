@@ -192,12 +192,12 @@ public func backgroundExists(_ wallpaper: Wallpaper, palette: ColorPalette) -> B
     #endif
 }
 
-public func generateBackgroundMode(_ wallpaper: Wallpaper, palette: ColorPalette, maxSize: NSSize = NSMakeSize(1040, 1580), emoticonThemes: [(ChatTheme, TelegramPresentationTheme)]) -> TableBackgroundMode {
+public func generateBackgroundMode(_ wallpaper: Wallpaper, palette: ColorPalette, maxSize: NSSize = NSMakeSize(1040, 1580), emoticonThemes: [(ChatTheme, TelegramPresentationTheme)], scaleFactor: CGFloat = System.backingScale) -> TableBackgroundMode {
     #if !SHARE
     var backgroundMode: TableBackgroundMode
     // Cap the decoded wallpaper at the on-screen pixel size instead of holding the full native bitmap:
     // the layer never shows more than maxSize points at the backing scale, so a larger source is pure memory.
-    let maxPixelSize = max(maxSize.width, maxSize.height) * System.backingScale
+    let maxPixelSize = max(maxSize.width, maxSize.height) * scaleFactor
     switch wallpaper {
     case .builtin:
         backgroundMode = TelegramPresentationTheme.defaultBackground(palette)
@@ -206,7 +206,7 @@ public func generateBackgroundMode(_ wallpaper: Wallpaper, palette: ColorPalette
     case let .gradient(_, colors, rotation):
         backgroundMode = .gradient(colors: colors.map({ NSColor(argb: $0).withAlphaComponent(1.0) }), rotation: rotation)
     case let .image(representation, settings):
-        if let resource = largestImageRepresentation(representation)?.resource, let image = downsampledImage(contentsOfFile: wallpaperPath(resource, settings: settings), maxPixelSize: maxPixelSize) {
+        if let resource = largestImageRepresentation(representation)?.resource, let image = downsampledImage(contentsOfFile: wallpaperPath(resource, palette: palette, settings: settings), maxPixelSize: maxPixelSize) {
             backgroundMode = .background(image: image, intensity: settings.intensity, colors: settings.colors.map { NSColor(argb: $0) }, rotation: settings.rotation, metadata: nil)
         } else {
             backgroundMode = TelegramPresentationTheme.defaultBackground(palette)
@@ -227,7 +227,7 @@ public func generateBackgroundMode(_ wallpaper: Wallpaper, palette: ColorPalette
     case .none:
         backgroundMode = .color(color: palette.listBackground)
     case let .custom(representation, blurred):
-        if let image = downsampledImage(contentsOfFile: wallpaperPath(representation.resource, settings: WallpaperSettings(blur: blurred)), maxPixelSize: maxPixelSize) {
+        if let image = downsampledImage(contentsOfFile: wallpaperPath(representation.resource, palette: palette, settings: WallpaperSettings(blur: blurred)), maxPixelSize: maxPixelSize) {
             backgroundMode = .background(image: image, intensity: nil, colors: nil, rotation: nil, metadata: nil)
         } else {
             backgroundMode = TelegramPresentationTheme.defaultBackground(palette)
@@ -615,38 +615,25 @@ open class TelegramPresentationTheme : PresentationTheme {
     private let backgroundModeLock = NSLock()
     private var _backgroundMode: TableBackgroundMode?
     open var backgroundMode: TableBackgroundMode {
-        // The background mode is read from the prepare queue and the main thread; locking it (and computing
-        // outside the lock) avoids two threads each decoding the full-screen wallpaper on first access — the
-        // largest allocation on the theme. The remaining lazy image/color caches are first-access-benign.
         backgroundModeLock.lock()
+        defer { backgroundModeLock.unlock() }
         if let value = _backgroundMode {
-            backgroundModeLock.unlock()
             return value
         }
-        backgroundModeLock.unlock()
 
         let computed: TableBackgroundMode
-        if let cached = cachedBackground(wallpaper.wallpaper, palette: colors, size: backgroundSize) {
-            computed = cached
-        } else {
-            computed = generateBackgroundMode(wallpaper.wallpaper, palette: colors, maxSize: backgroundSize, emoticonThemes: self.emoticonThemes)
-            switch wallpaper.wallpaper {
-            case .emoticon:
-                if computed != .plain {
-                    cacheBackground(wallpaper.wallpaper, palette: colors, size: backgroundSize, background: computed)
-                }
-            default:
-                cacheBackground(wallpaper.wallpaper, palette: colors, size: backgroundSize, background: computed)
+        switch wallpaper.wallpaper {
+        case .emoticon:
+            computed = generateBackgroundMode(wallpaper.wallpaper, palette: colors, maxSize: backgroundSize, emoticonThemes: self.emoticonThemes, scaleFactor: scaleFactor)
+        default:
+            if let cached = cachedBackground(wallpaper.wallpaper, palette: colors, size: backgroundSize, scaleFactor: scaleFactor) {
+                computed = cached
+            } else {
+                computed = generateBackgroundMode(wallpaper.wallpaper, palette: colors, maxSize: backgroundSize, emoticonThemes: self.emoticonThemes, scaleFactor: scaleFactor)
+                cacheBackground(wallpaper.wallpaper, palette: colors, size: backgroundSize, background: computed, scaleFactor: scaleFactor)
             }
         }
-
-        backgroundModeLock.lock()
-        if let existing = _backgroundMode {
-            backgroundModeLock.unlock()
-            return existing
-        }
         self._backgroundMode = computed
-        backgroundModeLock.unlock()
         return computed
     }
     public init(colors: ColorPalette, cloudTheme: TelegramTheme?, search: SearchTheme, chatList: TelegramChatListTheme, tabBar: TelegramTabBarTheme, icons: TelegramIconsTheme, bubbled: Bool, fontSize: CGFloat, wallpaper: ThemeWallpaper, generated: Bool = false, emoticonThemes: [(ChatTheme, TelegramPresentationTheme)] = [], backgroundSize: NSSize = NSMakeSize(1040, 1580), liquidGlass: Bool = System.liquidGlassAvailable, liteMode: LiteMode = TelegramPresentationTheme.currentLiteMode(), scaleFactor: CGFloat = System.backingScale) {
@@ -665,11 +652,11 @@ open class TelegramPresentationTheme : PresentationTheme {
         self.liquidGlass = liquidGlass && System.liquidGlassAvailable
         self.liteMode = liteMode
         self.scaleFactor = scaleFactor
-        if !Thread.isMainThread && generated {
-            self._backgroundMode = generateBackgroundMode(wallpaper.wallpaper, palette: colors, maxSize: backgroundSize, emoticonThemes: emoticonThemes)
-        }
         let inputSelectingColor = colors.isDark ? colors.accentSelect : colors.accentSelect.withAlphaComponent(0.65)
         super.init(colors: colors, search: search, inputTheme: .init(quote: .init(foreground: .init(main: colors.accent), icon: TelegramThemeHooks.shared.image(.iconQuote), collapse: TelegramThemeHooks.shared.image(.iconQuoteCollapse), expand: TelegramThemeHooks.shared.image(.iconQuoteExpand)), indicatorColor: colors.accent, backgroundColor: colors.background, selectingColor: inputSelectingColor, textColor: colors.text, accentColor: colors.accent, grayTextColor: colors.grayText, fontSize: fontSize))
+        if !Thread.isMainThread && generated {
+            _ = self.backgroundMode
+        }
     }
     
     public static func currentLiteMode() -> LiteMode {
@@ -746,15 +733,15 @@ open class TelegramPresentationTheme : PresentationTheme {
     }
 
     open func withUpdatedColors(_ colors: ColorPalette) -> TelegramPresentationTheme {
-        return TelegramPresentationTheme(colors: colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: TelegramThemeHooks.shared.icons(colors, self.bubbled), bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize)
+        return TelegramPresentationTheme(colors: colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: TelegramThemeHooks.shared.icons(colors, self.bubbled), bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize, liquidGlass: self.liquidGlass, liteMode: self.liteMode, scaleFactor: self.scaleFactor)
     }
     
     open func withUpdatedEmoticonThemes(_ emoticonThemes: [(ChatTheme, TelegramPresentationTheme)]) -> TelegramPresentationTheme {
-        return TelegramPresentationTheme(colors: colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: emoticonThemes, backgroundSize: self.backgroundSize)
+        return TelegramPresentationTheme(colors: colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: emoticonThemes, backgroundSize: self.backgroundSize, liquidGlass: self.liquidGlass, liteMode: self.liteMode, scaleFactor: self.scaleFactor)
     }
     
     open func withUpdatedChatMode(_ bubbled: Bool) -> TelegramPresentationTheme {
-        return TelegramPresentationTheme(colors: colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: TelegramThemeHooks.shared.icons(colors, bubbled), bubbled: bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize)
+        return TelegramPresentationTheme(colors: colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: TelegramThemeHooks.shared.icons(colors, bubbled), bubbled: bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize, liquidGlass: self.liquidGlass, liteMode: self.liteMode, scaleFactor: self.scaleFactor)
     }
     open func new() -> TelegramPresentationTheme {
         return TelegramPresentationTheme(colors: self.colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize, liteMode: TelegramPresentationTheme.currentLiteMode(), scaleFactor: System.backingScale)
@@ -765,11 +752,11 @@ open class TelegramPresentationTheme : PresentationTheme {
         // Return a copy rather than mutating self: a preview (Appearance/color pickers) derives a small
         // backgroundSize from the LIVE theme, and now that backgroundSize drives the wallpaper decode
         // resolution, mutating self would shrink the real chat wallpaper on the next theme derivation.
-        return TelegramPresentationTheme(colors: self.colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: size)
+        return TelegramPresentationTheme(colors: self.colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: self.wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: size, liquidGlass: self.liquidGlass, liteMode: self.liteMode, scaleFactor: self.scaleFactor)
     }
     
     open func withUpdatedWallpaper(_ wallpaper: ThemeWallpaper) -> TelegramPresentationTheme {
-        return TelegramPresentationTheme(colors: self.colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize)
+        return TelegramPresentationTheme(colors: self.colors, cloudTheme: self.cloudTheme, search: self.search, chatList: self.chatList, tabBar: self.tabBar, icons: self.icons, bubbled: self.bubbled, fontSize: self.fontSize, wallpaper: wallpaper, emoticonThemes: self.emoticonThemes, backgroundSize: self.backgroundSize, liquidGlass: self.liquidGlass, liteMode: self.liteMode, scaleFactor: self.scaleFactor)
     }
     
     open func activity(key:Int32, foregroundColor: NSColor, backgroundColor: NSColor) -> ActivitiesTheme {

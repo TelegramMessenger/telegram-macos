@@ -11,6 +11,7 @@ import TGUIKit
 import SwiftSignalKit
 import WalletContext
 import PasscodeCore
+import AppAnalytics
 
 private final class Arguments {
     let createWallet: () -> Void
@@ -162,6 +163,7 @@ public func WalletReplaceController(context: any AccountContextProtocol, environ
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().walletReplaceControllerTitle, hasDone: false)
+    controller.analyticsScreen = .walletReplace
     getController = { [weak controller] in
         controller
     }

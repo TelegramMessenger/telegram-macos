@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class HeaderItem : GeneralRowItem {
@@ -637,6 +638,7 @@ public func Star_AuctionPreviewController(context: (any AccountContextProtocol),
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .giftsAuction
     
     controller.validateData = { _ in
         if stateValue.with({ !$0.isFinished }) {

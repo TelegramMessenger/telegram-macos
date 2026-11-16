@@ -279,7 +279,10 @@ open class Control: View {
     open override func updateTrackingAreas() {
         super.updateTrackingAreas()
 
-        let needsTracking = window != nil && visibleRect != .zero
+        guard window != nil else {
+            return
+        }
+        let needsTracking = visibleRect != .zero
         let hasTracking = trackingArea != nil
 
         if needsTracking == hasTracking {

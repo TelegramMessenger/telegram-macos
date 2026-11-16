@@ -12,6 +12,7 @@ import PhoneNumberUtils
 import TelegramContext
 import TelegramUtils
 import TelegramTheme
+import AppAnalytics
 
 private final class NewContactArguments {
     let context: any AccountContextProtocol
@@ -153,6 +154,7 @@ public func NewContactController(context: any AccountContextProtocol, peerId: Pe
     }, afterDisappear: {
         actionsDisposable.dispose()
     })
+    controller.analyticsScreen = .contactsAddKnownUser
     
     let modalInteractions: ModalInteractions = ModalInteractions(acceptTitle: strings().navigationDone, accept: { [weak controller] in
         controller?.validateInputValues()

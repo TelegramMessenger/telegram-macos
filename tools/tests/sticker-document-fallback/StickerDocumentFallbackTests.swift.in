@@ -1,0 +1,388 @@
+import AppKit
+import ImageIO
+
+struct PixelDimensions: Equatable {
+    let width: Int32
+    let height: Int32
+    var size: CGSize { CGSize(width: Int(width), height: Int(height)) }
+}
+
+struct MediaId {
+    let namespace: Int32
+    let id: Int64
+}
+
+struct Namespaces {
+    __MEDIA_NAMESPACES__
+}
+
+struct StickerMaskCoords: Equatable {}
+enum StickerPackReference: Equatable {
+    case name(String)
+}
+
+__FLAGS__
+
+enum TelegramMediaFileAttribute: Equatable {
+__ATTRIBUTES__
+}
+
+protocol Media {}
+class MediaResource {}
+struct TelegramMediaImageRepresentation {
+    let resource: MediaResource
+}
+
+final class TelegramMediaFile: Media {
+    let fileId: MediaId
+    let mimeType: String
+    let size: Int64?
+    let attributes: [TelegramMediaFileAttribute]
+    let resource = MediaResource()
+    let previewRepresentations: [TelegramMediaImageRepresentation]
+
+    init(mimeType: String, size: Int64?, attributes: [TelegramMediaFileAttribute], namespace: Int32 = Namespaces.Media.CloudFile, thumbnail: Bool = true) {
+        self.fileId = MediaId(namespace: namespace, id: 1)
+        self.mimeType = mimeType
+        self.size = size
+        self.attributes = attributes
+        self.previewRepresentations = thumbnail ? [.init(resource: MediaResource())] : []
+    }
+
+__CORE_PROPERTIES__
+__DIMENSIONS__
+__EMOJI_PREDICATE__
+}
+
+__DIMENSIONS_FUNCTION__
+__HELPER__
+
+extension Media {
+__WEBM__
+__PROBABLY_STICKER__
+}
+
+extension CGSize {
+__GEOMETRY__
+}
+
+extension NSImage {
+__IMAGE_ACCESSOR__
+}
+
+struct PeerId {
+    let namespace: Int32
+}
+struct MessageId {
+    let peerId: PeerId
+}
+struct Message {
+    let anyMedia: Media?
+    let id: MessageId
+}
+
+enum TranscribeState {
+    case loading, revealed, collapsed
+}
+struct AdditionalData {
+    let transribeState: TranscribeState? = nil
+}
+struct Entry {
+    let additionalData = AdditionalData()
+}
+struct Interaction {
+    let interactionContext = 0
+}
+enum RenderType {
+    case bubble, list
+}
+
+class ChatRowItem {
+    let message: Message?
+    init(_ initialSize: CGSize, _ interaction: Interaction, _ context: Int, _ entry: Entry, theme: Int) {
+        self.message = nil
+    }
+    init(message: Message?) {
+        self.message = message
+    }
+__ROW_IS_STICKER__
+}
+class ChatMediaItem: ChatRowItem {}
+class ChatGIFMediaItem: ChatRowItem {}
+class ChatVoiceRowItem: ChatRowItem {}
+class ChatVideoMessageItem: ChatRowItem {}
+class ChatMusicRowItem: ChatRowItem {}
+class ChatAnimatedStickerItem: ChatRowItem {}
+class ChatFileMediaItem: ChatMediaItem {}
+enum HTMLDocumentBubbles {
+__HTML_ELIGIBILITY__
+}
+struct ChatHTMLDocumentRows {
+    static func item(_ initialSize: CGSize, interaction: Interaction, entry: Entry, message: Message, theme: Int, fallback: () -> ChatRowItem) -> ChatRowItem {
+        if let file = message.anyMedia as? TelegramMediaFile {
+            precondition(!HTMLDocumentBubbles.isHTMLDocument(mimeType: file.mimeType, fileName: file.fileName, size: file.size))
+        }
+        return fallback()
+    }
+}
+
+func rowForFile(_ file: TelegramMediaFile) -> ChatRowItem {
+    let initialSize = CGSize(width: 400, height: 400)
+    let interaction = Interaction()
+    let entry = Entry()
+    let theme = 0
+    let message = Message(anyMedia: file, id: MessageId(peerId: PeerId(namespace: 0)))
+__FACTORY__
+}
+
+func hasBubble(_ file: TelegramMediaFile) -> Bool {
+    let media: Media = file
+    let entry = Entry()
+__BUBBLE__
+    return true
+}
+
+func stateOverlay(_ file: TelegramMediaFile, renderType: RenderType) -> Bool {
+    let media: Media = file
+    let object = Entry()
+__OVERLAY__
+    return false
+}
+
+func canAddCaption(_ file: TelegramMediaFile) -> Bool {
+    let media: Media = file
+__CAPTION__
+    return canAddCaption
+}
+
+class ChatMediaContentView: NSObject {}
+class StickerMediaContentView: ChatMediaContentView {}
+class MediaAnimatedStickerView: ChatMediaContentView {}
+class VideoStickerContentView: ChatMediaContentView {}
+class ChatStickerContentView: ChatMediaContentView {}
+class ChatInteractiveContentView: ChatMediaContentView {}
+class ChatVideoMessageContentView: ChatMediaContentView {}
+class ChatVoiceContentView: ChatMediaContentView {}
+class ChatMusicContentView: ChatMediaContentView {}
+class ChatFileContentView: ChatMediaContentView {}
+class ChatMapContentView: ChatMediaContentView {}
+class SlotsMediaContentView: ChatMediaContentView {}
+class ChatDiceContentView: ChatMediaContentView {}
+class TelegramMediaImage: Media {}
+class TelegramMediaMap: Media {}
+class TelegramMediaDice: Media {
+    let emoji = ""
+}
+class TelegramMediaGame: Media {
+    let file: TelegramMediaFile? = nil
+}
+let slotsEmoji = "slots"
+
+func stickerRenderer(_ file: TelegramMediaFile) -> ChatMediaContentView.Type {
+__RENDERER__
+    return contentClass
+}
+
+class GifPreviewModalView: NSObject {}
+class AnimatedStickerPreviewModalView: NSObject {}
+class StickerPreviewModalView: NSObject {}
+enum QuickPreviewMedia {
+    case file(TelegramMediaFile, AnyClass)
+}
+
+func preview(_ file: TelegramMediaFile) -> String? {
+    let reference = file
+    let contentNode = StickerMediaContentView()
+    func result() -> (QuickPreviewMedia, NSObject?)? {
+__PREVIEW__
+        return nil
+    }
+    if let value = result(), case let .file(_, type) = value.0 {
+        return String(describing: type)
+    }
+    return nil
+}
+
+class ChatLayoutUtils {
+__CONTENT_NODE__
+}
+
+func contentSize(_ file: TelegramMediaFile, width: CGFloat = 400, webpIsFile: Bool = false) -> CGSize {
+    let hasText = false
+    var size = NSMakeSize(width, 40)
+    let maxSize = NSMakeSize(min(width, 320), min(width, 320))
+__FILE_SIZE__
+    return size
+}
+
+__RESOURCE__
+
+func fallbackName(_ media: TelegramMediaFile) -> String {
+__FILENAME__
+    return fileName
+}
+
+func decodeSticker(_ data: Data) -> CGImage? {
+__DECODE__
+    return image
+}
+
+var passed = 0
+var failures: [String] = []
+func check(_ condition: @autoclosure () -> Bool, _ name: String) {
+    if condition() {
+        passed += 1
+    } else {
+        failures.append(name)
+    }
+}
+
+let stickerAttribute = TelegramMediaFileAttribute.Sticker(displayText: "", packReference: .name("synthetic"), maskData: nil)
+let imageAttribute = TelegramMediaFileAttribute.ImageSize(size: .init(width: 512, height: 256))
+let videoAttribute = TelegramMediaFileAttribute.Video(duration: 1, size: .init(width: 512, height: 256), flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil)
+let voiceAttribute = TelegramMediaFileAttribute.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: nil)
+let musicAttribute = TelegramMediaFileAttribute.Audio(isVoice: false, duration: 1, title: nil, performer: nil, waveform: nil)
+let customEmojiAttribute = TelegramMediaFileAttribute.CustomEmoji(isPremium: false, isSingleColor: false, alt: "", packReference: nil)
+
+struct Case {
+    let name: String
+    let file: TelegramMediaFile
+    let sticker: Bool
+    let row: String
+    let dimensions: CGSize
+}
+
+func file(_ size: Int64?, mime: String = "image/webp", attributes: [TelegramMediaFileAttribute]? = nil, namespace: Int32 = Namespaces.Media.CloudFile, thumbnail: Bool = true) -> TelegramMediaFile {
+    TelegramMediaFile(mimeType: mime, size: size, attributes: attributes ?? [stickerAttribute, imageAttribute], namespace: namespace, thumbnail: thumbnail)
+}
+
+let cases: [Case] = [
+    Case(name: "legacy-small", file: file(64 * 1024), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "below-old-limit", file: file(300 * 1024 - 1), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "lower-bound", file: file(300 * 1024), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "bounded-webp", file: file(400 * 1024), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "upper-bound", file: file(512 * 1024), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "no-dimensions", file: file(400 * 1024, attributes: [stickerAttribute], thumbnail: false), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 208)),
+    Case(name: "secret-file-webp", file: file(400 * 1024, namespace: Namespaces.Media.CloudSecretFile), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "nil-size-legacy", file: file(nil), sticker: true, row: "ChatMediaItem", dimensions: CGSize(width: 208, height: 104)),
+    Case(name: "too-large", file: file(512 * 1024 + 1), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+    Case(name: "ordinary-webp", file: file(400 * 1024, attributes: [imageAttribute]), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+    Case(name: "small-webp-document", file: file(40 * 1024, attributes: [imageAttribute]), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+    Case(name: "png-with-sticker", file: file(400 * 1024, mime: "image/png"), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+    Case(name: "binary-with-sticker", file: file(400 * 1024, mime: "application/octet-stream"), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+    Case(name: "gif-with-sticker", file: file(400 * 1024, mime: "image/gif"), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+    Case(name: "custom-emoji-only", file: file(400 * 1024, attributes: [customEmojiAttribute, imageAttribute]), sticker: false, row: "ChatFileMediaItem", dimensions: CGSize(width: 400, height: 70)),
+]
+
+for value in cases {
+    let file = value.file
+    let message = Message(anyMedia: file, id: MessageId(peerId: PeerId(namespace: 0)))
+    check(String(describing: type(of: rowForFile(file))) == value.row, value.name + ": row")
+    check(ChatRowItem(message: message).isSticker == value.sticker, value.name + ": sticker-state")
+    check(hasBubble(file) == !value.sticker, value.name + ": bubble")
+    check(stateOverlay(file, renderType: .bubble) == value.sticker, value.name + ": overlay")
+    check(!stateOverlay(file, renderType: .list), value.name + ": list-overlay")
+    check(canAddCaption(file) == !value.sticker, value.name + ": caption")
+    check(contentSize(file) == value.dimensions, value.name + ": size")
+    check(fallbackName(file) == "Unknown.file", value.name + ": fallback-name")
+    if value.sticker {
+        check(stickerRenderer(file) == ChatStickerContentView.self, value.name + ": renderer")
+        check(preview(file) == "StickerPreviewModalView", value.name + ": preview")
+        check(ChatLayoutUtils.contentNode(for: file) == StickerMediaContentView.self, value.name + ": content-node")
+        check(chatMessageStickerResource(file: file, small: false) === file.resource, value.name + ": full-resource")
+        if let thumbnail = file.previewRepresentations.first {
+            check(chatMessageStickerResource(file: file, small: true) === thumbnail.resource, value.name + ": thumbnail-resource")
+        }
+        check(contentSize(file, webpIsFile: true) == CGSize(width: 400, height: file.previewRepresentations.isEmpty ? 40 : 70), value.name + ": explicit-file-layout")
+    }
+}
+
+let named = file(400 * 1024, attributes: [stickerAttribute, imageAttribute, .FileName(fileName: "sticker.webp")])
+check(fallbackName(named) == "sticker.webp", "filename preserved")
+let sample = file(400 * 1024)
+check(sample.isSticker, "real core Sticker attribute remains true")
+check(!sample.isStaticSticker, "real core 300 KiB boundary unchanged")
+check(!sample.isAnimatedSticker, "real core animated predicate unchanged")
+check(!sample.isVideoSticker, "real core video predicate unchanged")
+check(file(300 * 1024 - 1).isStaticSticker, "real core below boundary")
+check(!file(300 * 1024).isStaticSticker, "real core exact boundary")
+check(file(nil).isStaticSticker, "real core nil size behavior")
+
+let animated = file(400 * 1024, attributes: [stickerAttribute, imageAttribute, .Animated])
+check(String(describing: type(of: rowForFile(animated))) == "ChatMediaItem", "animated WebP row unchanged")
+check(stickerRenderer(animated) == MediaAnimatedStickerView.self, "animated WebP player unchanged")
+check(!ChatRowItem(message: Message(anyMedia: animated, id: MessageId(peerId: PeerId(namespace: 0)))).isSticker, "animated WebP fallback does not reclassify")
+let video = file(400 * 1024, attributes: [stickerAttribute, videoAttribute])
+check(String(describing: type(of: rowForFile(video))) == "ChatMediaItem", "video attributes row unchanged")
+check(stickerRenderer(video) == MediaAnimatedStickerView.self, "video attributes excluded from fallback")
+let voice = file(400 * 1024, attributes: [stickerAttribute, voiceAttribute])
+check(String(describing: type(of: rowForFile(voice))) == "ChatVoiceRowItem", "voice row unchanged")
+let music = file(400 * 1024, attributes: [stickerAttribute, musicAttribute])
+check(String(describing: type(of: rowForFile(music))) == "ChatMusicRowItem", "music row unchanged")
+let tgs = file(64 * 1024, mime: "application/x-tgsticker", attributes: [stickerAttribute, .FileName(fileName: "sticker.tgs")])
+check(String(describing: type(of: rowForFile(tgs))) == "ChatAnimatedStickerItem", "TGS row unchanged")
+check(stickerRenderer(tgs) == MediaAnimatedStickerView.self, "TGS renderer unchanged")
+let secretTgs = file(64 * 1024, mime: "application/x-tgsticker", attributes: [stickerAttribute, .FileName(fileName: "sticker.tgs")], namespace: Namespaces.Media.CloudSecretFile)
+check(!secretTgs.isSticker && !secretTgs.isAnimatedSticker && !secretTgs.isStaticSticker, "core secret TGS exclusion")
+check(String(describing: type(of: rowForFile(secretTgs))) == "ChatFileMediaItem", "secret TGS file fallback unchanged")
+let unnamedTgs = file(400 * 1024, mime: "application/x-tgsticker")
+check(String(describing: type(of: rowForFile(unnamedTgs))) == "ChatFileMediaItem", "unnamed large TGS not guessed from size")
+let webm = file(400 * 1024, mime: "video/webm", attributes: [stickerAttribute, videoAttribute])
+check(String(describing: type(of: rowForFile(webm))) == "ChatGIFMediaItem", "video sticker row unchanged")
+check(stickerRenderer(webm) == MediaAnimatedStickerView.self, "WebM player unchanged")
+
+func encodedFixture() -> Data? {
+    let width = 512
+    let height = 256
+    var bytes = [UInt8](repeating: 255, count: width * height * 4)
+    var state: UInt32 = 0x1a2b3c4d
+    for pixel in 0 ..< width * height {
+        for channel in 0 ..< 3 {
+            state ^= state << 13
+            state ^= state >> 17
+            state ^= state << 5
+            bytes[pixel * 4 + channel] = UInt8(truncatingIfNeeded: state)
+        }
+    }
+    var output: UnsafeMutablePointer<UInt8>?
+    let count = bytes.withUnsafeBufferPointer { buffer in
+        WebPEncodeLosslessRGBA(buffer.baseAddress, Int32(width), Int32(height), Int32(width * 4), &output)
+    }
+    guard count > 0, let output else { return nil }
+    defer { WebPFree(output) }
+    return Data(bytes: output, count: count)
+}
+
+var fixtureBytes = 0
+if let data = encodedFixture() {
+    fixtureBytes = data.count
+    check(data.count >= 300 * 1024 && data.count <= 512 * 1024, "codec real encoded payload is in fallback range")
+    if let image = decodeSticker(data) {
+        check(image.width == 512 && image.height == 256, "production WebP decoder preserves dimensions")
+        let png = NSMutableData()
+        if let destination = CGImageDestinationCreateWithData(png, "public.png" as CFString, 1, nil) {
+            CGImageDestinationSetProperties(destination, [:] as CFDictionary)
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.6] as CFDictionary)
+            check(CGImageDestinationFinalize(destination), "cached sticker PNG conversion")
+            if let cached = NSImage(data: png as Data)?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                check(cached.width == 512 && cached.height == 256, "sticker image view can load converted PNG")
+                let rendered = CGContext(data: nil, width: 208, height: 104, bitsPerComponent: 8, bytesPerRow: 208 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                rendered?.draw(cached, in: CGRect(x: 0, y: 0, width: 208, height: 104))
+                check(rendered?.makeImage()?.width == 208, "in-memory sticker-sized render")
+            } else {
+                check(false, "sticker image view can load converted PNG")
+            }
+        } else {
+            check(false, "cached sticker PNG conversion")
+        }
+    } else {
+        check(false, "production WebP decoder preserves dimensions")
+    }
+} else {
+    check(false, "codec real encoded payload is in fallback range")
+}
+check(decodeSticker(Data()) == nil, "empty payload rejected by native decoder")
+let summary: [String: Any] = ["passed": passed, "failed": failures.count, "failures": failures, "codec_fixture_bytes": fixtureBytes]
+let json = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
+print(String(data: json, encoding: .utf8)!)
+exit(failures.isEmpty ? 0 : 1)

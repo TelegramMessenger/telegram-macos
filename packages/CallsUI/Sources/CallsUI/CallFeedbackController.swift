@@ -11,6 +11,7 @@ import TelegramContext
 import TelegramTheme
 import ColorPalette
 import TelegramIconsTheme
+import AppAnalytics
 
 
 private final class CallFeedbackControllerArguments {
@@ -211,6 +212,7 @@ public func CallFeedbackController(context: any AccountContextProtocol, callId: 
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().callFeedbackTitle)
+    controller.analyticsScreen = .callFeedback
     
     var close: (()->Void)? = nil
     

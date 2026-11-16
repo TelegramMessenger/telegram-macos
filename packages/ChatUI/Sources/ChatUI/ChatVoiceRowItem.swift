@@ -101,7 +101,9 @@ public class ChatVoiceRowItem: ChatMediaItem {
                     let caption: NSAttributedString = .initialize(string: transcribed, color: transcribtedColor, font: .normal(theme.fontSize))
 
                     textLayout = FoldingTextLayout.make(caption, context: context, revealed: Set(), takeLayout: { attr in
-                        TextViewLayout(attr, alignment: .left, selectText: theme.chat.selectText(isIncoming, object.renderType == .bubble), strokeLinks: object.renderType == .bubble, alwaysStaticItems: true, disableTooltips: false, mayItems: !message.isCopyProtected(cachedData: chatInteraction.presentation.cachedData))
+                        let layout = TextViewLayout(attr, alignment: .left, selectText: theme.chat.selectText(isIncoming, object.renderType == .bubble), strokeLinks: object.renderType == .bubble, alwaysStaticItems: true, disableTooltips: false, mayItems: !message.isCopyProtected(cachedData: chatInteraction.presentation.cachedData))
+                        restrictCopying(layout.interactions, message: message, layout: layout, chatInteraction: chatInteraction)
+                        return layout
                     })
    
                 } else {

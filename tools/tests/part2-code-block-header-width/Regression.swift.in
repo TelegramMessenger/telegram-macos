@@ -1,0 +1,181 @@
+import AppKit
+import CoreText
+
+public enum PeerNameColors {
+    public struct Colors: Equatable {
+        public var main = NSColor.textColor
+        public var secondary: NSColor?
+        public var tertiary: NSColor?
+    }
+}
+public final class TextNodeLayout {
+    public let size: CGSize
+    init(_ text: String, font: NSFont) {
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+        size = CGSize(width: ceil(CTLineGetTypographicBounds(line, nil, nil, nil)), height: ceil(font.ascender - font.descender))
+    }
+}
+public final class TextNode {}
+struct Presentation {
+    struct Colors { let text = NSColor.textColor }
+    let colors = Colors()
+}
+let presentation = Presentation()
+let defaultFont = NSFont.systemFont(ofSize: 13)
+extension NSAttributedString {
+    var range: NSRange { NSRange(location: 0, length: length) }
+}
+extension NSRange {
+    var min: Int { location }
+    var max: Int { NSMaxRange(self) }
+}
+
+@@DEFINITIONS@@
+@@PREPARED@@
+
+final class TextViewLayout {
+    struct EmbeddedItem {
+        let range: NSRange
+        let rect: CGRect
+        let value: AnyHashable
+    }
+    var attributedString: NSAttributedString
+    var constrainedWidth: CGFloat
+    var isBigEmoji = false
+    var isPerfectSized = true
+    var insets = CGSize.zero
+    var lines: [TextViewLine] = []
+    var blockQuotes: [TextViewBlockQuote] = []
+    var preparedText: TextViewPreparedText?
+    var cutout: TextViewCutout?
+    var maximumNumberOfLines: Int32 = Int32.max
+    var truncatingColor: NSColor?
+    var truncationType = CTLineTruncationType.end
+    var penFlush: CGFloat = 0
+    var layoutSize = CGSize.zero
+    var embeddedItems: [EmbeddedItem] = []
+    private static let quoteAttributeKey = TextInputAttributes.quote.rawValue as CFString
+
+    init(_ text: NSAttributedString, width: CGFloat) {
+        attributedString = text
+        constrainedWidth = width
+    }
+
+    func measure(width: CGFloat, isBigEmoji: Bool = false) {
+        constrainedWidth = width
+        calculateLayout(isBigEmoji: isBigEmoji)
+    }
+@@LAST_QUOTE@@
+@@CALCULATE@@
+}
+
+struct FoldingGeometry {
+    let text: TextViewLayout
+@@FOLD_GEOMETRY@@
+@@BREAK_STRING@@
+}
+
+var passed = 0
+var failed = 0
+func check(_ condition: Bool, _ message: String) {
+    if condition {
+        passed += 1
+        print("PASS \(message)")
+    } else {
+        failed += 1
+        print("FAIL \(message)")
+    }
+}
+
+func layout(_ text: String, header: String?, width: CGFloat, size: CGFloat, quoted: Bool = true) -> TextViewLayout {
+    let font = NSFont.monospacedSystemFont(ofSize: size, weight: .medium)
+    let string = NSMutableAttributedString(string: text, attributes: [.font: font])
+    if quoted {
+        let headerValue = header.map { (TextNodeLayout($0, font: NSFont.systemFont(ofSize: 13, weight: .medium)), TextNode()) }
+        string.addAttribute(TextInputAttributes.quote, value: TextViewBlockQuoteData(id: 1, colors: .init(), isCode: header != nil, space: 4, header: headerValue), range: string.range)
+    }
+    let result = TextViewLayout(string, width: width)
+    result.calculateLayout()
+    return result
+}
+
+let body = String(repeating: "abcdefghij ", count: 18)
+for fontSize: CGFloat in [11, 13, 17, 22] {
+    for width: CGFloat in [160, 240, 360, 450, 480] {
+        let reference = layout(body, header: nil, width: width, size: fontSize)
+        for title in ["shell", "copy", "копировать", "kopieren", "скопіювати"] {
+            let result = layout(body, header: title, width: width, size: fontSize)
+            let label = "\(title) font=\(fontSize) width=\(width)"
+            print("METRIC \(label) layout=\(result.layoutSize.width) block=\(result.blockQuotes.map { $0.frame.width })")
+            check(result.layoutSize.width <= width, "layout fits \(label)")
+            check(!result.blockQuotes.isEmpty && result.blockQuotes.allSatisfy { $0.frame.maxX <= width }, "background/header/copy extent fits \(label)")
+            check(result.lines.map { $0.range } == reference.lines.map { $0.range }, "header does not consume body line width \(label)")
+            let minimumWidth = result.blockQuotes[0].header!.0.size.width + 28
+            check(result.layoutSize.width == max(reference.layoutSize.width, minimumWidth), "header is a minimum, not added to body width \(label)")
+            check(result.lines.allSatisfy { $0.frame.maxX <= width }, "body glyph frames fit \(label)")
+            check(result.lines.reduce(0) { $0 + $1.range.length } == (body as NSString).length, "all text survives wrapping \(label)")
+            let firstSize = result.layoutSize
+            result.calculateLayout()
+            check(result.layoutSize == firstSize, "repeat measurement stable \(label)")
+        }
+    }
+}
+
+for title in ["shell", "копировать", "typescript"] {
+    let result = layout("x", header: title, width: 240, size: 13)
+    let headerWidth = result.blockQuotes[0].header!.0.size.width
+    check(result.layoutSize.width >= headerWidth + 28, "short body reserves header and copy spacing \(title)")
+    check(result.blockQuotes[0].frame.width == result.layoutSize.width, "short block and layout widths agree \(title)")
+    check(result.lines[0].frame.width < result.layoutSize.width, "short glyph width is not inflated \(title)")
+    let headerRight = result.blockQuotes[0].frame.minX + 8 + headerWidth
+    let copyLeft = result.blockQuotes[0].frame.width - 16 - 3
+    check(headerRight < copyLeft, "short header does not overlap the 16pt copy icon \(title)")
+}
+
+let plain = layout(body, header: nil, width: 240, size: 13, quoted: false)
+check(plain.blockQuotes.isEmpty && plain.layoutSize.width <= 240, "unformatted text remains unquoted and contained")
+let quote = layout(body, header: nil, width: 240, size: 13)
+check(quote.blockQuotes.allSatisfy { $0.header == nil && !$0.isCode && $0.frame.maxX <= 240 }, "headerless quotes remain contained")
+let unicode = layout("👨‍👩‍👧‍👦 e\u{301} кириллица " + String(repeating: "長いコード ", count: 12), header: "копировать", width: 240, size: 13)
+check(unicode.layoutSize.width <= 240 && unicode.lines.reduce(0) { $0 + $1.range.length } == unicode.attributedString.length, "Unicode code is contained without dropped UTF-16 units")
+let foldedText = layout(body, header: "копировать", width: 240, size: 13)
+let folding = FoldingGeometry(text: foldedText)
+for width: CGFloat in [160, 240, 360, 480, 240] {
+    let collapsed = folding.updated(width: width, revealed: false, collapsable: true, isBigEmoji: false)
+    let expanded = folding.updated(width: width, revealed: true, collapsable: true, isBigEmoji: false)
+    check(collapsed.0.width <= width && expanded.0.width <= width, "folded and revealed widths fit \(width)")
+    check(collapsed.0.width == expanded.0.width, "fold toggle preserves width \(width)")
+    check(!collapsed.1 && expanded.1 && collapsed.0.height < expanded.0.height, "fold toggle only changes visible height \(width)")
+}
+let unbroken = layout(String(repeating: "x", count: 200), header: "копировать", width: 240, size: 13)
+check(unbroken.layoutSize.width <= 240 && unbroken.lines.reduce(0) { $0 + $1.range.length } == 200, "unbroken code wraps without clipping")
+let lines = layout("first\nsecond\nthird\nfourth\nfifth", header: "копировать", width: 240, size: 13)
+check(lines.lines.count == 5 && lines.blockQuotes.count == 1 && lines.layoutSize.width <= 240, "multiline code keeps a single contained block")
+for maximum: Int32 in [1, 2] {
+    let limited = layout(body, header: "копировать", width: 240, size: 13)
+    limited.maximumNumberOfLines = maximum
+    limited.calculateLayout()
+    let reference = layout(body, header: nil, width: 240, size: 13)
+    reference.maximumNumberOfLines = maximum
+    reference.calculateLayout()
+    check(limited.lines.count == Int(maximum), "limited line count preserved \(maximum)")
+    let headerMinimum = TextNodeLayout("копировать", font: NSFont.systemFont(ofSize: 13, weight: .medium)).size.width + 28
+    check(limited.layoutSize.width == max(reference.layoutSize.width, headerMinimum), "limited layout adds no header width to body \(maximum)")
+}
+for separator in ["", "\n", "\nplain separator\n"] {
+    let combined = NSMutableAttributedString(attributedString: layout(body + "\n", header: "shell", width: 240, size: 13).attributedString)
+    combined.append(NSAttributedString(string: separator, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .medium)]))
+    combined.append(layout(body, header: "копировать", width: 240, size: 13).attributedString)
+    let ranges = FoldingGeometry.breakString(combined)
+    let measured = ranges.map { TextViewLayout(combined.attributedSubstring(from: $0), width: 240) }
+    measured.forEach { $0.calculateLayout() }
+    check(measured.allSatisfy { $0.layoutSize.width <= 240 && $0.blockQuotes.allSatisfy { $0.frame.maxX <= 240 } }, "multiple code headers remain contained separatorLength=\(separator.utf16.count)")
+    check(measured.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.range.length } } == ranges.reduce(0) { $0 + $1.length }, "multiple headers preserve all partitioned text separatorLength=\(separator.utf16.count)")
+}
+let oversizedHeader = layout("x", header: "WWWWWWWWWWWWWWW", width: 160, size: 13)
+let oversizedMinimum = oversizedHeader.blockQuotes[0].header!.0.size.width + 28
+check(oversizedHeader.lines[0].range == NSRange(location: 0, length: 1), "oversized header does not lose body glyph")
+check(oversizedHeader.layoutSize.width == oversizedMinimum, "oversized header uses intrinsic minimum rather than body addition")
+print("BOUNDARY oversized header minimum=\(oversizedMinimum) available=160 measured=\(oversizedHeader.layoutSize.width); header truncation remains out of scope")
+print("SUMMARY passed=\(passed) failed=\(failed)")
+exit(failed == 0 ? 0 : 1)

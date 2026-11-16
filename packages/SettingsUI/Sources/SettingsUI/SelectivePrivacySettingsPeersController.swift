@@ -15,6 +15,7 @@ import AlertsUI
 import LocalAnimations
 import AvatarUI
 import ShortPeerRow
+import AppAnalytics
 
 
 private final class SelectivePrivacyPeersControllerArguments {
@@ -207,6 +208,7 @@ open class SelectivePrivacySettingsPeersController<Context: AccountContextProtoc
         self.premiumUsers = premiumUsers
         self.enableForBots = enableForBots
         super.init(context)
+        self.analyticsScreen = feeExceptions ? AnalyticsScreen.settingsPrivacyMessagesFeeExceptions : AnalyticsScreen.settingsPrivacyExceptions
     }
     
     open override var defaultBarTitle: String {

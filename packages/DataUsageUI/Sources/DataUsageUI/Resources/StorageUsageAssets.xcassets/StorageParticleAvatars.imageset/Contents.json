@@ -1,12 +1,18 @@
 {
-  "images" : [
+  "images": [
     {
-      "filename" : "Profile Photos.svg",
-      "idiom" : "universal"
+      "filename": "StorageParticleAvatars.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "StorageParticleAvatars@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "xcode",
+    "version": 1
   }
 }

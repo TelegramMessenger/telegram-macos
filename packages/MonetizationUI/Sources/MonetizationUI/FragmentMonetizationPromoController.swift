@@ -17,6 +17,7 @@ import AlertsUI
 import LocalAnimations
 import TelegramMedia
 import InlineStickerLayer
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -238,6 +239,7 @@ public func FragmentMonetizationPromoController(context: any AccountContextProto
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsScreen = .peerInfoMonetizationAbout
     
     controller.onDeinit = {
         actionsDisposable.dispose()

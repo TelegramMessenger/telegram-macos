@@ -192,8 +192,7 @@ public final class GroupCallView : View {
         
         addSubview(peersTableContainer)
 
-        let tableGlass = LiquidGlassView(frame: NSZeroRect, cornerRadius: 20, hasShadow: true, hasBorder: true, forceAppearance: .forceDark)
-        tableGlass.customTint = TelegramThemeHooks.shared.darkAppearance().colors.accent.withAlphaComponent(0.03)
+        let tableGlass = LiquidGlassView(frame: NSZeroRect, cornerRadius: 20, hasShadow: false, hasBorder: false, forceAppearance: .forceDark, customTint: GroupCallTheme.membersColor.withAlphaComponent(0.35), forceBlur: true)
         addSubview(tableGlass, positioned: .above, relativeTo: peersTableContainer)
         glassTableBackgroundView = tableGlass
 

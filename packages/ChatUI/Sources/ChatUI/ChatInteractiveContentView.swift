@@ -669,7 +669,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
         player.view.layer?.opacity = 0
         player.view.corners = self.appliedCorners
         player.view.preventsCapture = parameters?.isProtected ?? false
-        addSubview(player.view, positioned: .above, relativeTo: image.view)
+        placeAboveImage(player.view)
         player.mediaPlayer.attachPlayerView(player.view)
         livePhotoView = player
         livePhotoPlayed = false
@@ -754,6 +754,27 @@ public class ChatInteractiveContentView: ChatMediaContentView {
         updatePlayerIfNeeded()
     }
     
+    private func placeAboveImage(_ view: NSView) {
+        if let imageView = image.view {
+            addSubview(view, positioned: .above, relativeTo: imageView)
+        } else if let first = subviews.first {
+            if first !== view {
+                addSubview(view, positioned: .below, relativeTo: first)
+            }
+        } else {
+            addSubview(view)
+        }
+    }
+
+    private func isPlacedAboveImage(_ view: NSView) -> Bool {
+        guard view.superview === self else { return false }
+        let subviews = self.subviews
+        if let imageView = image.view {
+            return subviews.firstIndex(of: imageView).map { $0 + 1 < subviews.count && subviews[$0 + 1] === view } == true
+        }
+        return subviews.first === view
+    }
+
     public override func viewDidMoveToWindow() {
         updateListeners()
         self.updatePlayerIfNeeded()
@@ -994,7 +1015,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
         
         let isSensitive: Bool
         if let parent = parent {
-            isSensitive = parent.isSensitiveContent(platform: "ios") && !context.contentConfig.sensitiveContentEnabled
+            isSensitive = parent.isSensitiveContent(platform: "ios", contentSettings: context.contentSettings) && !context.contentConfig.sensitiveContentEnabled
         } else {
             isSensitive = false
         }
@@ -1028,7 +1049,15 @@ public class ChatInteractiveContentView: ChatMediaContentView {
 
         
         
-        let hostsImageLayer = !ChatRowView.usesLegacyRowChrome && !isProtected && !isSpoiler && parent?.containsSecretMedia != true && (media as? TelegramMediaImage).map { $0.video == nil } == true
+        let hostableMedia: Bool
+        if let image = media as? TelegramMediaImage {
+            hostableMedia = image.video == nil
+        } else if let file = media as? TelegramMediaFile {
+            hostableMedia = file.isVideo || file.isAnimated
+        } else {
+            hostableMedia = false
+        }
+        let hostsImageLayer = !ChatRowView.usesLegacyRowChrome && !isProtected && !isSpoiler && parent?.containsSecretMedia != true && hostableMedia
         self.image.setLayerHosted(hostsImageLayer, keepingImage: !clearInstantly)
         self.image.preventsCapture = isProtected
 
@@ -1303,10 +1332,8 @@ public class ChatInteractiveContentView: ChatMediaContentView {
                                 
                                 autoplay.view.frame = NSMakeRect(0, 0, value.width, value.height)
                                 autoplay.view.corners = corners
-                                let subviews = strongSelf.subviews
-                                let isPlacedAboveImage = autoplay.view.superview === strongSelf && strongSelf.image.view.flatMap({ subviews.firstIndex(of: $0) }).map { $0 + 1 < subviews.count && subviews[$0 + 1] === autoplay.view } == true
-                                if !isPlacedAboveImage {
-                                    strongSelf.addSubview(autoplay.view, positioned: .above, relativeTo: strongSelf.image.view)
+                                if !strongSelf.isPlacedAboveImage(autoplay.view) {
+                                    strongSelf.placeAboveImage(autoplay.view)
                                 }
                                 if strongSelf.attachedAutoplayView !== autoplay {
                                     autoplay.mediaPlayer.attachPlayerView(autoplay.view)
@@ -1541,11 +1568,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
                         guard let fileAndRange else {
                             return .complete()
                         }
-                        return freeMediaFileResourceInteractiveFetched(postbox: context.account.postbox, userLocation: .peer(parent.id.peerId), fileReference: fileAndRange.0, resource: fileAndRange.0.media.resource, range: (fileAndRange.1, .default))
-                        |> ignoreValues
-                        |> `catch` { _ -> Signal<Never, NoError> in
-                            return .complete()
-                        }
+                        return fetchedResourceRangeUntilOnDisk(mediaBox: context.account.postbox.mediaBox, resource: fileAndRange.0.media.resource, range: fileAndRange.1, fetch: freeMediaFileResourceInteractiveFetched(postbox: context.account.postbox, userLocation: .peer(parent.id.peerId), fileReference: fileAndRange.0, resource: fileAndRange.0.media.resource, range: (fileAndRange.1, .default)))
                     }
                     partDisposable.set(fetchSignal.start())
                 } else {
@@ -1564,8 +1587,9 @@ public class ChatInteractiveContentView: ChatMediaContentView {
     }
 
     #if DEBUG
-    var debugImageHost: (isPhoto: Bool, layer: Bool) {
-        return (media is TelegramMediaImage, image.layer != nil)
+    var debugImageHost: (isPhoto: Bool, isVideo: Bool, layer: Bool) {
+        let file = media as? TelegramMediaFile
+        return (media is TelegramMediaImage, file.map { $0.isVideo || $0.isAnimated } == true, image.layer != nil)
     }
     #endif
     public override var contents: Any? {

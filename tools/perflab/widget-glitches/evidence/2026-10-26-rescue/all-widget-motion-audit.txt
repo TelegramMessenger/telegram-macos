@@ -1,0 +1,46 @@
+Widget source/layout final verification — 2026-10-26 13:01 local
+
+Local commits (no push)
+Packing/phrasebook geometry: app 7faf9779a; corpus 935d91d; native tests 12fb7a4.
+Routine navigation/stopwatch: app 0fb856845; corpus 3f620d0; native tests 97b685a.
+Both submodule working trees clean after these commits. Parent owns final submodule pointer/report commit.
+
+Checks
+19/19 current repaired HTML payloads pass node --check and gzip<4096 (3122–3968 bytes). Exact source hashes/sizes: /tmp/widget-rescue/all19-final-source-checks.json.
+ScopedWidgetMotionTests: 2/2 PASS,0.967s. Covers5 navigation variants with opaque stationary panels, Sprint hidden empty state, both stopwatch chart variants' immediate width and stable DOM through resume/pause.
+Combined final native suite:6/6 PASS,28.121s. Additional4 tests cover first-frame music/packing/phrasebook at320/440 widths and all19 startup hidden state (33 hidden elements:zero geometry and identical paint).
+Native log: /tmp/widget-rescue/inflight-verified.log.
+Packing/phrasebook geometry regressions:2/2 PASS2.075s; original payloads fail42 assertions with same binary (checkbox ink/ring/list transforms). Proof logs: rescue-native-final.log,geometry-before-proof.log.
+Root reports final real-app exact-payload run complete:19 widgets,144 actions,0missing targets/size errors;36 scanned widgets,0script/dead/unavailable;all19 exported hashes match. This is runtime validation for the tested sequences, not a guarantee against every possible state.
+
+All19 motion audit matrix
+Widget | Routine navigation/state update | Feedback intentionally preserved
+reviews | Removed whole-list/paragraph fades; early input suppresses replayed intro | Helpful count bounce,initial stats
+shortcuts | Removed list/quiz navigation fade/translation; early input suppresses intro wave | Keypress sequence,answer pop/shake
+shortcuts-legacy | Same repair,preserving legacy content | Keypress sequence,answer pop/shake
+sprint | Removed list filter/drop/reset movement; hidden empty row fixed | Goal banner,progress/task feedback
+slots | Removed paytable navigation fade/translation; hidden state fixed | Reels,bet/win/refill,jackpot/confetti
+stopwatch | Removed list navigation/lap motion; bars immediate; unchanged lap DOM cached | Clock,ring/reset,single fresh-lap tint
+stopwatch-fluid | Same repair,preserving fluid/theme/persistence variant | Clock,ring/reset,single fresh-lap tint
+packing | Removed retained list transforms and checkbox scale;fixed20px controls/full-width boxes;immediate percent | All-packed confetti
+phrasebook | Removed retained panel motion;uniform8px insets/natural reveal height | Quiz card flip
+music-player | No element.animate calls;queue toggle/persistent queue nodes | Equalizer,playhead,seek/data movement
+weather | No element.animate calls;stable graph updates;hidden state fixed | 160–180ms data interpolation
+live-poll | Root/header stable;incoming tab only6px140ms transform;hidden state fixed | Vote reorder/share/+1/winner feedback
+ type-specimen | Root/header stable;incoming pane only6px140ms transform;hidden state fixed | Font/weight/size change intrinsic to sample
+retention-cohorts | Mode/unit immediate;no repeated900ms intro | Selected-row detail pop/dim/curve
+revenue-table | Sort immediate;tbody expand/reset only4px140ms transform | Changed-row highlights,detail-bar values
+rendering-quiz | Question/options only6px transform;no whole-root fade | Game progression,wrong-answer shake,score/result pop
+sudoku | Selection changes colors;hidden state fixed | Board new/completion and cell entry/check/solve
+ tic-tac-toe | Difficulty/first-player immediate;hidden state fixed | Marks,restart/result pop,winning line/hint
+whack-a-mole | Level styling immediate;Start fade is no-op;menu hidden state fixed | Countdown,moles,hit/miss,score/result
+
+Remaining short transform-only effects in poll/type/table were inspected by actual helper target and trigger. They do not fade the whole widget, and no failure was established in the final tested sequences. Keep meaningful game/data/celebration feedback; do not remove effects solely by matching animation keywords.
+Detailed helper/DOM audit: /tmp/widget-rescue/all-widget-motion-audit.txt.
+
+Native geometry screenshots (white composites,fitted widget height)
+/tmp/widget-rescue/geometry/packing-320-checked-and-tabs.png
+/tmp/widget-rescue/geometry/packing-440-checked-and-tabs.png
+/tmp/widget-rescue/geometry/phrasebook-320-reveal-and-tabs.png
+/tmp/widget-rescue/geometry/phrasebook-440-reveal-and-tabs.png
+Packing320 and phrasebook440 visually inspected:stable full-size controls and consistent padding.

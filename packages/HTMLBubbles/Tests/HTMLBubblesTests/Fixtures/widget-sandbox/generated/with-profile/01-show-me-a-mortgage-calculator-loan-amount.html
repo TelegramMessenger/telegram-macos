@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mortgage Calculator</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1f2937; --muted: #6b7280; --line: #d1d5db; --accent: #4338ca; --panel: #eef2ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1f2937; --fg: #f3f4f6; --muted: #9ca3af; --line: #4b5563; --accent: #a5b4fc; --panel: #312e81; } }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); }
+  h2 { margin: 0 0 12px; font-size: 17px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input[type=number] { width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 12px; background: transparent; color: inherit; }
+  input[type=range] { width: 100%; margin-bottom: 12px; accent-color: var(--accent); }
+  .result { background: var(--panel); border-radius: 10px; padding: 14px; }
+  .big { font-size: 26px; font-weight: 600; color: var(--accent); }
+  .row { display: flex; justify-content: space-between; font-size: 14px; margin-top: 6px; }
+  button { margin-top: 12px; width: 100%; padding: 10px; border: none; border-radius: 8px; background: var(--accent); color: var(--bg); font-size: 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h2>🏠 Mortgage Calculator</h2>
+<label for="amount">Loan amount ($)</label>
+<input type="number" id="amount" value="300000" min="1000" step="1000">
+<label for="rate">Interest rate: <span id="rateVal">6.5</span>%</label>
+<input type="range" id="rate" min="0.5" max="15" step="0.1" value="6.5">
+<label for="years">Term: <span id="yearsVal">30</span> years</label>
+<input type="range" id="years" min="1" max="40" step="1" value="30">
+<div class="result">
+  <div style="font-size:13px;color:var(--muted)">Monthly payment</div>
+  <div class="big" id="monthly">$0</div>
+  <div class="row"><span>Total paid</span><strong id="total">$0</strong></div>
+  <div class="row"><span>Total interest</span><strong id="interest">$0</strong></div>
+</div>
+<button id="send">Send this estimate to the chat</button>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  var last = {};
+  function calc() {
+    var P = parseFloat($('amount').value) || 0;
+    var r = parseFloat($('rate').value) / 100 / 12;
+    var n = parseInt($('years').value, 10) * 12;
+    $('rateVal').textContent = $('rate').value;
+    $('yearsVal').textContent = $('years').value;
+    var m = r === 0 ? P / n : P * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+    last = { m: m, total: m * n, interest: m * n - P, P: P, years: $('years').value, rate: $('rate').value };
+    $('monthly').textContent = fmt.format(m);
+    $('total').textContent = fmt.format(m * n);
+    $('interest').textContent = fmt.format(m * n - P);
+  }
+  ['amount', 'rate', 'years'].forEach(function (id) { $(id).addEventListener('input', calc); });
+  $('send').addEventListener('click', function () {
+    if (window.TelegramWidget) TelegramWidget.sendMessage('Mortgage: ' + fmt.format(last.P) + ' at ' + last.rate + '% over ' + last.years + ' years → ' + fmt.format(last.m) + '/month, ' + fmt.format(last.interest) + ' total interest');
+  });
+  calc();
+  if (window.TelegramWidget) TelegramWidget.ready();
+</script>
+</body>
+</html>

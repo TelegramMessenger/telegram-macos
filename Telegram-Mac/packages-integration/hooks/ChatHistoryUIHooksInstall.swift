@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -399,35 +400,37 @@ func installChatHistoryUIHooks() {
     }, emptyChatControllerType: {
         return EmptyChatViewController.self
     }, wallet: makeChatHistoryWalletHooks(), richText: makeChatHistoryRichTextHooks())
-    hooks.makeShareMessagesModalWithContext = { context, message, groupedMessages in
-        let controller = ShareModalController(ShareMessageObject(context.concrete, message, groupedMessages ?? []))
+    hooks.makeShareMessagesModalWithContext = { context, message, groupedMessages, analyticsContext in
+        let journey = AnalyticsShareJourney(context: analyticsContext, entry: groupedMessages == nil ? .messageAction : .albumAction)
+        let controller = ShareModalController(ShareMessageObject(context.concrete, message, groupedMessages ?? []), analyticsContext: analyticsContext)
+        controller.setAnalyticsShareJourney(journey)
         return controller
     }
-    hooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages in
-        return ForwardMessagesObject(context.concrete, messages: messages, album: album, getMessages: getMessages)
+    hooks.makeForwardMessagesObjectWithContext = { context, messages, album, getMessages, analyticsContext in
+        return ForwardMessagesObject(context.concrete, messages: messages, album: album, getMessages: getMessages, analyticsContext: analyticsContext)
     }
-    hooks.pushReactionPeerInfoWithContext = { navigation, context, peerId, messageId in
-        PeerInfoController.push(navigation: navigation, context: context.concrete, peerId: peerId, source: .reaction(messageId))
+    hooks.pushReactionPeerInfoWithContext = { navigation, context, peerId, messageId, analyticsContext in
+        PeerInfoController.push(navigation: navigation, context: context.concrete, peerId: peerId, source: .reaction(messageId), analyticsContext: analyticsContext)
     }
-    hooks.makeChannelParticipantControllerWithContext = { context, peerId, participant in
-        return ChannelParticipantController(context: context.concrete, peerId: peerId, participant: participant)
+    hooks.makeChannelParticipantControllerWithContext = { context, peerId, participant, analyticsContext in
+        return ChannelParticipantController(context: context.concrete, peerId: peerId, participant: participant, analyticsContext: analyticsContext)
     }
-    hooks.makeTranslateModalWithContext = { context, from, toLang, text, entities, source, onToneChanged, translateEntireChat in
+    hooks.makeTranslateModalWithContext = { context, from, toLang, text, entities, source, onToneChanged, translateEntireChat, analyticsContext in
         switch source {
         case let .richMessage(id, page):
-            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, canBreak: true, messageId: id, isRichMessage: true, richMessagePage: page, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat)
+            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, canBreak: true, messageId: id, isRichMessage: true, richMessagePage: page, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat, analyticsContext: analyticsContext)
         case let .poll(id):
-            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, canBreak: false, messageId: id, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat)
+            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, canBreak: false, messageId: id, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat, analyticsContext: analyticsContext)
         case let .message(id):
-            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, messageId: id, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat)
+            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, messageId: id, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat, analyticsContext: analyticsContext)
         case .selectedText:
-            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat)
+            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, entities: entities, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat, analyticsContext: analyticsContext)
         case let .transcription(id):
-            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, messageId: id, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat)
+            return TranslateModalController(context: context.concrete, from: from, toLang: toLang, text: text, messageId: id, dismissOnly: true, onToneChanged: onToneChanged, translateEntireChat: translateEntireChat, analyticsContext: analyticsContext)
         }
     }
-    hooks.executeLinkWithContext = { link in
-        execute(inapp: link as! inAppLink)
+    hooks.executeLinkWithContext = { link, analyticsContext in
+        execute(inapp: link as! inAppLink, analyticsContext: analyticsContext)
     }
     ChatHistoryUIHooks.install(hooks)
 }

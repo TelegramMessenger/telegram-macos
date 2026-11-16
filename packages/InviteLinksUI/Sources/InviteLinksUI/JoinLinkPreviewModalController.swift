@@ -15,6 +15,7 @@ import AlertsUI
 import InAppSettings
 import AvatarUI
 import ShortPeerRow
+import AppAnalytics
 
 private final class JoinLinkPreviewHeaderRowItem: GeneralRowItem {
     fileprivate let context: any AccountContextProtocol
@@ -231,8 +232,14 @@ private func joinLinkPreviewEntries(context: any AccountContextProtocol, peer: T
     return entries
 }
 
-
 public func JoinLinkPreviewModalController(_ context: any AccountContextProtocol, hash: String, join: ExternalJoiningChatState, interaction: @escaping (Peer) -> Void) -> InputDataModalController {
+    return JoinLinkPreviewModalController(context, hash: hash, join: join, analyticsContext: nil, interaction: interaction)
+}
+
+public func JoinLinkPreviewModalController(_ context: any AccountContextProtocol, hash: String, join: ExternalJoiningChatState, analyticsContext: AnalyticsContext?, interaction: @escaping (Peer) -> Void) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let action = InviteJoinAction()
     let request = MetaDisposable()
 
@@ -255,6 +262,8 @@ public func JoinLinkPreviewModalController(_ context: any AccountContextProtocol
     let signal: Signal<InputDataSignalValue, NoError> = .single(InputDataSignalValue(entries: joinLinkPreviewEntries(context: context, peer: peer, participants: participants, groupUserCount: groupUserCount)))
 
     let controller = InputDataController(dataSignal: signal, title: " ")
+    controller.analyticsScreen = .linkInvitePreview
+    controller.analyticsContext = origin
 
     controller.onDeinit = {
         action.close()
@@ -265,7 +274,7 @@ public func JoinLinkPreviewModalController(_ context: any AccountContextProtocol
         guard let window = controller?.window, let attempt = action.begin() else { return }
         let subscription = MetaDisposable()
         request.set(subscription)
-        subscription.set(performInviteJoin(context: context, hash: hash, window: window, requestSentAsSuccess: false, takeResult: { terminal in
+        subscription.set(performInviteJoin(context: context, hash: hash, window: window, analyticsContext: origin, requestSentAsSuccess: false, takeResult: { terminal in
             action.take(attempt, terminal: terminal)
         }, close: { close?() }, interaction: interaction))
     }, singleButton: true)
@@ -275,6 +284,7 @@ public func JoinLinkPreviewModalController(_ context: any AccountContextProtocol
         request.dispose()
         finish()
     }, size: NSMakeSize(300, 0))
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()

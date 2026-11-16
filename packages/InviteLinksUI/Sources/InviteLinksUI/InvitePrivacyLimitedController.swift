@@ -15,6 +15,7 @@ import AlertsUI
 import InAppSettings
 import AvatarUI
 import ShortPeerRow
+import AppAnalytics
 
 private final class UpgradeToPremiumRowItem : GeneralRowItem {
     public let headerLayout: TextViewLayout
@@ -162,7 +163,7 @@ private final class UpgradeToPremiumRowView : GeneralContainableRowView {
         action.set(color: theme.colors.underSelectedColor, for:.Normal)
         action.set(font: .medium(.text), for: .Normal)
         action.sizeToFit(.zero, NSMakeSize(frame.width - 40, 40), thatFit: true)
-        action.layer?.cornerRadius = 10
+        action.layer?.cornerRadius = action.frame.height / 2
         
         
         
@@ -443,6 +444,7 @@ public func InvitePrivacyLimitedController(context: any AccountContextProtocol, 
     
    
     let controller = InputDataController(dataSignal: signal, title: strings().inviteFailedTitle)
+    controller.analyticsScreen = .peerInfoInviteRestricted
     
     controller.onDeinit = {
         actionsDisposable.dispose()

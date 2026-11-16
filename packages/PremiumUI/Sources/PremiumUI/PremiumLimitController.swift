@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import Foundation
 import TGUIKit
 import TelegramMedia
@@ -803,7 +804,8 @@ public final class PremiumLimitController : ModalViewController {
         
         self.genericView.premium = { [weak self] in
             if !context.premiumIsBlocked {
-                let controller = PremiumBoardingController(context: context, source: source)
+                let analyticsContext = self?.analyticsContext ?? Analytics.shared.unresolvedContext()
+                let controller = PremiumBoardingController(context: context, source: source, analyticsContext: analyticsContext)
                 prem(with: controller, for: context.window)
             }
             self?.close()

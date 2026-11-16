@@ -417,18 +417,25 @@ open class ChatInputTextView: ScrollView, NSTextViewDelegate {
         super.setFrameSize(newSize)
     }
     
+    public var textAnchorHeight: CGFloat?
+
+    static func textFrame(in size: CGSize, textHeight: CGFloat, anchor: CGFloat?) -> NSRect {
+        guard textHeight < size.height else {
+            return CGRect(origin: .zero, size: NSMakeSize(size.width, max(textHeight, size.height)))
+        }
+        if let anchor, anchor < size.height {
+            return NSMakeSize(size.width, max(anchor, textHeight)).bounds.focus(NSMakeSize(size.width, textHeight))
+        }
+        return size.bounds.focus(NSMakeSize(size.width, textHeight))
+    }
+
     public func updateLayout(size: CGSize, textHeight: CGFloat, transition: ContainedViewLayoutTransition) {
         
         let immediate = ContainedViewLayoutTransition.immediate
         let contentRect = CGRect(origin: .zero, size: NSMakeSize(size.width, max(textHeight, size.height)))
         immediate.updateFrame(view: self.containerView, frame: contentRect)
         
-        let textRect: NSRect
-        if textHeight < size.height {
-            textRect = size.bounds.focus(NSMakeSize(size.width, textHeight))
-        } else {
-            textRect = contentRect
-        }
+        let textRect = ChatInputTextView.textFrame(in: size, textHeight: textHeight, anchor: textAnchorHeight)
         immediate.updateFrame(view: self.textView, frame: textRect)
 
         immediate.updateFrame(view: emojiContent, frame: textRect)
@@ -566,6 +573,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     
     public weak var customDelegate: ChatInputTextViewDelegate?
     private var quoteContinuation: (location: Int, quote: TextInputTextQuoteAttribute)?
+    private var insertedText: String?
     
     private var initialTypingForegroundColor: Any?
     private var capturedInitialTypingForegroundColor: Bool = false
@@ -622,6 +630,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     private let measurementTextContainer: ChatInputTextContainer
     private let measurementTextStorage: NSTextStorage
     private let measurementLayoutManager: NSLayoutManager
+    private let writingDirectionSelection = WritingDirectionSelection()
     
     private var blockQuotes: [Int: QuoteBackgroundView] = [:]
     private var collapseQuotes: [Int : Control] = [:]
@@ -679,6 +688,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         
         self.customTextStorage.delegate = self
         self.measurementTextStorage.delegate = self
+        self.writingDirectionSelection.attach(to: self)
         
         self.updateTextElements()
     }
@@ -745,6 +755,13 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     }
     
     
+    public func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) || editedMask.contains(.editedAttributes) else {
+            return
+        }
+        textStorage.alignParagraphsByWritingDirection(around: editedRange)
+    }
+
     public func layoutManager(_ layoutManager: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?, atEnd layoutFinishedFlag: Bool) {
         if textContainer !== self.customTextContainer {
             return
@@ -1374,6 +1391,33 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         }
     }
 
+    public override func moveLeft(_ sender: Any?) {
+        moveCrossingParagraphsInTextOrder {
+            super.moveLeft(sender)
+        }
+    }
+
+    public override func moveRight(_ sender: Any?) {
+        moveCrossingParagraphsInTextOrder {
+            super.moveRight(sender)
+        }
+    }
+
+    private func moveCrossingParagraphsInTextOrder(_ move: () -> Void) {
+        let before = self.selectedRange()
+        move()
+        let after = self.selectedRange()
+        guard before.length == 0, after.length == 0 else {
+            return
+        }
+        let paragraph = (self.string as NSString).paragraphRange(for: NSRange(location: before.location, length: 0))
+        if after.location < paragraph.location {
+            self.setSelectedRange(NSRange(location: paragraph.location - 1, length: 0))
+        } else if after.location >= NSMaxRange(paragraph), NSMaxRange(paragraph) > before.location {
+            self.setSelectedRange(NSRange(location: NSMaxRange(paragraph), length: 0))
+        }
+    }
+
     private func quoteToContinueOnNewLine() -> TextInputTextQuoteAttribute? {
         let range = self.selectedRange()
         guard range.length == 0, range.location > 0, let textStorage = self.textStorage else {
@@ -1398,7 +1442,9 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
                 self.typingAttributes = typingAttributes
             }
         }
+        self.insertedText = (string as? NSAttributedString)?.string ?? string as? String
         super.insertText(string, replacementRange: replacementRange)
+        self.insertedText = nil
     }
 
     private func handleBulletListContinuation() -> Bool {
@@ -1415,6 +1461,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
 
     func convertBulletMarkersIfNeeded() {
         guard isAutomaticBulletListEnabled else { return }
+        guard self.insertedText == " " else { return }
         guard let textStorage = self.textStorage else { return }
 
         let text = textStorage.string as NSString
@@ -1433,7 +1480,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
             let lineRange = text.lineRange(for: NSMakeRange(cursorPosition - 1, 0))
             let distanceFromLineStart = (cursorPosition - 2) - lineRange.location
 
-            if distanceFromLineStart == 0 {
+            if distanceFromLineStart == 0, !isInsideCode(textStorage, range: precedingRange) {
                 let attrs = textStorage.attributes(at: checkStart, effectiveRange: nil)
                 textStorage.beginEditing()
                 textStorage.replaceCharacters(in: precedingRange, with: NSAttributedString(string: "• ", attributes: attrs))
@@ -1444,6 +1491,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
 
     func convertDoubleDashIfNeeded() {
         guard isAutomaticDashConversionEnabled else { return }
+        guard self.insertedText == "-" else { return }
         guard let textStorage = self.textStorage else { return }
 
         let text = textStorage.string as NSString
@@ -1458,7 +1506,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
 
         let precedingText = text.substring(with: precedingRange)
 
-        if precedingText == "--" {
+        if precedingText == "--", !isInsideCode(textStorage, range: precedingRange) {
             let attrs = textStorage.attributes(at: checkStart, effectiveRange: nil)
             let was = NSAttributedString(attributedString: textStorage)
             let wasRange = self.selectedRange()

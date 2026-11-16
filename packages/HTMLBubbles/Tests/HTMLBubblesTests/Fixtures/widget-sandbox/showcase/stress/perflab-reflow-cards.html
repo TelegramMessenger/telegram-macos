@@ -1,0 +1,12 @@
+<style>
+body{margin:0;background:#111924;color:#e9eff9;font:12px -apple-system,sans-serif}header{padding:16px;display:flex;align-items:center;justify-content:space-between}h2{margin:0;font-size:20px}button{background:#293b55;color:white;border:0;border-radius:8px;padding:8px 12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:0 12px 12px}.card{border:1px solid #334a65;border-radius:12px;padding:10px;background:linear-gradient(120deg,#263b55,#192a40);box-shadow:0 3px 7px #0006}.name{color:#a9c2df;font-size:10px}.track{height:5px;background:#111924;border-radius:3px;margin-top:8px;overflow:hidden}.fill{height:5px;width:50%;background:#35d6b3}.details{height:0;overflow:hidden;font-size:10px;color:#a9c2df;line-height:14px}.value{font:bold 17px Menlo,monospace;margin-top:5px}
+</style>
+<header><h2>Capacity planner</h2><button id="pause">Pause</button><button id="expand">Expand all</button></header><div class="grid" id="grid"></div>
+<script>
+const grid=document.getElementById('grid'),cards=[];
+for(let i=0;i<72;i++){const card=document.createElement('div');card.className='card';card.innerHTML='<div class="name">REGION '+String(i+1).padStart(2,'0')+'</div><div class="value">50%</div><div class="track"><div class="fill"></div></div><div class="details">Queue stable<br>Reserve available</div>';grid.appendChild(card);cards.push({value:card.querySelector('.value').firstChild,fill:card.querySelector('.fill'),details:card.querySelector('.details')});}
+let running=true,expanded=false,start=0,last=-1;
+function draw(step,all){for(let i=0;i<72;i++){if(!all&&i%6!==step%6)continue;const v=Math.round(50+Math.sin(step*.07+i)*45);cards[i].value.data=v+'%';cards[i].fill.style.width=v+'%';cards[i].details.style.height=(expanded?28:Math.round((1+Math.sin(step*.12+i*.2))*14))+'px';}}
+function frame(ms){if(!start)start=ms;const step=Math.floor((ms-start)/100);if(running&&step!==last){last=step;draw(step,false);}requestAnimationFrame(frame);}
+const pause=document.getElementById('pause'),expand=document.getElementById('expand');pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};expand.onclick=function(){expanded=!expanded;expand.textContent=expanded?'Animate height':'Expand all';draw(25,true);};window.stress={freeze:function(){running=false;expanded=false;draw(25,true);pause.textContent='Resume';},resume:function(){running=true;pause.textContent='Pause';}};draw(0,true);requestAnimationFrame(frame);
+</script>

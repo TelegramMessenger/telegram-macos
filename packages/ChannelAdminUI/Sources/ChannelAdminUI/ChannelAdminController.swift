@@ -12,6 +12,7 @@ import GeneralRows
 import InputDataUI
 import ShortPeerRow
 import AlertsUI
+import AppAnalytics
 
 private func areAllAdminRightsEnabled(_ flags: TelegramChatAdminRightsFlags, peer: EnginePeer, except: TelegramChatAdminRightsFlags) -> Bool {
     return TelegramChatAdminRightsFlags.peerSpecific(peer: peer).subtracting(except).intersection(flags) == TelegramChatAdminRightsFlags.peerSpecific(peer: peer).subtracting(except)
@@ -869,12 +870,22 @@ private func channelAdminInputDataEntries(_ entries: [ChannelAdminEntry], argume
     return result
 }
 
-public func ChannelAdminModalController<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, adminId: PeerId, initialParticipant: ChannelParticipant?, updated: @escaping (TelegramChatAdminRights?) -> Void, upgradedToSupergroup: @escaping (PeerId, @escaping () -> Void) -> Void) -> InputDataModalController {
+public func ChannelAdminModalController<Context: AccountContextProtocol>(_ context: Context, peerId: PeerId, adminId: PeerId, initialParticipant: ChannelParticipant?, updated: @escaping (TelegramChatAdminRights?) -> Void, upgradedToSupergroup: @escaping (PeerId, @escaping () -> Void) -> Void, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext()).restricting(peerId: adminId).restricting(peerId: initialParticipant?.peerId ?? adminId)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     let updated: (TelegramChatAdminRights?) -> Void = { [updated] rights in
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         updated(rights)
     }
     let upgradedToSupergroup: (PeerId, @escaping () -> Void) -> Void = { [upgradedToSupergroup] peerId, completion in
+        let targetOrigin = origin.restricting(peerId: peerId)
+        let presentation = targetOrigin.beginPresentation()
+        defer { presentation.end() }
         upgradedToSupergroup(peerId) {
+            let presentation = targetOrigin.beginPresentation()
+            defer { presentation.end() }
             completion()
         }
     }
@@ -948,6 +959,15 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
     let latestChannelView = Atomic<PeerView?>(value: nil)
     let latestAdminView = Atomic<PeerView?>(value: nil)
 
+    let handleAdminRightsError: (UpdateChannelAdminRightsError) -> Void = { error in
+        updateState { $0.withUpdatedUpdating(false) }
+        let isGroup = latestChannelView.with { view -> Bool in
+            guard let view, let peer = peerViewMainPeer(view) else { return true }
+            return peer.isGroup || peer.isSupergroup
+        }
+        alert(for: context.window, info: channelAdminRightsErrorText(error, isGroup: isGroup))
+    }
+
     let arguments = ChannelAdminControllerArguments(context: context, toggleRight: { rights, flags, value in
         updateState { current in
             var updated = flags
@@ -994,9 +1014,7 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
                     dismissImpl()
                 }))
         } else {
-            updateRightsDisposable.set((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: adminId, adminRights: nil, rank: stateValue.with { $0.rank }) |> deliverOnMainQueue).start(error: { _ in
-
-            }, completed: {
+            updateRightsDisposable.set((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: adminId, adminRights: nil, rank: stateValue.with { $0.rank }) |> deliverOnMainQueue).start(error: handleAdminRightsError, completed: {
                 updated(nil)
                 dismissImpl()
             }))
@@ -1145,6 +1163,8 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
     let controller = InputDataController(dataSignal: signal, title: strings().adminsAdmin, getBackgroundColor: {
         theme.colors.listBackground
     })
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .peerInfoAdminsRights
 
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -1220,10 +1240,7 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
                     updateState { current in
                         return current.withUpdatedUpdating(true)
                     }
-                    updateRightsDisposable.set((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: updateFlags), rank: stateValue.with { $0.rank }, guardBotId: guardBotId) |> deliverOnMainQueue).start(error: { error in
-                        var bp = 0
-                        bp += 1
-                    }, completed: {
+                    updateRightsDisposable.set((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: updateFlags), rank: stateValue.with { $0.rank }, guardBotId: guardBotId) |> deliverOnMainQueue).start(error: handleAdminRightsError, completed: {
                         updated(TelegramChatAdminRights(rights: updateFlags))
                         dismissImpl()
                     }))
@@ -1277,9 +1294,7 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
                             } else {
                                 guardBotId = nil
                             }
-                            updateRightsDisposable.set((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: updateFlags), rank: stateValue.with { $0.rank }, guardBotId: guardBotId) |> deliverOnMainQueue).start(error: { _ in
-
-                            }, completed: {
+                            updateRightsDisposable.set((context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: peerId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: updateFlags), rank: stateValue.with { $0.rank }, guardBotId: guardBotId) |> deliverOnMainQueue).start(error: handleAdminRightsError, completed: {
                                 updated(TelegramChatAdminRights(rights: updateFlags))
                                 dismissImpl()
                             }))
@@ -1357,10 +1372,11 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
 
                             let guardBotId: PeerId? = (processJoinRequestsEnabled && supportsGuard) ? adminId : nil
                             return  context.peerChannelMemberCategoriesContextsManager.updateMemberAdminRights(peerId: upgradedPeerId, memberId: adminId, adminRights: TelegramChatAdminRights(rights: updateFlags), rank: stateValue.with { $0.rank }, guardBotId: guardBotId)
-                                |> mapToSignal { _ -> Signal<PeerId?, NoError> in
-                                    return .complete()
+                                |> map { _ -> PeerId? in upgradedPeerId }
+                                |> `catch` { error -> Signal<PeerId?, NoError> in
+                                    handleAdminRightsError(error)
+                                    return .single(nil)
                                 }
-                                |> then(.single(upgradedPeerId))
                         }
                         |> deliverOnMainQueue
 
@@ -1400,6 +1416,7 @@ public func ChannelAdminModalController<Context: AccountContextProtocol>(_ conte
     }, singleButton: true)
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions, size: NSMakeSize(350, 360))
+    modalController.analyticsContext = origin
 
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: { [weak modalController] in
         modalController?.close()

@@ -1,4 +1,5 @@
 import Foundation
+import AppAnalytics
 import TelegramCore
 import SwiftSignalKit
 import TGUIKit
@@ -843,8 +844,14 @@ public final class ReactionPeerMenu : ContextMenuItem {
     private let disposable = MetaDisposable()
     private let afterNameBadge: CGImage?
     private let message: Message?
+    private let analyticsContext: AnalyticsContext
 
-    public init(title: String, handler:@escaping()->Void, peer: Peer, context: any AccountContextProtocol, reaction: Source?, readTimestamp: Int32? = nil, message: Message? = nil, destination: Destination = .common, afterNameBadge: CGImage? = nil, removeTail: Bool = true, overrideWidth: CGFloat? = nil, selfSaved: Bool = true, canDelete: Bool = false) {
+    public init(title: String, handler:@escaping()->Void, peer: Peer, context: any AccountContextProtocol, reaction: Source?, readTimestamp: Int32? = nil, message: Message? = nil, destination: Destination = .common, afterNameBadge: CGImage? = nil, removeTail: Bool = true, overrideWidth: CGFloat? = nil, selfSaved: Bool = true, canDelete: Bool = false, analyticsContext: AnalyticsContext? = nil) {
+        let inherited = message?.containsSecretMedia == true ? Analytics.shared.unresolvedContext() : (analyticsContext ?? Analytics.shared.unresolvedContext())
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message?.id.peerId ?? peer.id, inherited: inherited).restricting(peerId: peer.id)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
+        self.analyticsContext = origin
         self.reaction = reaction
         self.peer = peer
         self.context = context
@@ -859,12 +866,15 @@ public final class ReactionPeerMenu : ContextMenuItem {
             let menu = ContextMenu()
             menu.addItem(ContextMenuItem(strings().messageContextDelete, handler: { [weak self] in
                 guard let self, let message = self.message else { return }
+                let origin = Analytics.shared.captureContext(engine: context.engine, peerId: message.id.peerId, inherited: self.analyticsContext).restricting(peerId: self.peer.id)
+                let presentation = origin.beginPresentation()
+                defer { presentation.end() }
                 let chatPeerId = message.id.peerId
                 guard let channel = message.peers[chatPeerId] as? TelegramChannel else {
                     return
                 }
                 let reactionPeer = self.peer
-                showModal(with: DeleteGroupMessagesController(context: context, channel: channel, messages: [message], allPeers: Set([reactionPeer.id]), reactionAuthor: reactionPeer.id, onComplete: {}), for: context.window)
+                showModal(with: DeleteGroupMessagesController(context: context, channel: channel, messages: [message], allPeers: Set([reactionPeer.id]), reactionAuthor: reactionPeer.id, analyticsContext: origin, onComplete: {}), for: context.window)
             }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
             self.submenu = menu
         }

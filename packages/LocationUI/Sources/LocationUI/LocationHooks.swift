@@ -5,6 +5,7 @@ import Postbox
 import TelegramCore
 import SwiftSignalKit
 import TelegramContext
+import AppAnalytics
 
 public protocol LocationChatInteraction: AnyObject {
     var locationContext: (any AccountContextProtocol) { get }
@@ -15,18 +16,26 @@ public protocol LocationChatInteraction: AnyObject {
 public struct LocationHooks {
     public let confirmSend: (any LocationChatInteraction, @escaping () -> Void) -> Void
 
-    public var confirmSendWithContext: ((any LocationChatInteraction, @escaping () -> Void) -> Void)?
+    public var confirmSendWithContext: ((any LocationChatInteraction, AnalyticsContext, @escaping () -> Void) -> Void)?
 
-    public func confirmSendObserved(_ interaction: any LocationChatInteraction, invoke: @escaping () -> Void) {
+    public func confirmSendObserved(_ interaction: any LocationChatInteraction, analyticsContext: AnalyticsContext, invoke: @escaping () -> Void) {
         let context = interaction.locationContext
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: interaction.locationPeerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let confirmed = {
+            let current = Analytics.shared.captureContext(engine: context.engine, peerId: interaction.locationPeerId, inherited: origin)
+            let presentation = current.beginPresentation()
+            defer { presentation.end() }
             invoke()
         }
         if let confirmSendWithContext {
-            confirmSendWithContext(interaction, confirmed)
+            confirmSendWithContext(interaction, origin, confirmed)
         } else {
+            origin.scope?.exclude()
+            let fallback = Analytics.shared.unresolvedContext().beginPresentation()
             confirmSend(interaction) {
-                confirmed()
+                withExtendedLifetime(fallback) { confirmed() }
             }
         }
     }

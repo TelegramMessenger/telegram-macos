@@ -1,0 +1,50 @@
+<style>
+body{margin:0;background:#101923;color:#edf3ff;font:12px -apple-system,sans-serif}
+header{padding:16px;display:flex;align-items:center;gap:8px}h2{font-size:19px;margin:0;flex:1}
+button{background:#293d58;color:white;border:0;border-radius:8px;padding:8px}
+.summary{margin:0 16px 12px;color:#a6b8cf}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:0 12px 12px;box-sizing:border-box}
+.card{min-width:0;padding:8px;background:#1c2c40;border:1px solid #39516e;border-radius:10px;box-shadow:0 3px 6px #0006}
+.label{display:flex;justify-content:space-between;font:10px Menlo,monospace;margin-bottom:6px}
+.clip{position:relative;height:44px;overflow:hidden;border-radius:6px;background:#101923}
+.strip{position:absolute;left:0;top:0;display:flex;width:320px;height:30px;align-items:center;white-space:nowrap}
+.strip.second{top:14px}.segment{width:80px;flex-shrink:0;box-sizing:border-box;padding:6px;color:#a1f4dc;background:linear-gradient(90deg,#164349,#253962)}
+.segment:nth-child(even){background:linear-gradient(90deg,#6e4e27,#43315e);color:#ffe0a9}
+.second .segment{background:linear-gradient(90deg,#59295d,#203f6b);color:#f5b9ed}
+</style>
+<header><h2>Fractional phase grid</h2><button id="pause">Pause</button><button id="resize">Lock width</button></header>
+<p class="summary">144 clipped scenes · 288 overlapping tracks · fractional movement and changing paint order</p>
+<div class="grid" id="grid"></div>
+<script>
+const grid=document.getElementById('grid'),clips=[],tracks=[],readings=[];
+for(let i=0;i<144;i++){
+  const card=document.createElement('div');card.className='card';
+  card.innerHTML='<div class="label"><span>P'+String(i+1).padStart(3,'0')+'</span><span class="reading">0.00</span></div><div class="clip"><div class="strip"></div><div class="strip second"></div></div>';
+  grid.appendChild(card);clips.push(card.querySelector('.clip'));readings.push(card.querySelector('.reading').firstChild);
+  const pair=card.querySelectorAll('.strip');
+  for(let j=0;j<2;j++){
+    for(let k=0;k<4;k++){
+      const segment=document.createElement('span');segment.className='segment';segment.textContent=(j?'Queue ':'Active ')+(i+k);pair[j].appendChild(segment);
+    }
+    tracks.push(pair[j]);
+  }
+}
+let running=true,resizing=true,start=0,frames=0;
+function draw(t,all){
+  grid.style.width=(resizing?95+5*Math.sin(t*.7):100).toFixed(3)+'%';
+  for(let i=0;i<clips.length;i++){
+    clips[i].style.left=(.375*Math.sin(t*.6+i*.23)).toFixed(3)+'px';
+    for(let j=0;j<2;j++){
+      const track=tracks[i*2+j];
+      track.style.transform='translateX('+(-94-88*Math.sin(t*.9+i*.31+j*.7)).toFixed(3)+'px)';
+      track.style.zIndex=String((Math.floor(t*.8+i/12)+j)%2);
+    }
+    if(all||i%6===frames%6)readings[i].data=(50+49*Math.sin(t+i*.1)).toFixed(2);
+  }
+}
+function frame(ms){if(!start)start=ms;if(running){draw((ms-start)/1000,false);frames++;}requestAnimationFrame(frame);}
+const pause=document.getElementById('pause'),resize=document.getElementById('resize');
+pause.onclick=function(){running=!running;pause.textContent=running?'Pause':'Resume';};
+resize.onclick=function(){resizing=!resizing;resize.textContent=resizing?'Lock width':'Resize';draw(1.25,true);};
+window.stress={freeze:function(){running=false;resizing=true;draw(1.25,true);pause.textContent='Resume';resize.textContent='Lock width';},resume:function(){running=true;pause.textContent='Pause';}};
+draw(0,true);requestAnimationFrame(frame);
+</script>

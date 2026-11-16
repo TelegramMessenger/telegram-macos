@@ -1,3 +1,4 @@
+import AppAnalytics
 import Localization
 import Postbox
 import StarsUI
@@ -11,18 +12,24 @@ final class ChatPaidMediaPurchase {
     private let active = Atomic(value: false)
     private let request = MetaDisposable()
 
-    func open(context: any AccountContextProtocol, messageId: MessageId, image: TelegramMediaImage, count: StarPurchaseType.PaidMediaCount) {
+    func open(context: any AccountContextProtocol, messageId: MessageId, image: TelegramMediaImage, count: StarPurchaseType.PaidMediaCount, analyticsContext: AnalyticsContext) {
         guard !active.swap(true) else { return }
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: messageId.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         let pending = MetaDisposable()
         request.set(pending)
         var receivedInvoice = false
         let signal = showModalProgress(signal: context.engine.payments.fetchBotPaymentInvoice(source: .message(messageId)) |> take(1) |> deliverOnMainQueue, for: context.window)
-        pending.set((signal).start(next: { [weak self] invoice in
+        pending.set(origin.preservingPresentation(signal).start(next: { [weak self] invoice in
             guard let self else { return }
             receivedInvoice = true
-            let controller = Star_PurschaseInApp(context: context, invoice: invoice, source: .message(messageId), type: .paidMedia(image, count))
+            let lifetime = origin.beginPresentation()
+            let controller = Star_PurschaseInApp(context: context, invoice: invoice, source: .message(messageId), type: .paidMedia(image, count), analyticsContext: origin)
             let onDeinit = controller.onDeinit
             controller.onDeinit = { [weak self] in
+                let delivery = origin.beginPresentation()
+                defer { delivery.end(); lifetime.end() }
                 onDeinit?()
                 _ = self?.active.swap(false)
             }
@@ -41,12 +48,15 @@ final class ChatPaidMediaPurchase {
     }
 }
 
-func openChatMessagePayment(context: any AccountContextProtocol, messageId: MessageId, invoice: TelegramMediaInvoice) {
+func openChatMessagePayment(context: any AccountContextProtocol, messageId: MessageId, invoice: TelegramMediaInvoice, analyticsContext: AnalyticsContext) {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: messageId.peerId, inherited: analyticsContext)
+    let presentation = origin.beginPresentation()
+    defer { presentation.end() }
     if let receiptMessageId = invoice.receiptMessageId {
-        ChatNavigationHooks.shared.showPaymentsReceiptObserved(context, receiptMessageId, invoice, context.window)
+        ChatNavigationHooks.shared.showPaymentsReceiptObserved(context, receiptMessageId, invoice, context.window, analyticsContext: origin)
     } else if invoice.currency == XTR {
-        showModal(with: Star_PurschaseInApp(context: context, invoice: invoice, source: .message(messageId)), for: context.window)
+        showModal(with: Star_PurschaseInApp(context: context, invoice: invoice, source: .message(messageId), analyticsContext: origin), for: context.window)
     } else {
-        ChatNavigationHooks.shared.showPaymentsCheckoutObserved(context, messageId, invoice, context.window)
+        ChatNavigationHooks.shared.showPaymentsCheckoutObserved(context, messageId, invoice, context.window, analyticsContext: origin)
     }
 }

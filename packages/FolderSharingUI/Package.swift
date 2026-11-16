@@ -13,6 +13,7 @@ let package = Package(
         .package(name: "TelegramTheme", path: "../TelegramTheme"),
         .package(name: "Localization", path: "../Localization"),
         .package(name: "TGUIKit", path: "../TGUIKit"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox")
@@ -25,6 +26,7 @@ let package = Package(
             .product(name: "TelegramTheme", package: "TelegramTheme"),
             .product(name: "Localization", package: "Localization"),
             .product(name: "TGUIKit", package: "TGUIKit"),
+            .product(name: "AppAnalytics", package: "AppAnalytics"),
             .product(name: "SwiftSignalKit", package: "SSignalKit"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "Postbox", package: "Postbox")

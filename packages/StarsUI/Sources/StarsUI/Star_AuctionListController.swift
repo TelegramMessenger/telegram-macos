@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class RowItem : GeneralRowItem {
@@ -355,6 +356,7 @@ public func Star_AuctionListController(context: (any AccountContextProtocol), ac
         dataSignal: signal,
         title: strings().starAuctionListActiveAuctionsOther(activeState.count)
     )
+    controller.analyticsScreen = .giftsAuctionList
 
     getController = { [weak controller] in
         return controller

@@ -45,7 +45,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         
         private let parentWindow: Window?
         
-        required init(frame frameRect: NSRect, context: any AccountContextProtocol, reaction: ContextReaction, add: @escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)?, theme: TelegramPresentationTheme, message: Message?, parentWindow: Window? = nil) {
+        required init(frame frameRect: NSRect, context: any AccountContextProtocol, reaction: ContextReaction, add: @escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)?, canSendReactions: @escaping () -> Bool, theme: TelegramPresentationTheme, message: Message?, parentWindow: Window? = nil) {
             
             let size: NSSize = reaction.isSelected ? NSMakeSize(25, 24) : NSMakeSize(frameRect.width, 30)
             let rect = CGRect(origin: .zero, size: size)
@@ -182,14 +182,20 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
             }
 
             if case .stars = reaction.value, let message {
-                self.set(handler: { _ in
+                let openStars: () -> Void = {
+                    guard canSendReactions() else {
+                        AppMenu.closeAll()
+                        return
+                    }
                     showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: getWindow())
                     AppMenu.closeAll()
+                }
+                self.set(handler: { _ in
+                    openStars()
                 }, for: .RightDown)
                 
                 self.set(handler: { _ in
-                    showModal(with: Star_ReactionsController(context: context, source: .message(.init(message))), for: getWindow())
-                    AppMenu.closeAll()
+                    openStars()
                 }, for: .LongMouseDown)
             } else {
                 
@@ -456,7 +462,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
     private let presentation: TelegramPresentationTheme
     private var hasBubble: Bool
     private let aboveText: TextViewLayout?
-    public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
+    public required init(frame frameRect: NSRect, context: any AccountContextProtocol, list: [ContextReaction], add:@escaping(MessageReaction.Reaction, Bool, NSRect?)->Void, addLarge: ((MessageReaction.Reaction, NSRect?)->Void)? = nil, canSendReactions: @escaping () -> Bool = { true }, radiusLayer: CGFloat? = 15, revealReactions:((ContextAddReactionsListView & StickerFramesCollector)->Void)? = nil, presentation: TelegramPresentationTheme = theme, hasBubble: Bool = true, aboveText: TextViewLayout? = nil, message: Message? = nil, parentWindow: Window? = nil) {
         self.list = list
         self.showMore = ShowMore(frame: NSMakeRect(0, 0, 34, 34), theme: presentation)
         self.revealReactions = revealReactions
@@ -563,7 +569,7 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector  {
         for reaction in list {
             let add:(ContextReaction)->Void = { reaction in
                 let itemSize = size.bounds
-                let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, addLarge: addLarge, theme: presentation, message: message, parentWindow: parentWindow)
+                let reaction = ReactionView(frame: NSMakeRect(x, y, itemSize.width, itemSize.height), context: context, reaction: reaction, add: add, addLarge: addLarge, canSendReactions: canSendReactions, theme: presentation, message: message, parentWindow: parentWindow)
                 
                 self.documentView.addSubview(reaction)
                 x += size.width + 3

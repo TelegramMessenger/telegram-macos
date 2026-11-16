@@ -31,7 +31,7 @@ if not args.baseline: input_methods.append('private func updateSubmissionState')
 ui_methods = '\n'.join(block(ui, x).replace('private ', '') for x in input_methods)
 if args.baseline: ui_methods += '\nfunc updateSubmissionState(_ state: ChatRecordingSubmissionState) {}'
 fixture = fixture.replace('__UI__', ui_methods)
-controller = read('ChatController', 'ChatUI'); controller = controller[controller.index('        chatInteraction.sendMedia ='):]
+controller = read('ChatController', 'ChatUI'); controller = controller[controller.index('        let sendMediaWithAnalytics:'):]
 fixture = fixture.replace('__EMPTY__', block(controller, 'if media.isEmpty'))
 fixture = fixture.replace('__BASELINE__', str(args.baseline).lower())
 with tempfile.TemporaryDirectory(prefix='recording-send-') as directory:

@@ -19,6 +19,7 @@ import LocalAnimations
 import MessageTextUtils
 import AvatarEditorUI
 import FilePanels
+import AppAnalytics
 
 public enum CommunityAddChatsMode: Equatable {
     case allMembers
@@ -420,6 +421,7 @@ public func CommunityEditController(_ context: (any AccountContextProtocol), com
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().communityEditTitle, removeAfterDisappear: false, hasDone: true)
+    controller.analyticsScreen = .communitySettings
 
     controller.updateDatas = { data in
         if let titleValue = data[_id_title]?.stringValue {

@@ -585,7 +585,7 @@ public func fetchAndPreloadReplyThreadInfo(context: any AccountContextProtocol, 
     let message: Signal<ChatReplyThreadMessage, FetchChannelReplyThreadMessageError>
     switch subject {
     case .channelPost(let messageId), .groupMessage(let messageId):
-        message = context.engine.messages.fetchChannelReplyThreadMessage(messageId: messageId, atMessageId: atMessageId)
+        message = context.engine.messages.fetchChannelReplyThreadMessage(messageId: messageId, atMessageId: atMessageId?.id)
     }
     
     return message

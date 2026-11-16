@@ -11,6 +11,7 @@ import Localization
 import LocalAnimations
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 private final class Arguments {
     let context: any AccountContextProtocol
@@ -148,6 +149,7 @@ public func SuggestPostController(context: any AccountContextProtocol, peerId: P
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().channelMessagesTitle, hasDone: true)
+    controller.analyticsScreen = .peerInfoDirectMessages
     
     controller.validateData = { _ in
         let state = stateValue.with { $0 }

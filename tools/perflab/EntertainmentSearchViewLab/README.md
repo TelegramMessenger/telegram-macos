@@ -13,14 +13,13 @@ swift test --sanitize=address --package-path tools/perflab/EntertainmentSearchVi
 
 ## Preview reproduction
 
-The app uses `LottiePlayerView` to play the bundled `duck_empty` animation once at up to 30 fps, or shows one frame with reduced motion. The standalone preview renders frame 20 of that same asset with RLottie and injects the image into the actual status view. The surrounding search header and footer are lab fixtures. These captures verify the view's appearance, not full-app integration or LottiePlayerView playback.
+The app uses `LottiePlayerView` to play the bundled `duck_empty` animation once at up to 30 fps, or shows one frame with reduced motion. The standalone preview renders frame 20 of that same asset with TLottie and injects the image into the actual status view. The surrounding search header and footer are lab fixtures. These captures verify the view's appearance, not full-app integration or LottiePlayerView playback.
 
 Build the reference renderer into `/tmp`, without changing any submodule files:
 
 ```sh
-cmake -S submodules/rlottie -B /tmp/EntertainmentSearch-rlottie -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DLOTTIE_MODULE=ON -DLOTTIE_THREAD=OFF '-DCMAKE_CXX_FLAGS=-Wno-error=sign-compare -Wno-error=unused-but-set-variable -U__ARM_NEON__'
-cmake --build /tmp/EntertainmentSearch-rlottie -j 6
-python3 tools/perflab/EntertainmentSearchViewLab/render_duck.py /tmp/EntertainmentSearch-rlottie/librlottie.dylib /tmp/EntertainmentSearch-duck.bgra
+cargo build --manifest-path submodules/tlottie/Cargo.toml --locked --features c-api --target-dir /tmp/EntertainmentSearch-tlottie
+python3 tools/perflab/EntertainmentSearchViewLab/render_duck.py /tmp/EntertainmentSearch-tlottie/debug/libtlottie.dylib /tmp/EntertainmentSearch-duck.bgra
 swift run --package-path tools/perflab/EntertainmentSearchViewLab --scratch-path /tmp/EntertainmentSearchViewLab-build SearchPreview /tmp/EntertainmentSearch-previews /tmp/EntertainmentSearch-duck.bgra
 ```
 

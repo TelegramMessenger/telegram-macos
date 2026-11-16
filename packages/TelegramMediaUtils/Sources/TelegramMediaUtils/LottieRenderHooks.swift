@@ -6,9 +6,9 @@ public protocol LottieFrameRenderer: AnyObject {
 }
 
 public struct LottieRenderHooks {
-    public let makeRenderer: (String, String) -> LottieFrameRenderer?
+    public let makeRenderer: (String) -> LottieFrameRenderer?
 
-    public init(makeRenderer: @escaping (String, String) -> LottieFrameRenderer?) {
+    public init(makeRenderer: @escaping (String) -> LottieFrameRenderer?) {
         self.makeRenderer = makeRenderer
     }
 

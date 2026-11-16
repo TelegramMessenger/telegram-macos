@@ -213,6 +213,7 @@ private final class ProgressView : View {
             }
             progressView.isHidden = false
         } else {
+            progressView.stop()
             progressView.isHidden = true
         }
         _ = updateBackgroundColor()

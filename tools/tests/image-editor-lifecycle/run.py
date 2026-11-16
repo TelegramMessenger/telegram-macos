@@ -6,6 +6,7 @@ import tempfile
 root = Path(__file__).resolve().parents[3]
 editor = (root / 'packages/AvatarEditorUI/Sources/AvatarEditorUI/EditImageModalController.swift').read_text()
 hooks = (root / 'packages/ChatUI/Sources/ChatUI/ChatNavigationHooks.swift').read_text()
+context = (root / 'packages/AppAnalytics/Sources/AppAnalytics/AnalyticsContext.swift').read_text()
 
 def section(source, start, end):
     offset = source.index(start)
@@ -15,6 +16,7 @@ parts = {
     '__EDITOR_CLOSE__': section(editor, '    public override func close(animationType:', '    public override func returnKeyAction()'),
     '__EDITOR_CONFIRM__': section(editor, '        let invoke = { [weak self] in', '        if let confirm = self.confirm'),
     '__EDITOR_HOOK__': section(hooks, '    public var editImage:', '    public var setPeerPhoto:'),
+    '__CONTEXT_SIGNAL__': section(context, '    public func preservingPresentation<', '\n}\n\npublic final class AnalyticsPresentation'),
 }
 fixture = Path(__file__).with_name('EditorLifecycleTests.swift').read_text()
 for name, body in parts.items():

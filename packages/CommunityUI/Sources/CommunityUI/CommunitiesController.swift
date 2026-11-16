@@ -17,6 +17,7 @@ import TelegramMediaUtils
 import AlertsUI
 import LocalAnimations
 import MessageTextUtils
+import AppAnalytics
 
 private final class Arguments {
     public let context: (any AccountContextProtocol)
@@ -151,6 +152,7 @@ public func CommunitiesController(_ context: (any AccountContextProtocol), peerI
     }
 
     let controller = InputDataController(dataSignal: signal, title: "", removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .communityIntro
     controller.onDeinit = { actionsDisposable.dispose() }
     pop = { [weak controller] in controller?.navigationController?.back() }
     return controller
@@ -256,6 +258,7 @@ private func CommunityCreateController(_ context: (any AccountContextProtocol), 
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().communitiesNewCommunity, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsScreen = .communityCreation
     controller.onDeinit = { actionsDisposable.dispose() }
 
     controller.updateDatas = { data in

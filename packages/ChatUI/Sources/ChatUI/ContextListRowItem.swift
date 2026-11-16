@@ -1,4 +1,5 @@
 import Cocoa
+import HTMLBubbles
 import TGUIKit
 import TelegramCore
 
@@ -22,6 +23,7 @@ import AudioPlayerCore
 
 public class ContextListRowItem: TableRowItem {
 
+    fileprivate var widgetState: HTMLBubbleState?
     public let result:ChatContextResult
     public let results:ChatContextResultCollection
     private let _index1:Int64
@@ -133,6 +135,10 @@ public class ContextListRowItem: TableRowItem {
 
         self.text = attr.copy() as! NSAttributedString
         super.init(initialSize)
+        if case let .widget(media, _, _, _) = result.message {
+            widgetState = HTMLWidgetStore.preview(widget: media, locale: appCurrentLanguage.languageCode)
+            vClass = ContextListWidgetView.self
+        }
         _ = makeSize(initialSize.width, oldWidth: 0)
     }
     
@@ -438,3 +444,111 @@ public class ContextListAudioView : ContextListRowView, APDelegate {
     }
 }
 
+
+final class ContextWidgetRowItem: ContextListRowItem, HTMLTwidgetRow {
+    fileprivate private(set) var titleLayout: TextViewLayout?
+    private var reportedHeight: CGFloat?
+
+    var htmlTwidgetState: HTMLBubbleState { widgetState! }
+    var htmlTwidgetAppearance: HTMLBubbleAppearance { HTMLBubbleStyle.appearance(theme: theme, incoming: false) }
+    var htmlTwidgetWidth: CGFloat { previewLayout.contentSize.width }
+
+    fileprivate var previewLayout: HTMLWidgetPreviewLayout {
+        guard case let .widget(media, _, _, _) = result.message else {
+            preconditionFailure()
+        }
+        return HTMLWidgetPreviewLayout(width: media.width, height: media.height, availableWidth: width - 24, reportedHeight: reportedHeight)
+    }
+
+    fileprivate var previewFrame: CGRect {
+        return CGRect(origin: CGPoint(x: 12, y: titleLayout.map { $0.layoutSize.height + 15 } ?? 9), size: previewLayout.displaySize)
+    }
+
+    override var height: CGFloat { previewFrame.maxY + 9 }
+
+    override func prepare(_ selected: Bool) {
+        if let title = result.title, !title.isEmpty {
+            let layout = TextViewLayout(.initialize(string: title, color: selected ? theme.colors.underSelectedColor : theme.colors.text, font: .medium(.text)), maximumNumberOfLines: 2, truncationType: .end)
+            layout.measure(width: max(1, width - 24))
+            titleLayout = layout
+        } else {
+            titleLayout = nil
+        }
+    }
+
+    fileprivate func updatePreviewHeight(_ height: CGFloat) {
+        guard case let .widget(media, _, _, _) = result.message, media.height == 0, reportedHeight != height else {
+            return
+        }
+        let oldHeight = self.height
+        reportedHeight = height
+        if abs(oldHeight - self.height) > 0.5 {
+            noteHeightOfRow()
+            (table?.delegate as? InputContextViewController)?.layout(false)
+        }
+        (view as? ContextListWidgetView)?.needsLayout = true
+    }
+
+    override var accessibilityLabel: String? {
+        if let title = result.title, !title.isEmpty { return title }
+        if case let .widget(_, caption, _, _) = result.message, !caption.isEmpty { return caption }
+        return strings().contextListRowItemWidget
+    }
+}
+
+private final class ContextListWidgetView: TableRowView {
+    private let titleView = TextView()
+    private let previewContainer = View(frame: .zero)
+    private let preview = HTMLBubbleView(frame: .zero)
+
+    required init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        titleView.userInteractionEnabled = false
+        addSubview(titleView)
+        addSubview(previewContainer)
+        previewContainer.addSubview(preview)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func set(item: TableRowItem, animated: Bool) {
+        super.set(item: item, animated: animated)
+        guard let item = item as? ContextWidgetRowItem else { return }
+        preview.onContentChanged = { [weak self, weak item] size, _ in
+            DispatchQueue.main.async {
+                guard self?.item === item else { return }
+                item?.updatePreviewHeight(size.height)
+            }
+        }
+        updateFrames(item)
+        preview.update(state: item.htmlTwidgetState, appearance: item.htmlTwidgetAppearance, maxWidth: item.htmlTwidgetWidth, rendering: nil)
+    }
+
+    override func layout() {
+        super.layout()
+        if let item = item as? ContextWidgetRowItem {
+            updateFrames(item)
+        }
+    }
+
+    private func updateFrames(_ item: ContextWidgetRowItem) {
+        titleView.isHidden = item.titleLayout == nil
+        if let title = item.titleLayout {
+            titleView.update(title, origin: NSMakePoint(12, 9))
+        }
+        let layout = item.previewLayout
+        previewContainer.frame = item.previewFrame
+        previewContainer.setBoundsSize(layout.contentSize)
+        preview.frame = CGRect(origin: .zero, size: layout.contentSize)
+    }
+
+    override var backdorColor: NSColor {
+        return item?.isSelected == true ? theme.colors.accentSelect : theme.colors.background
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return super.hitTest(point) == nil ? nil : self
+    }
+}

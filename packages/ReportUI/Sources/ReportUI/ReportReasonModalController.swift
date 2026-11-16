@@ -10,6 +10,7 @@ import TelegramContext
 import TelegramUtils
 import GeneralRows
 import InputDataUI
+import AppAnalytics
 
 
 
@@ -206,6 +207,7 @@ public func ReportReasonController(context: (any AccountContextProtocol), callba
 
     
     let controller = InputDataController(dataSignal: dataSignal, title: strings().peerInfoReport)
+    controller.analyticsScreen = .reportReason
     
     controller.leftModalHeader = ModalHeaderData(image: theme.icons.modalClose, handler: {
         getModalController?()?.close()

@@ -20,6 +20,7 @@ import DateUtils
 import TelegramIconsTheme
 import TelegramMediaUtils
 import MessageTextUtils
+import AppAnalytics
 
 
 private final class Arguments {
@@ -257,12 +258,15 @@ public enum MessageStatsSubject {
     case story(EngineStoryItem, EnginePeer)
 }
 
-public func MessageStatsController(_ context: any AccountContextProtocol, subject: MessageStatsSubject) -> ViewController {
+public func MessageStatsController(_ context: any AccountContextProtocol, subject: MessageStatsSubject, analyticsContext: AnalyticsContext? = nil) -> ViewController {
     let peerId: PeerId
     switch subject {
     case let .messageId(id): peerId = id.peerId
     case let .story(_, peer): peerId = peer.id
     }
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let lifetime = origin.beginPresentation()
+    defer { lifetime.end() }
     
     let initialState = UIStatsState(loading: [])
     
@@ -319,18 +323,31 @@ public func MessageStatsController(_ context: any AccountContextProtocol, subjec
     forwardsPromise.set(forwardsContext.state |> map(Optional.init))
     
     let arguments = Arguments.init(context: context, loadDetailedGraph: { graph, x -> Signal<StatsGraph?, NoError> in
-        return (loadDetailedGraphImpl?(graph, x) ?? .single(nil))
+        let lifetime = origin.beginPresentation()
+        defer { lifetime.end() }
+        return origin.preservingPresentation(loadDetailedGraphImpl?(graph, x) ?? .single(nil))
     }, openMessage: { target in
+        let targetOrigin: AnalyticsContext
+        switch target {
+        case let .message(message):
+            targetOrigin = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : origin.restricting(peerId: message.id.peerId)
+        case let .story(peer, _):
+            targetOrigin = origin.restricting(peerId: peer.id)
+        }
+        let lifetime = targetOrigin.beginPresentation()
+        defer { lifetime.end() }
         var peers: [Peer] = []
         switch target {
         case let .message(message):
             peers = message.peers.map( { $0.1 })
-            StatisticsHooks.shared.openMessageObserved(context, message)
+            StatisticsHooks.shared.openMessageObserved(context, message, analyticsContext: targetOrigin)
         case let .story(peer, item):
             peers = [peer._asPeer()]
-            StatisticsHooks.shared.showStoryObserved(context, peer.id, item.id)
+            StatisticsHooks.shared.showStoryObserved(context, peer.id, item.id, analyticsContext: targetOrigin)
         }
-        _ = (context.account.postbox.transaction ({ transaction -> Void in
+        _ = targetOrigin.preservingPresentation(context.account.postbox.transaction ({ transaction -> Void in
+            let lifetime = targetOrigin.beginPresentation()
+            defer { lifetime.end() }
             updatePeersCustom(transaction: transaction, peers: peers, update: { (_, updated) -> Peer? in
                 return updated
             })
@@ -385,6 +402,14 @@ public func MessageStatsController(_ context: any AccountContextProtocol, subjec
     }
     
     let controller = InputDataController(dataSignal: signal, title: title, removeAfterDisappear: false, hasDone: false)
+    controller.analyticsContext = origin
+    switch subject {
+    case .messageId:
+        controller.analyticsScreen = .chatMessageStats
+    case .story:
+        controller.analyticsScreen = .storiesStats
+    }
+    
     controller.contextObject = anyStatsContext
     
     controller.didLoad = { controller, _ in

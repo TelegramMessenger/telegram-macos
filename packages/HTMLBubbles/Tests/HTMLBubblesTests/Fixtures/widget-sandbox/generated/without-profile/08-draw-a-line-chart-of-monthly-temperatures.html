@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Berlin vs Madrid Temperatures</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 16px; background: #fff; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; font-size: 13px; color: #666; }
+  .chart { position: relative; height: 260px; }
+</style>
+</head>
+<body>
+<h2>🌡️ Monthly Average Temperatures</h2>
+<p>Berlin vs Madrid (°C)</p>
+<div class="chart"><canvas id="c"></canvas></div>
+<script>
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  new Chart(document.getElementById('c'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label: 'Berlin', data: [0.5, 1.5, 5, 10, 15, 18, 20, 19.5, 15, 10, 5, 2], borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.15)', tension: .35, fill: true, pointRadius: 3 },
+        { label: 'Madrid', data: [6, 8, 11, 13, 17, 23, 26, 25.5, 21, 15, 9.5, 6.5], borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.12)', tension: .35, fill: true, pointRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}°C` } } },
+      scales: { y: { ticks: { callback: v => v + '°' }, grid: { color: '#f0f0f0' } }, x: { grid: { display: false } } }
+    }
+  });
+</script>
+</body>
+</html>

@@ -15,6 +15,7 @@ import InAppSettings
 import ColorPalette
 import SwiftSignalKit
 import TelegramCore
+import AppAnalytics
 
 
 private let _id_input_code = InputDataIdentifier("_id_input_code")
@@ -309,6 +310,7 @@ public func cancelResetAccountController(context: any AccountContextProtocol, ph
             f(checking ? .loading : .invisible)
         }
     }, hasDone: true)
+    controller.analyticsScreen = .settingsAccountResetCancellation
     
    
     let modalInteractions = ModalInteractions(acceptTitle: strings().modalSend, accept: { [weak controller] in

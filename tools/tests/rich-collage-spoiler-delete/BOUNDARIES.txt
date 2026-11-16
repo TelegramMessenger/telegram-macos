@@ -1,0 +1,7 @@
+python3 -I run.py --source-root /path/to/worktree --output /outside/worktree
+
+The exact production removeCollageTile method and entire macOS MediaBlock model compile against21 real pinned RichTextEditorCore model source files. The same suite runs against upstream246e3e957ae5cea1ecff6d7a6a6db3e47be69bb5 and must compile then fail behavioral assertions.
+
+Covers first/middle/last removal,1..10tiles, exhaustive spoiler combinations for1..5tiles and selected larger combinations, model normalization, collage/slideshow, caption and identity preservation, invalid indexes, missing groups and last-block deletion. The controlled canvas/editing wrapper captures the pre-edit model to verify both mutations occur in a single transaction. It additionally extracts the production HostedMediaBlock class and tile reconciliation loop, using real NSView instances with equal-sized tile frames to verify stale media/spoiler replacement and model restoration. It does not exercise the real undo manager, mosaic frame calculation, full view cleanup, message serialization/RPCs or end-to-end GUI rendering.
+
+No Telegram process, account, media files or UI is opened. The model library and binary are temporary outputs outside the source tree. Full Xcode build and user acceptance are separate. Optional --compiler-lock serializes compiler processes across suites.

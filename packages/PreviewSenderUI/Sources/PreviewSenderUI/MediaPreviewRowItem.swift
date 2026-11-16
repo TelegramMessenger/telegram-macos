@@ -294,6 +294,7 @@ final class MediaPreviewRenderingView: View {
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         imageView.contentGravity = .resizeAspectFill
+        imageView.isAccessibilityDecorative = true
         addSubview(imageView)
         progressBackground.backgroundColor = NSColor.black.withAlphaComponent(0.5)
         progressBackground.layer?.cornerRadius = progressBackground.frame.height / 2

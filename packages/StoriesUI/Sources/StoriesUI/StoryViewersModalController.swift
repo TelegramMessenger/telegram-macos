@@ -15,6 +15,7 @@ import TelegramContext
 import TelegramTheme
 import TelegramUtils
 import InlineStickerLayer
+import AppAnalytics
 
 
 private final class StoryViewerEmptyRowItem : GeneralRowItem {
@@ -804,7 +805,10 @@ private final class StoryViewersTopView : View {
     
 }
 
-func StoryViewersModalController<Context: AccountContextProtocol>(context: Context, list: EngineStoryViewListContext, peerId: PeerId, isChannel: Bool, story: EngineStoryItem, presentation: TelegramPresentationTheme, callback:@escaping(PeerId)->Void) -> InputDataModalController {
+func StoryViewersModalController<Context: AccountContextProtocol>(context: Context, list: EngineStoryViewListContext, peerId: PeerId, isChannel: Bool, story: EngineStoryItem, presentation: TelegramPresentationTheme, callback:@escaping(PeerId)->Void, analyticsContext: AnalyticsContext? = nil) -> InputDataModalController {
+    let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
+    let lifetime = origin.beginPresentation()
+    defer { lifetime.end() }
     
     
     let initialViews = story.views ?? .init(seenCount: 0, reactedCount: 0, forwardCount: 0, seenPeers: [], reactions: [], hasList: false)
@@ -836,7 +840,7 @@ func StoryViewersModalController<Context: AccountContextProtocol>(context: Conte
             return getControl?(peerId, nil)
         }, setProgress: { value in
             setProgress?(peerId, value)
-        }), singlePeer: true)
+        }), singlePeer: true, analyticsContext: origin)
     }, contextMenu: { peerId in
         return combineLatest(getCachedDataView(peerId: peerId, postbox: context.account.postbox), context.account.viewTracker.peerView(peerId)) |> take(1) |> map { cachedData, peerView in
             var items: [ContextMenuItem] = []
@@ -886,11 +890,11 @@ func StoryViewersModalController<Context: AccountContextProtocol>(context: Conte
             return current
         }
     }, openPremium: {
-        FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, .storyViewers, true, darkAppearance)
+        FeatureNavigationHooks.shared.showPremiumBoardingObserved(context, context.window, .storyViewers, true, darkAppearance, analyticsContext: origin)
     }, openRepostStory: { storyId in
         StoryModalController.ShowSingleStory(context: context, storyId: storyId, initialId: .init(peerId: storyId.peerId, id: storyId.id, messageId: nil, takeControl: { [] peerId, _, storyId in
             return getControl?(peerId, storyId)
-        }))
+        }), analyticsContext: origin)
     })
     
     let signal = statePromise.get() |> deliverOnPrepareQueue |> map { state in
@@ -898,6 +902,8 @@ func StoryViewersModalController<Context: AccountContextProtocol>(context: Conte
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsContext = origin
+    controller.analyticsScreen = .storiesViewers
     
     var seenCount = (story.views?.seenCount ?? 0)
     
@@ -997,6 +1003,7 @@ func StoryViewersModalController<Context: AccountContextProtocol>(context: Conte
     }
     
     let modalController = InputDataModalController(controller, modalInteractions: nil, size: NSMakeSize(350, 300))
+    modalController.analyticsContext = origin
     
     modalController.getModalTheme = {
         .init(text: presentation.colors.text, grayText: presentation.colors.grayText, background: presentation.colors.background, border: presentation.colors.border)

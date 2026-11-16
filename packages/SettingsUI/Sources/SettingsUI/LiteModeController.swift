@@ -14,6 +14,7 @@ import AlertsUI
 import ThemeSettings
 import TelegramCore
 import Postbox
+import AppAnalytics
 
 private extension LiteModeKey {
     var title: String {
@@ -335,6 +336,7 @@ public func LiteModeController(context: any AccountContextProtocol, focusOnItemT
     }))
     
     let controller = InputDataController(dataSignal: signal, title: strings().liteModeTitle, hasDone: false)
+    controller.analyticsScreen = .settingsPowerSaving
     
     let pendingFocus = Atomic<Bool>(value: focusOnItemTag != nil)
     controller.afterTransaction = { controller in

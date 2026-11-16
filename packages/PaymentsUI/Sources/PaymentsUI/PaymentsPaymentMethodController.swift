@@ -17,6 +17,7 @@ import InAppSettings
 import TelegramMediaUtils
 import AlertsUI
 import Stripe
+import AppAnalytics
 
 
 
@@ -472,6 +473,9 @@ public func PaymentsPaymentMethodController(context: (any AccountContextProtocol
         }
     }, verify: {
         guard let controller = getController?(), let requestId = requestState.begin() else { return }
+        let analyticsContext = controller.analyticsContext ?? Analytics.shared.unresolvedContext()
+        let presentation = analyticsContext.beginPresentation()
+        defer { presentation.end() }
         let operation = MetaDisposable()
         requestDisposable.set(operation)
         let state = stateValue.with { $0 }
@@ -511,7 +515,7 @@ public func PaymentsPaymentMethodController(context: (any AccountContextProtocol
             tokenSignal = validateSmartGlobal(publishableKey, isTesting: isTesting, state: state, customTokenizeUrl: customTokenizeUrl) |> map(Optional.init)
         }
         let validation = showModalProgress(signal: tokenSignal, for: window) |> deliverOnMainQueue
-        operation.set((validation).start(next: { token in
+        operation.set(analyticsContext.preservingPresentation(validation).start(next: { token in
             guard getController?() != nil, requestState.take(requestId) else { return }
             if let token = token {
                 completion(token)
@@ -519,7 +523,8 @@ public func PaymentsPaymentMethodController(context: (any AccountContextProtocol
             }
         }, error: { error in
             guard getController?() != nil, requestState.take(requestId) else { return }
-            alert(for: window, info: error.localizedDescription)
+            let alertPresentation = analyticsContext.beginPresentation()
+            alert(for: window, info: error.localizedDescription, onDeinit: { alertPresentation.end() })
         }, completed: {
             _ = requestState.take(requestId)
         }))
@@ -531,6 +536,7 @@ public func PaymentsPaymentMethodController(context: (any AccountContextProtocol
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().checkoutNewCardTitle)
+    controller.analyticsScreen = .paymentsCard
     
     getController = { [weak controller] in
         return controller

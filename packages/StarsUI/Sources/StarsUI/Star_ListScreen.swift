@@ -31,6 +31,7 @@ import FoundationUtils
 import InputView
 import InputTextView
 import InlineStickerLayer
+import AppAnalytics
 public enum Star_TransactionType : Equatable {
     public enum Source : Equatable {
         case peer
@@ -1293,10 +1294,15 @@ public func showStarsTopup(context: (any AccountContextProtocol), currency: Curr
     showModal(with: Star_ListScreen(context: context, currency: currency, source: source), for: window)
 }
 
-
 public func Star_ListScreen(context: (any AccountContextProtocol), currency: CurrencyAmount.Currency = .stars, source: Star_ListScreenSource) -> InputDataModalController {
+    return Star_ListScreen(context: context, currency: currency, source: source, analyticsContext: nil)
+}
 
-    let screen = StarsScreenContext(context: context, source: source)
+public func Star_ListScreen(context: (any AccountContextProtocol), currency: CurrencyAmount.Currency = .stars, source: Star_ListScreenSource, analyticsContext: AnalyticsContext?, onPurchased: (() -> Void)? = nil) -> InputDataModalController {
+
+    let screen = StarsScreenContext(context: context, source: source, analyticsContext: analyticsContext)
+    let presentation = screen.analytics.beginPresentation()
+    defer { presentation.end() }
     let actionsDisposable = screen.disposables
     let paymentDisposable = MetaDisposable()
     actionsDisposable.add(paymentDisposable)
@@ -1462,6 +1468,9 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
 
     let buyNonStore:(State.Option)->Void = { option in
         guard screen.isOpen else { return }
+        let analyticsContext = screen.analytics
+        let actionPresentation = analyticsContext.beginPresentation()
+        defer { actionPresentation.end() }
 
         if invoiceTopupDisabled {
             showModalText(for: window, text: strings().starListSpendTopupUnavailable)
@@ -1485,13 +1494,18 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
         request.set(screen.preserving(signal |> take(1) |> deliverOnMainQueue).start(next: { invoice in
             receivedInvoice = true
             guard screen.purchase.isCurrent(attempt) else { return }
-            if let controller = FeatureNavigationHooks.shared.makePaymentsCheckoutObserved(context, invoiceSource, invoice, completion: { status in
+            let checkoutPresentation = analyticsContext.beginPresentation()
+            if let controller = FeatureNavigationHooks.shared.makePaymentsCheckoutObserved(context, invoiceSource, invoice, analyticsContext: analyticsContext, completion: { status in
+                let delivery = analyticsContext.beginPresentation()
+                defer { delivery.end() }
                 guard screen.purchase.isCurrent(attempt) else { return }
                 switch status {
                 case .paid:
                     guard screen.purchase.finish(attempt, paid: true) else { return }
+                    Analytics.shared.send(AnalyticsEvents.starsPurchaseSuccess(stars: AnalyticsEvents.StarsPurchaseSuccessStars(bucketing: Int(option.amount))))
                     PlayConfetti(for: window, stars: true)
                     showModalText(for: window, text: strings().starListBuySuccessOther(Int(option.amount)).replacingOccurrences(of: "\(option.amount)", with: option.amount.formattedWithSeparator))
+                    onPurchased?()
                     close?()
                 case .cancelled:
                     break
@@ -1499,14 +1513,19 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
                     break
                 }
             }) {
+                controller.analyticsContext = analyticsContext
+                (controller as? InputDataModalController)?.current.analyticsContext = analyticsContext
                 let onDeinit = controller.onDeinit
                 controller.onDeinit = {
+                    let delivery = analyticsContext.beginPresentation()
+                    defer { delivery.end(); checkoutPresentation.end() }
                     onDeinit?()
                     screen.purchase.finish(attempt)
                 }
                 guard screen.purchase.isCurrent(attempt) else { return }
                 showModal(with: controller, for: window)
             } else {
+                checkoutPresentation.end()
                 screen.purchase.finish(attempt)
             }
         }, error: { error in
@@ -1519,6 +1538,9 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
     
     let buyAppStore:(State.Option)->Void = { option in
         guard screen.isOpen else { return }
+        let analyticsContext = screen.analytics
+        let actionPresentation = analyticsContext.beginPresentation()
+        defer { actionPresentation.end() }
         
         let storeProduct = option.storeProduct
 
@@ -1531,10 +1553,13 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
         let attemptDisposable = DisposableSet()
         paymentDisposable.set(attemptDisposable)
         let lockModal = PremiumLockModalController()
+        lockModal.analyticsContext = analyticsContext
         attemptDisposable.add(ActionDisposable { lockModal.close() })
         
         var needToShow = true
         delay(0.2, closure: {
+            let delivery = analyticsContext.beginPresentation()
+            defer { delivery.end() }
             if needToShow && screen.isOpen {
                 showModal(with: lockModal, for: window)
             }
@@ -1563,10 +1588,14 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
                     lockModal?.close()
                     needToShow = false
                     inAppPurchaseManager.finishAllTransactions()
+                    onPurchased?()
                     close?()
+                    Analytics.shared.send(AnalyticsEvents.starsPurchaseSuccess(stars: AnalyticsEvents.StarsPurchaseSuccessStars(bucketing: Int(option.amount))))
                     
                     
                     delay(0.2, closure: {
+                        let delivery = analyticsContext.beginPresentation()
+                        defer { delivery.end() }
                         PlayConfetti(for: window, stars: true)
                         showModalText(for: window, text: strings().starListBuySuccessOther(Int(option.amount)).replacingOccurrences(of: "\(option.amount)", with: option.amount.formattedWithSeparator))
                     })
@@ -1680,7 +1709,7 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
     }), buyMore: screen.action({
         switch currency {
         case .stars:
-            showModal(with: Star_ListScreen(context: context, source: .buy(suffix: nil, amount: nil)), for: window)
+            showModal(with: Star_ListScreen(context: context, source: .buy(suffix: nil, amount: nil), analyticsContext: screen.analytics), for: window)
         case .ton:
             LinkHooks.shared.openExternalLink(strings().fragmentTonAddFundsLink, false)
         }
@@ -1734,6 +1763,20 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
     }
     
     let controller = InputDataController(dataSignal: signal, title: "")
+    controller.analyticsContext = screen.analytics
+    if currency == .ton {
+        controller.analyticsScreen = AnalyticsScreen.tonBalance
+    } else {
+        switch source {
+        case .account:
+            controller.analyticsScreen = AnalyticsScreen.starsBalance
+        case .gift:
+            controller.analyticsScreen = AnalyticsScreen.starsGift
+        default:
+            controller.analyticsScreen = AnalyticsScreen.starsPurchase
+        }
+    }
+    
     getController = { [weak controller] in
         return controller
     }
@@ -1748,6 +1791,7 @@ public func Star_ListScreen(context: (any AccountContextProtocol), currency: Cur
         screen.close()
         close()
     }, size: NSMakeSize(360, 300))
+    modalController.analyticsContext = screen.analytics
     
     
     close = { [weak modalController] in

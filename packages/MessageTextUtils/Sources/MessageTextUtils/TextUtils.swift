@@ -249,6 +249,10 @@ public func pullText(from message:Message, mediaViewType: MessageTextMediaViewTy
                     }
                 }
             }
+        case _ as TelegramMediaWidget:
+            if messageText.isEmpty {
+                messageText = strings().textUtilsWidget
+            }
         case _ as TelegramMediaUnsupported:
             if messageText.isEmpty {
                 messageText = strings().chatMessageUnsupported

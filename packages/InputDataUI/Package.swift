@@ -15,6 +15,7 @@ let package = Package(
         .package(name: "SecureIdUtils", path: "../SecureIdUtils"),
         .package(name: "Localization", path: "../Localization"),
         .package(name: "TGUIKit", path: "../TGUIKit"),
+        .package(name: "AppAnalytics", path: "../AppAnalytics"),
         .package(name: "SSignalKit", path: "../../submodules/telegram-ios/submodules/SSignalKit"),
         .package(name: "TelegramCore", path: "../../submodules/telegram-ios/submodules/TelegramCore"),
         .package(name: "Postbox", path: "../../submodules/telegram-ios/submodules/Postbox"),
@@ -43,6 +44,7 @@ let package = Package(
             .product(name: "CalendarUtils", package: "CalendarUtils"),
             .product(name: "KeyboardKey", package: "KeyboardKey"),
             .product(name: "ObjcUtils", package: "ObjcUtils"),
+            .product(name: "AppAnalytics", package: "AppAnalytics"),
         ]),
         .testTarget(name: "InputDataUITests", dependencies: [
             "InputDataUI",

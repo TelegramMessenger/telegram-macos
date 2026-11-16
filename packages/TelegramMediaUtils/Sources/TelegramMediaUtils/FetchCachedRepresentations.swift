@@ -29,7 +29,7 @@ public func makeLottieImage(from zippedData: Data,
     return autoreleasepool {
         guard let data = TGGUnzipData(zippedData, maxUnzip) else { return nil }
         guard let json = String(data: data, encoding: .utf8), !json.isEmpty else { return nil }
-        guard let rlottie = LottieRenderHooks.shared.makeRenderer(json, key) else { return nil }
+        guard let renderer = LottieRenderHooks.shared.makeRenderer(json) else { return nil }
 
         let pixelW = max(1, Int(size.width  * scale))
         let pixelH = max(1, Int(size.height * scale))
@@ -42,7 +42,7 @@ public func makeLottieImage(from zippedData: Data,
 
         let frameData = memory.assumingMemoryBound(to: UInt8.self)
 
-        rlottie.renderFrame(with: 0,
+        renderer.renderFrame(with: 0,
                             into: frameData,
                             width: Int32(pixelW),
                             height: Int32(pixelH),
@@ -417,7 +417,7 @@ private func fetchCachedAnimatedStickerRepresentation(account: Account, resource
                     
                     if image == nil, let data = TGGUnzipData(data, 8 * 1024 * 1024) {
                         if let json = String(data: transformedWithFitzModifier(data: data, fitzModifier: representation.fitzModifier), encoding: .utf8), json.length > 0 {
-                            let rlottie = LottieRenderHooks.shared.makeRenderer(json, resourceData.path)
+                            let renderer = LottieRenderHooks.shared.makeRenderer(json)
                             
                             let s:(w: Int, h: Int) = (w: Int(representation.size.width) * 2, h: Int(representation.size.height) * 2)
 
@@ -426,7 +426,7 @@ private func fetchCachedAnimatedStickerRepresentation(account: Account, resource
                             let memoryData = malloc(bufferSize)!
                             let frameData = memoryData.assumingMemoryBound(to: UInt8.self)
                             
-                            rlottie?.renderFrame(with: 0, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
+                            renderer?.renderFrame(with: 0, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
                             
                             image = generateImagePixel(representation.size, scale: 2, pixelGenerator: { (_, pixelData, bytesPerRow) in
                                 memcpy(pixelData, frameData, bufferSize)
@@ -705,8 +705,8 @@ private func fetchCachedSlotRepresentation(account: Account, data: [(Data, Int32
                 dataValue = data
             }
             if let json = String(data: dataValue, encoding: .utf8) {
-                let rlottie = LottieRenderHooks.shared.makeRenderer(json, "\(arc4random())")
-                if let rlottie = rlottie {
+                let renderer = LottieRenderHooks.shared.makeRenderer(json)
+                if let renderer = renderer {
                     
                     let s:(w: Int, h: Int) = (w: Int(representation.size.width) * 2, h: Int(representation.size.height) * 2)
 
@@ -715,7 +715,7 @@ private func fetchCachedSlotRepresentation(account: Account, data: [(Data, Int32
                     let memoryData = malloc(bufferSize)!
                     let frameData = memoryData.assumingMemoryBound(to: UInt8.self)
                     
-                    rlottie.renderFrame(with: Int32.max == frame ? rlottie.endFrame() - 1 : frame, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
+                    renderer.renderFrame(with: Int32.max == frame ? renderer.endFrame() - 1 : frame, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
                     
                     let image = generateImagePixel(representation.size, scale: 2, pixelGenerator: { (_, pixelData, bytesPerRow) in
                         memcpy(pixelData, frameData, bufferSize)
@@ -771,8 +771,8 @@ private func fetchCachedDiceRepresentation(account: Account, data: Data, represe
             dataValue = data
         }
         if let json = String(data: dataValue, encoding: .utf8) {
-            let rlottie = LottieRenderHooks.shared.makeRenderer(json, representation.emoji + representation.value)
-            if let rlottie = rlottie {
+            let renderer = LottieRenderHooks.shared.makeRenderer(json)
+            if let renderer = renderer {
                 
                 let s:(w: Int, h: Int) = (w: Int(representation.size.width) * 2, h: Int(representation.size.height) * 2)
 
@@ -781,7 +781,7 @@ private func fetchCachedDiceRepresentation(account: Account, data: Data, represe
                 let memoryData = malloc(bufferSize)!
                 let frameData = memoryData.assumingMemoryBound(to: UInt8.self)
                 
-                rlottie.renderFrame(with: representation.value == diceIdle ? 0 : rlottie.endFrame() - 1, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
+                renderer.renderFrame(with: representation.value == diceIdle ? 0 : renderer.endFrame() - 1, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
                 
                 let colorImage = generateImagePixel(representation.size, scale: 2, pixelGenerator: { (_, pixelData, bytesPerRow) in
                     memcpy(pixelData, frameData, bufferSize)
@@ -828,7 +828,7 @@ public func getAnimatedStickerThumb(data: Data, size: NSSize = NSMakeSize(512, 5
             dataValue = data
         }
         if let json = String(data: transformedWithFitzModifier(data: dataValue, fitzModifier: nil), encoding: .utf8), json.length > 0 {
-            let rlottie = LottieRenderHooks.shared.makeRenderer(json, "\(arc4random())")
+            let renderer = LottieRenderHooks.shared.makeRenderer(json)
             
             let s:(w: Int, h: Int) = (w: Int(size.width) * 2, h: Int(size.height) * 2)
 
@@ -837,7 +837,7 @@ public func getAnimatedStickerThumb(data: Data, size: NSSize = NSMakeSize(512, 5
             let memoryData = malloc(bufferSize)!
             let frameData = memoryData.assumingMemoryBound(to: UInt8.self)
             
-            rlottie?.renderFrame(with: 0, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
+            renderer?.renderFrame(with: 0, into: frameData, width: Int32(s.w), height: Int32(s.h), bytesPerRow: Int32(bytesPerRow))
             
             let image = generateImagePixel(size, scale: 2, pixelGenerator: { (_, pixelData, bytesPerRow) in
                 memcpy(pixelData, frameData, bufferSize)

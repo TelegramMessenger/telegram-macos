@@ -10,6 +10,7 @@ import Postbox
 import TelegramCore
 import WalletContext
 import Localization
+import AppAnalytics
 
 private let walletCollapsedPeersLimit = 5
 private let walletExpandedPeersLimit = 30
@@ -634,6 +635,13 @@ func makeWalletRecipientController(context: any AccountContextProtocol, environm
     }
 
     let controller = InputDataController(dataSignal: signal, title: strings().walletRecipientControllerTitle, hasDone: false, identifier: "wallet-recipient")
+    switch mode {
+    case .transfer:
+        controller.analyticsScreen = AnalyticsScreen.walletTransferRecipient
+    case .collectible:
+        controller.analyticsScreen = AnalyticsScreen.walletCollectibleRecipient
+    }
+
     getController = { [weak controller] in
         return controller
     }

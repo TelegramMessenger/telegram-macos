@@ -12,6 +12,7 @@ import TelegramContext
 import TelegramTheme
 import Localization
 import AvatarUI
+import AppAnalytics
 
 private final class ButtonsItem : GeneralRowItem {
     fileprivate let state: State
@@ -971,6 +972,7 @@ private func ModalAlertController(data: ModalAlertData, completion: @escaping(Mo
     }
     
     let controller = InputDataController(dataSignal: signal, title: data.title ?? "")
+    controller.analyticsScreen = .appAlert
     
     controller.onDeinit = {
         actionsDisposable.dispose()

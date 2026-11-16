@@ -1,4 +1,5 @@
 import Cocoa
+import AppAnalytics
 import TGUIKit
 import Postbox
 import TelegramCore
@@ -19,22 +20,24 @@ public struct PeerInfoWalletHooks {
     public let preloadPeerCard: (any AccountContextProtocol, WalletCard) -> Void
     public let showPeerBalance: (any AccountContextProtocol, Peer, (() -> NSView?)?) -> Void
 
-    public var sendMoneyWithContext: ((any AccountContextProtocol, Peer) -> Void)?
-    public var showPeerBalanceWithContext: ((any AccountContextProtocol, Peer, (() -> NSView?)?) -> Void)?
+    public var sendMoneyWithContext: ((any AccountContextProtocol, Peer, AnalyticsContext) -> Void)?
+    public var showPeerBalanceWithContext: ((any AccountContextProtocol, Peer, (() -> NSView?)?, AnalyticsContext) -> Void)?
 
-    public func sendMoneyObserved(_ context: any AccountContextProtocol, _ peer: Peer) {
+    public func sendMoneyObserved(_ context: any AccountContextProtocol, _ peer: Peer, analyticsContext: AnalyticsContext) {
         if let sendMoneyWithContext {
-            sendMoneyWithContext(context, peer)
+            sendMoneyWithContext(context, peer, analyticsContext)
         } else {
-            sendMoney(context, peer)
+            let presentation = analyticsContext.beginPresentation()
+            withExtendedLifetime(presentation) { sendMoney(context, peer) }
         }
     }
 
-    public func showPeerBalanceObserved(_ context: any AccountContextProtocol, _ peer: Peer, _ morphSource: (() -> NSView?)?) {
+    public func showPeerBalanceObserved(_ context: any AccountContextProtocol, _ peer: Peer, _ morphSource: (() -> NSView?)?, analyticsContext: AnalyticsContext) {
         if let showPeerBalanceWithContext {
-            showPeerBalanceWithContext(context, peer, morphSource)
+            showPeerBalanceWithContext(context, peer, morphSource, analyticsContext)
         } else {
-            showPeerBalance(context, peer, morphSource)
+            let presentation = analyticsContext.beginPresentation()
+            withExtendedLifetime(presentation) { showPeerBalance(context, peer, morphSource) }
         }
     }
 
@@ -60,10 +63,13 @@ public struct PeerInfoUIHooks {
     public let activeProfileMusic: (any AccountContextProtocol, PeerId) -> (state: ProfileSavedMusicContext.State, context: ProfileSavedMusicContext, playing: TelegramMediaFile?)?
     public let executeNftLink: (String, String, any AccountContextProtocol) -> Void
     public let navigateToChat: (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatMode, ChatFocusTarget?, Atomic<ChatLocationContextHolder?>?) -> Void
-    public var navigateToChatWithContext: ((NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatMode, ChatFocusTarget?, Atomic<ChatLocationContextHolder?>?) -> Void)?
-    public func navigateToChatObserved(_ navigation: NavigationViewController?, _ context: any AccountContextProtocol, _ location: ChatLocation, _ mode: ChatMode, _ focus: ChatFocusTarget?, _ holder: Atomic<ChatLocationContextHolder?>?) {
+    public var navigateToChatWithContext: ((NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatMode, ChatFocusTarget?, Atomic<ChatLocationContextHolder?>?, AnalyticsContext) -> Void)?
+    public func navigateToChatObserved(_ navigation: NavigationViewController?, _ context: any AccountContextProtocol, _ location: ChatLocation, _ mode: ChatMode, _ focus: ChatFocusTarget?, _ holder: Atomic<ChatLocationContextHolder?>?, analyticsContext: AnalyticsContext) {
+        let origin = Analytics.shared.captureContext(engine: context.engine, peerId: location.peerId, inherited: analyticsContext)
+        let presentation = origin.beginPresentation()
+        defer { presentation.end() }
         if let navigateToChatWithContext {
-            navigateToChatWithContext(navigation, context, location, mode, focus, holder)
+            navigateToChatWithContext(navigation, context, location, mode, focus, holder, origin)
         } else {
             navigateToChat(navigation, context, location, mode, focus, holder)
         }

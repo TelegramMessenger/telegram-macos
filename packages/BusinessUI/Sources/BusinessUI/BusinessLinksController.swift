@@ -23,6 +23,7 @@ import FoundationUtils
 import MessageTextUtils
 import InputView
 import InlineStickerLayer
+import AppAnalytics
 
 private extension TelegramBusinessChatLinks.Link {
     var stateLink: State.Link {
@@ -433,6 +434,7 @@ public func BusinessLinksController(context: (any AccountContextProtocol)) -> In
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessLinksTitle, removeAfterDisappear: false, hasDone: false, identifier: "business_links")
+    controller.analyticsScreen = .settingsBusinessLinks
     
     controller.onDeinit = {
         actionsDisposable.dispose()
@@ -501,6 +503,7 @@ public func BusinessLinkRenameController(context: (any AccountContextProtocol), 
     }
     
     let controller = InputDataController(dataSignal: signal, title: strings().businessLinksNameTitle)
+    controller.analyticsScreen = .settingsBusinessLinksName
     
     controller.onDeinit = {
         actionsDisposable.dispose()
