@@ -14,6 +14,7 @@ enum SettingsRootSearchTag: Int32, CaseIterable {
     case business = 4
     case sendGift = 5
     case stars = 6
+    case myProfile = 7
 }
 
 extension SettingsRootSearchTag: SettingsSearchTag {
@@ -60,6 +61,10 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             SettingsNavigationHooks.shared.showMultigift(context, nil)
         case .stars:
             SettingsNavigationHooks.shared.showStarsList(context, .stars, nil)
+        case .myProfile:
+            if let navigation = navigation {
+                SettingsHooks.shared.pushPeerInfo(navigation, context, context.peerId, false)
+            }
         }
     }
     
@@ -77,6 +82,8 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return strings().accountSettingsSendGift
         case .stars:
             return strings().accountSettingsStars
+        case .myProfile:
+            return strings().accountSettingsMyProfile
         }
     }
     
@@ -94,12 +101,14 @@ extension SettingsRootSearchTag: SettingsSearchTag {
             return .gift
         case .stars:
             return .stars
+        case .myProfile:
+            return .profile
         }
     }
     
     func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
         switch self {
-        case .chatFolders:
+        case .chatFolders, .myProfile:
             return true
         case .passport:
             return environment.passportAvailable

@@ -118,6 +118,13 @@ extension PrivacySearchTag: SettingsSearchTag {
         }
     }
     
+    var searchBreadcrumbs: [String] {
+        if case .activeSessions = self {
+            return []
+        }
+        return [PrivacySearchTag.rootTitle]
+    }
+    
     var searchTitle: String {
         switch self {
         case .blockedUsers:
