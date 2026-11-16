@@ -524,8 +524,12 @@ extension DocumentCanvasView {
         if pos.box.textLength == 0 {
             if pos.box is CodeBlockBox {
                 makeCodeBlock()
-            } else if pos.box is PullQuoteBox {
-                makePullQuote()
+            } else if let quote = pos.box as? PullQuoteBox {
+                if quote.authorLength == 0 {
+                    makePullQuote()
+                } else {
+                    editing { insertParagraphAfterBlock(at: pos.index) }
+                }
             } else {
                 setParagraphStyle(.body)
             }
