@@ -1489,6 +1489,9 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             state = .Normal
             return .invoked
         }
+        if mediaController.isProfileBlockVisible {
+            return mediaController.escapeSelection()
+        }
         return .rejected
     }
     
