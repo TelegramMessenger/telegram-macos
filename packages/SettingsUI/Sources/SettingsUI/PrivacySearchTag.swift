@@ -76,48 +76,45 @@ extension PrivacySearchTag: SettingsSearchTag {
                     navigation.push(controller)
                 }
             }))
-        case .lastSeen:
-            presentSelectivePrivacy(context, kind: .presence, loaded: environment.privacySettings, present: present)
-        case .profilePhoto:
-            presentSelectivePrivacy(context, kind: .profilePhoto, loaded: environment.privacySettings, present: present)
-        case .forwards:
-            presentSelectivePrivacy(context, kind: .forwards, loaded: environment.privacySettings, present: present)
-        case .voiceCalls:
-            presentSelectivePrivacy(context, kind: .voiceCalls, loaded: environment.privacySettings, present: present)
-        case .groups:
-            presentSelectivePrivacy(context, kind: .groupInvitations, loaded: environment.privacySettings, present: present)
-        case .phoneNumber:
-            presentSelectivePrivacy(context, kind: .phoneNumber, loaded: environment.privacySettings, present: present)
-        case .voiceMessages:
-            presentSelectivePrivacy(context, kind: .voiceMessages, loaded: environment.privacySettings, present: present)
-        case .bio:
-            presentSelectivePrivacy(context, kind: .bio, loaded: environment.privacySettings, present: present)
-        case .birthday:
-            presentSelectivePrivacy(context, kind: .birthday, loaded: environment.privacySettings, present: present)
-        case .gifts:
-            presentSelectivePrivacy(context, kind: .gifts, loaded: environment.privacySettings, present: present)
-        case .savedMusic:
-            presentSelectivePrivacy(context, kind: .savedMusic, loaded: environment.privacySettings, present: present)
-        case .deleteAccount:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .accountTimeout, twoStepVerificationConfiguration: nil))
-        case .topPeers:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .topPeers, twoStepVerificationConfiguration: nil))
-        case .cloudDrafts:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .cloudDraft, twoStepVerificationConfiguration: nil))
-        case .messages:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .messages, twoStepVerificationConfiguration: nil))
-        case .passkeys:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .passkeys, twoStepVerificationConfiguration: nil))
-        case .loginEmail:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .loginEmail, twoStepVerificationConfiguration: nil))
-        case .globalTimer:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .globalTimer, twoStepVerificationConfiguration: nil))
-        case .webSessions:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .webSessions, twoStepVerificationConfiguration: nil))
-        case .secretChatWebPreview:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .secretChatWebPreview, twoStepVerificationConfiguration: nil))
-        case .sensitiveContent:
-            present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: .sensitiveContent, twoStepVerificationConfiguration: nil))
+        default:
+            if let kind = tag.selectiveKind {
+                presentSelectivePrivacy(context, kind: kind, loaded: environment.privacySettings, present: present)
+            } else {
+                present(.push, PrivacyAndSecurityViewController(context, initialSettings: nil, focusOnItemTag: tag.focusTag, twoStepVerificationConfiguration: nil))
+            }
+        }
+    }
+    
+    private var selectiveKind: SelectivePrivacySettingsKind? {
+        switch self {
+        case .lastSeen: return .presence
+        case .profilePhoto: return .profilePhoto
+        case .forwards: return .forwards
+        case .voiceCalls: return .voiceCalls
+        case .groups: return .groupInvitations
+        case .phoneNumber: return .phoneNumber
+        case .voiceMessages: return .voiceMessages
+        case .bio: return .bio
+        case .birthday: return .birthday
+        case .gifts: return .gifts
+        case .savedMusic: return .savedMusic
+        default: return nil
+        }
+    }
+    
+    private var focusTag: PrivacyAndSecurityEntryTag? {
+        switch self {
+        case .deleteAccount: return .accountTimeout
+        case .topPeers: return .topPeers
+        case .cloudDrafts: return .cloudDraft
+        case .messages: return .messages
+        case .passkeys: return .passkeys
+        case .loginEmail: return .loginEmail
+        case .globalTimer: return .globalTimer
+        case .webSessions: return .webSessions
+        case .secretChatWebPreview: return .secretChatWebPreview
+        case .sensitiveContent: return .sensitiveContent
+        default: return nil
         }
     }
     

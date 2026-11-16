@@ -748,30 +748,23 @@ private func analyticsSettingChange(kind: SelectivePrivacySettingsKind, setting:
 }
 
 func selectivePrivacyController<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, settings: AccountPrivacySettings, updated: @escaping (SelectivePrivacySettings, SelectivePrivacySettings?, Bool?, GlobalPrivacySettings?) -> Void) -> SelectivePrivacySettingsController<Context> {
+    let current: SelectivePrivacySettings
     switch kind {
-    case .presence:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.presence, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .groupInvitations:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.groupInvitations, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .voiceCalls:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.voiceCalls, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .profilePhoto:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.profilePhoto, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .forwards:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.forwards, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .phoneNumber:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.phoneNumber, phoneDiscoveryEnabled: settings.phoneDiscoveryEnabled, updated: updated)
-    case .voiceMessages:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.voiceMessages, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .bio:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.bio, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .birthday:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.birthday, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .gifts:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.giftsAutoSave, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
-    case .savedMusic:
-        return SelectivePrivacySettingsController(context, kind: kind, current: settings.savedMusic, callSettings: settings.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: settings.globalSettings, updated: updated)
+    case .presence: current = settings.presence
+    case .groupInvitations: current = settings.groupInvitations
+    case .voiceCalls: current = settings.voiceCalls
+    case .profilePhoto: current = settings.profilePhoto
+    case .forwards: current = settings.forwards
+    case .phoneNumber: current = settings.phoneNumber
+    case .voiceMessages: current = settings.voiceMessages
+    case .bio: current = settings.bio
+    case .birthday: current = settings.birthday
+    case .gifts: current = settings.giftsAutoSave
+    case .savedMusic: current = settings.savedMusic
     }
+    let hasCallSettings = [SelectivePrivacySettingsKind.voiceCalls, .voiceMessages, .gifts, .savedMusic].contains(kind)
+    let isPhoneNumber = kind == .phoneNumber
+    return SelectivePrivacySettingsController(context, kind: kind, current: current, callSettings: hasCallSettings ? settings.voiceCallsP2P : nil, phoneDiscoveryEnabled: isPhoneNumber ? settings.phoneDiscoveryEnabled : nil, globalSettings: isPhoneNumber ? nil : settings.globalSettings, updated: updated)
 }
 
 open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: TableViewController<Context> {
