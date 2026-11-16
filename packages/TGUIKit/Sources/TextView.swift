@@ -1257,6 +1257,7 @@ public final class TextViewLayout : Equatable {
             
             var lineCutoutOffset: CGFloat = 0.0
             var lineAdditionalWidth: CGFloat = 0.0
+            var lineMinimumWidth: CGFloat = 0.0
 
             var isPreformattedLine: CGFloat? = nil
             
@@ -1273,7 +1274,8 @@ public final class TextViewLayout : Equatable {
                 
                 breakInset = CGFloat(blockQuote.space * 2 + 20)
                 lineCutoutOffset += CGFloat(blockQuote.space * 2)
-                lineAdditionalWidth += max(breakInset, blockQuote.minimumHeaderSize)
+                lineAdditionalWidth += breakInset
+                lineMinimumWidth = blockQuote.minimumHeaderSize + breakInset
                 
                 if !isWasPreformatted {
                     layoutSize.height += CGFloat(blockQuote.space) + fontLineSpacing
@@ -1427,7 +1429,7 @@ public final class TextViewLayout : Equatable {
                 let lineWidth = ceil(CGFloat(measuredLineWidth))
                 let lineFrame = CGRect(x: lineCutoutOffset, y: lineOriginY, width: lineWidth, height: lineHeight)
                 layoutSize.height += lineHeight + fontLineSpacing
-                layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth)
+                layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth, lineMinimumWidth)
                 
                 if needsRunDecorations, brokenLineRange.location >= 0 && brokenLineRange.length > 0 && brokenLineRange.location + brokenLineRange.length <= attributedString.length {
                     attributedString.enumerateAttributes(in: NSMakeRange(lineRange.location, lineRange.length), options: []) { attributes, range, _ in
@@ -1508,7 +1510,7 @@ public final class TextViewLayout : Equatable {
                     let lineWidth = ceil(CGFloat(CTLineGetTypographicBounds(coreTextLine, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(coreTextLine)))
                     let lineFrame = CGRect(x: lineCutoutOffset, y: lineOriginY, width: lineWidth, height: lineHeight)
                     layoutSize.height += lineHeight
-                    layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth)
+                    layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth, lineMinimumWidth)
                     
                     let lineQuote: TextViewBlockQuoteData?
                     if lineRange.location >= quoteRange.location && lineRange.location + lineRange.length <= quoteRange.location + quoteRange.length {
@@ -1520,7 +1522,7 @@ public final class TextViewLayout : Equatable {
                         
                         let preformattedSpace = CGFloat(blockQuote.space) * 2
                         
-                        var frame = NSMakeRect(0, lineFrame.minY - lineFrame.height, lineWidth + max(preformattedSpace + 20, lineAdditionalWidth), lineFrame.height + preformattedSpace)
+                        var frame = NSMakeRect(0, lineFrame.minY - lineFrame.height, max(lineWidth + max(preformattedSpace + 20, lineAdditionalWidth), lineMinimumWidth), lineFrame.height + preformattedSpace)
                         
                         if isFirstFormattedLine {
                             frame.origin.y -= blockQuote.headerInset

@@ -1,0 +1,579 @@
+import Foundation
+import CoreGraphics
+
+final class Atomic<Value> {
+    private var value: Value
+    init(value: Value) { self.value = value }
+    func with<Result>(_ f: (Value) -> Result) -> Result { f(value) }
+    func swap(_ value: Value) -> Value {
+        let previous = self.value
+        self.value = value
+        return previous
+    }
+}
+
+struct MediaId: Hashable { let id: Int64 }
+struct ItemCollectionId {}
+struct PeerId: Equatable { init(_ value: Int64) {} }
+public struct MessageId: Equatable {
+    typealias Id = Int32
+    let id: Id
+    init(peerId: PeerId, namespace: Int32, id: Id) { self.id = id }
+}
+struct Message {
+    let media: [Media]
+    let id: MessageId
+    init(_ media: Media, stableId: UInt32, messageId: MessageId) {
+        self.media = [media]
+        self.id = messageId
+    }
+}
+protocol Media: AnyObject {}
+final class TelegramMediaImage: Media {}
+final class TelegramMediaMap: Media { let venue: String? = nil }
+final class TelegramMediaDice: Media {}
+final class TelegramMediaPaidContent: Media {
+    enum ExtendedMedia { case full(media: Media) }
+    let amount: Int64
+    let extendedMedia: [ExtendedMedia]
+    init(amount: Int64, extendedMedia: [ExtendedMedia]) {
+        self.amount = amount
+        self.extendedMedia = extendedMedia
+    }
+}
+final class LocalFileArchiveMediaResource: Hashable {
+    static func == (lhs: LocalFileArchiveMediaResource, rhs: LocalFileArchiveMediaResource) -> Bool { lhs === rhs }
+    func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
+}
+final class TelegramMediaFile: Media {
+    let mimeType: String
+    let resource: AnyObject
+    var isInstantVideo = false
+    var isAnimatedSticker = false
+    var isStaticSticker = false
+    var isVoice = false
+    var isVideo = false
+    var isWebm = false
+    var isAnimated = false
+    init(mimeType: String = "application/pdf", resource: AnyObject = NSObject()) {
+        self.mimeType = mimeType
+        self.resource = resource
+    }
+}
+final class PreviewPlaceholder: Media {}
+func isPreviewPlaceholder(_ media: Media) -> Bool { media is PreviewPlaceholder }
+extension Media {
+__CAN_HAVE_CAPTION__
+__SUPPOSE_TO_BE_STICKER__
+__INTERACTIVE_MEDIA__
+}
+extension Array {
+__CHUNKS__
+}
+extension String {
+    var length: Int { utf16.count }
+    var nsstring: NSString { self as NSString }
+__STRING_TRIMMED__
+}
+extension NSAttributedString {
+__ATTRIBUTED_TRIMMED__
+}
+
+enum ChatTextInputAttribute: Equatable { case bold(Range<Int>) }
+private let boldKey = NSAttributedString.Key("test-bold")
+public final class ChatTextInputState {
+    let inputText: String
+    let selectionRange: Range<Int>
+    let attributes: [ChatTextInputAttribute]
+    var inlineMedia: [MediaId: Media] { [:] }
+    init() {
+        self.inputText = ""
+        self.selectionRange = 0..<0
+        self.attributes = []
+    }
+    init(inputText: String) {
+        self.inputText = inputText
+        self.selectionRange = inputText.length..<inputText.length
+        self.attributes = []
+    }
+    init(attributedText: NSAttributedString, selectionRange: Range<Int>) {
+        self.inputText = attributedText.string
+        self.selectionRange = selectionRange
+        var attributes: [ChatTextInputAttribute] = []
+        attributedText.enumerateAttribute(boldKey, in: NSMakeRange(0, attributedText.length)) { value, range, _ in
+            if value != nil { attributes.append(.bold(range.location..<(range.location + range.length))) }
+        }
+        self.attributes = attributes
+    }
+    func subInputState(from range: NSRange) -> ChatTextInputState {
+        precondition(range.location == 0 && range.length == inputText.length)
+        let text = NSMutableAttributedString(string: inputText)
+        for case let .bold(range) in attributes {
+            text.addAttribute(boldKey, value: true, range: NSRange(range))
+        }
+        let trimmed = text.attributedSubstring(from: range).trimmed
+        return ChatTextInputState(attributedText: trimmed, selectionRange: 0..<0)
+    }
+}
+__UPDATED_INPUT__
+extension Updated_ChatTextInputState {
+__INPUT_CONVERSION__
+}
+struct LocalizedStrings {
+    var previewSenderCaptionPlaceholder = "Caption"
+    var previewSenderCommentPlaceholder = "Comment"
+    var slowModeMultipleError = "Multiple messages"
+    var boostGroupChatInputSendMedia = "Boost required"
+    var boostGroupChatInputBoost = "Boost"
+}
+var localization = LocalizedStrings()
+func strings() -> LocalizedStrings { localization }
+func slowModeTooltipText(_ timeout: Int32) -> String { "Cooldown \(timeout)" }
+__SLOW_MODE__
+__PENDING_ACTIONS__
+
+final class AnalyticsMediaJourney {
+    enum Spec {
+        enum MediaMode { case media, file, archive }
+        enum SubmitVia { case unknown }
+    }
+    enum Blocked { case preparation, slowMode, permission }
+    var blocks: [Blocked] = []
+    func submissionBlocked(_ reason: Blocked) { blocks.append(reason) }
+}
+final class Analytics {
+    static let shared = Analytics()
+    func unresolvedContext() -> Int { 0 }
+}
+final class PreviewSenderChildAction {
+    let isCurrent: () -> Bool
+    init(context: Int, isCurrent: @escaping () -> Bool) { self.isCurrent = isCurrent }
+    func resolve(_ f: () -> Void) { if isCurrent() { f() } }
+    func dismissed() {}
+}
+__SENDING_STATE__
+enum TelegramMediaFileAttribute {
+    case Animated
+    case Audio(isVoice: Bool, duration: Int32, title: String?, performer: String?, waveform: Data?)
+}
+struct CollageHooks {
+    static let shared = CollageHooks()
+    let fileAttributes: (String, String, Bool, Bool) -> [TelegramMediaFileAttribute] = { _, path, _, _ in
+        switch (path as NSString).pathExtension {
+        case "mp3": return [.Audio(isVoice: false, duration: 1, title: nil, performer: nil, waveform: nil)]
+        case "ogg": return [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: nil)]
+        case "gifv": return [.Animated]
+        default: return []
+        }
+    }
+}
+func MIMEType(_ path: String, isExt: Bool = false) -> String {
+    let ext = isExt ? path : (path as NSString).pathExtension
+    switch ext {
+    case "mp3": return "audio/mpeg"
+    case "ogg": return "audio/ogg"
+    case "gifv": return "video/mp4"
+    case "mp4": return "video/mp4"
+    case "webp": return "image/webp"
+    case "jpg": return "image/jpeg"
+    default: return "application/pdf"
+    }
+}
+__CAN_COLLAGE__
+private struct PreviewState {
+    let urls: [URL]
+    let medias: [Media]
+    let currentState: PreviewSendingState
+    var renderingPreviews: [URL: CGImage] = [:]
+}
+private enum PreviewEntry {
+__ENTRY_CASES__
+}
+__PREVIEW_ENTRIES__
+
+class TableRowItem {
+    let view: RowView? = RowView()
+}
+final class RowView {
+    var shakes = 0
+    func shakeView() { shakes += 1 }
+}
+final class MediaPreviewRowItem: TableRowItem {
+    let media: Media
+    init(_ media: Media) { self.media = media }
+}
+final class MediaGroupPreviewRowItem: TableRowItem {}
+final class TableView {
+    var items: [TableRowItem] = []
+    var count: Int { items.count }
+    var firstItem: TableRowItem? { items.first }
+    func optionalItem(at index: Int) -> TableRowItem? { items.indices.contains(index) ? items[index] : nil }
+}
+final class InputInteractions {
+    var presentation = Updated_ChatTextInputState()
+}
+final class TextView {
+    let interactions = InputInteractions()
+    var shakes = 0
+    var selections = 0
+    func shake(beep: Bool = false) { shakes += 1 }
+    func selectAll() { selections += 1 }
+}
+final class SendButton {
+    var shakes = 0
+    var tooltips: [String] = []
+    func shake(beep: Bool = false) { shakes += 1 }
+}
+final class PreviewSenderView {
+    let textView = TextView()
+    let tableView = TableView()
+    let sendButton = SendButton()
+}
+func tooltip(for button: SendButton, text: String) { button.tooltips.append(text) }
+enum ArchiveSource: Hashable { case resource(LocalFileArchiveMediaResource) }
+enum ZipError: Error { case zipFail }
+enum ArchiveStatus { case waiting, fail(ZipError), none, done(URL), progress(Double) }
+final class Peer {
+    var bannedMedia = false
+    var bannedText = false
+}
+enum Permission { case banSendText }
+func permissionText(from peer: Peer?, for permission: Permission, cachedData: Int?) -> String? {
+    peer?.bannedText == true ? "Text denied" : nil
+}
+func checkMediaPermission(_ media: Media, for peer: Peer?) -> String? {
+    peer?.bannedMedia == true ? "Media denied" : nil
+}
+final class Context {
+    let window = 0
+    var notices: [String] = []
+}
+var modalNotices: [String] = []
+var boostPrompts = 0
+func showModalText(for window: Int, text: String) { modalNotices.append(text) }
+enum ConfirmResult { case thrid, basic }
+func verifyAlert(for window: Int, information: String, ok: String, successHandler: @escaping (ConfirmResult) -> Void, cancelHandler: @escaping () -> Void, onDeinit: @escaping () -> Void) { boostPrompts += 1 }
+struct Presentation {
+    var slowMode: SlowMode?
+    var cachedData: Int?
+    var totalBoostNeed: Int32?
+    var messageEffect: Int?
+}
+final class Submission { func discard() {} }
+struct Batch {
+    let medias: [Media]
+    let caption: ChatTextInputState
+    let grouped: Bool
+    let additional: ChatTextInputState?
+    let spoiler: Bool
+    let leading: Bool
+    let silent: Bool
+    let scheduled: Bool
+    let effect: Int?
+    let part: Int
+    let messages: [EnqueueMessage]
+}
+final class ChatInteraction {
+    struct Schedule { let date: Date }
+    enum Unblock { case unblockText(Int32) }
+    var presentation = Presentation()
+    var peer: Peer? = Peer()
+    var batches: [Batch] = []
+    func boostToUnrestrict(_ reason: Unblock) {}
+    func sendMediasObserved(_ media: [Media], _ caption: ChatTextInputState, _ grouped: Bool, _ additional: ChatTextInputState?, _ silent: Bool, _ atDate: Schedule?, _ spoiler: Bool, _ effect: Int?, _ leading: Bool, submission: Submission?, part: Int) {
+        batches.append(Batch(medias: media, caption: caption, grouped: grouped, additional: additional, spoiler: spoiler, leading: leading, silent: silent, scheduled: atDate != nil, effect: effect, part: part, messages: enqueueCaption(media: media, input: caption, isCollage: grouped)))
+    }
+}
+struct AnyMediaReference {
+    let media: Media
+    static func standalone(media: Media) -> AnyMediaReference { AnyMediaReference(media: media) }
+}
+struct EnqueueMessage {
+    let text: String
+    let mediaReference: AnyMediaReference?
+    let localGroupingKey: Int64?
+    static func message(text: String, attributes: [Int], inlineStickers: [MediaId: Media], mediaReference: AnyMediaReference?, threadId: Int64?, replyToMessageId: Int?, replyToStoryId: Int?, localGroupingKey: Int64?, correlationId: Int64?, bubbleUpEmojiOrStickersets: [ItemCollectionId]) -> EnqueueMessage {
+        EnqueueMessage(text: text, mediaReference: mediaReference, localGroupingKey: localGroupingKey)
+    }
+}
+func arc4random64() -> Int64 { Int64.random(in: 1...Int64.max) }
+func enqueueCaption(media: [Media], input: ChatTextInputState, isCollage: Bool, dynamicEmojiOrder: Bool = false, collectionId: ItemCollectionId? = nil) -> [EnqueueMessage] {
+    let caption = Atomic(value: input)
+    let attributes: [Int] = []
+    let threadId: Int64? = nil
+    let replyId: Int? = nil
+    let replyStoryId: Int? = nil
+__SENDER_CAPTION__
+    return messages
+}
+
+private final class Controller {
+    let genericView = PreviewSenderView()
+    let chatInteraction = ChatInteraction()
+    let contextChatInteraction = ChatInteraction()
+    let context = Context()
+    let pendingActions = PreviewSenderPendingActions()
+    let stateValue: Atomic<PreviewState>
+    var analyticsMediaJourney: AnalyticsMediaJourney? = AnalyticsMediaJourney()
+    var analyticsContext: Int? = nil
+    var archiveStatuses: [ArchiveSource: ArchiveStatus] = [:]
+    var sent = false
+    var sourceIsCurrent = true
+    var closed = false
+    var sendCurrentMedia: ((Bool, ChatInteraction.Schedule?, Bool?, AnalyticsMediaJourney.Spec.SubmitVia) -> Void)?
+    init(_ state: PreviewState, text: String, slowMode: SlowMode? = SlowMode()) {
+        self.stateValue = Atomic(value: state)
+        self.chatInteraction.presentation.slowMode = slowMode
+        self.genericView.textView.interactions.presentation = Updated_ChatTextInputState(inputText: NSAttributedString(string: text))
+        self.genericView.tableView.items = previewMediaEntries(state).map { entry in
+            switch entry {
+            case let .media(_, _, _, media, _, _, _), let .archive(_, _, _, media):
+                return MediaPreviewRowItem(media)
+            case .mediaGroup:
+                return MediaGroupPreviewRowItem()
+            case .section:
+                return TableRowItem()
+            }
+        }
+        for case let media as TelegramMediaFile in state.medias {
+            if let archive = media.resource as? LocalFileArchiveMediaResource {
+                self.archiveStatuses[.resource(archive)] = .done(URL(fileURLWithPath: "/fixtures/archive.zip"))
+            }
+        }
+        installSend()
+    }
+    func validateSendSource() -> Bool { sourceIsCurrent }
+    func capturePendingAction() -> () -> Bool { pendingActions.capture() }
+    func closeModal() { closed = true }
+__INPUT_PLACEHOLDER__
+    var displayedPlaceholder: String { inputPlaceholder }
+    func installSend() {
+        let stateValue = self.stateValue
+        let chatInteraction = self.chatInteraction
+        let context = self.context
+__SEND_PREFIX__
+__MAKE_MEDIA__
+                let submission: Submission? = nil
+__DISPATCH__
+            }
+        }
+    }
+    func send(silent: Bool = false, schedule: ChatInteraction.Schedule? = nil, spoiler: Bool? = nil) {
+        sendCurrentMedia?(silent, schedule, spoiler, .unknown)
+    }
+}
+
+private var checks = 0
+private var failures = 0
+private func expect<T: Equatable>(_ actual: T, _ expected: T, _ label: String) {
+    checks += 1
+    if actual != expected {
+        failures += 1
+        print("FAIL \(label): \(actual) != \(expected)")
+    }
+}
+private func state(_ count: Int, mode: PreviewSendingState.State = .file, grouped: Bool = true, media: (() -> Media)? = nil, spoiler: Bool = false, sort: PreviewSendingState.Sort = .down, payAmount: Int64? = nil) -> PreviewState {
+    let medias: [Media] = (0..<count).map { _ -> Media in
+        if let media { return media() }
+        if mode == .media { return TelegramMediaImage() }
+        return TelegramMediaFile()
+    }
+    return PreviewState(urls: (0..<count).map { URL(fileURLWithPath: "/fixtures/\($0).pdf") }, medias: medias, currentState: PreviewSendingState(state: mode, isCollage: grouped, isSpoiler: spoiler, sort: sort, payAmount: payAmount))
+}
+private func verifyAccepted(_ controller: Controller, sizes: [Int], caption: String, grouped: Bool, additional: String? = nil, label: String) {
+    controller.send()
+    let batches = controller.chatInteraction.batches
+    expect(batches.map { $0.medias.count }, sizes, label + " batch sizes")
+    expect(batches.map { $0.caption.inputText }, sizes.map { _ in caption }, label + " caption")
+    expect(batches.map { $0.grouped }, sizes.map { _ in grouped }, label + " grouping")
+    expect(batches.map { $0.additional?.inputText }, sizes.indices.map { $0 == 0 ? additional : nil }, label + " separate text")
+    expect(controller.genericView.sendButton.tooltips, [], label + " no slow-mode tooltip")
+    expect(controller.genericView.textView.shakes, 0, label + " no shake")
+}
+private func verifyBlocked(_ controller: Controller, label: String, cooldown: Bool = false) {
+    controller.send()
+    expect(controller.chatInteraction.batches.count, 0, label + " no send")
+    expect(controller.genericView.sendButton.tooltips, cooldown ? [] : [strings().slowModeMultipleError], label + " tooltip")
+    expect(controller.genericView.textView.selections, cooldown ? 0 : 1, label + " selection")
+    expect(controller.genericView.textView.shakes, 1, label + " shake")
+    expect(controller.analyticsMediaJourney?.blocks, [.slowMode], label + " analytics")
+}
+
+for (paths, expected) in [
+    (["a.pdf", "b.pdf"], true),
+    (["a.jpg", "b.jpg"], true),
+    (["a.mp3", "b.mp3"], true),
+    (["a.mp3", "b.pdf"], false),
+    (["a.ogg", "b.ogg"], false),
+    (["a.webp", "b.webp"], false),
+    (["a.gifv", "b.gifv"], false),
+    ([String](), false)
+] {
+    expect(canCollagesFromUrl(paths.map { URL(fileURLWithPath: "/fixtures/" + $0) }), expected, "grouping eligibility \(paths)")
+}
+for count in [2, 3, 9, 10] {
+    let controller = Controller(state(count), text: "short caption")
+    expect(controller.genericView.tableView.count, count, "grouped PDFs keep file rows \(count)")
+    expect(controller.displayedPlaceholder, strings().previewSenderCommentPlaceholder, "grouped PDFs keep placeholder \(count)")
+    verifyAccepted(controller, sizes: [count], caption: "short caption", grouped: true, label: "grouped PDF \(count)")
+    let messages = controller.chatInteraction.batches.flatMap { $0.messages }
+    expect(messages.map { $0.text }, Array(repeating: "", count: count - 1) + ["short caption"], "grouped PDF \(count) caption on last file")
+    expect(Set(messages.compactMap { $0.localGroupingKey }).count, 1, "grouped PDF \(count) one grouping key")
+}
+
+for count in [1, 2, 10] {
+    verifyAccepted(Controller(state(count, mode: .media), text: "caption"), sizes: [count], caption: "caption", grouped: count > 1, label: "media \(count)")
+}
+private let interactive = Controller(state(2, mode: .media), text: "caption")
+interactive.send()
+expect(interactive.chatInteraction.batches.flatMap { $0.messages.map { $0.text } }, ["caption", ""], "interactive caption remains on first media")
+
+for grouped in [false, true] {
+    verifyAccepted(Controller(state(1, grouped: grouped), text: "caption"), sizes: [1], caption: "caption", grouped: false, label: "single PDF \(grouped)")
+}
+private let archive = Controller(state(1, mode: .archive, grouped: false, media: { TelegramMediaFile(mimeType: "application/zip", resource: LocalFileArchiveMediaResource()) }), text: "archive caption")
+verifyAccepted(archive, sizes: [1], caption: "archive caption", grouped: false, label: "archive")
+
+for mode in [PreviewSendingState.State.file, .media] {
+    let cleared = Controller(state(2, mode: mode), text: "")
+    cleared.send()
+    expect(cleared.chatInteraction.batches.count, 1, "clearing caption still permits grouped \(mode)")
+    verifyBlocked(Controller(state(2, mode: mode, grouped: false), text: "separate comment"), label: "ungrouped \(mode)")
+    verifyAccepted(Controller(state(2, mode: mode, grouped: false), text: "separate comment", slowMode: nil), sizes: [2], caption: "", grouped: false, additional: "separate comment", label: "ungrouped outside slow-mode \(mode)")
+    for count in [11, 20, 21] {
+        verifyBlocked(Controller(state(count, mode: mode), text: "caption"), label: "multi-batch \(mode) \(count)")
+        verifyBlocked(Controller(state(count, mode: mode), text: " \n "), label: "raw whitespace multi-batch \(mode) \(count)")
+        let sizes = count == 11 ? [10, 1] : count == 20 ? [10, 10] : [10, 10, 1]
+        verifyAccepted(Controller(state(count, mode: mode), text: ""), sizes: sizes, caption: "", grouped: true, label: "empty multi-batch \(mode) \(count)")
+        let outside = Controller(state(count, mode: mode), text: "caption", slowMode: nil)
+        outside.send()
+        expect(outside.chatInteraction.batches.map { $0.medias.count }, sizes, "outside slow-mode multi-batch sizes \(mode) \(count)")
+        expect(outside.chatInteraction.batches.map { $0.additional?.inputText }, sizes.map { _ in nil as String? }, "outside slow-mode multi-batch no separate text \(mode) \(count)")
+    }
+}
+
+for kind in ["sticker", "voice", "instant-video"] {
+    let factory: () -> Media = {
+        let media = TelegramMediaFile(mimeType: kind == "sticker" ? "image/webp" : "audio/ogg")
+        media.isVoice = kind == "voice"
+        media.isInstantVideo = kind == "instant-video"
+        return media
+    }
+    for grouped in [false, true] {
+        verifyBlocked(Controller(state(1, grouped: grouped, media: factory), text: "comment"), label: "single cannot-caption \(kind) \(grouped)")
+    }
+    verifyAccepted(Controller(state(1, grouped: false, media: factory), text: "comment", slowMode: nil), sizes: [1], caption: "", grouped: false, additional: "comment", label: "single cannot-caption outside slow-mode \(kind)")
+}
+
+private let sendingId = MessageId(peerId: PeerId(0), namespace: 0, id: 1)
+for slowMode in [SlowMode(timeout: 1), SlowMode(timeout: 30), SlowMode(sendingIds: [sendingId])] {
+    for text in ["", "caption"] {
+        verifyBlocked(Controller(state(2), text: text, slowMode: slowMode), label: "active cooldown \(slowMode) \(text)", cooldown: true)
+    }
+}
+for timeout: Int32 in [0, -1] {
+    verifyAccepted(Controller(state(2), text: "caption", slowMode: SlowMode(timeout: timeout)), sizes: [2], caption: "caption", grouped: true, label: "expired timeout \(timeout)")
+}
+
+for text in ["", " \n\t ", "\u{2028}", " padded caption ", "подпись"] {
+    verifyAccepted(Controller(state(2), text: text), sizes: [2], caption: text.trimmed, grouped: true, label: "grouped whitespace \(text.debugDescription)")
+    let ungrouped = Controller(state(2, grouped: false), text: text)
+    if text.isEmpty {
+        verifyAccepted(ungrouped, sizes: [2], caption: "", grouped: false, label: "empty ungrouped")
+    } else {
+        verifyBlocked(ungrouped, label: "nonempty raw ungrouped \(text.debugDescription)")
+    }
+    let outside = Controller(state(2, grouped: false), text: text, slowMode: nil)
+    verifyAccepted(outside, sizes: [2], caption: "", grouped: false, additional: text.trimmed.isEmpty ? nil : text.trimmed, label: "outside whitespace \(text.debugDescription)")
+}
+for grouped in [false, true] {
+    verifyBlocked(Controller(state(0, grouped: grouped), text: "caption"), label: "empty preview nonempty input \(grouped)")
+    verifyAccepted(Controller(state(0, grouped: grouped), text: "caption", slowMode: nil), sizes: [0], caption: "caption", grouped: false, label: "empty preview routing unchanged \(grouped)")
+}
+private let formatted = Controller(state(2), text: "")
+private let attributed = NSAttributedString(string: "caption", attributes: [boldKey: true])
+formatted.genericView.textView.interactions.presentation = Updated_ChatTextInputState(inputText: attributed)
+verifyAccepted(formatted, sizes: [2], caption: "caption", grouped: true, label: "formatted caption")
+expect(formatted.chatInteraction.batches.first?.caption.attributes, [.bold(0..<7)], "formatted caption attributes survive")
+
+private let originalLocalization = localization
+localization.previewSenderCommentPlaceholder = "Kommentar"
+localization.previewSenderCaptionPlaceholder = "Beschreibung"
+verifyAccepted(Controller(state(2), text: "caption"), sizes: [2], caption: "caption", grouped: true, label: "localized grouped PDFs")
+localization.previewSenderCommentPlaceholder = localization.previewSenderCaptionPlaceholder
+verifyBlocked(Controller(state(2, grouped: false), text: "comment"), label: "equal localized placeholders cannot bypass restriction")
+localization = originalLocalization
+
+private let deniedMedia = Controller(state(2), text: "caption")
+deniedMedia.chatInteraction.peer?.bannedMedia = true
+modalNotices = []
+deniedMedia.send()
+expect(deniedMedia.chatInteraction.batches.count, 0, "media permission denies send")
+expect(modalNotices, ["Media denied"], "media permission reported after caption classification")
+expect(deniedMedia.genericView.tableView.items.map { $0.view!.shakes }, [1, 1], "media permission shakes affected rows")
+private let deniedText = Controller(state(2, grouped: false), text: "comment", slowMode: nil)
+deniedText.chatInteraction.peer?.bannedText = true
+modalNotices = []
+deniedText.send()
+expect(deniedText.chatInteraction.batches.count, 0, "separate text permission denies send")
+expect(modalNotices, ["Text denied"], "separate text permission reported")
+private let captionTextPermission = Controller(state(2), text: "caption")
+captionTextPermission.chatInteraction.peer?.bannedText = true
+verifyAccepted(captionTextPermission, sizes: [2], caption: "caption", grouped: true, label: "caption keeps existing text permission semantics")
+private let boost = Controller(state(2), text: "caption")
+boost.chatInteraction.peer?.bannedMedia = true
+boost.chatInteraction.presentation.totalBoostNeed = 1
+boostPrompts = 0
+boost.send()
+expect(boost.chatInteraction.batches.count, 0, "boost restriction denies send")
+expect(boostPrompts, 1, "boost restriction prompts")
+
+for status in [ArchiveStatus.waiting, .fail(.zipFail), .none] {
+    let archiveMedia = TelegramMediaFile(resource: LocalFileArchiveMediaResource())
+    let controller = Controller(state(1, mode: .archive, grouped: false, media: { archiveMedia }), text: "caption")
+    controller.archiveStatuses[.resource(archiveMedia.resource as! LocalFileArchiveMediaResource)] = status
+    controller.send()
+    expect(controller.chatInteraction.batches.count, 0, "archive not ready \(status)")
+    expect(controller.analyticsMediaJourney?.blocks, [.preparation], "archive preparation analytics \(status)")
+}
+private let missingArchive = Controller(state(1, mode: .archive, grouped: false, media: { TelegramMediaFile(resource: LocalFileArchiveMediaResource()) }), text: "caption")
+missingArchive.archiveStatuses.removeAll()
+missingArchive.send()
+expect(missingArchive.chatInteraction.batches.count, 0, "missing archive status cannot send")
+expect(missingArchive.analyticsMediaJourney?.blocks, [.preparation], "missing archive status preparation analytics")
+private let placeholder = Controller(state(2, media: { PreviewPlaceholder() }), text: "caption")
+placeholder.send()
+expect(placeholder.chatInteraction.batches.count, 0, "placeholder cannot send")
+expect(placeholder.genericView.sendButton.shakes, 1, "placeholder preparation shakes button")
+for condition in ["closed", "sent", "stale"] {
+    let controller = Controller(state(2), text: "caption")
+    if condition == "closed" { controller.pendingActions.close() }
+    if condition == "sent" { controller.sent = true }
+    if condition == "stale" { controller.sourceIsCurrent = false }
+    controller.send()
+    expect(controller.chatInteraction.batches.count, 0, "\(condition) guard preserved")
+}
+private let staleRows = Controller(state(2), text: "caption")
+staleRows.genericView.tableView.items = []
+verifyAccepted(staleRows, sizes: [2], caption: "caption", grouped: true, label: "prepared grouping does not depend on table rows")
+private let ungroupedRows = Controller(state(2, grouped: false), text: "comment")
+ungroupedRows.genericView.tableView.items = [MediaGroupPreviewRowItem()]
+verifyBlocked(ungroupedRows, label: "table group row cannot bypass prepared ungrouped state")
+
+private let forwarding = Controller(state(2, mode: .media, spoiler: true, sort: .up), text: "caption")
+forwarding.contextChatInteraction.presentation.messageEffect = 7
+forwarding.send(silent: true, schedule: .init(date: Date(timeIntervalSince1970: 100)), spoiler: false)
+expect(forwarding.chatInteraction.batches.map { $0.spoiler }, [false], "explicit spoiler override preserved")
+expect(forwarding.chatInteraction.batches.map { $0.leading }, [true], "media caption position preserved")
+expect(forwarding.chatInteraction.batches.map { $0.silent }, [true], "silent forwarding preserved")
+expect(forwarding.chatInteraction.batches.map { $0.scheduled }, [true], "schedule forwarding preserved")
+expect(forwarding.chatInteraction.batches.map { $0.effect }, [7], "effect forwarding preserved")
+private let fileSort = Controller(state(2, sort: .up), text: "caption")
+fileSort.send()
+expect(fileSort.chatInteraction.batches.map { $0.leading }, [false], "file caption position remains below files")
+private let paid = Controller(state(2, mode: .media, payAmount: 5), text: "caption")
+verifyAccepted(paid, sizes: [1], caption: "caption", grouped: false, label: "paid media wrapper")
+expect((paid.chatInteraction.batches.first?.medias.first as? TelegramMediaPaidContent)?.extendedMedia.count, 2, "paid media contents preserved")
+
+print("SUMMARY: \(checks) checks, \(failures) failures")
+exit(failures == 0 ? 0 : 1)

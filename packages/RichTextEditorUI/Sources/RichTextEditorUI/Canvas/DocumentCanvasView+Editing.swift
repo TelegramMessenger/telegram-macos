@@ -153,6 +153,10 @@ extension DocumentCanvasView {
         guard boxes.indices.contains(index) else { return }
         var newBoxes = boxes
         newBoxes.remove(at: index)
+        if newBoxes.isEmpty {
+            newBoxes = [BlockBox(paragraph: ParagraphBlock(id: BlockID.generate(), runs: []),
+                                 mapper: mapper, width: effectiveWidth)]
+        }
         boxes = newBoxes
         recomputeSpans()
         let caret = index > 0 ? boxes[index - 1].textStart + boxes[index - 1].textLength
@@ -167,6 +171,10 @@ extension DocumentCanvasView {
         guard boxes.indices.contains(index) else { return }
         var newBoxes = boxes
         newBoxes.remove(at: index)
+        if newBoxes.isEmpty {
+            newBoxes = [BlockBox(paragraph: ParagraphBlock(id: BlockID.generate(), runs: []),
+                                 mapper: mapper, width: effectiveWidth)]
+        }
         boxes = newBoxes
         recomputeSpans()
         let caret = index > 0 ? boxes[index - 1].textStart + boxes[index - 1].textLength

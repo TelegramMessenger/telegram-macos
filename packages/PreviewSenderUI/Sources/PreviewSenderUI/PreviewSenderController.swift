@@ -2345,19 +2345,20 @@ public class PreviewSenderController: ModalViewController, Notifable {
             
             let slowMode = self.chatInteraction.presentation.slowMode
             let inputState = self.genericView.textView.interactions.presentation
-            
+            let state = stateValue.with { $0.currentState }
+            let medias = stateValue.with { $0.medias }
+            let canHaveCaption = medias.count == 1 ? medias[0].canHaveCaption : state.isCollage && !medias.isEmpty
+
             if let slowMode = slowMode, slowMode.hasLocked {
                 self.analyticsMediaJourney?.submissionBlocked(.slowMode)
                 self.genericView.textView.shake()
-            } else if self.inputPlaceholder != strings().previewSenderCaptionPlaceholder && slowMode != nil && inputState.inputText.length > 0 {
+            } else if (!canHaveCaption || medias.count > 10) && slowMode != nil && inputState.inputText.length > 0 {
                 self.analyticsMediaJourney?.submissionBlocked(.slowMode)
                 tooltip(for: self.genericView.sendButton, text: strings().slowModeMultipleError)
                 self.genericView.textView.selectAll()
                 self.genericView.textView.shake()
             } else {
                 let peer = self.chatInteraction.peer
-                let state = stateValue.with { $0.currentState }
-                let medias = stateValue.with { $0.medias }
                 if medias.contains(where: isPreviewPlaceholder) {
                     self.analyticsMediaJourney?.submissionBlocked(.preparation)
                     return
@@ -2392,11 +2393,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 }
                 var additionalMessage: ChatTextInputState? = nil
                 
-                if (medias.count > 1  || (medias.count == 1 && (!medias[0].canHaveCaption))) && !input.inputText.isEmpty  {
-                    if !state.isCollage {
-                        additionalMessage = input
-                        input = ChatTextInputState()
-                    }
+                if !canHaveCaption && !state.isCollage && !medias.isEmpty && !input.inputText.isEmpty {
+                    additionalMessage = input
+                    input = ChatTextInputState()
                 }
                 if additionalMessage != nil, let text = permissionText(from: peer, for: .banSendText, cachedData: chatInteraction.presentation.cachedData) {
                     permissions.insert((text, -1), at: 0)

@@ -222,7 +222,7 @@ public class ChatMediaItem: ChatRowItem {
         super.init(initialSize, chatInteraction, context, object, theme: theme)
         
         var canAddCaption: Bool = true
-        if let media = media as? TelegramMediaFile, media.isAnimatedSticker || media.isStaticSticker {
+        if let media = media as? TelegramMediaFile, media.isAnimatedSticker || media.isChatStaticSticker {
             canAddCaption = false
         }
         if media is TelegramMediaDice {
@@ -468,7 +468,7 @@ public class ChatMediaView: ChatRowView, ModalPreviewRowViewProtocol {
                         return (.file(reference, GifPreviewModalView.self), contentNode)
                     } else if file.isAnimatedSticker || file.isWebm {
                         return (.file(reference, AnimatedStickerPreviewModalView.self), contentNode)
-                    } else if file.isStaticSticker {
+                    } else if file.isChatStaticSticker {
                         return (.file(reference, StickerPreviewModalView.self), contentNode)
                     }
                 }
