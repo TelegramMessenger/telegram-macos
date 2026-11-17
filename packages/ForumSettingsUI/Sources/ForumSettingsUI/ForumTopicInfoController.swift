@@ -216,13 +216,21 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
         return InputDataSignalValue(entries: entries(state, arguments: arguments, canHideGeneral: canHideGeneral))
     }
     
+    let iconFileId:(State)->Int64? = { state in
+        if state.icon?.file?.mimeType == "bundle/topic" {
+            return nil
+        } else {
+            return state.icon?.fileId
+        }
+    }
+    
     let infoEdited:()->Bool = {
         let state = stateValue.with { $0}
         switch purpose {
         case .create:
             return true
         case let .edit(data, threadId):
-            return data.info.title != state.name || (threadId != 1 && data.info.icon != state.icon?.fileId)
+            return data.info.title != state.name || (threadId != 1 && data.info.icon != iconFileId(state))
         }
     }
     
@@ -261,12 +269,7 @@ public func ForumTopicInfoController<Context: AccountContextProtocol>(context: C
         let state = stateValue.with { $0 }
         return .fail(.doSomething(next: { f in
             if !state.name.isEmpty && CheckEdited() {
-                let fileId: Int64?
-                if state.icon?.file?.mimeType == "bundle/topic" {
-                    fileId = nil
-                } else {
-                    fileId = state.icon?.fileId
-                }
+                let fileId = iconFileId(state)
                 switch purpose {
                 case .create:
                     let iconColor = ForumUI.randomTopicColor()
