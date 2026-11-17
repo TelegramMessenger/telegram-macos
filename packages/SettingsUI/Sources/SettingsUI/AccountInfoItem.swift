@@ -399,6 +399,9 @@ private class AccountInfoView : GeneralContainableRowView {
             } else if let control = statusControl {
                 control.removeAllHandlers()
                 control.userInteractionEnabled = false
+                control.setAccessibilityElement(false)
+                control.setAccessibilityRole(nil)
+                control.setAccessibilityLabel(nil)
             }
         
             
