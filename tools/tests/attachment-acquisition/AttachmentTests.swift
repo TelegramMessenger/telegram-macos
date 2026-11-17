@@ -12,7 +12,28 @@ func |> <A, B>(value: A, transform: (A) -> B) -> B { transform(value) }
 func deliverOnMainQueue<A>(_ signal: Signal<A>) -> Signal<A> { signal }
 final class NSImage {}
 final class Window {}
-final class AccountContext {}
+final class AccountContext { let window = Window() }
+struct TelegramChatBannedRightsFlags: OptionSet {
+    let rawValue: Int
+    static let banSendPhotos = Self(rawValue: 1 << 0)
+    static let banSendVideos = Self(rawValue: 1 << 1)
+    static let banSendFiles = Self(rawValue: 1 << 2)
+    static let banSendMusic = Self(rawValue: 1 << 3)
+    static let banSendGifs = Self(rawValue: 1 << 4)
+    static let banSendStickers = Self(rawValue: 1 << 5)
+    static let banSendText = Self(rawValue: 1 << 6)
+}
+enum ChatState { case normal, editing, restricted }
+struct PickerPeer { var banned: TelegramChatBannedRightsFlags = [] }
+struct Presentation {
+    var peer: PickerPeer? = PickerPeer()
+    var cachedData: Int?
+    var state = ChatState.normal
+__PICKER_PERMISSIONS__
+}
+func permissionText(from peer: PickerPeer?, for flag: TelegramChatBannedRightsFlags, cachedData: Int?) -> String? {
+    return peer?.banned.contains(flag) == true ? "restricted \(flag.rawValue)" : nil
+}
 final class Context {
     var wrappedSignals = 0
     func preservingPresentation<T>(_ signal: Signal<T>) -> Signal<T> { wrappedSignals += 1; return signal }
@@ -23,7 +44,7 @@ final class Analytics {
 }
 enum Entry { case attachFile, attachPhotoVideo, imagePicker }
 enum Mode { case media, file }
-enum Blocker: Equatable { case sizeLimit, fileUnavailable, emptySelection }
+enum Blocker: Equatable { case sizeLimit, fileUnavailable, emptySelection, permission }
 final class Journey {
     var blockers: [Blocker] = []
     var failures: [Blocker] = []
@@ -37,6 +58,10 @@ final class Journey {
     func preparing() { prepares += 1 }
 }
 final class ChatInteraction {
+    enum AttachMediaType { case photo, video }
+    var presentation = Presentation()
+    var attachFile: (Bool) -> Void = { _ in }
+    var attachAudio: ((() -> Int?)?) -> Void = { _ in }
     var revision = 0
     var admitted = true
     var tasks: [Journey] = []
@@ -54,13 +79,25 @@ final class ChatInteraction {
         previews.append(files.map(\.path)); modes.append(media)
     }
 }
-struct FileCallbacks { let cancel: () -> Void; let complete: ([String]?) -> Void }
+struct FileCallbacks { let types: [String]?; let cancel: () -> Void; let complete: ([String]?) -> Void }
 var panels: [FileCallbacks] = []
 var pictures: [(NSImage?) -> Void] = []
 var preparedImages: [(String) -> Void] = []
 var sizeAlerts = 0
+var audioModals = 0
+var permissionNotices: [String] = []
+let photoExts = ["jpg"]
+let videoExts = ["mp4"]
+enum KeyHandlerResult { case invoked }
+struct AudioModal {}
+struct ChatUIHooks {
+    static let shared = Self()
+    func makeSendAudioModal(_ context: AccountContext, _ interaction: ChatInteraction) -> AudioModal { AudioModal() }
+}
+func showModal(with: AudioModal, for: Window, morphSource: (() -> Int?)?) { audioModals += 1 }
+func showModalText(for: Window, text: String) { permissionNotices.append(text) }
 func filePanel(with: [String]? = nil, allowMultiple: Bool, canChooseDirectories: Bool, for: Window, analyticsContext: Context?, cancelled: @escaping () -> Void, completion: @escaping ([String]?) -> Void) {
-    panels.append(FileCallbacks(cancel: cancelled, complete: completion))
+    panels.append(FileCallbacks(types: with, cancel: cancelled, complete: completion))
 }
 func pickImage(for: Window, analyticsContext: Context?, completion: @escaping (NSImage?) -> Void) { pictures.append(completion) }
 func putToTemp(image: NSImage) -> Signal<String> { Signal { preparedImages.append($0) } }
@@ -74,12 +111,17 @@ final class Controller {
     let analyticsScreen = 1
     let window = Window()
     let exts: [String]? = nil
+    let button = 0
+    init() {
+        chatInteraction.attachFile = { [weak self] asMedia in self?.files(asMedia: asMedia) }
+        chatInteraction.attachAudio = { [weak self] morphSource in self?.audio(morphSource: morphSource) }
+    }
     func files(asMedia: Bool = false) {
         let context = self.context
         let analyticsContext = self.analyticsContext
 __FILES__
     }
-    func photos() {
+    func photos(_ type: ChatInteraction.AttachMediaType? = nil) {
         let context = self.context
         let analyticsContext = self.analyticsContext
 __PHOTOS__
@@ -89,13 +131,99 @@ __PHOTOS__
         let analyticsContext = self.analyticsContext
 __IMAGE__
     }
+    func audio(morphSource: (() -> Int?)? = nil) {
+        let context = self.context
+__AUDIO__
+    }
+    func commandOpen() -> KeyHandlerResult {
+        let handler: (Int) -> KeyHandlerResult = { [weak self] _ in
+__COMMAND_OPEN__
+        }
+        return handler(0)
+    }
+    func audioMenuAction() -> () -> Void {
+        let context = self.context
+        let peer = chatInteraction.presentation.peer
+        let cachedData = chatInteraction.presentation.cachedData
+        return { [weak self] in
+__AUDIO_MENU__
+        }
+    }
 }
 
 final class AttachmentTests: XCTestCase {
-    override func setUp() { panels = []; pictures = []; preparedImages = []; sizeAlerts = 0 }
+    override func setUp() { panels = []; pictures = []; preparedImages = []; sizeAlerts = 0; audioModals = 0; permissionNotices = [] }
     private func open(_ controller: Controller, photo: Bool) -> FileCallbacks {
         if photo { controller.photos() } else { controller.files() }
         return panels.last!
+    }
+    func testCommandOpenAllowsMediaWithDocumentAndTextBans() {
+        let controller = Controller()
+        controller.chatInteraction.presentation.peer?.banned = [.banSendFiles, .banSendText]
+        XCTAssertEqual(controller.commandOpen(), .invoked)
+        XCTAssertEqual(panels.count, 1)
+        panels.last?.complete(["/small"])
+        XCTAssertEqual(controller.chatInteraction.modes, [true])
+        controller.files(asMedia: false)
+        XCTAssertEqual(panels.count, 1)
+        XCTAssertEqual(controller.chatInteraction.tasks.last?.failures, [.permission])
+    }
+    func testMediaPickersRejectForbiddenTypesBeforeOpening() {
+        let controller = Controller()
+        controller.chatInteraction.presentation.peer?.banned = [.banSendPhotos]
+        controller.photos(.photo)
+        controller.picture()
+        XCTAssertTrue(panels.isEmpty)
+        XCTAssertTrue(pictures.isEmpty)
+        XCTAssertTrue(controller.chatInteraction.tasks.allSatisfy { $0.failures == [.permission] })
+        controller.photos(.video)
+        XCTAssertEqual(panels.count, 1)
+        XCTAssertEqual(panels.last?.types, videoExts)
+        controller.chatInteraction.presentation.peer?.banned = [.banSendVideos]
+        controller.photos(.photo)
+        XCTAssertEqual(panels.count, 2)
+        XCTAssertEqual(panels.last?.types, photoExts)
+    }
+    func testCommandOpenRejectsWhenAllSelectableMediaIsForbidden() {
+        let controller = Controller()
+        controller.chatInteraction.presentation.peer?.banned = [.banSendPhotos, .banSendVideos, .banSendFiles, .banSendMusic, .banSendGifs, .banSendStickers]
+        controller.commandOpen()
+        XCTAssertTrue(panels.isEmpty)
+        XCTAssertEqual(controller.chatInteraction.tasks.last?.failures, [.permission])
+    }
+    func testAudioMenuChecksMusicInsteadOfDocumentPermission() {
+        let controller = Controller()
+        controller.chatInteraction.presentation.peer?.banned = [.banSendFiles, .banSendText]
+        controller.audioMenuAction()()
+        XCTAssertEqual(audioModals, 1)
+        XCTAssertTrue(permissionNotices.isEmpty)
+        controller.chatInteraction.presentation.peer?.banned = [.banSendMusic]
+        controller.audioMenuAction()()
+        XCTAssertEqual(audioModals, 1)
+        XCTAssertEqual(permissionNotices, ["restricted \(TelegramChatBannedRightsFlags.banSendMusic.rawValue)"])
+    }
+    func testAudioMenuRechecksLivePermissionsAtPickerEntry() {
+        let controller = Controller()
+        let action = controller.audioMenuAction()
+        controller.chatInteraction.presentation.peer?.banned = [.banSendMusic]
+        action()
+        XCTAssertEqual(audioModals, 0)
+        XCTAssertEqual(permissionNotices.count, 1)
+        controller.chatInteraction.presentation.peer?.banned = [.banSendFiles]
+        action()
+        XCTAssertEqual(audioModals, 1)
+    }
+    func testPickerEntryPointsRespectComposerState() {
+        let controller = Controller()
+        controller.chatInteraction.presentation.state = .restricted
+        controller.commandOpen()
+        controller.files()
+        controller.photos()
+        controller.picture()
+        controller.audioMenuAction()()
+        XCTAssertTrue(panels.isEmpty)
+        XCTAssertTrue(pictures.isEmpty)
+        XCTAssertEqual(audioModals, 0)
     }
     func testExplicitCancelConsumesFollowingNilAndDuplicateCallbacks() {
         for photo in [false, true] {
