@@ -1,7 +1,0 @@
-Run with python3 -I run.py --source-root /path/to/worktree --output /outside/worktree.
-
-Compiles the exact current category filter, removeAll peer-ID selection and settings mutation extracted from production, then repeats against pinned upstream246e3e957ae5cea1ecff6d7a6a6db3e47be69bb5. The baseline must compile and fail behavioral assertions.
-
-Peer identity/category predicates, state access and account storage are small controlled fixtures. This suite does not open Telegram, touch accounts or preferences, execute Postbox transactions, show the confirmation dialog or evict media. It verifies category membership, unaffected values and order, missing peers, an empty category, already-removed entries and confirmation-time state. Stories and private chats share user peer IDs in the current model; the test does not pretend those settings are independently stored.
-
-The full app build and user acceptance are separate checks. Optional --compiler-lock serializes compiler processes when suites run together.
