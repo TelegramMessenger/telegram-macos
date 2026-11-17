@@ -237,11 +237,29 @@ extension DocumentCanvasView {
                 present.insert(key)
                 let width = box.canvasWidth
                 let hosted: HostedMediaBlock
-                if let h = mediaGroupTileViews[key] { hosted = h }
-                else if let v = mediaGroupSliderProvider(box.mediaIDs, width) {
-                    let h = HostedMediaBlock(view: v, canvasFrame: .zero)
-                    mediaGroupTileViews[key] = h; mediaBlockHost.addSubview(v); hosted = h
-                } else { continue }
+                if let h = mediaGroupTileViews[key], h.mediaIDs == box.mediaIDs, h.spoilers == box.spoilers,
+                   abs(h.canvasFrame.width - width) < 0.5 {
+                    hosted = h
+                } else {
+                    let old = mediaGroupTileViews[key]
+                    let view: NSView?
+                    if let provider = mediaGroupSliderUpdateProvider {
+                        view = provider(box.mediaIDs, box.spoilers, width, old?.view)
+                    } else {
+                        view = mediaGroupSliderProvider(box.mediaIDs, width)
+                    }
+                    if let old, old.view !== view {
+                        mediaBlockViewWillRemove?(old.view)
+                        old.view.removeFromSuperview()
+                    }
+                    guard let view else { mediaGroupTileViews[key] = nil; continue }
+                    let h = old?.view === view ? old! : HostedMediaBlock(view: view, canvasFrame: .zero)
+                    h.mediaIDs = box.mediaIDs
+                    h.spoilers = box.spoilers
+                    mediaGroupTileViews[key] = h
+                    if view.superview !== mediaBlockHost { mediaBlockHost.addSubview(view) }
+                    hosted = h
+                }
                 let viewH = hosted.view.frame.height
                 if viewH > 0, box.hostHeight == nil || abs((box.hostHeight ?? 0) - viewH) > 0.5 {
                     box.hostHeight = viewH; needsLayout = true
