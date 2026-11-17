@@ -131,6 +131,7 @@ final class DocumentCanvasView: NSView {
     /// Host hook: builds the SLIDER (slideshow) view for a group's `mediaIDs` at the full-bleed `width`,
     /// sized (frame height) to its content; the editor learns that height back. nil = none.
     var mediaGroupSliderProvider: (_ mediaIDs: [String], _ width: CGFloat) -> NSView? = { _, _ in nil }
+    var mediaGroupSliderUpdateProvider: ((_ mediaIDs: [String], _ spoilers: [Bool], _ width: CGFloat, _ view: NSView?) -> NSView?)?
     /// Host-provided overlay controls for a media block (collage/slider/single image·video). Given the
     /// block id, kind, media-area size, and per-tile frames (controls-local coords), returns a view the
     /// canvas positions over the media area (above tiles + select overlays). nil → no controls.
@@ -411,6 +412,7 @@ final class DocumentCanvasView: NSView {
         // Tear down any still-hosted media views so their injected content nodes release subscriptions
         // (the host's `clean()`), rather than leaking with a live status signal.
         for (_, h) in mediaBlockViews { mediaBlockViewWillRemove?(h.view) }
+        for (_, h) in mediaGroupTileViews { mediaBlockViewWillRemove?(h.view) }
         for (_, view) in mediaControlsViews { view.removeFromSuperview() }   // parity with the media-view teardown
         caretTimer?.invalidate()
     }

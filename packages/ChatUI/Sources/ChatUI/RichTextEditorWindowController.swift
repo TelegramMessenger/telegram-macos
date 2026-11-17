@@ -939,9 +939,12 @@ public final class RichTextEditorCoordinator {
         // Release the content node's status subscription when its block goes away — otherwise the
         // statusDisposable keeps firing on an orphaned view (leak / stray updates).
         editor.registerMediaBlockViewTeardown { view in
-            guard let content = view as? ChatMediaContentView else { return }
-            content.willRemove()
-            content.clean()
+            if let content = view as? ChatMediaContentView {
+                content.willRemove()
+                content.clean()
+            } else if let slider = view as? InstantPageV2SlideshowView {
+                slider.clean()
+            }
         }
 
         // Collage mosaic — wrap the chat's `GroupedLayout` with synthetic per-media messages (mirrors
@@ -966,9 +969,10 @@ public final class RichTextEditorCoordinator {
                                                                  context: context, interaction: mediaInteraction)
         }
         // Slider — the chat's paging InstantPageV2SlideshowView, built from the group's cached media.
-        editor.registerMediaGroupSliderProvider { mediaIDs, width in
+        editor.registerMediaGroupSliderProvider { mediaIDs, _, width, view in
             RichTextEditorCoordinator.makeSliderView(mediaIDs: mediaIDs, width: width,
-                                                     media: { mediaCache.media[$0] }, context: context)
+                                                     media: { mediaCache.media[$0] }, context: context,
+                                                     view: view as? InstantPageV2SlideshowView)
         }
         // On-media glass overlay controls: ••• per tile, + add, collage⇄slider toggle.
         editor.registerMediaControlsProvider { [weak editor] ctx in
@@ -1631,7 +1635,7 @@ public final class RichTextEditorCoordinator {
 
     /// Builds the paging slider view (the chat's `InstantPageV2SlideshowView`) for a group's media, sized
     /// to the tallest fitted media height. Mirrors `InstantPageV2View.reconcileSlideshows`'s config closure.
-    public static func makeSliderView(mediaIDs: [String], width: CGFloat, media: @escaping (String) -> Media?, context: any AccountContextProtocol) -> NSView? {
+    public static func makeSliderView(mediaIDs: [String], width: CGFloat, media: @escaping (String) -> Media?, context: any AccountContextProtocol, view existingView: InstantPageV2SlideshowView? = nil) -> NSView? {
         // InstantPageMedia requires a (non-optional) webpage; the slideshow view only reads `.media`/`.index`,
         // so a throwaway pending webpage is fine.
         let webpage = TelegramMediaWebpage(webpageId: MediaId(namespace: Namespaces.Media.LocalWebpage, id: 0), content: .Pending(0, nil))
@@ -1649,7 +1653,10 @@ public final class RichTextEditorCoordinator {
         guard !medias.isEmpty else { return nil }
         if height <= 0 { height = 240 }
         let size = NSMakeSize(width, height)
-        let view = InstantPageV2SlideshowView(frame: CGRect(origin: .zero, size: size))
+        let view = existingView ?? InstantPageV2SlideshowView(frame: CGRect(origin: .zero, size: size))
+        let previousIndex = view.currentMediaIndex
+        let previousMedia = previousIndex.flatMap { (view.mediaContentView(forMediaIndex: $0) as? ChatMediaContentView)?.media }
+        view.setFrameSize(size)
         view.cornerRadius = 0
         view.configure(medias: medias, context: context, config: { media, _, _, _ in
             let parent = Message(media, stableId: UInt32(truncatingIfNeeded: arc4random()),
@@ -1659,6 +1666,13 @@ public final class RichTextEditorCoordinator {
                                                         presentation: presentation, media: media, automaticDownload: true)
             return (parent, parameters)
         }, size: size)
+        if let previousIndex {
+            let index = previousMedia.flatMap { previous in
+                (medias.first(where: { $0.index == previousIndex && $0.media.isEqual(to: previous) })
+                    ?? medias.first(where: { $0.media.isEqual(to: previous) }))?.index
+            } ?? medias.last(where: { $0.index <= previousIndex })?.index ?? medias[0].index
+            _ = view.mediaContentView(forMediaIndex: index, selectPage: true)
+        }
         return view
     }
 

@@ -3877,6 +3877,17 @@ private final class InstantPageV2SlideMediaView: View {
         self.onScrollWheel?(event)
     }
 
+    deinit {
+        self.clean()
+    }
+
+    func clean() {
+        self.content?.willRemove()
+        self.content?.clean()
+        self.content?.removeFromSuperview()
+        self.content = nil
+    }
+
     func update(media: InstantPageMedia, context: any AccountContextProtocol, parent: Message, parameters: ChatMediaLayoutParameters, size: NSSize, squareCorners: Bool) {
         self.media = media
         let cls = ChatLayoutUtils.contentNode(for: media.media)
@@ -3884,7 +3895,7 @@ private final class InstantPageV2SlideMediaView: View {
         if let existing = self.content, existing.isKind(of: cls) {
             view = existing
         } else {
-            self.content?.removeFromSuperview()
+            self.clean()
             view = cls.init(frame: CGRect(origin: .zero, size: size))
             self.addSubview(view)
             self.content = view
@@ -3913,6 +3924,10 @@ public final class InstantPageV2SlideshowView: View, HorizontalScrollConsuming {
     private var slideViews: [InstantPageV2SlideMediaView] = []
     private var currentKey: [Int] = []
     private var currentPage: Int = 0
+    public var currentMediaIndex: Int? {
+        guard self.slideViews.indices.contains(self.currentPage) else { return nil }
+        return self.slideViews[self.currentPage].media?.index
+    }
     private var scrollAxis: ScrollAxis?
     private var isDragging: Bool = false
     private var dragOffset: CGFloat = 0
@@ -3942,6 +3957,16 @@ public final class InstantPageV2SlideshowView: View, HorizontalScrollConsuming {
 
     public func consumesHorizontalScroll(atWindowPoint windowPoint: NSPoint) -> Bool {
         return self.slideViews.count > 1
+    }
+
+    public func clean() {
+        self.isDragging = false
+        self.removeMouseMonitor()
+        self.pagesView.layer?.removeAllAnimations()
+        self.slideViews.forEach { $0.clean(); $0.removeFromSuperview() }
+        self.slideViews.removeAll()
+        self.currentKey = []
+        self.currentPage = 0
     }
 
     public func mediaContentView(forMediaIndex index: Int, selectPage: Bool = false) -> NSView? {
@@ -3977,7 +4002,7 @@ public final class InstantPageV2SlideshowView: View, HorizontalScrollConsuming {
             self.endDrag()
             self.pagesView.layer?.removeAllAnimations()
             self.currentPage = 0
-            self.slideViews.forEach { $0.removeFromSuperview() }
+            self.slideViews.forEach { $0.clean(); $0.removeFromSuperview() }
             self.slideViews.removeAll()
             for media in medias {
                 guard let (parent, parameters) = config(media.media, size, media.index, false) else { continue }
