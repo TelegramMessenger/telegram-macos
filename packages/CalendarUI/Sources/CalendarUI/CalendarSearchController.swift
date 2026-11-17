@@ -101,25 +101,38 @@ private final class CalendarSearchMonthView: Control {
     var dayEnabled: (Date) -> Bool = { _ in true }
     var onDay: ((Date) -> Void)?
     var onDoubleDay: ((Date) -> Void)?
+    var onFocusDay: ((Date) -> Void)?
     var dayPreview: (Int, NSSize) -> NSView? = { _, _ in nil }
     private let dayOverlay = CalendarSearchDayOverlay(frame: .zero)
     private var dayPreviews: [Int: NSView] = [:]
+    private var accessibilityDays: [CalendarSearchDayAccessibilityElement] = []
     private var hovered: Int?
+    var focused: Date {
+        didSet {
+            dayOverlay.needsDisplay = true
+        }
+    }
 
     var selected: Date {
         didSet {
             if selected != oldValue {
                 dayOverlay.layer?.animateContents()
                 dayOverlay.needsDisplay = true
+                for element in accessibilityDays where element.isAccessibilitySelected() != (element.date == selected) {
+                    element.setAccessibilitySelected(element.date == selected)
+                    NSAccessibility.post(element: element, notification: .valueChanged)
+                }
+                NSAccessibility.post(element: self, notification: .selectedChildrenChanged)
             }
         }
     }
 
-    init(month: Date, selected: Date) {
+    init(month: Date, selected: Date, focused: Date) {
         self.month = month
         self.days = monthDays(month)
         self.offset = monthOffset(month)
         self.selected = selected
+        self.focused = focused
         super.init(frame: .zero)
         dayOverlay.backgroundColor = .clear
         dayOverlay.isEventLess = true
@@ -145,8 +158,104 @@ private final class CalendarSearchMonthView: Control {
         return monthRows(month)
     }
 
+    override var acceptsFirstResponder: Bool {
+        return true
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        dayOverlay.needsDisplay = true
+        return result
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        dayOverlay.needsDisplay = true
+        return result
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        return .radioGroup
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        return TGUIKitAccessibility.isEnabled && userInteractionEnabled ? accessibilityDays : []
+    }
+
+    override func accessibilitySelectedChildren() -> [Any]? {
+        return userInteractionEnabled ? accessibilityDays.filter { $0.isAccessibilitySelected() } : []
+    }
+
+    override var accessibilityFocusedUIElement: Any? {
+        guard userInteractionEnabled, window?.firstResponder === self else {
+            return nil
+        }
+        return accessibilityDays.first { $0.date == focused }
+    }
+
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        guard userInteractionEnabled else {
+            return nil
+        }
+        return accessibilityDays.first { $0.accessibilityFrame().contains(point) } ?? self
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        return false
+    }
+
+    func focusDay(announce: Bool) {
+        window?.makeFirstResponder(self)
+        dayOverlay.needsDisplay = true
+        if announce, let element = accessibilityDays.first(where: { $0.date == focused }) {
+            NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
+        }
+    }
+
+    func updateAccessibilityDays() {
+        let formatter = searchDateFormatter("")
+        formatter.dateStyle = .full
+        setAccessibilityLabel(searchDateFormatter("LLLL yyyy").string(from: month).capitalized)
+        accessibilityDays = (0 ..< days).map { index in
+            let date = self.date(at: index)
+            let element = CalendarSearchDayAccessibilityElement(date: date, label: formatter.string(from: date), view: self)
+            element.frameInView = dayFrame(at: index)
+            element.setAccessibilityEnabled(dayEnabled(date))
+            element.setAccessibilitySelected(date == selected)
+            element.isFocused = { [weak self] in
+                guard let self else {
+                    return false
+                }
+                return self.focused == date && self.window?.firstResponder === self
+            }
+            element.focus = { [weak self] in
+                guard let self, self.userInteractionEnabled else {
+                    return
+                }
+                self.focused = date
+                self.onFocusDay?(date)
+                self.focusDay(announce: false)
+            }
+            element.press = { [weak self] in
+                guard let self, self.userInteractionEnabled, self.dayEnabled(date) else {
+                    return false
+                }
+                self.onDay?(date)
+                self.focusDay(announce: true)
+                return true
+            }
+            return element
+        }
+    }
+
     func date(at index: Int) -> Date {
         return dayAfter(month, index)
+    }
+
+    private func dayFrame(at index: Int) -> NSRect {
+        let position = offset + index
+        let cell = CalendarSearchMetrics.cell
+        return NSMakeRect(CGFloat(position % 7) * cell, CGFloat(position / 7) * cell, cell, cell)
     }
 
     private var mouseIndex: Int? {
@@ -221,8 +330,7 @@ private final class CalendarSearchMonthView: Control {
             guard dayEnabled(date), let preview = dayPreview(Int(date.timeIntervalSince1970), size) else {
                 continue
             }
-            let position = offset + index
-            preview.frame = NSMakeRect(CGFloat(position % 7) * cell + (cell - circle) / 2, CGFloat(position / 7) * cell + (cell - circle) / 2, circle, circle)
+            preview.frame = dayFrame(at: index).insetBy(dx: (cell - circle) / 2, dy: (cell - circle) / 2)
             dayPreviews[index] = preview
             addSubview(preview, positioned: .below, relativeTo: dayOverlay)
         }
@@ -248,8 +356,7 @@ private final class CalendarSearchMonthView: Control {
 
         for index in 0 ..< days {
             let date = self.date(at: index)
-            let position = offset + index
-            let rect = NSMakeRect(CGFloat(position % 7) * cell, CGFloat(position / 7) * cell, cell, cell)
+            let rect = dayFrame(at: index)
             let enabled = dayEnabled(date)
 
             let hasPreview = dayPreviews[index] != nil
@@ -276,6 +383,12 @@ private final class CalendarSearchMonthView: Control {
                 }
             }
 
+            if date == focused, window?.firstResponder === self {
+                ctx.setStrokeColor(accent.cgColor)
+                ctx.setLineWidth(1)
+                ctx.strokeEllipse(in: rect.insetBy(dx: 1, dy: 1))
+            }
+
             let text = NSAttributedString.initialize(string: "\(index + 1)", color: color, font: NSFont.monospacedDigitSystemFont(ofSize: CalendarSearchFonts.daySize, weight: weight))
             let line = CTLineCreateWithAttributedString(text)
             let ink = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
@@ -287,9 +400,18 @@ private final class CalendarSearchMonthView: Control {
     }
 }
 
+private final class CalendarSearchMonthButton: Control {
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled, userInteractionEnabled else {
+            return false
+        }
+        return accessibilityPerformShowMenu()
+    }
+}
+
 public final class CalendarSearchView: View {
     fileprivate let closeButton = ImageButton()
-    fileprivate let monthButton = Control()
+    fileprivate let monthButton = CalendarSearchMonthButton()
     fileprivate let prevButton = ImageButton()
     fileprivate let nextButton = ImageButton()
     fileprivate let actionButton = ImageButton()
@@ -381,10 +503,14 @@ public final class CalendarSearchView: View {
         fatalError("init(coder:) has not been implemented")
     }
 
-    fileprivate func setMonth(_ month: Date, selected: Date, direction: Int, animated: Bool, isPrevEnabled: Bool, isNextEnabled: Bool, configure: (CalendarSearchMonthView) -> Void) {
+    fileprivate func setMonth(_ month: Date, selected: Date, focused: Date, direction: Int, animated: Bool, isPrevEnabled: Bool, isNextEnabled: Bool, configure: (CalendarSearchMonthView) -> Void) {
         let previous = monthView
-        let view = CalendarSearchMonthView(month: month, selected: selected)
+        let restoreFocus = previous != nil && window?.firstResponder === previous
+        previous?.isAccessibilityDecorative = true
+        previous?.userInteractionEnabled = false
+        let view = CalendarSearchMonthView(month: month, selected: selected, focused: focused)
         configure(view)
+        view.updateAccessibilityDays()
         view.frame = NSMakeRect(CalendarSearchMetrics.gridInset, 0, CalendarSearchMetrics.cell * 7, CalendarSearchMetrics.cell * CGFloat(view.rows))
         gridView.addSubview(view)
         monthView = view
@@ -393,6 +519,13 @@ public final class CalendarSearchView: View {
         let monthLayout = TextViewLayout(.initialize(string: searchDateFormatter("LLLL yyyy").string(from: month).capitalized, color: theme.colors.text, font: CalendarSearchFonts.month), maximumNumberOfLines: 1)
         monthLayout.measure(width: .greatestFiniteMagnitude)
         monthTitleView.update(monthLayout)
+        monthButton.setAccessibilityLabel(searchDateFormatter("LLLL yyyy").string(from: month).capitalized)
+        if let previousMonth = searchCalendar.date(byAdding: .month, value: -1, to: month) {
+            prevButton.setAccessibilityLabel(searchDateFormatter("LLLL yyyy").string(from: previousMonth).capitalized)
+        }
+        if let nextMonth = searchCalendar.date(byAdding: .month, value: 1, to: month) {
+            nextButton.setAccessibilityLabel(searchDateFormatter("LLLL yyyy").string(from: nextMonth).capitalized)
+        }
 
         prevButton.isEnabled = isPrevEnabled
         nextButton.isEnabled = isNextEnabled
@@ -418,6 +551,10 @@ public final class CalendarSearchView: View {
         }
 
         updateLayout(size: frame.size, transition: animated ? .animated(duration: 0.35, curve: .spring) : .immediate)
+        if restoreFocus {
+            view.focusDay(announce: false)
+        }
+        NSAccessibility.post(element: gridView, notification: .layoutChanged)
     }
 
     public override func layout() {
@@ -455,10 +592,10 @@ public final class CalendarSearchView: View {
 
 public final class CalendarSearchController: ModalViewController {
     private let onSelect: (Date) -> Void
-    private let minDay: Date
-    private let maxDay: Date
-    private var month: Date
-    private var selected: Date
+    private var selection: CalendarSearchSelection
+    private var month: Date {
+        return selection.month
+    }
     public var dayPreview: (Int, NSSize) -> NSView? = { _, _ in nil }
 
     public func updateDayPreviews() {
@@ -471,13 +608,10 @@ public final class CalendarSearchController: ModalViewController {
     public init(current: Date, select: @escaping (Date) -> Void) {
         let today = searchCalendar.startOfDay(for: Date())
         let minDay = searchCalendar.date(from: DateComponents(year: 2013, month: 1, day: 1)) ?? today
-        let day = min(max(searchCalendar.startOfDay(for: current), minDay), today)
+        let selection = CalendarSearchSelection(current: current, minDay: minDay, maxDay: today, calendar: searchCalendar)
         self.onSelect = select
-        self.minDay = minDay
-        self.maxDay = today
-        self.month = monthStart(day)
-        self.selected = day
-        super.init(frame: NSMakeRect(0, 0, CalendarSearchMetrics.width, CalendarSearchMetrics.height(rows: monthRows(monthStart(day)))))
+        self.selection = selection
+        super.init(frame: NSMakeRect(0, 0, CalendarSearchMetrics.width, CalendarSearchMetrics.height(rows: monthRows(selection.month))))
         self.bar = .init(height: 0)
         self.analyticsScreenId = "app.calendar"
     }
@@ -517,6 +651,9 @@ public final class CalendarSearchController: ModalViewController {
             self?.step(1)
         }, for: .Click)
 
+        genericView.monthButton.contextMenu = { [weak self] in
+            return self?.monthMenu()
+        }
         genericView.monthButton.set(handler: { [weak self] control in
             guard let self, let event = NSApp.currentEvent else {
                 return
@@ -532,16 +669,29 @@ public final class CalendarSearchController: ModalViewController {
         readyOnce()
     }
 
+    public override func firstResponder() -> NSResponder? {
+        return genericView.monthView
+    }
+
+    public override func becomeFirstResponder() -> Bool? {
+        return true
+    }
+
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        window?.set(handler: { [weak self] _ -> KeyHandlerResult in
-            self?.step(-1)
-            return .invoked
+        window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: -1, modifiers: event.modifierFlags) ?? .rejected
         }, with: self, for: .LeftArrow, priority: .modal)
-        window?.set(handler: { [weak self] _ -> KeyHandlerResult in
-            self?.step(1)
-            return .invoked
+        window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: 1, modifiers: event.modifierFlags) ?? .rejected
         }, with: self, for: .RightArrow, priority: .modal)
+        window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: -7, modifiers: event.modifierFlags) ?? .rejected
+        }, with: self, for: .UpArrow, priority: .modal)
+        window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: 7, modifiers: event.modifierFlags) ?? .rejected
+        }, with: self, for: .DownArrow, priority: .modal)
+        genericView.monthView?.focusDay(announce: true)
     }
 
     public override func viewWillDisappear(_ animated: Bool) {
@@ -555,16 +705,41 @@ public final class CalendarSearchController: ModalViewController {
     }
 
     public override func returnKeyAction() -> KeyHandlerResult {
-        done()
+        if selection.select(selection.focused) {
+            done()
+        }
+        return .invoked
+    }
+
+    private func navigate(days: Int, modifiers: NSEvent.ModifierFlags) -> KeyHandlerResult {
+        let modifiers = modifiers.intersection([.command, .control, .option, .shift])
+        let previousMonth = month
+        let changed: Bool
+        if modifiers == .option, abs(days) == 1 {
+            changed = selection.moveMonth(days)
+        } else if modifiers.isEmpty {
+            changed = selection.move(days: days)
+        } else {
+            return .invokeNext
+        }
+        if changed {
+            if month != previousMonth {
+                showMonth(month, direction: month > previousMonth ? 1 : -1, animated: false)
+            } else {
+                genericView.monthView?.selected = selection.selected
+                genericView.monthView?.focused = selection.focused
+            }
+            genericView.monthView?.focusDay(announce: true)
+        }
         return .invoked
     }
 
     private var isPrevEnabled: Bool {
-        return month > monthStart(minDay)
+        return month > monthStart(selection.minDay)
     }
 
     private var isNextEnabled: Bool {
-        return month < monthStart(maxDay)
+        return month < monthStart(selection.maxDay)
     }
 
     private func step(_ direction: Int) {
@@ -581,10 +756,12 @@ public final class CalendarSearchController: ModalViewController {
     }
 
     private func showMonth(_ target: Date, direction: Int, animated: Bool) {
-        self.month = target
-        let minDay = self.minDay
-        let maxDay = self.maxDay
-        genericView.setMonth(target, selected: selected, direction: direction, animated: animated, isPrevEnabled: isPrevEnabled, isNextEnabled: isNextEnabled, configure: { view in
+        guard selection.browse(target) else {
+            return
+        }
+        let minDay = selection.minDay
+        let maxDay = selection.maxDay
+        genericView.setMonth(target, selected: selection.selected, focused: selection.focused, direction: direction, animated: animated, isPrevEnabled: isPrevEnabled, isNextEnabled: isNextEnabled, configure: { view in
             view.dayPreview = self.dayPreview
             view.dayEnabled = { date in
                 return date >= minDay && date <= maxDay
@@ -596,19 +773,22 @@ public final class CalendarSearchController: ModalViewController {
                 self?.select(date)
                 self?.done()
             }
+            view.onFocusDay = { [weak self] date in
+                self?.selection.focus(date)
+            }
         })
         let height = CalendarSearchMetrics.height(rows: monthRows(target))
-        if animated, genericView.frame.height != height {
-            self.modal?.resize(with: NSMakeSize(frame.width, height), animated: true)
+        if genericView.frame.height != height {
+            self.modal?.resize(with: NSMakeSize(frame.width, height), animated: animated)
         }
     }
 
     private func monthMenu() -> ContextMenu {
         let menu = ContextMenu()
         let names = searchDateFormatter("LLLL").standaloneMonthSymbols ?? []
-        let lastMonth = monthStart(maxDay)
+        let lastMonth = monthStart(selection.maxDay)
         let maxYear = searchCalendar.component(.year, from: lastMonth)
-        let minYear = searchCalendar.component(.year, from: minDay)
+        let minYear = searchCalendar.component(.year, from: selection.minDay)
         let current = month
         for year in stride(from: maxYear, through: minYear, by: -1) {
             let item = ContextMenuItem("\(year)")
@@ -632,12 +812,15 @@ public final class CalendarSearchController: ModalViewController {
     }
 
     private func select(_ date: Date) {
-        selected = date
-        genericView.monthView?.selected = date
+        guard selection.select(date) else {
+            return
+        }
+        genericView.monthView?.selected = selection.selected
+        genericView.monthView?.focused = selection.focused
     }
 
     private func done() {
-        let day = selected
+        let day = selection.selected
         close()
         onSelect(day)
     }

@@ -1,0 +1,180 @@
+import AppKit
+import CalendarUtils
+
+var checks = 0
+var failures = 0
+func expect(_ value: @autoclosure () -> Bool, _ message: String) {
+    checks += 1
+    if !value() { failures += 1; print("FAIL: \(message)") }
+}
+func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+    return Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day))!
+}
+struct Colors { let accent = NSColor.systemBlue; let grayText = NSColor.gray; let text = NSColor.textColor; let grayBackground = NSColor.lightGray }
+struct PresentationTheme { let colors = Colors() }
+let theme = PresentationTheme()
+struct Language { var languageCode = "en_US" }
+struct Appearance { var language = Language() }
+var appAppearance = Appearance()
+enum TGUIKitAccessibility { static var isEnabled = true }
+enum FontSize { case small }
+extension NSFont {
+    static func normal(_ size: CGFloat) -> NSFont { .systemFont(ofSize: size) }
+    static func medium(_ size: CGFloat) -> NSFont { .systemFont(ofSize: size, weight: .medium) }
+    static func normal(_ size: FontSize) -> NSFont { .systemFont(ofSize: 11) }
+}
+extension NSAttributedString {
+    static func initialize(string: String, color: NSColor, font: NSFont) -> NSAttributedString { NSAttributedString(string: string) }
+}
+class View: NSView {
+    var userInteractionEnabled = true
+    var isEventLess = false
+    var backgroundColor = NSColor.clear
+    var backingScaleFactor: CGFloat { 2 }
+    override var isFlipped: Bool { true }
+    init() { super.init(frame: .zero); wantsLayer = true }
+    required override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true }
+    required init?(coder: NSCoder) { fatalError() }
+    func removeAllSubviews() { subviews.forEach { $0.removeFromSuperview() } }
+    func updateLocalizationAndTheme(theme: PresentationTheme) {}
+}
+enum ControlState { case Normal, Highlight }
+enum ControlEvent { case Click }
+class TextButton: View {
+    var contextObject: Any?
+    var textOffset = NSPoint.zero
+    var scaleOnClick = false
+    var isEnabled = true
+    var title = ""
+    var handlers: [(TextButton) -> Void] = []
+    func set(font: NSFont, for state: ControlState) {}
+    func set(color: NSColor, for state: ControlState) {}
+    func set(background: NSColor, for state: ControlState) {}
+    func set(text: String, for state: ControlState) { title = text }
+    func set(handler: @escaping (TextButton) -> Void, for event: ControlEvent) { handlers.append(handler) }
+    func removeAllHandlers() { handlers.removeAll() }
+    override func isAccessibilityElement() -> Bool { TGUIKitAccessibility.isEnabled && !isHidden }
+    override func isAccessibilityEnabled() -> Bool { isEnabled }
+    func click() { if isEnabled && userInteractionEnabled { handlers.forEach { $0(self) } } }
+}
+class TextView: View {
+    var isSelectable = false
+    func update(_ layout: TextViewLayout) { frame.size = NSSize(width: 20, height: 14) }
+}
+class TextViewLayout {
+    init(_ string: NSAttributedString, maximumNumberOfLines: Int, alignment: NSTextAlignment) {}
+    func measure(width: CGFloat) {}
+}
+extension NSView {
+    func setFrameOrigin(_ x: CGFloat, _ y: CGFloat) { setFrameOrigin(NSPoint(x: x, y: y)) }
+}
+extension CALayer {
+    func animateAlpha(from: CGFloat, to: CGFloat, duration: Double, removeOnCompletion: Bool = true, completion: ((Bool) -> Void)? = nil) {}
+}
+func floorToScreenPixels(_ scale: CGFloat, _ value: CGFloat) -> CGFloat { floor(value * scale) / scale }
+__MONTH__
+__BUTTON__
+__VIEW__
+
+let previousZone = NSTimeZone.default
+NSTimeZone.default = TimeZone(secondsFromGMT: 0)!
+let selected = date(2024, 2, 28)
+var activations: [Int] = []
+let month = CalendarMonthStruct(month: selected, selectDayAnyway: true, onlyFuture: false, limitedBy: nil, dayHandler: { activations.append($0) })
+month.focusedDay = 28
+let view = CalendarMonthView(frame: NSRect(x: 0, y: 0, width: 380, height: 336))
+view.layout(for: month)
+view.layout()
+let children = view.accessibilityChildren() as! [CalendarDayButton]
+expect(children.count == 29, "real month day count excludes leading and trailing blanks")
+expect(children.first?.day == 1 && children.last?.day == 29, "AX date order")
+expect(view.accessibilityRole() == .radioGroup, "normal calendar radio group")
+expect(children.allSatisfy { $0.accessibilityRole() == .radioButton }, "date radio roles")
+expect(children.allSatisfy { ($0.accessibilityParent() as? CalendarMonthView) === view }, "date AX parent")
+expect(children[27].isAccessibilitySelected(), "selected day exposed")
+expect((children[27].accessibilityValue() as? NSNumber)?.boolValue == true, "selected value exposed")
+expect(children[27].accessibilityLabel()?.contains("2024") == true, "AX label includes year")
+expect(children[27].accessibilityLabel()?.contains("28") == true, "AX label includes day")
+expect(children[27].accessibilityLabel()?.contains("February") == true, "AX label includes month")
+expect(view.accessibilityFocusedUIElement == nil && children.allSatisfy { !$0.isAccessibilityFocused() }, "detached views are not keyboard focused")
+for day in [Int.min, -1, 0, 30, 32, Int.max] {
+    expect(!view.activate(day: day), "out-of-month activation rejected before date construction")
+    expect(activations.isEmpty && month.focusedDay == 28 && month.selectedDay == 28, "invalid activation leaves selection and focus unchanged")
+}
+children[28].setAccessibilityFocused(true)
+expect(month.focusedDay == 29 && activations.isEmpty, "AX focus changes cursor without selection")
+expect(children[28].accessibilityPerformPress(), "AX press enabled day")
+expect(activations == [29] && month.selectedDay == 29, "AX press same selection path")
+view.layout()
+let after = view.accessibilityChildren() as! [CalendarDayButton]
+expect(zip(children, after).allSatisfy { $0 === $1 }, "date identities preserved on selection refresh")
+expect(after[28].isAccessibilitySelected() && !after[27].isAccessibilitySelected(), "selected values refreshed")
+view.updateDayPreviews(animated: false)
+expect(zip(after, view.accessibilityChildren() as! [CalendarDayButton]).allSatisfy { $0 === $1 }, "date identities preserved on preview refresh")
+month.isSelecting = true
+month.selectedRange = 10 ... 14
+view.layout(for: month)
+expect(view.accessibilityRole() == .group, "range mode group")
+expect(after.allSatisfy { $0.accessibilityRole() == .checkBox }, "range mode checkbox dates")
+expect((view.accessibilitySelectedChildren() as! [CalendarDayButton]).map(\.day) == [10, 11, 12, 13, 14], "range states exposed")
+view.userInteractionEnabled = false
+expect(view.accessibilityChildren()?.isEmpty == true, "outgoing month removes AX children")
+expect(!after[10].isAccessibilityElement() && !after[10].accessibilityPerformPress(), "outgoing retained date not actionable")
+let focusedBefore = month.focusedDay
+after[9].setAccessibilityFocused(true)
+expect(month.focusedDay == focusedBefore, "outgoing AX focus ignored")
+view.userInteractionEnabled = true
+TGUIKitAccessibility.isEnabled = false
+expect(view.accessibilityChildren()?.isEmpty == true && !view.isAccessibilityElement(), "accessibility setting respected")
+TGUIKitAccessibility.isEnabled = true
+
+let now = Date()
+let calendar = Calendar(identifier: .gregorian)
+let tomorrow = calendar.date(byAdding: .day, value: 1, to: now)!
+let futureMonth = CalendarMonthStruct(month: tomorrow, selectDayAnyway: false, onlyFuture: false, limitedBy: nil, dayHandler: { activations.append($0) })
+view.layout(for: futureMonth)
+expect(!after[10].accessibilityPerformPress() && after[10].monthView == nil, "retained date from a replaced month is detached")
+let unavailable = (view.accessibilityChildren() as! [CalendarDayButton]).first { $0.day == calendar.component(.day, from: tomorrow) }!
+expect(!unavailable.isEnabled && !unavailable.isAccessibilityEnabled(), "future date exposed disabled")
+let countBefore = activations.count
+expect(!unavailable.accessibilityPerformPress() && activations.count == countBefore, "future date cannot select")
+unavailable.setAccessibilityFocused(true)
+expect(futureMonth.focusedDay == unavailable.day, "disabled date may be inspected by VoiceOver")
+
+for locale in ["en_US", "en_GB", "ru_RU", "ar", "he", "fa", "ja_JP"] {
+    appAppearance.language.languageCode = locale
+    view.layout(for: month)
+    expect((view.accessibilityChildren() as! [CalendarDayButton]).allSatisfy { !($0.accessibilityLabel() ?? "").isEmpty }, "localized dates \(locale)")
+}
+let hidden = CalendarMonthStruct(month: date(4, 2, 29), selectDayAnyway: true, onlyFuture: false, limitedBy: nil, dayHandler: { _ in })
+appAppearance.language.languageCode = "en_US"
+view.layout(for: hidden)
+expect((view.accessibilityChildren() as! [CalendarDayButton]).last?.accessibilityLabel() == "February 29", "hidden year does not announce internal sentinel")
+
+for year in 2013 ... 2026 {
+    for number in 1 ... 12 {
+        let value = CalendarMonthStruct(month: date(year, number, 1), selectDayAnyway: false, onlyFuture: false, limitedBy: nil, dayHandler: { _ in })
+        for fits in [false, true] {
+            value.fitsWeeks = fits
+            for size in [NSSize(width: 300, height: 300), NSSize(width: 380, height: CalendarMonthView.fittingHeight(weeks: value.weeksCount) + 8)] {
+                view.frame.size = size
+                view.layout(for: value)
+                view.layout()
+                let days = view.accessibilityChildren() as! [CalendarDayButton]
+                let cellWidth = floorToScreenPixels(2, (size.width - 24) / 7)
+                let containerHeight = size.height - view.navigationBarHeight - 24
+                let height = fits ? 42.0 : floorToScreenPixels(2, (containerHeight - 4) / CGFloat(value.linesCount))
+                let side = min(cellWidth, height) - 4
+                for day in days {
+                    let index = value.currentStartDay + day.day - 2
+                    let cell = NSRect(x: 12 + CGFloat(index % 7) * cellWidth, y: 2 + CGFloat(index / 7) * height, width: cellWidth, height: height)
+                    let expected = NSRect(x: floorToScreenPixels(2, cell.midX-side/2), y: floorToScreenPixels(2, cell.midY-side/2), width: side, height: side)
+                    expect(day.frame == expected, "unchanged pointer/day geometry \(year)-\(number) day\(day.day)")
+                }
+            }
+        }
+    }
+}
+NSTimeZone.default = previousZone
+print("\(checks) offscreen AppKit/view-projection assertions, \(failures) failures")
+exit(failures == 0 ? 0 : 1)

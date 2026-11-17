@@ -1,0 +1,272 @@
+import AppKit
+import CalendarUtils
+
+var clockNow = Date()
+var checks = 0
+var failures = 0
+func expect(_ value: @autoclosure () -> Bool, _ message: String) {
+    checks += 1
+    if !value() { failures += 1; print("FAIL: \(message)") }
+}
+func date(_ year: Int, _ month: Int, _ day: Int, calendar: Calendar = Calendar(identifier: .gregorian)) -> Date {
+    return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+}
+
+class View {
+    weak var window: Window?
+    var frame: NSRect
+    var bounds: NSRect { NSRect(origin: .zero, size: frame.size) }
+    var userInteractionEnabled = true
+    var needsLayout = false
+    required init(frame: NSRect) { self.frame = frame }
+    func addSubview(_ view: View) {}
+}
+struct NavigationBarStyle { let height: CGFloat }
+enum KeyboardKey: Hashable { case LeftArrow, RightArrow, UpArrow, DownArrow, Return, KeypadEnter }
+enum HandlerPriority { case modal }
+enum KeyHandlerResult: Equatable { case invoked, rejected, invokeNext }
+struct KeyEvent { let modifierFlags: NSEvent.ModifierFlags }
+final class Window {
+    var handlers: [KeyboardKey: (KeyEvent) -> KeyHandlerResult] = [:]
+    func set(handler: @escaping (KeyEvent) -> KeyHandlerResult, with object: AnyObject, for key: KeyboardKey, priority: HandlerPriority) {
+        handlers[key] = handler
+        if key == .Return { handlers[.KeypadEnter] = handler }
+    }
+    func remove(object: AnyObject, for key: KeyboardKey) {
+        handlers[key] = nil
+        if key == .Return { handlers[.KeypadEnter] = nil }
+    }
+}
+final class Popover { var hidden = 0; func hide() { hidden += 1 } }
+final class Modal { var closed = 0; func close() { closed += 1 } }
+class ViewController {
+    var view: View
+    weak var window: Window? { didSet { view.window = window } }
+    weak var navigationController: NavigationViewController?
+    var popover: Popover?
+    var modal: Modal?
+    var bar = NavigationBarStyle(height: 0)
+    var _frameRect = NSRect.zero
+    init(frame: NSRect = .zero) { view = View(frame: frame) }
+    func isLoaded() -> Bool { true }
+    func viewDidResized(_ size: NSSize) {}
+    func viewDidLoad() {}
+    func viewDidAppear(_ animated: Bool) {}
+    func viewWillDisappear(_ animated: Bool) {}
+    func viewDidDisappear(_ animated: Bool) {}
+    func viewWillAppear(_ animated: Bool) {}
+    func returnKeyAction() -> KeyHandlerResult { .rejected }
+    func readyOnce() {}
+    func addSubview(_ view: View) { self.view.addSubview(view) }
+    var isAutoclosePopover: Bool { true }
+}
+class GenericViewController<T: View>: ViewController {
+    override init(frame: NSRect = .zero) { super.init(frame: frame); view = T(frame: frame) }
+    var genericView: T { view as! T }
+}
+enum ViewControllerStyle { case none, push, pop }
+class NavigationViewController: ViewController {
+    var controller: ViewController
+    var isLocked = false
+    var styles: [ViewControllerStyle] = []
+    init(_ controller: ViewController, _ window: Window) {
+        self.controller = controller
+        super.init()
+        self.window = window
+        controller.navigationController = self
+        controller.window = window
+        controller.viewDidLoad()
+    }
+    func push(_ controller: ViewController, _ animated: Bool = true, style: ViewControllerStyle? = nil) {
+        self.controller.viewWillDisappear(animated)
+        self.controller = controller
+        controller.navigationController = self
+        controller.window = window
+        controller.viewDidLoad()
+        controller.viewWillAppear(animated)
+        controller.viewDidAppear(animated)
+        styles.append(style ?? .none)
+    }
+    override func viewWillAppear(_ animated: Bool) { controller.viewWillAppear(animated) }
+    override func viewDidAppear(_ animated: Bool) { controller.viewDidAppear(animated) }
+    override func viewWillDisappear(_ animated: Bool) { controller.viewWillDisappear(animated) }
+}
+
+__INTERACTIONS__
+__MONTH__
+__NAVIGATION__
+
+class CalendarMonthView: View {
+    var month: CalendarMonthStruct?
+    var announced = 0
+    var previewUpdates = 0
+    func layout(for month: CalendarMonthStruct) { self.month = month }
+    func updateDayPreviews(animated: Bool) { previewUpdates += 1 }
+    func focusDay(announce: Bool) { if announce { announced += 1 } }
+    __ACTIVATE__
+    __ACTIVATE_FOCUSED__
+}
+__MONTH_CONTROLLER__
+__CONTROLLER__
+
+let window = Window()
+let previousZone = NSTimeZone.default
+NSTimeZone.default = TimeZone(secondsFromGMT: 0)!
+clockNow = date(2026, 11, 17)
+func make(_ current: Date, future: Bool = false, limit: Date? = nil, hidden: Bool = false, lowYear: Int = 2013, autoclose: Bool = false, selected: @escaping (Date) -> Void = { _ in }) -> CalendarController {
+    let controller = CalendarController(NSRect(x: 0, y: 0, width: 380, height: 336), window, current: current, onlyFuture: future, limitedBy: limit, lowYear: lowYear, canBeNoYear: hidden, selectHandler: selected, autoclose: autoclose)
+    controller.window = window
+    controller.viewDidLoad()
+    controller.viewWillAppear(false)
+    controller.viewDidAppear(false)
+    return controller
+}
+func current(_ controller: CalendarController) -> CalendarMonthController { controller.navigation.controller as! CalendarMonthController }
+@discardableResult func key(_ key: KeyboardKey, _ flags: NSEvent.ModifierFlags = []) -> KeyHandlerResult {
+    return window.handlers[key]?(KeyEvent(modifierFlags: flags)) ?? .rejected
+}
+
+var emitted: [Date] = []
+let leap = make(date(2024, 2, 28), selected: { emitted.append($0) })
+expect(key(.RightArrow) == .invoked, "day key consumed")
+expect(current(leap).month.focusedDay == 29, "right moves to leap day")
+expect(leap.date == date(2024, 2, 28) && emitted.isEmpty, "focus does not commit")
+expect(key(.KeypadEnter) == .invoked, "keypad Return wired")
+expect(emitted == [date(2024, 2, 29)], "Return commits focused leap day")
+key(.RightArrow)
+expect(CalendarUtils.isSameDate(current(leap).month.month, date: date(2024, 3, 1), checkDay: false), "right crosses month")
+expect(current(leap).month.focusedDay == 1, "crossed month day")
+expect(leap.navigation.styles.last == ViewControllerStyle.none, "keyboard month transition not animated")
+key(.LeftArrow)
+expect(current(leap).month.focusedDay == 29, "left crosses back")
+key(.UpArrow)
+expect(current(leap).month.focusedDay == 22, "up one week")
+key(.DownArrow)
+expect(current(leap).month.focusedDay == 29, "down one week")
+for flags: NSEvent.ModifierFlags in [[.control, .option], .control, .command, .shift, [.option, .shift]] {
+    let month = current(leap)
+    let focused = month.month.focusedDay
+    expect(key(.RightArrow, flags) == .invokeNext, "modified arrow passes through")
+    expect(current(leap) === month && month.month.focusedDay == focused, "modified arrow leaves state")
+    expect(key(.Return, flags) == .invokeNext, "modified Return passes through")
+}
+expect(key(.UpArrow, .option) == .invokeNext, "Option-up not captured")
+key(.RightArrow, .capsLock)
+expect(current(leap).month.focusedDay == 1, "caps lock ignored")
+let january = make(date(2024, 1, 31))
+key(.RightArrow, .option)
+expect(current(january).month.focusedDay == 29, "Option-month clamps leap month")
+expect(january.date == date(2024, 1, 31), "Option-month does not commit")
+key(.LeftArrow, .option)
+expect(current(january).month.focusedDay == 29, "Option-month retains focused day")
+let pointerMonth = current(january)
+january.interactions.nextAction?(pointerMonth.month.month)
+expect(current(january).month.focusedDay == 29, "pointer month browsing retains focus")
+expect(january.date == date(2024, 1, 31), "pointer browsing preserves chosen date")
+expect(january.navigation.styles.last == .push, "pointer transition style preserved")
+let browsedMonth = current(january)
+january.interactions.nextAction?(pointerMonth.month.month)
+expect(current(january) === browsedMonth, "stale outgoing month callback ignored")
+let today = make(clockNow)
+key(.RightArrow)
+expect(current(today).month.focusedDay == 17, "future day clamped")
+key(.DownArrow)
+expect(current(today).month.focusedDay == 17, "future week clamped")
+let lastMonth = current(today)
+today.interactions.nextAction?(lastMonth.month.month)
+expect(current(today) === lastMonth, "disabled next callback stays at maximum month")
+let minimum = make(date(2013, 1, 1))
+key(.LeftArrow)
+expect(current(minimum).month.focusedDay == 1, "minimum day clamped")
+key(.LeftArrow, .option)
+expect(current(minimum).month.focusedDay == 1, "minimum month clamped")
+let firstMonth = current(minimum)
+minimum.interactions.backAction?(firstMonth.month.month)
+expect(current(minimum) === firstMonth, "disabled previous callback stays at minimum month")
+let future = make(clockNow, future: true, limit: date(2026, 11, 20))
+key(.LeftArrow)
+expect(current(future).month.focusedDay == 17, "future picker minimum")
+key(.DownArrow)
+expect(current(future).month.focusedDay == 20, "future picker limit")
+let invalid = make(clockNow, future: true, limit: date(2026, 11, 16))
+expect(current(invalid).month.focusedDay == nil, "empty range no focused day")
+key(.Return)
+expect(invalid.date == clockNow, "empty range Return does not mutate")
+
+var rangeEmitted: [Date] = []
+let range = make(date(2024, 1, 30), selected: { rangeEmitted.append($0) })
+range.setSelecting(true)
+key(.Return)
+expect(range.selectedRange == date(2024, 1, 30) ... date(2024, 1, 30), "Return begins range")
+key(.RightArrow); key(.RightArrow); key(.RightArrow); key(.Return)
+expect(range.selectedRange == date(2024, 1, 30) ... date(2024, 2, 2), "Return extends range across month")
+expect(range.selectedDaysCount == 4 && rangeEmitted.isEmpty, "range selection does not confirm or delete")
+key(.Return)
+expect(range.selectedRange == nil, "Return selected endpoint clears range")
+range.setSelecting(false)
+expect(range.selectedRange == nil && !current(range).month.isSelecting, "range exit cleared")
+
+var once: [Date] = []
+let closing = make(date(2024, 7, 10), autoclose: true, selected: { once.append($0) })
+closing.popover = Popover()
+key(.Return); key(.Return)
+expect(once == [date(2024, 7, 10)] && closing.popover?.hidden == 1, "autoclose repeat suppressed")
+let reopened = make(date(2024, 8, 10))
+let oldMonth = current(reopened)
+reopened.viewWillDisappear(false)
+expect(window.handlers.isEmpty, "all installed handlers removed")
+expect(!oldMonth.genericView.userInteractionEnabled, "outgoing month disabled")
+expect(!oldMonth.genericView.activate(day: 12), "outgoing day cannot activate")
+reopened.viewWillAppear(false); reopened.viewDidAppear(false)
+expect(current(reopened).genericView.userInteractionEnabled, "reopened month enabled")
+key(.RightArrow)
+expect(current(reopened).month.focusedDay == 11, "reopened navigation works")
+reopened.navigation.isLocked = true
+key(.RightArrow)
+key(.Return)
+expect(reopened.date == date(2024, 8, 10), "Return during animation cannot select a moving day")
+expect(current(reopened).month.focusedDay == 11, "animated navigation lock respected")
+reopened.navigation.isLocked = false
+let retained = current(reopened)
+reopened.interactions.nextAction?(retained.month.month)
+expect(!retained.genericView.activate(day: 20), "old month after browsing cannot activate")
+
+let noYear = make(date(4, 2, 28), hidden: true, lowYear: 1900)
+key(.RightArrow); key(.Return)
+expect(noYear.date == date(4, 2, 29), "no-year leap birthday works")
+let hiddenEnd = make(date(4, 12, 31), hidden: true, lowYear: 1900)
+key(.RightArrow)
+expect(CalendarUtils.isSameDate(current(hiddenEnd).month.month, date: date(4, 12, 31), checkDay: false) && current(hiddenEnd).month.focusedDay == 31, "no-year does not leak to next year")
+let hiddenStart = make(date(1, 1, 1), hidden: true, lowYear: 1900)
+key(.LeftArrow)
+expect(current(hiddenStart).month.focusedDay == 1, "legacy hidden year start bounded")
+let birthday = make(date(2000, 2, 29), hidden: true, lowYear: 1900)
+birthday.interactions.changeYear(2001, current(birthday).month.month)
+expect(birthday.date == date(2001, 2, 28), "existing leap-year selection retained")
+birthday.hideYear()
+expect(birthday.date == date(4, 2, 28), "existing hide-year retained")
+
+for zone in ["America/Los_Angeles", "Europe/Berlin", "Asia/Novosibirsk", "Australia/Lord_Howe", "Pacific/Apia"] {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: zone)!
+    let now = date(2027, 12, 31, calendar: calendar)
+    let policy = CalendarDayNavigation(current: now, now: now, onlyFuture: false, limitedBy: nil, lowYear: 2013, yearHidden: false, calendar: calendar)
+    for month in 1 ... 12 {
+        let initial = date(2026, month, 1, calendar: calendar)
+        for day in 0 ..< 31 {
+            let input = calendar.date(byAdding: .day, value: day, to: initial)!
+            for offset in [-7, -1, 1, 7] {
+                let target = policy.moving(input, days: offset)!
+                expect(calendar.dateComponents([.day], from: input, to: target).day == offset, "calendar day movement \(zone)")
+                expect(calendar.startOfDay(for: target) == target, "local midnight preserved \(zone)")
+            }
+        }
+    }
+    let bounded = CalendarDayNavigation(current: now, now: now, onlyFuture: false, limitedBy: date(2024, 2, 29, calendar: calendar), lowYear: 2024, yearHidden: false, calendar: calendar)
+    expect(bounded.day(in: date(2024, 2, 1, calendar: calendar), preferred: 31) == date(2024, 2, 29, calendar: calendar), "last day focus clamp \(zone)")
+    expect(bounded.day(in: date(2024, 3, 1, calendar: calendar), preferred: 1) == nil, "month outside limit rejected \(zone)")
+    expect(!bounded.isEnabled(date(2023, 12, 31, calendar: calendar)), "lower bound enforced \(zone)")
+}
+NSTimeZone.default = previousZone
+print("\(checks) controller/date assertions, \(failures) failures")
+exit(failures == 0 ? 0 : 1)
