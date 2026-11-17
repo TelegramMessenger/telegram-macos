@@ -28,6 +28,10 @@ public func sharedMediaPredicate(for tags: MessageTags) -> (Media) -> Bool {
 
 private let richSharedMediaNamespaceBase: Int32 = 0x0010_0000
 
+public func isExpandedSharedMediaMessageId(_ id: MessageId) -> Bool {
+    return id.namespace >= richSharedMediaNamespaceBase
+}
+
 public func sharedMediaDisplayPrecedes(_ lhs: MessageIndex, _ rhs: MessageIndex) -> Bool {
     if lhs.timestamp != rhs.timestamp {
         return lhs.timestamp > rhs.timestamp
