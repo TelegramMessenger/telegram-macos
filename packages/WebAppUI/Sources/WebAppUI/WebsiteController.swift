@@ -554,6 +554,10 @@ public final class WebsiteController : ModalViewController, WKNavigationDelegate
         return self.view as! WebsiteView
     }
     
+    public var findWebView: WKWebView? {
+        return isLoaded() ? genericView.webView : nil
+    }
+
     private var webView: WKWebView {
         return self.genericView.webView
     }

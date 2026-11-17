@@ -28,6 +28,7 @@ import SystemPermissions
 import Svg
 import LocalAuthentication
 import AppAnalytics
+import InstantPageUI
 
 public protocol BrowserPage {
     func contextMenu() -> ContextMenu
@@ -35,6 +36,9 @@ public protocol BrowserPage {
     func reloadPage()
     func cancelPendingInvoices()
     func cancelPendingPageActions()
+    var findWebView: WKWebView? { get }
+    func performFindAction(_ action: NSTextFinder.Action) -> Bool
+    func dismissFindInterface() -> Bool
     var externalState: Signal<WebpageModalState, NoError> { get }
     
     func add(_ tab: BrowserTabData.Data) -> Bool
@@ -43,6 +47,9 @@ public protocol BrowserPage {
 public extension BrowserPage {
     func cancelPendingInvoices() {}
     func cancelPendingPageActions() { cancelPendingInvoices() }
+    var findWebView: WKWebView? { nil }
+    func performFindAction(_ action: NSTextFinder.Action) -> Bool { false }
+    func dismissFindInterface() -> Bool { false }
 }
 
 private func makeWebViewController(context: (any AccountContextProtocol), data: BrowserTabData.Data, unique: BrowserTabData.Unique, analyticsOrigin: BrowserAnalyticsOrigin, makeLinkManager:@escaping(BrowserTabData.Unique)->BrowserLinkManager?) -> Signal<WebpageModalController, RequestWebViewError> {
@@ -196,6 +203,21 @@ private final class Arguments {
 
 
 public final class WebappBrowser : Window {
+    fileprivate var findAction: ((NSTextFinder.Action) -> Bool)?
+
+    @discardableResult
+    public func performPageFindAction(_ action: NSTextFinder.Action) -> Bool {
+        guard sheets.isEmpty, !hasModals(self) else { return false }
+        return findAction?(action) ?? false
+    }
+
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let action = browserFindAction(character: event.charactersIgnoringModifiers, modifiers: event.modifierFlags), performPageFindAction(action) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     public let containerView = View()
     private let shadow = SimpleShapeLayer()
     private let testLayer = SimpleLayer()
@@ -1598,10 +1620,44 @@ private struct State : Equatable {
     }
 }
 
-private final class WebpageContainerView : View {
+private final class WebpageContainerView : View, BrowserPageFindContainer {
     private var loading: ProgressIndicator?
     private var mainView: NSView?
     private var errorView: ErrorLoadingView?
+    var pageFindBar: PageFindBarView? {
+        didSet {
+            if oldValue !== pageFindBar {
+                oldValue?.removeFromSuperview()
+            }
+            if let pageFindBar {
+                addSubview(pageFindBar)
+            }
+            needsLayout = true
+        }
+    }
+    var findBarView: NSView? {
+        didSet {
+            if oldValue !== findBarView {
+                oldValue?.removeFromSuperview()
+            }
+            if let findBarView {
+                addSubview(findBarView)
+                findBarView.isHidden = !isFindBarVisible
+            }
+            needsLayout = true
+        }
+    }
+    var isFindBarVisible = false {
+        didSet {
+            findBarView?.isHidden = !isFindBarVisible
+            needsLayout = true
+        }
+    }
+    var contentView: NSView? { mainView }
+
+    func findBarViewDidChangeHeight() {
+        needsLayout = true
+    }
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
@@ -1679,7 +1735,9 @@ private final class WebpageContainerView : View {
     public override func layout() {
         super.layout()
         loading?.center()
-        mainView?.frame = bounds
+        findBarView?.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: findBarView?.frame.height ?? 0)
+        pageFindBar?.frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: min(46, bounds.height))
+        mainView?.frame = browserFindContentFrame(bounds: bounds, findBarHeight: pageFindBar?.frame.height ?? findBarView?.frame.height ?? 0, visible: pageFindBar != nil || isFindBarVisible)
     }
 }
 
@@ -1688,6 +1746,7 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     private let context: (any AccountContextProtocol)
     private let arguments: Arguments
     private var controller: (ViewController & BrowserPage)?
+    private let pageFind = BrowserPageFind()
     private let disposable = MetaDisposable()
     private let externalState = MetaDisposable()
 
@@ -1722,7 +1781,23 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     public func reloadPage() {
         controller?.reloadPage()
     }
-    
+
+    func performFindAction(_ action: NSTextFinder.Action) -> Bool {
+        guard let controller else { return false }
+        if let webView = controller.findWebView {
+            pageFind.attach(webView: webView, container: genericView)
+            return pageFind.perform(action)
+        }
+        return controller.performFindAction(action)
+    }
+
+    func dismissFindInterface() -> Bool {
+        if pageFind.dismiss() {
+            return true
+        }
+        return controller?.dismissFindInterface() ?? false
+    }
+
     public func add(_ tab: BrowserTabData.Data) -> Bool {
         return analyticsOrigin.perform { controller?.add(tab) ?? false }
     }
@@ -1792,6 +1867,8 @@ private final class WebpageContainerController : GenericViewController<WebpageCo
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         appeared = false
+        pageFind.dismiss(restoreFocus: false)
+        _ = controller?.dismissFindInterface()
         controller?.viewWillDisappear(animated)
     }
     public override func viewDidDisappear(_ animated: Bool) {
@@ -1942,6 +2019,9 @@ public final class WebappBrowserController : ViewController {
         isHidden = false
         loadViewIfNeeded()
         browser.removeAllHandlers(for: self)
+        browser.findAction = { [weak self] action in
+            return self?.current?.performFindAction(action) ?? false
+        }
         browser.contentView?.addSubview(self.view)
         browser.show()
         
@@ -1949,6 +2029,21 @@ public final class WebappBrowserController : ViewController {
             self?.arguments?.updateFullscreen(value)
         }
         
+
+        browser.set(handler: { [weak self] event -> KeyHandlerResult in
+            guard let action = browserFindAction(character: "f", modifiers: event.modifierFlags), let browser = self?._window as? WebappBrowser else { return .rejected }
+            return browser.performPageFindAction(action) ? .invoked : .rejected
+        }, with: self, for: .F, priority: .modal, modifierFlags: [.command])
+
+        browser.set(handler: { [weak self] event -> KeyHandlerResult in
+            guard let action = browserFindAction(character: "g", modifiers: event.modifierFlags), let browser = self?._window as? WebappBrowser else { return .rejected }
+            return browser.performPageFindAction(action) ? .invoked : .rejected
+        }, with: self, for: .G, priority: .modal, modifierFlags: [.command])
+
+        browser.set(handler: { [weak self] event -> KeyHandlerResult in
+            guard event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty, let browser = self?._window as? WebappBrowser, browser.sheets.isEmpty, !hasModals(browser) else { return .rejected }
+            return self?.current?.dismissFindInterface() == true ? .invoked : .rejected
+        }, with: self, for: .Escape, priority: .modal)
 
         browser.set(handler: { [weak self] _ -> KeyHandlerResult in
             self?.current?.reloadPage()
@@ -2022,6 +2117,8 @@ public final class WebappBrowserController : ViewController {
             completion()
             return
         }
+        _ = current?.dismissFindInterface()
+        browser.findAction = nil
         markAsDeinit = close
         isHidden = true
         visibilityGeneration &+= 1
