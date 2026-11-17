@@ -289,7 +289,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         country.set(font: .normal(.header), for: .Normal)
         
         codeText.placeholderAttributedString = .initialize(string: strings().loginCodePlaceholder, color: theme.colors.grayText, font: .normal(.header))
-        nextView.image = TelegramThemeHooks.shared.image(.iconGeneralNext).precomposed(theme.colors.border)
+        nextView.image = TelegramThemeHooks.shared.image(.iconGeneralNext).precomposed(theme.colors.grayIcon)
         
         self.updatePlaceholder()
         
