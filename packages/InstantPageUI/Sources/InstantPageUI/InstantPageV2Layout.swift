@@ -483,7 +483,9 @@ private struct LayoutContextV2 {
     public let codeSyntaxThemeKeys: [String: NSColor]
     public let codeTextColor: NSColor?
     public let collageMosaic: (([Media], CGFloat) -> [CGRect])?
-    public let mediaBleed: CGFloat
+    // Lets top-level media reach the bubble edges. Indented containers (list items, block
+    // quotes) set it to 0 for their children, or the media would overflow their column.
+    public var mediaBleed: CGFloat
     public let unsupportedStyle: (any InstantPageV2UnsupportedBandStyle)?
     public let buttonsEnabled: Bool
 
@@ -1799,6 +1801,10 @@ private func layoutBlockQuoteBlocksV2(
                                   context: &context)
     }
 
+    let outerMediaBleed = context.mediaBleed
+    context.mediaBleed = 0.0
+    defer { context.mediaBleed = outerMediaBleed }
+
     let leadingInset: CGFloat = 9.0
     let trailingInset: CGFloat = 16.0
     let verticalInset: CGFloat = 6.0
@@ -1895,6 +1901,10 @@ private func layoutListV2(
     horizontalInset: CGFloat,
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
+    let outerMediaBleed = context.mediaBleed
+    context.mediaBleed = 0.0
+    defer { context.mediaBleed = outerMediaBleed }
+
     let indexStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(indexStack, theme: context.theme, category: .paragraph, link: false)
     let indexLineMetrics = InstantPageTextLineMetrics(styleStack: indexStack)
