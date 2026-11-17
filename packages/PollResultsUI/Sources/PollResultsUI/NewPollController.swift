@@ -305,6 +305,33 @@ struct NewPollState : Equatable {
         return state
     }
 
+    func forSending(isPremium: Bool) -> NewPollState {
+        if isPremium {
+            return self
+        }
+        var state = self
+        state.textState = pollTextInputForSending(textState.textInputState(), isPremium: isPremium).textInputState()
+        state.descriptionState = pollTextInputForSending(descriptionState.textInputState(), isPremium: isPremium).textInputState()
+        state.quizExplanation = pollTextInputForSending(ChatTextInputState(attributedText: quizExplanation, selectionRange: 0 ..< 0), isPremium: isPremium).attributedString()
+        state.options = options.map { option in
+            return option.withUpdatedText(pollTextInputForSending(option.textState.textInputState(), isPremium: isPremium).textInputState())
+        }
+        return state
+    }
+
+    func addedOption(existingOptionCount: Int, accountPeerId: PeerId, timestamp: Int32, isPremium: Bool) -> TelegramMediaPollOption? {
+        guard let option = options.first else {
+            return nil
+        }
+        let input = pollTextInputForSending(option.textState.textInputState(), isPremium: isPremium)
+        let text = input.inputText.trimmed
+        if text.isEmpty {
+            return nil
+        }
+        let opaqueIdentifier = "\(existingOptionCount)".data(using: .utf8) ?? Data()
+        return TelegramMediaPollOption(text: text, entities: input.messageTextEntities(), opaqueIdentifier: opaqueIdentifier, media: option.media?.media, date: timestamp, addedBy: accountPeerId)
+    }
+
     public func withUpdatedTitle(_ title: String) -> NewPollState {
         return copy()
     }
@@ -1475,8 +1502,8 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
     
     
     let checkAndSend:() -> Void = {
-        let state = stateValue.with { $0 }
-    
+        let state = stateValue.with { $0 }.forSending(isPremium: context.isPremium)
+
         if state.isEnabled && !state.shouldShowTooltipForQuiz {
             chatInteraction.sendPollMedias([state.media(accountPeerId: context.peerId)], state.descriptionState.textInputState(), false, nil, false, nil, false, nil, false)
             close?()
@@ -1500,12 +1527,9 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
             return
         }
         if case let .addOption(messageId, existingOptions) = source {
-            guard let opt = state.options.first else { return }
-            let text = opt.text.trimmed
-            if text.isEmpty { return }
-            let entities = opt.textState.textInputState().messageTextEntities()
-            let opaqueId = "\(existingOptions.count)".data(using: .utf8) ?? Data()
-            let pollOption = TelegramMediaPollOption(text: text, entities: entities, opaqueIdentifier: opaqueId, media: opt.media?.media, date: context.timestamp, addedBy: context.peerId)
+            guard let pollOption = state.addedOption(existingOptionCount: existingOptions.count, accountPeerId: context.peerId, timestamp: context.timestamp, isPremium: context.isPremium) else {
+                return
+            }
             chatInteraction.appendPollOption(messageId, pollOption)
             close?()
         } else {
