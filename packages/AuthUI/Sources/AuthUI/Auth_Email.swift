@@ -89,6 +89,9 @@ public final class Auth_EmailView: View {
     public required init(frame frameRect: NSRect) {
         header = Auth_EmailHeaderView(frame: frameRect.size.bounds)
         super.init(frame: frameRect)
+        control.accessibilityElementLabel = { index, count in
+            strings().voiceOverLoginCodeDigit(index, count)
+        }
         container.addSubview(header)
         container.addSubview(control)
         container.addSubview(nextView)
