@@ -1915,8 +1915,11 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
             }
             self?.genericView.highlightNext(turnDirection: false)
             
-            while self?.genericView.highlightedItem() is PopularPeersRowItem || self?.genericView.highlightedItem() is SeparatorRowItem {
+            while let item = self?.genericView.highlightedItem(), item is PopularPeersRowItem || item is SeparatorRowItem {
                 self?.genericView.highlightNext(turnDirection: false)
+                if self?.genericView.highlightedItem() === item {
+                    self?.genericView.cancelHighlight()
+                }
             }
             
             return .invoked
