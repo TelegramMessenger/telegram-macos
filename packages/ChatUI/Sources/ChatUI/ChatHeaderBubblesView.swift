@@ -521,9 +521,9 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
 
         let cornerRadius = ChatHeaderBubblesView.bubbleHeight / 2
         
-        self.backGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
-        self.centerGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
-        self.rightGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
+        self.backGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: LiquidGlassView.islandTintAlpha)
+        self.centerGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: LiquidGlassView.islandTintAlpha)
+        self.rightGhost = LiquidGlassView(frame: .zero, cornerRadius: cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: LiquidGlassView.islandTintAlpha)
 
         super.init(frame: frameRect)
 
@@ -660,7 +660,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         centerGhost.updateLocalizationAndTheme(theme: theme)
         rightGhost.updateLocalizationAndTheme(theme: theme)
 
-        let chatGlassTint = theme.colors.background.withAlphaComponent(0.4)
+        let chatGlassTint = theme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha)
         backGhost.customTint = chatGlassTint
         centerGhost.customTint = chatGlassTint
         rightGhost.customTint = chatGlassTint

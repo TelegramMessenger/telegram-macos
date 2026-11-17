@@ -87,7 +87,7 @@ public class ChatInputStateView: View {
         // `presentation` theme; a chat on a custom palette / wallpaper
         // would otherwise show the wrong tint on this state container's
         // pill.
-        glassEffect?.customTint = chatTheme.colors.background.withAlphaComponent(0.4)
+        glassEffect?.customTint = chatTheme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha)
     }
 
     public override func layout() {
@@ -373,7 +373,7 @@ public final class ChatInputActionButtonView: ChatInputStateView {
         guard let pending else { return }
 
         let activeTheme = currentChatTheme ?? theme
-        let chatGlassTint = activeTheme.colors.background.withAlphaComponent(0.4)
+        let chatGlassTint = activeTheme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha)
 
         let text = pending.text
         let action = pending.action
