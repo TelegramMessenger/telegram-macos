@@ -240,8 +240,8 @@ public class MessageActionsPanelView: Control, Notifable {
         deleteButton.set(image: TelegramThemeHooks.shared.image(.iconMessageActionPanelDelete).precomposed(theme.colors.text), for: .Normal)
         forwardButton.set(image: TelegramThemeHooks.shared.image(.iconMessageActionPanelForward).precomposed(theme.colors.text), for: .Normal)
 
-        deleteButton.setGlassEffect(size: NSMakeSize(40, 40), tintColor: theme.colors.background.withAlphaComponent(0.4))
-        forwardButton.setGlassEffect(size: NSMakeSize(40, 40), tintColor: theme.colors.background.withAlphaComponent(0.4))
+        deleteButton.setGlassEffect(size: NSMakeSize(40, 40), tintColor: theme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha))
+        forwardButton.setGlassEffect(size: NSMakeSize(40, 40), tintColor: theme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha))
         deleteButton.setGlassEffectHidden(true)
         forwardButton.setGlassEffectHidden(true)
         deleteButton.additionalGlassEffectView = deleteGhost
@@ -268,7 +268,7 @@ public class MessageActionsPanelView: Control, Notifable {
         // `deleteButton` / `forwardButton` internal glass needs the same
         // tint via `glassTintColor` since those pills are still visible on
         // the legacy (pre-glassContainer) path.
-        let chatGlassTint = theme.colors.background.withAlphaComponent(0.4)
+        let chatGlassTint = theme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha)
         deleteGhost?.customTint = chatGlassTint
         countGhost?.customTint = chatGlassTint
         forwardGhost?.customTint = chatGlassTint

@@ -1293,7 +1293,7 @@ public class ChatInputView: View, Notifable {
         // `presentation.colors.background` (the app theme singleton), which
         // is wrong for chats on a custom palette / wallpaper — the input
         // bar would tint with the app background instead of the chat's.
-        let chatGlassTint = theme.colors.background.withAlphaComponent(0.4)
+        let chatGlassTint = theme.colors.background.withAlphaComponent(LiquidGlassView.islandTintAlpha)
         attachGhost?.customTint = chatGlassTint
         textGhost?.customTint = chatGlassTint
         voiceGhost?.customTint = chatGlassTint

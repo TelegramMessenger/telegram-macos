@@ -104,6 +104,12 @@ public final class AdaptiveGlassEffectView: NSGlassEffectView {
 
 open class LiquidGlassView: View {
 
+    /// Tint strength for floating glass islands: the tab bar and the chat's
+    /// input row, header pills, banners and bottom panels. Keep them on one value
+    /// so the islands look the same; at 40% a black theme background turned the
+    /// chat islands into opaque black slabs.
+    public static let islandTintAlpha: CGFloat = 0.2
+
     public var cornerRadius: CGFloat {
         didSet {
             if oldValue != cornerRadius {

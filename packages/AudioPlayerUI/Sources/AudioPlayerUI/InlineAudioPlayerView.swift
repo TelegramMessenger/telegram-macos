@@ -112,7 +112,7 @@ public class InlineAudioPlayerView: NavigationHeaderView, APDelegate {
         trackNameView.isSelectable = false
         trackNameView.userInteractionEnabled = false
         containerView = Control(frame: NSMakeRect(0, 0, 0, header.height))
-        glassView = LiquidGlassView(frame: .zero, cornerRadius: Self.cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
+        glassView = LiquidGlassView(frame: .zero, cornerRadius: Self.cornerRadius, hasShadow: true, hasBorder: true, tintAlpha: LiquidGlassView.islandTintAlpha)
 
         super.init(header)
 

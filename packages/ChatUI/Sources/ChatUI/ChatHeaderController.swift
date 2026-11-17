@@ -515,7 +515,7 @@ class ChatHeaderController {
                 glass = existingGlass
             } else {
                 container = View(frame: inlinePinnedFrame)
-                glass = LiquidGlassView(frame: inlinePinnedFrame, cornerRadius: 20, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
+                glass = LiquidGlassView(frame: inlinePinnedFrame, cornerRadius: 20, hasShadow: true, hasBorder: true, tintAlpha: LiquidGlassView.islandTintAlpha)
                 inlinePinnedContainer = container
                 inlinePinnedGlass = glass
                 parent.addSubview(container)
@@ -749,7 +749,7 @@ class ChatHeaderController {
                 } else {
                     current = View(frame: NSMakeRect(inset + edge, ChatHeaderBubblesView.totalHeight, view.frame.width - inset - edge * 2, state.height))
                     current.layer?.masksToBounds = false
-                    let glass = LiquidGlassView(frame: current.frame, cornerRadius: 20, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
+                    let glass = LiquidGlassView(frame: current.frame, cornerRadius: 20, hasShadow: true, hasBorder: true, tintAlpha: LiquidGlassView.islandTintAlpha)
                     glassEffect = glass
                     if let wrapper = sharedGlassWrapper {
                         wrapper.addGhost(glass)

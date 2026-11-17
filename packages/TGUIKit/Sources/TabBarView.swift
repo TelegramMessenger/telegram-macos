@@ -122,7 +122,7 @@ public class TabBarView: View {
     }
     var didReorderTabs: () -> Void = {}
 
-    private let glass = LiquidGlassView(frame: .zero, cornerRadius: FloatingTabBarLayout.height / 2, tintAlpha: 0.15)
+    private let glass = LiquidGlassView(frame: .zero, cornerRadius: FloatingTabBarLayout.height / 2, tintAlpha: LiquidGlassView.islandTintAlpha)
     private let selectionView = View()
     private let liftedGlass = LiquidGlassView(frame: .zero, cornerRadius: 28, hasShadow: true, hasBorder: true, tintAlpha: 0.1)
     private var gesture: SelectionGesture?
