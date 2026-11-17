@@ -106,7 +106,7 @@ final class ChatBubbleWallpaperMaterial {
     }
 
     static func isActive(_ presentation: TelegramPresentationTheme, hasBubble: Bool, liteGlass: Bool) -> Bool {
-        return isSupported && hasBubble && presentation.bubbled && presentation.liquidGlass && !liteGlass && presentation.hasWallpaper
+        return isSupported && hasBubble && presentation.bubbled && System.liquidGlass && !liteGlass && presentation.hasWallpaper
     }
 
 
