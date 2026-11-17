@@ -618,7 +618,20 @@ public class ChatPresentationInterfaceState: Equatable {
     }
 
     var canAttachFiles: Bool {
-        return state == .normal && permissionText(from: peer, for: .banSendFiles, cachedData: cachedData) == nil
+        return canAttachMedia([.banSendFiles])
+    }
+
+    func canAttachMedia(_ permissions: [TelegramChatBannedRightsFlags]) -> Bool {
+        return state == .normal && permissions.contains {
+            permissionText(from: peer, for: $0, cachedData: cachedData) == nil
+        }
+    }
+
+    func canOpenFilePicker(asMedia: Bool) -> Bool {
+        let permissions: [TelegramChatBannedRightsFlags] = asMedia
+            ? [.banSendPhotos, .banSendVideos, .banSendFiles, .banSendMusic, .banSendGifs, .banSendStickers]
+            : [.banSendFiles]
+        return canAttachMedia(permissions)
     }
 
     private var groupRestrictionState: ChatState? {

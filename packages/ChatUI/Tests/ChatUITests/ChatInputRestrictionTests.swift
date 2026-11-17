@@ -10,6 +10,7 @@ import InputView
 final class ChatInputRestrictionTests: XCTestCase {
     private let peerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(3))
     private let allSendingRights: TelegramChatBannedRightsFlags = [.banSendText, .banSendInstantVideos, .banSendVoice, .banSendPhotos, .banSendVideos, .banSendStickers, .banSendPolls, .banSendFiles, .banSendInline, .banSendMusic]
+    private let fileMediaRights: TelegramChatBannedRightsFlags = [.banSendPhotos, .banSendVideos, .banSendFiles, .banSendMusic, .banSendGifs, .banSendStickers]
 
     override func setUp() {
         super.setUp()
@@ -81,6 +82,78 @@ final class ChatInputRestrictionTests: XCTestCase {
             XCTAssertTrue(peer.canSendMessage(media: file(), cachedData: presentation.cachedData))
         }
         XCTAssertEqual(strings().channelPersmissionMessageBlock, "Text is not Allowed")
+    }
+
+    func testMediaFilePickerAllowsPhotosAndVideosWhenDocumentsAreBanned() {
+        let peers: [Peer] = [group(defaults: [.banSendText, .banSendFiles]), channel(defaults: [.banSendText, .banSendFiles])]
+        for peer in peers {
+            let presentation = state(peer)
+            XCTAssertEqual(presentation.state, .normal)
+            XCTAssertTrue(presentation.canOpenFilePicker(asMedia: true))
+            XCTAssertFalse(presentation.canOpenFilePicker(asMedia: false))
+            XCTAssertTrue(presentation.canAttachMedia([.banSendPhotos]))
+            XCTAssertTrue(presentation.canAttachMedia([.banSendVideos]))
+        }
+    }
+
+    func testPhotoAndVideoPickersCheckTheirOwnPermissions() {
+        for allowed: TelegramChatBannedRightsFlags in [.banSendPhotos, .banSendVideos] {
+            let bans = fileMediaRights.subtracting(allowed)
+            let peers: [Peer] = [group(defaults: bans), channel(defaults: bans)]
+            for peer in peers {
+                let presentation = state(peer)
+                XCTAssertTrue(presentation.canOpenFilePicker(asMedia: true))
+                XCTAssertTrue(presentation.canAttachMedia([.banSendPhotos, .banSendVideos]))
+                XCTAssertEqual(presentation.canAttachMedia([.banSendPhotos]), allowed == .banSendPhotos)
+                XCTAssertEqual(presentation.canAttachMedia([.banSendVideos]), allowed == .banSendVideos)
+                XCTAssertFalse(presentation.canAttachFiles)
+            }
+        }
+    }
+
+    func testAudioPickerUsesMusicPermissionIndependentlyOfDocuments() {
+        let music = file(mimeType: "audio/mpeg", attributes: [.Audio(isVoice: false, duration: 1, title: "Song", performer: nil, waveform: nil)])
+        for banned: TelegramChatBannedRightsFlags in [.banSendFiles, .banSendMusic] {
+            let peers: [Peer] = [group(defaults: banned), channel(defaults: banned)]
+            for peer in peers {
+                let presentation = state(peer)
+                XCTAssertEqual(presentation.canAttachMedia([.banSendMusic]), banned != .banSendMusic)
+                XCTAssertEqual(presentation.canAttachFiles, banned != .banSendFiles)
+                XCTAssertEqual(peer.canSendMessage(media: music), banned != .banSendMusic)
+            }
+        }
+    }
+
+    func testGenericFilePickerAllowsPermittedFallbackTypes() {
+        for allowed: TelegramChatBannedRightsFlags in [.banSendFiles, .banSendMusic, .banSendGifs, .banSendStickers] {
+            let presentation = state(channel(defaults: fileMediaRights.subtracting(allowed)))
+            XCTAssertTrue(presentation.canOpenFilePicker(asMedia: true))
+            XCTAssertEqual(presentation.canOpenFilePicker(asMedia: false), allowed == .banSendFiles)
+            XCTAssertFalse(presentation.canAttachMedia([.banSendPhotos, .banSendVideos]))
+        }
+        let fullyRestrictedMedia = state(channel(defaults: fileMediaRights))
+        XCTAssertEqual(fullyRestrictedMedia.state, .normal)
+        XCTAssertFalse(fullyRestrictedMedia.canOpenFilePicker(asMedia: true))
+        XCTAssertFalse(fullyRestrictedMedia.canOpenFilePicker(asMedia: false))
+        XCTAssertFalse(fullyRestrictedMedia.canAttachMedia([.banSendMusic]))
+    }
+
+    func testPickerPermissionsUpdateWithBoostsAndPersonalBans() {
+        let original = state(channel(defaults: fileMediaRights), required: 2, applied: 1)
+        XCTAssertFalse(original.canOpenFilePicker(asMedia: true))
+        XCTAssertFalse(original.canAttachMedia([.banSendMusic]))
+        let boosted = original.withUpdatedCachedData(cached(required: 2, applied: 2))
+        XCTAssertTrue(boosted.canOpenFilePicker(asMedia: true))
+        XCTAssertTrue(boosted.canAttachFiles)
+        XCTAssertTrue(boosted.canAttachMedia([.banSendMusic]))
+        let personalBans = boosted.updatedPeer { _ in self.channel(defaults: self.fileMediaRights, personal: [.banSendMusic, .banSendPhotos]) }
+        XCTAssertTrue(personalBans.canOpenFilePicker(asMedia: true))
+        XCTAssertTrue(personalBans.canAttachFiles)
+        XCTAssertFalse(personalBans.canAttachMedia([.banSendMusic]))
+        XCTAssertFalse(personalBans.canAttachMedia([.banSendPhotos]))
+        XCTAssertTrue(personalBans.canAttachMedia([.banSendVideos]))
+        let unboosted = personalBans.withUpdatedCachedData(cached(required: 2, applied: 1))
+        XCTAssertFalse(unboosted.canOpenFilePicker(asMedia: true))
     }
 
     func testTextLockOffersBoostWhileMediaRemainsAvailable() {
@@ -351,6 +424,8 @@ final class ChatInputRestrictionTests: XCTestCase {
         }
         XCTAssertEqual(text, strings().chatInputTopicClosed)
         XCTAssertFalse(presentation.canAttachFiles)
+        XCTAssertFalse(presentation.canOpenFilePicker(asMedia: true))
+        XCTAssertFalse(presentation.canAttachMedia([.banSendMusic, .banSendPhotos]))
         XCTAssertFalse(peer.canSendMessage(true, media: photo(), threadData: thread(closed: true), cachedData: presentation.cachedData))
         XCTAssertEqual(presentation.withUpdatedThreadInfo(thread(closed: true, owned: true)).state, .normal)
     }
@@ -369,6 +444,8 @@ final class ChatInputRestrictionTests: XCTestCase {
             let presentation = state(peer, required: 2, applied: 2)
             XCTAssertNotEqual(presentation.state, .normal)
             XCTAssertFalse(presentation.canAttachFiles)
+            XCTAssertFalse(presentation.canOpenFilePicker(asMedia: true))
+            XCTAssertFalse(presentation.canAttachMedia([.banSendMusic, .banSendPhotos]))
             XCTAssertFalse(peer.canSendMessage(cachedData: presentation.cachedData))
             XCTAssertFalse(peer.canSendMessage(media: photo(), cachedData: presentation.cachedData))
         }
@@ -380,6 +457,8 @@ final class ChatInputRestrictionTests: XCTestCase {
         XCTAssertEqual(presentation.state, .normal)
         XCTAssertNil(presentation.textRestriction)
         XCTAssertTrue(presentation.canAttachFiles)
+        XCTAssertTrue(presentation.canOpenFilePicker(asMedia: true))
+        XCTAssertTrue(presentation.canAttachMedia([.banSendMusic, .banSendPhotos]))
         XCTAssertTrue(peer.canSendMessage())
     }
 
@@ -391,5 +470,7 @@ final class ChatInputRestrictionTests: XCTestCase {
         XCTAssertNil(presentation.textRestriction)
         XCTAssertNil(presentation.textRestrictionBoostsRequired)
         XCTAssertTrue(presentation.abilityToSend)
+        XCTAssertFalse(presentation.canOpenFilePicker(asMedia: true))
+        XCTAssertFalse(presentation.canAttachMedia([.banSendMusic, .banSendPhotos]))
     }
 }

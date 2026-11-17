@@ -7265,7 +7265,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         self.chatInteraction.focusMessageId(nil, .init(messageId: last, string: nil), .CenterEmpty)
                     }
                 } else {
-                    if self.chatInteraction.presentation.canAttachFiles {
+                    if self.chatInteraction.presentation.canOpenFilePicker(asMedia: asMedia) {
                         filePanel(allowMultiple: true, canChooseDirectories: true, for: window, analyticsContext: analyticsContext, cancelled: {
                             guard selectionAction.takeIfCurrent(onInvalidated: { journey?.discard() }) else { return }
                             journey?.cancel()
@@ -7331,14 +7331,23 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         self.chatInteraction.focusMessageId(nil, .init(messageId: last, string: nil), .CenterEmpty)
                     }
                 } else {
+                    let permissions: [TelegramChatBannedRightsFlags]
                     var exts:[String]? = nil
                     if let type = type {
                         switch type {
                         case .photo:
+                            permissions = [.banSendPhotos]
                             exts = photoExts
                         case .video:
+                            permissions = [.banSendVideos]
                             exts = videoExts
                         }
+                    } else {
+                        permissions = [.banSendPhotos, .banSendVideos]
+                    }
+                    guard self.chatInteraction.presentation.canAttachMedia(permissions) else {
+                        journey?.fail(.permission)
+                        return
                     }
                                         
                     filePanel(with: exts, allowMultiple: true, canChooseDirectories: true, for: window, analyticsContext: analyticsContext, cancelled: {
@@ -7394,6 +7403,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             guard let `self` = self else {return}
             if let window = self.window {
                 let journey = self.chatInteraction.makeMediaAnalyticsJourney(context: analyticsContext, entry: .imagePicker, mode: .media, source: self.analyticsScreen)
+                guard self.chatInteraction.presentation.canAttachMedia([.banSendPhotos]) else {
+                    journey?.fail(.permission)
+                    return
+                }
                 let selectionAction = self.chatInteraction.captureDeferredSendAction()
                 pickImage(for: window, analyticsContext: analyticsContext, completion: { [weak self] image in
                     guard let self else {
@@ -7425,6 +7438,13 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }
         chatInteraction.attachAudio = { [weak self] morphSource in
             guard let `self` = self else { return }
+            let presentation = self.chatInteraction.presentation
+            guard presentation.canAttachMedia([.banSendMusic]) else {
+                if let text = permissionText(from: presentation.peer, for: .banSendMusic, cachedData: presentation.cachedData) {
+                    showModalText(for: context.window, text: text)
+                }
+                return
+            }
             showModal(with: ChatUIHooks.shared.makeSendAudioModal(context, self.chatInteraction), for: context.window, morphSource: morphSource)
         }
         

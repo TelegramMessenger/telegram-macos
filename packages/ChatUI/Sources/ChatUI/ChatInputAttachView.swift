@@ -247,8 +247,8 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
                     return ContextMenu()
                 }
 
-                let canSendPhotos = permissionText(from: peer, for: .banSendPhotos, cachedData: cachedData) == nil
-                let canSendVideos = permissionText(from: peer, for: .banSendVideos, cachedData: cachedData) == nil
+                let canSendPhotos = chatInteraction.presentation.canAttachMedia([.banSendPhotos])
+                let canSendVideos = chatInteraction.presentation.canAttachMedia([.banSendVideos])
                 if canSendPhotos && canSendVideos {
                     items.append(ContextMenuItem(strings().inputAttachPopoverPhotoOrVideo, handler: { [weak self] in
                         self?.chatInteraction.attachPhotoOrVideo(nil)
@@ -381,10 +381,6 @@ public final class ChatInputAttachButton: View, MorphHoldObserving {
 
                 items.append(ContextMenuItem(strings().inputAttachAudio, handler: { [weak self] in
                     guard let `self` = self else { return }
-                    if let permissionText = permissionText(from: peer, for: .banSendFiles, cachedData: cachedData) {
-                        showModalText(for: context.window, text: permissionText)
-                        return
-                    }
                     self.chatInteraction.attachAudio({ [weak self] in self?.button })
                 }, itemImage: MenuAnimation.menu_music.value))
 
