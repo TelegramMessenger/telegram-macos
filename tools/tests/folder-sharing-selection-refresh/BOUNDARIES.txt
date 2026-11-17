@@ -1,0 +1,27 @@
+Folder invite selection and unresolved-peer save regressions
+
+Run with python3 -I tools/tests/folder-sharing-selection-refresh/run.py --output /absolute/new-directory --baseline 9bbbebdb58ddf1e49c03d4f6bdfe4539a982e213 --typecheck-command /absolute/real-swift-command.json --core-root /absolute/telegram-ios/submodules --lock /absolute/shared-compiler.lock.
+
+The command reference supplies the actual swiftc, SDK, target and retained dependency search paths. Output is separate from source. The runner acquires the shared compiler lock and uses swiftc -j1. The publication supervisor additionally enforces at least 8 GiB free disk before starting and aborts only its owned process group below 4 GiB.
+
+Real-source validation
+- Emit the complete Localization module with the two new accessors, then all six FolderSharingUI production files and the package XCTest source against real retained dependency interfaces.
+- Package test methods are typechecked, not counted as additional executed tests. Standalone SwiftPM resolution/linking and a full application graph build are not claimed.
+- SwiftGen is unavailable in this environment; the two accessors follow the existing generated format. UTF-16 string encoding, unchanged surrounding content, unique keys, ordered placeholders and plutil syntax are checked separately.
+
+Executed native boundary
+- Existing initial state, peer/row/bulk callbacks, checkbox/bulk/footer eligibility expressions, discard logic and save routing are extracted from production.
+- The new preflight helper reads every selected replacement ID from a controlled Postbox transaction, using the real extracted PeerReference initializer.
+- The pinned Core _internal_editChatFolderLink, apiInputPeer and response PeerId conversion are extracted verbatim. Requests are captured after the actual compactMap/getPeer/input-peer construction, not before the serialization decision.
+- SwiftSignalKit operators, subscription and disposal use the retained real SwiftSignalKit module/object. Foundation and XCTest are native.
+- The regression fixture supplies peer data types, Postbox transaction scheduling, API data containers and a network that captures requests and releases an explicitly controlled result/error. It is not a real database, account, API encoder or network request.
+- Exact previous-head control calls the existing engine method with its existing optional peer-ID expression and maps its generic error into the fixture's error channel. It does not synthesize the new validation behavior. The same test cases run on both old and fixed source.
+
+Cases
+Missing original A plus added B must produce unresolved A, no request, no editor close and no mutation. Missing access hash, unsupported peer and missing newly selected peers are covered too. Fully representable peers must all appear in the Core request; rename-only edits omit replacement IDs. Server failure keeps the editor open; retry after resolution sends the complete selection. Pending validation uses the submitted snapshot, and cancellation suppresses request/result delivery. Existing selection, explicit deselection, disabled-row, bulk, loading, rename and deletion controls remain.
+
+Important limit
+The public engine accepts IDs, not a validated frozen reference list, and constructs its request in a later Postbox transaction. This client-side preflight fixes already-unresolved peer omission but is not an atomic all-or-error Core contract. Normal same-type Core updates retain known access hashes and ordinary chat removal retains peer records, but arbitrary intervening storage replacement is not prevented by this patch. An unconditional guarantee requires Core-side validation in the request-construction transaction. No Core fork, pin change or network-layer bypass is included.
+
+Not established
+Live AppKit button rendering/event delivery, progress-modal presentation, actual database persistence, remote permission changes, server acceptance, or a concurrent production peer-invalidation race. The localized alert text and controller wiring are source/typechecked; no private account/profile/Contacts/Keychain/payment actions are performed.

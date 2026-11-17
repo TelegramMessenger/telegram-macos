@@ -294,7 +294,7 @@ final class FolderSharingUITests: XCTestCase {
         XCTAssertTrue(state.needsDiscardConfirmation(original: original, initialSelected: Set(original.peerIds)))
     }
 
-    func testEditedLinkClosesBeforeAsyncUpdateAndSuccess() {
+    func testEditedLinkClosesOnlyAfterAsyncUpdateSucceeds() {
         let original = link()
         let state = FolderSharingLinkState(filter: filter(), link: link(title: "Renamed"), selected: [group(2).id])
         var events: [String] = []
@@ -309,18 +309,18 @@ final class FolderSharingUITests: XCTestCase {
             XCTAssertEqual(new?.peerIds, [self.group(2).id])
             events.append("updated")
         }, success: { events.append("success") }, failure: { XCTFail() }, delete: { XCTFail() }, close: { events.append("close") })
-        XCTAssertEqual(events, ["request", "close"])
+        XCTAssertEqual(events, ["request"])
         completion?(link(title: "Renamed", ids: [group(2).id]))
-        XCTAssertEqual(events, ["request", "close", "updated", "success"])
+        XCTAssertEqual(events, ["request", "updated", "close", "success"])
     }
 
-    func testLinkSaveFailureArrivesAfterClose() {
+    func testLinkSaveFailureKeepsTheEditorOpen() {
         var events: [String] = []
         var failure: (() -> Void)?
         folderSharingSaveLink(state: FolderSharingLinkState(filter: filter(), link: link(title: "Changed"), selected: [group(1).id]), original: link(), edit: { _, _, _, error in failure = error }, updated: { _, _ in XCTFail() }, success: { XCTFail() }, failure: { events.append("error") }, delete: { XCTFail() }, close: { events.append("close") })
-        XCTAssertEqual(events, ["close"])
+        XCTAssertTrue(events.isEmpty)
         failure?()
-        XCTAssertEqual(events, ["close", "error"])
+        XCTAssertEqual(events, ["error"])
     }
 
     func testUnchangedEmptyAndAbsentLinksChooseCorrectCallbacks() {

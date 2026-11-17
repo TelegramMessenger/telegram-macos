@@ -53,7 +53,7 @@ func folderSharingJoinedChannelIds(_ peers: [EnginePeer]) -> Set<PeerId> {
     }.map { $0.id })
 }
 
-func folderSharingSaveLink(state: FolderSharingLinkState, original: ExportedChatFolderLink?, edit: (ExportedChatFolderLink, Set<PeerId>, @escaping (ExportedChatFolderLink) -> Void, @escaping () -> Void) -> Void, updated: @escaping (ExportedChatFolderLink, ExportedChatFolderLink?) -> Void, success: @escaping () -> Void, failure: @escaping () -> Void, delete: () -> Void, close: () -> Void) {
+func folderSharingSaveLink(state: FolderSharingLinkState, original: ExportedChatFolderLink?, edit: (ExportedChatFolderLink, Set<PeerId>, @escaping (ExportedChatFolderLink) -> Void, @escaping () -> Void) -> Void, updated: @escaping (ExportedChatFolderLink, ExportedChatFolderLink?) -> Void, success: @escaping () -> Void, failure: @escaping () -> Void, delete: () -> Void, close: @escaping () -> Void) {
     if let current = state.link {
         if state.selected.isEmpty {
             delete()
@@ -61,10 +61,12 @@ func folderSharingSaveLink(state: FolderSharingLinkState, original: ExportedChat
             if state.selected != Set(current.peerIds) || original?.title != current.title {
                 edit(current, state.selected, { result in
                     updated(current, result)
+                    close()
                     success()
                 }, failure)
+            } else {
+                close()
             }
-            close()
         }
     }
 }

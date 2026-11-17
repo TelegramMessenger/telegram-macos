@@ -386,10 +386,32 @@ public func ShareCloudFolderController(context: any AccountContextProtocol, envi
         modalController?.close()
     })
 
+    var saving = false
     controller.validateData = { data in
+        guard !saving else { return .none }
         let state = stateValue.with { $0 }
         folderSharingSaveLink(state: state, original: link, edit: { current, selected, success, failure in
-            _ = showModalProgress(signal: context.engine.peers.editChatFolderLink(filterId: state.filter.folderSharingId, link: current, title: current.title, peerIds: selected == Set(current.peerIds) ? nil : Array(selected), revoke: false), for: context.window).start(next: success, error: { _ in failure() })
+            saving = true
+            let signal = folderSharingEditLink(context: context, filterId: state.filter.folderSharingId, link: current, selected: selected)
+            |> afterDisposed {
+                Queue.mainQueue().async {
+                    saving = false
+                }
+            }
+            actionsDisposable.add(showModalProgress(signal: signal, for: context.window, timeout: 0).start(next: success, error: { error in
+                switch error {
+                case let .unresolvedPeers(ids):
+                    let names = ids.map { id in
+                        if let peer = state.peers.first(where: { $0.peer.id == id })?.peer, !peer.debugDisplayTitle.isEmpty {
+                            return peer.debugDisplayTitle
+                        }
+                        return strings().shareFolderUnresolvedPeerId("\(id.toInt64())")
+                    }
+                    environment.alert(strings().shareFolderUnresolvedPeers(names.joined(separator: ", ")))
+                case .generic:
+                    failure()
+                }
+            }))
         }, updated: updated, success: environment.showSuccess, failure: {
             environment.alert(strings().unknownError)
         }, delete: arguments.delete, close: { close?() })

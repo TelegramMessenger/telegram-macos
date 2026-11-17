@@ -194,7 +194,7 @@ final class FolderSharingSelectionRefreshTests: XCTestCase {
         for revision in 1...3 {
             replay.refresh([peer(1, avatar: revision), peer(2)])
             expect(replay, [2], dirty: true)
-            XCTAssertEqual(replay.saveEvents(), ["edit", "close"])
+            XCTAssertEqual(replay.saveEvents(), ["edit"])
         }
         replay.toggle(peer(1))
         replay.toggle(peer(2))
@@ -289,7 +289,7 @@ final class FolderSharingSelectionRefreshTests: XCTestCase {
         replay.toggle(peer(2))
         replay.refresh([peer(1, eligible: false), peer(2, eligible: false)])
         expect(replay, [2], dirty: true)
-        XCTAssertEqual(replay.saveEvents(), ["edit", "close"])
+        XCTAssertEqual(replay.saveEvents(), ["edit"])
         replay.refresh([peer(1), peer(2)])
         expect(replay, [2], dirty: true)
         replay.toggle(peer(1))
@@ -401,7 +401,7 @@ final class FolderSharingSelectionRefreshTests: XCTestCase {
         replay.toggle(peer(2))
         replay.refresh([peer(1, eligible: false), peer(2, eligible: false)])
         expect(replay, [2], dirty: true)
-        XCTAssertEqual(replay.saveEvents(), ["edit", "close"])
+        XCTAssertEqual(replay.saveEvents(), ["edit"])
         replay.refresh([peer(1), peer(2)])
         replay.toggle(peer(2))
         expect(replay, [], dirty: true)

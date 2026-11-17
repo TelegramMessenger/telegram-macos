@@ -16113,6 +16113,12 @@ public final class L10n {
   public static var shareFolderTitleTextZeroValueHolder: String  { return L10n.tr("Localizable", "ShareFolder.Title.Text_ZeroValueHolder") }
   /// There are no chats in this folder that you can share with others
   public static var shareFolderTitleTextEmpty: String  { return L10n.tr("Localizable", "ShareFolder.Title.Text.Empty") }
+  public static func shareFolderUnresolvedPeerId(_ p1: String) -> String {
+    return L10n.tr("Localizable", "ShareFolder.UnresolvedPeerId", p1)
+  }
+  public static func shareFolderUnresolvedPeers(_ p1: String) -> String {
+    return L10n.tr("Localizable", "ShareFolder.UnresolvedPeers", p1)
+  }
   /// Select
   public static var shareModalSelect: String  { return L10n.tr("Localizable", "ShareModal.Select") }
   /// Forward to...

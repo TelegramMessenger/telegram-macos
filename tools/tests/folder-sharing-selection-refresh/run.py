@@ -95,6 +95,18 @@ def typecheck():
     production = sorted((root / source_dir).glob('*.swift'))
     tests = sorted((root / package / 'Tests/FolderSharingUITests').glob('*.swift'))
     common = typecheck_flags() + ['-module-cache-path', str(directory / 'cache')]
+    localization = directory / 'localization-source'
+    localization.mkdir()
+    localization_paths = subprocess.check_output(['git', '-C', str(root), 'ls-tree', '-r', '--name-only', 'HEAD', '--', 'packages/Localization/Sources'], text=True).splitlines()
+    localization_sources = []
+    for name in localization_paths:
+        path = root / name
+        data = path.read_bytes() if path.is_file() else subprocess.check_output(['git', '-C', str(root), 'show', 'HEAD:' + name])
+        target_path = localization / Path(name).name
+        target_path.write_bytes(data)
+        localization_sources.append(str(target_path))
+    run(directory, 'localization', common + ['-module-name', 'Localization', '-emit-module-path', str(modules / 'Localization.swiftmodule')] + localization_sources)
+    common = [common[0], '-I', str(modules)] + common[1:]
     run(directory, 'production', common + ['-module-name', 'FolderSharingUI', '-emit-module-path', str(modules / 'FolderSharingUI.swiftmodule')] + list(map(str, production)))
     run(directory, 'tests', [compiler, '-I', str(modules)] + common[1:] + ['-module-name', 'FolderSharingUITests', '-emit-module-path', str(modules / 'FolderSharingUITests.swiftmodule')] + list(map(str, tests)))
     record = {
@@ -131,7 +143,8 @@ core = '\n\n'.join([
     block(coding, 'public final class WriteBuffer:'),
     block(coding, 'public final class ReadBuffer:'),
     block(comparison, 'func mdb_cmp_memn('),
-    block(links, 'public struct ExportedChatFolderLink:')
+    block(links, 'public struct ExportedChatFolderLink:'),
+    block(links, 'public extension ExportedChatFolderLink {')
 ])
 
 
@@ -170,7 +183,30 @@ def native(label, revision):
     row_enabled = re.search(r'makePeerRow\(initialSize, peer: item\.peer\.peer, enabled: (.+?), status:', controller).group(1)
     bulk_peers = re.search(r'folderSharingToggleAll\((items\.filter.+?), selected: state\.selected, selection:', controller).group(1)
     bulk_visible = re.search(r'if items\.count > 1, (.+?) \{', controller).group(1)
-    edit_peer_ids = re.search(r'editChatFolderLink\([^\n]+peerIds: (.+?), revoke: false', controller).group(1)
+    edit_source = root / source_dir / 'FolderSharingLinkEdit.swift'
+    if revision:
+        result = subprocess.run(['git', '-C', str(root), 'show', revision + ':' + str(source_dir / 'FolderSharingLinkEdit.swift')], capture_output=True)
+        edit_text = result.stdout.decode() if result.returncode == 0 else None
+    else:
+        edit_text = edit_source.read_text()
+    if edit_text is not None:
+        edit_peer_ids = re.search(r'let peerIds = ([^\n]+)', edit_text).group(1).replace('link.peerIds', 'current.peerIds')
+        edit_production = '\n'.join(line for line in edit_text.splitlines() if not line.startswith('import '))
+        edit_request = 'folderSharingEditLink(context: context, filterId: 10, link: current, selected: selected)'
+        hashes[str(source_dir / 'FolderSharingLinkEdit.swift')] = hashlib.sha256(edit_text.encode()).hexdigest()
+    else:
+        edit_peer_ids = re.search(r'editChatFolderLink\([^\n]+peerIds: (.+?), revoke: false', controller).group(1)
+        edit_production = block(edit_source.read_text(), 'enum FolderSharingLinkEditError')
+        edit_request = 'context.engine.peers.editChatFolderLink(filterId: 10, link: current, title: current.title, peerIds: editedPeerIds(current: current, selected: selected), revoke: false) |> mapError { _ in FolderSharingLinkEditError.generic }'
+    peer_reference = core_source('TelegramCore/Sources/SyncCore/SyncCore_PeerReference.swift')
+    api_utils = core_source('TelegramCore/Sources/ApiUtils/ApiUtils.swift')
+    updates_utils = core_source('TelegramCore/Sources/State/UpdatesApiUtils.swift')
+    request_fixture = Path(__file__).with_name('FolderSharingRequestTests.swift.in').read_text()
+    reference_initializer = block(peer_reference, 'public init?(_ peer: Peer)')
+    engine_request = '\n\n'.join([block(links, 'public enum EditChatFolderLinkError'), block(links, 'func _internal_editChatFolderLink('), block(api_utils, 'func apiInputPeer(_ peer: Peer)'), block(updates_utils, 'extension Api.Peer {')])
+    for marker, value in [('__PEER_REFERENCE_INIT__', reference_initializer), ('__ENGINE_REQUEST__', engine_request), ('__EDIT_PRODUCTION__', edit_production), ('__EDIT_REQUEST__', edit_request)]:
+        assert request_fixture.count(marker) == 1
+        request_fixture = request_fixture.replace(marker, value)
     production = '\n\n'.join([
         block(environment, 'public protocol FolderSharingPeerSelection:'),
         block(models, 'struct FolderSharingPeer:'),
@@ -184,15 +220,19 @@ def native(label, revision):
         assert tests.count(marker) == 1
         tests = tests.replace(marker, value)
     harness = directory / 'main.swift'
-    harness.write_text(core + '\n\n' + production + '\n\n' + tests)
+    tests = tests.replace('let suite = XCTestSuite(forTestCaseClass: FolderSharingSelectionRefreshTests.self)', request_fixture + '\n\nlet suite = XCTestSuite(name: "FolderSharingRegressions")\nsuite.addTest(XCTestSuite(forTestCaseClass: FolderSharingSelectionRefreshTests.self))\nsuite.addTest(XCTestSuite(forTestCaseClass: FolderSharingRequestTests.self))')
+    harness.write_text('import SwiftSignalKit\n\n' + core + '\n\n' + production + '\n\n' + tests)
     binary = directory / 'selection-tests'
     command = [compiler, '-j1', '-swift-version', '5', '-Onone', '-sdk', sdk, '-target', target, '-module-cache-path', str(directory / 'cache'), '-F', frameworks, '-I', swift_libraries, '-L', swift_libraries, '-Xlinker', '-rpath', '-Xlinker', frameworks, '-Xlinker', '-rpath', '-Xlinker', swift_libraries, str(harness), '-o', str(binary)]
+    products = Path(reference[reference.index('-I', reference.index('-sdk')) + 1])
+    signal_object = products / 'SwiftSignalKit.o'
+    command += ['-I', str(products), str(signal_object)]
     run(directory, 'compile', command)
     result, text = run(directory, 'tests', [str(binary)], allow_failure=bool(revision))
     match = re.search(r'NATIVE_RESULT tests=(\d+) failures=(\d+)', text)
     assert match is not None, text[-6000:]
     count, failures = map(int, match.groups())
-    expected_count = len(re.findall(r'    func test\w+\(', fixture.read_text()))
+    expected_count = len(re.findall(r'    func test\w+\(', fixture.read_text())) + len(re.findall(r'    func test\w+\(', request_fixture))
     assert count == expected_count, (count, expected_count)
     assert (result.returncode != 0 and failures > 0) if revision else (result.returncode == 0 and failures == 0)
     _, linked = run(directory, 'linked-libraries', ['otool', '-L', str(binary)])
@@ -202,6 +242,9 @@ def native(label, revision):
         'revision': revision or 'working-tree',
         'source_sha256': hashes,
         'fixture_sha256': digest(fixture),
+        'request_fixture_sha256': digest(Path(__file__).with_name('FolderSharingRequestTests.swift.in')),
+        'real_signal_object_sha256': digest(signal_object),
+        'request_baseline_adapter': 'Direct existing engine call and generic error mapping; no preflight synthesized' if edit_text is None else None,
         'selection_test_double_sha256': digest(tests_path),
         'harness_sha256': digest(harness),
         'real_core_source_sha256': core_hashes,
@@ -209,7 +252,7 @@ def native(label, revision):
         'assertion_failures': failures,
         'failed_tests': [line for line in text.splitlines() if line.startswith('Test Case ') and ' failed ' in line],
         'exit': result.returncode,
-        'boundary': 'Native XCTest executable runs verbatim extracted initial state, peer callback, row callback, bulk-selection merge callback, Done/Delete predicate, discard expression, state, selection helpers and save routing. Real PeerId/buffers and ExportedChatFolderLink source; peer payload, eligibility predicate, filter and state container are in-memory test doubles. Footer predicate is checked, not an AppKit button. Foundation/XCTest only; no account, Postbox instance, database, Contacts, network or GUI.'
+        'boundary': 'Native XCTest executes extracted initialization, callbacks, row/bulk/footer predicates, discard/save routing, app preflight helper and the pinned Core edit function through captured request construction. PeerId/buffers, ExportedChatFolderLink/slug, PeerReference initializer, apiInputPeer and response peer conversion are extracted production; SwiftSignalKit is the retained real object/module. Peer payloads, Postbox transactions, network request capture/response and API data containers are controlled fixtures, not a live account/database/server. Separate preflight and engine transactions are represented separately and are not claimed atomic. Footer predicate is checked, not an AppKit button; Cocoa error presentation and rapid-submit UI remain separate from native fixture execution.'
     }
     save(directory / 'verification.json', record)
     records.append(record)
