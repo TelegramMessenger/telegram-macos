@@ -1905,6 +1905,63 @@ private func instantPageFirstStrongDirectionIsRTL(_ string: String) -> Bool? {
     return instantPageScalarIsRTL(scalar)
 }
 
+// The first letter of a list item made of blocks, in reading order, looking inside every block that
+// shows text: quotes, details, nested lists, tables and media captions. instantPageRichTextFromBlocks
+// only joins the plain text blocks, so an item that opens with a quote would read as having no text.
+private func instantPageFirstStrongDirectionIsRTL(in blocks: [InstantPageBlock]) -> Bool? {
+    func firstOf(_ texts: [RichText]) -> Bool? {
+        return texts.lazy.compactMap { instantPageFirstStrongDirectionIsRTL($0.plainText) }.first
+    }
+    func captionOf(_ caption: InstantPageCaption) -> Bool? {
+        return firstOf([caption.text, caption.credit])
+    }
+    for block in blocks {
+        let direction: Bool?
+        switch block {
+        case let .title(text), let .subtitle(text), let .header(text), let .subheader(text),
+             let .paragraph(text), let .footer(text), let .kicker(text), let .thinking(text),
+             let .heading(text, _), let .preformatted(text, _), let .authorDate(text, _):
+            direction = firstOf([text])
+        case let .blockQuote(children, caption, _):
+            direction = instantPageFirstStrongDirectionIsRTL(in: children) ?? firstOf([caption])
+        case let .pullQuote(text, caption):
+            direction = firstOf([text, caption])
+        case let .details(title, children, _):
+            direction = firstOf([title]) ?? instantPageFirstStrongDirectionIsRTL(in: children)
+        case let .list(items, _):
+            direction = items.lazy.compactMap { item -> Bool? in
+                switch item {
+                case let .text(text, _, _):
+                    return firstOf([text])
+                case let .blocks(children, _, _):
+                    return instantPageFirstStrongDirectionIsRTL(in: children)
+                case .unknown:
+                    return nil
+                }
+            }.first
+        case let .cover(child):
+            direction = instantPageFirstStrongDirectionIsRTL(in: [child])
+        case let .table(title, rows, _, _, _):
+            direction = firstOf([title] + rows.flatMap { $0.cells.compactMap { $0.text } })
+        case let .relatedArticles(title, _):
+            direction = firstOf([title])
+        case let .image(_, caption, _, _, _), let .video(_, caption, _, _, _), let .audio(_, caption),
+             let .document(_, caption), let .map(_, _, _, _, caption), let .webEmbed(_, _, _, caption, _, _, _):
+            direction = captionOf(caption)
+        case let .collage(children, caption), let .slideshow(children, caption):
+            direction = instantPageFirstStrongDirectionIsRTL(in: children) ?? captionOf(caption)
+        case let .postEmbed(_, _, _, _, _, children, caption):
+            direction = instantPageFirstStrongDirectionIsRTL(in: children) ?? captionOf(caption)
+        default:
+            direction = nil
+        }
+        if let direction {
+            return direction
+        }
+    }
+    return nil
+}
+
 private func layoutListV2(
     _ listItems: [InstantPageListItem],
     ordered: Bool,
@@ -1992,7 +2049,7 @@ private func layoutListV2(
         case let .text(text, _, _):
             return instantPageFirstStrongDirectionIsRTL(text.plainText)
         case let .blocks(blocks, _, _):
-            return instantPageFirstStrongDirectionIsRTL(instantPageRichTextFromBlocks(blocks).plainText)
+            return instantPageFirstStrongDirectionIsRTL(in: blocks)
         case .unknown:
             return nil
         }
