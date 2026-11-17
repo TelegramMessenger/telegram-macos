@@ -2644,6 +2644,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
     private let peekDisposable = MetaDisposable()
     private let loadThreadDisposable = MetaDisposable()
     private let updateChatLocationThreadDisposable = MetaDisposable()
+    private let interfaceStateDisposable = MetaDisposable()
     private let recordActivityDisposable = MetaDisposable()
     private let suggestionsDisposable = MetaDisposable()
     private let sendAsPeersDisposable = MetaDisposable()
@@ -7503,9 +7504,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             let presentation = resultContext.beginPresentation()
                             defer { presentation.end() }
                             if hasFwd {
+                                let chatLocation = self?.chatLocation
+                                let isLoadingInterfaceState = self?.chatInteraction.isLoadingInterfaceState
                                 DispatchQueue.main.async {
                                     let presentation = resultContext.beginPresentation()
                                     defer { presentation.end() }
+                                    guard self?.chatLocation == chatLocation, isLoadingInterfaceState == false else {
+                                        return
+                                    }
                                     self?.chatInteraction.sendMessage(false, nil, self?.chatInteraction.presentation.messageEffect)
                                 }
                             } else {
@@ -8613,9 +8619,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 } else {
                     location = .peer(peerId)
                 }
-                self.chatInteraction.update({
-                    $0.withUpdatedChatLocation(location)
-                })
+                self.switchChatLocation(location)
                 
             } else {
                 if let threadId {
@@ -8636,16 +8640,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         message = context.engine.messages.fetchChannelReplyThreadMessage(messageId: MessageId(peerId: _peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId)), atMessageId: nil) |> deliverOnMainQueue
                         
                         self.updateChatLocationThreadDisposable.set(message.start(next: { [weak self] message in
-                            self?.chatInteraction.update({
-                                $0.withUpdatedChatLocation(.thread(message))
-                            })
+                            self?.switchChatLocation(.thread(message))
                         }))
 
                     }
                 } else {
-                    self.chatInteraction.update({
-                        $0.withUpdatedChatLocation(.peer(peerId))
-                    })
+                    self.switchChatLocation(.peer(peerId))
                 }
             }
         }
@@ -8997,7 +8997,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         
             let opaqueState = initialData.storedInterfaceState.flatMap(_internal_decodeStoredChatInterfaceState)
             
-            let interfaceState = ChatInterfaceState.parse(opaqueState, peerId: self.chatLocation.peerId, context: context)
+            let interfaceState = ChatInterfaceState.parse(opaqueState, peerId: self.chatLocation.peerId, threadId: self.chatLocation.threadId, context: context)
             
             self.chatInteraction.update(animated:false, { present in
                 var present = present
@@ -10296,6 +10296,72 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
      
     }
     
+    private func switchChatLocation(_ location: ChatLocation) {
+        guard chatLocation.threadId != Message.newTopicThreadId else {
+            chatInteraction.update({
+                $0.withUpdatedChatLocation(location)
+            })
+            return
+        }
+        cancelAlwaysUseAIRequest()
+        chatInteraction.voiceTranscription?.stopForNavigation()
+        _ = nextTransaction.execute()
+        chatInteraction.saveState(scrollState: immediateScrollState())
+        let context = self.context
+        let peerId = location.peerId
+        let threadId = location.threadId
+        let placeholder = ChatInterfaceState().withUpdatedThemeEditing(chatInteraction.presentation.interfaceState.themeEditing)
+        let undoManager = genericView.inputView.textView.inputView.undoManager
+        let storedState = context.engine.peers.getOpaqueChatInterfaceState(peerId: peerId, threadId: threadId) |> map { opaqueState in
+            return ChatInterfaceState.parse(opaqueState, peerId: peerId, threadId: threadId, context: context) ?? ChatInterfaceState()
+        } |> deliverOnMainQueue
+        interfaceStateDisposable.set(storedState.start(next: { [weak self] stored in
+            guard let self else {
+                return
+            }
+            guard self.chatLocation == location else {
+                self.chatInteraction.isLoadingInterfaceState = false
+                return
+            }
+            _ = self.nextTransaction.execute()
+            let interfaceState = self.mergedInterfaceState(stored, keeping: self.chatInteraction.presentation.interfaceState, since: placeholder)
+            let changed = (try? EngineEncoder.encode(interfaceState)) != (try? EngineEncoder.encode(stored)) || interfaceState.synchronizeableInputState != stored.synchronizeableInputState || interfaceState.editState != stored.editState
+            self.chatInteraction.update({
+                $0.updatedInterfaceState { _ in interfaceState }
+            })
+            self.chatInteraction.isLoadingInterfaceState = false
+            undoManager?.removeAllActions()
+            if changed {
+                self.chatInteraction.saveState(scrollState: interfaceState.historyScrollState)
+            }
+        }))
+        chatInteraction.isLoadingInterfaceState = true
+        chatInteraction.update({
+            $0.withUpdatedChatLocation(location).updatedInterfaceState { _ in placeholder }
+        })
+        undoManager?.removeAllActions()
+    }
+    
+    private func mergedInterfaceState(_ stored: ChatInterfaceState, keeping current: ChatInterfaceState, since placeholder: ChatInterfaceState) -> ChatInterfaceState {
+        func source<T: Equatable>(_ value: (ChatInterfaceState) -> T) -> ChatInterfaceState {
+            return value(current) != value(placeholder) ? current : stored
+        }
+        var inputState = stored.inputState
+        if current.inputState != placeholder.inputState {
+            if stored.inputState.inputText.isEmpty {
+                inputState = current.inputState
+            } else {
+                let text = stored.inputState.attributedString().mutableCopy() as! NSMutableAttributedString
+                let offset = text.length
+                text.append(current.inputState.attributedString())
+                inputState = ChatTextInputState(attributedText: text, selectionRange: offset + current.inputState.selectionRange.lowerBound ..< offset + current.inputState.selectionRange.upperBound)
+            }
+        }
+        let reply = source(\.replyMessageId)
+        let forward = source(\.forwardMessageIds)
+        return ChatInterfaceState(timestamp: stored.timestamp, inputState: inputState, replyMessageId: reply.replyMessageId, replyMessage: reply.replyMessage, forwardMessageIds: forward.forwardMessageIds, messageActionsState: source(\.messageActionsState).messageActionsState, dismissedPinnedMessageId: stored.dismissedPinnedMessageId, composeDisableUrlPreview: source(\.composeDisableUrlPreview).composeDisableUrlPreview, historyScrollState: stored.historyScrollState, dismissedForceReplyId: source(\.dismissedForceReplyId).dismissedForceReplyId, editState: source(\.editState).editState, forwardMessages: forward.forwardMessages, hideSendersName: forward.hideSendersName, themeEditing: current.themeEditing, hideCaptions: forward.hideCaptions, revealedSpoilers: stored.revealedSpoilers.union(current.revealedSpoilers), tempSenderName: forward.tempSenderName, linkBelowMessage: source(\.linkBelowMessage).linkBelowMessage, largeMedia: source(\.largeMedia).largeMedia, messageEffect: source(\.messageEffect).messageEffect, suggestPost: source(\.suggestPost).suggestPost).withAddedDismissedPinnedIds(current.dismissedPinnedMessageId)
+    }
+    
     private var subscribedToPeerId: PeerId?
     private func subscribeForNewTopicEvents(peerId: PeerId?) {
         if subscribedToPeerId != peerId {
@@ -11576,6 +11642,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         pollChannelDiscussionDisposable.dispose()
         loadThreadDisposable.dispose()
         updateChatLocationThreadDisposable.dispose()
+        interfaceStateDisposable.dispose()
         recordActivityDisposable.dispose()
         suggestionsDisposable.dispose()
         tempImportersContextDisposable.dispose()

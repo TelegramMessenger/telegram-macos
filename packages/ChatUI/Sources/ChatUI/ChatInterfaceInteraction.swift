@@ -793,6 +793,7 @@ public final class ChatInteraction : InterfaceObserver  {
     public var sendDiceWithStake:(Int64)->Void = { _ in }
 
     public var updateChatLocationThread:(Int64?)->Void = { _ in }
+    public var isLoadingInterfaceState: Bool = false
     
     public var appendTask:(Message)->Void = { _ in }
     
@@ -1626,6 +1627,9 @@ public final class ChatInteraction : InterfaceObserver  {
         if mode.customChatContents != nil || mode.customChatLink != nil {
             return
         }
+        if isLoadingInterfaceState {
+            return
+        }
         
         let peerId = self.peerId
         let context = self.context
@@ -1645,7 +1649,7 @@ public final class ChatInteraction : InterfaceObserver  {
         let semaphore = DispatchSemaphore(value: 0)
         
         let disposable = s.start(completed: {
-            ChatInterfaceHooks.shared.setChatInterfaceTempState(context, ChatInterfaceTempState(editState: interfaceState.editState), peerId)
+            ChatInterfaceHooks.shared.setChatInterfaceTempState(context, ChatInterfaceTempState(editState: interfaceState.editState), peerId, threadId)
             if sync {
                 semaphore.signal()
             }

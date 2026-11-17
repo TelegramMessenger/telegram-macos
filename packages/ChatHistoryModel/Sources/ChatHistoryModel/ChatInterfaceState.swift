@@ -335,24 +335,24 @@ public struct ChatInterfaceState: Codable, Equatable {
     public let messageActionsState: ChatInterfaceMessageActionsState
     public let messageEffect: ChatInterfaceMessageEffect?
     
-    public static func parse(_ state: OpaqueChatInterfaceState?, peerId: PeerId?, context: (any AccountContextProtocol)?) -> ChatInterfaceState? {
+    public static func parse(_ state: OpaqueChatInterfaceState?, peerId: PeerId?, threadId: Int64?, context: (any AccountContextProtocol)?) -> ChatInterfaceState? {
         guard let state = state else {
             return nil
         }
         guard let opaqueData = state.opaqueData else {
             return ChatInterfaceState().withUpdatedSynchronizeableInputState(state.synchronizeableInputState).updatedEditState({ _ in
-                return ChatHistoryModelHooks.shared.getChatInterfaceTempState(context, peerId)?.editState
+                return ChatHistoryModelHooks.shared.getChatInterfaceTempState(context, peerId, threadId)?.editState
             })
         }
         guard var decodedState = try? EngineDecoder.decode(ChatInterfaceState.self, from: opaqueData) else {
             return ChatInterfaceState().withUpdatedSynchronizeableInputState(state.synchronizeableInputState).updatedEditState({ _ in
-                return ChatHistoryModelHooks.shared.getChatInterfaceTempState(context, peerId)?.editState
+                return ChatHistoryModelHooks.shared.getChatInterfaceTempState(context, peerId, threadId)?.editState
             })
         }
         decodedState = decodedState
             .withUpdatedSynchronizeableInputState(state.synchronizeableInputState)
             .updatedEditState({ _ in
-                return ChatHistoryModelHooks.shared.getChatInterfaceTempState(context, peerId)?.editState
+                return ChatHistoryModelHooks.shared.getChatInterfaceTempState(context, peerId, threadId)?.editState
             })
         return decodedState
 

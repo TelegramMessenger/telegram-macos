@@ -74,11 +74,11 @@ func installChatInterfaceUIHooks() {
         return context.sharedContext.groupCallContext |> take(1) |> mapToSignalPromotingError { groupCallContext in
             return .single(GroupCallPanelData(peerId: peerId, isChannel: isChannel, info: data.info, topParticipants: data.topParticipants, participantCount: data.info.participantCount, activeSpeakers: [], groupCall: groupCallContext))
         }
-    }, setChatInterfaceTempState: { context, state, peerId in
+    }, setChatInterfaceTempState: { context, state, peerId, threadId in
         guard let context = context as? AccountContext else {
             return
         }
-        context.setChatInterfaceTempState(state, for: peerId)
+        context.setChatInterfaceTempState(state, for: peerId, threadId: threadId)
     }, inputSource: { context in
         guard let context = context as? AccountContext else {
             preconditionFailure("input source requires a concrete AccountContext")
