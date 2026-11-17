@@ -6,6 +6,7 @@ import Postbox
 import TGUIKit
 import ApiCredentials
 import AppKit
+import FocusFilterCore
 
 
 
@@ -19,7 +20,7 @@ class UNUserNotifications : NSObject {
     }
     fileprivate let manager: SharedNotificationManager
     fileprivate let queue:Queue = Queue(name: "org.telegram.notifies")
-    internal required init(manager: SharedNotificationManager) {
+    internal required init(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
         self.manager = manager
         super.init()
         
@@ -35,11 +36,11 @@ class UNUserNotifications : NSObject {
        
     }
     static var _current:UNUserNotifications?
-    static func initialize(manager: SharedNotificationManager) {
+    static func initialize(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
         if #available(macOS 10.14, *) {
-            _current = UNUserNotificationsNew(manager: manager)
+            _current = UNUserNotificationsNew(manager: manager, focusPolicySource: focusPolicySource)
         } else {
-            _current = UNUserNotificationsOld(manager: manager)
+            _current = UNUserNotificationsOld(manager: manager, focusPolicySource: focusPolicySource)
         }
     }
     static var current:UNUserNotifications? {
@@ -171,8 +172,8 @@ final class UNUserNotificationsOld : UNUserNotifications, NSUserNotificationCent
         }
     }
     
-    required init(manager: SharedNotificationManager) {
-        super.init(manager: manager)
+    required init(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
+        super.init(manager: manager, focusPolicySource: focusPolicySource)
         NSUserNotificationCenter.default.delegate = self
     }
     
@@ -238,14 +239,33 @@ final class UNUserNotificationsOld : UNUserNotifications, NSUserNotificationCent
 final class UNUserNotificationsNew : UNUserNotifications, UNUserNotificationCenterDelegate {
     
     private var soundSettings: UNNotificationSetting? = nil
-    required init(manager: SharedNotificationManager) {
-        super.init(manager: manager)
+
+    private func focusChatIdentifier(userInfo: [AnyHashable: Any]) -> FocusChatIdentifier? {
+        guard let accountId = userInfo["accountId"] as? Int64 else {
+            return nil
+        }
+        if let messageId = getNotificationMessageId(userInfo: userInfo, for: "reply") {
+            return FocusChatIdentifier(accountId: accountId, peerId: messageId.peerId.toInt64())
+        }
+        if let id = userInfo["story.peer.id"] as? Int64, let namespace = userInfo["story.peer.namespace"] as? Int32 {
+            let peerId = PeerId(namespace: PeerId.Namespace._internalFromInt32Value(namespace), id: PeerId.Id._internalFromInt64Value(id))
+            return FocusChatIdentifier(accountId: accountId, peerId: peerId.toInt64())
+        }
+        return nil
+    }
+
+    private let focusResolver: FocusNotificationResolver
+
+    required init(manager: SharedNotificationManager, focusPolicySource: any FocusFilterPolicySource) {
+        self.focusResolver = FocusNotificationResolver(policySource: focusPolicySource, accounts: { manager.activeAccounts.accounts })
+        super.init(manager: manager, focusPolicySource: focusPolicySource)
         UNUserNotificationCenter.current().delegate = self
     }
-    
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
 
-        completionHandler([.alert, .sound])
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        focusResolver.resolve(identifier: focusChatIdentifier(userInfo: notification.request.content.userInfo)) { decision in
+            completionHandler(decision.allowsNotification ? [.alert, .sound] : [])
+        }
     }
     
     
@@ -283,6 +303,14 @@ final class UNUserNotificationsNew : UNUserNotifications, UNUserNotificationCent
         }
     }
     override func add(_ notification: NSUserNotification) -> Void {
+        let userInfo = notification.userInfo ?? [:]
+        focusResolver.resolve(identifier: focusChatIdentifier(userInfo: userInfo)) { [weak self] decision in
+            guard decision.allowsNotification else { return }
+            self?.addNotification(notification, userInfo: userInfo, focusDecision: decision)
+        }
+    }
+
+    private func addNotification(_ notification: NSUserNotification, userInfo: [AnyHashable: Any], focusDecision: ResolvedFocusNotification) {
         let content = UNMutableNotificationContent()
         content.title = notification.title ?? ""
         content.body = notification.informativeText ?? ""
@@ -297,7 +325,10 @@ final class UNUserNotificationsNew : UNUserNotifications, UNUserNotificationCent
                 content.attachments = [attachment]
             }
         }
-        content.userInfo = notification.userInfo ?? [:]
+        content.userInfo = userInfo
+        if #available(macOS 13.0, *), let criteria = focusDecision.filterCriteria {
+            content.filterCriteria = criteria
+        }
         let soundSettings = self.soundSettings
         
         guard let containerUrl = ApiEnvironment.legacyContainerURL?.path else {

@@ -1,6 +1,7 @@
 import Cocoa
 import ApiCredentials
 import CrashRecoveryUI
+import FocusFilterInfrastructure
 
 @_silgen_name("OPENSSL_init_crypto")
 private func OPENSSL_init_crypto(_ opts: UInt64, _ settings: OpaquePointer?) -> Int32
@@ -101,5 +102,9 @@ installPeerModerationUIHooks()
 installChannelSettingsUIHooks()
 installAudioPlayerUIHooks()
 installPeerInfoUIHooks()
+
+if #available(macOS 13.0, *) {
+    FocusExtensionLifecycle.applicationDidLaunch(appGroupIdentifier: ApiEnvironment.group, buildSource: Bundle.main.object(forInfoDictionaryKey: "SOURCE") as? String)
+}
 
 _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)

@@ -1,0 +1,54 @@
+name: Focus System Settings UI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/focus-system-settings.yml'
+      - 'FocusIntents/**'
+      - 'packages/FocusFilterCore/**'
+      - 'Telegram.xcodeproj/**'
+      - 'Telegram-Mac/*.xcconfig'
+      - 'tools/tests/focus-filters/build_extension.py'
+      - 'tools/tests/focus-system-settings/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focus-settings-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  system-settings:
+    name: Focus System Settings UI (macOS)
+    runs-on: macos-26
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      RESULTS_DIR: ${{ github.workspace }}/focus-system-settings-results
+    steps:
+      - name: Check out tested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Record test environment
+        run: |
+          mkdir -p "$RESULTS_DIR"
+          { sw_vers; xcodebuild -version; xcrun swift --version; git rev-parse HEAD; automationmodetool; } | tee "$RESULTS_DIR/environment.log"
+      - name: Build signed isolated host and production extension
+        run: python3 tools/tests/focus-system-settings/build.py --output "$RESULTS_DIR" 2>&1 | tee "$RESULTS_DIR/build-driver.log"
+      - name: Exercise the real System Settings Focus editor
+        run: python3 tools/tests/focus-system-settings/run.py --output "$RESULTS_DIR" 2>&1 | tee "$RESULTS_DIR/test-driver.log"
+      - name: Upload UI results and diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: focus-system-settings-results
+          path: |
+            ${{ env.RESULTS_DIR }}/*.log
+            ${{ env.RESULTS_DIR }}/*.json
+            ${{ env.RESULTS_DIR }}/SystemSettings.xcresult
+          retention-days: 7

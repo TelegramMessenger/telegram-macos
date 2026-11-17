@@ -8,6 +8,7 @@ import ObjcUtils
 import InAppSettings
 import PasscodeCore
 import WalletContext
+import FocusFilterCore
 
 func getNotificationMessageId(userInfo:[AnyHashable: Any], for prefix: String) -> MessageId? {
     if let msgId = userInfo["\(prefix).message.id"] as? Int32, let msgNamespace = userInfo["\(prefix).message.namespace"] as? Int32, let namespace = userInfo["\(prefix).peer.namespace"] as? Int32, let id = userInfo["\(prefix).peer.id"] as? Int64 {
@@ -127,21 +128,35 @@ final class SharedNotificationBindings {
 }
 
 
+private struct PasscodeLockRequest {
+    let id: UUID
+    let shouldLock: Bool
+}
+
 final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelegate {
 
     private let screenLocked:Promise<LockNotificationsData> = Promise(LockNotificationsData())
     private(set) var _lockedValue:LockNotificationsData = LockNotificationsData() {
         didSet {
+            publishCatalogAccess()
             didUpdateLocked?(_lockedValue)
         }
     }
     
     var didUpdateLocked:((LockNotificationsData)->Void)? = nil
     
-    private let _passlock = Promise<Bool>()
+    private let _passlock = Promise<PasscodeLockRequest>()
+    private var passcodeLockRequestId = UUID()
+    private var isPasscodeLockRequestPending = false
+    private var hasVerifiedUnlock: Bool
+    private let catalogAccessUpdated: (Bool) -> Void
 
     var passlocked: Signal<Bool, NoError> {
-        return _passlock.get()
+        return _passlock.get() |> map { $0.shouldLock }
+    }
+
+    private func publishCatalogAccess() {
+        catalogAccessUpdated(hasVerifiedUnlock && !isPasscodeLockRequestPending && !_lockedValue.isLocked)
     }
 
     
@@ -170,19 +185,21 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
     
     private var lockers:[PasscodeLockController] = []
     
-    init(activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, appEncryption: AppEncryptionParameters, accountManager: AccountManager<TelegramAccountManagerTypes>, bindings: SharedNotificationBindings) {
+    init(activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, appEncryption: AppEncryptionParameters, accountManager: AccountManager<TelegramAccountManagerTypes>, bindings: SharedNotificationBindings, focusPolicySource: any FocusFilterPolicySource, initialUnlockVerified: Bool, catalogAccessUpdated: @escaping (Bool) -> Void) {
         self.accountManager = accountManager
         self.bindings = bindings
         self.appEncryption = appEncryption
-        
-        
+        self.hasVerifiedUnlock = initialUnlockVerified
+        self.catalogAccessUpdated = catalogAccessUpdated
+
         super.init()
+        catalogAccessUpdated(false)
 
         if #available(macOS 10.15, *) {
             PasscodeSession.setApplicationAvailable(true)
         }
         
-        UNUserNotifications.initialize(manager: self)
+        UNUserNotifications.initialize(manager: self, focusPolicySource: focusPolicySource)
         
         inAppSettingsDisposable.set((appNotificationSettings(accountManager: accountManager) |> deliverOnMainQueue).start(next: { [weak self] inAppSettings in
             self?.showNotificationsOutOfFocus = inAppSettings.showNotificationsOutOfFocus
@@ -201,7 +218,13 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(screenIsUnlocked), name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
         
-        _ = (_passlock.get() |> mapToSignal { show in additionalSettings(accountManager: accountManager) |> take(1) |> map { (show, $0) }} |> deliverOnMainQueue |> mapToSignal { show, settings -> Signal<Bool, NoError> in
+        _ = (_passlock.get()
+        |> deliverOnMainQueue
+        |> filter { self.receivePasscodeLockRequest($0) }
+        |> mapToSignal { request in
+            additionalSettings(accountManager: accountManager) |> take(1) |> map { (request, $0) }
+        } |> deliverOnMainQueue |> mapToSignal { request, settings -> Signal<PasscodeLockRequest, NoError> in
+            let show = request.shouldLock
             if show {
                 closeInstantView()
                 closeGalleryViewer(false)
@@ -231,10 +254,12 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
                         return true
                     }
                 }
-                return .single(show) |> then(signal)
+                return (.single(show) |> then(signal)) |> map { PasscodeLockRequest(id: request.id, shouldLock: $0) }
             }
             return .never()
-        } |> deliverOnMainQueue).start(next: { lock in
+        } |> deliverOnMainQueue).start(next: { request in
+                guard self.isCurrentPasscodeLockRequest(request) else { return }
+                let lock = request.shouldLock
                 
                 appDelegate?.enumerateAccountContexts({ context in
                     for subview in context.window.contentView!.subviews {
@@ -250,9 +275,7 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
                     }
                 }
                 
-                self.updateLocked { previous -> LockNotificationsData in
-                    return previous.withUpdatedPasscodeLock(lock)
-                }
+                self.completePasscodeLockRequest(request)
             })
         
         _ = (activeAccounts |> deliverOnMainQueue).start(next: { accounts in
@@ -303,22 +326,61 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
             |> deliverOnMainQueue
         
 
-        _passlock.set(passlock)
-        
+        let requestId = passcodeLockRequestId
+        _passlock.set(passlock |> map { PasscodeLockRequest(id: requestId, shouldLock: $0) })
+        publishCatalogAccess()
     }
     
-    func updatePasslock(_ signal: Signal<Bool, NoError>) {
-        guard !_lockedValue.passcodeLock else {
-            return
+    private func beginPasscodeLockRequest() -> UUID? {
+        guard !_lockedValue.passcodeLock else { return nil }
+        let requestId = UUID()
+        passcodeLockRequestId = requestId
+        isPasscodeLockRequestPending = true
+        publishCatalogAccess()
+        return requestId
+    }
+
+    private func isCurrentPasscodeLockRequest(_ request: PasscodeLockRequest) -> Bool {
+        request.id == passcodeLockRequestId
+    }
+
+    private func receivePasscodeLockRequest(_ request: PasscodeLockRequest) -> Bool {
+        guard isCurrentPasscodeLockRequest(request), !_lockedValue.passcodeLock else { return false }
+        isPasscodeLockRequestPending = false
+        if request.shouldLock {
+            updateLocked { $0.withUpdatedPasscodeLock(true) }
+        } else {
+            publishCatalogAccess()
         }
-        _passlock.set(signal)
+        return true
     }
-    
+
+    private func completePasscodeLockRequest(_ request: PasscodeLockRequest) {
+        guard isCurrentPasscodeLockRequest(request) else { return }
+        if !request.shouldLock {
+            hasVerifiedUnlock = true
+        }
+        updateLocked { $0.withUpdatedPasscodeLock(request.shouldLock) }
+    }
+
+    private func revokeCatalogAccess() {
+        passcodeLockRequestId = UUID()
+        isPasscodeLockRequestPending = false
+        hasVerifiedUnlock = false
+        publishCatalogAccess()
+    }
+
+    func updatePasslock(_ signal: Signal<Bool, NoError>) {
+        guard let requestId = beginPasscodeLockRequest() else { return }
+        _passlock.set(signal |> map { PasscodeLockRequest(id: requestId, shouldLock: $0) })
+    }
+
     func find(_ id: AccountRecordId?) -> AccountContext? {
         return appDelegate?.activeContext(for: id)
     }
     
     func logout() -> Signal<Never, NoError> {
+        revokeCatalogAccess()
         let accountManager = self.accountManager
         let signal = combineLatest(self.activeAccounts.accounts.map { logoutFromAccount(id: $0.0, accountManager: self.accountManager, alreadyLoggedOutRemotely: false) }) |> deliverOnMainQueue
         appEncryption.remove()
@@ -339,9 +401,13 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
     }
     
     @objc func screenIsLocked() {
-        
+        updateLocked { previous in
+            previous.withUpdatedScreenLock(true)
+        }
+        _isLockedValue.set(true)
+
         if !_lockedValue.passcodeLock {
-            _passlock.set(accountManager.transaction { transaction -> Bool in
+            updatePasslock(accountManager.transaction { transaction -> Bool in
                 switch transaction.getAccessChallengeData() {
                 case .none:
                     return false
@@ -350,13 +416,8 @@ final class SharedNotificationManager : NSObject, NSUserNotificationCenterDelega
                 }
             })
         }
-        
-        updateLocked { (previous) -> LockNotificationsData in
-            return previous.withUpdatedScreenLock(true)
-        }
-        _isLockedValue.set(true)
     }
-    
+
     @objc func screenIsUnlocked() {
         updateLocked { (previous) -> LockNotificationsData in
             return previous.withUpdatedScreenLock(false)

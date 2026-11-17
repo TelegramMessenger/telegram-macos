@@ -1,0 +1,121 @@
+name: Focus macOS tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/focus-macos.yml'
+      - '.gitmodules'
+      - 'FocusIntents/**'
+      - 'Telegram-Mac/*.xcconfig'
+      - 'Telegram-Mac/en.lproj/Localizable.strings'
+      - 'Telegram-Mac/ru.lproj/Localizable.strings'
+      - 'packages/FocusFilterCore/**'
+      - 'Telegram-Mac/account/**'
+      - 'Telegram-Mac/app/AppDelegate.swift'
+      - 'packages/ChatListUI/**'
+      - 'packages/TelegramUtils/**'
+      - 'Telegram.xcodeproj/**'
+      - 'submodules/telegram-ios'
+      - 'tools/tests/focus-*/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focus-macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-tests:
+    name: Focus native tests (macOS)
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      RESULTS_DIR: ${{ github.workspace }}/focus-native-results
+    steps:
+      - name: Check out tested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Record macOS and Xcode versions
+        run: |
+          mkdir -p "$RESULTS_DIR"
+          { sw_vers; xcodebuild -version; xcrun swift --version; python3 --version; git rev-parse HEAD; } | tee "$RESULTS_DIR/environment.log"
+      - name: Check out pinned Postbox and SwiftSignalKit sources
+        run: git -c submodule.recurse=false submodule update --init --depth 1 submodules/telegram-ios
+      - name: Core policy, persistence and installation tests
+        if: ${{ !cancelled() }}
+        run: xcrun swift test --package-path packages/FocusFilterCore --disable-sandbox 2>&1 | tee "$RESULTS_DIR/package.log"
+      - name: Native App Intents queries and saved rules
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-intents/run.py 2>&1 | tee "$RESULTS_DIR/intents.log"
+      - name: Darwin process admission and crash recovery
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-catalog-access/run.py 2>&1 | tee "$RESULTS_DIR/access.log"
+      - name: Sandbox admission with host files denied
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-sandbox-admission/run.py 2>&1 | tee "$RESULTS_DIR/sandbox.log"
+      - name: Verified lock-state transitions
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-lock-state/run.py 2>&1 | tee "$RESULTS_DIR/lock-state.log"
+      - name: Catalog projection and stable identities
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-catalog/run.py 2>&1 | tee "$RESULTS_DIR/catalog.log"
+      - name: Chat-list filtering with pinned Postbox
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-chat-list/run.py 2>&1 | tee "$RESULTS_DIR/chat-list.log"
+      - name: Live notification folder membership
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-notification-membership/run.py 2>&1 | tee "$RESULTS_DIR/notification-membership.log"
+      - name: Focus-empty folders
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-empty-folder/run.py 2>&1 | tee "$RESULTS_DIR/empty-folder.log"
+      - name: Extension replacement and retirement
+        if: ${{ !cancelled() }}
+        run: python3 tools/tests/focus-extension-lifecycle/run.py 2>&1 | tee "$RESULTS_DIR/lifecycle.log"
+      - name: Upload native test logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: focus-macos-native-logs
+          path: ${{ env.RESULTS_DIR }}
+          retention-days: 7
+
+  extension-build:
+    name: Focus extension ${{ matrix.configuration }} (macOS)
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    defaults:
+      run:
+        shell: bash
+    env:
+      CONFIGURATION: ${{ matrix.configuration }}
+      RESULTS_DIR: ${{ github.workspace }}/focus-build-results
+    steps:
+      - name: Check out tested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Record build environment
+        run: |
+          mkdir -p "$RESULTS_DIR"
+          { sw_vers; xcodebuild -version; xcrun swift --version; git rev-parse HEAD; } | tee "$RESULTS_DIR/environment.log"
+      - name: Build isolated extension and validate App Intents metadata
+        run: python3 tools/tests/focus-filters/build_extension.py --configuration "$CONFIGURATION" --output "$RUNNER_TEMP/focus-extension-$CONFIGURATION" 2>&1 | tee "$RESULTS_DIR/build.log"
+      - name: Upload extension build logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: focus-macos-extension-${{ matrix.configuration }}-logs
+          path: |
+            ${{ env.RESULTS_DIR }}
+            ${{ runner.temp }}/focus-extension-${{ matrix.configuration }}/*.log
+          retention-days: 7
