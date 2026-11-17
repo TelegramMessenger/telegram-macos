@@ -4780,7 +4780,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     if !keepsInput {
                         value = value
                             .withUpdatedInputState(ChatTextInputState())
-                            .withUpdatedComposeDisableUrlPreview(nil)
+                            .withUpdatedEffectiveComposeDisableUrlPreview(nil)
                     }
                     value = value.withUpdatedReplyMessageId(nil)
                         .withUpdatedForwardMessageIds([])
@@ -4898,7 +4898,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
             Analytics.shared.send(AnalyticsEvents.chatMessageEdit(kind: chatAnalyticsMessageKind(state.message.anyMedia)))
             let urlPreview = urlPreviewMatchesInput(presentation, context: context) ? presentation.urlPreview : nil
-            let disableUrlPreview = presentation.interfaceState.composeDisableUrlPreview != nil && (urlPreview == nil || urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview)
+            let disableUrlPreview = presentation.interfaceState.effectiveComposeDisableUrlPreview != nil && (urlPreview == nil || urlPreview?.0 == presentation.interfaceState.effectiveComposeDisableUrlPreview)
 
             self.urlPreviewQueryState?.1.dispose()
             
@@ -4908,7 +4908,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             let media: RequestEditMessageMedia
             if let webpreview = urlPreview?.1 {
                 webpagePreviewAttribute = .init(leadingPreview: !presentation.interfaceState.linkBelowMessage, forceLargeMedia: presentation.interfaceState.largeMedia, isManuallyAdded: false, isSafe: true)
-                if urlPreview?.0 == presentation.interfaceState.composeDisableUrlPreview {
+                if urlPreview?.0 == presentation.interfaceState.effectiveComposeDisableUrlPreview {
                     media = .keep
                 } else {
                     media = .update(.webPage(webPage: WebpageReference(webpreview), media: webpreview))
@@ -4940,7 +4940,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 self.chatInteraction.beginEditingMessage(nil)
                 self.chatInteraction.update({
                     $0.updatedInterfaceState({
-                        $0.withUpdatedComposeDisableUrlPreview(nil).updatedEditState({
+                        $0.updatedEditState({
                             $0?.withUpdatedLoadingState(.none)
                         })
                     })
@@ -4985,7 +4985,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         self.chatInteraction.beginEditingMessage(nil)
                         self.chatInteraction.update({
                             $0.updatedInterfaceState({
-                                $0.withUpdatedComposeDisableUrlPreview(nil).updatedEditState({
+                                $0.updatedEditState({
                                     $0?.withUpdatedLoadingState(.none)
                                 })
                             })
@@ -5169,10 +5169,12 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                             if !presentation.effectiveInput.inputText.trimmed.isEmpty {
                                 setNextToTransaction = true
                                 let paidMessageStars = takePaidMessageStars()
+                                let urlPreview = urlPreviewMatchesInput(presentation, context: context) ? presentation.urlPreview : nil
+                                let disablePreview = presentation.interfaceState.effectiveComposeDisableUrlPreview != nil && (urlPreview == nil || urlPreview?.0 == presentation.interfaceState.effectiveComposeDisableUrlPreview)
                                 makeTextSignal = { [weak controller] textContext in
                                     guard let controller else { submission?.discard(); return .complete() }
                                     let sendObservation = controller.makeMessageSendObservation(.text, analyticsContext: textContext, scheduled: atDate != nil, silent: silent)
-                                    return Sender.enqueue(input: rewrittenInput ?? presentation.effectiveInput, context: context, peerId: destinationPeerId, replyId: destinationReply, threadId: destinationThreadId, disablePreview: presentation.interfaceState.composeDisableUrlPreview != nil, linkBelowMessage: presentation.interfaceState.linkBelowMessage, largeMedia: presentation.interfaceState.largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: currentSendAsPeerId, mediaPreview: rewrittenInput == nil ? presentation.urlPreview?.1 : nil, emptyHandler: { [weak controller] in
+                                    return Sender.enqueue(input: rewrittenInput ?? presentation.effectiveInput, context: context, peerId: destinationPeerId, replyId: destinationReply, threadId: destinationThreadId, disablePreview: disablePreview, linkBelowMessage: presentation.interfaceState.linkBelowMessage, largeMedia: presentation.interfaceState.largeMedia, silent: silent, atDate: atDate, repeatPeriod: repeatPeriod, sendAsPeerId: currentSendAsPeerId, mediaPreview: rewrittenInput == nil ? urlPreview?.1 : nil, emptyHandler: { [weak controller] in
                                         _ = controller?.nextTransaction.execute()
                                     }, customChatContents: customChatContents, messageEffect: messageEffect, sendPaidMessageStars: paidMessageStars, suggestPost: presentation.interfaceState.suggestPost, observedResult: { expectedCount, ids in
                                         sendObservation?.complete(expectedCount: expectedCount, resultCount: ids.count, acceptedCount: ids.compactMap { $0 }.count)
@@ -12809,10 +12811,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     }
                     
                     var disableEditingPreview:((String)->Void)? = nil
-                    if oldValue.interfaceState.editState == nil, value.interfaceState.editState != nil {
+                    if let editState = value.interfaceState.editState, oldValue.interfaceState.editState?.message.id != editState.message.id, editState.inputState.inputText == ChatEditState(message: editState.message).inputState.inputText {
                         disableEditingPreview = { [weak self] value in
                             self?.chatInteraction.update({ $0.updatedInterfaceState{
-                                $0.withUpdatedComposeDisableUrlPreview(value)
+                                $0.updatedEditState { $0?.withUpdatedDisableUrlPreview(value) }
                             }})
                         }
                     }

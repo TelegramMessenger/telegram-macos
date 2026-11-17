@@ -2375,8 +2375,8 @@ public class ChatInputView: View, Notifable {
 
             if let string = pasteboard.string(forType: .string) {
                 interaction.update { current in
-                    if let disabled = current.interfaceState.composeDisableUrlPreview, disabled.lowercased() == string.lowercased() {
-                        return current.updatedInterfaceState {$0.withUpdatedComposeDisableUrlPreview(nil)}
+                    if let disabled = current.interfaceState.effectiveComposeDisableUrlPreview, disabled.lowercased() == string.lowercased() {
+                        return current.updatedInterfaceState {$0.withUpdatedEffectiveComposeDisableUrlPreview(nil)}
                     }
                     return current
                 }

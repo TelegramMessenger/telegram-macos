@@ -194,8 +194,9 @@ public final class ChatEditState : Equatable {
     public let editedData: EditedImageData?
     public let invertMedia: Bool
     public let addedMedia: Bool
+    public let disableUrlPreview: String?
 
-    public init(message:Message, originalMedia: Media? = nil, state:ChatTextInputState? = nil, loadingState: EditStateLoading = .none, editMedia: RequestEditMessageMedia = .keep, editedData: EditedImageData? = nil, invertMedia: Bool? = nil, addedMedia: Bool = false) {
+    public init(message:Message, originalMedia: Media? = nil, state:ChatTextInputState? = nil, loadingState: EditStateLoading = .none, editMedia: RequestEditMessageMedia = .keep, editedData: EditedImageData? = nil, invertMedia: Bool? = nil, addedMedia: Bool = false, disableUrlPreview: String? = nil) {
         self.message = message
         if originalMedia == nil {
             self.originalMedia = message.anyMedia
@@ -230,30 +231,34 @@ public final class ChatEditState : Equatable {
         self.editMedia = editMedia
         self.editedData = editedData
         self.addedMedia = addedMedia
+        self.disableUrlPreview = disableUrlPreview
     }
 
     public var canEditMedia: Bool {
         return !message.media.isEmpty && (message.media[0] is TelegramMediaImage || message.media[0] is TelegramMediaFile) && message.pendingProcessingAttribute == nil
     }
     public func withUpdatedMedia(_ media: Media) -> ChatEditState {
-        return ChatEditState(message: self.message.withUpdatedMedia([media]).withUpdatedStableVersion(stableVersion: self.message.stableVersion + 1), originalMedia: self.originalMedia ?? self.message.anyMedia, state: self.inputState, loadingState: loadingState, editMedia: .update(AnyMediaReference.standalone(media: media)), editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.message.media.isEmpty || self.addedMedia)
+        return ChatEditState(message: self.message.withUpdatedMedia([media]).withUpdatedStableVersion(stableVersion: self.message.stableVersion + 1), originalMedia: self.originalMedia ?? self.message.anyMedia, state: self.inputState, loadingState: loadingState, editMedia: .update(AnyMediaReference.standalone(media: media)), editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.message.media.isEmpty || self.addedMedia, disableUrlPreview: self.disableUrlPreview)
     }
     public func withUpdatedLoadingState(_ loadingState: EditStateLoading) -> ChatEditState {
-        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia)
+        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia, disableUrlPreview: self.disableUrlPreview)
     }
     public func withUpdated(state:ChatTextInputState) -> ChatEditState {
-        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: state, loadingState: loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia)
+        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: state, loadingState: loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia, disableUrlPreview: self.disableUrlPreview)
     }
 
     public func withUpdatedEditedData(_ editedData: EditedImageData?) -> ChatEditState {
-        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: self.loadingState, editMedia: self.editMedia, editedData: editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia)
+        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: self.loadingState, editMedia: self.editMedia, editedData: editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia, disableUrlPreview: self.disableUrlPreview)
+    }
+    public func withUpdatedDisableUrlPreview(_ disableUrlPreview: String?) -> ChatEditState {
+        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: self.loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: self.invertMedia, addedMedia: self.addedMedia, disableUrlPreview: disableUrlPreview)
     }
     public func withUpdatedInvertMedia(_ invertMedia: Bool) -> ChatEditState {
-        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: self.loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: invertMedia, addedMedia: self.addedMedia)
+        return ChatEditState(message: self.message, originalMedia: self.originalMedia, state: self.inputState, loadingState: self.loadingState, editMedia: self.editMedia, editedData: self.editedData, invertMedia: invertMedia, addedMedia: self.addedMedia, disableUrlPreview: self.disableUrlPreview)
     }
 
     public static func ==(lhs:ChatEditState, rhs:ChatEditState) -> Bool {
-        return lhs.message.id == rhs.message.id && lhs.message.stableId == rhs.message.stableId && lhs.inputState == rhs.inputState && lhs.loadingState == rhs.loadingState && lhs.editMedia == rhs.editMedia && lhs.editedData == rhs.editedData && lhs.invertMedia == rhs.invertMedia && lhs.addedMedia == rhs.addedMedia
+        return lhs.message.id == rhs.message.id && lhs.message.stableId == rhs.message.stableId && lhs.inputState == rhs.inputState && lhs.loadingState == rhs.loadingState && lhs.editMedia == rhs.editMedia && lhs.editedData == rhs.editedData && lhs.invertMedia == rhs.invertMedia && lhs.addedMedia == rhs.addedMedia && lhs.disableUrlPreview == rhs.disableUrlPreview
     }
 
 }
@@ -607,6 +612,20 @@ public struct ChatInterfaceState: Codable, Equatable {
 
     public func withUpdatedMessageActionsState(_ f: (ChatInterfaceMessageActionsState) -> ChatInterfaceMessageActionsState) -> ChatInterfaceState {
         return ChatInterfaceState(timestamp: self.timestamp, inputState: self.inputState, replyMessageId: self.replyMessageId, replyMessage: self.replyMessage, forwardMessageIds: self.forwardMessageIds, messageActionsState:f(self.messageActionsState), dismissedPinnedMessageId: self.dismissedPinnedMessageId, composeDisableUrlPreview: self.composeDisableUrlPreview, historyScrollState: self.historyScrollState, dismissedForceReplyId: self.dismissedForceReplyId, editState: self.editState, forwardMessages: self.forwardMessages, hideSendersName: self.hideSendersName, themeEditing: self.themeEditing, hideCaptions: self.hideCaptions, revealedSpoilers: self.revealedSpoilers, tempSenderName: self.tempSenderName,  linkBelowMessage: self.linkBelowMessage, largeMedia: self.largeMedia, messageEffect: self.messageEffect, suggestPost: self.suggestPost)
+    }
+
+    public var effectiveComposeDisableUrlPreview: String? {
+        if let editState = self.editState {
+            return editState.disableUrlPreview
+        }
+        return self.composeDisableUrlPreview
+    }
+
+    public func withUpdatedEffectiveComposeDisableUrlPreview(_ disableUrlPreview: String?) -> ChatInterfaceState {
+        if self.editState != nil {
+            return self.updatedEditState { $0?.withUpdatedDisableUrlPreview(disableUrlPreview) }
+        }
+        return self.withUpdatedComposeDisableUrlPreview(disableUrlPreview)
     }
 
     public func withUpdatedComposeDisableUrlPreview(_ disableUrlPreview: String?) -> ChatInterfaceState {
