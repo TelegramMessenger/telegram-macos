@@ -1,0 +1,130 @@
+import Foundation
+
+public enum L10n {
+    static func tr(_ table: String, _ key: String) -> String {
+        return key
+    }
+@@LOCALIZATION@@
+}
+
+func strings() -> L10n.Type { L10n.self }
+
+struct Colors {
+    let text = "text"
+    let listGrayText = "listGrayText"
+}
+struct Theme {
+    let colors = Colors()
+}
+let theme = Theme()
+
+enum GeneralViewType {
+    case firstItem, innerItem, lastItem, singleItem, textTopItem
+}
+enum GeneralInteractedType {
+    case context(String)
+}
+enum InputDataValue {
+    case none
+}
+enum InputDataSectionType {
+    case normal
+}
+enum GeneralRowTextType {
+    case plain(String)
+}
+struct InputDataGeneralTextData {
+    let color: String
+    let viewType: GeneralViewType
+}
+struct InputDataGeneralData {
+    let name: String
+    let color: String
+    let icon: String?
+    let type: GeneralInteractedType
+    let viewType: GeneralViewType
+    let enabled: Bool
+    let description: String?
+}
+final class InputDataIdentifier {
+    let identifier: String
+    init(_ identifier: String) { self.identifier = identifier }
+}
+enum InputDataEntry {
+    case sectionId(Int32, type: InputDataSectionType)
+    case desc(sectionId: Int32, index: Int32, text: GeneralRowTextType, data: InputDataGeneralTextData)
+    case general(sectionId: Int32, index: Int32, value: InputDataValue, error: String?, identifier: InputDataIdentifier, data: InputDataGeneralData)
+}
+
+@@PRODUCTION@@
+
+var checks = 0
+var failures = 0
+func expect(_ condition: Bool, _ label: String) {
+    checks += 1
+    if !condition {
+        failures += 1
+        print("FAIL \(label)")
+    }
+}
+
+struct Row {
+    let section: Int32
+    let index: Int32
+    let id: String
+    let data: InputDataGeneralData
+    var shortcut: String {
+        switch data.type {
+        case let .context(text): return text
+        }
+    }
+}
+let entries = shortcutEntires()
+var rows: [Row] = []
+var indices: [Int32] = []
+var sections: [Int32] = []
+for entry in entries {
+    switch entry {
+    case let .general(section, index, _, _, identifier, data):
+        rows.append(Row(section: section, index: index, id: identifier.identifier, data: data))
+        indices.append(index)
+    case let .desc(_, index, _, _):
+        indices.append(index)
+    case let .sectionId(id, _):
+        sections.append(id)
+    }
+}
+
+expect(Set(rows.map(\.id)).count == rows.count, "unique-stable-identifiers")
+expect(indices == Array(0..<Int32(indices.count)), "strict-row-order")
+expect(sections == Array(0..<Int32(sections.count)), "contiguous-sections")
+let formatting = rows.filter { $0.id.hasPrefix("markdown_") }
+expect(formatting.count == 9, "help-parity/all-nine-actions")
+expect(Set(formatting.map(\.section)).count == 1, "one-formatting-section")
+expect(formatting.first?.data.viewType == .firstItem, "formatting-top-corner")
+expect(formatting.last?.data.viewType == .lastItem, "formatting-bottom-corner")
+expect(formatting.dropFirst().dropLast().allSatisfy { $0.data.viewType == .innerItem }, "formatting-inner-corners")
+expect(formatting.allSatisfy { $0.data.color == theme.colors.text && $0.data.enabled }, "formatting-theme-enabled")
+
+let bindings: [String: String] = @@BINDINGS@@
+let existing: [(String, String)] = [("bold", "⌘B / **"), ("italic", "⌘I / __"), ("monospace", "⇧⌘K / `"), ("url", "⌘U")]
+for (suffix, shortcut) in existing {
+    expect(rows.first { $0.id == "markdown_" + suffix }?.shortcut == shortcut, "preserved/" + suffix)
+}
+let labels = ["underline": "TextView.Transform.Underline", "spoiler": "TextView.Transform.Spoiler", "quote": "TextView.Transform.Quote", "remove_formatting": "TextView.Transform.RemoveAll"]
+for name in ["underline", "spoiler", "quote", "remove_formatting", "strikethrough"] {
+    let row = rows.first { $0.id == "markdown_" + name }
+    expect(row != nil, "help-parity/present/" + name)
+    let expected = bindings[name]! + (name == "strikethrough" ? " / ~~" : "")
+    expect(row?.shortcut == expected, "help-parity/binding/" + name)
+    if let label = labels[name] {
+        expect(row?.data.name == label, "help-parity/existing-localization/" + name)
+    }
+}
+expect(formatting.last?.id == "markdown_remove_formatting", "help-parity/clear-last")
+expect(rows.first { $0.id == "lock_passcode" }?.shortcut == "⌘L", "unrelated-lock-help")
+expect(rows.first { $0.id == "toggle_camera" }?.shortcut == "⌘E", "unrelated-camera-help")
+expect(rows.first { $0.id == "quick_search" }?.shortcut == "⌘K", "unrelated-search-help")
+
+print("RESULT checks=\(checks) failures=\(failures)")
+exit(failures == 0 ? 0 : 1)

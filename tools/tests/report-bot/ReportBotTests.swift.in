@@ -1,0 +1,365 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let id: Int64
+}
+
+let verifyCodePeerId = PeerId(id: 489000)
+
+struct BotUserInfoFlags: OptionSet {
+    let rawValue: Int32
+    static let hasAccessToChatHistory = BotUserInfoFlags(rawValue: 1 << 0)
+    static let worksWithGroups = BotUserInfoFlags(rawValue: 1 << 1)
+    static let requiresGeolocationForInlineRequests = BotUserInfoFlags(rawValue: 1 << 3)
+    static let canBeAddedToAttachMenu = BotUserInfoFlags(rawValue: 1 << 4)
+    static let canEdit = BotUserInfoFlags(rawValue: 1 << 5)
+    static let isBusiness = BotUserInfoFlags(rawValue: 1 << 6)
+    static let hasWebApp = BotUserInfoFlags(rawValue: 1 << 7)
+    static let hasForum = BotUserInfoFlags(rawValue: 1 << 8)
+    static let forumManagedByUser = BotUserInfoFlags(rawValue: 1 << 9)
+    static let canManageBots = BotUserInfoFlags(rawValue: 1 << 10)
+}
+
+struct BotUserInfo {
+    let flags: BotUserInfoFlags
+}
+
+final class TelegramUser {
+    let id: PeerId
+    let botInfo: BotUserInfo?
+    let addressName: String?
+    init(id: Int64, flags: BotUserInfoFlags, addressName: String?) {
+        self.id = PeerId(id: id)
+        self.botInfo = BotUserInfo(flags: flags)
+        self.addressName = addressName
+    }
+}
+
+struct BotCommand {
+    let text: String
+}
+
+struct CachedBotInfo {
+    let commands: [BotCommand]
+}
+
+class CachedPeerData {}
+
+final class CachedUserData: CachedPeerData {
+    let isBlocked: Bool
+    let botInfo: CachedBotInfo?
+    init(isBlocked: Bool, botInfo: CachedBotInfo?) {
+        self.isBlocked = isBlocked
+        self.botInfo = botInfo
+    }
+}
+
+struct PeerView {
+    let cachedData: CachedPeerData?
+}
+
+enum LocalAnimatedSticker {
+__ANIMATIONS__
+}
+
+@dynamicMemberLookup
+struct Strings {
+    subscript(dynamicMember name: String) -> String {
+        return name
+    }
+}
+
+func strings() -> Strings {
+    return Strings()
+}
+
+@dynamicMemberLookup
+struct Icons {
+    subscript(dynamicMember name: String) -> String {
+        return name
+    }
+}
+
+struct Theme {
+    let icons = Icons()
+}
+
+let theme = Theme()
+
+struct SubActionItem {
+    let text: String
+    let destruct: Bool
+    let action: () -> Void
+    let animation: LocalAnimatedSticker
+    init(text: String, animation: LocalAnimatedSticker, destruct: Bool = false, action: @escaping () -> Void) {
+        self.text = text
+        self.animation = animation
+        self.destruct = destruct
+        self.action = action
+    }
+}
+
+final class ActionItem {
+    let text: String
+    let destruct: Bool
+    let image: String
+    let action: () -> Void
+    let animation: LocalAnimatedSticker
+    let subItems: [SubActionItem]?
+    init(text: String, color: Int, image: String, animation: LocalAnimatedSticker, destruct: Bool = false, action: @escaping () -> Void, subItems: [SubActionItem]? = nil) {
+        self.text = text
+        self.image = image
+        self.animation = animation
+        self.destruct = destruct
+        self.action = action
+        self.subItems = subItems
+    }
+}
+
+final class Arguments {
+    var calls: [String] = []
+    func updateBlocked(peer: TelegramUser, _ value: Bool, _ isBot: Bool) {
+        calls.append("updateBlocked(\(value), isBot: \(isBot))")
+    }
+    func botShare(_ name: String) {
+        calls.append("botShare(\(name))")
+    }
+    func botAddToGroup() {
+        calls.append("botAddToGroup")
+    }
+    func botSettings() {
+        calls.append("botSettings")
+    }
+    func botHelp() {
+        calls.append("botHelp")
+    }
+    func botPrivacy() {
+        calls.append("botPrivacy")
+    }
+    func reportBot() {
+        calls.append("reportBot")
+    }
+}
+
+struct HeadItem {
+    let peerView: PeerView
+    let accentColor: Int
+}
+
+func actionItems(peer: TelegramUser, cached: CachedUserData?, rowItemsCount: Int, arguments: Arguments) -> [ActionItem] {
+    let item = HeadItem(peerView: PeerView(cachedData: cached), accentColor: 0)
+    var items: [ActionItem] = []
+    items.append(ActionItem(text: strings().peerInfoActionMessage, color: item.accentColor, image: theme.icons.profile_message, animation: .menu_show_message, action: { arguments.calls.append("sendMessage") }))
+    items.append(ActionItem(text: strings().peerInfoActionMute, color: item.accentColor, image: theme.icons.profile_mute, animation: .menu_mute, action: { arguments.calls.append("toggleNotifications") }))
+    if let botInfo = peer.botInfo {
+__BOT_BRANCH__
+    }
+    if items.count > rowItemsCount {
+__MORE__
+    }
+    return items
+}
+
+struct Bot {
+    let name: String
+    let user: TelegramUser
+    var owned: Bool {
+        return user.botInfo?.flags.contains(.canEdit) == true
+    }
+    var isVerificationCodes: Bool {
+        return user.id == verifyCodePeerId
+    }
+}
+
+struct Profile {
+    let name: String
+    let data: CachedUserData?
+}
+
+struct Offered {
+    let text: String
+    let destruct: Bool
+    let inMore: Bool
+    let image: String?
+    let animation: LocalAnimatedSticker
+    let action: () -> Void
+}
+
+let bots: [Bot] = [
+    Bot(name: "BotFather, someone else's bot", user: TelegramUser(id: 93372553, flags: [], addressName: "BotFather")),
+    Bot(name: "someone else's bot that works in groups", user: TelegramUser(id: 1001, flags: [.worksWithGroups, .hasAccessToChatHistory], addressName: "group_helper_bot")),
+    Bot(name: "someone else's Mini App bot", user: TelegramUser(id: 1002, flags: [.hasWebApp, .canBeAddedToAttachMenu, .isBusiness, .hasForum], addressName: "shop_bot")),
+    Bot(name: "someone else's bot with no username", user: TelegramUser(id: 1003, flags: [.worksWithGroups], addressName: nil)),
+    Bot(name: "someone else's bot with no username that doesn't work in groups", user: TelegramUser(id: 1004, flags: [], addressName: nil)),
+    Bot(name: "someone else's bot with an empty username", user: TelegramUser(id: 1005, flags: [], addressName: "")),
+    Bot(name: "own bot", user: TelegramUser(id: 2001, flags: [.canEdit, .worksWithGroups], addressName: "lab_rights_105524_bot")),
+    Bot(name: "own bot that doesn't work in groups", user: TelegramUser(id: 2002, flags: [.canEdit], addressName: "own_private_bot")),
+    Bot(name: "own Mini App bot", user: TelegramUser(id: 2003, flags: [.canEdit, .hasWebApp, .canManageBots, .forumManagedByUser], addressName: "own_shop_bot")),
+    Bot(name: "Verification Codes", user: TelegramUser(id: 489000, flags: [], addressName: "VerificationCodes")),
+]
+
+let profiles: [Profile] = [
+    Profile(name: "profile data not loaded yet", data: nil),
+    Profile(name: "loaded, no commands", data: CachedUserData(isBlocked: false, botInfo: CachedBotInfo(commands: []))),
+    Profile(name: "loaded, /start /help /settings /privacy", data: CachedUserData(isBlocked: false, botInfo: CachedBotInfo(commands: ["start", "help", "settings", "privacy"].map(BotCommand.init)))),
+    Profile(name: "stopped, /help", data: CachedUserData(isBlocked: true, botInfo: CachedBotInfo(commands: [BotCommand(text: "help")]))),
+    Profile(name: "loaded without bot info", data: CachedUserData(isBlocked: false, botInfo: nil)),
+]
+
+func offersReport(_ bot: Bot, _ data: CachedUserData?) -> Bool {
+    return data?.botInfo != nil && !bot.owned && !bot.isVerificationCodes
+}
+
+func expectedTexts(_ bot: Bot, _ data: CachedUserData?) -> [String] {
+    var result = ["peerInfoActionMessage", "peerInfoActionMute"]
+    if let data = data, !bot.isVerificationCodes {
+        result.append(data.isBlocked ? "peerInfoRestartBot" : "peerInfoStopBot")
+    }
+    if let address = bot.user.addressName, !address.isEmpty {
+        result.append("peerInfoBotShare")
+    }
+    if bot.user.botInfo?.flags.contains(.worksWithGroups) == true {
+        result.append("peerInfoBotAddToGroup")
+    }
+    if let info = data?.botInfo {
+        for command in info.commands {
+            switch command.text {
+            case "settings":
+                result.append("peerInfoBotSettings")
+            case "help":
+                result.append("peerInfoBotHelp")
+            case "privacy":
+                result.append("peerInfoBotPrivacy")
+            default:
+                break
+            }
+        }
+    }
+    if offersReport(bot, data) {
+        result.append("peerInfoReportBot")
+    }
+    return result
+}
+
+func expectedCall(_ text: String, _ bot: Bot) -> String? {
+    switch text {
+    case "peerInfoActionMessage":
+        return "sendMessage"
+    case "peerInfoActionMute":
+        return "toggleNotifications"
+    case "peerInfoStopBot":
+        return "updateBlocked(true, isBot: true)"
+    case "peerInfoRestartBot":
+        return "updateBlocked(false, isBot: true)"
+    case "peerInfoBotShare":
+        return "botShare(\(bot.user.addressName ?? ""))"
+    case "peerInfoBotAddToGroup":
+        return "botAddToGroup"
+    case "peerInfoBotSettings":
+        return "botSettings"
+    case "peerInfoBotHelp":
+        return "botHelp"
+    case "peerInfoBotPrivacy":
+        return "botPrivacy"
+    case "peerInfoReportBot":
+        return "reportBot"
+    default:
+        return nil
+    }
+}
+
+func flatten(_ items: [ActionItem]) -> [Offered] {
+    var result: [Offered] = []
+    for item in items {
+        if let subItems = item.subItems, !subItems.isEmpty {
+            result += subItems.map { Offered(text: $0.text, destruct: $0.destruct, inMore: true, image: nil, animation: $0.animation, action: $0.action) }
+        } else {
+            result.append(Offered(text: item.text, destruct: item.destruct, inMore: false, image: item.image, animation: item.animation, action: item.action))
+        }
+    }
+    return result
+}
+
+var passed = 0
+var failures = 0
+
+func check(_ name: String, _ condition: Bool) {
+    if condition {
+        passed += 1
+    } else {
+        failures += 1
+        print("FAILED: \(name)")
+    }
+}
+
+let iosRule = "__IOS_RULE__"
+let fixtureItems: Set<String> = ["peerInfoActionMessage", "peerInfoActionMute"]
+let destructiveItems: Set<String> = ["peerInfoStopBot", "peerInfoRestartBot"]
+var expectedReportButtons = 0
+var expectedReportsInMore = 0
+
+for bot in bots {
+    for profile in profiles where offersReport(bot, profile.data) {
+        if expectedTexts(bot, profile.data).count <= 4 {
+            expectedReportButtons += 1
+        } else {
+            expectedReportsInMore += 1
+        }
+    }
+}
+if expectedReportButtons == 0 || expectedReportsInMore == 0 {
+    print("the cases no longer offer Report Bot both as a header button and in More")
+    exit(2)
+}
+
+for bot in bots {
+    for profile in profiles {
+        for rows in 1 ... 4 {
+            let arguments = Arguments()
+            let items = actionItems(peer: bot.user, cached: profile.data, rowItemsCount: rows, arguments: arguments)
+            let offered = flatten(items)
+            let texts = offered.map { $0.text }
+            let expected = expectedTexts(bot, profile.data)
+            let label = "\(bot.name), \(profile.name), \(rows) header buttons"
+            let reports = offered.filter { $0.text == "peerInfoReportBot" }
+            let shouldReport = offersReport(bot, profile.data)
+
+            check("\(label): Report Bot \(shouldReport ? "is offered once" : "is not offered")", reports.count == (shouldReport ? 1 : 0))
+            check("\(label): offers \(expected)", texts == expected)
+            if offered.count > rows {
+                let shape = rows == 1 ? "only More, with every item in it" : "the first \(rows - 1) items, then More with the rest"
+                check("\(label): the header shows \(shape)", items.count == rows && items.last?.text == "peerInfoActionMore" && items.last?.subItems?.count == offered.count - (rows - 1) && items.dropLast().allSatisfy { $0.subItems == nil })
+            } else {
+                check("\(label): the header shows every item, with no More", items.count == offered.count && items.allSatisfy { $0.subItems == nil })
+            }
+            for entry in offered where entry.inMore || !fixtureItems.contains(entry.text) {
+                arguments.calls = []
+                entry.action()
+                let call = expectedCall(entry.text, bot)
+                let place = entry.inMore ? "in More" : "in the header"
+                check("\(label): \(entry.text) \(place) calls \(call ?? "nothing")", arguments.calls == (call.map { [$0] } ?? []))
+                let destructive = destructiveItems.contains(entry.text)
+                check("\(label): \(entry.text) \(place) is \(destructive ? "" : "not ")shown as destructive", entry.destruct == destructive)
+            }
+            for entry in reports {
+                check("\(label): Report Bot \(entry.inMore ? "in More" : "in the header") has the report animation", entry.animation == .menu_report)
+                if !entry.inMore {
+                    check("\(label): Report Bot in the header has the report icon", entry.image == "profile_report")
+                }
+            }
+            if iosRule != "missing", let data = profile.data, data.botInfo != nil, !bot.isVerificationCodes {
+                let ios = iosRule == "notOwned" ? !bot.owned : iosRule == "owned" ? bot.owned : nil
+                check("\(label): offers Report Bot where the iOS profile offers Report (iOS rule: \(iosRule))", ios != nil && (reports.count == 1) == ios!)
+            }
+        }
+    }
+}
+
+check("Report Bot opens the report for the bot itself (reportComplicated with .peer(peerId))", __REPORTS_PEER__)
+
+if iosRule == "missing" {
+    print("iOS source not checked out, the iOS comparison was skipped")
+}
+
+print("\(passed) passed, \(failures) failed")
+exit(failures == 0 ? 0 : 1)

@@ -1,0 +1,106 @@
+import Foundation
+
+struct PeerId: Hashable {
+    let raw: Int
+}
+
+struct Peer {
+    enum Kind {
+        case user, bot, group, supergroup, gigagroup, channel
+    }
+    let id: PeerId
+    let kind: Kind
+    var isUser: Bool { kind == .user }
+    var isBot: Bool { kind == .bot }
+    var isGroup: Bool { kind == .group }
+    var isSupergroup: Bool { kind == .supergroup }
+    var isGigagroup: Bool { kind == .gigagroup }
+    var isChannel: Bool { kind == .channel }
+}
+
+struct PeerEquatable {
+    let peer: Peer
+}
+
+struct StorageCacheException {
+    let value: Int32
+    let peer: PeerEquatable
+}
+
+struct CacheStorageSettings {
+    enum PeerStorageCategory: CaseIterable {
+        case channels, groups, privateChats, stories
+    }
+}
+
+struct State {
+    var exceptions: [StorageCacheException]
+    var category: CacheStorageSettings.PeerStorageCategory
+}
+
+final class StateValue {
+    var state: State
+    init(_ state: State) { self.state = state }
+    func with<T>(_ f: (State) -> T) -> T { f(state) }
+}
+
+struct Entry: Equatable {
+    let key: PeerId
+    let value: Int32
+}
+
+struct Settings: Equatable {
+    var peerStorageTimeoutExceptions: [Entry]
+    var mediaLimit: Int = 16
+    var defaultTimeout: Int32 = 604800
+}
+
+@@FILTER@@
+
+func removeAll(_ stateValue: StateValue, settings: Settings) -> Settings {
+    @@SELECTION@@
+    return { (settings: Settings) -> Settings in
+        @@TRANSACTION@@
+    }(settings)
+}
+
+var passed = 0
+var failed = 0
+func check(_ value: @autoclosure () -> Bool, _ name: String) {
+    if value() {
+        passed += 1
+        print("PASS \(name)")
+    } else {
+        failed += 1
+        print("FAIL \(name)")
+    }
+}
+
+let peers: [Peer] = [.init(id: .init(raw: 1), kind: .user), .init(id: .init(raw: 2), kind: .bot), .init(id: .init(raw: 3), kind: .group), .init(id: .init(raw: 4), kind: .supergroup), .init(id: .init(raw: 5), kind: .gigagroup), .init(id: .init(raw: 6), kind: .channel)]
+let exceptions = peers.map { StorageCacheException(value: Int32($0.id.raw * 100), peer: .init(peer: $0)) }
+let unknown = Entry(key: .init(raw: 99), value: .max)
+let settings = Settings(peerStorageTimeoutExceptions: exceptions.map { Entry(key: $0.peer.peer.id, value: $0.value) } + [unknown])
+let expectedRemoved: [CacheStorageSettings.PeerStorageCategory: Set<Int>] = [.channels: [6], .groups: [3, 4, 5], .privateChats: [1, 2], .stories: [1]]
+for category in CacheStorageSettings.PeerStorageCategory.allCases {
+    let state = StateValue(State(exceptions: exceptions, category: category))
+    let result = removeAll(state, settings: settings)
+    let removed = expectedRemoved[category]!
+    let expected = settings.peerStorageTimeoutExceptions.filter { !removed.contains($0.key.raw) }
+    check(result.peerStorageTimeoutExceptions == expected, "\(category) only matching entries removed with order and timeout intact")
+    check(result.peerStorageTimeoutExceptions.contains(unknown), "\(category) unresolved peer preserved")
+    check(result.mediaLimit == settings.mediaLimit && result.defaultTimeout == settings.defaultTimeout, "\(category) global settings preserved")
+    for peer in peers {
+        check(result.peerStorageTimeoutExceptions.contains(where: { $0.key == peer.id }) == !removed.contains(peer.id.raw), "\(category) peer \(peer.id.raw)")
+    }
+    state.state.exceptions = []
+    check(removeAll(state, settings: settings) == settings, "\(category) empty visible state is a no-op")
+    state.state.exceptions = exceptions.filter { removed.contains($0.peer.peer.id.raw) }
+    check(removeAll(state, settings: Settings(peerStorageTimeoutExceptions: [])) == Settings(peerStorageTimeoutExceptions: []), "\(category) already removed is a no-op")
+}
+let confirmationState = StateValue(State(exceptions: [], category: .channels))
+confirmationState.state.exceptions = exceptions
+check(removeAll(confirmationState, settings: settings).peerStorageTimeoutExceptions.map { $0.key.raw } == [1, 2, 3, 4, 5, 99], "confirmation uses current category-scoped state")
+let noChannels = StateValue(State(exceptions: exceptions.filter { $0.peer.peer.kind != .channel }, category: .channels))
+check(removeAll(noChannels, settings: settings) == settings, "empty selected category does not delete other categories")
+print("SUMMARY \(passed) passed \(failed) failed")
+exit(failed == 0 ? 0 : 1)

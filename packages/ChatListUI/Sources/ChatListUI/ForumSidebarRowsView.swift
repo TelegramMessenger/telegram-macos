@@ -48,7 +48,6 @@ public final class ForumSidebarRowsView<Context: AccountContextProtocol>: View, 
         tableView.delegate = self
         tableView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 88, right: 0)
         addSubview(tableView)
-        selectionBar.backgroundColor = theme.colors.background
         selectionBar.isHidden = true
         addSubview(selectionBar)
         for (button, title) in [(readButton, strings().chatListSwipingRead), (muteButton, strings().chatListSwipingMute), (deleteButton, strings().chatListSwipingDelete)] {
@@ -56,7 +55,6 @@ public final class ForumSidebarRowsView<Context: AccountContextProtocol>: View, 
             button.scaleOnClick = true
             button.set(text: title, for: .Normal)
             button.set(font: .medium(13), for: .Normal)
-            button.set(color: button === deleteButton ? theme.colors.redUI : theme.colors.accent, for: .Normal)
             selectionBar.addSubview(button)
         }
         readButton.set(handler: { [weak self] _ in self?.applySelection(.read) }, for: .Click)
@@ -80,6 +78,16 @@ public final class ForumSidebarRowsView<Context: AccountContextProtocol>: View, 
                 self.update(items: content.items, selectedThreadId: content.selectedThreadId, kind: content.kind, parentPeer: content.parentPeer)
             }
         }))
+        updateLocalizationAndTheme(theme: theme)
+    }
+
+    public override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        selectionBar.backgroundColor = theme.colors.background
+        readButton.set(color: theme.colors.accent, for: .Normal)
+        muteButton.set(color: theme.colors.accent, for: .Normal)
+        deleteButton.set(color: theme.colors.redUI, for: .Normal)
+        if let content { update(items: content.items, selectedThreadId: content.selectedThreadId, kind: content.kind, parentPeer: content.parentPeer) }
     }
 
     required init(frame frameRect: NSRect) {

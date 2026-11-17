@@ -609,7 +609,7 @@ final class ChatLayerTextNode: ChatLayerNode {
             suppressTextClick = suppressTextClick || layout.selectedRange.hasSelectText
             clearExternalSelection()
             let index = layout.findIndex(location: event.location)
-            guard onTextClick != nil || (index >= 0 && (event.location.x <= layout.lines[index].frame.maxX || !isSelectable)) else { return false }
+            guard onTextClick != nil || (index >= 0 && (!layout.isOutsideText(event.location, line: index) || !isSelectable)) else { return false }
             let formattedDate = hasFormattedDates ? layout.formattedDate(at: event.location)?.0 : nil
             guard isSelectable || onTextClick != nil || formattedDate != nil || layout.link(at: event.location) != nil else { return false }
             selectionStart = event.location

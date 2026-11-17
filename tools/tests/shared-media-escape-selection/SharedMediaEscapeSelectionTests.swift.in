@@ -1,0 +1,720 @@
+import Foundation
+
+class NSObject: Equatable {
+    static func == (lhs: NSObject, rhs: NSObject) -> Bool { lhs === rhs }
+}
+
+final class WeakReference<T: AnyObject> {
+    weak var value: T?
+    init(value: T?) { self.value = value }
+}
+
+class NSResponder: NSObject {
+    var ownerWindow: NSWindow?
+    func responds(to selector: String) -> Bool { false }
+    func value(forKey key: String) -> Any? { ownerWindow }
+}
+
+func NSSelectorFromString(_ value: String) -> String { value }
+
+class NSTextView: NSResponder {
+    var isEditable = true
+}
+
+class NSTextField: NSResponder {
+    func setCursorToEnd() {}
+}
+
+class NSWindow: NSResponder {
+    var firstResponder: NSResponder?
+    var isKeyWindow = true
+    var sheets: [Int] = []
+    var deliveredEvents = 0
+    var responderChanges = 0
+    func sendEvent(_ event: NSEvent) { deliveredEvents += 1 }
+    func resignFirstResponder() -> Bool { true }
+    func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        responderChanges += 1
+        firstResponder = responder
+        return true
+    }
+}
+
+final class NSEvent {
+    enum EventType: UInt {
+        case keyDown, keyUp, leftMouseDown, leftMouseDragged, leftMouseUp, rightMouseDown, scrollWheel
+    }
+    enum Phase {
+        case began, stationary, changed, ended, cancelled, mayBegin, none
+    }
+    struct ModifierFlags: OptionSet {
+        let rawValue: Int
+        static let command = ModifierFlags(rawValue: 1)
+        static let option = ModifierFlags(rawValue: 2)
+        static let control = ModifierFlags(rawValue: 4)
+    }
+    let type: EventType
+    let keyCode: UInt16
+    let modifierFlags: ModifierFlags
+    weak var window: NSWindow?
+    var phase = Phase.none
+    init(window: NSWindow, type: EventType = .keyDown, keyCode: UInt16 = 53, modifierFlags: ModifierFlags = []) {
+        self.window = window
+        self.type = type
+        self.keyCode = keyCode
+        self.modifierFlags = modifierFlags
+    }
+}
+
+enum KeyboardKey: UInt16 {
+    case All = 65535, Escape = 53, Return = 36, KeypadEnter = 76
+    case LeftArrow = 123, RightArrow = 124, Tab = 48, UpArrow = 126, DownArrow = 125, Space = 49
+}
+
+__WINDOW_TYPES__
+
+final class SwipeHandler {
+    let object = WeakReference<NSObject>(value: nil)
+}
+
+final class Window: NSWindow {
+    var keyHandlers: [KeyboardKey: [KeyHandler]] = [:]
+    var responders: [ResponderObserver] = []
+    var mouseHandlers: [UInt: [MouseObserver]] = [:]
+    var swipeHandlers: [Int: SwipeHandler] = [:]
+    var swipeState: [Int] = []
+    var keyUpHandler: ((NSEvent) -> Void)?
+    var isWindowFrameMouseGesture = false
+    func isWindowFrameEvent(_ event: NSEvent) -> Bool { false }
+    func startSwiping(_ event: NSEvent) {}
+    func proccessSwiping(_ event: NSEvent) {}
+    func stopSwiping(_ event: NSEvent) {}
+    __WINDOW_METHODS__
+    func pressEscape() { sendEvent(NSEvent(window: self)) }
+}
+
+enum ViewControllerState { case Normal, Edit, Some }
+enum ViewControllerStyle { case pop, none }
+
+class ViewController: NSObject {
+    weak var window: Window?
+    var responderPriority: HandlerPriority = .low
+    var removalCount = 0
+    var navigationBackAllowed = true
+    __BASE_ESCAPE__
+    func returnKeyAction() -> KeyHandlerResult { .rejected }
+    func backKeyAction() -> KeyHandlerResult { .rejected }
+    func nextKeyAction() -> KeyHandlerResult { .rejected }
+    func viewDidAppear(_ animated: Bool) {}
+    func viewWillAppear(_ animated: Bool) {}
+    func viewWillDisappear(_ animated: Bool) {}
+    func viewDidDisappear(_ animated: Bool) {}
+    func invokeNavigationBack() -> Bool { navigationBackAllowed }
+    func didRemovedFromStack() { removalCount += 1 }
+}
+
+class NavigationViewController: ViewController {
+    var stack: [ViewController]
+    var stackCount: Int { stack.count }
+    var controller: ViewController { stack.last! }
+    var isLocked = false
+    let defaultEmpty: ViewController
+    let containerView = NSObject()
+    var alwaysAnimate = false
+    var doSomethingOnEmptyBack: (() -> Void)?
+    var shownControllers: [ViewController] = []
+    init(stack: [ViewController], window: Window) {
+        self.stack = stack
+        self.defaultEmpty = stack[0]
+        super.init()
+        self.window = window
+    }
+    func invokeBack(animated: Bool = true, forceAnimated: Bool = false, animationStyle: ViewControllerStyle = .pop, checkLock: Bool = true) {}
+    func back(animated: Bool = true, forceAnimated: Bool = false, animationStyle: ViewControllerStyle = .pop) {}
+    func show(_ controller: ViewController, _ style: ViewControllerStyle) { shownControllers.append(controller) }
+}
+
+final class MajorNavigationController: NavigationViewController {
+    __NAVIGATION_METHODS__
+}
+
+class EditableViewController: ViewController {
+    __EDITABLE_STATE__
+    __EDITABLE_UPDATE__
+    __EDITABLE_CHANGE__
+    var titleUpdates = 0
+    var doneVisible = false
+    func updateEditStateTitles() {
+        titleUpdates += 1
+        doneVisible = state == .Edit
+    }
+    func requestUpdateRightBar() {}
+    func requestUpdateBackBar() {}
+    func requestUpdateCenterBar() {}
+}
+
+final class ProfileArguments {
+    var dismissals = 0
+    func dismissEdition() { dismissals += 1 }
+}
+
+final class ManageFlow {
+    enum Result { case cancelled }
+    var cancellations = 0
+    func finish(_ result: Result) { cancellations += 1 }
+}
+
+final class TestContext {}
+
+final class PeerInfoController<Context>: EditableViewController {
+    let mediaController: PeerMediaController<Context>
+    let arguments = ProfileArguments()
+    var manageFlow: ManageFlow? = ManageFlow()
+    init(media: PeerMediaController<Context>) {
+        mediaController = media
+        super.init()
+    }
+    func updateArguments(_ body: (ProfileArguments) -> Void) { body(arguments) }
+    __PROFILE_ESCAPE__
+}
+
+final class Atomic<Value> {
+    var value: Value
+    init(value: Value) { self.value = value }
+    func with<T>(_ body: (Value) -> T) -> T { body(value) }
+    func modify(_ body: (Value) -> Value) -> Value {
+        value = body(value)
+        return value
+    }
+}
+
+final class ValuePromise<Value> {
+    var value: Value
+    var onSet: ((Value) -> Void)?
+    init(_ value: Value) { self.value = value }
+    func set(_ value: Value) {
+        self.value = value
+        onSet?(value)
+    }
+}
+
+struct Strings {
+    let storyMediaDone = "Done"
+    let storyMediaSelect = "Select"
+}
+func strings() -> Strings { Strings() }
+
+enum ControlState { case Normal }
+class BarView {
+    struct Frame { let width: Double = 100; let size: Double = 100 }
+    let frame = Frame()
+    func fit(to width: Double, transition: ContainedViewLayoutTransition) -> Bool { true }
+    func updateLayout(size: Double, transition: ContainedViewLayoutTransition) {}
+}
+
+final class TextButtonBarView: BarView {
+    var text = ""
+    func set(text: String, for state: ControlState) { self.text = text }
+}
+
+enum ContainedViewLayoutTransition {
+    enum Curve { case spring }
+    case animated(duration: Double, curve: Curve)
+}
+
+final class StoryMediaController<Context>: ViewController {
+    struct State { var selected: Set<Int>? }
+    let stateValue = Atomic(value: State(selected: nil))
+    let statePromise = ValuePromise(State(selected: nil))
+    var rightBarView: BarView? = TextButtonBarView()
+    var parentToggleSelection: (() -> Void)?
+    var selected: Set<Int>? { stateValue.with { $0.selected } }
+    var selectionControlsVisible = false
+    var actionsVisible = false
+    override init() {
+        super.init()
+        statePromise.onSet = { [weak self] state in
+            self?.selectionControlsVisible = state.selected != nil
+            self?.actionsVisible = state.selected?.isEmpty == false
+        }
+    }
+    __STORY_UPDATE__
+    __STORY_TOGGLE__
+    __STORY_ESCAPE__
+    func selectFromContextMenu(_ storyId: Int) {
+        let toggleSelected: (Int) -> Void = __STORY_SELECT__
+        toggleSelected(storyId)
+    }
+}
+
+struct SelectionState: Equatable { var selectedIds: Set<Int> }
+struct ChatPresentationInterfaceState: Equatable {
+    enum State { case normal, selecting }
+    var selectionState: SelectionState?
+    var state: State { selectionState == nil ? .normal : .selecting }
+    func withoutSelectionState() -> Self { Self(selectionState: nil) }
+    func withSelectionState() -> Self { Self(selectionState: SelectionState(selectedIds: [])) }
+}
+
+final class ChatInteraction {
+    var presentation = ChatPresentationInterfaceState(selectionState: nil)
+    var onUpdate: ((ChatPresentationInterfaceState, ChatPresentationInterfaceState, Bool) -> Void)?
+    func update(_ body: (ChatPresentationInterfaceState) -> ChatPresentationInterfaceState) {
+        let old = presentation
+        presentation = body(old)
+        if old != presentation {
+            onUpdate?(presentation, old, true)
+        }
+    }
+}
+
+enum PeerMediaCollectionMode: CaseIterable {
+    case photoOrVideo, file, webpage, music, voice, gifs, members, stories, archiveStories
+    case saved, savedMessages, polls, commonGroups, similarChannels, similarBots, gifts
+}
+
+protocol PeerMediaSearchable: AnyObject { func toggleSearch() }
+final class SearchableController: ViewController, PeerMediaSearchable {
+    var onToggle: (() -> Void)?
+    var toggles = 0
+    func toggleSearch() {
+        toggles += 1
+        onToggle?()
+    }
+}
+
+final class InputDataController: ViewController {
+    var returnsExecuted = 0
+    func executeReturn() { returnsExecuted += 1 }
+    __INPUT_ESCAPE__
+}
+
+final class TableView {
+    enum Position { case upOffset(Bool, Int) }
+    var deferred = false
+    var completions: [(Bool) -> Void] = []
+    func scroll(to position: Position, completion: @escaping (Bool) -> Void) {
+        if deferred {
+            completions.append(completion)
+        } else {
+            completion(true)
+        }
+    }
+    func finishScrolls() {
+        let pending = completions
+        completions = []
+        for completion in pending { completion(true) }
+    }
+}
+
+final class MediaView {
+    let mainTable: TableView? = TableView()
+    var searchPanelView: NSObject?
+    var selectionPanelVisible = false
+    func changeState(selectState: Bool, animated: Bool) { selectionPanelVisible = selectState }
+    func setHeaderPinned(_ visible: Bool, animated: Bool) {}
+}
+
+final class EditButton {
+    var menuOpenCount = 0
+    func showContextMenu() { menuOpenCount += 1 }
+}
+
+final class PeerMediaController<Context>: EditableViewController {
+    let genericView = MediaView()
+    let interactions = ChatInteraction()
+    let stories = StoryMediaController<Context>()
+    var archiveStories: StoryMediaController<Context>? = StoryMediaController<Context>()
+    let members = InputDataController()
+    let editing = ValuePromise(false)
+    var memberEditing = false
+    var rightBarView: BarView? = BarView()
+    var editButton: EditButton? = EditButton()
+    var mode: PeerMediaCollectionMode?
+    var currentController: ViewController?
+    var controllers: [PeerMediaCollectionMode: ViewController] = [:]
+    var isProfileBlockVisible = false
+    __MEDIA_STATE__
+    __MEDIA_UPDATE__
+    __MEDIA_CHANGE__
+    __MEDIA_ESCAPE__
+    __MEDIA_SELECTION_ESCAPE__
+    __MEDIA_VISIBILITY__
+    override init() {
+        super.init()
+        for mode in PeerMediaCollectionMode.allCases {
+            switch mode {
+            case .stories: controllers[mode] = stories
+            case .archiveStories: controllers[mode] = archiveStories
+            case .members: controllers[mode] = members
+            case .photoOrVideo, .file, .webpage, .music, .voice, .gifs:
+                let searchable = SearchableController()
+                searchable.onToggle = { [weak self] in self?.genericView.searchPanelView = nil }
+                controllers[mode] = searchable
+            default: controllers[mode] = InputDataController()
+            }
+        }
+        stories.parentToggleSelection = { [weak self] in self?.changeState() }
+        archiveStories?.parentToggleSelection = { [weak self] in self?.changeState() }
+        editing.onSet = { [weak self] value in self?.memberEditing = value }
+    }
+    func activate(_ mode: PeerMediaCollectionMode) {
+        self.mode = mode
+        currentController = controller(for: mode)
+    }
+    func controller(for mode: PeerMediaCollectionMode) -> ViewController { controllers[mode]! }
+    override func viewDidAppear(_ animated: Bool) {
+        interactions.onUpdate = { [weak self] value, oldValue, animated in
+            self?.notify(value: value, oldValue: oldValue, animated: animated)
+        }
+    }
+    override func viewDidDisappear(_ animated: Bool) { interactions.onUpdate = nil }
+    func notify(value: ChatPresentationInterfaceState, oldValue: ChatPresentationInterfaceState, animated: Bool) {
+        __MEDIA_SELECTION_NOTIFICATION__
+    }
+}
+
+final class SearchView: NSObject {
+    enum State { case Focus, None }
+    weak var _window: Window?
+    var state: State = .Focus
+    var query = "needle"
+    var onCancel: (() -> Void)?
+    init(window: Window) {
+        _window = window
+        super.init()
+    }
+    func setString(_ value: String) { query = value }
+    func change(state: State, _ animated: Bool) { self.state = state }
+    func cancelSearch() {
+        state = .None
+        _window?.removeAllHandlers(for: self)
+        onCancel?()
+    }
+    func registerEscape() {
+        __SEARCH_ESCAPE__
+    }
+    __SEARCH_CHANGE__
+}
+
+final class ResultController: ViewController {
+    let result: KeyHandlerResult
+    init(_ result: KeyHandlerResult) { self.result = result }
+    override func escapeKeyAction() -> KeyHandlerResult { result }
+}
+
+struct Fixture {
+    let window: Window
+    let root: ViewController
+    let media: PeerMediaController<TestContext>
+    let profile: PeerInfoController<TestContext>
+    let navigation: MajorNavigationController
+    init(mode: PeerMediaCollectionMode = .photoOrVideo, visible: Bool = true, embedded: Bool = true) {
+        window = Window()
+        root = ViewController()
+        media = PeerMediaController<TestContext>()
+        media.activate(mode)
+        media.window = window
+        profile = PeerInfoController(media: media)
+        profile.window = window
+        navigation = MajorNavigationController(stack: [root, embedded ? profile : media], window: window)
+        navigation.viewDidAppear(false)
+        if embedded {
+            media.setProfileBlockVisible(visible)
+        } else {
+            media.viewDidAppear(false)
+        }
+    }
+}
+
+var failures: [String] = []
+var assertions = 0
+var scenarios = 0
+func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
+    assertions += 1
+    if !condition() { failures.append(name) }
+}
+func test(_ name: String, _ body: () -> Void) {
+    scenarios += 1
+    let start = failures.count
+    body()
+    print("\(failures.count == start ? "PASS" : "FAIL") \(name)")
+}
+
+let messageModes: [PeerMediaCollectionMode] = [.photoOrVideo, .file, .webpage, .music, .voice, .gifs]
+for mode in messageModes {
+    for ids: Set<Int> in [[], [11, 12]] {
+        test("embedded \(mode) selection \(ids.count)") {
+            let f = Fixture(mode: mode)
+            f.media.update(with: .Edit)
+            f.media.interactions.update { _ in .init(selectionState: .init(selectedIds: ids)) }
+            expect(f.media.doneVisible && f.media.genericView.selectionPanelVisible, "\(mode): entered selection UI")
+            f.window.pressEscape()
+            expect(f.navigation.controller === f.profile, "\(mode): first Escape must keep profile on stack")
+            expect(f.media.interactions.presentation.selectionState == nil, "\(mode): clear selection including empty set")
+            expect(f.media.state == .Normal && !f.media.doneVisible, "\(mode): hide Done")
+            expect(!f.media.genericView.selectionPanelVisible, "\(mode): hide selection action panel")
+            expect(f.window.deliveredEvents == 0, "\(mode): consume first Escape")
+            f.window.pressEscape()
+            expect(f.navigation.controller === f.root, "\(mode): second Escape navigates back")
+            expect(f.profile.removalCount == 1, "\(mode): remove only once")
+        }
+    }
+}
+
+test("selection initiated by message interaction rather than toolbar") {
+    let f = Fixture()
+    f.media.interactions.update { _ in .init(selectionState: .init(selectedIds: [42])) }
+    expect(f.media.state == .Edit, "interaction observer enters editing")
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.profile && f.media.state == .Normal, "context selection clears without navigation")
+}
+
+test("members receive false editing after Escape scroll completion") {
+    let f = Fixture(mode: .members)
+    f.media.update(with: .Edit)
+    expect(f.media.memberEditing, "members editing entered")
+    f.media.genericView.mainTable?.deferred = true
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.profile, "members: stay on screen")
+    expect(f.media.state == .Normal && !f.media.doneVisible, "members: cancel parent editing")
+    f.media.genericView.mainTable?.finishScrolls()
+    expect(!f.media.memberEditing, "members: editing signal resets")
+    expect(f.media.members.returnsExecuted == 0, "members: do not execute child return")
+}
+
+for mode: PeerMediaCollectionMode in [.stories, .archiveStories] {
+    for count in [0, 2] {
+        test("parent-owned \(mode) selection \(count)") {
+            let f = Fixture(mode: mode)
+            let story = f.media.currentController as! StoryMediaController<TestContext>
+            f.media.update(with: .Edit)
+            for id in 0..<count { story.selectFromContextMenu(id) }
+            expect(story.selected != nil, "\(mode): child entered selection")
+            f.window.pressEscape()
+            expect(f.navigation.controller === f.profile, "\(mode): parent selection keeps screen")
+            expect(f.media.interactions.presentation.selectionState == nil && f.media.state == .Normal, "\(mode): clear parent state")
+            expect(story.selected == nil && !story.selectionControlsVisible && !story.actionsVisible, "\(mode): clear child state and actions once")
+            expect(f.media.stories.selected == nil && f.media.archiveStories?.selected == nil, "\(mode): no double-toggle of inactive story")
+        }
+    }
+    test("child-owned \(mode) context selection on unchanged base toolbar") {
+        let f = Fixture(mode: mode)
+        let story = f.media.currentController as! StoryMediaController<TestContext>
+        story.selectFromContextMenu(7)
+        expect(f.media.state == .Normal && f.media.interactions.presentation.selectionState == nil, "\(mode): baseline parent changeState opens menu instead of entering selection")
+        expect(f.media.editButton?.menuOpenCount == 1 && story.selected == [7], "\(mode): real context handler owns selection")
+        f.window.pressEscape()
+        expect(f.navigation.controller === f.profile, "\(mode): child-owned selection keeps screen")
+        expect(story.selected == nil && !story.actionsVisible, "\(mode): route to story cancellation")
+        f.window.pressEscape()
+        expect(f.navigation.controller === f.root, "\(mode): ordinary Escape after child selection")
+    }
+    test("child-owned \(mode) empty selection") {
+        let f = Fixture(mode: mode)
+        let story = f.media.currentController as! StoryMediaController<TestContext>
+        story.selectFromContextMenu(7)
+        story.selectFromContextMenu(7)
+        expect(story.selected == [], "\(mode): zero selected items is still selection mode")
+        f.window.pressEscape()
+        expect(story.selected == nil && f.navigation.controller === f.profile, "\(mode): cancel empty child selection")
+    }
+}
+
+for mode in PeerMediaCollectionMode.allCases {
+    test("normal Escape \(mode)") {
+        let f = Fixture(mode: mode)
+        f.window.pressEscape()
+        expect(f.navigation.controller === f.root, "\(mode): ordinary Escape preserved")
+        if let input = f.media.currentController as? InputDataController {
+            expect(input.returnsExecuted == 0, "\(mode): no indiscriminate InputData forwarding")
+        }
+    }
+}
+
+test("hidden media is not routed and profile editing stays first") {
+    let hidden = Fixture(visible: false)
+    hidden.media.stories.selectFromContextMenu(3)
+    hidden.window.pressEscape()
+    expect(hidden.navigation.controller === hidden.root, "hidden media cannot swallow profile Escape")
+    expect(hidden.media.stories.selected == [3], "hidden media not modified")
+    let editing = Fixture()
+    editing.profile.state = .Edit
+    editing.media.update(with: .Edit)
+    editing.window.pressEscape()
+    expect(editing.profile.state == .Normal && editing.profile.arguments.dismissals == 1, "profile editing cancellation preserved")
+    expect(editing.profile.manageFlow?.cancellations == 1, "profile manage flow cancelled")
+    expect(editing.media.state == .Edit, "profile editing has priority over embedded media")
+    expect(editing.navigation.controller === editing.profile, "profile edit does not navigate")
+}
+
+test("inactive story selection cannot consume another tab Escape") {
+    let f = Fixture(mode: .file)
+    f.media.stories.selectFromContextMenu(3)
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.root, "only current story owns Escape")
+    expect(f.media.stories.selected == [3], "inactive story selection untouched")
+}
+
+test("standalone media and standalone story keep original Escape behavior") {
+    let f = Fixture(embedded: false)
+    f.media.update(with: .Edit)
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.media && f.media.state == .Normal, "standalone media selection cancelled")
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.root, "standalone media normal Escape")
+    let story = StoryMediaController<TestContext>()
+    story.toggleSelection()
+    f.navigation.stack.append(story)
+    f.window.pressEscape()
+    expect(story.selected == nil && f.navigation.controller === story, "standalone story cancels itself")
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.root, "standalone story second Escape")
+}
+
+test("embedded selection cancels without changing an unfocused search panel") {
+    let f = Fixture(mode: .file)
+    f.media.update(with: .Edit)
+    f.media.genericView.searchPanelView = NSObject()
+    f.window.pressEscape()
+    expect(f.media.genericView.searchPanelView != nil, "selection-only profile route leaves search unchanged")
+    expect(f.media.state == .Normal && f.navigation.controller === f.profile, "first Escape cancels selection")
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.root, "no-selection Escape keeps original profile behavior")
+}
+
+test("standalone media retains search-before-selection priority") {
+    let f = Fixture(mode: .file, embedded: false)
+    f.media.update(with: .Edit)
+    f.media.genericView.searchPanelView = NSObject()
+    f.window.pressEscape()
+    expect(f.media.genericView.searchPanelView == nil, "standalone search closed first")
+    expect(f.media.state == .Edit && f.navigation.controller === f.media, "standalone search priority unchanged")
+    f.window.pressEscape()
+    expect(f.media.state == .Normal && f.navigation.controller === f.media, "standalone second Escape clears selection")
+}
+
+test("focused search keeps modal-priority Escape behavior") {
+    let f = Fixture(mode: .file)
+    f.media.genericView.searchPanelView = NSObject()
+    let search = SearchView(window: f.window)
+    search.onCancel = { f.media.genericView.searchPanelView = nil }
+    search.registerEscape()
+    let editor = NSTextView()
+    f.window.firstResponder = editor
+    f.window.pressEscape()
+    expect(search.query.isEmpty && search.state == .None, "search clears and cancels first")
+    expect(f.navigation.controller === f.profile, "focused search does not navigate")
+    expect(f.window.firstResponder === editor && f.window.responderChanges == 0, "editable focus not forcibly replaced")
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.root, "normal Escape after search cancellation")
+}
+
+test("focused search remains ahead of embedded selection") {
+    let f = Fixture(mode: .file)
+    f.media.update(with: .Edit)
+    f.media.genericView.searchPanelView = NSObject()
+    let search = SearchView(window: f.window)
+    search.onCancel = { f.media.genericView.searchPanelView = nil }
+    search.registerEscape()
+    f.window.pressEscape()
+    expect(search.state == .None && f.media.state == .Edit, "modal-priority search keeps existing first Escape")
+    expect(f.navigation.controller === f.profile, "focused search keeps screen")
+    f.window.pressEscape()
+    expect(f.media.state == .Normal && f.navigation.controller === f.profile, "selection Escape after focused search cancels")
+}
+
+test("unfocused search without selection keeps baseline profile navigation") {
+    let f = Fixture(mode: .photoOrVideo)
+    f.media.genericView.searchPanelView = NSObject()
+    f.window.pressEscape()
+    expect(f.media.genericView.searchPanelView != nil, "no unrelated search-only mutation")
+    expect(f.navigation.controller === f.root, "outside selection Escape still navigates")
+}
+
+test("editable and noneditable responders do not steal selection Escape") {
+    for editable in [false, true] {
+        let f = Fixture()
+        let editor = NSTextView()
+        editor.isEditable = editable
+        let candidate = NSResponder()
+        f.window.firstResponder = editor
+        f.window.set(responder: { candidate }, with: f.profile, priority: .high)
+        f.media.update(with: .Edit)
+        f.window.pressEscape()
+        expect(f.media.state == .Normal && f.navigation.controller === f.profile, "focus \(editable): cancellation routed through window")
+        expect(f.window.firstResponder === editor && f.window.responderChanges == 0, "focus \(editable): Escape does not change responder")
+    }
+}
+
+test("higher-priority modal and invokeNext are preserved") {
+    for result: KeyHandlerResult in [.invoked, .invokeNext, .rejected] {
+        let f = Fixture()
+        let modal = NSObject()
+        f.media.update(with: .Edit)
+        f.window.set(escape: { _ in result }, with: modal, priority: .modal)
+        f.window.pressEscape()
+        expect(f.navigation.controller === f.profile, "modal result: no navigation")
+        expect(f.media.state == (result == .rejected ? .Normal : .Edit), "modal result: selection touched only on rejection")
+        expect(f.window.deliveredEvents == (result == .invokeNext ? 1 : 0), "modal result: invokeNext reaches system")
+    }
+}
+
+test("sheet and nonkey window keep event dispatch gates") {
+    for sheet in [false, true] {
+        let f = Fixture()
+        f.media.update(with: .Edit)
+        if sheet { f.window.sheets = [1] } else { f.window.isKeyWindow = false }
+        f.window.pressEscape()
+        expect(f.media.state == .Edit && f.navigation.controller === f.profile, "dispatch gate prevents navigation and cancellation")
+    }
+}
+
+test("navigation lock and topmost nested controller stay authoritative") {
+    let f = Fixture()
+    f.media.update(with: .Edit)
+    f.navigation.isLocked = true
+    f.window.pressEscape()
+    expect(f.media.state == .Edit && f.navigation.controller === f.profile, "locked navigation consumes without mutation")
+    f.navigation.isLocked = false
+    let pushed = ViewController()
+    f.navigation.stack.append(pushed)
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.profile && pushed.removalCount == 1, "topmost child pops, profile below untouched")
+    expect(f.media.state == .Edit, "nested screen does not cancel underlying selection")
+    f.window.pressEscape()
+    expect(f.media.state == .Normal && f.navigation.controller === f.profile, "selection cancelled only after returning to profile")
+}
+
+test("navigation invokeNext and root fallback preserve status") {
+    let f = Fixture()
+    f.navigation.stack.append(ResultController(.invokeNext))
+    f.window.pressEscape()
+    expect(f.navigation.stackCount == 3 && f.window.deliveredEvents == 1, "controller invokeNext does not pop")
+    f.navigation.stack = [f.root]
+    expect(f.navigation.escapeKeyAction() == .rejected, "root rejection preserved")
+}
+
+test("navigation back veto and disappearance registration are preserved") {
+    let f = Fixture()
+    f.profile.navigationBackAllowed = false
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.profile, "back veto preserved")
+    f.navigation.viewWillDisappear(false)
+    f.media.update(with: .Edit)
+    f.window.pressEscape()
+    expect(f.media.state == .Edit && f.window.deliveredEvents == 1, "removed navigation handler cannot mutate hidden selection")
+}
+
+test("no active mode and nil current child reject safely") {
+    let f = Fixture()
+    f.media.mode = nil
+    f.media.currentController = nil
+    f.media.genericView.searchPanelView = NSObject()
+    f.window.pressEscape()
+    expect(f.navigation.controller === f.root, "missing active mode falls back")
+}
+
+for failure in failures { print("ASSERTION FAILED: \(failure)") }
+print("SUMMARY scenarios=\(scenarios) assertions=\(assertions) failures=\(failures.count)")
+exit(failures.isEmpty ? 0 : 1)

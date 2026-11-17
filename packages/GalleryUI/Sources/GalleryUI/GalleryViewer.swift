@@ -735,7 +735,11 @@ public class GalleryViewer: NSResponder {
                 let signal:Signal<(MessageHistoryView, ViewUpdateType, InitialMessageHistoryData?), NoError>
                 switch mode {
                 case .history, .preview:
-                    signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
+                    if chatLocation.threadId != nil, chatLocation.peerId == message.id.peerId {
+                        signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(context.chatLocationInput(for: chatLocation, contextHolder: contextHolder), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
+                    } else {
+                        signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
+                    }
                 case .thread:
                     if case let .thread(data) = chatLocation {
                         if case let .thread(data) = chatLocation, data.effectiveTopId == message.id {
@@ -1171,9 +1175,11 @@ public class GalleryViewer: NSResponder {
                     }, itemImage: MenuAnimation.menu_show_message.value))
                 }
                 if chatMode == .history && message.id.peerId != repliesPeerId && self.type == .history {
-                    items.append(ContextMenuItem(strings().galleryContextShowGallery, handler: { [weak self] in
-                        self?.showSharedMedia()
-                    }, itemImage: MenuAnimation.menu_shared_media.value))
+                    if chatLocation.threadId == nil {
+                        items.append(ContextMenuItem(strings().galleryContextShowGallery, handler: { [weak self] in
+                            self?.showSharedMedia()
+                        }, itemImage: MenuAnimation.menu_shared_media.value))
+                    }
                     
                     if GalleryHooks.shared.canSendHere(context, message) {
                         if let _ = message.anyMedia as? TelegramMediaImage {
