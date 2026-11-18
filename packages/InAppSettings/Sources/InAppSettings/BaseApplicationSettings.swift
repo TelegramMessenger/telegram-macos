@@ -235,8 +235,12 @@ public class BaseApplicationSettings: Codable, Equatable {
         return self.translationLanguage ?? Translate.normalizeLanguageCode(appLanguage.replacingOccurrences(of: "-raw", with: ""))
     }
 
+    public var canonicalDoNotTranslate: Set<String> {
+        return Set(self.doNotTranslate.map(Translate.canonicalLanguageCode))
+    }
+
     public func effectiveDoNotTranslate(appLanguage: String) -> Set<String> {
-        return self.doNotTranslate.union([self.translationTargetLanguage(appLanguage: appLanguage)])
+        return self.canonicalDoNotTranslate.union([self.translationTargetLanguage(appLanguage: appLanguage)])
     }
 
     public static func ==(lhs: BaseApplicationSettings, rhs: BaseApplicationSettings) -> Bool {

@@ -36,6 +36,9 @@ public struct Translate {
 
     public static func canonicalLanguageCode(_ code: String) -> String {
         let components = code.replacingOccurrences(of: "_", with: "-").lowercased().components(separatedBy: "-")
+        if components == ["nb"] {
+            return "no"
+        }
         guard components.first == "zh" else {
             return code
         }

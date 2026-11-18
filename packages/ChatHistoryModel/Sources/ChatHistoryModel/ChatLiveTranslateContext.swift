@@ -72,7 +72,7 @@ public struct ChatTranslationState: Codable {
 
     func resolved(settings: BaseApplicationSettings, appLanguage: String) -> ChatTranslationState? {
         let fromLang = Translate.canonicalLanguageCode(self.fromLang)
-        guard settings.translateChats, !settings.doNotTranslate.map(Translate.canonicalLanguageCode).contains(fromLang) else {
+        guard settings.translateChats, !settings.canonicalDoNotTranslate.contains(fromLang) else {
             return nil
         }
         let targetLanguage = Translate.canonicalLanguageCode(self.toLang ?? settings.translationTargetLanguage(appLanguage: appLanguage))

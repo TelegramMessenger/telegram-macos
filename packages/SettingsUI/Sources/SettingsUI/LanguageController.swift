@@ -336,11 +336,12 @@ public func LanguageController(_ context: any AccountContextProtocol, focusOnIte
         SettingsNavigationHooks.shared.showPremiumBoarding(context, .translations, true, context.window, nil)
     }, doNotTranslate: { code in
         actionsDisposable.add(updateBaseAppSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
-            var current = settings.doNotTranslate
-            if current.contains(code) {
-                current.remove(code)
+            var current = settings.canonicalDoNotTranslate
+            let canonical = Translate.canonicalLanguageCode(code)
+            if current.contains(canonical) {
+                current.remove(canonical)
             } else {
-                current.insert(code)
+                current.insert(canonical)
             }
             return settings.withUpdatedDoNotTranslate(current)
         }).start())
