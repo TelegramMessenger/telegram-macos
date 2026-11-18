@@ -681,10 +681,20 @@ public final class L10n {
   public static var appearanceSettingsBubblesMode: String  { return L10n.tr("Localizable", "Appearance.Settings.BubblesMode") }
   /// Dark Mode
   public static var appearanceSettingsDarkMode: String  { return L10n.tr("Localizable", "Appearance.Settings.DarkMode") }
+  /// Glass Bubbles
+  public static var appearanceSettingsGlassBubbles: String  { return L10n.tr("Localizable", "Appearance.Settings.GlassBubbles") }
   /// Show Less
   public static var appearanceSettingsShowLess: String  { return L10n.tr("Localizable", "Appearance.Settings.ShowLess") }
   /// Show More
   public static var appearanceSettingsShowMore: String  { return L10n.tr("Localizable", "Appearance.Settings.ShowMore") }
+  /// Lets your chat wallpaper show through message bubbles. Works with photo, pattern and gradient wallpapers, not with a plain color.
+  public static var appearanceSettingsGlassBubblesInfo: String  { return L10n.tr("Localizable", "Appearance.Settings.GlassBubbles.Info") }
+  /// Glass Bubbles are off while Power Saving is on.
+  public static var appearanceSettingsGlassBubblesPowerSaving: String  { return L10n.tr("Localizable", "Appearance.Settings.GlassBubbles.PowerSaving") }
+  /// Turn on Liquid Glass in Power Saving first.
+  public static var appearanceSettingsGlassBubblesRequiresLiquidGlass: String  { return L10n.tr("Localizable", "Appearance.Settings.GlassBubbles.RequiresLiquidGlass") }
+  /// Choose a photo, pattern or gradient wallpaper in Chat Wallpaper first.
+  public static var appearanceSettingsGlassBubblesRequiresWallpaper: String  { return L10n.tr("Localizable", "Appearance.Settings.GlassBubbles.RequiresWallpaper") }
   /// Accent
   public static var appearanceThemeAccent: String  { return L10n.tr("Localizable", "Appearance.Theme.Accent") }
   /// Edit
