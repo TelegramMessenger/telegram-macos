@@ -543,8 +543,8 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
             self?.prepareReveal?()
         }
 
-        showMore.set(handler: { [weak self] _ in
-            AppMenu.keepOpenOnNextMouseUp()
+        showMore.set(handler: { [weak self] control in
+            AppMenu.keepOpenOnNextMouseUp(for: control)
             self?.prepareReveal?()
         }, for: .Down)
 
