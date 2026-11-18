@@ -199,7 +199,7 @@ void TGDisableLayerActions(CALayer *layer) {
                 }];
             }
 
-            NSString *domainPattern = @"(?<![@.%/=,?-])(?<![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])(?!(?:this|self|ctx|super|cls|window|document|global|module|exports|props|state|config|data|obj|args|req|res|err|opts|options|e)\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-|\\.[[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]))[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]](?:(?:[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-)*[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])?(?:\\.[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]](?:(?:[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-)*[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])?)*\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-|\\.[[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])(?::[0-9]{1,5}(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]))?(?:[/?#][^\\s　-ヿ㐀-鿿＀-￯]*[^\\s　-ヿ㐀-鿿＀-￯.,;:!?)\\]}\"\\'>”’»…])?";
+            NSString *domainPattern = @"(?<![@.%/=,?-])(?<![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])(?!(?:this|self|ctx|super|cls|window|document|global|module|exports|props|state|config|data|obj|args|req|res|err|opts|options|e)\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-|\\.[[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]))[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]](?:(?:[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-)*[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])?(?:\\.[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]](?:(?:[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-)*[[\\p{Ll}\\p{Lo}\\p{N}\\p{M}]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])?)*\\.(?:dev|store|cloud|blog|live|gg|by|kz)(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]|-|\\.[[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]])(?::[0-9]{1,5}(?![[\\p{L}\\p{N}\\p{M}_]&&[^\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]]))?(?:[/?#][^\\s　-ヿ㐀-鿿＀-￯<>\"“”‘’«»]*[^\\s　-ヿ㐀-鿿＀-￯.,;:!?)\\]}\"\\'>”’»…])?";
             NSRegularExpression *domainRegex = [NSRegularExpression regularExpressionWithPattern:domainPattern options:0 error:&error];
             if (error) {
                 NSLog(@"Error creating regex: %@", error.localizedDescription);
@@ -212,20 +212,22 @@ void TGDisableLayerActions(CALayer *layer) {
                         // The scan stops at the end of the preceding URL: whitespace, an unmatched closing bracket or CJK / full-width text (https://a.com，foo.dev).
                         NSMutableCharacterSet *urlEnd = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
                         [urlEnd addCharactersInString:@"）"];
-                        [urlEnd addCharactersInRange:NSMakeRange(0x2E80, 0x9FFF - 0x2E80 + 1)];
-                        [urlEnd addCharactersInRange:NSMakeRange(0xAC00, 0xD7AF - 0xAC00 + 1)];
+                        // CJK punctuation ends the URL, CJK letters inside a query (slack://open?x=猫&foo.dev) do not.
+                        [urlEnd addCharactersInRange:NSMakeRange(0x3000, 0x303F - 0x3000 + 1)];
                         [urlEnd addCharactersInRange:NSMakeRange(0xFF00, 0xFFEF - 0xFF00 + 1)];
                         NSRange tokenStart = [text rangeOfCharacterFromSet:urlEnd options:NSBackwardsSearch range:NSMakeRange(0, range.location)];
                         NSUInteger tokenFrom = tokenStart.location == NSNotFound ? 0 : NSMaxRange(tokenStart);
                         NSRange scheme = [text rangeOfString:@"://" options:NSBackwardsSearch range:NSMakeRange(tokenFrom, range.location - tokenFrom)];
                         if (scheme.location != NSNotFound) {
-                            // A ")" with no "(" before it in that URL ends it; brackets inside the query stay part of it.
+                            // A ")" with no "(" before it ends the URL only when the URL itself is wrapped in brackets: (slack://x?a)&foo.dev.
+                            // Otherwise it is part of the query (slack://x?a)&foo.dev stays plain).
+                            BOOL wrapped = [text rangeOfString:@"(" options:0 range:NSMakeRange(tokenFrom, scheme.location - tokenFrom)].location != NSNotFound;
                             NSInteger depth = 0;
                             BOOL urlEnded = NO;
                             for (NSUInteger k = NSMaxRange(scheme); k < range.location && !urlEnded; k++) {
                                 unichar c = [text characterAtIndex:k];
                                 if (c == '(') depth++;
-                                else if (c == ')' && depth-- == 0) urlEnded = YES;
+                                else if (c == ')' && depth-- == 0 && wrapped) urlEnded = YES;
                             }
                             if (!urlEnded) {
                                 return;
