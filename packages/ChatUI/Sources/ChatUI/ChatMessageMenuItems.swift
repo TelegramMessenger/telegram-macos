@@ -820,7 +820,7 @@ public func chatMenuItems(for message: Message, entry: ChatHistoryEntry?, textLa
             }, itemImage: MenuAnimation.menu_restrict.value))
         }
 
-        if data.message.isScheduledMessage, let peer = data.peer, !isService  {
+        if data.message.id.namespace == Namespaces.Message.ScheduledCloud, let peer = data.peer, !isService  {
             firstBlock.append(ContextMenuItem(strings().chatContextScheduledSendNow, handler: {
                 if data.message.pendingProcessingAttribute != nil {
                     verifyAlert(for: context.window, header: strings().chatVideoProccessingSendNowHeader, information: strings().chatVideoProccessingSendNowInfo, ok: strings().chatVideoProccessingSendNowOK, successHandler: { _ in
