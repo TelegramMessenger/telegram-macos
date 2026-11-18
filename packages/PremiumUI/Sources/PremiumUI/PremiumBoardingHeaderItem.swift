@@ -160,15 +160,16 @@ public final class PremiumBoardingHeaderItem : GeneralRowItem {
         
         self.infoLayout = .init(info, alignment: .center)
         self.infoLayout.interactions = LinkHooks.shared.globalLinkExecutor()
-        super.init(initialSize, stableId: stableId)
+        super.init(initialSize, stableId: stableId, viewType: viewType)
         _ = makeSize(initialSize.width)
     }
     
     public override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
         _ = super.makeSize(width, oldWidth: oldWidth)
         
-        titleLayout.measure(width: width - 40)
-        infoLayout.measure(width: width - 40)
+        let textWidth = blockWidth - viewType.innerInset.left - viewType.innerInset.right
+        titleLayout.measure(width: textWidth)
+        infoLayout.measure(width: textWidth)
 
         return true
     }
