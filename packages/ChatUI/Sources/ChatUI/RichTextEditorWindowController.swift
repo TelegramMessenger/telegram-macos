@@ -775,7 +775,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
         performSend(false, nil)
     }
     if let sendMenuItems {
-        coordinator.setSendContextMenu({ [weak coordinator] in
+        let menuItems: () -> [ContextMenuItem]? = { [weak coordinator] in
             guard let coordinator, !isClosed, !didSend else { return nil }
             let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
             let analyticsPresentation = origin.beginPresentation()
@@ -796,7 +796,23 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
                 guard action.takeIfCurrent() else { return }
                 performSend(silent, schedule)
             })
-        })
+        }
+        coordinator.setSendContextMenu(menuItems)
+        controller.returnKeyInvocation = { [weak coordinator] _, event in
+            guard ChatSilentSendShortcut.matches(event) else {
+                return .invokeEvent
+            }
+            if let input = context.window.firstResponder as? NSTextInputClient, input.hasMarkedText() {
+                return .invokeEvent
+            }
+            guard let coordinator, let responder = context.window.firstResponder as? NSView, responder.isDescendant(of: coordinator.editor) else {
+                return .invokeEvent
+            }
+            if !event.isARepeat {
+                ChatSilentSendShortcut.invoke(in: menuItems())
+            }
+            return .nothing
+        }
     }
 
     return modalController

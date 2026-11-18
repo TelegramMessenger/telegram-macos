@@ -172,7 +172,7 @@ open class AppMenuRowItem : AppMenuBasicItem {
         
         self.text = TextViewLayout(attr, maximumNumberOfLines: item.removeTail ? 1 : .max)
         
-        let keyEquivalent = item.keyEquivalentValue.rawValue
+        let keyEquivalent = item.returnKeyEquivalentText ?? item.keyEquivalentValue.rawValue
         if keyEquivalent.isEmpty {
             keyEquivalentText = nil
         } else {
