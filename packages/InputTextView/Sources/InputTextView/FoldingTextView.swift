@@ -494,17 +494,23 @@ public class FoldingTextLayout {
         
         let attributedString = NSMutableAttributedString()
         
-        var offset: Int = 0
-        for block in blocks {
-            let current = block.text.selectedRange.range
-            if current.location != NSNotFound {
-                if range.location == NSNotFound {
-                    range.location = offset + current.location
-                }
-                range.length += current.length
+        var cursor: Int = 0
+        for (block, blockRange) in zip(blocks, blockRanges) {
+            if blockRange.location > cursor {
+                attributedString.append(self.attributedString.attributedSubstring(from: NSMakeRange(cursor, blockRange.location - cursor)))
             }
-            offset += block.text.string.length
+            cursor = NSMaxRange(blockRange)
+            let current = block.text.selectedRange.range
+            if current.location != NSNotFound, current.length > 0 {
+                if range.location == NSNotFound {
+                    range.location = attributedString.length + current.location
+                }
+                range.length = attributedString.length + NSMaxRange(current) - range.location
+            }
             attributedString.append(block.text.attributedString)
+        }
+        if cursor < self.attributedString.length {
+            attributedString.append(self.attributedString.attributedSubstring(from: NSMakeRange(cursor, self.attributedString.length - cursor)))
         }
         let merged = TextViewLayout(attributedString)
         merged.lines = lines
@@ -1391,7 +1397,7 @@ public class FoldingTextView : View {
                 let point = view.convert(point, from: self)
                 if let layout = block.currentLayout?.text {
                     let index = layout.findIndex(location: point)
-                    return index >= 0 && point.x < layout.lines[index].frame.maxX
+                    return index >= 0 && !layout.isOutsideText(point, line: index)
                 }
             }
         }

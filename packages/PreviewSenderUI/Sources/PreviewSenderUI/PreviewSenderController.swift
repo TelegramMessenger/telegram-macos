@@ -215,7 +215,7 @@ fileprivate class PreviewSenderView : Control {
         
       
         closeButton.set(handler: { [weak self] _ in
-            self?.controller?.closeModal()
+            self?.controller?.close()
         }, for: .Click)
         
         headerView.layer?.masksToBounds = false
@@ -793,8 +793,8 @@ private final class SenderPreviewArguments {
     let edit:(URL)->Void
     let paint: (URL)->Void
     let delete:(URL)->Void
-    let reorder:(Int, Int) -> Void
-    init(context: any AccountContextProtocol, theme: TelegramPresentationTheme, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete: @escaping(URL)->Void, reorder: @escaping(Int, Int) -> Void) {
+    let reorder:(URL, URL) -> Void
+    init(context: any AccountContextProtocol, theme: TelegramPresentationTheme, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete: @escaping(URL)->Void, reorder: @escaping(URL, URL) -> Void) {
         self.context = context
         self.theme = theme
         self.edit = edit
@@ -1023,7 +1023,8 @@ private func previewMediaEntries( _ state: PreviewState) -> [PreviewEntry] {
             }
             let collages = messages.chunks(10)
             for collage in collages {
-                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: state.urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
+                let urls = collage.map { state.urls[Int($0.id.id)] }
+                entries.append(.mediaGroup(index: index, sectionId: sectionId, urls: urls, messages: collage, isSpoiler: state.currentState.isSpoiler, payAmount: state.currentState.payAmount, renderingPreviews: state.renderingPreviews))
                 index += 1
             }
         } else {
@@ -1462,6 +1463,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
     
     private let inputSwapDisposable = MetaDisposable()
     private var temporaryInputState: ChatTextInputState?
+    private var initialCaptionText = ""
     private var contextQueryState: (ChatPresentationInputQuery?, Disposable)?
     private let inputContextHelper: InputContextHelper
     private let inputInteraction:PreviewContextInteraction = PreviewContextInteraction()
@@ -1556,8 +1558,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
         guard !pendingActions.isClosed, !sent else { return }
         
         let currentText = self.genericView.textView.string()
-        let basicText = self.temporaryInputState?.inputText ?? ""
-        if (self.temporaryInputState == nil && !currentText.isEmpty) || (basicText != currentText) {
+        if self.initialCaptionText != currentText {
             analyticsMediaJourney?.step(.openConfirmation)
             let childAction = PreviewSenderChildAction(context: analyticsContext ?? Analytics.shared.unresolvedContext(), isCurrent: capturePendingAction())
             verifyAlert_button(for: context.window, header: strings().mediaSenderDiscardChangesHeader, information: strings().mediaSenderDiscardChangesText, ok: strings().mediaSenderDiscardChangesOK, successHandler: { [weak self] _ in
@@ -1844,7 +1845,7 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 
                 let rect = NSMakeRect(0, 0, w_width, 40 + 20 + aboveLayout.layoutSize.height + 4)
                 
-                let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+                let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
                 panel._canBecomeMain = false
                 panel._canBecomeKey = false
                 panel.level = .popUpMenu
@@ -1979,6 +1980,8 @@ public class PreviewSenderController: ModalViewController, Notifable {
             })
         }
         
+        self.initialCaptionText = self.genericView.textView.string()
+
         PreviewSenderUIHooks.shared.updateEmojies(emoji, chatInteraction.peerId, { [weak self] emoji, fromRect in
             _ = self?.contextChatInteraction.appendText(.initialize(string: emoji))
             _ = self?.window?.makeFirstResponder(self?.genericView.textView.inputView)
@@ -2064,11 +2067,11 @@ public class PreviewSenderController: ModalViewController, Notifable {
             }
             self.lockInteractiveChanges = false
         }, reorder: { [weak self] from, to in
-            guard let `self` = self else { return }
+            guard let `self` = self, let fromIndex = self.urls.firstIndex(of: from), let toIndex = self.urls.firstIndex(of: to) else { return }
             _ = removeTransitionAnimation.swap(true)
             self.lockInteractiveChanges = true
             let previous = self.urls
-            self.urls.move(at: from, to: to)
+            self.urls.move(at: fromIndex, to: toIndex)
             if previous != self.urls {
                 self.analyticsMediaJourney?.step(.reorderMedia)
             }
@@ -2275,8 +2278,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
             
 
             if self.genericView.tableView.count > 1 {
-                self.genericView.tableView.resortController = TableResortController(resortRange: NSMakeRange(0, self.genericView.tableView.count), startTimeout: 0.0, start: { _ in }, resort: { _ in }, complete: { from, to in
-                    arguments.reorder(from, to)
+                self.genericView.tableView.resortController = TableResortController(resortRange: NSMakeRange(0, self.genericView.tableView.count), startTimeout: 0.0, start: { _ in }, resort: { _ in }, complete: { [weak self] from, to in
+                    guard let self, self.urls.indices.contains(from), self.urls.indices.contains(to) else { return }
+                    arguments.reorder(self.urls[from], self.urls[to])
                 })
             } else {
                 self.genericView.tableView.resortController = nil
@@ -2341,19 +2345,20 @@ public class PreviewSenderController: ModalViewController, Notifable {
             
             let slowMode = self.chatInteraction.presentation.slowMode
             let inputState = self.genericView.textView.interactions.presentation
-            
+            let state = stateValue.with { $0.currentState }
+            let medias = stateValue.with { $0.medias }
+            let canHaveCaption = medias.count == 1 ? medias[0].canHaveCaption : state.isCollage && !medias.isEmpty
+
             if let slowMode = slowMode, slowMode.hasLocked {
                 self.analyticsMediaJourney?.submissionBlocked(.slowMode)
                 self.genericView.textView.shake()
-            } else if self.inputPlaceholder != strings().previewSenderCaptionPlaceholder && slowMode != nil && inputState.inputText.length > 0 {
+            } else if (!canHaveCaption || medias.count > 10) && slowMode != nil && inputState.inputText.length > 0 {
                 self.analyticsMediaJourney?.submissionBlocked(.slowMode)
                 tooltip(for: self.genericView.sendButton, text: strings().slowModeMultipleError)
                 self.genericView.textView.selectAll()
                 self.genericView.textView.shake()
             } else {
                 let peer = self.chatInteraction.peer
-                let state = stateValue.with { $0.currentState }
-                let medias = stateValue.with { $0.medias }
                 if medias.contains(where: isPreviewPlaceholder) {
                     self.analyticsMediaJourney?.submissionBlocked(.preparation)
                     return
@@ -2388,11 +2393,9 @@ public class PreviewSenderController: ModalViewController, Notifable {
                 }
                 var additionalMessage: ChatTextInputState? = nil
                 
-                if (medias.count > 1  || (medias.count == 1 && (!medias[0].canHaveCaption))) && !input.inputText.isEmpty  {
-                    if !state.isCollage {
-                        additionalMessage = input
-                        input = ChatTextInputState()
-                    }
+                if !canHaveCaption && !state.isCollage && !medias.isEmpty && !input.inputText.isEmpty {
+                    additionalMessage = input
+                    input = ChatTextInputState()
                 }
                 if additionalMessage != nil, let text = permissionText(from: peer, for: .banSendText, cachedData: chatInteraction.presentation.cachedData) {
                     permissions.insert((text, -1), at: 0)

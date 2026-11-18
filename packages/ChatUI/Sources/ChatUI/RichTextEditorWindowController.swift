@@ -88,10 +88,7 @@ private func richTextSendMenuItems(chatInteraction: ChatInteraction, analyticsCo
 }
 
 func richTextThreadReplySubject(chatInteraction: ChatInteraction) -> EngineMessageReplySubject? {
-    guard let threadId = chatInteraction.chatLocation.threadId, !chatInteraction.isMonoforum, threadId != Message.newTopicThreadId else {
-        return nil
-    }
-    return .init(messageId: MessageId(peerId: chatInteraction.peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId)), quote: nil, innerSubject: nil)
+    return makeThreadReplySubject(peerId: chatInteraction.peerId, threadId: chatInteraction.chatLocation.threadId, isMonoforum: chatInteraction.isMonoforum)
 }
 
 private func richTextEnqueue(chatInteraction: ChatInteraction, text: String, attributes: [MessageAttribute], analyticsContext: AnalyticsContext) {
@@ -588,6 +585,9 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
     // No title, no bottom button, no close header — the floating glass toolbar owns close / send / undo.
     let modalController = RichEditorModalController(controller, modalInteractions: nil, size: NSMakeSize(560, 500))
     modalController.analyticsContext = analyticsContext
+    modalController.compositionKeyHandler = { [weak coordinator] event in
+        coordinator?.editor.handleKeyDuringComposition(event) ?? false
+    }
 
     // Re-frame the pinned floating toolbar to the editor's (dynamic) width on every resize, and
     // re-center the premium toast under it — autoresizing inside the table view isn't reliable.
@@ -963,9 +963,10 @@ public final class RichTextEditorCoordinator {
                                                                  context: context, interaction: mediaInteraction)
         }
         // Slider — the chat's paging InstantPageV2SlideshowView, built from the group's cached media.
-        editor.registerMediaGroupSliderProvider { mediaIDs, width in
+        editor.registerMediaGroupSliderProvider { mediaIDs, spoilers, width, view in
             RichTextEditorCoordinator.makeSliderView(mediaIDs: mediaIDs, width: width,
-                                                     media: { mediaCache.media[$0] }, context: context)
+                                                     media: { mediaCache.media[$0] }, context: context,
+                                                     spoilers: spoilers, view: view as? InstantPageV2SlideshowView)
         }
         // On-media glass overlay controls: ••• per tile, + add, collage⇄slider toggle.
         editor.registerMediaControlsProvider { [weak editor] ctx in
@@ -1628,7 +1629,7 @@ public final class RichTextEditorCoordinator {
 
     /// Builds the paging slider view (the chat's `InstantPageV2SlideshowView`) for a group's media, sized
     /// to the tallest fitted media height. Mirrors `InstantPageV2View.reconcileSlideshows`'s config closure.
-    public static func makeSliderView(mediaIDs: [String], width: CGFloat, media: @escaping (String) -> Media?, context: any AccountContextProtocol) -> NSView? {
+    public static func makeSliderView(mediaIDs: [String], width: CGFloat, media: @escaping (String) -> Media?, context: any AccountContextProtocol, spoilers: [Bool] = [], view existingView: InstantPageV2SlideshowView? = nil) -> NSView? {
         // InstantPageMedia requires a (non-optional) webpage; the slideshow view only reads `.media`/`.index`,
         // so a throwaway pending webpage is fine.
         let webpage = TelegramMediaWebpage(webpageId: MediaId(namespace: Namespaces.Media.LocalWebpage, id: 0), content: .Pending(0, nil))
@@ -1646,14 +1647,16 @@ public final class RichTextEditorCoordinator {
         guard !medias.isEmpty else { return nil }
         if height <= 0 { height = 240 }
         let size = NSMakeSize(width, height)
-        let view = InstantPageV2SlideshowView(frame: CGRect(origin: .zero, size: size))
+        let view = existingView ?? InstantPageV2SlideshowView(frame: CGRect(origin: .zero, size: size))
+        view.setFrameSize(size)
         view.cornerRadius = 0
-        view.configure(medias: medias, context: context, config: { media, _, _, _ in
+        view.configure(medias: medias, context: context, config: { media, _, index, _ in
             let parent = Message(media, stableId: UInt32(truncatingIfNeeded: arc4random()),
                                  messageId: MessageId(peerId: PeerId(0), namespace: Namespaces.Message.Local, id: 0))
             let presentation = ChatMediaPresentation.make(for: parent, account: context.account, renderType: .bubble, theme: theme)
             let parameters = ChatMediaGalleryParameters(showMedia: { _ in }, showMessage: { _ in }, isWebpage: true,
                                                         presentation: presentation, media: media, automaticDownload: true)
+            parameters.forceSpoiler = spoilers.indices.contains(index) && spoilers[index]
             return (parent, parameters)
         }, size: size)
         return view
@@ -2747,6 +2750,13 @@ private final class RichEditorModalController: InputDataModalController {
     /// Fired AFTER a resize (once the table width is final) so the pinned floating toolbar can re-frame
     /// itself to the new width — autoresizing inside the table view doesn't do this reliably.
     var onResize: (() -> Void)?
+    var compositionKeyHandler: ((NSEvent) -> Bool)?
+    override func escapeKeyAction() -> KeyHandlerResult {
+        if let event = NSApp.currentEvent, event.type == .keyDown, compositionKeyHandler?(event) == true {
+            return .invoked
+        }
+        return super.escapeKeyAction()
+    }
     private func applyWidth(_ available: CGFloat) {
         let margin: CGFloat = 32
         let proportional = floor(available * 0.72)
