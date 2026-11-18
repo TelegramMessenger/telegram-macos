@@ -1113,7 +1113,7 @@
         
         
         window?.set(handler: { [weak self] _ -> KeyHandlerResult in
-            guard let `self` = self, !self.hasSearch else {
+            guard let `self` = self, self.hasSearch else {
                 return .rejected
             }
             if self.mode == .members {
