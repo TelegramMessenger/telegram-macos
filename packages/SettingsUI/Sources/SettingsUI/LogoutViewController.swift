@@ -1,3 +1,4 @@
+import TelegramMediaUtils
 import Cocoa
 import TGUIKit
 import TelegramCore
@@ -137,6 +138,7 @@ public func LogoutViewController<Context: AccountContextProtocol>(context: Conte
         logoutConfirmationDisposable.set((LogoutHooks.shared.logoutConfirmationText(context) |> deliverOnMainQueue).start(next: { text in
             verifyAlert_button(for: context.window, header: strings().accountConfirmLogout, information: text, successHandler: { _ in
                 closeAllModals()
+                DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: context.account.postbox.mediaBox.basePath)
                 _ = logoutFromAccount(id: context.account.id, accountManager: context.sharedContext.accountManager, alreadyLoggedOutRemotely: false).start()
                 FastSettings.clear_uuid(context.account.id.int64)
             })

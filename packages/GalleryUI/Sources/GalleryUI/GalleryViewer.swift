@@ -1563,17 +1563,22 @@ public class GalleryViewer: NSResponder {
                             })).mutableCopy() as! NSMutableAttributedString
 
                             let layout = TextViewLayout(attributedText, alignment: .center, lineSpacing: 5.0, alwaysStaticItems: true)
-                            layout.interactions = TextViewInteractions(processURL: { [weak strongSelf] url  in
-                                 if let file = file {
-                                    showInFinder(file, account: context.account)
-                                    strongSelf?.close(false)
-                                }
-                            })
                             layout.measure(width: 160)
 
                             if let file = file {
 
-                                _ = (copyToDownloads(file, postbox: context.account.postbox, saveAnyway: true) |> map { _ in } |> deliverOnMainQueue |> take(1) |> then (showSaveModal(for: strongSelf.window, context: context, animation: LocalAnimatedSticker.success_saved, shouldBlur: false, text: layout, delay: 3.0))).start()
+                                let window = strongSelf.window
+                                _ = (copyToDownloads(file, postbox: context.account.postbox, saveAnyway: true) |> take(1) |> deliverOnMainQueue |> mapToSignal { saved -> Signal<Void, NoError> in
+                                    guard let saved = saved else {
+                                        showModalText(for: window, text: strings().unknownError)
+                                        return .complete()
+                                    }
+                                    layout.interactions = TextViewInteractions(processURL: { [weak strongSelf] _ in
+                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: saved)])
+                                        strongSelf?.close(false)
+                                    })
+                                    return showSaveModal(for: window, context: context, animation: LocalAnimatedSticker.success_saved, shouldBlur: false, text: layout, delay: 3.0)
+                                }).start()
                             } else {
                                 savePanel(file: path.nsstring.deletingPathExtension, ext: path.nsstring.pathExtension, for: strongSelf.window)
                             }

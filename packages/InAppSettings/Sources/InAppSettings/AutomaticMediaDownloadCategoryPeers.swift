@@ -134,6 +134,12 @@ public struct AutomaticMediaDownloadCategories: Codable, Equatable {
 }
 
 public struct AutomaticMediaDownloadSettings: Codable, Equatable {
+    public static let temporaryDownloadFolder = ":temp:"
+
+    public var usesTemporaryDownloadFolder: Bool {
+        return self.downloadFolder == Self.temporaryDownloadFolder
+    }
+
     public let categories: AutomaticMediaDownloadCategories
     public let automaticDownload: Bool
     public let downloadFolder: String

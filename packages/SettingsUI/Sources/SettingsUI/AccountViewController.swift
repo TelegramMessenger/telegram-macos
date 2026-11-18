@@ -351,6 +351,7 @@ private enum AccountInfoEntry<Context: AccountContextProtocol> : TableItemListNo
                 
                 items.append(ContextMenuItem(strings().accountSettingsDeleteAccount, handler: {
                     verifyAlert_button(for: arguments.context.window, information: strings().accountConfirmLogoutText, successHandler: { _ in
+                        DownloadedFileStorage.removeTemporaryDirectory(mediaBoxPath: info.account.postbox.mediaBox.basePath)
                         _ = logoutFromAccount(id: info.account.id, accountManager: arguments.context.sharedContext.accountManager, alreadyLoggedOutRemotely: false).start()
                     })
                 }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
