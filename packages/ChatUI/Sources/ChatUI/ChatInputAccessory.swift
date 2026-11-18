@@ -271,10 +271,9 @@ public class ChatInputAccessory: View {
                     return
                 }
                 let fwdMessages = state.interfaceState.forwardMessages
-                showModal(with: ChatInputUIHooks.shared.makeForwardMessagesModal(context, fwdMessages), for: context.window)
-                delay(0.15, closure: {
+                showModal(with: ChatInputUIHooks.shared.makeForwardMessagesModal(context, fwdMessages, {
                     self?.chatInteraction.update({$0.updatedInterfaceState({$0.withoutForwardMessages()})})
-                })
+                }), for: context.window)
             }
             let setHideAction:(Bool)->Void = { [weak self] hide in
                 guard let self else { return }

@@ -96,8 +96,10 @@ func installChatInputUIHooks() {
         return EditMessageModel(state: editState, context: context as! AccountContext)
     }, makeForwardPanelModel: { forwardMessages, hideNames, context in
         return ForwardPanelModel(forwardMessages: forwardMessages, hideNames: hideNames, context: context as! AccountContext)
-    }, makeForwardMessagesModal: { context, messages in
-        return ShareModalController(ForwardMessagesObject(context as! AccountContext, messages: messages, emptyPerformOnClose: true))
+    }, makeForwardMessagesModal: { context, messages, resetCurrent in
+        let object = ForwardMessagesObject(context as! AccountContext, messages: messages, emptyPerformOnClose: true)
+        object.resetCurrent = resetCurrent
+        return ShareModalController(object)
     }, makeTranslateModal: { context, from, toLang, draft, onUse, onSend in
         return TranslateModalController(context: context as! AccountContext, from: from, toLang: toLang, text: draft.inputText, entities: draft.messageTextEntities(), draft: draft, onUse: onUse, onSend: onSend)
     }, makeRichTranslateModal: { context, from, toLang, text, entities, richBlocks, onUseRich in

@@ -73,7 +73,7 @@ public struct ChatInputUIHooks {
     public let makeUrlPreviewModel: (any AccountContextProtocol, TelegramMediaWebpage, String) -> ChatAccessoryModel
     public let makeEditMessageModel: (ChatEditState, any AccountContextProtocol) -> ChatAccessoryModel
     public let makeForwardPanelModel: ([Message], Bool, any AccountContextProtocol) -> ChatAccessoryModel
-    public let makeForwardMessagesModal: (any AccountContextProtocol, [Message]) -> ModalViewController
+    public let makeForwardMessagesModal: (any AccountContextProtocol, [Message], @escaping () -> Void) -> ModalViewController
     public let makeTranslateModal: (any AccountContextProtocol, String?, String, ChatTextInputState, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController
     public var makeTranslateModalWithContext: ((any AccountContextProtocol, String?, String, ChatTextInputState, PeerId?, AnalyticsContext, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController)?
 
@@ -165,7 +165,7 @@ public struct ChatInputUIHooks {
                 makeUrlPreviewModel: @escaping (any AccountContextProtocol, TelegramMediaWebpage, String) -> ChatAccessoryModel,
                 makeEditMessageModel: @escaping (ChatEditState, any AccountContextProtocol) -> ChatAccessoryModel,
                 makeForwardPanelModel: @escaping ([Message], Bool, any AccountContextProtocol) -> ChatAccessoryModel,
-                makeForwardMessagesModal: @escaping (any AccountContextProtocol, [Message]) -> ModalViewController,
+                makeForwardMessagesModal: @escaping (any AccountContextProtocol, [Message], @escaping () -> Void) -> ModalViewController,
                 makeTranslateModal: @escaping (any AccountContextProtocol, String?, String, ChatTextInputState, @escaping (NSAttributedString) -> Void, @escaping (NSAttributedString) -> Void) -> ModalViewController,
                 makeRichTranslateModal: @escaping (any AccountContextProtocol, String?, String, String, [MessageTextEntity], [Block], @escaping ([Block]) -> Void) -> ModalViewController,
                 wallet: Any?,
@@ -230,7 +230,7 @@ public struct ChatInputUIHooks {
         ChatAccessoryModel(context: context)
     }, makeForwardPanelModel: { _, _, context in
         ChatAccessoryModel(context: context)
-    }, makeForwardMessagesModal: { _, _ in
+    }, makeForwardMessagesModal: { _, _, _ in
         ModalViewController()
     }, makeTranslateModal: { _, _, _, _, _, _ in
         ModalViewController()

@@ -108,7 +108,7 @@ public struct ChatUIHooks {
         }
         return controller
     }
-    public let makeReplyForwardShareModal: (any AccountContextProtocol, Message, EngineMessageReplySubject) -> ModalViewController
+    public let makeReplyForwardShareModal: (any AccountContextProtocol, Message, EngineMessageReplySubject, @escaping () -> Void) -> ModalViewController
     public let navigateToChat: (NavigationViewController?, any AccountContextProtocol, ChatLocation) -> Void
     public let navigateToChatWithFocus: (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?) -> Void
     public let navigateToChatWithFocusAdditional: (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?, Bool) -> Void
@@ -226,7 +226,7 @@ public struct ChatUIHooks {
                 updateEntertainment: @escaping (any AccountContextProtocol, ChatInteraction) -> Void,
                 showMessageEffectsWindow: @escaping (any AccountContextProtocol, PeerId, [ChatUIEmojiSelectedItem], @escaping (StickerPackItem, NSRect?) -> Void, NSView & StickerFramesCollector) -> Void,
                 makeForwardMessagesShareModal: @escaping (any AccountContextProtocol, [Message], @escaping ([MessageId], Bool) -> Signal<[Message], NoError>) -> ModalViewController,
-                makeReplyForwardShareModal: @escaping (any AccountContextProtocol, Message, EngineMessageReplySubject) -> ModalViewController,
+                makeReplyForwardShareModal: @escaping (any AccountContextProtocol, Message, EngineMessageReplySubject, @escaping () -> Void) -> ModalViewController,
                 navigateToChat: @escaping (NavigationViewController?, any AccountContextProtocol, ChatLocation) -> Void,
                 navigateToChatWithFocus: @escaping (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?) -> Void,
                 navigateToChatWithFocusAdditional: @escaping (NavigationViewController?, any AccountContextProtocol, ChatLocation, ChatFocusTarget?, ChatInitialAction?, Bool) -> Void,
@@ -338,7 +338,7 @@ public struct ChatUIHooks {
     }, showMessageEffectsWindow: { _, _, _, _, _ in
     }, makeForwardMessagesShareModal: { _, _, _ in
         ModalViewController()
-    }, makeReplyForwardShareModal: { _, _, _ in
+    }, makeReplyForwardShareModal: { _, _, _, _ in
         ModalViewController()
     }, navigateToChat: { _, _, _ in
     }, navigateToChatWithFocus: { _, _, _, _, _ in

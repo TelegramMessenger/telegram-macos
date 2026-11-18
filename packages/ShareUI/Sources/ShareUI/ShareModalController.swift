@@ -1094,6 +1094,7 @@ public class ShareStoryObject : ShareObject {
 public final class ReplyForwardMessageObject : ShareObject {
     private let subject: EngineMessageReplySubject
     private let message: Message
+    public var resetCurrent: (() -> Void)?
     public init(_ context: any AccountContextProtocol, message: Message, subject: EngineMessageReplySubject) {
         self.subject = subject
         self.message = message
@@ -1158,6 +1159,8 @@ public final class ReplyForwardMessageObject : ShareObject {
                         } else {
                             let initialAction: ChatInitialAction = .reply(subject, behavior: .automatic)
                             
+                            self.resetCurrent?()
+                            
                             if let threadId = threadId {
                                 return ForumUI.openTopic(threadId, peerId: peerId, context: context, animated: true, addition: true, initialAction: initialAction, isMonoforum: peer.isMonoForum) |> filter {$0}
                                 |> take(1)
@@ -1217,6 +1220,7 @@ public final class ForwardMessagesObject : ShareObject {
     private let disposable = MetaDisposable()
     private let album: Bool
     private let getMessages:(([MessageId], Bool)->Signal<[Message], NoError>)?
+    public var resetCurrent: (() -> Void)?
     public convenience init(_ context: any AccountContextProtocol, messages: [Message], emptyPerformOnClose: Bool = false, album: Bool = false, getMessages:(([MessageId], Bool)->Signal<[Message], NoError>)? = nil) {
         self.init(context, messages: messages, emptyPerformOnClose: emptyPerformOnClose, album: album, getMessages: getMessages, analyticsContext: nil)
     }
@@ -1348,6 +1352,7 @@ public final class ForwardMessagesObject : ShareObject {
                     let navigation = self.context.bindings.rootNavigation()
                     if let peerId = peerIds.first {
                         if peerId == context.peerId {
+                            self.resetCurrent?()
                             let commentResult: Signal<[MessageId?], NoError>
                             let expectedCommentCount: Int
                             if let comment = comment, !comment.inputText.isEmpty {
@@ -1405,6 +1410,8 @@ public final class ForwardMessagesObject : ShareObject {
                             } else {
                                 
                                 let initialAction: ChatInitialAction = .forward(messageIds: messageIds, text: comment, behavior: .automatic)
+                                
+                                self.resetCurrent?()
                                 
                                 if let threadId = threadId {
                                     return ForumUI.openTopic(threadId, peerId: peerId, context: context, animated: true, addition: true, initialAction: initialAction, isMonoforum: peer.isMonoForum, analyticsContext: origin) |> filter {$0}

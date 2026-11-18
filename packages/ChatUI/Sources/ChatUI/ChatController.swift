@@ -8157,19 +8157,20 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         chatInteraction.replyToAnother = { [weak self] subject, reset in
             
-            if reset {
-                self?.chatInteraction.update({
-                    $0.updatedInterfaceState({
-                        $0.withUpdatedReplyMessageId(nil)
-                    })
-                })
-            }
-            
             let message = context.engine.data.get(TelegramEngine.EngineData.Item.Messages.Message(id: subject.messageId)) |> deliverOnMainQueue
             
             _ = message.start(next: { message in
                 if let message = message?._asMessage() {
-                    showModal(with: ChatUIHooks.shared.makeReplyForwardShareModal(context, message, subject), for: context.window)
+                    showModal(with: ChatUIHooks.shared.makeReplyForwardShareModal(context, message, subject, {
+                        if reset {
+                            self?.chatInteraction.update({ current in
+                                guard current.interfaceState.replyMessageId == subject else { return current }
+                                return current.updatedInterfaceState({
+                                    $0.withUpdatedReplyMessageId(nil)
+                                })
+                            })
+                        }
+                    }), for: context.window)
                 }
                 
             })
