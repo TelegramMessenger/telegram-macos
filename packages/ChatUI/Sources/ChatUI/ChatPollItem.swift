@@ -744,38 +744,11 @@ public class ChatPollItem: ChatRowItem {
         return true
     }
 
-    private func optionsOffset() -> CGFloat {
-        var offset: CGFloat = 0
-        if attachedMedia != nil {
-            offset += attachedMediaSize.height + defaultContentInnerInset
-        }
-        if let descriptionText = descriptionText {
-            offset += descriptionText.layoutSize.height + defaultContentInnerInset
-        }
-        offset += titleText.layoutSize.height + defaultContentInnerInset
-        offset += titleTypeText.layoutSize.height + defaultContentInnerInset
-        return offset
-    }
-
     public override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
         if let message = message, !context.isFrozen {
             let source: ChatMenuItemSource
-            let offset = optionsOffset()
-            var y = offset
-            var foundIndex: Int?
-            for (i, option) in options.enumerated() {
-                let optionY = y - (i > 0 ? PollOption.spaceBetweenOptions : 0)
-                let rect = NSMakeRect(0, optionY, contentSize.width, option.contentSize.height)
-                if NSPointInRect(location, rect) {
-                    foundIndex = i
-                    break
-                }
-                y += option.contentSize.height
-                if i != options.count - 1 {
-                    y += PollOption.spaceBetweenOptions
-                }
-            }
-            if let index = foundIndex {
+            let foundIndex = (view as? ChatPollItemView)?.menuOptionIndex(at: location)
+            if let index = foundIndex, index < options.count {
                 source = .pollOption(opaqueIdentifier: options[index].option.opaqueIdentifier)
             } else {
                 source = .general
@@ -1095,6 +1068,11 @@ public final class ChatPollItemView : ChatRowView {
                 view.needsDisplay = true
             }
         }
+    }
+
+    func menuOptionIndex(at location: NSPoint) -> Int? {
+        let point = contentNode.optionsContainerView.convert(location, from: contentView)
+        return contentNode.options.firstIndex(where: { NSPointInRect(point, $0.frame) })
     }
 
     func menuTextLayout(at location: NSPoint) -> TextViewLayout? {
