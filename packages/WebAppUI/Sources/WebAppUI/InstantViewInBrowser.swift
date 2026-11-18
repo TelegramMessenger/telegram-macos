@@ -176,23 +176,25 @@ open class InstantViewInBrowser<Context: AccountContextProtocol> : TelegramGener
         }, with: self, for: .DownArrow, priority: .medium)
 
         let spaceScrollDownKeyboardHandler:(NSEvent)->KeyHandlerResult = { [weak self] _ in
-            if let window = self?.window {
-                if !window.styleMask.contains(.fullScreen) {
-                    self?.page.scrollPage(direction: .down)
-                }
+            guard let self, let window = self.window else {
+                return .rejected
             }
-            
+            if let editor = window.firstResponder as? NSTextView, editor.isEditable {
+                return .invokeNext
+            }
+            self.page.scrollPage(direction: .down)
             return .invoked
         }
         window?.set(handler: spaceScrollDownKeyboardHandler, with: self, for: .Space, priority: .low)
-        
-        let spaceScrollUpKeyboardHandler:(NSEvent)->KeyHandlerResult = { [weak self, weak page] _ in
-            if let window = self?.window {
-                if !window.styleMask.contains(.fullScreen) {
-                    page?.scrollPage(direction: .up)
-                }
+
+        let spaceScrollUpKeyboardHandler:(NSEvent)->KeyHandlerResult = { [weak self] _ in
+            guard let self, let window = self.window else {
+                return .rejected
             }
-            
+            if let editor = window.firstResponder as? NSTextView, editor.isEditable {
+                return .invokeNext
+            }
+            self.page.scrollPage(direction: .up)
             return .invoked
         }
         
