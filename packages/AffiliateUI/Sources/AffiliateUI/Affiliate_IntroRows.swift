@@ -40,15 +40,16 @@ public final class Affiliate_HeaderItem : GeneralRowItem {
         
         self.infoLayout = .init(infoAttr, alignment: .center)
         self.infoLayout.interactions = LinkHooks.shared.globalLinkExecutor()
-        super.init(initialSize, stableId: stableId)
+        super.init(initialSize, stableId: stableId, viewType: viewType)
         _ = makeSize(initialSize.width)
     }
     
     public override func makeSize(_ width: CGFloat, oldWidth: CGFloat = 0) -> Bool {
         _ = super.makeSize(width, oldWidth: oldWidth)
         
-        titleLayout.measure(width: blockWidth - 40)
-        infoLayout.measure(width: blockWidth - 40)
+        let textWidth = blockWidth - viewType.innerInset.left - viewType.innerInset.right
+        titleLayout.measure(width: textWidth)
+        infoLayout.measure(width: textWidth)
 
         return true
     }
@@ -154,7 +155,7 @@ public final class Affiliate_PromoItem : GeneralRowItem {
     public init(_ initialSize: NSSize, stableId: AnyHashable, context: (any AccountContextProtocol), options: [Affiliate_PromoOption]) {
         self.context = context
         self.options = options.map { option in
-            return .init(image: option.image, header: .init(.initialize(string: option.title, color: theme.colors.text, font: .medium(.text))), text: .init(.initialize(string: option.text, color: theme.colors.grayText, font: .normal(.text))), width: initialSize.width - 40, widthInset: 40)
+            return .init(image: option.image, header: .init(.initialize(string: option.title, color: theme.colors.text, font: .medium(.text))), text: .init(.initialize(string: option.text, color: theme.colors.grayText, font: .normal(.text))), width: initialSize.width - 40)
         }
         super.init(initialSize, stableId: stableId, viewType: .singleItem)
     }
@@ -163,7 +164,7 @@ public final class Affiliate_PromoItem : GeneralRowItem {
         _ = super.makeSize(width, oldWidth: oldWidth)
         
         for option in options {
-            option.makeSize(width: blockWidth - 40)
+            option.makeSize(width: blockWidth - viewType.innerInset.left - viewType.innerInset.right)
         }
         
         return true

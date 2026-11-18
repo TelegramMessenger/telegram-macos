@@ -396,7 +396,7 @@ private func entries(_ state: State, arguments: Arguments, onlyDemo: Bool) -> [I
         sectionId += 1
         
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: .init("header"), equatable: .init(state), comparable: nil, item: { initialSize, stableId in
-            return Affiliate_HeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: theme, peer: nil, title: strings().affiliateSetupTitleJoin, info: strings().affiliateSetupTextJoin, detectBold: true, viewType: .legacy)
+            return Affiliate_HeaderItem(initialSize, stableId: stableId, context: arguments.context, presentation: theme, peer: nil, title: strings().affiliateSetupTitleJoin, info: strings().affiliateSetupTextJoin, detectBold: true, viewType: .singleItem)
         }))
        
         entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_promo, equatable: .init(state), comparable: nil, item: { initialSize, stableId in
