@@ -1975,9 +1975,15 @@ private func layoutListV2(
     }
 
     let rtl = listItems.contains(where: { item in
-        if case let .text(text, _, _) = item { return instantPageRichTextContainsRTL(text) }
-        return false
-    })
+        switch item {
+        case let .text(text, _, _):
+            return instantPageRichTextContainsRTL(text)
+        case let .blocks(blocks, _, _):
+            return instantPageRichTextContainsRTL(instantPageRichTextFromBlocks(blocks))
+        case .unknown:
+            return false
+        }
+    }) || context.rtl
     let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
     let markerColumnWidth = markerWidth + markerSkip
     let singleDigitWidth = ceil(attributedStringForRichText(.plain("8."), styleStack: indexStack).size().width)
@@ -2105,6 +2111,7 @@ private func layoutListV2(
             let (textItem, _, textSize) = layoutTextItemWithStringV2(
                 attributed,
                 boundingWidth: textBoundingWidth,
+                alignment: rtl ? .right : .natural,
                 offset: CGPoint(x: textOriginX, y: contentHeight),
                 media: context.media,
                 webpage: context.webpage,

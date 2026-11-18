@@ -119,4 +119,74 @@ final class InstantPageTableSpanTests: XCTestCase {
         XCTAssertEqual(tableRowsWithClampedSpans(rows), rows)
         XCTAssertGreaterThan(richMessageLayout(rows).contentSize.height, 0.0)
     }
+
+    private func listMessageLayout(_ items: [InstantPageListItem], ordered: Bool, rtl: Bool) -> InstantPageV2Layout {
+        let page = InstantPage(blocks: [.list(items: items, ordered: ordered)], media: [:], isComplete: true, rtl: rtl, url: "", views: nil)
+        let content = TelegramMediaWebpageLoadedContent(url: "", displayUrl: "", hash: 0, type: nil, websiteName: nil, title: nil, text: nil, embedUrl: nil, embedType: nil, embedSize: nil, duration: nil, author: nil, isMediaLargeByDefault: nil, imageIsVideoCover: false, image: nil, file: nil, story: nil, attributes: [], instantPage: page)
+        let webpage = TelegramMediaWebpage(webpageId: MediaId(namespace: 0, id: 0), content: .Loaded(content))
+        let theme = instantPageThemeForType(.light, settings: InstantViewAppearance.defaultSettings)
+        return layoutInstantPageV2(webpage: webpage, instantPage: page, boundingWidth: 320.0, horizontalInset: 17.0, theme: theme)
+    }
+
+    private func listMarkers(in layout: InstantPageV2Layout) -> [InstantPageV2ListMarkerItem] {
+        return layout.items.compactMap { item -> InstantPageV2ListMarkerItem? in
+            if case let .listMarker(marker) = item {
+                return marker
+            }
+            return nil
+        }
+    }
+
+    func testRTLBlockListItemMirrorsMarkersToTheRight() {
+        let items: [InstantPageListItem] = [.blocks([.paragraph(.plain("פריט ראשון"))], nil, nil)]
+        let markers = listMarkers(in: listMessageLayout(items, ordered: false, rtl: false))
+
+        XCTAssertEqual(markers.count, 1)
+        XCTAssertEqual(markers[0].frame.maxX, 303.0, accuracy: 0.5)
+    }
+
+    func testRTLTextListItemMirrorsMarkersAndRightAlignsText() {
+        let items: [InstantPageListItem] = [.text(.plain("פריט"), nil, nil)]
+        let layout = listMessageLayout(items, ordered: false, rtl: false)
+
+        let markers = listMarkers(in: layout)
+        XCTAssertEqual(markers.count, 1)
+        XCTAssertEqual(markers[0].frame.maxX, 303.0, accuracy: 0.5)
+
+        let textItems = layout.items.compactMap { item -> InstantPageV2TextItem? in
+            if case let .text(text) = item {
+                return text
+            }
+            return nil
+        }
+        XCTAssertEqual(textItems.count, 1)
+        XCTAssertGreaterThanOrEqual(textItems[0].frame.maxX, 260.0)
+    }
+
+    func testMessageLevelRTLMirrorsListMarkersForLTRText() {
+        let items: [InstantPageListItem] = [.text(.plain("First"), nil, nil)]
+        let markers = listMarkers(in: listMessageLayout(items, ordered: false, rtl: true))
+
+        XCTAssertEqual(markers.count, 1)
+        XCTAssertEqual(markers[0].frame.maxX, 303.0, accuracy: 0.5)
+    }
+
+    func testLTRListKeepsMarkersOnTheLeft() {
+        let items: [InstantPageListItem] = [.blocks([.paragraph(.plain("First item"))], nil, nil)]
+        let layout = listMessageLayout(items, ordered: false, rtl: false)
+
+        let markers = listMarkers(in: layout)
+        XCTAssertEqual(markers.count, 1)
+        XCTAssertGreaterThanOrEqual(markers[0].frame.minX, 17.0)
+        XCTAssertLessThanOrEqual(markers[0].frame.minX, 39.0)
+
+        let textItems = layout.items.compactMap { item -> InstantPageV2TextItem? in
+            if case let .text(text) = item {
+                return text
+            }
+            return nil
+        }
+        XCTAssertEqual(textItems.count, 1)
+        XCTAssertEqual(textItems[0].frame.minX, 47.0, accuracy: 0.5)
+    }
 }
