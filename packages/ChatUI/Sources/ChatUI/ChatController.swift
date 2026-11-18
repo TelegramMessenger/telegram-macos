@@ -4070,7 +4070,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             if let threadId {
                 switch chatLocation {
                 case let .thread(data):
-                    if mode.isSavedMessagesThread || data.isMonoforumPost {
+                    let isSavedChat = mode.isSavedMessagesThread || (mode == .preview && data.peerId == context.peerId)
+                    if isSavedChat || data.isMonoforumPost {
                         let savedMessagesPeerId: PeerId = PeerId(data.threadId)
                         
                         let threadPeerId = savedMessagesPeerId
@@ -4079,7 +4080,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         answersCount = context.account.postbox.combinedView(keys: [basicPeerKey, countViewKey])
                         |> map { views -> Int32? in
                             let count = (views.views[countViewKey] as? MessageHistoryTagSummaryView)?.count
-                            return mode.isSavedMessagesThread ? count : count ?? 0
+                            return isSavedChat ? count : count ?? 0
                         }
 
                     } else if isThread {
@@ -9340,6 +9341,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         default:
                             break
                         }
+                    } else if mode == .preview, data.peerId == context.peerId {
+                        peerId = PeerId(data.threadId)
                     }
                     return context.account.viewTracker.peerView(peerId, updateData: false)
                 }
@@ -11240,10 +11243,14 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
             }
         } else if chatInteraction.mode == .preview {
-            let peerId = chatInteraction.peerId
+            var peerId = chatInteraction.peerId
             var threadInfo: ThreadInfo?
             if case let .thread(data) = chatInteraction.chatLocation, data.threadId != Message.newTopicThreadId {
-                threadInfo = ThreadInfo(message: data, isChannelPost: false, isMonoforumPost: data.isMonoforumPost, isEmpty: false, contextHolder: chatLocationContextHolder)
+                if data.isMonoforumPost || data.peerId == context.peerId {
+                    peerId = PeerId(data.threadId)
+                } else {
+                    threadInfo = ThreadInfo(message: data, isChannelPost: false, isMonoforumPost: data.isMonoforumPost, isEmpty: false, contextHolder: chatLocationContextHolder)
+                }
             }
             navigationController?.modal?.close()
             ChatUIHooks.shared.pushPeerInfoObserved(context.bindings.rootNavigation(), context, peerId, threadInfo, nil, nil, nil, analyticsContext: origin)

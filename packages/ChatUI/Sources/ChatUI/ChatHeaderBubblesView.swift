@@ -779,7 +779,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
             if peer.id == repliesPeerId {
                 let icon = theme.icons.chat_replies_avatar
                 avatarControl.setSignal(generateEmptyPhoto(avatarControl.frame.size, type: .icon(colors: theme.colors.peerColors(5), icon: icon, iconSize: icon.backingSize.aspectFitted(NSMakeSize(avatarControl.frame.size.width - 14, avatarControl.frame.size.height - 14)), cornerRadius: nil), bubble: false) |> map { ($0, false) })
-            } else if peer.id == context.peerId, chatInteraction.mode.isSavedMessagesThread {
+            } else if peer.id == context.peerId, chatInteraction.mode.isSavedMessagesThread || isSavedChatPreview(chatInteraction.presentation) {
                 let icon = theme.icons.chat_my_notes
                 avatarControl.setSignal(generateEmptyPhoto(avatarControl.frame.size, type: .icon(colors: theme.colors.peerColors(5), icon: icon, iconSize: icon.backingSize.aspectFitted(NSMakeSize(avatarControl.frame.size.width - 4, avatarControl.frame.size.height - 4)), cornerRadius: nil), bubble: false) |> map { ($0, false) })
             } else if peer.id == context.peerId {
@@ -956,7 +956,7 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
     private func computeTitleStatus(presentation: ChatPresentationInterfaceState) -> PeerStatusStringResult? {
         guard let peerView = peerView, let peer = peerViewMainPeer(peerView) else { return nil }
 
-        var result = stringStatus(for: peerView, context: chatInteraction.interactionContext, theme: PeerStatusStringTheme(titleFont: .medium(.title), statusColor: theme.colors.grayText, highlightColor: theme.colors.accent), onlineMemberCount: counters.online, ignoreActivity: presentation.chatMode.isSavedMessagesThread || presentation.chatMode.customChatLink != nil || presentation.isMonoforum)
+        var result = stringStatus(for: peerView, context: chatInteraction.interactionContext, theme: PeerStatusStringTheme(titleFont: .medium(.title), statusColor: theme.colors.grayText, highlightColor: theme.colors.accent), onlineMemberCount: counters.online, ignoreActivity: presentation.chatMode.isSavedMessagesThread || isSavedChatPreview(presentation) || presentation.chatMode.customChatLink != nil || presentation.isMonoforum)
 
         if presentation.isMonoforum {
             if !presentation.monoforumTopics.isEmpty, presentation.chatLocation.threadId == nil {
@@ -991,16 +991,12 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
                     result = result.withUpdatedTitle(presentation.threadInfo?.info.title ?? "").withUpdatedStatus(strings().peerInfoTopicStatusIn(peer.displayTitle))
                 }
             case .savedMessages:
-                result = result.withUpdatedTitle(peer.displayTitle).withUpdatedStatus("")
-                if let count = counters.replies {
-                    result = result.withUpdatedStatus(strings().sharedMediaSavedCountOther(Int(count)))
-                }
-                if PeerId(data.threadId) == chatInteraction.interactionContext.peerId {
-                    result = result.withUpdatedTitle(strings().peerMyNotes)
-                }
+                result = savedChatTitle(result, peer: peer, threadId: data.threadId)
             case .saved:
                 break
             }
+        } else if isSavedChatPreview(presentation), let threadId = presentation.chatLocation.threadId {
+            result = savedChatTitle(result, peer: peer, threadId: threadId)
         } else if chatInteraction.interactionContext.peerId == peerView.peerId {
             if chatInteraction.mode == .scheduled {
                 result = result.withUpdatedTitle(strings().chatTitleReminder).withUpdatedStatus("")
@@ -1070,8 +1066,23 @@ final class ChatHeaderBubblesView: View, InteractionContentViewProtocol {
         }
     }
 
+    private func savedChatTitle(_ result: PeerStatusStringResult, peer: Peer, threadId: Int64) -> PeerStatusStringResult {
+        var result = result.withUpdatedTitle(peer.displayTitle).withUpdatedStatus("")
+        if let count = counters.replies {
+            result = result.withUpdatedStatus(strings().sharedMediaSavedCountOther(Int(count)))
+        }
+        if PeerId(threadId) == chatInteraction.interactionContext.peerId {
+            result = result.withUpdatedTitle(strings().peerMyNotes)
+        }
+        return result
+    }
+
+    private func isSavedChatPreview(_ presentation: ChatPresentationInterfaceState) -> Bool {
+        return chatInteraction.mode == .preview && presentation.chatLocation.threadId != nil && presentation.chatLocation.peerId == chatInteraction.interactionContext.peerId
+    }
+
     private func isTopicMode(_ presentation: ChatPresentationInterfaceState) -> Bool {
-        return presentation.isTopicMode || (chatInteraction.mode == .preview && presentation.chatLocation.threadId != nil)
+        return presentation.isTopicMode || (chatInteraction.mode == .preview && presentation.chatLocation.threadId != nil && !presentation.isMonoforum && !isSavedChatPreview(presentation))
     }
 
     private func sideInsetForCenterContent() -> CGFloat {
