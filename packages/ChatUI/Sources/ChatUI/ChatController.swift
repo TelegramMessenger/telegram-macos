@@ -11884,8 +11884,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
        
         
-        self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let strongSelf = self, let window = strongSelf.window, !hasModals(window), !strongSelf.isTextFocusOutsideInput {
+        self.context.window.set(handler: { [weak self] event -> KeyHandlerResult in
+            if let strongSelf = self, let window = strongSelf.window, !hasModals(window), !strongSelf.isTextFocusOutsideInput, !event.modifierFlags.contains(.command) {
                 let result:KeyHandlerResult = strongSelf.chatInteraction.presentation.effectiveInput.inputText.isEmpty && strongSelf.chatInteraction.presentation.state == .normal ? .invoked : .rejected
 
                 if result == .invoked {
