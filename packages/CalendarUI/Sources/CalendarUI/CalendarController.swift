@@ -118,19 +118,25 @@ open class CalendarController: GenericViewController<CalendarControllerView> {
         
         self.navigation.viewDidAppear(animated)
         
-        self.window?.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let current = self?.navigation.controller as? CalendarMonthController, current.isPrevEnabled, let backAction = self?.interactions.backAction {
-                backAction(current.month.month)
-            }
-            return .invoked
+        self.window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: -1, modifiers: event.modifierFlags) ?? .rejected
         }, with: self, for: .LeftArrow, priority: .modal)
-        
-        self.window?.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let current = self?.navigation.controller as? CalendarMonthController, current.isNextEnabled, let nextAction = self?.interactions.nextAction {
-                nextAction(current.month.month)
-            }
-            return .invoked
+        self.window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: 1, modifiers: event.modifierFlags) ?? .rejected
         }, with: self, for: .RightArrow, priority: .modal)
+        self.window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: -7, modifiers: event.modifierFlags) ?? .rejected
+        }, with: self, for: .UpArrow, priority: .modal)
+        self.window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            return self?.navigate(days: 7, modifiers: event.modifierFlags) ?? .rejected
+        }, with: self, for: .DownArrow, priority: .modal)
+        self.window?.set(handler: { [weak self] event -> KeyHandlerResult in
+            guard event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else {
+                return .invokeNext
+            }
+            return self?.returnKeyAction() ?? .rejected
+        }, with: self, for: .Return, priority: .modal)
+        (navigation.controller as? CalendarMonthController)?.genericView.focusDay(announce: false)
     }
     
     open override func viewWillDisappear(_ animated: Bool) {
@@ -139,6 +145,9 @@ open class CalendarController: GenericViewController<CalendarControllerView> {
         self.navigation.viewWillDisappear(animated)
         self.window?.remove(object: self, for: .LeftArrow)
         self.window?.remove(object: self, for: .RightArrow)
+        self.window?.remove(object: self, for: .UpArrow)
+        self.window?.remove(object: self, for: .DownArrow)
+        self.window?.remove(object: self, for: .Return)
     }
     
     open override func viewDidDisappear(_ animated: Bool) {
@@ -151,6 +160,63 @@ open class CalendarController: GenericViewController<CalendarControllerView> {
         self.navigation.viewWillAppear(animated)
     }
     
+    open override func returnKeyAction() -> KeyHandlerResult {
+        guard isActive, let controller = navigation.controller as? CalendarMonthController else {
+            return .rejected
+        }
+        guard !navigation.isLocked else { return .invoked }
+        controller.genericView.activateFocusedDay()
+        return .invoked
+    }
+
+    private func dayNavigation(for date: Date) -> CalendarDayNavigation {
+        let year = Calendar(identifier: .gregorian).component(.year, from: date)
+        return CalendarDayNavigation(current: date, now: Date(), onlyFuture: onlyFuture, limitedBy: limitedBy, lowYear: lowYear, yearHidden: interactions.canBeNoYear && CalendarUtils.isYearHidden(year))
+    }
+
+    private func navigate(days: Int, modifiers: NSEvent.ModifierFlags) -> KeyHandlerResult {
+        let modifiers = modifiers.intersection([.command, .control, .option, .shift])
+        guard modifiers.isEmpty || (modifiers == .option && abs(days) == 1) else {
+            return .invokeNext
+        }
+        guard isActive, let controller = navigation.controller as? CalendarMonthController else {
+            return .rejected
+        }
+        guard !navigation.isLocked else { return .invoked }
+        let calendar = Calendar(identifier: .gregorian)
+        let month = controller.month
+        let navigator = dayNavigation(for: month.month)
+        guard let current = navigator.day(in: month.month, preferred: month.focusedDay ?? month.selectedDay ?? calendar.component(.day, from: month.month)) else {
+            return .invoked
+        }
+        let target = modifiers == .option ? navigator.movingMonth(current, direction: days) : navigator.moving(current, days: days)
+        if let target {
+            if calendar.isDate(target, equalTo: month.month, toGranularity: .month) {
+                month.focusedDay = calendar.component(.day, from: target)
+                controller.genericView.focusDay(announce: true)
+            } else {
+                let next = stepMonth(date: target)
+                next.month.focusedDay = calendar.component(.day, from: target)
+                navigation.push(next, false, style: ViewControllerStyle.none)
+                next.genericView.focusDay(announce: true)
+            }
+        }
+        return .invoked
+    }
+
+    private func browseMonth(from date: Date, direction: Int) {
+        guard isActive, !navigation.isLocked,
+              let current = navigation.controller as? CalendarMonthController,
+              CalendarUtils.isSameDate(current.month.month, date: date, checkDay: false),
+              direction < 0 ? current.isPrevEnabled : current.isNextEnabled else { return }
+        let focused = current.month.focusedDay
+        let next = stepMonth(date: CalendarUtils.stepMonth(direction, date: date))
+        if let focused, let day = dayNavigation(for: next.month.month).day(in: next.month.month, preferred: focused) {
+            next.month.focusedDay = Calendar(identifier: .gregorian).component(.day, from: day)
+        }
+        navigation.push(next, style: direction < 0 ? .pop : .push)
+    }
+
     public init(_ frameRect:NSRect, _ window: Window, current: Date = Date(), onlyFuture: Bool = false, limitedBy: Date? = nil, lowYear: Int = 2013, canBeNoYear: Bool = false, selectHandler:@escaping (Date)->Void, autoclose: Bool = true) {
         self.onlyFuture = onlyFuture
         self.selectedDate = current
@@ -172,13 +238,9 @@ open class CalendarController: GenericViewController<CalendarControllerView> {
             }
             selectHandler(selected)
         }, backAction: { [weak self] date in
-            if let strongSelf = self, strongSelf.isActive {
-                strongSelf.navigation.push(strongSelf.stepMonth(date: CalendarUtils.stepMonth(-1, date: date)), style: .pop)
-            }
+            self?.browseMonth(from: date, direction: -1)
         }, nextAction: { [weak self] date in
-            if let strongSelf = self, strongSelf.isActive {
-                strongSelf.navigation.push(strongSelf.stepMonth(date: CalendarUtils.stepMonth(1, date: date)), style: .push)
-            }
+            self?.browseMonth(from: date, direction: 1)
         }, changeYear: { [weak self] year, date in
             self?.selectYear(Int(year), month: date, style: .push)
         })
@@ -193,6 +255,10 @@ open class CalendarController: GenericViewController<CalendarControllerView> {
         let controller = CalendarMonthController(isSelectedMonth ? selectedDate : date, onlyFuture: self.onlyFuture, limitedBy: limitedBy, selectDayAnyway: selectDayAnyway || isSelectedMonth, interactions: interactions, lowYear: self.lowYear, dayPreview: { [weak self] timestamp in
             return self?.dayPreview(timestamp)
         })
+        let calendar = Calendar(identifier: .gregorian)
+        if let focused = dayNavigation(for: date).day(in: date, preferred: calendar.component(.day, from: isSelectedMonth ? selectedDate : date)) {
+            controller.month.focusedDay = calendar.component(.day, from: focused)
+        }
         applySelection(to: controller)
         weeksChanged(controller.month.linesCount)
         return controller

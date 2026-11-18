@@ -33,7 +33,8 @@ public final class CalendarMonthStruct {
     
     public let currentStartDay:Int
     public var selectedDay:Int?
-    
+    var focusedDay: Int?
+
     public let components:DateComponents
     public let dayHandler:(Int)->Void
     public let onlyFuture: Bool
@@ -121,6 +122,47 @@ public final class CalendarMonthStruct {
     }
 }
 
+private final class CalendarDayButton: TextButton {
+    weak var monthView: CalendarMonthView?
+    var day = 0
+    var selected = false
+    var selectingRange = false
+
+    override func isAccessibilityElement() -> Bool {
+        return monthView?.userInteractionEnabled == true && super.isAccessibilityElement()
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        return selectingRange ? .checkBox : .radioButton
+    }
+
+    override func accessibilityParent() -> Any? {
+        return monthView
+    }
+
+    override func isAccessibilitySelected() -> Bool {
+        return selected
+    }
+
+    override func accessibilityValue() -> Any? {
+        return NSNumber(value: selected)
+    }
+
+    override func isAccessibilityFocused() -> Bool {
+        return monthView?.isDayFocused(day) == true
+    }
+
+    override func setAccessibilityFocused(_ focused: Bool) {
+        if focused {
+            monthView?.focus(day: day, announce: false)
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        return monthView?.activate(day: day) ?? false
+    }
+}
+
 open class CalendarMonthView : View {
     private var month:CalendarMonthStruct?
 
@@ -130,6 +172,8 @@ open class CalendarMonthView : View {
     private let dayViews = View()
     private let weekdaysView = View()
     private let containerView = View()
+    private let focusView = View()
+    private var dayButtons: [CalendarDayButton] = []
 
     open var navigationBarHeight: CGFloat = 56 {
         didSet {
@@ -154,11 +198,111 @@ open class CalendarMonthView : View {
         containerView.addSubview(rangeViews)
         containerView.addSubview(dayPreviewsViews)
         containerView.addSubview(dayViews)
+        containerView.addSubview(focusView)
         rangeViews.isEventLess = true
         weekdaysView.isEventLess = true
+        focusView.isEventLess = true
+        focusView.isHidden = true
+        focusView.layer?.borderWidth = 2
         backgroundColor = .clear
     }
-    
+
+    open override var acceptsFirstResponder: Bool {
+        return userInteractionEnabled
+    }
+
+    open override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        updateFocus()
+        return result
+    }
+
+    open override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        focusView.isHidden = true
+        return result
+    }
+
+    open override func isAccessibilityElement() -> Bool {
+        return TGUIKitAccessibility.isEnabled && userInteractionEnabled
+    }
+
+    open override func accessibilityRole() -> NSAccessibility.Role? {
+        return month?.isSelecting == true ? .group : .radioGroup
+    }
+
+    open override func accessibilityChildren() -> [Any]? {
+        return TGUIKitAccessibility.isEnabled && userInteractionEnabled ? dayButtons.filter { !$0.isHidden } : []
+    }
+
+    open override func accessibilitySelectedChildren() -> [Any]? {
+        return userInteractionEnabled ? dayButtons.filter { !$0.isHidden && $0.selected } : []
+    }
+
+    open override var accessibilityFocusedUIElement: Any? {
+        return dayButtons.first { !$0.isHidden && isDayFocused($0.day) }
+    }
+
+    open override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        guard TGUIKitAccessibility.isEnabled, userInteractionEnabled else { return nil }
+        return dayButtons.first { !$0.isHidden && $0.accessibilityFrame().contains(point) } ?? self
+    }
+
+    fileprivate func isDayFocused(_ day: Int) -> Bool {
+        return userInteractionEnabled && window != nil && window?.firstResponder === self && month?.focusedDay == day
+    }
+
+    fileprivate func focus(day: Int, announce: Bool) {
+        guard userInteractionEnabled, let month, (1 ... month.lastDayOfMonth).contains(day) else { return }
+        month.focusedDay = day
+        focusDay(announce: announce)
+    }
+
+    func focusDay(announce: Bool) {
+        guard userInteractionEnabled else { return }
+        window?.makeFirstResponder(self)
+        layoutSubtreeIfNeeded()
+        updateFocus()
+        if announce, TGUIKitAccessibility.isEnabled, let focused = accessibilityFocusedUIElement {
+            NSAccessibility.post(element: focused, notification: .focusedUIElementChanged)
+        }
+    }
+
+    fileprivate func activate(day: Int) -> Bool {
+        guard userInteractionEnabled, let month, month.isDayEnabled(day) else { return false }
+        month.focusedDay = day
+        if month.mode != .media {
+            month.selectedDay = day
+        }
+        focusDay(announce: false)
+        month.dayHandler(day)
+        layout(for: month)
+        return true
+    }
+
+    func activateFocusedDay() {
+        guard let day = month?.focusedDay else { return }
+        _ = activate(day: day)
+    }
+
+    private func updateFocus() {
+        guard let day = dayButtons.first(where: { !$0.isHidden && isDayFocused($0.day) }) else {
+            focusView.isHidden = true
+            return
+        }
+        focusView.isHidden = false
+        focusView.frame = day.frame.insetBy(dx: -3, dy: -3)
+        focusView.layer?.cornerRadius = focusView.frame.height / 2
+        focusView.layer?.borderColor = theme.colors.accent.cgColor
+    }
+
+    open override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        guard let month else { return }
+        updateWeekdays()
+        layout(for: month)
+    }
+
     open override func scrollWheel(with event: NSEvent) {
         if let month = month {
             switch month.mode {
@@ -190,9 +334,25 @@ open class CalendarMonthView : View {
     
     open func layout(for month:CalendarMonthStruct) {
         dayPreviewsViews.removeAllSubviews()
-        dayViews.removeAllSubviews()
+        for view in dayViews.subviews where !(view is CalendarDayButton) {
+            view.removeFromSuperview()
+        }
         if self.month?.month != month.month {
             self.dayPreviews.removeAll()
+            for day in dayButtons {
+                day.monthView = nil
+                day.removeAllHandlers()
+            }
+            dayViews.removeAllSubviews()
+            dayButtons.removeAll()
+        }
+        if dayButtons.isEmpty {
+            dayButtons = (0 ..< 7 * 6).map { _ in
+                let day = CalendarDayButton()
+                day.monthView = self
+                dayViews.addSubview(day)
+                return day
+            }
         }
         if weekdaysView.subviews.isEmpty {
             updateWeekdays()
@@ -201,9 +361,26 @@ open class CalendarMonthView : View {
 
         let calendar = Calendar(identifier: .gregorian)
         let today = calendar.startOfDay(for: Date())
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: appAppearance.language.languageCode)
+        formatter.calendar = calendar
+        if CalendarUtils.isYearHidden(month.components.year!) {
+            formatter.setLocalizedDateFormatFromTemplate("MMMMd")
+        } else {
+            formatter.dateStyle = .full
+        }
+        setAccessibilityLabel(formatter.string(from: month.month))
 
         for i in 0 ..< 7 * 6 {
-            let day = TextButton()
+            let day = dayButtons[i]
+            day.monthView = self
+            day.removeAllHandlers()
+            day.contextObject = nil
+            day.isHidden = false
+            day.selected = false
+            day.selectingRange = month.isSelecting
+            day.set(background: .clear, for: .Normal)
+            day.set(background: .clear, for: .Highlight)
             day.textOffset = NSMakePoint(0, 2)
             day.set(font: .normal(15), for: .Normal)
             day.scaleOnClick = true
@@ -220,6 +397,8 @@ open class CalendarMonthView : View {
                 
                 let skipDay = !month.isDayEnabled(current)
                 let dayDate: Date = CalendarUtils.monthDay(current, date: month.month)
+                day.isEnabled = !skipDay
+                day.setAccessibilityLabel(formatter.string(from: dayDate))
                 let dayTimeinterval = dayDate.timeIntervalSince1970
                 
                 let dayPreview = self.dayPreviews[current] ?? month.dayPreview(Int(dayTimeinterval))
@@ -232,7 +411,8 @@ open class CalendarMonthView : View {
                 let inRange = month.selectedRange?.contains(current) == true
                 let isSelected = !month.isSelecting && month.mode == .normal && month.selectedDay == current
                 let isToday = calendar.startOfDay(for: dayDate) == today
-                
+                day.selected = inRange || isSelected
+
                 if !skipDay {
                     if dayPreview != nil || inRange || isSelected {
                         day.set(color: .white, for: .Normal)
@@ -257,22 +437,16 @@ open class CalendarMonthView : View {
                         day.set(background: theme.colors.grayBackground, for: .Highlight)
                     }
                    
-                    day.set(handler: { [weak self] (control) in
-                        if month.mode != .media {
-                            month.selectedDay = current
-                        }
-                        month.dayHandler(current)
-                        self?.layout(for: month)
-                        
+                    day.set(handler: { [weak self] _ in
+                        _ = self?.activate(day: current)
                     }, for: .Click)
                 } else {
                     day.set(color: theme.colors.grayText, for: .Normal)
                     day.set(color: theme.colors.grayText, for: .Highlight)
                 }
             }
+            day.day = current
             day.set(text: "\(current)", for: .Normal)
-            
-            dayViews.addSubview(day)
         }
         
         self.needsLayout = true
@@ -373,6 +547,7 @@ open class CalendarMonthView : View {
             band.layer?.cornerRadius = segment.first.height / 2
             rangeViews.addSubview(band)
         }
+        updateFocus()
     }
     
     public required init?(coder: NSCoder) {
@@ -510,7 +685,23 @@ open class CalendarMonthController: GenericViewController<CalendarMonthView> {
     open override var removeAfterDisapper: Bool {
         return true
     }
-    
+
+    open override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        genericView.userInteractionEnabled = true
+    }
+
+    open override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        genericView.focusDay(announce: animated)
+    }
+
+    open override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        genericView.userInteractionEnabled = false
+        genericView.needsLayout = true
+    }
+
     open override func viewDidLoad() {
         super.viewDidLoad()
         
