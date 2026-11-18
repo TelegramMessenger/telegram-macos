@@ -24,6 +24,7 @@ import GroupCallScreenUI
 import WebAppUI
 import InlineStickerLayer
 import AppAnalytics
+import ComponentsUI
 
 struct UserInfoPersonalChannel : Equatable {
     let peer: EnginePeer
@@ -464,9 +465,16 @@ public final class PeerInfoView<Context: AccountContextProtocol> : View {
         super.setFrameSize(newSize)
     }
     
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateLayout(size: frame.size, transition: .immediate)
+    }
+
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        transition.updateFrame(view: navigationBarView, frame: NSMakeRect(0, navigationOverflow, size.width, 64))
-        transition.updateFrame(view: navBgView, frame: navigationBarView.frame)
+        let reserved = DetachedWindowControls.reservedWidth(in: window)
+        let leading = reserved > 0 ? reserved - DetachedWindowHeaderLayout.sideInset : 0
+        transition.updateFrame(view: navigationBarView, frame: NSMakeRect(leading, navigationOverflow, max(0, size.width - leading), 64))
+        transition.updateFrame(view: navBgView, frame: NSMakeRect(0, navigationOverflow, size.width, 64))
         transition.updateFrame(view: tableView, frame: NSMakeRect(0, 0, size.width, size.height))
     }
 
@@ -593,6 +601,10 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     
     public override var barHeight: CGFloat {
         return 0
+    }
+
+    public override var containerCornerRadius: CGFloat {
+        return context.isExternal ? 0 : super.containerCornerRadius
     }
 
     public override func updateNavigationHeaderOverflow(_ overflow: CGFloat, transition: ContainedViewLayoutTransition) {
@@ -1282,6 +1294,10 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             
             
             let availableReactions: Signal<AvailableReactions?, NoError> = context.reactions.stateValue
+
+            let globalNotificationSettings: Signal<GlobalNotificationSettings, NoError> = context.account.postbox.preferencesView(keys: [PreferencesKeys.globalNotifications]) |> map { view in
+                return view.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings
+            }
             
             
             let threadData: Signal<MessageHistoryThreadData?, NoError>
@@ -1301,11 +1317,11 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             
             
             
-            return combineLatest(queue: prepareQueue, context.account.viewTracker.peerView(peerId, updateData: true), arguments.statePromise, appearanceSignal, inputActivityState.get(), channelMembersPromise.get(), mediaTabsData, mediaReady, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, storiesSignal, personalChannelSignal, revenueState, tonRevenueState, webAppPermissionsState(context: context, peerId: peerId), savedMuicProfileState)
-            |> mapToQueue { view, state, appearance, inputActivities, channelMembers, mediaTabsData, _, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, stories, personalChannel, revenueState, tonRevenueState, webAppPermissionsState, savedMuicProfileState -> Signal<(PeerView, TableUpdateTransition, MessageHistoryThreadData?, EnginePeer?), NoError> in
+            return combineLatest(queue: prepareQueue, context.account.viewTracker.peerView(peerId, updateData: true), arguments.statePromise, appearanceSignal, inputActivityState.get(), channelMembersPromise.get(), mediaTabsData, mediaReady, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, storiesSignal, personalChannelSignal, revenueState, tonRevenueState, webAppPermissionsState(context: context, peerId: peerId), savedMuicProfileState, globalNotificationSettings)
+            |> mapToQueue { view, state, appearance, inputActivities, channelMembers, mediaTabsData, _, inviteLinksCount, joinRequestsCount, availableReactions, threadData, threadPeer, stories, personalChannel, revenueState, tonRevenueState, webAppPermissionsState, savedMuicProfileState, globalNotificationSettings -> Signal<(PeerView, TableUpdateTransition, MessageHistoryThreadData?, EnginePeer?), NoError> in
                     
                     
-                let entries:[AppearanceWrapperEntry<PeerInfoSortableEntry>] = peerInfoEntries(view: view, threadData: threadData, threadPeer: threadPeer, arguments: arguments, inputActivities: inputActivities, channelMembers: channelMembers, mediaTabsData: mediaTabsData, inviteLinksCount: inviteLinksCount, joinRequestsCount: joinRequestsCount, availableReactions: availableReactions, source: source, stories: stories, personalChannel: personalChannel, revenueState: revenueState, tonRevenueState: tonRevenueState, webAppPermissionsState: webAppPermissionsState, savedMuicProfileState: savedMuicProfileState).map({PeerInfoSortableEntry(entry: $0)}).map({AppearanceWrapperEntry(entry: $0, appearance: appearance)})
+                let entries:[AppearanceWrapperEntry<PeerInfoSortableEntry>] = peerInfoEntries(view: view, threadData: threadData, threadPeer: threadPeer, arguments: arguments, inputActivities: inputActivities, channelMembers: channelMembers, mediaTabsData: mediaTabsData, inviteLinksCount: inviteLinksCount, joinRequestsCount: joinRequestsCount, availableReactions: availableReactions, source: source, stories: stories, personalChannel: personalChannel, revenueState: revenueState, tonRevenueState: tonRevenueState, webAppPermissionsState: webAppPermissionsState, savedMuicProfileState: savedMuicProfileState, globalNotificationSettings: globalNotificationSettings).map({PeerInfoSortableEntry(entry: $0)}).map({AppearanceWrapperEntry(entry: $0, appearance: appearance)})
                     let previous = previousEntries.swap(entries)
                     return prepareEntries(from: previous, to: entries, account: context.account, initialSize: initialSize.modify({$0}), peerId: peerId, arguments:arguments, animated: previous != nil) |> runOn(onMainQueue.swap(false) ? .mainQueue() : prepareQueue) |> map { (view, $0, threadData, threadPeer) }
                     
@@ -1472,6 +1488,9 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
             manageFlow?.finish(.cancelled)
             state = .Normal
             return .invoked
+        }
+        if mediaController.isProfileBlockVisible {
+            return mediaController.escapeSelection()
         }
         return .rejected
     }

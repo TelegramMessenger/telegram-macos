@@ -1,4 +1,5 @@
 import Cocoa
+import ComponentsUI
 import TGUIKit
 import UniqueGiftBackground
 import AvatarEditorUI
@@ -96,7 +97,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
             }
         }
         if peer.id != item.context.peerId {
-            let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) ?? false
+            let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: item.mutedByDefault) ?? false
             items.append(ActionItem(text: value ? strings().peerInfoActionUnmute : strings().peerInfoActionMute, color: item.accentColor, image: value ? theme.icons.profile_unmute : theme.icons.profile_mute, animation: .menu_mute, action: {
                 arguments.toggleNotifications(value)
             }))
@@ -206,7 +207,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
                         items.append(ActionItem(text: strings().peerInfoBotPrivacy, color: item.accentColor, image: theme.icons.profile_more, animation: .menu_plus, action: arguments.botPrivacy))
                     }
                 }
-                if peer.id != verifyCodePeerId, botInfo.flags.contains(.canEdit) {
+                if peer.id != verifyCodePeerId, !botInfo.flags.contains(.canEdit) {
                     items.append(ActionItem(text: strings().peerInfoReportBot, color: item.accentColor, image: theme.icons.profile_report, animation: .menu_report, action: arguments.reportBot))
                     markAnalytics(.report)
                 }
@@ -224,7 +225,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
                 arguments.addMember(access.canCreateInviteLink)
             }))
         }
-        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) {
+        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: item.mutedByDefault) {
             items.append(ActionItem(text: value ? strings().peerInfoActionUnmute : strings().peerInfoActionMute, color: item.accentColor, image: value ? theme.icons.profile_unmute : theme.icons.profile_mute, animation: value ? .menu_unmuted : .menu_mute, action: {
                 arguments.toggleNotifications(value)
             }))
@@ -322,7 +323,7 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
             }))
         }
         
-        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) {
+        if let value = item.peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: item.mutedByDefault) {
             items.append(ActionItem(text: value ? strings().peerInfoActionUnmute : strings().peerInfoActionMute, color: item.accentColor, image: value ? theme.icons.profile_unmute : theme.icons.profile_mute, animation: value ? .menu_unmuted : .menu_mute, action: {
                 arguments.toggleNotifications(value)
             }))
@@ -451,6 +452,18 @@ private func actionItems<Context: AccountContextProtocol>(item: PeerInfoHeadItem
 }
 
 class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
+    var usesCompactDetachedHeader: Bool {
+        return context.isExternal && !editing && table?.window?.styleMask.contains(.fullScreen) != true && DetachedWindowHeaderLayout.usesCompactLayout(width: width)
+    }
+
+    override var inset: NSEdgeInsets {
+        return usesCompactDetachedHeader ? NSEdgeInsets() : super.inset
+    }
+
+    override var blockWidth: CGFloat {
+        return usesCompactDetachedHeader ? width : super.blockWidth
+    }
+
     override var height: CGFloat {
         if !editing && isAvatarExpanded {
             return expandedAvatarHeight + expandedAvatarInsets
@@ -546,6 +559,13 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         } else {
             return [NSColor(0xffffff, 0), NSColor(0xffffff, 0)]
         }
+    }
+    
+    var patternDarkensCover: Bool {
+        if let emojiStatus = peer?.emojiStatus, case .starGift = emojiStatus.content {
+            return false
+        }
+        return nameColor != nil && threadId == nil && !editing
     }
     
     var hasBackgroundGradient: Bool {
@@ -692,6 +712,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     let isScam: Bool
     let isFake: Bool
     let isMuted: Bool
+    let mutedByDefault: Bool
     let peerView:PeerView
     let hasLiveStream: Bool
     
@@ -776,7 +797,7 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
     fileprivate var effectiveStatusLayout: TextViewLayout {
         return isAvatarExpanded ? overlayTextLayout(statusLayout, color: NSColor.white.withAlphaComponent(0.8), alwaysStaticItems: true) : statusLayout
     }
-    init(_ initialSize:NSSize, stableId:AnyHashable, context: Context, arguments: PeerInfoArguments<Context>, peerView:PeerView, threadData: MessageHistoryThreadData?, threadId: Int64?, stories: PeerExpiringStoryListContext.State? = nil, viewType: GeneralViewType, editing: Bool, updatingPhotoState:PeerInfoUpdatingPhotoState? = nil, updatePhoto:@escaping(NSImage?, Control?)->Void = { _, _ in }, giftsContext: ProfileGiftsContext? = nil, threadPeer: EnginePeer? = nil, savedMusic: ProfileSavedMusicContext.State? = nil, profileSavedMusic: ProfileSavedMusicContext? = nil) {
+    init(_ initialSize:NSSize, stableId:AnyHashable, context: Context, arguments: PeerInfoArguments<Context>, peerView:PeerView, threadData: MessageHistoryThreadData?, threadId: Int64?, stories: PeerExpiringStoryListContext.State? = nil, viewType: GeneralViewType, editing: Bool, updatingPhotoState:PeerInfoUpdatingPhotoState? = nil, updatePhoto:@escaping(NSImage?, Control?)->Void = { _, _ in }, giftsContext: ProfileGiftsContext? = nil, threadPeer: EnginePeer? = nil, savedMusic: ProfileSavedMusicContext.State? = nil, profileSavedMusic: ProfileSavedMusicContext? = nil, mutedByDefault: Bool = false) {
         var peer = peerViewMainPeer(peerView)
         let hideEmojiStatus = (peerView.cachedData as? CachedUserData)?.isSuspiciousPeer == true
         self.hideEmojiStatus = hideEmojiStatus
@@ -799,7 +820,8 @@ class PeerInfoHeadItem<Context: AccountContextProtocol>: GeneralRowItem {
         self.isPremium = peer?.isPremium ?? false
         self.isScam = peer?.isScam ?? false
         self.isFake = peer?.isFake ?? false
-        self.isMuted = peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: false) ?? false
+        self.mutedByDefault = mutedByDefault
+        self.isMuted = peerView.notificationSettings?.isRemovedFromTotalUnreadCount(default: mutedByDefault) ?? false
         self.updatingPhotoState = updatingPhotoState
         self.updatePhoto = updatePhoto
         
@@ -1752,6 +1774,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     
 
     private let actionsView = View()
+    private var actionsLayoutWidth: CGFloat?
     private weak var giftTooltip: ShimmerTooltipView?
     private var didRunGiftStatusIntro = false
     private var photoEditableView: PeerInfoPhotoEditableView?
@@ -1873,6 +1896,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
         isTogglingAvatar = true
+        photoContainer.layer?.removeAnimation(forKey: "transform")
         item.isAvatarExpanded = expanded
         item.noteHeightOfRow(animated: true)
         item.arguments.avatarExpandedDidChange?()
@@ -2315,9 +2339,18 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
     }
     
     
+    override var maxBlockWidth: CGFloat {
+        if let item = item as? PeerInfoHeadItem<Context>, item.usesCompactDetachedHeader {
+            return frame.width
+        }
+        return super.maxBlockWidth
+    }
+
     override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         super.updateLayout(size: size, transition: transition)
-        
+        if let item = item as? PeerInfoHeadItem<Context>, item.usesCompactDetachedHeader {
+            containerView.setCorners([], animated: transition.isAnimated, frame: containerView.frame)
+        }
         
         let statusContainerSize: NSSize
         statusContainerSize = NSMakeSize(statusContainer.subviewsWidthSize.width + 4, statusContainer.subviewsWidthSize.height)
@@ -2332,6 +2365,9 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
             return
         }
 
+        if actionsLayoutWidth != containerView.frame.width {
+            layoutActionItems(item.items, animated: false)
+        }
         let collapsedPhotoFrame = NSMakeRect(floorToScreenPixels(backingScaleFactor, (containerView.frame.width - 120) / 2), 20, 120, 120)
         let photoContainerFrame: NSRect
         if item.isAvatarExpanded {
@@ -2545,13 +2581,16 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
         }
 
         let actionItemInset = ActionItem.actionItemInsetWidth(isColorfull: item.nameColor != nil)
-        let sideInset: CGFloat = 14
+        let isDetachedProfile = item.usesCompactDetachedHeader
+        let sideInset: CGFloat = isDetachedProfile ? DetachedWindowHeaderLayout.sideInset * 2 : 14
         let width = (item.blockWidth - sideInset - item.inset.left - item.inset.right - (actionItemInset * CGFloat(items.count - 1)))
+        let buttonWidth = width / CGFloat(items.count)
 
-        return min(170, width / CGFloat(items.count))
+        return isDetachedProfile ? buttonWidth : min(170, buttonWidth)
     }
     
     private func layoutActionItems(_ items: [ActionItem], animated: Bool) {
+        actionsLayoutWidth = containerView.frame.width
         
         if !items.isEmpty, let rowItem = self.item as? PeerInfoHeadItem<Context> {
             let maxActionSize: NSSize = items.max(by: { $0.size.height < $1.size.height })!.size
@@ -2725,6 +2764,7 @@ private final class PeerInfoHeadView<Context: AccountContextProtocol> : GeneralC
                 addSubview(current, positioned: .above, relativeTo: backgroundView)
             }
             
+            current.darkensCover = item.patternDarkensCover
             current.set(fileId: emoji, color: item.profileEmojiColor, context: item.context, animated: animated)
         } else if let view = self.emojiSpawn {
             performSubviewRemoval(view, animated: animated)

@@ -26,7 +26,7 @@ import AppAnalytics
 private let maxTextLength:Int32 = 255
 private let maxOptionLength: Int32 = 100
 
-private enum NewPollMedia: Equatable {
+enum NewPollMedia: Equatable {
     case file(path: String, thumbnail: CGImage?, media: Media?)
     case sticker(TelegramMediaFile, thumbnail: CGImage?)
     case cloud(Media, thumbnail: CGImage?)
@@ -152,7 +152,7 @@ private let _id_limit_by_country = InputDataIdentifier("_id_limit_by_country")
 private let _id_allowed_countries = InputDataIdentifier("_id_allowed_countries")
 
 
-private struct NewPollOption : Equatable {
+struct NewPollOption : Equatable {
     public let identifier: InputDataIdentifier
     public let textState: Updated_ChatTextInputState
     public let selected: Bool
@@ -179,7 +179,7 @@ private struct NewPollOption : Equatable {
     }
 }
 
-private enum NewPollMode : Equatable {
+enum NewPollMode : Equatable {
     case normal(anonymous: Bool)
     case quiz(anonymous: Bool)
     case multiple(anonymous: Bool)
@@ -252,7 +252,7 @@ private enum NewPollMode : Equatable {
     }
 }
 
-private struct NewPollState : Equatable {
+struct NewPollState : Equatable {
     private let random: UInt32
 
     public var options: [NewPollOption]
@@ -305,6 +305,33 @@ private struct NewPollState : Equatable {
         return state
     }
 
+    func forSending(isPremium: Bool) -> NewPollState {
+        if isPremium {
+            return self
+        }
+        var state = self
+        state.textState = pollTextInputForSending(textState.textInputState(), isPremium: isPremium).textInputState()
+        state.descriptionState = pollTextInputForSending(descriptionState.textInputState(), isPremium: isPremium).textInputState()
+        state.quizExplanation = pollTextInputForSending(ChatTextInputState(attributedText: quizExplanation, selectionRange: 0 ..< 0), isPremium: isPremium).attributedString()
+        state.options = options.map { option in
+            return option.withUpdatedText(pollTextInputForSending(option.textState.textInputState(), isPremium: isPremium).textInputState())
+        }
+        return state
+    }
+
+    func addedOption(existingOptionCount: Int, accountPeerId: PeerId, timestamp: Int32, isPremium: Bool) -> TelegramMediaPollOption? {
+        guard let option = options.first else {
+            return nil
+        }
+        let input = pollTextInputForSending(option.textState.textInputState(), isPremium: isPremium)
+        let text = input.inputText.trimmed
+        if text.isEmpty {
+            return nil
+        }
+        let opaqueIdentifier = "\(existingOptionCount)".data(using: .utf8) ?? Data()
+        return TelegramMediaPollOption(text: text, entities: input.messageTextEntities(), opaqueIdentifier: opaqueIdentifier, media: option.media?.media, date: timestamp, addedBy: accountPeerId)
+    }
+
     public func withUpdatedTitle(_ title: String) -> NewPollState {
         return copy()
     }
@@ -348,7 +375,7 @@ private struct NewPollState : Equatable {
         return copy(random: arc4random())
     }
     public func withUpdatedMode(_ mode: NewPollMode) -> NewPollState {
-        return copy(mode: mode)
+        return copy(mode: mode, allowAddingOptions: !mode.isAnonymous && self.allowAddingOptions)
     }
     public func withUpdatedQuizExplanation(_ quizExplanation: NSAttributedString) -> NewPollState {
         return copy(quizExplanation: quizExplanation)
@@ -357,7 +384,7 @@ private struct NewPollState : Equatable {
         return copy(descriptionState: descriptionState)
     }
     public func withUpdatedAllowAddingOptions(_ allowAddingOptions: Bool) -> NewPollState {
-        return copy(allowAddingOptions: allowAddingOptions)
+        return copy(mode: allowAddingOptions ? self.mode.withUpdatedIsAnonymous(false) : self.mode, allowAddingOptions: allowAddingOptions)
     }
     public func withUpdatedAllowRevoting(_ allowRevoting: Bool) -> NewPollState {
         return copy(allowRevoting: allowRevoting)
@@ -447,7 +474,7 @@ private struct NewPollState : Equatable {
         return self.mode.isQuiz && !self.options.contains(where: { $0.selected })
     }
     
-    public func media(_ context: any AccountContextProtocol) -> TelegramMediaPoll {
+    public func media(accountPeerId: PeerId) -> TelegramMediaPoll {
         var options: [TelegramMediaPollOption] = []
         var answers: [Data]?
         for (i, option) in self.options.enumerated() {
@@ -472,7 +499,7 @@ private struct NewPollState : Equatable {
                         optionMedia = map
                     }
                 }
-                options.append(TelegramMediaPollOption(text: option.text.trimmed, entities: option.textState.textInputState().messageTextEntities(), opaqueIdentifier: "\(i)".data(using: .utf8)!, media: optionMedia, date: nil, addedBy: context.peerId))
+                options.append(TelegramMediaPollOption(text: option.text.trimmed, entities: option.textState.textInputState().messageTextEntities(), opaqueIdentifier: "\(i)".data(using: .utf8)!, media: optionMedia, date: nil, addedBy: accountPeerId))
                 if option.selected {
                     answers = [options.last!.opaqueIdentifier]
                 }
@@ -541,7 +568,7 @@ private struct NewPollState : Equatable {
         }
 
         let effectiveCountries: [String] = self.limitByCountry ? self.countries.map { $0.id } : []
-        return TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.LocalPoll, id: arc4random64()), publicity: mode.publicity, kind: mode.kind, text: title.trimmed, textEntities: self.textState.textInputState().messageTextEntities(), options: options, correctAnswers: answers, results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: solution, hasUnseenVotes: nil, canViewStats: false), isClosed: false, deadlineTimeout: computedDeadlineTimeout, deadlineDate: deadlineDate.flatMap({ Int32($0.timeIntervalSince1970) }), pollHash: 0, openAnswers: self.allowAddingOptions, revotingDisabled: !self.allowRevoting, shuffleAnswers: self.shuffleOptions, hideResultsUntilClose: self.hideResults, attachedMedia: pollAttachedMedia, restrictToSubscribers: self.restrictToSubscribers, countries: effectiveCountries)
+        return TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.LocalPoll, id: arc4random64()), publicity: mode.publicity, kind: mode.kind, text: title.trimmed, textEntities: self.textState.textInputState().messageTextEntities(), options: options, correctAnswers: answers, results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: solution, hasUnseenVotes: nil, canViewStats: false), isClosed: false, deadlineTimeout: computedDeadlineTimeout, deadlineDate: limitDuration ? deadlineDate.flatMap({ Int32($0.timeIntervalSince1970) }) : nil, pollHash: 0, openAnswers: self.allowAddingOptions && !mode.isAnonymous, revotingDisabled: !self.allowRevoting, shuffleAnswers: self.shuffleOptions, hideResultsUntilClose: limitDuration && self.hideResults, attachedMedia: pollAttachedMedia, restrictToSubscribers: self.restrictToSubscribers, countries: effectiveCountries)
     }
 }
 
@@ -1341,13 +1368,7 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
             return current
         }
     }, toggleAllowAddingOptions: {
-        updateState { s in
-            var state = s.withUpdatedAllowAddingOptions(!s.allowAddingOptions)
-            if state.allowAddingOptions && state.mode.isAnonymous {
-                state = state.withUpdatedMode(state.mode.withUpdatedIsAnonymous(false))
-            }
-            return state
-        }
+        updateState { s in s.withUpdatedAllowAddingOptions(!s.allowAddingOptions) }
     }, toggleAllowRevoting: {
         updateState { s in s.withUpdatedAllowRevoting(!s.allowRevoting) }
     }, toggleShuffleOptions: {
@@ -1481,10 +1502,10 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
     
     
     let checkAndSend:() -> Void = {
-        let state = stateValue.with { $0 }
-    
+        let state = stateValue.with { $0 }.forSending(isPremium: context.isPremium)
+
         if state.isEnabled && !state.shouldShowTooltipForQuiz {
-            chatInteraction.sendPollMedias([state.media(context)], state.descriptionState.textInputState(), false, nil, false, nil, false, nil, false)
+            chatInteraction.sendPollMedias([state.media(accountPeerId: context.peerId)], state.descriptionState.textInputState(), false, nil, false, nil, false, nil, false)
             close?()
         } else if state.shouldShowTooltipForQuiz {
             showTooltipForQuiz?()
@@ -1506,12 +1527,9 @@ public func NewPollController(chatInteraction: any NewPollChatInteraction, isQui
             return
         }
         if case let .addOption(messageId, existingOptions) = source {
-            guard let opt = state.options.first else { return }
-            let text = opt.text.trimmed
-            if text.isEmpty { return }
-            let entities = opt.textState.textInputState().messageTextEntities()
-            let opaqueId = "\(existingOptions.count)".data(using: .utf8) ?? Data()
-            let pollOption = TelegramMediaPollOption(text: text, entities: entities, opaqueIdentifier: opaqueId, media: opt.media?.media, date: context.timestamp, addedBy: context.peerId)
+            guard let pollOption = state.addedOption(existingOptionCount: existingOptions.count, accountPeerId: context.peerId, timestamp: context.timestamp, isPremium: context.isPremium) else {
+                return
+            }
             chatInteraction.appendPollOption(messageId, pollOption)
             close?()
         } else {

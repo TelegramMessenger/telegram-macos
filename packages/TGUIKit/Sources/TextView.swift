@@ -1257,6 +1257,7 @@ public final class TextViewLayout : Equatable {
             
             var lineCutoutOffset: CGFloat = 0.0
             var lineAdditionalWidth: CGFloat = 0.0
+            var lineMinimumWidth: CGFloat = 0.0
 
             var isPreformattedLine: CGFloat? = nil
             
@@ -1273,7 +1274,8 @@ public final class TextViewLayout : Equatable {
                 
                 breakInset = CGFloat(blockQuote.space * 2 + 20)
                 lineCutoutOffset += CGFloat(blockQuote.space * 2)
-                lineAdditionalWidth += max(breakInset, blockQuote.minimumHeaderSize)
+                lineAdditionalWidth += breakInset
+                lineMinimumWidth = blockQuote.minimumHeaderSize + breakInset
                 
                 if !isWasPreformatted {
                     layoutSize.height += CGFloat(blockQuote.space) + fontLineSpacing
@@ -1427,7 +1429,7 @@ public final class TextViewLayout : Equatable {
                 let lineWidth = ceil(CGFloat(measuredLineWidth))
                 let lineFrame = CGRect(x: lineCutoutOffset, y: lineOriginY, width: lineWidth, height: lineHeight)
                 layoutSize.height += lineHeight + fontLineSpacing
-                layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth)
+                layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth, lineMinimumWidth)
                 
                 if needsRunDecorations, brokenLineRange.location >= 0 && brokenLineRange.length > 0 && brokenLineRange.location + brokenLineRange.length <= attributedString.length {
                     attributedString.enumerateAttributes(in: NSMakeRange(lineRange.location, lineRange.length), options: []) { attributes, range, _ in
@@ -1508,7 +1510,7 @@ public final class TextViewLayout : Equatable {
                     let lineWidth = ceil(CGFloat(CTLineGetTypographicBounds(coreTextLine, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(coreTextLine)))
                     let lineFrame = CGRect(x: lineCutoutOffset, y: lineOriginY, width: lineWidth, height: lineHeight)
                     layoutSize.height += lineHeight
-                    layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth)
+                    layoutSize.width = max(layoutSize.width, lineWidth + lineAdditionalWidth, lineMinimumWidth)
                     
                     let lineQuote: TextViewBlockQuoteData?
                     if lineRange.location >= quoteRange.location && lineRange.location + lineRange.length <= quoteRange.location + quoteRange.length {
@@ -1520,7 +1522,7 @@ public final class TextViewLayout : Equatable {
                         
                         let preformattedSpace = CGFloat(blockQuote.space) * 2
                         
-                        var frame = NSMakeRect(0, lineFrame.minY - lineFrame.height, lineWidth + max(preformattedSpace + 20, lineAdditionalWidth), lineFrame.height + preformattedSpace)
+                        var frame = NSMakeRect(0, lineFrame.minY - lineFrame.height, max(lineWidth + max(preformattedSpace + 20, lineAdditionalWidth), lineMinimumWidth), lineFrame.height + preformattedSpace)
                         
                         if isFirstFormattedLine {
                             frame.origin.y -= blockQuote.headerInset
@@ -2179,6 +2181,24 @@ public final class TextViewLayout : Equatable {
         }
     }
 
+    public func penOffset(for line: TextViewLine) -> CGFloat {
+        var penOffset = CGFloat(CTLineGetPenOffsetForFlush(line.line, line.penFlush, Double(layoutSize.width)))
+        if penFlush == 0.5, line.penFlush != 0.5 { penOffset = 0 }
+        if line.penFlush == 1, let size = cutout?.topRight, line.frame.maxY <= size.height {
+            penOffset -= size.width
+        }
+        if line.isRTL && blockQuotes.contains(where: { $0.frame.contains(line.frame.origin) }) {
+            penOffset -= 20 + 4 * 2
+        }
+        return penOffset + line.frame.minX
+    }
+
+    public func isOutsideText(_ point: NSPoint, line index: Int) -> Bool {
+        let line = lines[index]
+        let penOffset = self.penOffset(for: line)
+        return point.x > penOffset + line.frame.width || (line.penFlush == 1 && point.x < floor(penOffset))
+    }
+
     public func link(at point:NSPoint) -> (Any, LinkType, NSRange, NSRect)? {
 
         let index = findIndex(location: point)
@@ -2194,15 +2214,7 @@ public final class TextViewLayout : Equatable {
 
         let width:CGFloat = CGFloat(CTLineGetTypographicBounds(line.line, &ascent, &descent, &leading));
 
-        var penOffset = CGFloat(CTLineGetPenOffsetForFlush(line.line, line.penFlush, Double(layoutSize.width)))
-        if penFlush == 0.5, line.penFlush != 0.5 { penOffset = 0 }
-        if line.penFlush == 1, let size = cutout?.topRight, line.frame.maxY <= size.height {
-            penOffset -= size.width
-        }
-        if line.isRTL && blockQuotes.contains(where: { $0.frame.contains(line.frame.origin) }) {
-            penOffset -= 20 + 4 * 2
-        }
-        penOffset += line.frame.minX
+        let penOffset = self.penOffset(for: line)
         var point = point
         point.x -= penOffset
 
@@ -2305,6 +2317,12 @@ public final class TextViewLayout : Equatable {
         }
         
         let line = lines[index]
+        let penOffset = self.penOffset(for: line)
+        if line.penFlush == 1, point.x < floor(penOffset) {
+            return -1
+        }
+        var point = point
+        point.x -= penOffset
         let width:CGFloat = CGFloat(CTLineGetTypographicBounds(line.line, nil, nil, nil));
         if width > point.x {
             var charIndex = Int(CTLineGetStringIndexForPosition(line.line, point))
@@ -2514,7 +2532,7 @@ public func ==(lhs:TextSelectedRange, rhs:TextSelectedRange) -> Bool {
 //    
 //}
 
-private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, size: NSSize, drawingSize: NSSize, backingScaleFactor: CGFloat, backgroundColor: NSColor = .clear, disableBackgroundDrawing: Bool = true, hasBackground: Bool = false, isSelectable: Bool = false, isKeyWindow: Bool = false, clearExceptRevealed: Bool = false, inAnimation: Bool = false, canDrawBlocks: Bool = true) -> [(NSRect, NSRange)] {
+private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, size: NSSize, drawingSize: NSSize, backingScaleFactor: CGFloat, backgroundColor: NSColor = .clear, disableBackgroundDrawing: Bool = true, hasBackground: Bool = false, isSelectable: Bool = false, isKeyWindow: Bool = false, clearExceptRevealed: Bool = false, inAnimation: Bool = false, canDrawBlocks: Bool = true, smoothFonts: Bool = false) -> [(NSRect, NSRange)] {
     var blockHeaderRects: [(NSRect, NSRange)] = []
     if let layout {
 
@@ -2523,8 +2541,8 @@ private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, s
         if !System.supportsTransparentFontDrawing {
             ctx.setAllowsAntialiasing(true)
 
-            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0)
-            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0)
+            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0 || smoothFonts)
+            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0 || smoothFonts)
 
             if backingScaleFactor == 1.0 && !disableBackgroundDrawing {
                 ctx.setFillColor(backgroundColor.cgColor)
@@ -2535,8 +2553,8 @@ private func drawTextViewContent(_ layout: TextViewLayout?, in ctx: CGContext, s
         } else {
             ctx.setAllowsAntialiasing(true)
             ctx.setShouldAntialias(true)
-            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0)
-            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0)
+            ctx.setAllowsFontSmoothing(backingScaleFactor == 1.0 || smoothFonts)
+            ctx.setShouldSmoothFonts(backingScaleFactor == 1.0 || smoothFonts)
         }
 
         if clearExceptRevealed {
@@ -3043,6 +3061,14 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             drawLayer.needsDisplay()
         }
     }
+
+    public var smoothFonts: Bool = false {
+        didSet {
+            if smoothFonts != oldValue {
+                drawLayer.needsDisplay()
+            }
+        }
+    }
     
     private var menuDisposable: TextViewMenuState?
 
@@ -3152,7 +3178,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             return
         }
         lastDrawnSelectionState = currentSelectionState
-        blockHeaderRects = drawTextViewContent(textLayout, in: ctx, size: frame.size, drawingSize: layer.frame.size, backingScaleFactor: backingScaleFactor, backgroundColor: backgroundColor, disableBackgroundDrawing: disableBackgroundDrawing, hasBackground: hasBackground, isSelectable: isSelectable, isKeyWindow: window?.isKeyWindow == true, clearExceptRevealed: clearExceptRevealed, inAnimation: inAnimation, canDrawBlocks: canDrawBlocks)
+        blockHeaderRects = drawTextViewContent(textLayout, in: ctx, size: frame.size, drawingSize: layer.frame.size, backingScaleFactor: backingScaleFactor, backgroundColor: backgroundColor, disableBackgroundDrawing: disableBackgroundDrawing, hasBackground: hasBackground, isSelectable: isSelectable, isKeyWindow: window?.isKeyWindow == true, clearExceptRevealed: clearExceptRevealed, inAnimation: inAnimation, canDrawBlocks: canDrawBlocks, smoothFonts: smoothFonts)
     }
 
     private func acceptsMenuRequest(_ state: TextViewMenuState, version: UInt64) -> Bool {
@@ -3180,7 +3206,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
         guard menuDisposable === previousState, previousState?.version == cancelledVersion else { return }
         if let layout = textLayout, userInteractionEnabled, layout.mayItems, mouseInside() {
             let location = convert(event.locationInWindow, from: nil)
-            if !layout.selectedRange.hasSelectText && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
+            if (!layout.selectedRange.hasSelectText || layout.selectedRange.range.length == 0) && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
                 layout.selectWord(at: location)
             }
             self.setNeedsDisplayLayer()
@@ -3472,7 +3498,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
         if let layout = textLayout, userInteractionEnabled {
             let point = self.convert(event.locationInWindow, from: nil)
             let index = layout.findIndex(location: point)
-            if index == -1 || (point.x > layout.lines[index].frame.maxX && isSelectable) {
+            if index == -1 || (layout.isOutsideText(point, line: index) && isSelectable) {
                 superview?.mouseDown(with: event)
                 if sendDownAnyway {
                     super.mouseDown(with: event)
@@ -3627,8 +3653,10 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                 self.updateInks(layout, animated: true)
                 return
             }
-            if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }), layout.mayItems {
-                if let string = layout.blockQuoteText(startingWith: blockHeader.1) {
+            if let blockHeader = blockHeaderRects.first(where: { $0.0.contains(point) }) {
+                if !layout.mayItems {
+                    _ = layout.interactions.copy?()
+                } else if let string = layout.blockQuoteText(startingWith: blockHeader.1) {
                     _ = layout.interactions.copyToClipboard?(string)
                     showModalText(for: window, text: localizedString("Share.Link.Copied"))
                 }
@@ -3669,7 +3697,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
             } else if layout.selectedRange.hasSelectText && event.clickCount == 1 && event.modifierFlags.contains(.shift) {
                 var range = layout.selectedRange.range
                 let index = layout.findCharacterIndex(at: point)
-                if index < range.min {
+                if index >= 0, index < range.min {
                     range.length += (range.location - index)
                     range.location = index
                 } else if index > range.max {
@@ -3997,7 +4025,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
     @objc public func copy(_ sender:Any) -> Void {
         if let layout = textLayout {
             if let copy = layout.interactions.copy {
-                if !copy() && layout.selectedRange.range.location != NSNotFound {
+                if !copy() && layout.mayItems && layout.selectedRange.range.location != NSNotFound {
                     if !layout.interactions.copyAttributedString(layout.attributedString.attributedSubstring(from: layout.selectedRange.range)) {
                         let pb = NSPasteboard.general
                         pb.clearContents()
@@ -4005,7 +4033,7 @@ open class TextView: Control, NSViewToolTipOwner, ViewDisplayDelegate {
                         pb.setString(layout.attributedString.string.nsstring.substring(with: layout.selectedRange.range), forType: .string)
                     }
                 }
-            } else if layout.selectedRange.range.location != NSNotFound {
+            } else if layout.mayItems, layout.selectedRange.range.location != NSNotFound {
                 if !layout.interactions.copyAttributedString(layout.attributedString.attributedSubstring(from: layout.selectedRange.range)) {
                     let pb = NSPasteboard.general
                     pb.clearContents()

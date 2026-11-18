@@ -678,14 +678,18 @@ public class ShareLinkObject : ShareObject, ShareDeliveryProviding {
         let presentation = origin.beginPresentation()
         defer { presentation.end() }
         guard !peerIds.isEmpty else { return .single([]) }
+        let context = self.context
         let threadIds = self.threadIds
         var text = self.link
         if let comment, !comment.inputText.isEmpty { text += "\n\(comment.inputText)" }
         let signals = peerIds.map { peerId -> Signal<ShareRecipientDelivery, NoError> in
             let threadId = threadIds[peerId] ?? threadId
             let attributes = self.attributes(peerId, sendPaidMessageStars: sendPaidMessageStars[peerId])
-            let message = EnqueueMessage.message(text: text, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-            return shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
+            let enqueued = context.account.postbox.transaction { $0.getPeer(peerId) } |> mapToSignal { peer in
+                let message = EnqueueMessage.message(text: text, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer?.isMonoForum ?? false), replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
+                return enqueueMessages(account: context.account, peerId: peerId, messages: [message])
+            }
+            return shareFirstResult(enqueued |> map { Optional($0) }, or: nil)
             |> map { ShareRecipientDelivery(peerId: peerId, comment: nil, content: ShareDeliveryPart(expectedCount: 1, result: $0)) }
         }
         return origin.preservingPresentation(combineLatest(signals) |> take(1) |> afterNext { [context] results in shareObserveDelivery(results, context: context) } |> castError(String.self))
@@ -726,23 +730,28 @@ public class ShareContactObject : ShareObject, ShareDeliveryProviding {
         let presentation = origin.beginPresentation()
         defer { presentation.end() }
         guard !peerIds.isEmpty else { return .single([]) }
+        let context = self.context
+        let media = self.media
         let threadIds = self.threadIds
         let signals = peerIds.map { peerId -> Signal<ShareRecipientDelivery, NoError> in
             let threadId = threadIds[peerId] ?? threadId
             let attributes = self.attributes(peerId, sendPaidMessageStars: sendPaidMessageStars[peerId])
-            let commentResult: Signal<ShareDeliveryPart?, NoError>
-            if let comment, !comment.inputText.isEmpty {
-                let message = EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-                commentResult = shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
-                |> map { ShareDeliveryPart(expectedCount: 1, result: $0) }
-            } else {
-                commentResult = .single(nil)
+            return context.account.postbox.transaction { $0.getPeer(peerId) } |> mapToSignal { peer -> Signal<ShareRecipientDelivery, NoError> in
+                let replyId = makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer?.isMonoForum ?? false)
+                let commentResult: Signal<ShareDeliveryPart?, NoError>
+                if let comment, !comment.inputText.isEmpty {
+                    let message = EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: replyId, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
+                    commentResult = shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
+                    |> map { ShareDeliveryPart(expectedCount: 1, result: $0) }
+                } else {
+                    commentResult = .single(nil)
+                }
+                let message = EnqueueMessage.message(text: "", attributes: attributes, inlineStickers: [:], mediaReference: AnyMediaReference.standalone(media: media), threadId: threadId, replyToMessageId: replyId, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
+                let contactResult = shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
+                return combineLatest(commentResult, contactResult)
+                |> take(1)
+                |> map { ShareRecipientDelivery(peerId: peerId, comment: $0, content: ShareDeliveryPart(expectedCount: 1, result: $1)) }
             }
-            let message = EnqueueMessage.message(text: "", attributes: attributes, inlineStickers: [:], mediaReference: AnyMediaReference.standalone(media: media), threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-            let contactResult = shareFirstResult(enqueueMessages(account: context.account, peerId: peerId, messages: [message]) |> map { Optional($0) }, or: nil)
-            return combineLatest(commentResult, contactResult)
-            |> take(1)
-            |> map { ShareRecipientDelivery(peerId: peerId, comment: $0, content: ShareDeliveryPart(expectedCount: 1, result: $1)) }
         }
         return origin.preservingPresentation(combineLatest(signals) |> take(1) |> afterNext { [context] results in shareObserveDelivery(results, context: context) } |> castError(String.self))
     }
@@ -935,7 +944,7 @@ public class ShareMessageObject : ShareObject, ShareDeliveryProviding {
                         attributes.append(SendAsMessageAttribute(peerId: sendAs))
                     }
                     
-                    caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
+                    caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer.isMonoForum), replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
                 }
                 let commentResult: Signal<ShareDeliveryPart?, NoError>
                 if let caption {
@@ -1033,7 +1042,7 @@ public class ShareStoryObject : ShareObject {
             
             signals.append(viewSignal |> mapToSignal { (peer, sendAs) in
                 
-                let forward: Signal<[MessageId?], NoError> = Sender.enqueue(media: media, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: withoutSound, atDate: date)
+                let forward: Signal<[MessageId?], NoError> = Sender.enqueue(media: media, context: context, peerId: peerId, replyId: makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer.isMonoForum), threadId: threadId, silent: withoutSound, atDate: date)
                 var caption: Signal<[MessageId?], NoError>?
                 if let comment = comment, !comment.inputText.isEmpty, peer.canSendMessage() {
                     let parsingUrlType: ParsingType
@@ -1054,7 +1063,7 @@ public class ShareStoryObject : ShareObject {
                     if let date = date {
                         attributes.append(OutgoingScheduleInfoMessageAttribute(scheduleTime: Int32(date.timeIntervalSince1970), repeatPeriod: nil))
                     }
-                    caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
+                    caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer.isMonoForum), replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
                 }
                 if let caption = caption {
                     return caption |> then(forward)
@@ -1140,7 +1149,7 @@ public final class ReplyForwardMessageObject : ShareObject {
                     let navigation = self.context.bindings.rootNavigation()
                     if let peer = peer {
                         
-                        if let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
+                        if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
                             controller.chatInteraction.update({ current in
                                 current.withoutSelectionState().updatedInterfaceState {
                                     $0.withUpdatedReplyMessageId(subject)
@@ -1385,7 +1394,7 @@ public final class ForwardMessagesObject : ShareObject {
                             
                             let comment = peer.canSendMessage() ? comment : nil
                             
-                            if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId) {
+                            if threadId == nil, let controller = navigation.controller as? ChatInterfaceController, controller.chatInteraction.chatLocation == .peer(peerId), controller.chatInteraction.mode == .history {
                                 controller.inheritAnalyticsContext(origin)
                                 controller.chatInteraction.update({ current in
                                     current.withoutSelectionState().updatedInterfaceState {
@@ -1482,7 +1491,7 @@ public final class ForwardMessagesObject : ShareObject {
                             attributes.append(SendAsMessageAttribute(peerId: sendAs))
                         }
                         
-                        caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
+                        caption = Sender.enqueue(message: EnqueueMessage.message(text: comment.inputText, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer.isMonoForum), replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []), context: context, peerId: peerId)
                     }
                     if let caption = caption {
                         return origin.preservingPresentation(caption |> then(forward))

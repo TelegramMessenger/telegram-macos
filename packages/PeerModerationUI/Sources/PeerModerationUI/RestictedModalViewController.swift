@@ -232,7 +232,7 @@ private func completeRights(_ flags: TelegramChatBannedRightsFlags) -> TelegramC
         result.remove(.banSendStickers)
         result.remove(.banSendGifs)
         result.remove(.banSendGames)
-        result.insert(.banSendInline)
+        result.remove(.banSendInline)
     }
     return result
 }

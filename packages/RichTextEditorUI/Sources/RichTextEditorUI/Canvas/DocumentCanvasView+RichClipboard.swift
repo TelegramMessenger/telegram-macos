@@ -131,7 +131,10 @@ extension DocumentCanvasView {
     private static func reidTable(_ t: TableBlock) -> TableBlock {
         let rows = t.rows.map { row -> Row in
             let cells = row.cells.map { cell in
-                Cell(id: BlockID.generate(), blocks: cell.blocks.map { reid($0) }, background: cell.background)
+                var cell = cell
+                cell.id = BlockID.generate()
+                cell.blocks = cell.blocks.map { reid($0) }
+                return cell
             }
             return Row(id: BlockID.generate(), height: row.height, isHeader: row.isHeader, cells: cells)
         }

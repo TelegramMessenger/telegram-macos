@@ -141,4 +141,39 @@ final class SystemThemeColorsTests: XCTestCase {
         XCTAssertEqual(presentation.colors.accent.argb, systemPalette.accent.argb)
         XCTAssertNotEqual(presentation.colors.colorSignature, systemPalette.colorSignature)
     }
+
+    func testSystemSnapshotPreservesNativeTextContrast() {
+        guard #available(macOS 10.14, *) else { return }
+        let snapshot = systemPalette.withUpdatedName(systemPalette.name)
+        let colors: [KeyPath<ColorPalette, NSColor>] = [\.text, \.grayText, \.grayIcon, \.listGrayText, \.chatReplyTextEnabled, \.chatReplyTextDisabled]
+        for color in colors {
+            XCTAssertEqual(snapshot[keyPath: color].argb, systemPalette[keyPath: color].argb)
+        }
+        XCTAssertEqual(snapshot.text.alphaComponent, 0.85, accuracy: 0.001)
+        XCTAssertEqual(snapshot.grayText.alphaComponent, 0.55, accuracy: 0.001)
+        XCTAssertLessThan(snapshot.grayText.alphaComponent, snapshot.text.alphaComponent)
+        XCTAssertEqual(snapshot.withUpdatedName(snapshot.name), snapshot)
+    }
+
+    func testSystemThemeGenerationKeepsSecondaryTextDimmer() {
+        guard #available(macOS 10.14, *) else { return }
+        let settings = ThemePaletteSettings.defaultTheme.withUpdatedPalette(systemPalette)
+        let snapshots: [ColorPalette?] = [nil, systemPalette.withUpdatedName(systemPalette.name)]
+        for snapshot in snapshots {
+            let presentation = updateTheme(with: settings, resolvedSystemPalette: snapshot)
+            XCTAssertEqual(presentation.chatList.textColor.argb, systemPalette.text.argb)
+            XCTAssertEqual(presentation.chatList.grayTextColor.argb, systemPalette.grayText.argb)
+            XCTAssertEqual(presentation.search.placeholderColor.argb, systemPalette.grayText.argb)
+            XCTAssertEqual(presentation.inputTheme.grayTextColor.argb, systemPalette.grayText.argb)
+        }
+    }
+
+    func testRenamingBuiltInPalettesPreservesTheirColors() {
+        for palette in [whitePalette, darkPalette, dayClassicPalette, nightAccentPalette] {
+            let renamed = palette.withUpdatedName("Renamed")
+            XCTAssertEqual(renamed.name, "Renamed")
+            XCTAssertEqual(renamed.colorSignature, palette.colorSignature)
+            XCTAssertEqual(renamed.withUpdatedName(palette.name), palette)
+        }
+    }
 }

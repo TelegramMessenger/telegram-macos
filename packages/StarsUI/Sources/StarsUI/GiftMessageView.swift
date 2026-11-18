@@ -77,9 +77,16 @@ public final class GiftMessageView : View {
         fatalError("init(coder:) has not been implemented")
     }
 
-    public func set(message: GiftMessage, context: any AccountContextProtocol, animated: Bool) {
+    public func set(message: GiftMessage, context: any AccountContextProtocol, animated: Bool, openPeer: (() -> Void)? = nil) {
         textView.set(text: message.text, context: context)
         avatar.setPeer(account: context.account, peer: message.peer?._asPeer())
+        avatar.removeAllHandlers()
+        avatar.userInteractionEnabled = openPeer != nil
+        if let openPeer {
+            avatar.set(handler: { _ in
+                openPeer()
+            }, for: .Click)
+        }
         needsLayout = true
     }
 

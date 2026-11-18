@@ -23,8 +23,12 @@ final class NativeChatListFilterBadgeTests: XCTestCase {
         return ChatListFilterData(isShared: false, hasSharedLinks: false, categories: categories, excludeMuted: excludeMuted, excludeRead: false, excludeArchived: excludeArchived, includePeers: includePeers, excludePeers: exclude, color: nil)
     }
 
-    private func unread(_ tag: EnginePeerSummaryCounterTags, groupId: EnginePeerGroupId = .root, isMuted: Bool = false) -> ChatListFilterBadgeChat {
-        return ChatListFilterBadgeChat(tag: tag, groupId: groupId, isMuted: isMuted)
+    private func unread(_ tag: EnginePeerSummaryCounterTags, groupId: EnginePeerGroupId = .root, isMuted: Bool = false, hasUnreadForTotals: Bool = true) -> ChatListFilterBadgeChat {
+        return ChatListFilterBadgeChat(tag: tag, groupId: groupId, isMuted: isMuted, hasUnreadForTotals: hasUnreadForTotals)
+    }
+
+    private var forumId: EnginePeer.Id {
+        return EnginePeer.Id(namespace: Namespaces.Peer.CloudChannel, id: EnginePeer.Id.Id._internalFromInt64Value(100))
     }
 
     private var secretChatsByUserId: [EnginePeer.Id: [EnginePeer.Id]] {
@@ -127,5 +131,35 @@ final class NativeChatListFilterBadgeTests: XCTestCase {
     func testAReadChatIsNotCorrected() {
         let data = self.folder(include: [self.userId(1)], pinned: [self.userId(2)], exclude: [self.userId(3)])
         XCTAssertEqual(self.correction(data, [:]), [0, 0])
+    }
+
+    func testAnIncludedForumWithOnlyMutedUnreadTopicsCountsWithoutHighlighting() {
+        let data = self.folder(include: [self.forumId])
+        let chat = self.unread(.group, hasUnreadForTotals: false)
+        XCTAssertEqual(self.correction(data, [self.forumId: chat]), [1, 0])
+    }
+
+    func testAnIncludedForumWithOnlyMutedUnreadTopicsIsAbsentFromCategoryTotals() {
+        let data = self.folder(categories: [.groups], include: [self.forumId])
+        let chat = self.unread(.group, hasUnreadForTotals: false)
+        XCTAssertEqual(self.correction(data, [self.forumId: chat]), [1, 0])
+    }
+
+    func testAPinnedForumWithOnlyMutedUnreadTopicsCountsInAFolderThatExcludesMuted() {
+        let data = self.folder(categories: [.groups], excludeMuted: true, pinned: [self.forumId])
+        let chat = self.unread(.group, hasUnreadForTotals: false)
+        XCTAssertEqual(self.correction(data, [self.forumId: chat]), [1, 0])
+    }
+
+    func testAnExcludedForumWithOnlyMutedUnreadTopicsDoesNotSubtractAnotherChat() {
+        let data = self.folder(categories: [.groups], exclude: [self.forumId])
+        let chat = self.unread(.group, hasUnreadForTotals: false)
+        XCTAssertEqual(self.correction(data, [self.forumId: chat]), [0, 0])
+    }
+
+    func testAnIncludedForumWithUnmutedUnreadTopicsInTheCategoriesIsAlreadyCounted() {
+        let data = self.folder(categories: [.groups], include: [self.forumId])
+        let chat = self.unread(.group)
+        XCTAssertEqual(self.correction(data, [self.forumId: chat]), [0, 0])
     }
 }

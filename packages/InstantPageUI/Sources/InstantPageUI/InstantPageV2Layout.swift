@@ -483,7 +483,9 @@ private struct LayoutContextV2 {
     public let codeSyntaxThemeKeys: [String: NSColor]
     public let codeTextColor: NSColor?
     public let collageMosaic: (([Media], CGFloat) -> [CGRect])?
-    public let mediaBleed: CGFloat
+    // Lets top-level media reach the bubble edges. Indented containers (list items, block
+    // quotes) set it to 0 for their children, or the media would overflow their column.
+    public var mediaBleed: CGFloat
     public let unsupportedStyle: (any InstantPageV2UnsupportedBandStyle)?
     public let buttonsEnabled: Bool
 
@@ -667,6 +669,7 @@ private func layoutBlockSequenceV2(
     var detailsIndices: [Int] = []
     var pullQuoteRanges: [(range: Range<Int>, pillWidth: CGFloat)] = []
     var directCodeBlockIndices: [Int] = []
+    var directDividerIndices: [Int] = []
     var contentHeight: CGFloat = 0.0
     var previousBlock: InstantPageBlock?
 
@@ -715,6 +718,9 @@ private func layoutBlockSequenceV2(
                 }
             }
         }
+        if case .divider = block {
+            directDividerIndices.append(contentsOf: blockStartIndex ..< items.count)
+        }
         if case .pullQuote = block {
             let pillWidth = localItems.reduce(CGFloat(0)) { acc, item in
                 if case let .shape(s) = item { return max(acc, s.frame.width) }
@@ -759,6 +765,14 @@ private func layoutBlockSequenceV2(
                 for i in range {
                     items[i] = items[i].offsetBy(CGPoint(x: dx, y: 0.0))
                 }
+            }
+        }
+        // Dividers are centered on the full bounding width; recenter them on the fitted width.
+        for i in directDividerIndices {
+            if case var .divider(divider) = items[i] {
+                let availableWidth = contentSize.width - horizontalInset * 2.0
+                divider.frame.origin.x = horizontalInset + floor(max(0.0, availableWidth - divider.frame.width) / 2.0)
+                items[i] = .divider(divider)
             }
         }
         for i in directCodeBlockIndices {
@@ -1787,6 +1801,10 @@ private func layoutBlockQuoteBlocksV2(
                                   context: &context)
     }
 
+    let outerMediaBleed = context.mediaBleed
+    context.mediaBleed = 0.0
+    defer { context.mediaBleed = outerMediaBleed }
+
     let leadingInset: CGFloat = 9.0
     let trailingInset: CGFloat = 16.0
     let verticalInset: CGFloat = 6.0
@@ -1869,6 +1887,13 @@ private func instantPageRichTextContainsRTL(_ text: RichText) -> Bool {
     return instantPageStringContainsRTL(text.plainText)
 }
 
+private func instantPageV2IsList(_ block: InstantPageBlock?) -> Bool {
+    if case .list = block {
+        return true
+    }
+    return false
+}
+
 private func layoutListV2(
     _ listItems: [InstantPageListItem],
     ordered: Bool,
@@ -1876,6 +1901,10 @@ private func layoutListV2(
     horizontalInset: CGFloat,
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
+    let outerMediaBleed = context.mediaBleed
+    context.mediaBleed = 0.0
+    defer { context.mediaBleed = outerMediaBleed }
+
     let indexStack = InstantPageTextStyleStack(buttonsEnabled: context.buttonsEnabled)
     setupStyleStackV2(indexStack, theme: context.theme, category: .paragraph, link: false)
     let indexLineMetrics = InstantPageTextLineMetrics(styleStack: indexStack)
@@ -1898,11 +1927,35 @@ private func layoutListV2(
             break
         }
     }
-    let indexSpacing: CGFloat = ordered ? (hasTaskItem ? 10.0 : 8.0) : (hasTaskItem ? 12.0 : 10.0)
+    // Marker metrics of Telegram Desktop's message lists (defaultMarkdownList in iv/iv.style): a marker
+    // column at least 22pt wide, 8pt between the column and the text, and 2pt-radius bullets centered
+    // where a one-digit number would be, so bullets, numbers and nested lists share one text edge.
+    let markerColumnMinimumWidth: CGFloat = 22.0
+    let markerSkip: CGFloat = 8.0
+    let bulletSize: CGFloat = 4.0
     let checklistMarkerSize: CGFloat = 18.0
+    let explicitNumbers: [String?] = listItems.map { listItem in
+        switch listItem {
+        case let .text(_, number, _), let .blocks(_, number, _):
+            guard let number, !number.isEmpty, number != markdownTaskListCheckedNumber, number != markdownTaskListUncheckedNumber else {
+                return nil
+            }
+            return number
+        case .unknown:
+            return nil
+        }
+    }
+    // Same rule as the V1 layout: once any item carries its own number (the item `value` of a
+    // Bot API list), every item shows its own number instead of its position.
+    let hasExplicitNumbers = explicitNumbers.contains(where: { $0 != nil })
     for (i, _) in listItems.enumerated() {
         if ordered {
-            let value = "\(i + 1)."
+            let value: String
+            if hasExplicitNumbers {
+                value = explicitNumbers[i].map { "\($0)." } ?? " "
+            } else {
+                value = "\(i + 1)."
+            }
             let (item, _, _) = layoutTextItemWithStringV2(
                 attributedStringForRichText(.plain(value), styleStack: indexStack),
                 boundingWidth: boundingWidth - horizontalInset * 2.0,
@@ -1925,7 +1978,10 @@ private func layoutListV2(
         if case let .text(text, _, _) = item { return instantPageRichTextContainsRTL(text) }
         return false
     })
-    let markerColumnWidth = maxIndexWidth + indexSpacing
+    let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
+    let markerColumnWidth = markerWidth + markerSkip
+    let singleDigitWidth = ceil(attributedStringForRichText(.plain("8."), styleStack: indexStack).size().width)
+    let bulletInset = markerWidth - floor((singleDigitWidth + 1.0) / 2.0) - bulletSize / 2.0
     var items: [InstantPageV2LaidOutItem] = []
     var contentHeight: CGFloat = 0.0
     let textOriginX = rtl ? horizontalInset : (horizontalInset + markerColumnWidth)
@@ -2003,16 +2059,35 @@ private func layoutListV2(
                     return false
                 }) ? .unsupported : subBlock
                 let subLocalMaxY: CGFloat = subItems.map { $0.frame.maxY }.max() ?? 0.0
-                let spacing: CGFloat = (previousSubBlock != nil && subLocalMaxY > 0.0) ? spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth) : 0.0
+                let spacing: CGFloat
+                if previousSubBlock == nil || subLocalMaxY <= 0.0 {
+                    spacing = 0.0
+                } else if context.fitToWidth, instantPageV2IsList(previousSubBlock) || instantPageV2IsList(effectiveSubBlock) {
+                    // A list nested in a list item keeps the item spacing, as in Telegram Desktop, where
+                    // a list inside a message list item is separated by blockSkips.paragraph (4px).
+                    spacing = 4.0
+                } else {
+                    spacing = spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth)
+                }
                 let offsetY = subContentHeight + spacing
                 let translated = subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) }
 
-                if firstBlockLineMidY == nil {
-                    for ti in translated {
-                        if case let .text(tv) = ti, let firstLine = tv.textItem.lines.first {
-                            firstBlockLineMidY = tv.frame.minY + firstLine.frame.midY
-                            break
-                        }
+                // Only the first block can place the marker, and only when it opens with text: in an item
+                // that starts with a photo (even one with a caption), the marker stays at the item's top
+                // edge, as in Telegram Desktop.
+                if previousSubBlock == nil,
+                   let firstText = translated.lazy.compactMap({ item -> InstantPageV2TextItem? in
+                       if case let .text(textItem) = item { return textItem }
+                       return nil
+                   }).first,
+                   let firstLine = firstText.textItem.lines.first {
+                    let lineTop = firstText.frame.minY + firstLine.frame.minY
+                    let somethingAboveText = translated.contains(where: { item in
+                        if case .text = item { return false }
+                        return item.frame.maxY <= lineTop
+                    })
+                    if !somethingAboveText {
+                        firstBlockLineMidY = firstText.frame.minY + firstLine.frame.midY
                     }
                 }
 
@@ -2051,13 +2126,20 @@ private func layoutListV2(
         let markerKind: InstantPageV2ListMarkerKind
         let markerFrame: CGRect
 
+        // Every marker centers on the item's first text line. Items carried as nested blocks (all Bot API
+        // rich-message items and everything the rich editor sends) take it from their first block; when that
+        // block does not open with text (an image, for example), the marker falls back to the item's top edge.
+        let markerLineMidY: CGFloat? = nestedBlocks.isEmpty ? lineMidY : firstBlockLineMidY
+        func markerOriginY(height: CGFloat) -> CGFloat {
+            return markerLineMidY.map { floor($0 - height / 2.0) } ?? originY
+        }
+
         if let checked = taskChecked {
             markerKind = .checklist(checked: checked, colors: checkboxColors)
             let boxSize: CGFloat = 18.0
-            let centerY = nestedBlocks.isEmpty ? lineMidY : (firstBlockLineMidY ?? (originY + boxSize / 2.0))
-            let markerY = floor(centerY - boxSize / 2.0)
+            let markerY = markerOriginY(height: boxSize)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - boxSize) : (horizontalInset + maxIndexWidth - boxSize),
+                x: rtl ? (boundingWidth - horizontalInset - boxSize) : horizontalInset,
                 y: markerY,
                 width: boxSize,
                 height: boxSize
@@ -2065,22 +2147,21 @@ private func layoutListV2(
             let boxBottom = markerY + boxSize - contentHeight
             itemContentHeight = max(itemContentHeight, boxBottom)
         } else if ordered, let indexItem = indexLayouts[i] {
-            let markerWidth = indexItem.lines.first?.frame.width ?? indexItem.frame.width
+            let numberWidth = indexItem.lines.first?.frame.width ?? indexItem.frame.width
             let numberHeight: CGFloat = 20.0
             markerKind = .number(indexItem.attributedString.string)
-            let markerY: CGFloat = nestedBlocks.isEmpty ? floor(lineMidY - numberHeight / 2.0) : originY
+            let markerY = markerOriginY(height: numberHeight)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - markerWidth) : (horizontalInset + (maxIndexWidth - markerWidth)),
+                x: rtl ? (boundingWidth - horizontalInset - markerWidth) : (horizontalInset + (markerWidth - numberWidth)),
                 y: markerY,
-                width: markerWidth,
+                width: numberWidth,
                 height: numberHeight
             )
         } else {
             markerKind = .bullet
-            let bulletSize: CGFloat = 5.0
-            let markerY: CGFloat = nestedBlocks.isEmpty ? floor(lineMidY - bulletSize / 2.0) : originY
+            let markerY = markerOriginY(height: bulletSize)
             markerFrame = CGRect(
-                x: rtl ? (boundingWidth - horizontalInset - bulletSize) : horizontalInset,
+                x: rtl ? (boundingWidth - horizontalInset - bulletInset - bulletSize) : (horizontalInset + bulletInset),
                 y: markerY,
                 width: bulletSize,
                 height: bulletSize
@@ -2847,6 +2928,35 @@ private func layoutCaptionAndCreditV2(
     return (items, totalHeight)
 }
 
+/// Fit a single media block without enlarging it, preserving its aspect ratio when
+/// the chat's preview height is capped.
+func instantPageV2FittedMediaSize(_ naturalSize: CGSize, availableWidth: CGFloat, maxHeight: CGFloat? = nil) -> CGSize {
+    guard naturalSize.width > 0.0, naturalSize.height > 0.0 else {
+        return CGSize(width: availableWidth, height: naturalSize.height)
+    }
+    let widthScale = availableWidth / naturalSize.width
+    let heightScale = maxHeight.map { $0 / naturalSize.height } ?? 1.0
+    let scale = min(1.0, widthScale, heightScale)
+    return CGSize(width: floor(naturalSize.width * scale), height: floor(naturalSize.height * scale))
+}
+
+/// When measuring a width-fitting chat bubble, a narrow media block must not
+/// inherit the padding created by centering it in the original max-width column.
+func instantPageV2MediaOriginX(
+    horizontalInset: CGFloat,
+    availableWidth: CGFloat,
+    mediaWidth: CGFloat,
+    bleedAmount: CGFloat,
+    shrinkToContent: Bool
+) -> CGFloat {
+    // Preserve centered media on ordinary Instant View pages, even when capped.
+    // Only width-fitting chat bubbles should start compact media at the inset.
+    if shrinkToContent && bleedAmount <= 0.0 {
+        return horizontalInset
+    }
+    return horizontalInset - bleedAmount + floor((availableWidth - mediaWidth) / 2.0)
+}
+
 private func layoutTypedMediaWithCaptionV2(
     produceItem: (CGRect, CGFloat) -> InstantPageV2LaidOutItem,
     naturalSize: CGSize,
@@ -2860,27 +2970,40 @@ private func layoutTypedMediaWithCaptionV2(
     context: inout LayoutContextV2
 ) -> [InstantPageV2LaidOutItem] {
     let columnWidth = boundingWidth - horizontalInset * 2.0
-    func fit(_ width: CGFloat) -> CGSize {
-        guard naturalSize.width > 0.0, naturalSize.height > 0.0 else {
-            return CGSize(width: width, height: naturalSize.height)
-        }
-        let scale = min(width / naturalSize.width, 1.0)
-        return CGSize(width: floor(naturalSize.width * scale), height: floor(naturalSize.height * scale))
-    }
-
     var bleedAmount = bleed ? context.mediaBleed : 0.0
     var availableWidth = columnWidth + bleedAmount * 2.0
-    var scaledSize = fit(availableWidth)
+    var scaledSize = instantPageV2FittedMediaSize(naturalSize, availableWidth: availableWidth)
     if bleedAmount > 0.0, scaledSize.width < availableWidth - 0.5 {
         bleedAmount = 0.0
         availableWidth = columnWidth
-        scaledSize = fit(availableWidth)
-    }
-    if capHeight {
-        scaledSize.height = min(scaledSize.height, min(1000.0, availableWidth))
+        scaledSize = instantPageV2FittedMediaSize(naturalSize, availableWidth: availableWidth)
     }
 
-    let mediaX = horizontalInset - bleedAmount + floor((availableWidth - scaledSize.width) / 2.0)
+    // A height-capped portrait should occupy a narrow, aspect-fitted frame rather
+    // than a full-width square frame with letterboxing. Don't bleed these blocks
+    // past the chat bubble's content edge.
+    if capHeight, scaledSize.height > min(1000.0, availableWidth) {
+        bleedAmount = 0.0
+        availableWidth = columnWidth
+        let heightLimit = min(1000.0, availableWidth)
+        scaledSize = instantPageV2FittedMediaSize(
+            naturalSize, availableWidth: availableWidth, maxHeight: heightLimit
+        )
+    }
+
+    // A chat rich-message bubble measures content width from item.frame.maxX.
+    // Centering narrow media in the original wide column would therefore keep
+    // the bubble unnecessarily wide, even if the image frame is aspect-fitted.
+    // Only compact chat media (which supplies unsupportedStyle) this way, so
+    // ordinary Instant View pages retain their centered-media layout.
+    let shouldCompactChatMedia = context.fitToWidth && context.unsupportedStyle != nil
+    let mediaX = instantPageV2MediaOriginX(
+        horizontalInset: horizontalInset,
+        availableWidth: availableWidth,
+        mediaWidth: scaledSize.width,
+        bleedAmount: bleedAmount,
+        shrinkToContent: shouldCompactChatMedia
+    )
     let mediaFrame = CGRect(x: mediaX, y: 0.0, width: scaledSize.width, height: scaledSize.height)
     let effectiveCorner: CGFloat = bleedAmount > 0 ? 0.0 : cornerRadius
     var result: [InstantPageV2LaidOutItem] = [produceItem(mediaFrame, effectiveCorner)]
