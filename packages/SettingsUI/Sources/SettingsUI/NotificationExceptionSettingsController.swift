@@ -380,9 +380,14 @@ func NotificationExceptionSettingsModalController(context: any AccountContextPro
         }
     }
 
-    let modalInteractions = ModalInteractions(acceptTitle: strings().modalDone, accept: {
+    controller.validateData = { _ in
         apply()
         close?()
+        return .none
+    }
+
+    let modalInteractions = ModalInteractions(acceptTitle: strings().modalDone, accept: { [weak controller] in
+        controller?.validateInputValues()
     }, singleButton: true)
 
     let modalController = InputDataModalController(controller, modalInteractions: modalInteractions)
