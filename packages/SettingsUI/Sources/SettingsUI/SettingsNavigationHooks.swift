@@ -120,7 +120,7 @@ public struct SettingsNavigationHooks {
     public var makeArchivedStickerPacksController: (any AccountContextProtocol) -> ViewController = { _ in ViewController() }
     public var makeProxyListController: (any AccountContextProtocol, @escaping ([ProxyServerSettings]) -> Void, @escaping (ViewController) -> Void) -> ViewController = { _, _, _ in ViewController() }
     public var makePremiumBoardingController: (any AccountContextProtocol, SettingsPremiumSource) -> ViewController = { _, _ in ViewController() }
-    public var makeBirthdayCalendarController: (Window, @escaping (Date) -> Void) -> ViewController = { _, _ in ViewController() }
+    public var makeBirthdayCalendarController: (Window, Date, @escaping (Date) -> Void) -> ViewController = { _, _, _ in ViewController() }
     public var makeBoostInfoController: (any AccountContextProtocol, Peer, ChannelBoostStatus, MyBoostStatus?, SettingsBoostSource) -> ModalViewController = { _, _, _, _, _ in ModalViewController() }
     public var makeAddTonBalanceController: (any AccountContextProtocol, Int64) -> ModalViewController = { _, _ in ModalViewController() }
     public var makePasskeysController: (any AccountContextProtocol, [TelegramPasskey]) -> ModalViewController = { _, _ in ModalViewController() }

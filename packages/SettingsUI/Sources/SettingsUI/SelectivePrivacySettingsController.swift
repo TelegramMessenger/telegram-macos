@@ -1252,7 +1252,7 @@ open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: 
         }, openPremium: { openFeatures in
             SettingsNavigationHooks.shared.showPremiumBoarding(context, openFeatures ? .lastSeen : .settings, openFeatures, context.window, nil)
         }, setupBirthday: {
-            let controller = SettingsNavigationHooks.shared.makeBirthdayCalendarController(context.window, { date in
+            let controller = SettingsNavigationHooks.shared.makeBirthdayCalendarController(context.window, Date(), { date in
                 SettingsHooks.shared.updateBirthday(date, context)
             })
             

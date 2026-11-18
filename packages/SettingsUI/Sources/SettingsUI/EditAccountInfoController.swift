@@ -658,7 +658,8 @@ public func EditAccountInfoController<Context: AccountContextProtocol>(context: 
         let view = controller.tableView.item(stableId: InputDataEntryId.general(_id_birthday))?.view as? GeneralInteractedRowView
         
         if view?.textView != nil {
-            let controller = SettingsNavigationHooks.shared.makeBirthdayCalendarController(context.window, { date in
+            let current = stateValue.with { $0.birthday?.dateForPicker } ?? Date()
+            let controller = SettingsNavigationHooks.shared.makeBirthdayCalendarController(context.window, current, { date in
                 updateBirthday(date.birthday)
             })
             
