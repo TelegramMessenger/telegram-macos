@@ -4447,7 +4447,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         } else {
             canRead = .single(true)
         }
-        canRead = combineLatest(canRead, self.isKeyWindow.get()) |> map { $0 && $1 }
+        canRead = combineLatest(canRead, self.isKeyWindow.get(), hasCoveringModalsSignal(context.window)) |> map { $0 && $1 && !$2 }
         if self.mode == .preview {
             canRead = .single(false)
         }
@@ -4475,7 +4475,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     let _ = previousMaxIncomingMessageIdByNamespace.swap([:])
                     return
                 }
-                if canRead && !hasModals(context.window) {
+                if canRead && !hasCoveringModals(context.window) {
                     var apply = false
                     let _ = previousMaxIncomingMessageIdByNamespace.modify { dict in
                         let previousIndex = dict[messageIndex.id.namespace]

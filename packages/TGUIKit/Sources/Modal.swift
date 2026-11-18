@@ -126,6 +126,7 @@ final class ModalOverlayPresentation {
 }
 
 private var activeModals:[WeakReference<Modal>] = []
+private let activeModalsUpdates = ValuePipe<Void>()
 
 public enum ModalCancelButtonStyle {
     case glass
@@ -1117,6 +1118,12 @@ public class Modal: NSObject {
     fileprivate func isPresented(in window: Window) -> Bool {
         return self.window === window || overlayPresentation?.contains(window) == true
     }
+    fileprivate var coversWindow: Bool {
+        guard let controller = self.controller, self.background.window != nil else {
+            return false
+        }
+        return controller.isFullScreen || controller.isVisualEffectBackground || controller.background.alphaComponent > 0
+    }
 
     fileprivate var overlayPresentation: ModalOverlayPresentation?
     fileprivate var controller:ModalViewController? {
@@ -1597,6 +1604,9 @@ public class Modal: NSObject {
                 break
             }
         }
+        DispatchQueue.main.async {
+            activeModalsUpdates.putNext(Void())
+        }
 
         if wasDimOwner {
             let duration: Double
@@ -1790,6 +1800,9 @@ public class Modal: NSObject {
                 break
             }
         }
+        DispatchQueue.main.async {
+            activeModalsUpdates.putNext(Void())
+        }
 
     }
     
@@ -1979,6 +1992,7 @@ public class Modal: NSObject {
                         strongSelf.controller?.viewDidAppear(false)
                     }
                     revealBackground()
+                    activeModalsUpdates.putNext(Void())
                     if strongSelf.morph != nil, let morphSourceView {
                         strongSelf.holdSource(morphSourceView)
                     }
@@ -2011,6 +2025,19 @@ public func hasModals(_ window: Window) -> Bool {
     }
     
     return activeModals.contains { $0.value?.isPresented(in: window) == true }
+}
+
+public func hasCoveringModals(_ window: Window) -> Bool {
+    return activeModals.contains { $0.value?.isPresented(in: window) == true && $0.value?.coversWindow == true }
+}
+
+public func hasCoveringModalsSignal(_ window: Window) -> Signal<Bool, NoError> {
+    return Signal<Void, NoError>.single(Void()) |> then(activeModalsUpdates.signal()) |> map { [weak window] _ -> Bool in
+        if let window {
+            return hasCoveringModals(window)
+        }
+        return false
+    } |> distinctUntilChanged
 }
 
 
