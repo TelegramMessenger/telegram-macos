@@ -248,6 +248,68 @@ final class CanvasMediaGroupTests: AppKitTestCase {
         XCTAssertEqual((v.boxes[0] as! MediaGroupBlockBox).mediaIDs, ["a", "b"], "undo restores the original id")
     }
 
+    func test_sliderSpoilerChange_reconcilesHostedPreview() {
+        let v = DocumentCanvasView()
+        let id = BlockID("slider-spoilers")
+        var states: [[Bool]] = []
+        v.mediaGroupSliderProvider = { [weak v] _, width in
+            let group = v?.boxes.first as? MediaGroupBlockBox
+            states.append(group?.spoilers ?? [])
+            return NSView(frame: CGRect(x: 0, y: 0, width: width, height: 180))
+        }
+        v.setModelBlocks([.mediaGroup(MediaGroupBlock(id: id, kind: .slideshow, mediaIDs: ["a", "b"], spoilers: [true, false]))], width: 320)
+        v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(states.last, [true, false])
+        let initialBuilds = states.count
+        v.setMediaSpoiler(blockID: id, tileIndex: 1, spoiler: true)
+        XCTAssertEqual(states.count, initialBuilds + 1)
+        XCTAssertEqual(states.last, [true, true])
+        v.setMediaSpoiler(blockID: id, tileIndex: 0, spoiler: false)
+        XCTAssertEqual(states.last, [false, true])
+        v.syncMediaGroupViews()
+        XCTAssertEqual(states.count, initialBuilds + 2)
+    }
+
+    func test_sliderSpoilerUndo_reconcilesRestoredState() {
+        let v = DocumentCanvasView()
+        let id = BlockID("slider-undo")
+        var states: [[Bool]] = []
+        v.mediaGroupSliderProvider = { [weak v] _, width in
+            states.append((v?.boxes.first as? MediaGroupBlockBox)?.spoilers ?? [])
+            return NSView(frame: CGRect(x: 0, y: 0, width: width, height: 180))
+        }
+        v.setModelBlocks([.mediaGroup(MediaGroupBlock(id: id, kind: .slideshow, mediaIDs: ["a", "b"]))], width: 320)
+        v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+        v.layoutSubtreeIfNeeded()
+        let manager = UndoManager()
+        manager.groupsByEvent = false
+        v.undoManagerOverride = manager
+        manager.beginUndoGrouping()
+        v.setMediaSpoiler(blockID: id, tileIndex: 0, spoiler: true)
+        manager.endUndoGrouping()
+        XCTAssertEqual(states.last, [true, false])
+        manager.undo()
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(states.last, [false, false])
+        manager.redo()
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(states.last, [true, false])
+    }
+
+    func test_sliderKindRoundTrip_preservesOutgoingSpoilers() {
+        let v = DocumentCanvasView()
+        let id = BlockID("slider-round-trip")
+        v.setModelBlocks([.mediaGroup(MediaGroupBlock(id: id, kind: .collage, mediaIDs: ["a", "b"], spoilers: [true, false]))], width: 320)
+        for kind in [MediaGroupKind.slideshow, .collage, .slideshow] {
+            v.setMediaGroupKind(groupID: id, kind: kind)
+            guard case let .mediaGroup(actualKind, ids, _, spoilers)? = v.outgoingBlocks().first else { return XCTFail() }
+            XCTAssertEqual(actualKind, kind.rawValue)
+            XCTAssertEqual(ids, ["a", "b"])
+            XCTAssertEqual(spoilers, [true, false])
+        }
+    }
+
     func test_replaceMedia_swapsSingleMediaId() {
         let v = DocumentCanvasView()
         v.mediaBlockViewProvider = { _, _, _, _ in NSView() }
