@@ -329,6 +329,24 @@ open class Window: NSWindow {
         return 70
     }
 
+    public var leadingControlsWidth: CGFloat = 0 {
+        didSet {
+            if leadingControlsWidth != oldValue, let contentView {
+                setNeedsNavigationBarsLayout(in: contentView)
+            }
+        }
+    }
+
+    private func setNeedsNavigationBarsLayout(in view: NSView) {
+        for subview in view.subviews {
+            if subview is NavigationBarView {
+                subview.needsLayout = true
+            } else {
+                setNeedsNavigationBarsLayout(in: subview)
+            }
+        }
+    }
+
     public enum ChromeMode {
         case compact
         case standard
