@@ -1,0 +1,154 @@
+import Cocoa
+import Postbox
+import TGUIKit
+import SwiftSignalKit
+import TelegramCore
+import InAppSettings
+import Localization
+import TelegramContext
+
+enum SettingsRootSearchTag: Int32, CaseIterable {
+    case chatFolders = 1
+    case passport = 2
+    case premium = 3
+    case business = 4
+    case sendGift = 5
+    case stars = 6
+    case myProfile = 7
+    case profileColor = 8
+    case tonEarnings = 9
+    case wallet = 10
+}
+
+extension SettingsRootSearchTag: SettingsSearchTag {
+    static var icon: SettingsSearchableItemIcon {
+        return .general
+    }
+    
+    static var rootTitle: String {
+        return ""
+    }
+    
+    static var includesRoot: Bool {
+        return false
+    }
+    
+    static func itemId(_ index: Int32) -> SettingsSearchableItemId {
+        return .settings(index)
+    }
+    
+    static func open<Context: AccountContextProtocol>(_ tag: SettingsRootSearchTag?, context: Context, navigation: NavigationViewController?, environment: SettingsSearchEnvironment, present: @escaping (SettingsSearchableItemPresentation, ViewController?) -> Void) {
+        guard let tag = tag else {
+            return
+        }
+        switch tag {
+        case .chatFolders:
+            present(.push, SettingsHooks.shared.makeChatListFiltersListController(context))
+        case .passport:
+            _ = (context.account.postbox.transaction { transaction in
+                return transaction.getPeer(context.peerId)
+            } |> deliverOnMainQueue).start(next: { peer in
+                if let peer = peer {
+                    present(.push, SettingsNavigationHooks.shared.makePassportController(context, peer))
+                }
+            })
+        case .premium:
+            SettingsNavigationHooks.shared.showPremiumBoarding(context, .settings, false, context.window, nil)
+        case .business:
+            if context.isPremium {
+                present(.push, SettingsNavigationHooks.shared.makePremiumBoardingController(context, .businessStandalone))
+            } else {
+                SettingsNavigationHooks.shared.showPremiumBoarding(context, .business, false, context.window, nil)
+            }
+        case .sendGift:
+            SettingsNavigationHooks.shared.showMultigift(context, nil)
+        case .stars:
+            SettingsNavigationHooks.shared.showStarsList(context, .stars, nil)
+        case .myProfile:
+            if let navigation = navigation {
+                SettingsHooks.shared.pushPeerInfo(navigation, context, context.peerId, false)
+            }
+        case .tonEarnings:
+            SettingsNavigationHooks.shared.showStarsList(context, .ton, nil)
+        case .wallet:
+            if #available(macOS 10.15, *) {
+                SettingsHooks.shared.walletHooks.showWallet(context, context.window, nil)
+            }
+        case .profileColor:
+            _ = (context.account.postbox.transaction { transaction in
+                return transaction.getPeer(context.peerId)
+            } |> deliverOnMainQueue).start(next: { peer in
+                if let peer = peer {
+                    present(.push, SettingsHooks.shared.makeSelectColorParentController(context, peer))
+                }
+            })
+        }
+    }
+    
+    var searchTitle: String {
+        switch self {
+        case .chatFolders:
+            return strings().accountSettingsFilters
+        case .passport:
+            return strings().accountSettingsPassport
+        case .premium:
+            return strings().accountSettingsPremium
+        case .business:
+            return strings().accountSettingsTelegramBusiness
+        case .sendGift:
+            return strings().accountSettingsSendGift
+        case .stars:
+            return strings().accountSettingsStars
+        case .myProfile:
+            return strings().accountSettingsMyProfile
+        case .profileColor:
+            return strings().accountSettingsSetProfileColor
+        case .tonEarnings:
+            return strings().accountViewControllerGramEarnings
+        case .wallet:
+            return strings().accountViewControllerMoney
+        }
+    }
+    
+    var searchIcon: SettingsSearchableItemIcon {
+        switch self {
+        case .chatFolders:
+            return .filters
+        case .passport:
+            return .passport
+        case .premium:
+            return .premium
+        case .business:
+            return .business
+        case .sendGift:
+            return .gift
+        case .stars:
+            return .stars
+        case .myProfile, .profileColor:
+            return .profile
+        case .tonEarnings, .wallet:
+            return .stars
+        }
+    }
+    
+    func isAvailable(in environment: SettingsSearchEnvironment) -> Bool {
+        switch self {
+        case .chatFolders, .myProfile, .profileColor:
+            return true
+        case .passport:
+            return environment.passportAvailable
+        case .premium, .business, .sendGift:
+            return environment.premiumAvailable
+        case .stars:
+            return environment.premiumAvailable && environment.starsAvailable
+        case .tonEarnings:
+            return environment.hasTonBalance
+        case .wallet:
+            return environment.walletAvailable
+        }
+    }
+    
+    var searchIndex: Int32 {
+        return rawValue
+    }
+}

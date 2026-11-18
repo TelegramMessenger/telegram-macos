@@ -24,6 +24,13 @@ public enum PrivacyAndSecurityEntryTag: ItemListItemTag {
     case topPeers
     case cloudDraft
     case autoArchive
+    case messages
+    case passkeys
+    case loginEmail
+    case globalTimer
+    case webSessions
+    case secretChatWebPreview
+    case sensitiveContent
     public func isEqual(to other: ItemListItemTag) -> Bool {
         if let other = other as? PrivacyAndSecurityEntryTag, self == other {
             return true
@@ -42,6 +49,20 @@ public enum PrivacyAndSecurityEntryTag: ItemListItemTag {
             return PrivacyAndSecurityEntry.clearCloudDrafts(sectionId: 0, viewType: .singleItem).stableId
         case .autoArchive:
             return PrivacyAndSecurityEntry.autoArchiveToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
+        case .messages:
+            return PrivacyAndSecurityEntry.messagesPrivacy(sectionId: 0, "", false, viewType: .singleItem).stableId
+        case .passkeys:
+            return PrivacyAndSecurityEntry.passkeys(sectionId: 0, passkeys: [], viewType: .singleItem).stableId
+        case .loginEmail:
+            return PrivacyAndSecurityEntry.loginEmail(sectionId: 0, pattern: nil, viewType: .singleItem).stableId
+        case .globalTimer:
+            return PrivacyAndSecurityEntry.globalTimer(sectionId: 0, "", viewType: .singleItem).stableId
+        case .webSessions:
+            return PrivacyAndSecurityEntry.webAuthorizations(sectionId: 0, viewType: .singleItem).stableId
+        case .secretChatWebPreview:
+            return PrivacyAndSecurityEntry.secretChatWebPreviewToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
+        case .sensitiveContent:
+            return PrivacyAndSecurityEntry.sensitiveContentToggle(sectionId: 0, value: false, viewType: .singleItem).stableId
         }
     }
 }
@@ -593,6 +614,22 @@ fileprivate func prepareTransition(left:[AppearanceWrapperEntry<PrivacyAndSecuri
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
 }
 
+func privacyPasskeysAvailable(context: any AccountContextProtocol) -> Bool {
+    #if APP_STORE
+    var displayPasskeys = false
+    if let data = context.appConfiguration.data {
+        if let _ = data["ios_display_passkeys"] {
+            displayPasskeys = true
+        } else if let isDev = data["dev"] as? Double, isDev == 1.0 {
+            displayPasskeys = true
+        }
+    }
+    return displayPasskeys && context.appConfiguration.getBoolValue("settings_display_passkeys", orElse: false)
+    #else
+    return false
+    #endif
+}
+
 private func entries(state: PrivacyAndSecurityControllerState, contentConfiguration: ContentSettingsConfiguration?, privacySettings: AccountPrivacySettings?, webSessions: WebSessionsContextState, blockedState: BlockedPeersContextState, proxy: ProxySettings, recentPeers: RecentPeers, configuration: TwoStepVeriticationAccessConfiguration?, activeSessions: ActiveSessionsContextState, passcodeData: PostboxAccessChallengeData, context: any AccountContextProtocol, loginEmail: String?, passkeysDataValue: [TelegramPasskey]?, displayPasskeys: Bool) -> [PrivacyAndSecurityEntry] {
     var entries: [PrivacyAndSecurityEntry] = []
 
@@ -880,7 +917,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .presence, current: info.presence, callSettings: nil, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, _, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .presence, settings: info, updated: { updated, _, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -901,7 +938,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .groupInvitations, current: info.groupInvitations, callSettings: nil, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, _, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .groupInvitations, settings: info, updated: { updated, _, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -922,7 +959,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .voiceCalls, current: info.voiceCalls, callSettings: info.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, p2pUpdated, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .voiceCalls, settings: info, updated: { updated, p2pUpdated, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -943,7 +980,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .bio, current: info.bio, callSettings: nil, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, p2pUpdated, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .bio, settings: info, updated: { updated, p2pUpdated, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -964,7 +1001,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .birthday, current: info.birthday, callSettings: nil, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, p2pUpdated, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .birthday, settings: info, updated: { updated, p2pUpdated, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -985,7 +1022,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .profilePhoto, current: info.profilePhoto, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, _, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .profilePhoto, settings: info, updated: { updated, _, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -1006,7 +1043,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .forwards, current: info.forwards, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, _, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .forwards, settings: info, updated: { updated, _, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -1027,7 +1064,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .phoneNumber, current: info.phoneNumber, phoneDiscoveryEnabled: info.phoneDiscoveryEnabled, updated: { updated, _, phoneDiscoveryEnabled, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .phoneNumber, settings: info, updated: { updated, _, phoneDiscoveryEnabled, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -1049,7 +1086,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .voiceMessages, current: info.voiceMessages, callSettings: info.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, p2pUpdated, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .voiceMessages, settings: info, updated: { updated, p2pUpdated, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -1249,7 +1286,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .gifts, current: info.giftsAutoSave, callSettings: info.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, p2pUpdated, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .gifts, settings: info, updated: { updated, p2pUpdated, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -1270,7 +1307,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
             let signal = loadedPrivacySettings
             currentInfoDisposable.set(signal.start(next: { [weak currentInfoDisposable] info in
                 if let info = info {
-                    pushControllerImpl(SelectivePrivacySettingsController(context, kind: .savedMusic, current: info.savedMusic, callSettings: info.voiceCallsP2P, phoneDiscoveryEnabled: nil, globalSettings: info.globalSettings, updated: { updated, p2pUpdated, _, globalSettings in
+                    pushControllerImpl(selectivePrivacyController(context, kind: .savedMusic, settings: info, updated: { updated, p2pUpdated, _, globalSettings in
                         if let currentInfoDisposable = currentInfoDisposable {
                             let applySetting: Signal<Void, NoError> = privacySettingsPromise.get()
                                 |> filter { $0 != nil }
@@ -1353,18 +1390,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
         updateHasPasskeys()
 
            
-        #if APP_STORE
-        var displayPasskeys = false
-        if let data = context.appConfiguration.data {
-            if let _ = data["ios_display_passkeys"] {
-                displayPasskeys = true
-            } else if let isDev = data["dev"] as? Double, isDev == 1.0 {
-                displayPasskeys = true
-            }
-        }
-        #else
-        let displayPasskeys = false
-        #endif
+        let displayPasskeys = privacyPasskeysAvailable(context: context)
 
         
         let signal = combineLatest(queue: .mainQueue(), statePromise.get(), contentConfiguration, appearanceSignal, settings, privacySettingsPromise.get(), context.webSessions.state, combineLatest(queue: .mainQueue(), context.engine.peers.recentPeers(), twoStepAccessConfiguration.get(), context.activeSessionsContext.state, context.sharedContext.accountManager.accessChallengeData()), context.blockedPeersContext.state, loginEmail, passkeysDataValue.get())

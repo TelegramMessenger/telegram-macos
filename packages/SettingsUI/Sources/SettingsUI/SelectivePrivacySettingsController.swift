@@ -747,6 +747,26 @@ private func analyticsSettingChange(kind: SelectivePrivacySettingsKind, setting:
     }
 }
 
+func selectivePrivacyController<Context: AccountContextProtocol>(_ context: Context, kind: SelectivePrivacySettingsKind, settings: AccountPrivacySettings, updated: @escaping (SelectivePrivacySettings, SelectivePrivacySettings?, Bool?, GlobalPrivacySettings?) -> Void) -> SelectivePrivacySettingsController<Context> {
+    let current: SelectivePrivacySettings
+    switch kind {
+    case .presence: current = settings.presence
+    case .groupInvitations: current = settings.groupInvitations
+    case .voiceCalls: current = settings.voiceCalls
+    case .profilePhoto: current = settings.profilePhoto
+    case .forwards: current = settings.forwards
+    case .phoneNumber: current = settings.phoneNumber
+    case .voiceMessages: current = settings.voiceMessages
+    case .bio: current = settings.bio
+    case .birthday: current = settings.birthday
+    case .gifts: current = settings.giftsAutoSave
+    case .savedMusic: current = settings.savedMusic
+    }
+    let hasCallSettings = [SelectivePrivacySettingsKind.voiceCalls, .voiceMessages, .gifts, .savedMusic].contains(kind)
+    let isPhoneNumber = kind == .phoneNumber
+    return SelectivePrivacySettingsController(context, kind: kind, current: current, callSettings: hasCallSettings ? settings.voiceCallsP2P : nil, phoneDiscoveryEnabled: isPhoneNumber ? settings.phoneDiscoveryEnabled : nil, globalSettings: isPhoneNumber ? nil : settings.globalSettings, updated: updated)
+}
+
 open class SelectivePrivacySettingsController<Context: AccountContextProtocol>: TableViewController<Context> {
     private let kind: SelectivePrivacySettingsKind
     private let current: SelectivePrivacySettings

@@ -60,11 +60,14 @@ private let _id_do_not_translate = InputDataIdentifier("_id_do_not_translate")
 
 public enum LanguageEntryTag {
     case doNotTranslate
+    case translateEntireChats
 
     public var stableId: InputDataEntryId {
         switch self {
         case .doNotTranslate:
             return .general(_id_do_not_translate)
+        case .translateEntireChats:
+            return .general(_id_translate_channels)
         }
     }
 }
