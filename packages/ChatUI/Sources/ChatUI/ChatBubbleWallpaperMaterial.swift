@@ -128,10 +128,11 @@ final class ChatBubbleWallpaperMaterial {
         let light = min(1, max(0, luminance))
         if outgoing {
             let rgb = tint.usingColorSpace(.sRGB) ?? tint.usingColorSpace(.deviceRGB) ?? .white
-            let shift = 0.17 + 0.1 * light
+            let encodedLight = light <= 0.0031308 ? 12.92 * light : 1.055 * pow(light, 1 / 2.4) - 0.055
             let weights: [CGFloat] = [0.08504, 0.28608, 0.02888, 0]
+            let backdropShare = weights[0] + weights[1] + weights[2]
             func bias(_ channel: CGFloat) -> CGFloat {
-                return min(0.78, max(-0.22, min(1, channel) - shift))
+                return min(1, max(-0.22, channel - backdropShare * encodedLight))
             }
             return weights + [bias(rgb.redComponent)]
                 + weights + [bias(rgb.greenComponent)]
