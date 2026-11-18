@@ -8,7 +8,13 @@ import ChatUI
 final class ChatRemovalUndoView: Control {
     static let height: CGFloat = 44
 
-    private let visualEffect = NSVisualEffectView()
+    private let glassBackground = LiquidGlassView(
+        frame: .zero,
+        cornerRadius: ChatRemovalUndoView.height / 2,
+        hasShadow: false,
+        hasBorder: false,
+        tintAlpha: 0.15
+    )
     private let ringView = View(frame: NSMakeRect(0, 0, 30, 30))
     private let ringLayer = CAShapeLayer()
     private let secondsView = View(frame: NSMakeRect(0, 0, 30, 30))
@@ -18,20 +24,16 @@ final class ChatRemovalUndoView: Control {
     private var toast: PendingChatRemovalToast?
     private var seconds: Int = 0
     private var timer: SwiftSignalKit.Timer?
+    private var foregroundColor: NSColor = .white
 
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        addSubview(visualEffect)
+        layer?.masksToBounds = false
+        addSubview(glassBackground)
         addSubview(ringView)
         addSubview(secondsView)
         addSubview(textView)
         addSubview(undoButton)
-
-        visualEffect.material = .ultraDark
-        visualEffect.blendingMode = .withinWindow
-        visualEffect.state = .active
-
-        self.layer?.cornerRadius = 10
 
         let size = ringView.frame.size
         let lineWidth: CGFloat = 2
@@ -40,7 +42,6 @@ final class ChatRemovalUndoView: Control {
         ringLayer.path = path
         ringLayer.frame = ringView.bounds
         ringLayer.fillColor = NSColor.clear.cgColor
-        ringLayer.strokeColor = NSColor.white.cgColor
         ringLayer.lineWidth = lineWidth
         ringLayer.lineCap = .round
         ringLayer.strokeEnd = 0
@@ -52,10 +53,15 @@ final class ChatRemovalUndoView: Control {
         textView.isSelectable = false
 
         undoButton.set(font: .medium(.title), for: .Normal)
-        undoButton.set(color: TelegramThemeHooks.shared.darkAppearance().colors.accent, for: .Normal)
         undoButton.set(background: .clear, for: .Normal)
         undoButton.set(text: strings().chatUndoManagerUndo, for: .Normal)
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            stretchReferenceView = glassBackground
+            undoButton.stretchTransformView = self
+            undoButton.stretchReferenceView = glassBackground
+        }
         _ = undoButton.sizeToFit(NSMakeSize(24, 0), NSMakeSize(0, ChatRemovalUndoView.height), thatFit: false)
+        updateLocalizationAndTheme(theme: theme)
     }
 
     required init?(coder: NSCoder) {
@@ -64,6 +70,34 @@ final class ChatRemovalUndoView: Control {
 
     deinit {
         timer?.invalidate()
+    }
+
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        super.updateLocalizationAndTheme(theme: theme)
+        let isDark = theme.colors.isDark
+        glassBackground.customTint = isDark ? NSColor(white: 0.20, alpha: 0.62) : nil
+        undoButton.set(color: theme.colors.accent, for: .Normal)
+
+        let color: NSColor = isDark ? .white : theme.colors.text
+        let colorChanged = !foregroundColor.isEqual(color)
+        foregroundColor = color
+        ringLayer.strokeColor = color.cgColor
+
+        if colorChanged, let toast {
+            updateToastText(toast.text)
+            updateSeconds(animated: false, forceRedraw: true)
+            needsLayout = true
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let target = super.hitTest(point) else {
+            return nil
+        }
+        if target === undoButton || target.isDescendant(of: undoButton) {
+            return undoButton
+        }
+        return self
     }
 
     func update(toast: PendingChatRemovalToast, undo: @escaping () -> Void) {
@@ -77,15 +111,18 @@ final class ChatRemovalUndoView: Control {
         let animated = self.toast != nil
         self.toast = toast
 
-        let layout = TextViewLayout(.initialize(string: toast.text, color: .white, font: .medium(.text)), maximumNumberOfLines: 1)
-        layout.measure(width: .greatestFiniteMagnitude)
-        textView.update(layout)
-
+        updateToastText(toast.text)
         startRing(toast)
         seconds = 0
         updateSeconds(animated: animated)
         scheduleTick()
         needsLayout = true
+    }
+
+    private func updateToastText(_ text: String) {
+        let layout = TextViewLayout(.initialize(string: text, color: foregroundColor, font: .medium(.text)), maximumNumberOfLines: 1)
+        layout.measure(width: .greatestFiniteMagnitude)
+        textView.update(layout)
     }
 
     private func startRing(_ toast: PendingChatRemovalToast) {
@@ -125,18 +162,18 @@ final class ChatRemovalUndoView: Control {
         timer.start()
     }
 
-    private func updateSeconds(animated: Bool) {
+    private func updateSeconds(animated: Bool, forceRedraw: Bool = false) {
         guard let toast = self.toast else {
             return
         }
         let value = max(1, Int(ceil(toast.deadline - CACurrentMediaTime())))
-        guard value != seconds else {
+        guard forceRedraw || value != seconds else {
             return
         }
         seconds = value
 
         let view = ImageView(frame: secondsView.bounds)
-        view.image = countdownDigitImage(value, size: secondsView.frame.size)
+        view.image = countdownDigitImage(value, size: secondsView.frame.size, color: foregroundColor)
         view.isAccessibilityDecorative = true
 
         if animated {
@@ -160,7 +197,8 @@ final class ChatRemovalUndoView: Control {
 
     override func layout() {
         super.layout()
-        visualEffect.frame = bounds
+        glassBackground.frame = bounds
+        glassBackground.updateLayout(size: bounds.size, transition: .immediate)
         ringView.centerY(x: 8)
         secondsView.frame = ringView.frame
         undoButton.centerY(x: frame.width - undoButton.frame.width)
@@ -174,8 +212,8 @@ final class ChatRemovalUndoView: Control {
     }
 }
 
-private func countdownDigitImage(_ value: Int, size: NSSize) -> CGImage? {
-    let line = CTLineCreateWithAttributedString(NSAttributedString(string: "\(value)", attributes: [.font: NSFont.normal(.title), .foregroundColor: NSColor.white]))
+private func countdownDigitImage(_ value: Int, size: NSSize, color: NSColor) -> CGImage? {
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: "\(value)", attributes: [.font: NSFont.normal(.title), .foregroundColor: color]))
     let glyphBounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
     return generateImage(size, rotatedContext: { size, ctx in
         ctx.clear(size.bounds)
