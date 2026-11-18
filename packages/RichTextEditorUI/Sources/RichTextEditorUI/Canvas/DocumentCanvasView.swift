@@ -412,6 +412,7 @@ final class DocumentCanvasView: NSView {
         // Tear down any still-hosted media views so their injected content nodes release subscriptions
         // (the host's `clean()`), rather than leaking with a live status signal.
         for (_, h) in mediaBlockViews { mediaBlockViewWillRemove?(h.view) }
+        for (_, h) in mediaGroupTileViews { mediaBlockViewWillRemove?(h.view) }
         for (_, view) in mediaControlsViews { view.removeFromSuperview() }   // parity with the media-view teardown
         caretTimer?.invalidate()
     }

@@ -38,6 +38,7 @@ final class HostedMediaBlock {
     var interactionView: MediaInteractionOverlayView?
     var mediaID: String?
     var spoiler: Bool?
+    var kind: MediaKind?
     var mediaIDs: [String]?
     var spoilers: [Bool]?
     init(view: NSView, canvasFrame: CGRect) { self.view = view; self.canvasFrame = canvasFrame }
@@ -89,15 +90,22 @@ extension DocumentCanvasView {
             let bleed = box.mediaBleeds ? box.contentMargin : 0
             let contentWidth = box.frame.width + bleed * 2
             let hosted: HostedMediaBlock
-            if let h = mediaBlockViews[key] {
+            if let h = mediaBlockViews[key], h.mediaID == box.mediaID, h.spoiler == box.spoiler, h.kind == box.kind {
                 hosted = h
-            } else if let v = mediaBlockViewProvider(box.kind.rawValue, box.mediaID, box.spoiler, contentWidth) {
+            } else {
+                if let old = mediaBlockViews.removeValue(forKey: key) {
+                    mediaBlockViewWillRemove?(old.view)
+                    old.interactionView?.removeFromSuperview()
+                    old.view.removeFromSuperview()
+                }
+                guard let v = mediaBlockViewProvider(box.kind.rawValue, box.mediaID, box.spoiler, contentWidth) else { continue }
                 let h = HostedMediaBlock(view: v, canvasFrame: .zero)
+                h.mediaID = box.mediaID
+                h.spoiler = box.spoiler
+                h.kind = box.kind
                 mediaBlockViews[key] = h
                 mediaBlockHost.addSubview(v)
                 hosted = h
-            } else {
-                continue
             }
             // The host sized the view (e.g. a file chip narrower than the column); keep its natural size,
             // left-aligned in the media area above the caption.

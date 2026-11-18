@@ -936,9 +936,12 @@ public final class RichTextEditorCoordinator {
         // Release the content node's status subscription when its block goes away — otherwise the
         // statusDisposable keeps firing on an orphaned view (leak / stray updates).
         editor.registerMediaBlockViewTeardown { view in
-            guard let content = view as? ChatMediaContentView else { return }
-            content.willRemove()
-            content.clean()
+            if let content = view as? ChatMediaContentView {
+                content.willRemove()
+                content.clean()
+            } else if let slider = view as? InstantPageV2SlideshowView {
+                slider.clean()
+            }
         }
 
         // Collage mosaic — wrap the chat's `GroupedLayout` with synthetic per-media messages (mirrors
@@ -1648,6 +1651,8 @@ public final class RichTextEditorCoordinator {
         if height <= 0 { height = 240 }
         let size = NSMakeSize(width, height)
         let view = existingView ?? InstantPageV2SlideshowView(frame: CGRect(origin: .zero, size: size))
+        let previousIndex = view.currentMediaIndex
+        let previousMedia = previousIndex.flatMap { (view.mediaContentView(forMediaIndex: $0) as? ChatMediaContentView)?.media }
         view.setFrameSize(size)
         view.cornerRadius = 0
         view.configure(medias: medias, context: context, config: { media, _, index, _ in
@@ -1659,6 +1664,13 @@ public final class RichTextEditorCoordinator {
             parameters.forceSpoiler = spoilers.indices.contains(index) && spoilers[index]
             return (parent, parameters)
         }, size: size)
+        if let previousIndex {
+            let index = previousMedia.flatMap { previous in
+                (medias.first(where: { $0.index == previousIndex && $0.media.isEqual(to: previous) })
+                    ?? medias.first(where: { $0.media.isEqual(to: previous) }))?.index
+            } ?? medias.last(where: { $0.index <= previousIndex })?.index ?? medias[0].index
+            _ = view.mediaContentView(forMediaIndex: index, selectPage: true)
+        }
         return view
     }
 
