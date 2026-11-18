@@ -125,6 +125,7 @@ public class TabBarView: View {
     private let glass = LiquidGlassView(frame: .zero, cornerRadius: FloatingTabBarLayout.height / 2, tintAlpha: 0.15)
     private let selectionView = View()
     private let liftedGlass = LiquidGlassView(frame: .zero, cornerRadius: 28, hasShadow: true, hasBorder: true, tintAlpha: 0.1)
+    private var glassTouchEffect: GlassTouchEffect?
     private var gesture: SelectionGesture?
     private var reorderGesture: SelectionGesture? {
         guard let gesture, gesture.reordersTabs, gesture.isDragging else {
@@ -524,7 +525,7 @@ public class TabBarView: View {
         guard tabs.indices.contains(index) else {
             return
         }
-        finishGesture()
+        finishGesture(animated: animated)
         selectedIndex = index
         updateSelection(animated: animated)
         if respondToDelegate {
@@ -570,14 +571,30 @@ public class TabBarView: View {
             }
         }
         updateSelection(animated: true)
+        if !allowsReordering && !reduceMotion() {
+            if glassTouchEffect == nil {
+                glassTouchEffect = GlassTouchEffect(transformView: self, referenceView: glass)
+            }
+            glassTouchEffect?.setIsTracking(true)
+        }
     }
 
     func updateSelection(at point: NSPoint, timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         guard var gesture else {
             return
         }
+        if !allowsReordering {
+            if reduceMotion() {
+                glassTouchEffect?.reset()
+            } else {
+                glassTouchEffect?.setStretchVector(NSPoint(x: point.x - gesture.start.x, y: point.y - gesture.start.y))
+            }
+        }
         let delta = point.x - gesture.start.x
         guard gesture.isDragging || abs(delta) >= 3 else {
+            if !allowsReordering {
+                updateLens(transition: .immediate)
+            }
             return
         }
         let startedDragging = !gesture.isDragging
@@ -608,7 +625,7 @@ public class TabBarView: View {
             }
             updateItemFrames(transition: reorderTransition)
             updateLens(transition: gesture.sourceIndex == selectedIndex ? .immediate : reorderTransition)
-        } else if changed {
+        } else if changed || !allowsReordering {
             updateSelection(animated: false)
         }
     }
@@ -625,7 +642,7 @@ public class TabBarView: View {
             updateSelection(at: point)
         }
         let index = Int((self.gesture ?? gesture).position.rounded())
-        finishGesture(reorderTransition: reorderTransition)
+        finishGesture(reorderTransition: reorderTransition, animated: true)
         if index == selectedIndex {
             updateSelection(animated: true)
             delegate?.scrollup()
@@ -663,14 +680,17 @@ public class TabBarView: View {
 
     func cancelSelection(animated: Bool = true) {
         guard let gesture else {
-            if !animated, pickup != nil {
-                clearPickup()
-                updateLens(transition: .immediate)
+            if !animated {
+                glassTouchEffect?.reset()
+                if pickup != nil {
+                    clearPickup()
+                    updateLens(transition: .immediate)
+                }
             }
             return
         }
         let transition = animated ? reorderTransition : .immediate
-        finishGesture(reorderTransition: transition)
+        finishGesture(reorderTransition: transition, animated: animated)
         if gesture.reordersTabs {
             updateLens(transition: transition)
         } else {
@@ -678,9 +698,10 @@ public class TabBarView: View {
         }
     }
 
-    private func finishGesture(reorderTransition: ContainedViewLayoutTransition = .immediate) {
+    private func finishGesture(reorderTransition: ContainedViewLayoutTransition = .immediate, animated: Bool = false) {
         let previous = gesture
         gesture = nil
+        glassTouchEffect?.reset(animated: animated && previous != nil && !allowsReordering && !reduceMotion())
         if let previous {
             if previous.reordersTabs || previous.heldPosition != nil {
                 updateItemFrames(transition: reorderTransition)
@@ -738,9 +759,12 @@ public class TabBarView: View {
         let selectionGesture = gesture.flatMap { $0.reordersTabs ? nil : $0 }
         let position = selectionGesture?.position ?? CGFloat(selectedIndex)
         let lifted = selectionGesture != nil && !reduceMotion()
-        let frame = reorderGesture != nil && itemControls.indices.contains(selectedIndex)
+        var frame = reorderGesture != nil && itemControls.indices.contains(selectedIndex)
             ? itemControls[selectedIndex].frame
             : itemLayout.selectionFrame(at: position, lifted: lifted, nativeLens: nativeLens != nil)
+        if !allowsReordering, lifted, let transform = layer?.transform {
+            frame = frame.offsetBy(dx: transform.m41 / max(0.001, transform.m11) / 3, dy: transform.m42 / max(0.001, transform.m22) / 3)
+        }
         selectionView.layer?.cornerRadius = frame.height / 2
         updateSelectionFrame(frame, transition: transition)
         if let nativeLens {
