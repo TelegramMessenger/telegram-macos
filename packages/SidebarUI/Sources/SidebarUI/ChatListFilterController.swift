@@ -1452,60 +1452,33 @@ public func ChatListFilterController(context: any AccountContextProtocol, enviro
     }
 
     controller.afterTransaction = { controller in
-        let type = stateValue.with { chatListFilterType($0.filter) }
-        let nameIsUpdated = stateValue.with { $0.changedName }
-
-
-        if !nameIsUpdated {
-            switch type {
-            case .generic:
-                break
-            case .unmuted:
-                //state.name = presentationData.strings.ChatListFolder_NameNonMuted
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultUnmuted, entities: [], enableAnimations: false)
-                  //  emoticon =
-                    return state
-                }
-            case .unread:
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultUnread, entities: [], enableAnimations: false)
-                    return state
-                }
-            case .channels:
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultChannels, entities: [], enableAnimations: false)
-                    return state
-                }
-            case .groups:
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultGroups, entities: [], enableAnimations: false)
-                    return state
-                }
-            case .bots:
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultBots, entities: [], enableAnimations: false)
-                    return state
-                }
-            case .contacts:
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultContacts, entities: [], enableAnimations: false)
-                    return state
-                }
-            case .nonContacts:
-                updateState { state in
-                    var state = state
-                    state.filter = state.filter.withUpdatedTitle(string: strings().chatListFilterTilteDefaultNonContacts, entities: [], enableAnimations: false)
-                    return state
-                }
+        updateState { state in
+            guard !state.changedName else {
+                return state
             }
-
+            let title: String
+            switch chatListFilterType(state.filter) {
+            case .generic:
+                return state
+            case .unmuted:
+                title = strings().chatListFilterTilteDefaultUnmuted
+            case .unread:
+                title = strings().chatListFilterTilteDefaultUnread
+            case .channels:
+                title = strings().chatListFilterTilteDefaultChannels
+            case .groups:
+                title = strings().chatListFilterTilteDefaultGroups
+            case .bots:
+                title = strings().chatListFilterTilteDefaultBots
+            case .contacts:
+                title = strings().chatListFilterTilteDefaultContacts
+            case .nonContacts:
+                title = strings().chatListFilterTilteDefaultNonContacts
+            }
+            var state = state
+            state.filter = state.filter.withUpdatedTitle(string: title, entities: [], enableAnimations: state.nameAnimation)
+            state.inputState = environment.titleInputState(state.filter)
+            return state
         }
     }
 
