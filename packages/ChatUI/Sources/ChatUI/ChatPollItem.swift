@@ -272,12 +272,22 @@ public class ChatPollItem: ChatRowItem {
 
     fileprivate let poll: TelegramMediaPoll
     fileprivate var canAddOption: Bool {
-        return Self.canAddOption(poll: poll, isClosed: isClosed, appConfiguration: context.appConfiguration)
+        guard let message = message else {
+            return false
+        }
+        return Self.canAddOption(message: message, poll: poll, isClosed: isClosed, appConfiguration: context.appConfiguration)
+    }
+
+    static func canAddOption(message: Message, poll: TelegramMediaPoll, isClosed: Bool, appConfiguration: AppConfiguration) -> Bool {
+        if message.isScheduledMessage || message.forwardInfo != nil {
+            return false
+        }
+        return canAddOption(poll: poll, isClosed: isClosed, appConfiguration: appConfiguration)
     }
 
     static func canAddOption(poll: TelegramMediaPoll, isClosed: Bool, appConfiguration: AppConfiguration) -> Bool {
         let optionsLimit = Int(appConfiguration.getGeneralValue("poll_answers_max", orElse: 10))
-        return poll.openAnswers && !isClosed && poll.options.count < optionsLimit
+        return poll.openAnswers && !isClosed && poll.pollId.namespace == Namespaces.Media.CloudPoll && poll.options.count < optionsLimit
     }
     
     public var actionButtonText: String? {
