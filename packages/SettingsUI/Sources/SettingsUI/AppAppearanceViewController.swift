@@ -513,8 +513,8 @@ private func appAppearanceEntries(appearance: Appearance, state: State, settings
     #endif
     if appearance.presentation.bubbled, glassBubblesSupported {
         let liteMode = appearance.presentation.liteMode
-        let glassAvailable = liquidGlassActive
-        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_theme_glass_bubbles, data: InputDataGeneralData(name: _NSLocalizedString("Appearance.Settings.GlassBubbles"), color: appearance.presentation.colors.text, type: .switchable(glassAvailable && liteMode.glassBubblesEnabled), viewType: .innerItem, enabled: glassAvailable, action: arguments.toggleGlassBubbles, disabledAction: arguments.alertGlassBubbles)))
+        let glassAvailable = liquidGlassActive && appearance.presentation.hasWallpaper
+        entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_theme_glass_bubbles, data: InputDataGeneralData(name: _NSLocalizedString("Appearance.Settings.GlassBubbles"), color: appearance.presentation.colors.text, type: .switchable(glassAvailable && liteMode.glassBubblesEnabled), viewType: .innerItem, enabled: glassAvailable, description: _NSLocalizedString("Appearance.Settings.GlassBubbles.Info"), action: arguments.toggleGlassBubbles, disabledAction: arguments.alertGlassBubbles)))
         index += 1
     }
     
@@ -730,7 +730,14 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
             })
         })
     }, alertGlassBubbles: {
-        let key = theme.liteMode.liquidGlassEnabled ? "Appearance.Settings.GlassBubbles.PowerSaving" : "Appearance.Settings.GlassBubbles.RequiresLiquidGlass"
+        let key: String
+        if !theme.hasWallpaper {
+            key = "Appearance.Settings.GlassBubbles.RequiresWallpaper"
+        } else if !theme.liteMode.liquidGlassEnabled {
+            key = "Appearance.Settings.GlassBubbles.RequiresLiquidGlass"
+        } else {
+            key = "Appearance.Settings.GlassBubbles.PowerSaving"
+        }
         showModalText(for: context.window, text: _NSLocalizedString(key))
     }, toggleFontSize: { value in
         updateDisposable.set(updateThemeInteractivetly(accountManager: context.sharedContext.accountManager, f: { settings in

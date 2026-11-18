@@ -527,6 +527,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             if let chat = view as? ChatControllerView {
                 return chat.backgroundView
             }
+            if let background = view as? BackgroundView {
+                return background
+            }
             current = view.superview
         }
         return nil
