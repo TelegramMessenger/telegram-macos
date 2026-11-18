@@ -1062,7 +1062,6 @@ public class PeerListContainerView : Control {
             guard contentBottomInset != oldValue else {
                 return
             }
-            tableView.contentInsets.bottom = contentBottomInset
             updateScrollerInset(animated: false)
             updateBottomControls(size: frame.size, transition: .immediate)
         }
@@ -1489,6 +1488,7 @@ public class PeerListContainerView : Control {
         } else if let view = self.scrollerView {
             performSubviewRemoval(view, animated: animated)
             self.scrollerView = nil
+            updateBottomControls(size: frame.size, transition: .immediate)
         }
     }
     
@@ -1911,6 +1911,10 @@ public class PeerListContainerView : Control {
             ContainedViewLayoutTransition.immediate.updateFrame(view: tableView, frame: tableFrame)
             updateTableMask(spaceHeight: navigationHeight)
         }
+        var bottomInset = contentBottomInset
+        if let overlay, overlay.intersects(tableFrame) {
+            bottomInset = max(bottomInset, tableFrame.maxY - overlay.minY + 12)
+        }
 
         if let view = self.scrollerView {
             let gap: CGFloat = 12
@@ -1928,6 +1932,12 @@ public class PeerListContainerView : Control {
                 }
             }
             transition.updateFrame(view: view, frame: rect)
+            if !view.isHidden, view.superview === self, rect.intersects(tableFrame) {
+                bottomInset = max(bottomInset, tableFrame.maxY - rect.minY + gap)
+            }
+        }
+        if tableView.contentInsets.bottom != bottomInset {
+            tableView.contentInsets.bottom = bottomInset
         }
     }
 
