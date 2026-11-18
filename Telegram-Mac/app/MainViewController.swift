@@ -536,7 +536,7 @@ class MainViewController: TelegramGenericViewController<MainController_View> {
         for tab in tabOrder {
             tabController.add(tab: makeTab(tab))
         }
-        tabController.allowsTabReordering = true
+        tabController.allowsTabReordering = false
         tabController.didReorderTabs = { [weak self] in
             self?.saveTabOrder()
         }
