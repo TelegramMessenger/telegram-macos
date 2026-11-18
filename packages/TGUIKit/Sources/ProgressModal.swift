@@ -97,25 +97,43 @@ class ProgressModalController: ModalViewController {
 }
 
 
-private final class SuccessModalView : NSVisualEffectView {
+private final class SuccessModalView : View {
     private let imageView:ImageView = ImageView()
     private let textView: TextView = TextView()
-    required override init(frame frameRect: NSRect) {
+    private let glassView = LiquidGlassView(frame: NSZeroRect, cornerRadius: 20, hasShadow: System.liquidGlass, hasBorder: System.liquidGlass, tintAlpha: 0.9)
+    private let overlay = View()
+    required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        addSubview(glassView)
         addSubview(textView)
         addSubview(imageView)
-        self.wantsLayer = true
-        self.layer?.cornerRadius = 10.0
+        addSubview(overlay)
         self.autoresizingMask = []
         self.autoresizesSubviews = false
-        self.material = presentation.colors.isDark ? .dark : .light
-        self.blendingMode = .withinWindow
     }
     
+    override func updateLocalizationAndTheme(theme: PresentationTheme) {
+        glassView.customTint = theme.colors.background.withAlphaComponent(0.9)
+        super.updateLocalizationAndTheme(theme: theme)
 
+        layer?.masksToBounds = theme.colors.isDark
+        layer?.shadowColor = theme.colors.text.cgColor
+        layer?.shadowOpacity = theme.colors.isDark ? 0 : 0.12
+        layer?.shadowRadius = 8
+        layer?.shadowOffset = NSMakeSize(0, -2)
+        overlay.layer?.borderColor = theme.colors.text.withAlphaComponent(0.12).cgColor
+        overlay.layer?.borderWidth = theme.colors.isDark ? 0 : System.pixel
+    }
     
     override func layout() {
         super.layout()
+        let radius = min(bounds.height / 2, 20)
+        layer?.cornerRadius = radius
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        overlay.frame = bounds
+        overlay.layer?.cornerRadius = radius
+        glassView.frame = bounds
+        glassView.cornerRadius = radius
         
         if !textView.isHidden {
             imageView.centerY(x: 20)
@@ -169,6 +187,7 @@ class SuccessModalController : ModalViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        genericView.updateLocalizationAndTheme(theme: presentation)
         genericView.updateIcon(icon: icon, text: text)
         readyOnce()
     }
