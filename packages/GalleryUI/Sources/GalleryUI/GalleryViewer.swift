@@ -684,6 +684,7 @@ public class GalleryViewer: NSResponder {
         let current:Atomic<[ChatHistoryEntry]> = Atomic(value:[])
         let currentIndex:Atomic<Int?> = Atomic(value:nil)
         let selectedMessageIndex:Atomic<MessageIndex?> = Atomic(value:nil)
+        let selectedStableId:Atomic<UInt32?> = Atomic(value:nil)
         let restoringSelection:Atomic<Bool> = Atomic(value:false)
         let pendingLoad:Atomic<(anchor: MessageIndex, older: Bool)?> = Atomic(value:nil)
         let loadedRange:Atomic<(lower: MessageIndex, upper: MessageIndex)?> = Atomic(value:nil)
@@ -945,19 +946,26 @@ public class GalleryViewer: NSResponder {
                     }
                     
                     var current:Int? = currentIndex.modify({$0})
-                    if current == nil || !reversed {
-                        let id = selectedMessage?.id ?? message.id
-                        if let found = new.firstIndex(where: { $0.message?.id == id }) {
-                            current = found
-                        } else if !reversed, let selectedMessage = selectedMessage, !new.isEmpty {
-                            current = new.firstIndex(where: { $0.index >= selectedMessage }) ?? new.count - 1
-                        }
+                    let selectedStable = selectedStableId.with { $0 }
+                    var keep = true
+                    if let found = new.firstIndex(where: { $0.message?.stableId == (selectedStable ?? message.stableId) }) {
+                        current = found
+                    } else if !new.isEmpty {
+                        keep = selectedStable != nil
+                        let selected = selectedMessage ?? MessageIndex(message)
+                        current = new.firstIndex(where: { reversed ? $0.index <= selected : $0.index >= selected }) ?? new.count - 1
+                    }
+                    if keep, let current = current, current < new.count {
+                        _ = selectedMessageIndex.swap(new[current].message.flatMap { MessageIndex($0) })
+                        _ = selectedStableId.swap(new[current].message?.stableId)
                     }
                     
 //
                     
                     
+                    _ = restoringSelection.swap(true)
                     let isEmpty = strongSelf.pager.merge(with: transition)
+                    _ = restoringSelection.swap(false)
                     
                     if !isEmpty {
                         
@@ -993,6 +1001,7 @@ public class GalleryViewer: NSResponder {
             let isRestoring = restoringSelection.with { $0 }
             if !isRestoring {
                 _ = selectedMessageIndex.swap(current.message.flatMap { MessageIndex($0) })
+                _ = selectedStableId.swap(current.message?.stableId)
             }
             self.updateCaptureExclusion()
             if let location = current.location {

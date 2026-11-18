@@ -1,0 +1,226 @@
+name: Contributor PR file policy
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  file-policy:
+    name: Evaluate contributor PR files
+    if: github.event.action != 'edited' || github.event.changes.base != null
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: contributor-pr-files-${{ github.event.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Publish policy status on the verified test merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
+          const { tmpdir } = require('node:os');
+          const { extname, join } = require('node:path');
+
+          const { pull_request: pr, number } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const repository = process.env.GITHUB_REPOSITORY;
+          const server = process.env.GITHUB_SERVER_URL;
+          const head = pr.head.sha;
+          const context = 'Contributor PR files';
+          const api = `${process.env.GITHUB_API_URL}/repos/${repository}`;
+          const allowedExtensions = new Set([
+            '.swift', '.m', '.mm', '.h',
+            '.apng', '.avif', '.bmp', '.gif', '.heic', '.heif', '.icns', '.ico', '.jpeg', '.jpg',
+            '.png', '.tgs', '.tif', '.tiff', '.webp',
+            '.plist', '.strings', '.stringsdict', '.xcstrings',
+          ]);
+
+          async function request(path, options = {}) {
+            const response = await fetch(`${api}${path}`, {
+              ...options,
+              redirect: 'error',
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+            });
+            if (!response.ok) {
+              throw new Error(`GitHub API request failed (HTTP ${response.status}).`);
+            }
+            return response.json();
+          }
+
+          async function publish(merge, state, description) {
+            await request(`/statuses/${merge}`, {
+              method: 'POST',
+              body: JSON.stringify({
+                state,
+                context,
+                description,
+                target_url: `${server}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              }),
+            });
+          }
+
+          function allowedPath(path) {
+            const components = path.toLowerCase().split('/');
+            const filename = components.pop();
+            const parent = components.at(-1);
+            const extension = extname(filename);
+            if (components[0] === '.github' || components[0] === '.gitlab') {
+              return false;
+            }
+            if (allowedExtensions.has(extension)) {
+              return true;
+            }
+            if (filename === 'contents.json') {
+              return components.some(part => part.endsWith('.xcassets'));
+            }
+            if (filename === 'project.pbxproj') {
+              return parent?.endsWith('.xcodeproj');
+            }
+            if (filename === 'contents.xcworkspacedata') {
+              return parent?.endsWith('.xcworkspace');
+            }
+            return ['.xcscheme', '.xcsettings'].includes(extension)
+              && components.includes('xcshareddata')
+              && components.some(part => part.endsWith('.xcodeproj') || part.endsWith('.xcworkspace'));
+          }
+
+          async function verifiedMerge(git, env) {
+            const credentials = Buffer.from(`x-access-token:${process.env.GH_TOKEN}`).toString('base64');
+            for (let attempt = 0; attempt < 4; attempt++) {
+              if (attempt > 0) {
+                await new Promise(resolve => setTimeout(resolve, 2 ** attempt * 1000));
+              }
+              const current = await request(`/pulls/${number}`);
+              if (current.head.sha !== head || current.base.ref !== 'master' || current.state !== 'open') {
+                throw new Error('The open PR revision changed while this run was queued.');
+              }
+              if (current.mergeable === false) {
+                throw new Error('A test merge is unavailable. Resolve the PR merge conflicts.');
+              }
+              if (!current.merge_commit_sha || current.mergeable !== true) {
+                continue;
+              }
+              try {
+                git([
+                  'fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--filter=blob:none',
+                  `${server}/${repository}.git`,
+                  '+refs/heads/master:refs/policy/base',
+                  `+refs/pull/${number}/head:refs/policy/head`,
+                  `+refs/pull/${number}/merge:refs/policy/merge`,
+                ], {
+                  ...env,
+                  GIT_CONFIG_COUNT: '2',
+                  GIT_CONFIG_KEY_0: `http.${server}/.extraHeader`,
+                  GIT_CONFIG_VALUE_0: `Authorization: Basic ${credentials}`,
+                  GIT_CONFIG_KEY_1: 'http.followRedirects',
+                  GIT_CONFIG_VALUE_1: 'false',
+                });
+              } catch {
+                continue;
+              }
+              const [base, fetchedHead] = git(['rev-parse', 'refs/policy/base', 'refs/policy/head'])
+                .toString().trim().split('\n');
+              const [merge, firstParent, secondParent, extraParent] = git([
+                'rev-list', '--parents', '--max-count=1', 'refs/policy/merge',
+              ]).toString().trim().split(' ');
+              if (fetchedHead !== head) {
+                throw new Error('The PR head changed while this run was queued.');
+              }
+              if (merge === current.merge_commit_sha && firstParent === base
+                  && base === current.base.sha && secondParent === head && !extraParent) {
+                return merge;
+              }
+            }
+            throw new Error('Could not verify the current test merge. Rerun the workflow.');
+          }
+
+          async function inspectChanges(trusted) {
+            const directory = mkdtempSync(join(tmpdir(), 'contributor-pr-files-'));
+            const env = {
+              ...process.env,
+              GIT_CONFIG_NOSYSTEM: '1',
+              GIT_CONFIG_GLOBAL: '/dev/null',
+              GIT_TERMINAL_PROMPT: '0',
+            };
+            const git = (args, environment = env) => execFileSync('git', args, {
+              cwd: directory,
+              env: environment,
+              maxBuffer: 16 * 1024 * 1024,
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+
+            try {
+              git(['init', '--bare', '--quiet']);
+              const merge = await verifiedMerge(git, env);
+              if (trusted) {
+                return { merge, violations: [] };
+              }
+
+              const violations = new Map();
+              for (const range of ['refs/policy/base...refs/policy/head', 'refs/policy/base..refs/policy/merge']) {
+                const diff = git([
+                  'diff', '--raw', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', range, '--',
+                ]);
+                const fields = new TextDecoder('utf-8', { fatal: true }).decode(diff).split('\0');
+                if (fields.pop() !== '' || fields.length % 2 !== 0) {
+                  throw new Error('Git returned an incomplete file list.');
+                }
+                for (let index = 0; index < fields.length; index += 2) {
+                  const header = /^:\d{6} (\d{6}) [0-9a-f]+ [0-9a-f]+ [ADMT]$/.exec(fields[index]);
+                  if (!header) {
+                    throw new Error('Git returned an unexpected file record.');
+                  }
+                  const path = fields[index + 1];
+                  if (!allowedPath(path)) {
+                    violations.set(path, 'file type or location is outside the allowlist');
+                  } else if (header[1] !== '100644' && header[1] !== '000000') {
+                    violations.set(path, 'the new file must be regular and non-executable');
+                  }
+                }
+              }
+              return { merge, violations: [...violations] };
+            } finally {
+              rmSync(directory, { recursive: true, force: true });
+            }
+          }
+
+          async function main() {
+            if (!/^[0-9a-f]{40}$/.test(head) || !Number.isSafeInteger(number) || number < 1
+                || pr.base.ref !== 'master' || pr.base.repo.full_name !== repository
+                || !Number.isSafeInteger(pr.base.repo.id)) {
+              throw new Error('The pull request event did not identify a valid revision of this repository.');
+            }
+            const trusted = pr.head.repo?.id === pr.base.repo.id;
+            const { merge, violations } = await inspectChanges(trusted);
+
+            if (violations.length) {
+              for (const [path, reason] of violations) {
+                const quotedPath = JSON.stringify(path).replaceAll('#', '\\u0023');
+                console.log(`  ${quotedPath} — ${reason}`);
+              }
+              await publish(merge, 'failure', 'Remove the disallowed changes listed in the workflow log.');
+              process.exitCode = 1;
+            } else {
+              const description = trusted ? 'The head branch belongs to this repository.'
+                : 'All changed files satisfy the contributor file policy.';
+              await publish(merge, 'success', description);
+            }
+          }
+
+          main().catch(error => {
+            console.error(error.message);
+            process.exitCode = 1;
+          });
+          NODE
