@@ -2,6 +2,7 @@ import Foundation
 import Postbox
 import TelegramCore
 import MessageUtils
+import TelegramUtils
 
 private func mediaBreaksBubbleMerge(_ media: Media) -> Bool {
     if let story = media as? TelegramMediaStory {
@@ -32,7 +33,11 @@ private func bubbleMergeAuthorId(_ message: Message, useRawAuthor: Bool) -> Peer
     var authorId = message.author?.id
     for attribute in message.attributes {
         if let attribute = attribute as? SourceReferenceMessageAttribute {
-            authorId = message.peers[attribute.messageId.peerId]?.id
+            if message.id.peerId == TelegramUtilsHooks.shared.repliesPeerId() {
+                authorId = message.forwardInfo?.author?.id ?? authorId
+            } else {
+                authorId = message.peers[attribute.messageId.peerId]?.id
+            }
             break
         }
     }

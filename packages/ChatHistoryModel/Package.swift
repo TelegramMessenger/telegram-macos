@@ -90,6 +90,7 @@ let package = Package(
                 "ChatHistoryModel",
                 .product(name: "TelegramCore", package: "TelegramCore"),
                 .product(name: "Postbox", package: "Postbox"),
+                .product(name: "TelegramUtils", package: "TelegramUtils"),
             ],
             path: "Tests/ChatHistoryModelTests"),
     ]
