@@ -436,7 +436,7 @@ public func ChannelReactionsController<Context: AccountContextProtocol>(context:
         
         switch allowedReactions {
         case .all:
-            for reaction in availableReactions.reactions {
+            for reaction in availableReactions.enabled {
                 textInteractions.update { _ in
                     return textInteractions.insertText(.makeAnimated(reaction.activateAnimation._parse(), text: reaction.value.string))
                 }
@@ -445,7 +445,7 @@ public func ChannelReactionsController<Context: AccountContextProtocol>(context:
             for reaction in reactions {
                 switch reaction {
                 case .builtin:
-                    if let first = availableReactions.reactions.first(where: { $0.value == reaction }) {
+                    if let first = availableReactions.enabled.first(where: { $0.value == reaction }) {
                         textInteractions.update { _ in
                             return textInteractions.insertText(.makeAnimated(first.activateAnimation._parse(), text: first.value.string))
                         }
@@ -459,7 +459,7 @@ public func ChannelReactionsController<Context: AccountContextProtocol>(context:
                 }
             }
         case .empty:
-            for reaction in availableReactions.reactions {
+            for reaction in availableReactions.enabled {
                 textInteractions.update { _ in
                     return textInteractions.insertText(.makeAnimated(reaction.activateAnimation._parse(), text: reaction.value.string))
                 }

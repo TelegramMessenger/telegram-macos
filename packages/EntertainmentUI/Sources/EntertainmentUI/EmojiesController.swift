@@ -563,7 +563,7 @@ private func entries(_ state: State, arguments: Arguments) -> [InputDataEntry] {
     
     if arguments.mode == .channelReactions, let availableReactions = state.availableReactions {
         recentAnimated.removeAll()
-        for reaction in availableReactions.reactions {
+        for reaction in availableReactions.enabled {
             recentAnimated.append(.init(index: .init(index: 0, id: 0), file: reaction.activateAnimation._parse(), indexKeys: []))
         }
     }
