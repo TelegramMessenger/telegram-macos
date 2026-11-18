@@ -7,8 +7,8 @@ import TGUIKit
 import InAppSettings
 import TelegramTheme
 
-public func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAnyway: Bool = false, permanent: Bool = false) -> Signal<String?, NoError> {
-    return combineLatest(queue: resourcesQueue, downloadFilePath(file, postbox, permanent: saveAnyway || permanent), downloadedFilePaths(postbox)) |> take(1) |> mapToSignal { expanded, paths -> Signal<String?, NoError> in
+public func copyToDownloads(_ file: TelegramMediaFile, postbox: Postbox, saveAnyway: Bool = false) -> Signal<String?, NoError> {
+    return combineLatest(queue: resourcesQueue, downloadFilePath(file, postbox, permanent: saveAnyway), downloadedFilePaths(postbox)) |> take(1) |> mapToSignal { expanded, paths -> Signal<String?, NoError> in
         guard let (boxPath, destination) = expanded else {
             return .single(nil)
         }

@@ -1548,22 +1548,20 @@ public class GalleryViewer: NSResponder {
                             })).mutableCopy() as! NSMutableAttributedString
 
                             let layout = TextViewLayout(attributedText, alignment: .center, lineSpacing: 5.0, alwaysStaticItems: true)
-                            layout.interactions = TextViewInteractions(processURL: { [weak strongSelf] url  in
-                                 if let file = file {
-                                    showInFinder(file, account: context.account, permanent: true)
-                                    strongSelf?.close(false)
-                                }
-                            })
                             layout.measure(width: 160)
 
                             if let file = file {
 
                                 let window = strongSelf.window
                                 _ = (copyToDownloads(file, postbox: context.account.postbox, saveAnyway: true) |> take(1) |> deliverOnMainQueue |> mapToSignal { saved -> Signal<Void, NoError> in
-                                    guard saved != nil else {
+                                    guard let saved = saved else {
                                         showModalText(for: window, text: strings().unknownError)
                                         return .complete()
                                     }
+                                    layout.interactions = TextViewInteractions(processURL: { [weak strongSelf] _ in
+                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: saved)])
+                                        strongSelf?.close(false)
+                                    })
                                     return showSaveModal(for: window, context: context, animation: LocalAnimatedSticker.success_saved, shouldBlur: false, text: layout, delay: 3.0)
                                 }).start()
                             } else {

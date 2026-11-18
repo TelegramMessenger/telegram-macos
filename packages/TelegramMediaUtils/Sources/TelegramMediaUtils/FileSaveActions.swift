@@ -212,8 +212,8 @@ private func saveMediaAs(resource: MediaResource, reference: AnyMediaReference, 
     }
 }
 
-public func showInFinder(_ file: TelegramMediaFile, account: Account, permanent: Bool = false) {
-    _ = (copyToDownloads(file, postbox: account.postbox, permanent: permanent) |> deliverOnMainQueue).start(next: { path in
+public func showInFinder(_ file: TelegramMediaFile, account: Account) {
+    _ = (copyToDownloads(file, postbox: account.postbox) |> deliverOnMainQueue).start(next: { path in
         if let path = path {
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
         }
