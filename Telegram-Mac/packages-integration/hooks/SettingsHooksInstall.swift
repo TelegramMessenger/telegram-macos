@@ -193,7 +193,7 @@ final class QrStudioShareObject: ShareObject {
                     return send
                 }
             }
-            return combineLatest(signals) |> take(1) |> ignoreValues
+            return combineLatest(signals) |> ignoreValues
         }
         |> castError(String.self)
     }
