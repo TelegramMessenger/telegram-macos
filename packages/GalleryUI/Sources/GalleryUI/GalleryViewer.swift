@@ -752,9 +752,17 @@ public class GalleryViewer: NSResponder {
                         signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: tags, orderStatistics: [.combinedLocation], additionalData: [])
                     }
                 case .pinned:
-                    signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: .tag(.pinned), orderStatistics: [.combinedLocation], additionalData: [])
+                    if chatLocation.threadId != nil, chatLocation.peerId == message.id.peerId {
+                        signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(context.chatLocationInput(for: chatLocation, contextHolder: contextHolder), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: .tag(.pinned), orderStatistics: [.combinedLocation], additionalData: [])
+                    } else {
+                        signal = context.account.viewTracker.aroundIdMessageHistoryViewForLocation(.peer(peerId: message.id.peerId, threadId: nil), count: 50, ignoreRelatedChats: false, messageId: index.id, tag: .tag(.pinned), orderStatistics: [.combinedLocation], additionalData: [])
+                    }
                 case .scheduled:
-                    signal = context.account.viewTracker.scheduledMessagesViewForLocation(.peer(peerId: message.id.peerId, threadId: nil))
+                    if chatLocation.threadId != nil, chatLocation.peerId == message.id.peerId {
+                        signal = context.account.viewTracker.scheduledMessagesViewForLocation(context.chatLocationInput(for: chatLocation, contextHolder: contextHolder))
+                    } else {
+                        signal = context.account.viewTracker.scheduledMessagesViewForLocation(.peer(peerId: message.id.peerId, threadId: nil))
+                    }
                 case let .customChatContents(contents):
                     signal = contents.historyView |> map { view in
                         return (MessageHistoryView(tag: nil, namespaces: .all, entries: view.0.entries, holeEarlier: false, holeLater: false, isLoading: false), ViewUpdateType.Generic, nil)

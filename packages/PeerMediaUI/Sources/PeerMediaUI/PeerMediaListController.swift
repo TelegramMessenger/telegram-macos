@@ -489,15 +489,17 @@ open class PeerMediaListController<Context: AccountContextProtocol>: TableViewCo
         let _entries = self.entires
         
         
-        let chatLocation = chatInteraction.chatLocation
+        let chatLocation: ChatLocation
         
         let mode: ChatMode
         let contextHolder: Atomic<ChatLocationContextHolder?>
         if let threadInfo = threadInfo {
             mode = .thread(mode: .topic(origin: threadInfo.message.effectiveTopId))
+            chatLocation = .thread(threadInfo.message)
             contextHolder = threadInfo.contextHolder
         } else {
             mode = .history
+            chatLocation = chatInteraction.chatLocation
             contextHolder = .init(value: nil)
         }
         
