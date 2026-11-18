@@ -8936,7 +8936,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         case .history:
             topPinnedMessage = getPinned()
         case .pinned:
-            let replyHistory: Signal<ChatHistoryViewUpdate, NoError> = (chatHistoryViewForLocation(.Initial(count: 90, scrollPosition: nil), context: self.context, chatLocation: .peer(peerId), fixedCombinedReadStates: nil, tag: .tag(.pinned), additionalData: [])
+            let replyHistory: Signal<ChatHistoryViewUpdate, NoError> = (chatLocationValue |> mapToSignal { chatLocation in
+                return chatHistoryViewForLocation(.Initial(count: 90, scrollPosition: nil), context: context, chatLocation: chatLocation, fixedCombinedReadStates: nil, tag: .tag(.pinned), additionalData: [], chatLocationContextHolder: chatLocationContextHolder)
+            }
                 |> castError(Bool.self)
                 |> mapToSignal { update -> Signal<ChatHistoryViewUpdate, Bool> in
                     switch update {
