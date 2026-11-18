@@ -87,10 +87,13 @@ private final class LeftSidebarArguments {
 }
 
 
-public final class LeftSidebarView: LiquidGlassView {
+public final class LeftSidebarView: View {
     fileprivate let tableView = TableView()
     fileprivate var environment: SidebarUIEnvironment?
     fileprivate let edit = ImageButton()
+
+    private let glassView: LiquidGlassView?
+    private let trailingSeparator: View?
 
     /// 20pt on macOS 26+ to match the liquid-glass look (on macOS 27 the
     /// window radius is raised to 28pt through private API, keeping this
@@ -101,15 +104,31 @@ public final class LeftSidebarView: LiquidGlassView {
         }
         return 8
     }
-    public static let inset = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+    public static let inset = System.edgeToEdgeSidebar
+        ? NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        : NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
 
     public required init(frame frameRect: NSRect) {
-        super.init(frame: frameRect, cornerRadius: LeftSidebarView.glassCornerRadius, hasShadow: false, hasBorder: true, tintAlpha: 0.65)
+        if System.edgeToEdgeSidebar {
+            glassView = nil
+            trailingSeparator = View()
+        } else {
+            glassView = LiquidGlassView(frame: frameRect.size.bounds, cornerRadius: LeftSidebarView.glassCornerRadius, hasShadow: false, hasBorder: true, tintAlpha: 0.65)
+            trailingSeparator = nil
+        }
+        super.init(frame: frameRect)
 
         backgroundColor = .clear
 
+        if let glassView {
+            addSubview(glassView)
+        }
         addSubview(tableView)
         addSubview(edit)
+        if let trailingSeparator {
+            trailingSeparator.isEventLess = true
+            addSubview(trailingSeparator)
+        }
         tableView.getBackgroundColor = {
             return .clear
         }
@@ -124,6 +143,10 @@ public final class LeftSidebarView: LiquidGlassView {
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
         let theme = theme as! TelegramPresentationTheme
+        if System.edgeToEdgeSidebar {
+            backgroundColor = theme.colors.background
+        }
+        trailingSeparator?.backgroundColor = theme.colors.border
         edit.set(image: theme.icons.folders_sidebar_edit, for: .Normal)
         edit.borderColor = theme.colors.grayIcon.withAlphaComponent(0.1)
         needsLayout = true
@@ -147,6 +170,11 @@ public final class LeftSidebarView: LiquidGlassView {
 
     public override func layout() {
         super.layout()
+        if let glassView {
+            glassView.frame = bounds
+            glassView.updateLayout(size: bounds.size, transition: .immediate)
+        }
+        trailingSeparator?.frame = NSMakeRect(frame.width - .borderSize, 0, .borderSize, frame.height)
         tableView.frame = NSMakeRect(0, 0, frame.width, frame.height - 50)
         edit.frame = NSMakeRect(0, frame.height - 50, frame.width, 50)
         edit.border = tableView.frame.height < tableView.documentSize.height ? [.Top] : []
@@ -183,7 +211,7 @@ enum LeftSibarBarEntry : Comparable, Identifiable {
         case let .folder(_, selected, filter, unreadCount, hasUnmutedUnread):
             return LeftSidebarFolderItem(initialSize, context: arguments.context, environment: arguments.environment, folder: filter, selected: selected, unreadCount: unreadCount, hasUnmutedUnread: hasUnmutedUnread, callback: arguments.callback, menuItems: arguments.menuItems)
         case .topOffset:
-            return GeneralRowItem(initialSize, height: 30, stableId: stableId, backgroundColor: .clear)
+            return GeneralRowItem(initialSize, height: System.edgeToEdgeSidebar ? 38 : 30, stableId: stableId, backgroundColor: .clear)
         }
     }
 }

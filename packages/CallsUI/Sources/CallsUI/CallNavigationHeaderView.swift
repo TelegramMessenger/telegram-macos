@@ -325,8 +325,9 @@ open class CallHeaderBasicView : NavigationHeaderView {
     public override func layout() {
         super.layout()
 
-        let hInset: CGFloat = 12
-        let topInset: CGFloat = 12
+        let edgeInset: CGFloat = System.windowEdgeInset
+        let hInset: CGFloat = edgeInset
+        let topInset: CGFloat = edgeInset
         let contentHeight: CGFloat = 35
         let contentRect = NSMakeRect(hInset, topInset, frame.width - hInset * 2, contentHeight)
         backgroundView.frame = NSMakeRect(hInset, topInset, frame.width - hInset * 2, bounds.height - 10)
