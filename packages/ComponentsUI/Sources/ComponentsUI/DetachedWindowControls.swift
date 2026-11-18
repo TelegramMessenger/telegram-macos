@@ -25,19 +25,24 @@ public final class DetachedWindowControls {
     }
 
     public static func reservedWidth(in window: NSWindow?) -> CGFloat {
-        guard let window, let controls = registry.object(forKey: window) else {
-            return 0
-        }
-        return controls.reservedWidth
+        return (window as? Window)?.leadingControlsWidth ?? 0
     }
 
     private weak var window: Window?
     private let host = DetachedWindowCapsuleView(frame: .zero)
     private let glass = GlassContainerView(frame: .zero, flipped: true, spacing: 5)
     private let capsule = LiquidGlassView(frame: .zero, cornerRadius: DetachedWindowHeaderLayout.height / 2, hasShadow: true, hasBorder: true, tintAlpha: 0.4)
-    private var layout: DetachedWindowHeaderLayout?
+    private var layout: DetachedWindowHeaderLayout? {
+        didSet {
+            window?.leadingControlsWidth = reservedWidth
+        }
+    }
     private var observers: [NSObjectProtocol] = []
-    private var fullScreenTransition = false
+    private var fullScreenTransition = false {
+        didSet {
+            window?.leadingControlsWidth = reservedWidth
+        }
+    }
 
     private init(window: Window) {
         self.window = window

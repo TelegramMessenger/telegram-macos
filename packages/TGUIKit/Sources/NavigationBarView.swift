@@ -120,11 +120,22 @@ public class NavigationBarView: View {
         return true
     }
     
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        needsLayout = true
+    }
+
     var startPosition: CGFloat {
-//        if let navigation = self.navigation {
-//            return navigation.navigationBarLeftPosition
-//        }
-        return 0
+        guard let navigation, navigation.isLoaded(), let window = window as? Window, let contentView = window.contentView, window.leadingControlsWidth > 0 else {
+            return 0
+        }
+        let content = contentView.convert(contentView.bounds, to: nil)
+        let frame = navigation.view.convert(navigation.view.bounds, to: nil)
+        guard frame.maxY >= content.maxY else {
+            return 0
+        }
+        let leading = frame.minX - content.minX + navigation.slotLeadingInset
+        return max(0, window.leadingControlsWidth - NavigationBarView.edgeInset - leading)
     }
     
     
