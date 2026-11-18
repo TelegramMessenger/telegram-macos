@@ -95,8 +95,8 @@ public struct VoiceCallSettings: Codable, Equatable {
     public private(set) var pushToTalkSoundEffects: Bool
     public private(set) var noiseSuppression: Bool
     public let tooltips:[Tooltip]
-    public var incomingCallStyle: IncomingCallStyle = .classic
-    public var incomingCallMuteMode: IncomingCallMuteMode = .off
+    public var incomingCallStyle: IncomingCallStyle = .compact
+    public var incomingCallMuteMode: IncomingCallMuteMode = .whileUsingMac
     public static var defaultSettings: VoiceCallSettings {
         return VoiceCallSettings(audioInputDeviceId: nil, cameraInputDeviceId: nil, audioOutputDeviceId: nil, mode: .none, pushToTalk: nil, pushToTalkSoundEffects: false, noiseSuppression: true, tooltips: [.camera])
     }
@@ -124,11 +124,11 @@ public struct VoiceCallSettings: Codable, Equatable {
         self.pushToTalkSoundEffects = try container.decodeIfPresent(Bool.self, forKey: "se") ?? false
         self.noiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "ns") ?? false
         self.tooltips = try container.decode([Int32].self, forKey: "tt").compactMap { Tooltip(rawValue: $0) }
-        self.incomingCallStyle = IncomingCallStyle(rawValue: try container.decodeIfPresent(Int32.self, forKey: "incomingCallStyle") ?? 0) ?? .classic
+        self.incomingCallStyle = IncomingCallStyle(rawValue: try container.decodeIfPresent(Int32.self, forKey: "incomingCallStyle") ?? IncomingCallStyle.compact.rawValue) ?? .compact
         if let mode = try container.decodeIfPresent(Int32.self, forKey: "incomingCallMuteMode") {
-            self.incomingCallMuteMode = IncomingCallMuteMode(rawValue: mode) ?? .off
+            self.incomingCallMuteMode = IncomingCallMuteMode(rawValue: mode) ?? .whileUsingMac
         } else {
-            self.incomingCallMuteMode = (try container.decodeIfPresent(Bool.self, forKey: "silentCallsWhileActive") ?? false) ? .whileUsingMac : .off
+            self.incomingCallMuteMode = (try container.decodeIfPresent(Bool.self, forKey: "silentCallsWhileActive") ?? true) ? .whileUsingMac : .off
         }
     }
     

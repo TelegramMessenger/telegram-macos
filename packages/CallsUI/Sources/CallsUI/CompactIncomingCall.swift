@@ -18,11 +18,21 @@ private final class IncomingCallContent: NSView {
     override var isFlipped: Bool { return true }
 }
 
+private final class IncomingCallButtonCell: NSButtonCell {
+    var imageHorizontalOffset: CGFloat = 0
+
+    override func imageRect(forBounds rect: NSRect) -> NSRect {
+        return super.imageRect(forBounds: rect).offsetBy(dx: imageHorizontalOffset, dy: 0)
+    }
+}
+
 private final class IncomingCallButton: NSButton {
     var handler: (() -> Void)?
 
     init(symbol: String, label: String, frame: NSRect) {
         super.init(frame: frame)
+        cell = IncomingCallButtonCell()
+        imagePosition = .imageOnly
         isBordered = false
         image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
         contentTintColor = .white
@@ -87,23 +97,33 @@ final class CompactIncomingCall: NSObject, NSTextFieldDelegate {
             content.addSubview(nativeGlass)
         }
         banner.frame = content.bounds
+        if session.isVideo {
+            banner.wantsLayer = true
+            let shade = CAGradientLayer()
+            shade.frame = banner.bounds
+            shade.colors = [NSColor.black.withAlphaComponent(0.35).cgColor, NSColor.black.withAlphaComponent(0).cgColor]
+            shade.startPoint = CGPoint(x: 0.5, y: 0)
+            shade.endPoint = CGPoint(x: 0.5, y: 1)
+            banner.layer?.addSublayer(shade)
+        }
         composer.frame = content.bounds
         composer.isHidden = true
         content.addSubview(banner)
         content.addSubview(composer)
-        avatar.frame = NSMakeRect(12, 16, 48, 48)
+        avatar.frame = NSMakeRect(12, 12, 60, 60)
+        avatar.autoresizingMask = []
         avatar.userInteractionEnabled = false
         banner.addSubview(avatar)
-        let badge = NSImageView(frame: NSMakeRect(43, 47, 19, 19))
+        let badge = NSImageView(frame: NSMakeRect(55, 55, 19, 19))
         badge.image = NSApp.applicationIconImage
         badge.imageScaling = .scaleProportionallyUpOrDown
         banner.addSubview(badge)
-        name.frame = NSMakeRect(72, 20, 176, 21)
+        name.frame = NSMakeRect(84, 25, 164, 18)
         name.font = .systemFont(ofSize: 13, weight: .semibold)
         name.lineBreakMode = .byTruncatingTail
         banner.addSubview(name)
         let subtitle = NSTextField(labelWithString: session.isVideo ? strings().compactCallVideo : strings().compactCallAudio)
-        subtitle.frame = NSMakeRect(72, 41, 176, 18)
+        subtitle.frame = NSMakeRect(84, 43, 164, 16)
         subtitle.font = .systemFont(ofSize: 11)
         subtitle.textColor = .secondaryLabelColor
         if session.isVideo {
@@ -170,6 +190,7 @@ final class CompactIncomingCall: NSObject, NSTextFieldDelegate {
         action.handler = main
         pill.addSubview(action)
         let arrow = IncomingCallButton(symbol: "chevron.down", label: label + "…", frame: NSMakeRect(49, 0, 29, 26))
+        (action.cell as? IncomingCallButtonCell)?.imageHorizontalOffset = (arrow.frame.midX - action.frame.width) / 2
         arrow.handler = { [weak arrow] in if let arrow { menu(arrow) } }
         pill.addSubview(arrow)
     }
