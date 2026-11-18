@@ -40,11 +40,21 @@ public protocol SidebarAnimatedHeaderView: NSView {
     func update(animation: SidebarHeaderAnimation, table: TableView?, animated: Bool)
 }
 
+public typealias SidebarFolderDropAppearance = (identity: AnyObject, selected: Bool, images: () -> [(CGImage?, CGImage?, CGImage?)])
+
+public protocol SidebarFolderDropTarget: AnyObject {
+    func update(_ sender: NSDraggingInfo) -> NSDragOperation
+    func perform(_ sender: NSDraggingInfo) -> Bool
+    func exit()
+}
+
 public protocol SidebarUIEnvironment: AnyObject {
     var context: any AccountContextProtocol { get }
     var limits: SidebarLimits { get }
     var filterPredicates: Signal<(ChatListFilter?) -> ChatListFilterPredicate?, NoError> { get }
     func navigateToFilter(_ id: Int32)
+    var folderDropTypes: [NSPasteboard.PasteboardType] { get }
+    func makeFolderDropTarget(scrollView: NSScrollView, target: @escaping (NSPoint) -> (ChatListFilter, NSView)?, visibleTargets: @escaping () -> [(ChatListFilter, NSView, [NSView])], appearance: @escaping (NSView) -> SidebarFolderDropAppearance?, selectionFrame: @escaping () -> (Int32, NSRect)?) -> any SidebarFolderDropTarget
     func openPeerInfo(_ id: PeerId)
     func shareFolder(_ filter: ChatListFilter)
     func deleteSharedFolder(_ filter: ChatListFilter)

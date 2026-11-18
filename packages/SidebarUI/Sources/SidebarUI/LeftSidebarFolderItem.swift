@@ -12,14 +12,31 @@ import TelegramCore
 import SwiftSignalKit
 import AppAnalytics
 
+private func sidebarFolderIcon(_ icon: CGImage, badge: CGImage?) -> CGImage {
+    guard let badge else { return icon }
+    return generateImage(icon.systemSize, contextGenerator: { size, ctx in
+        let rect = NSRect(origin: .zero, size: size)
+        ctx.clear(rect)
+        ctx.draw(icon, in: rect.focus(icon.systemSize))
+        ctx.clip(to: NSMakeRect(rect.width - floorToScreenPixels(badge.systemSize.width / 2) - 6, rect.height - badge.systemSize.height + 3, badge.systemSize.width + 4, badge.systemSize.height + 4), mask: badge)
+        ctx.clear(rect)
+    })!
+}
+
 class LeftSidebarFolderItem: TableRowItem {
 
     fileprivate let folder: ChatListFilter
-    fileprivate let selected: Bool
+    let selected: Bool
     fileprivate let callback: (ChatListFilter)->Void
     fileprivate let menuItems: (ChatListFilter, Int?, Bool?)-> [ContextMenuItem]
     fileprivate let context: any AccountContextProtocol
     let icon: CGImage
+    private let environment: SidebarUIEnvironment
+    fileprivate lazy var dropIcons: (CGImage, CGImage, CGImage) = {
+        let folderIcon = FolderIcon(self.folder)
+        let hovered = self.environment.folderImage(folderIcon.emoticon.iconName).precomposed(theme.colors.text.withAlphaComponent(0.95))
+        return (sidebarFolderIcon(folderIcon.icon(for: .sidebar, image: self.environment.folderImage), badge: self.badge), sidebarFolderIcon(folderIcon.icon(for: .sidebarActive, image: self.environment.folderImage), badge: self.badge), sidebarFolderIcon(hovered, badge: self.badge))
+    }()
     let badge: CGImage?
     let nameLayout: TextViewLayout
     let unreadCount: Int
@@ -27,6 +44,7 @@ class LeftSidebarFolderItem: TableRowItem {
 
     init(_ initialSize: NSSize, context: any AccountContextProtocol, environment: SidebarUIEnvironment, folder: ChatListFilter, selected: Bool, unreadCount: Int, hasUnmutedUnread: Bool, callback: @escaping(ChatListFilter)->Void, menuItems: @escaping(ChatListFilter, Int?, Bool?) -> [ContextMenuItem]) {
         self.folder = folder
+        self.environment = environment
         self.context = context
         self.selected = selected
         self.callback = callback
@@ -74,18 +92,7 @@ class LeftSidebarFolderItem: TableRowItem {
 
                 })!
 
-                folderIcon = generateImage(folderIcon.systemSize, contextGenerator: { size, ctx in
-                    let rect = NSMakeRect(0, 0, size.width, size.height)
-                    ctx.clear(rect)
-
-                    ctx.draw(folderIcon, in: rect.focus(folderIcon.systemSize))
-
-                    ctx.clip(to: NSMakeRect(rect.width - floorToScreenPixels(badge.systemSize.width / 2) - 6, rect.height - badge.systemSize.height + 3, badge.systemSize.width + 4, badge.systemSize.height + 4), mask: badge)
-
-                    ctx.clear(rect)
-
-                   // ctx.draw(badge, in: rect)
-                })!
+                folderIcon = sidebarFolderIcon(folderIcon, badge: badge)
 
                 icon = badge
 
@@ -97,6 +104,10 @@ class LeftSidebarFolderItem: TableRowItem {
         self.badge = generateIcon()
         self.icon = folderIcon
         super.init(initialSize)
+    }
+
+    var folderDropId: Int32 {
+        return folder.sidebarId
     }
 
     override var stableId: AnyHashable {
@@ -182,7 +193,65 @@ class LeftSidebarFolderItem: TableRowItem {
 }
 
 
-private final class LeftSidebarFolderView : TableRowView {
+final class LeftSidebarFolderView : TableRowView {
+    var folderDropTarget: (ChatListFilter, NSView)? {
+        guard let item = item as? LeftSidebarFolderItem, !isResorting else { return nil }
+        return (item.folder, self)
+    }
+
+    var folderDropContentViews: [NSView] {
+        return [imageView, badgeView, textView]
+    }
+
+    private var dropImages: [(CGImage?, CGImage?, CGImage?)]?
+    private var dropAppearanceSize = NSSize.zero
+
+    var folderDropAppearance: SidebarFolderDropAppearance? {
+        guard let item = item as? LeftSidebarFolderItem else { return nil }
+        return (item, item.selected, { [weak self] in self?.folderDropImages ?? [] })
+    }
+
+    private var folderDropImages: [(CGImage?, CGImage?, CGImage?)] {
+        guard let item = item as? LeftSidebarFolderItem else { return [] }
+        if let dropImages, dropAppearanceSize == textView.bounds.size {
+            return dropImages
+        }
+        let image = textView.snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        let attributedString = NSMutableAttributedString(attributedString: item.nameLayout.attributedString)
+        let color = item.selected ? theme.colors.text : theme.colors.accent
+        attributedString.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: attributedString.length)) { value, range, _ in
+            if let value = value as? NSColor, value.alphaComponent > 0 {
+                attributedString.addAttribute(.foregroundColor, value: color, range: range)
+            }
+        }
+        let layout = TextViewLayout(attributedString, alignment: .center)
+        layout.measure(width: item.nameLayout.constrainedWidth)
+        let textLayer = TextViewLayer()
+        textLayer.contentsScale = window?.backingScaleFactor ?? System.backingScale
+        textLayer.frame = textView.bounds
+        textLayer.update(layout, size: textView.bounds.size)
+        let alternate = generateImage(textView.bounds.size, scale: textLayer.contentsScale, rotatedContext: { size, ctx in
+            let rect = NSRect(origin: .zero, size: size)
+            ctx.clear(rect)
+            textLayer.draw(in: ctx)
+            if let image {
+                for embedded in item.nameLayout.embeddedItems {
+                    ctx.saveGState()
+                    ctx.clip(to: embedded.rect.offsetBy(dx: self.textView.textView.frame.minX, dy: self.textView.textView.frame.minY))
+                    ctx.translateBy(x: 0, y: size.height)
+                    ctx.scaleBy(x: 1, y: -1)
+                    ctx.draw(image, in: rect)
+                    ctx.restoreGState()
+                }
+            }
+        })
+        let icons = item.dropIcons
+        let images: [(CGImage?, CGImage?, CGImage?)] = [(icons.0, icons.1, icons.2), (item.badge, item.badge, item.badge), item.selected ? (alternate, image, alternate) : (image, alternate, image)]
+        dropImages = images
+        dropAppearanceSize = textView.bounds.size
+        return images
+    }
+
     private let imageView = ImageView(frame: NSMakeRect(0, 0, 32, 32))
     private let badgeView = ImageView()
     private let textView = InteractiveTextView()
@@ -251,6 +320,7 @@ private final class LeftSidebarFolderView : TableRowView {
 
     override func set(item: TableRowItem, animated: Bool = false) {
         super.set(item: item, animated: animated)
+        dropImages = nil
 
         guard let item = item as? LeftSidebarFolderItem else {
             return
