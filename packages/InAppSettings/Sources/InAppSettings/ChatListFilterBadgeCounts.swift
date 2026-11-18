@@ -128,7 +128,8 @@ func chatListFilterBadgeCounts(engine: TelegramEngine, filters: [ChatListFilter]
                                 isMuted = isMutedByDefault
                             }
                             if let groupId = peerView.groupId {
-                                unreadChats[peerId] = ChatListFilterBadgeChat(tag: tag, groupId: groupId, isMuted: isMuted)
+                                let hasUnreadForTotals = unreadCounts.hasUnmutedUnreadThreads(for: peerId) != false
+                                unreadChats[peerId] = ChatListFilterBadgeChat(tag: tag, groupId: groupId, isMuted: isMuted, hasUnreadForTotals: hasUnreadForTotals)
                             }
                         }
                     }
@@ -245,6 +246,7 @@ struct ChatListFilterBadgeChat: Equatable {
     var tag: EnginePeerSummaryCounterTags
     var groupId: EnginePeerGroupId
     var isMuted: Bool
+    var hasUnreadForTotals: Bool = true
 }
 
 func chatListFilterBadgeCategoryTags(_ categories: ChatListFilterPeerCategories) -> [EnginePeerSummaryCounterTags] {
@@ -287,8 +289,9 @@ func chatListFilterBadgeCorrection(data: ChatListFilterData, unreadChats: [Engin
             isGroupListed = chat.groupId == Namespaces.PeerGroup.archive && !data.excludeArchived
         }
         let isInCategories = isGroupListed && tags.contains(chat.tag)
-        let isCountedByTotals = isInCategories && !(chat.isMuted && data.excludeMuted)
-        let isCountedByUnmutedTotals = isInCategories && !chat.isMuted
+        let hasUnmutedUnread = chat.hasUnreadForTotals && !chat.isMuted
+        let isCountedByTotals = isInCategories && chat.hasUnreadForTotals && !(chat.isMuted && data.excludeMuted)
+        let isCountedByUnmutedTotals = isInCategories && hasUnmutedUnread
 
         let identity = userIdBySecretChatId[peerId] ?? peerId
         let isShown: Bool
@@ -303,7 +306,7 @@ func chatListFilterBadgeCorrection(data: ChatListFilterData, unreadChats: [Engin
         }
 
         count += (isShown ? 1 : 0) - (isCountedByTotals ? 1 : 0)
-        unmuted += (isShown && !chat.isMuted ? 1 : 0) - (isCountedByUnmutedTotals ? 1 : 0)
+        unmuted += (isShown && hasUnmutedUnread ? 1 : 0) - (isCountedByUnmutedTotals ? 1 : 0)
     }
     return (count, unmuted)
 }
