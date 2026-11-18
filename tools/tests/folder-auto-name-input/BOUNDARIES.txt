@@ -1,5 +1,0 @@
-python3 -I run.py --source-root /path/to/worktree --output /outside/worktree
-
-The runner compiles the exact afterTransaction closure from ChatListFilterController and repeats against upstream246e3e957ae5cea1ecff6d7a6a6db3e47be69bb5. Baseline must compile and fail assertions. The fixture drives all7 automatic folder types, both animation preferences, category changes, repeated transactions, manually named and manually cleared titles, selection endpoints, generic folders and unchanged non-title data.
-
-The filter type, strings, environment converter, controller and state signal are bounded fixtures. This does not validate TelegramCore serialization, live ValuePromise scheduling, InputDataRow rendering, account limits or a server save. The environment converter mirrors the existing bridge's end-of-title selection; full integration/build and user acceptance remain separate. No Telegram UI/account is opened. Optional --compiler-lock serializes compiler processes.
