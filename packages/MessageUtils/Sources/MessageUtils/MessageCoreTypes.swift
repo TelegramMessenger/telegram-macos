@@ -8,6 +8,13 @@ public func makeThreadIdMessageId(peerId: PeerId, threadId: Int64) -> MessageId 
     return messageId
 }
 
+public func makeThreadReplySubject(peerId: PeerId, threadId: Int64?, isMonoforum: Bool) -> EngineMessageReplySubject? {
+    guard let threadId, !isMonoforum, threadId != Message.newTopicThreadId else {
+        return nil
+    }
+    return EngineMessageReplySubject(messageId: makeThreadIdMessageId(peerId: peerId, threadId: threadId), quote: nil, innerSubject: nil)
+}
+
 public extension SuggestedPostMessageAttribute {
     
     static let commandDecline = "_suggest_decline"

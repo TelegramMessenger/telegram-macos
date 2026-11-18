@@ -3432,8 +3432,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
             }
             
-            if reply == nil, let threadId64 = threadId64(), !presentation.isMonoforum, threadId64 != Message.newTopicThreadId {
-                reply = .init(messageId: MessageId(peerId: makePeerId(), namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId64)), quote: nil, innerSubject: nil)
+            if reply == nil {
+                reply = makeThreadReplySubject(peerId: makePeerId(), threadId: threadId64(), isMonoforum: presentation.isMonoforum)
             }
             return reply
         }
@@ -5588,7 +5588,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 
                 let rect = NSMakeRect(0, 0, w_width, 40 + 20 + aboveLayout.layoutSize.height + 4)
                 
-                let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+                let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
                 panel._canBecomeMain = false
                 panel._canBecomeKey = false
                 panel.level = .popUpMenu

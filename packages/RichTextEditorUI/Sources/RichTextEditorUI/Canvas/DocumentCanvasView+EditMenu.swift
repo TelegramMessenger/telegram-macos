@@ -153,6 +153,22 @@ extension DocumentCanvasView {
 
     // MARK: - Clipboard (plaintext, CRLF-flattened — multi-line paragraph paste is a later phase)
 
+    private func plainTextWithQuoteBoundaries(in regions: [LeafTextRegion], from lo: Int, to hi: Int) -> String {
+        var result = ""
+        var previous: TextNodeRef?
+        for region in regions {
+            let a = max(lo, region.globalStart), b = min(hi, region.globalStart + region.length)
+            guard a < b else { continue }
+            if case let .quoteAuthor(id) = region.ref, previous == .pullQuote(id) {
+                result += "\n"
+            }
+            let text = region.layout.attributedString.string as NSString
+            result += text.substring(with: NSRange(location: a - region.globalStart, length: b - a))
+            previous = region.ref
+        }
+        return result
+    }
+
     /// Copy the current selection to the pasteboard: a rich `DocumentCodec` fragment (for attribute-
     /// preserving paste back into the editor) AND plain text (for other apps). `string` is set first because
     /// its setter clears the pasteboard; `richFragment` then adds the private type without clearing.
@@ -165,11 +181,11 @@ extension DocumentCanvasView {
             // destructive delete. Write the selection's plain text instead, exactly as the UIKit editor's
             // `writeSelectionToPasteboard` does for a fragment-less selection. Paste-back is unaffected:
             // the plain branch of `pasteFromPasteboard` routes through the region-aware `replace`.
-            if selFrom < selTo { pasteboard.string = text(inGlobalRange: selFrom, selTo) }
+            if selFrom < selTo { pasteboard.string = plainTextWithQuoteBoundaries(in: allLeafRegions(), from: selFrom, to: selTo) }
             return
         }
         // Plain text: the selected text, or (for a structural/table fragment) the fragment flattened.
-        pasteboard.string = (selFrom < selTo) ? text(inGlobalRange: selFrom, selTo) : Self.plainText(of: fragment)
+        pasteboard.string = (selFrom < selTo) ? plainTextWithQuoteBoundaries(in: allLeafRegions(), from: selFrom, to: selTo) : Self.plainText(of: fragment)
         if let data = try? DocumentCodec.encode(Document(blocks: fragment)) {
             pasteboard.richFragment = data
         }
