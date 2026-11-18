@@ -35,25 +35,22 @@ final class AppMenuScreenPositionTests: XCTestCase {
         let holder = AppMenu(menu: menu, appearMode: mode)
         let controller = AppMenuController(menu, presentation: menu.presentation, holder: holder, betterInside: betterInside, appearMode: mode, parentView: anchor)
         defer {
-            let panels = NSApp.windows.filter { window in
-                (window.contentView?.subviews.first as? MenuView)?.controller === controller
-            }
+            let host = controller.menuHostWindow
             controller.close()
-            panels.forEach { $0.orderOut(nil) }
+            host?.orderOut(nil)
         }
         let local = owner.convertFromScreen(NSRect(origin: point, size: .zero)).origin
         let event = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: local, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: owner.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
         controller.present(event: event, view: anchor)
-        let panel = try XCTUnwrap(NSApp.windows.first { window in
-            (window.contentView?.subviews.first as? MenuView)?.controller === controller
-        })
-        let menuView = try XCTUnwrap(panel.contentView?.subviews.first as? MenuView)
+        let host = try XCTUnwrap(controller.menuHostWindow)
+        let menuView = try XCTUnwrap(controller.rootMenuView)
+        let frame = try XCTUnwrap(menuView.menuScreenFrame)
         XCTAssertTrue(menu.isShown)
-        XCTAssertTrue(panel.isVisible)
-        XCTAssertGreaterThan(panel.frame.height, 40)
+        XCTAssertTrue(host.isVisible)
+        XCTAssertGreaterThan(frame.height, 40)
         XCTAssertEqual(menuView.tableView.count, rows + 2)
         let reference = betterInside ? owner.frame : actualScreen.visibleFrame
-        try verify(panel.frame, reference, owner.convertToScreen(NSRect(origin: local, size: .zero)).origin)
+        try verify(frame, reference, owner.convertToScreen(NSRect(origin: local, size: .zero)).origin)
     }
 
     func testDesktopSizedWindowTopClickKeepsMenuBelowVisibleTop() throws {

@@ -16,10 +16,6 @@ final class ContextMenuItemsTests: XCTestCase {
         System.legacyMenu = previousLegacyMenu
     }
 
-    private func menuView(_ window: NSWindow?) -> MenuView? {
-        window?.contentView?.subviews.first as? MenuView
-    }
-
     private func makeItems(_ count: Int) -> [ContextMenuItem] {
         (0..<count).map { ContextMenuItem("Item \($0)") }
     }
@@ -175,20 +171,20 @@ final class ContextMenuItemsTests: XCTestCase {
         let event = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: NSMakePoint(5, 5), modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
         controller.present(event: event, view: anchor)
 
-        let root = try XCTUnwrap(NSApp.windows.compactMap(menuView).first { $0.controller === controller })
+        let root = try XCTUnwrap(controller.rootMenuView)
         root.layoutSubtreeIfNeeded()
         let openRow = try XCTUnwrap(root.item(for: open.id))
         let loadingRow = try XCTUnwrap(root.item(for: loading.id))
 
         XCTAssertTrue(openRow.accessibilityPerformPress())
-        XCTAssertEqual(menuView(root.childView)?.submenuId, open.id)
+        XCTAssertEqual(root.childMenuView?.submenuId, open.id)
 
         XCTAssertTrue(loadingRow.accessibilityPerformPress())
-        XCTAssertNil(root.childView)
+        XCTAssertNil(root.childMenuView)
         XCTAssertTrue(loadingRow.isSelected)
 
         complete?([ContextMenuItem("Topic")])
-        XCTAssertEqual(menuView(root.childView)?.submenuId, loading.id)
+        XCTAssertEqual(root.childMenuView?.submenuId, loading.id)
     }
 
     func testAsyncItemsLoadingIsDisposedWithMenu() {
