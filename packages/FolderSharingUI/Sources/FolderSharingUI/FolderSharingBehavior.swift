@@ -2,10 +2,36 @@ import Postbox
 import TelegramCore
 
 func folderSharingInitializeSelection(_ peers: [Peer], selectedIds: Set<PeerId>?, selection: FolderSharingPeerSelection?) {
+    guard let selection = selection else {
+        return
+    }
     for peer in peers {
-        if selectedIds == nil || selectedIds!.contains(peer.id) {
-            selection?.toggleSelection(peer)
+        if (selectedIds == nil || selectedIds!.contains(peer.id)) && !selection.selectedPeerIds.contains(peer.id) {
+            selection.toggleSelection(peer)
         }
+    }
+}
+
+struct FolderSharingLinkSelection {
+    private var initializedPeerIds: Set<PeerId> = []
+    private(set) var initialSelected: Set<PeerId>
+
+    init(selectedIds: Set<PeerId> = []) {
+        initialSelected = selectedIds
+    }
+
+    func selectedPeerIds(_ selection: FolderSharingPeerSelection?) -> Set<PeerId> {
+        return (selection?.selectedPeerIds ?? []).union(initialSelected.subtracting(initializedPeerIds))
+    }
+
+    mutating func update(_ peers: [Peer], selectedIds: Set<PeerId>?, selection: FolderSharingPeerSelection?) {
+        guard let selection = selection else {
+            return
+        }
+        let newPeers = peers.filter { !initializedPeerIds.contains($0.id) }
+        folderSharingInitializeSelection(newPeers, selectedIds: selectedIds, selection: selection)
+        initialSelected.formUnion(selectedIds ?? Set(newPeers.filter { selection.selectedPeerIds.contains($0.id) }.map { $0.id }))
+        initializedPeerIds.formUnion(peers.map { $0.id })
     }
 }
 
@@ -27,7 +53,7 @@ func folderSharingJoinedChannelIds(_ peers: [EnginePeer]) -> Set<PeerId> {
     }.map { $0.id })
 }
 
-func folderSharingSaveLink(state: FolderSharingLinkState, original: ExportedChatFolderLink?, edit: (ExportedChatFolderLink, Set<PeerId>, @escaping (ExportedChatFolderLink) -> Void, @escaping () -> Void) -> Void, updated: @escaping (ExportedChatFolderLink, ExportedChatFolderLink?) -> Void, success: @escaping () -> Void, failure: @escaping () -> Void, delete: () -> Void, close: () -> Void) {
+func folderSharingSaveLink(state: FolderSharingLinkState, original: ExportedChatFolderLink?, edit: (ExportedChatFolderLink, Set<PeerId>, @escaping (ExportedChatFolderLink) -> Void, @escaping () -> Void) -> Void, updated: @escaping (ExportedChatFolderLink, ExportedChatFolderLink?) -> Void, success: @escaping () -> Void, failure: @escaping () -> Void, delete: () -> Void, close: @escaping () -> Void) {
     if let current = state.link {
         if state.selected.isEmpty {
             delete()
@@ -35,10 +61,12 @@ func folderSharingSaveLink(state: FolderSharingLinkState, original: ExportedChat
             if state.selected != Set(current.peerIds) || original?.title != current.title {
                 edit(current, state.selected, { result in
                     updated(current, result)
+                    close()
                     success()
                 }, failure)
+            } else {
+                close()
             }
-            close()
         }
     }
 }
