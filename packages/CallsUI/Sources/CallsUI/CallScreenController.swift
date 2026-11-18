@@ -19,6 +19,7 @@ import TelegramContext
 import TelegramUtils
 import CallVideoLayer
 import AppAnalytics
+import InAppSettings
 
 private func insertSpacesBetweenEmojis(in text: String) -> String {
     var newString = ""
@@ -167,7 +168,84 @@ private func mapCallState(_ state: CallState, canBeRemoved: Bool, supportsConfer
 }
 
 
+private var compactIncomingCall: CompactIncomingCall?
+private var compactIncomingSession: PCallSession?
+private let incomingPresentationDisposable = MetaDisposable()
+private let compactStateDisposable = MetaDisposable()
+
+private func closeCompactIncomingCall() {
+    compactIncomingCall?.close()
+    compactIncomingCall = nil
+    compactIncomingSession = nil
+    compactStateDisposable.set(nil)
+}
+
 public func callScreen(_ result:PCallResult, source: CallWindowSource? = nil) {
+    assertOnMainThread()
+    switch result {
+    case let .samePeer(session), let .success(session):
+        if compactIncomingSession === session {
+            compactIncomingCall?.show()
+            return
+        }
+        if session.isOutgoing || session.isIncomingConference {
+            showFullCallScreen(result, source: source)
+            return
+        }
+        incomingPresentationDisposable.set((combineLatest(voiceCallSettings(session.sharedContext.accountManager), session.state) |> take(1) |> deliverOnMainQueue).start(next: { settings, state in
+            switch state.state {
+            case .terminating, .terminated:
+                return
+            default:
+                break
+            }
+            guard case .ringing = state.state else {
+                showFullCallScreen(result, source: source)
+                return
+            }
+            guard settings.incomingCallStyle == .compact else {
+                showFullCallScreen(result, source: source)
+                return
+            }
+            closeCompactIncomingCall()
+            compactIncomingSession = session
+            let decline = {
+                Analytics.shared.send(AnalyticsEvents.callDecline())
+                closeCompactIncomingCall()
+                _ = session.hangUpCurrentCall().start()
+            }
+            compactIncomingCall = CompactIncomingCall(session: session, answer: { video, muted in
+                closeCompactIncomingCall()
+                if !video { session.disableVideo() }
+                if muted { session.mute() }
+                Analytics.shared.send(AnalyticsEvents.callAccept(video: video))
+                session.acceptCallSession()
+                showFullCallScreen(.success(session), source: source, activate: false)
+            }, decline: decline, reply: { text in
+                _ = enqueueMessages(account: session.account, peerId: session.peerId, messages: [.message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).startStandalone()
+                decline()
+            })
+            compactIncomingCall?.show()
+            observeCallTermination(session)
+            compactStateDisposable.set((session.state |> deliverOnMainQueue).start(next: { state in
+                switch state.state {
+                case .ringing:
+                    break
+                case .terminating, .terminated:
+                    closeCompactIncomingCall()
+                    session.setToRemovableState()
+                default:
+                    closeCompactIncomingCall()
+                    showFullCallScreen(.success(session), source: source, activate: false)
+                }
+            }))
+        }))
+    default:
+        break
+    }
+}
+
+private func showFullCallScreen(_ result: PCallResult, source: CallWindowSource?, activate: Bool = true) {
     
     switch result {
     case let .samePeer(session), let .success(session):
@@ -316,7 +394,10 @@ public func callScreen(_ result:PCallResult, source: CallWindowSource? = nil) {
         
         
         screen.update(arguments: arguments)
-        screen.show(source: source, animated: true)
+        if activate {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        screen.show(source: source, animated: true, activate: activate)
         
         session.window = screen.window
         

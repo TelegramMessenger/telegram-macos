@@ -1,5 +1,6 @@
 import XCTest
 import TelegramCore
+import InAppSettings
 @testable import TelegramCallsCore
 
 final class CallToneTests: XCTestCase {
@@ -62,5 +63,33 @@ final class CallToneTests: XCTestCase {
 
     func testSwitchedToConferenceIsSilent() {
         XCTAssertNil(tone(.terminated(nil, .ended(.switchedToConference(slug: "x")), false), previous: .switchedToConference(slug: "x")))
+    }
+
+    func testIncomingRingtoneMutesUntilOneMinuteIdle() {
+        XCTAssertTrue(shouldMuteIncomingCallRingtone(isOutgoing: false, muteMode: .whileUsingMac, systemIdleTime: 0))
+        XCTAssertTrue(shouldMuteIncomingCallRingtone(isOutgoing: false, muteMode: .whileUsingMac, systemIdleTime: 59.999))
+        XCTAssertFalse(shouldMuteIncomingCallRingtone(isOutgoing: false, muteMode: .whileUsingMac, systemIdleTime: 60))
+    }
+
+    func testDisabledSettingDoesNotMuteActiveMac() {
+        XCTAssertFalse(shouldMuteIncomingCallRingtone(isOutgoing: false, muteMode: .off, systemIdleTime: 0))
+    }
+
+    func testOutgoingCallDoesNotMuteActiveMac() {
+        for mode in IncomingCallMuteMode.allCases {
+            XCTAssertFalse(shouldMuteIncomingCallRingtone(isOutgoing: true, muteMode: mode, systemIdleTime: 0))
+        }
+    }
+
+    func testUnavailableIdleTimeDoesNotMuteRingtone() {
+        for idleTime: TimeInterval in [-1, .infinity, .nan] {
+            XCTAssertFalse(shouldMuteIncomingCallRingtone(isOutgoing: false, muteMode: .whileUsingMac, systemIdleTime: idleTime))
+        }
+    }
+
+    func testAlwaysMutesIncomingRegardlessOfActivity() {
+        for idleTime: TimeInterval in [0, 60, 3600, -1, .infinity, .nan] {
+            XCTAssertTrue(shouldMuteIncomingCallRingtone(isOutgoing: false, muteMode: .always, systemIdleTime: idleTime))
+        }
     }
 }

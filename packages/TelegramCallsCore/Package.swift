@@ -88,6 +88,7 @@ let package = Package(
             name: "TelegramCallsCoreTests",
             dependencies: [
                 "TelegramCallsCore",
+                .product(name: "InAppSettings", package: "InAppSettings", condition: nil),
                 .product(name: "TelegramMediaUtils", package: "TelegramMediaUtils", condition: nil),
                 .product(name: "rnoise", package: "rnoise"),
             ],

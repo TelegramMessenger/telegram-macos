@@ -85,6 +85,21 @@ func callTone(for state: CallState.State, isReconnecting: Bool, previous: CallSe
     }
 }
 
+func shouldMuteIncomingCallRingtone(isOutgoing: Bool, muteMode: IncomingCallMuteMode, systemIdleTime: TimeInterval) -> Bool {
+    guard !isOutgoing else {
+        return false
+    }
+    switch muteMode {
+    case .off:
+        return false
+    case .always:
+        return true
+    case .whileUsingMac:
+        return systemIdleTime >= 0 && systemIdleTime < 60
+    }
+}
+
+
 public enum ScreenCaptureLaunchError {
     case permission
 }
@@ -386,7 +401,10 @@ public class PCallSession {
     
     
     private var player:CallAudioPlayer? = nil
-    private var playingRingtone:Bool = false
+    private var currentTone: CallTone?
+    private var playingTone: CallTone?
+    private var ringtoneActivityTimer: SwiftSignalKit.Timer?
+    private var incomingCallMuteMode: IncomingCallMuteMode
     
     private var startTime:Double = 0
     private var callAcceptedTime:Double = 0
@@ -493,6 +511,7 @@ public class PCallSession {
         self.updatedNetworkType = account.networkType
         self.isOutgoing = isOutgoing
         self.incomingConferenceSource = incomingConferenceSource
+        self.incomingCallMuteMode = data.voiceSettings.incomingCallMuteMode
         
         if let _ = incomingConferenceSource {
             self.conferenceStableId = Int64.random(in: Int64.min ..< Int64.max)
@@ -582,6 +601,17 @@ public class PCallSession {
                 self.ongoingContext?.switchAudioOutput(id)
             }
         }))
+        self.settingsDisposable = (voiceCallSettings(sharedContext.accountManager)
+        |> map { $0.incomingCallMuteMode }
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).start(next: { [weak self] muteMode in
+            guard let self else {
+                return
+            }
+            self.incomingCallMuteMode = muteMode
+            self.updateTonePlayback()
+        })
+
         
         if let incomingConferenceSource = incomingConferenceSource {
             self.sessionStateDisposable.set((self.engine.data.subscribe(
@@ -1157,8 +1187,27 @@ public class PCallSession {
         if let callContextState = callContextState, case .reconnecting = callContextState.state {
             isReconnecting = true
         }
-        let tone = callTone(for: state.state, isReconnecting: isReconnecting, previous: previous?.state, hasCallContext: callContextState != nil, isOutgoing: self.isOutgoing)
-        if let tone = tone {
+        self.currentTone = callTone(for: state.state, isReconnecting: isReconnecting, previous: previous?.state, hasCallContext: callContextState != nil, isOutgoing: self.isOutgoing)
+        self.updateTonePlayback()
+    }
+
+    private func updateTonePlayback() {
+        let monitorsActivity = self.currentTone == .ringing && !self.isOutgoing && self.incomingCallMuteMode == .whileUsingMac
+        if monitorsActivity {
+            if self.ringtoneActivityTimer == nil {
+                let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
+                    self?.updateTonePlayback()
+                }, queue: Queue.mainQueue())
+                self.ringtoneActivityTimer = timer
+                timer.start()
+            }
+        } else {
+            self.ringtoneActivityTimer?.invalidate()
+            self.ringtoneActivityTimer = nil
+        }
+
+        let systemIdleTime = monitorsActivity ? CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!) : .infinity
+        if let tone = self.currentTone, !(tone == .ringing && shouldMuteIncomingCallRingtone(isOutgoing: self.isOutgoing, muteMode: self.incomingCallMuteMode, systemIdleTime: systemIdleTime)) {
             playTone(tone)
         } else {
             stopTone()
@@ -1175,6 +1224,7 @@ public class PCallSession {
         ongoingContextStateDisposable?.dispose()
         receptionDisposable?.dispose()
         settingsDisposable?.dispose()
+        ringtoneActivityTimer?.invalidate()
         devicesDisposable.dispose()
         devicesListDisposable.dispose()
         conferenceCallDisposable?.dispose()
@@ -1390,13 +1440,14 @@ public class PCallSession {
     }
     
     private func playTone(_ tone:CallTone) {
-        if let url = pathForTone(tone) {
+        if self.playingTone != tone, let url = pathForTone(tone) {
+            self.playingTone = tone
             playTone(url, loops: loopsForTone(tone))
         }
     }
     
     private func stopTone() {
-        playingRingtone = false
+        self.playingTone = nil
         player?.stop()
         player = nil
     }

@@ -19,6 +19,28 @@ import TelegramMediaUtils
 import AVFoundation
 import AppAnalytics
 
+extension IncomingCallMuteMode {
+    var title: String {
+        switch self {
+        case .always: return strings().callSettingsMuteIncomingAlways
+        case .whileUsingMac: return strings().callSettingsMuteIncomingWhileUsingMac
+        case .off: return strings().callSettingsMuteIncomingOff
+        }
+    }
+}
+
+func incomingCallMuteMenuItems(settings: VoiceCallSettings, sharedContext: any SharedAccountContextProtocol) -> [ContextMenuItem] {
+    return [IncomingCallMuteMode.always, .whileUsingMac, .off].map { mode in
+        ContextMenuItem(mode.title, handler: {
+            _ = updateVoiceCallSettingsSettingsInteractively(accountManager: sharedContext.accountManager, { current in
+                var updated = current
+                updated.incomingCallMuteMode = mode
+                return updated
+            }).start()
+        }, state: settings.incomingCallMuteMode == mode ? .on : nil)
+    }
+}
+
 public final class CallSettingsArguments {
     public let sharedContext: any SharedAccountContextProtocol
     public let toggleInputAudioDevice:(String?)->Void
@@ -39,6 +61,8 @@ private let _id_camera = InputDataIdentifier("_id_camera")
 private let _id_input_audio = InputDataIdentifier("_id_input_audio")
 private let _id_output_audio = InputDataIdentifier("_id_output_audio")
 private let _id_micro = InputDataIdentifier("_id_micro")
+private let _id_incoming_style = InputDataIdentifier("_id_incoming_style")
+private let _id_incoming_mute = InputDataIdentifier("_id_incoming_mute")
 
 private func callSettingsEntries(settings: VoiceCallSettings, devices: IODevices, arguments: CallSettingsArguments, theme: TelegramPresentationTheme) -> [InputDataEntry] {
     var entries:[InputDataEntry] = []
@@ -145,6 +169,39 @@ private func callSettingsEntries(settings: VoiceCallSettings, devices: IODevices
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
     
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(strings().callSettingsIncomingStyleTitle), data: .init(color: theme.colors.listGrayText, viewType: .textTopItem)))
+    index += 1
+    entries.append(.custom(sectionId: sectionId, index: index, value: .none, identifier: _id_incoming_style, equatable: InputDataEquatable(settings.incomingCallStyle), comparable: nil, item: { initialSize, stableId in
+        return IncomingCallStyleRowItem(initialSize, stableId: stableId, style: settings.incomingCallStyle, presentation: theme, select: { style in
+            _ = updateVoiceCallSettingsSettingsInteractively(accountManager: arguments.sharedContext.accountManager, { current in
+                var updated = current
+                updated.incomingCallStyle = style
+                return updated
+            }).start()
+        })
+    }))
+    index += 1
+    let styleInfo = settings.incomingCallStyle == .classic ? strings().callSettingsIncomingStyleClassicInfo : strings().callSettingsIncomingStyleCompactInfo
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(styleInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+    index += 1
+    entries.append(.sectionId(sectionId, type: .normal))
+    sectionId += 1
+
+    entries.append(.general(sectionId: sectionId, index: index, value: .none, error: nil, identifier: _id_incoming_mute, data: .init(name: strings().callSettingsMuteIncoming, color: theme.colors.text, type: .contextSelector(settings.incomingCallMuteMode.title, incomingCallMuteMenuItems(settings: settings, sharedContext: arguments.sharedContext)), viewType: .singleItem, theme: customTheme)))
+    index += 1
+    let muteInfo: String
+    switch settings.incomingCallMuteMode {
+    case .always:
+        muteInfo = strings().callSettingsSilentAlwaysInfo
+    case .whileUsingMac:
+        muteInfo = strings().callSettingsSilentWhileActiveInfo
+    case .off:
+        muteInfo = strings().callSettingsSilentOffInfo
+    }
+    entries.append(.desc(sectionId: sectionId, index: index, text: .plain(muteInfo), data: .init(color: theme.colors.listGrayText, viewType: .textBottomItem)))
+    index += 1
+    entries.append(.sectionId(sectionId, type: .normal))
+
     return entries
 }
 
