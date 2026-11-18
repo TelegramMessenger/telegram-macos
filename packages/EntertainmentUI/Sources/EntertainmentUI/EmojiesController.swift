@@ -1723,16 +1723,17 @@ public final class AnimatedEmojiesView : Control {
     public func updateSearchState(_ searchState: SearchState, animated: Bool) {
         
         if let window = _window, self.mode.isFocusSearch {
+            let ownerWindow = (window as? MenuPanelWindow)?.ownerWindow ?? context?.window
             switch searchState.state {
             case .Focus:
                 window._canBecomeKey = true
                 window.makeKey()
-                if window.isMainWindow, let chatWindow = context?.window, chatWindow !== window, chatWindow.isVisible, chatWindow.canBecomeMain {
-                    chatWindow.makeMain()
+                if window.isMainWindow, let ownerWindow, ownerWindow !== window, ownerWindow.isVisible, ownerWindow.canBecomeMain {
+                    ownerWindow.makeMain()
                 }
             case .None:
                 window._canBecomeKey = false
-                context?.window.makeKey()
+                ownerWindow?.makeKey()
                 if window is MenuPanelWindow, window.isVisible, window.canBecomeMain {
                     window.makeMain()
                 }
@@ -3238,25 +3239,44 @@ final class PickerFrostView: NSVisualEffectView {
 
 final class PickerHeaderBlur {
     private var strip: PickerHeaderBlurStrip?
+    private weak var filteredSuperview: NSView?
+    private var superviewUsedFilters = false
 
-    func update(_ view: NSView, enabled: Bool, height: CGFloat) -> Bool {
+    @discardableResult func update(_ view: NSView, enabled: Bool, height: CGFloat) -> Bool {
         guard #available(macOS 26.0, *), enabled, let superview = view.superview else {
-            strip?.removeFromSuperview()
-            strip = nil
+            removeStrip()
             return false
         }
         let strip = self.strip ?? PickerHeaderBlurStrip(frame: .zero)
         self.strip = strip
         if strip.superview !== superview {
-            strip.removeFromSuperview()
+            removeStrip()
+            self.strip = strip
+            filteredSuperview = superview
+            superviewUsedFilters = superview.layerUsesCoreImageFilters
             superview.layerUsesCoreImageFilters = true
             superview.addSubview(strip, positioned: .above, relativeTo: view)
         }
         let blurHeight = min(max(0, floor(height)), view.frame.height)
         let y = superview.isFlipped ? view.frame.minY : view.frame.maxY - blurHeight
-        strip.frame = NSMakeRect(view.frame.minX, y, view.frame.width, blurHeight)
-        strip.isHidden = blurHeight <= 0
+        let frame = NSMakeRect(view.frame.minX, y, view.frame.width, blurHeight)
+        if strip.frame != frame {
+            strip.frame = frame
+        }
+        let hidden = blurHeight <= 0
+        if strip.isHidden != hidden {
+            strip.isHidden = hidden
+        }
         return true
+    }
+
+    private func removeStrip() {
+        strip?.removeFromSuperview()
+        strip = nil
+        if let filteredSuperview {
+            filteredSuperview.layerUsesCoreImageFilters = superviewUsedFilters
+        }
+        filteredSuperview = nil
     }
 }
 

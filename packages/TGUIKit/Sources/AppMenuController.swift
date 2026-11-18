@@ -1295,6 +1295,7 @@ public extension NSColor {
 }
 
 public final class MenuPanelWindow: Window {
+    public weak var ownerWindow: Window?
 }
 
 public func restoreMainWindow(after window: NSWindow, preferred: NSWindow?) {

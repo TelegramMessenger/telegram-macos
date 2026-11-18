@@ -1197,7 +1197,7 @@ public class NStickersView : View {
             transition.updateFrame(view: restrictedView, frame: size.bounds)
         }
         transition.updateFrame(view: tableView, frame: NSMakeRect(0, tableY, size.width, headerInset > 0 ? size.height - tableY : size.height))
-        _ = headerBlurFilter.update(tableView, enabled: headerInset > 0, height: 46 - tableView.frame.minY)
+        headerBlurFilter.update(tableView, enabled: headerInset > 0, height: 46 - tableView.frame.minY)
 
                 
         transition.updateFrame(view: searchStatusView, frame: NSMakeRect(0, searchContainer.frame.maxY, size.width, max(0, size.height - searchContainer.frame.maxY - 56)))

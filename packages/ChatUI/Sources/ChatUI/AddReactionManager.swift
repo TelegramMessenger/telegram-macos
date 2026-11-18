@@ -795,15 +795,16 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
     }
 
     deinit {
-        appearTimer?.invalidate()
-        tailTimer?.invalidate()
+        appearAnimator?.invalidate()
+        tailAnimator?.invalidate()
         if let boundsObserver {
             NotificationCenter.default.removeObserver(boundsObserver)
         }
     }
 
-    private var appearTimer: Foundation.Timer?
-    private var tailTimer: Foundation.Timer?
+    private var appearAnimator: ConstantDisplayLinkAnimator?
+    private var tailAnimator: ConstantDisplayLinkAnimator?
+    private var finishAppear: (() -> Void)?
     private var isAppearing: Bool = false
 
     private func collapseTail() {
@@ -812,11 +813,12 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
         }
         let tail = glassShapes[1]
         let bar = barRect(size: frame.size)
+        finishAppear?()
         let from = tail.frame
         var start: CFTimeInterval?
         isAppearing = true
-        tailTimer?.invalidate()
-        let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+        tailAnimator?.invalidate()
+        let animator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] _ in
             let now = CACurrentMediaTime()
             let begin = start ?? now
             start = begin
@@ -832,19 +834,19 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
             }
             CATransaction.commit()
             if progress >= 1 {
-                timer.invalidate()
                 tail.isHidden = true
                 guard let self else {
                     return
                 }
-                self.tailTimer = nil
+                self.tailAnimator?.invalidate()
+                self.tailAnimator = nil
                 self.isAppearing = false
                 self.hasBubble = false
                 self.updateLayout(size: self.frame.size, transition: .immediate)
             }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        tailTimer = timer
+        })
+        tailAnimator = animator
+        animator.isPaused = false
     }
 
     public var canAppearFromCursor: Bool {
@@ -904,8 +906,9 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
             guard let self else {
                 return
             }
-            self.appearTimer?.invalidate()
-            self.appearTimer = nil
+            self.appearAnimator?.invalidate()
+            self.appearAnimator = nil
+            self.finishAppear = nil
             self.isAppearing = false
             for (view, _) in revealed {
                 view.layer?.opacity = 1
@@ -921,10 +924,10 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
             self.updateScroll()
         }
 
-        let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { timer in
+        self.finishAppear = finish
+        let animator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { _ in
             let seconds = CACurrentMediaTime() - start
             if seconds >= duration {
-                timer.invalidate()
                 finish()
                 return
             }
@@ -987,9 +990,10 @@ public final class ContextAddReactionsListView : View, StickerFramesCollector, A
                 view.layer?.opacity = Float(progress)
             }
             CATransaction.commit()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        appearTimer = timer
+        })
+        appearAnimator?.invalidate()
+        appearAnimator = animator
+        animator.isPaused = false
     }
 
     private func barRect(size: NSSize) -> NSRect {

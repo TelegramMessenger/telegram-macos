@@ -24,7 +24,7 @@ public final class ReactionsWindowController : NSObject {
         private let container = View()
         private let theme: TelegramPresentationTheme
         private var tintGlass: NSView?
-        private var morphTimer: Foundation.Timer?
+        private var morphAnimator: ConstantDisplayLinkAnimator?
         private var isMorphing = false
         init(_ content: NSView, theme: TelegramPresentationTheme) {
             
@@ -89,10 +89,14 @@ public final class ReactionsWindowController : NSObject {
             let target = bounds
             let swell = bar.insetBy(dx: -2, dy: -1.5)
             let start = CACurrentMediaTime()
-            morphTimer?.invalidate()
-            let timer = Foundation.Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+            morphAnimator?.invalidate()
+            morphAnimator = nil
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                finishMorph()
+                return
+            }
+            let animator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] _ in
                 guard let self else {
-                    timer.invalidate()
                     return
                 }
                 let seconds = CACurrentMediaTime() - start
@@ -110,18 +114,18 @@ public final class ReactionsWindowController : NSObject {
                 let material = linear * linear * (3 - 2 * linear)
                 self.glassView?.alphaValue = min(1, material / 0.4)
                 self.tintGlass?.alphaValue = 1 - max(0, (material - 0.25) / 0.75)
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            morphTimer = timer
+            })
+            morphAnimator = animator
+            animator.isPaused = false
         }
 
         deinit {
-            morphTimer?.invalidate()
+            morphAnimator?.invalidate()
         }
 
         private func finishMorph() {
-            morphTimer?.invalidate()
-            morphTimer = nil
+            morphAnimator?.invalidate()
+            morphAnimator = nil
             isMorphing = false
             tintGlass?.removeFromSuperview()
             tintGlass = nil
@@ -224,6 +228,7 @@ public final class ReactionsWindowController : NSObject {
         }
         
         let panel = MenuPanelWindow(contentRect: NSMakeRect(initialRect.minX - 21, initialRect.maxY - 320 + (initialRect.height + 20) - 32 + 36 - wAdd, 390, 340), styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+        panel.ownerWindow = self.parentWindow
         panel._canBecomeMain = false
         panel._canBecomeKey = false
         panel.level = .popUpMenu
@@ -488,12 +493,6 @@ public final class ReactionsWindowController : NSObject {
                 panel.setFrame(NSMakeRect(panel.frame.minX, panel.frame.minY + 100, panel.frame.width, panel.frame.height), display: true, animate: true)
             }
                         
-            if self.moveTop {
-                if let menu = contextOnScreen() {
-                    menu.setFrame(menu.frame.offsetBy(dx: 0, dy: -216), display: true, animate: false)
-                }
-            }
-            
         })
         
     }
@@ -517,7 +516,7 @@ public final class ReactionsWindowController : NSObject {
         var panel: Window? = self.panel
         let parentWindow = self.parentWindow
         if animated {
-            if let v = panel?.contentView?.subviews.first(where: { $0 is V }) as? V, !v.usesGlass {
+            if let v = panel?.contentView?.subviews.first(where: { $0 is V }) as? V, !v.usesGlass, TelegramUtilsHooks.shared.isLite(.blur) {
                 v.layer?.rasterizationScale = System.backingScale
                 v.layer?.shouldRasterize = true
             }
