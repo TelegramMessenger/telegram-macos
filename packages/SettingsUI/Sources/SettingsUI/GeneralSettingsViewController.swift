@@ -200,11 +200,11 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
             })
         case let .enableRFTCopy(sectionId: _, enabled, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsCopyRTF, type: .switchable(enabled), viewType: viewType, action: {
-                arguments.toggleRTFEnabled(!enabled)
+                arguments.toggleRTFEnabled(!FastSettings.enableRTF)
             })
         case let .sendLargePhotos(sectionId: _, enabled, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsSendLargePhotos, type: .switchable(enabled), viewType: viewType, action: {
-                arguments.toggleLargePhotos(!enabled)
+                arguments.toggleLargePhotos(!FastSettings.sendLargePhotos)
             })
         case let .acceptSecretChats(_, enabled, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsAcceptSecretChats, type: .switchable(enabled), viewType: viewType, action: {
@@ -220,7 +220,7 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
             })
         case let .emojiReplacements(sectionId: _, enabled, viewType):
             return  GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsEmojiReplacements, type: .switchable(enabled), viewType: viewType, action: {
-                arguments.toggleEmojiReplacements(!enabled)
+                arguments.toggleEmojiReplacements(!FastSettings.isPossibleReplaceEmojies)
             })
         case let .predictEmoji(sectionId: _, enabled, viewType):
             return  GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsEmojiPrediction, type: .switchable(enabled), viewType: viewType, action: {
