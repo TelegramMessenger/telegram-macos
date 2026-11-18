@@ -89,20 +89,20 @@ public func messageBubbleCorners(incoming: Bool, neighbors: MessageBubbleImageNe
     )
 }
 
-private func addContinuousBubblePath(_ context: CGContext, size: CGSize, topLeftRadius: CGFloat, topRightRadius: CGFloat, bottomLeftRadius: CGFloat, bottomRightRadius: CGFloat, drawTail: Bool, smoothing: CGFloat) {
+private func addContinuousBubblePath(_ context: CGContext, size: CGSize, topLeftRadius: CGFloat, topRightRadius: CGFloat, bottomLeftRadius: CGFloat, bottomRightRadius: CGFloat, drawTail: Bool, horizontal: CGFloat, vertical: CGFloat) {
     let width = size.width
     let height = size.height
     let path = CGMutablePath()
-    path.move(to: CGPoint(x: width - (1.0 + smoothing) * topRightRadius, y: 0.0))
-    path.addContinuousCorner(corner: CGPoint(x: width, y: 0.0), incoming: CGPoint(x: -1.0, y: 0.0), outgoing: CGPoint(x: 0.0, y: 1.0), radius: topRightRadius, smoothing: smoothing)
+    path.move(to: CGPoint(x: width - (1.0 + horizontal) * topRightRadius, y: 0.0))
+    path.addContinuousCorner(corner: CGPoint(x: width, y: 0.0), incoming: CGPoint(x: -1.0, y: 0.0), outgoing: CGPoint(x: 0.0, y: 1.0), radius: topRightRadius, incomingSmoothing: horizontal, outgoingSmoothing: vertical)
     if drawTail {
         path.addLine(to: CGPoint(x: width, y: height - bottomRightRadius))
         path.addArc(tangent1End: CGPoint(x: width, y: height), tangent2End: CGPoint(x: width - bottomRightRadius, y: height), radius: bottomRightRadius)
     } else {
-        path.addContinuousCorner(corner: CGPoint(x: width, y: height), incoming: CGPoint(x: 0.0, y: -1.0), outgoing: CGPoint(x: -1.0, y: 0.0), radius: bottomRightRadius, smoothing: smoothing)
+        path.addContinuousCorner(corner: CGPoint(x: width, y: height), incoming: CGPoint(x: 0.0, y: -1.0), outgoing: CGPoint(x: -1.0, y: 0.0), radius: bottomRightRadius, incomingSmoothing: vertical, outgoingSmoothing: horizontal)
     }
-    path.addContinuousCorner(corner: CGPoint(x: 0.0, y: height), incoming: CGPoint(x: 1.0, y: 0.0), outgoing: CGPoint(x: 0.0, y: -1.0), radius: bottomLeftRadius, smoothing: smoothing)
-    path.addContinuousCorner(corner: CGPoint(x: 0.0, y: 0.0), incoming: CGPoint(x: 0.0, y: 1.0), outgoing: CGPoint(x: 1.0, y: 0.0), radius: topLeftRadius, smoothing: smoothing)
+    path.addContinuousCorner(corner: CGPoint(x: 0.0, y: height), incoming: CGPoint(x: 1.0, y: 0.0), outgoing: CGPoint(x: 0.0, y: -1.0), radius: bottomLeftRadius, incomingSmoothing: horizontal, outgoingSmoothing: vertical)
+    path.addContinuousCorner(corner: CGPoint(x: 0.0, y: 0.0), incoming: CGPoint(x: 0.0, y: 1.0), outgoing: CGPoint(x: 1.0, y: 0.0), radius: topLeftRadius, incomingSmoothing: vertical, outgoingSmoothing: horizontal)
     path.closeSubpath()
     context.addPath(path)
 }
@@ -110,9 +110,10 @@ private func addContinuousBubblePath(_ context: CGContext, size: CGSize, topLeft
 private struct MessageBubbleFormGeometry: Hashable {
     let width: Int
     let height: Int
-    let smoothing: CGFloat
+    let horizontal: CGFloat
+    let vertical: CGFloat
 
-    static let legacy = MessageBubbleFormGeometry(width: Int(messageBubbleDiameter), height: Int(messageBubbleDiameter), smoothing: 0.0)
+    static let legacy = MessageBubbleFormGeometry(width: Int(messageBubbleDiameter), height: Int(messageBubbleDiameter), horizontal: 0.0, vertical: 0.0)
 
     static func fitting(_ bubbleSize: CGSize, neighbors: MessageBubbleImageNeighbors) -> MessageBubbleFormGeometry {
         let limit = messageBubbleContinuousDiameter
@@ -127,13 +128,18 @@ private struct MessageBubbleFormGeometry: Hashable {
             }
             return (length - fixed) / smooth - 1.0
         }
-        let smoothing = min(
+        let vertical = min(
             allowed(height, smooth: corners.topLeftRadius + corners.bottomLeftRadius, fixed: 0.0),
-            allowed(height, smooth: corners.topRightRadius + smoothRight, fixed: tailRadius),
+            allowed(height, smooth: corners.topRightRadius + smoothRight, fixed: tailRadius)
+        )
+        let horizontal = min(
             allowed(width, smooth: corners.topLeftRadius + corners.topRightRadius, fixed: 0.0),
             allowed(width, smooth: corners.bottomLeftRadius + smoothRight, fixed: tailRadius)
         )
-        return MessageBubbleFormGeometry(width: Int(width), height: Int(height), smoothing: (max(0.0, min(messageBubbleContinuousSmoothing, smoothing)) * 100.0).rounded(.down) / 100.0)
+        func clamped(_ value: CGFloat) -> CGFloat {
+            return (max(0.0, min(messageBubbleContinuousSmoothing, value)) * 100.0).rounded(.down) / 100.0
+        }
+        return MessageBubbleFormGeometry(width: Int(width), height: Int(height), horizontal: clamped(horizontal), vertical: clamped(vertical))
     }
 }
 
@@ -152,8 +158,8 @@ private func drawMessageBubbleForm(_ context: CGContext, neighbors: MessageBubbl
 
     context.setFillColor(NSColor.black.cgColor)
 
-    if geometry.smoothing > 0 {
-        addContinuousBubblePath(context, size: CGSize(width: width, height: height), topLeftRadius: topLeftRadius, topRightRadius: topRightRadius, bottomLeftRadius: bottomLeftRadius, bottomRightRadius: bottomRightRadius, drawTail: corners.drawTail, smoothing: geometry.smoothing)
+    if geometry.horizontal > 0 || geometry.vertical > 0 {
+        addContinuousBubblePath(context, size: CGSize(width: width, height: height), topLeftRadius: topLeftRadius, topRightRadius: topRightRadius, bottomLeftRadius: bottomLeftRadius, bottomRightRadius: bottomRightRadius, drawTail: corners.drawTail, horizontal: geometry.horizontal, vertical: geometry.vertical)
     } else {
         context.move(to: CGPoint(x: 0.0, y: topLeftRadius))
         context.addArc(tangent1End: CGPoint(x: 0.0, y: 0.0), tangent2End: CGPoint(x: topLeftRadius, y: 0.0), radius: topLeftRadius)

@@ -40,8 +40,8 @@ public extension CGPath {
         if corners.smoothing > 0 {
             let topLeft = corners.topLeft.corner, topRight = corners.topRight.corner
             let bottomLeft = corners.bottomLeft.corner, bottomRight = corners.bottomRight.corner
-            let smoothing = continuousCornerSmoothing(size: size, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, limit: corners.smoothing)
-            return CGPath.continuousRoundedRect(CGRect(origin: .zero, size: size), topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, smoothing: smoothing)
+            let smoothing = continuousCornerSideSmoothing(size: size, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, limit: corners.smoothing)
+            return CGPath.continuousRoundedRect(CGRect(origin: .zero, size: size), topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, horizontalSmoothing: smoothing.horizontal, verticalSmoothing: smoothing.vertical)
         }
         let path = CGMutablePath()
 
