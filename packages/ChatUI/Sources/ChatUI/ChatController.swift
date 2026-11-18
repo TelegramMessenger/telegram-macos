@@ -9883,6 +9883,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
                 
                 var message:Message? = nil
+                var visibleMessage:Message? = nil
+                let bottomInset = strongSelf.chatInteraction.bottomInset.with { $0 }
                 
                 var messageIdsWithViewCount: [MessageId] = []
                 var messageIdsWithUnseenPersonalMention: [MessageId] = []
@@ -9916,6 +9918,9 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         let height = item.view?.visibleRect.height ?? 0
                         if message == nil, height >= (item.height - 10) {
                             message = item.lastMessage
+                        }
+                        if visibleMessage == nil, tableView.rectOf(index: item.index).maxY - tableView.documentOffset.y > bottomInset {
+                            visibleMessage = item.lastMessage
                         }
 
                         if let view = item.view {
@@ -10057,10 +10062,6 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 
                 tableView.enumerateVisibleItems(inset: tableView.frame.height, with: { item in
                     if let item = item as? ChatRowItem {
-                        
-                        if message == nil {
-                            message = item.lastMessage
-                        }
                         for message in item.messages {
                             inner: for attribute in message.attributes {
                                 if attribute is ViewCountMessageAttribute {
@@ -10145,7 +10146,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                     strongSelf.reactionsMessageProcessingManager.add(messageIdsWithReactions)
                 }
                 
-                if let message = message {
+                if let message = message ?? visibleMessage {
                     strongSelf.updateMaxVisibleReadIncomingMessageIndex(MessageIndex(message))
                 }
                 
