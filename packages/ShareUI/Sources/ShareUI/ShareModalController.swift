@@ -458,7 +458,8 @@ fileprivate class ShareModalView : Control, TokenizedProtocol {
     func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
         
         transition.updateFrame(view: emojiButton, frame: emojiButton.centerFrameY(x: 0))
-        transition.updateFrame(view: actionsContainerView, frame: CGRect.init(origin: CGPoint(x: size.width - actionsContainerView.frame.width, y: size.height - actionsContainerView.frame.height), size: CGSize(width: (sendButton.isHidden ? 0 : (sendButton.frame.width + 20)) + emojiButton.frame.width + 20, height: 50)))
+        let actionsWidth = (sendButton.isHidden ? 0 : (sendButton.frame.width + 20)) + emojiButton.frame.width + 20
+        transition.updateFrame(view: actionsContainerView, frame: CGRect.init(origin: CGPoint(x: size.width - actionsWidth, y: size.height - actionsContainerView.frame.height), size: CGSize(width: actionsWidth, height: 50)))
         transition.updateFrame(view: sendButton, frame: sendButton.centerFrameY(x: emojiButton.frame.maxX + 20))
         
         
