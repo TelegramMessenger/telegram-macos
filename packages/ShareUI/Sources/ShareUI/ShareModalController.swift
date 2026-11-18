@@ -1292,6 +1292,9 @@ public final class ForwardMessagesObject : ShareObject {
             let album = self.album
             let messageIds = self.messageIds
             let comment = comment != nil ? comment!.inputText.isEmpty ? nil : comment : nil
+            let scheduleDate = self.scheduleDate
+            let withoutSound = self.withoutSound
+            let threadIds = self.threadIds
             let peers = context.account.postbox.transaction { transaction -> Peer? in
                 for peerId in peerIds {
                     if let peer = transaction.getPeer(peerId) {
@@ -1345,6 +1348,26 @@ public final class ForwardMessagesObject : ShareObject {
                     }
                     
                     
+                    if let peer = peer, !peer.isCommunity, scheduleDate != nil || withoutSound {
+                        let share = ShareMessageObject(context, messages[0], messages)
+                        share.withoutSound = withoutSound
+                        share.scheduleDate = scheduleDate
+                        share.threadIds = threadIds
+                        if let controller = context.bindings.rootNavigation().controller as? ChatInterfaceController {
+                            controller.chatInteraction.update({$0.withoutSelectionState()})
+                        }
+                        return share.performWithResults(to: [peer.id], threadId: threadId, comment: peer.canSendMessage() ? comment : nil, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin)
+                        |> deliverOnMainQueue
+                        |> map { deliveries in
+                            switch deliveries.first?.status {
+                            case .accepted: observedResult?(.accepted)
+                            case .partial: observedResult?(.partiallyAccepted)
+                            case .rejected: observedResult?(.rejected)
+                            default: observedResult?(.acceptanceUnknown)
+                            }
+                        }
+                        |> ignoreValues
+                    }
                     let navigation = self.context.bindings.rootNavigation()
                     if let peerId = peerIds.first {
                         if peerId == context.peerId {
@@ -2377,6 +2400,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         
 
         genericView.sendWithoutSound = { [weak self] in
+            self?.share.scheduleDate = nil
             self?.share.withoutSound = true
             _ = self?.invoke(activation: .sendMenu)
         }
@@ -2387,6 +2411,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             let context = share.context
             let peerId = share.context.peerId
             FeatureNavigationHooks.shared.selectDate(context, context.window, nil, nil, .schedule(peerId), { date, _ in
+                self?.share.withoutSound = false
                 self?.share.scheduleDate = date
                 _ = self?.invoke(activation: .sendMenu)
             })
@@ -2801,6 +2826,10 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     
     private func performShare(to peerIds: [PeerId], threadId: Int64?, comment: ChatTextInputState?, sendPaidMessageStars: [PeerId: StarsAmount], analyticsContext: AnalyticsContext, activation: AnalyticsForwardPickerJourney.Spec.Activation? = nil) -> Signal<Bool, String> {
         let share = self.share
+        if activation != .sendMenu {
+            share.withoutSound = false
+            share.scheduleDate = nil
+        }
         if let forward = share as? ForwardMessagesObject, peerIds.count == 1, let peerId = peerIds.first {
             let origin = analyticsContext.restricting(peerId: peerId)
             let presentation = origin.beginPresentation()
@@ -2999,6 +3028,8 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
             let account = share.context.account
             let context = share.context
             let input = self.contextChatInteraction.presentation.interfaceState.inputState
+            let withoutSound = share.withoutSound
+            let scheduleDate = share.scheduleDate
             var origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
             for id in ids { origin = origin.restricting(peerId: id) }
             recipientAction.start(context: origin, request: { [weak self] in
@@ -3043,6 +3074,8 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                             let presentation = origin.beginPresentation()
                             defer { presentation.end() }
                             self.genericView.tokenizedView.removeAllFailed(animated: true)
+                            share.withoutSound = withoutSound
+                            share.scheduleDate = scheduleDate
                             return self.performShare(to: Array(ids), threadId: nil, comment: input, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin, activation: activation).start(next: { result in
                                 subscriber.putNext(result)
                             }, error: { error in
