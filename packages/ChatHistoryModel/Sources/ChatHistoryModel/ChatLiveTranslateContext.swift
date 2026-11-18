@@ -69,6 +69,21 @@ public struct ChatTranslationState: Codable {
         try container.encode(self.paywall, forKey: .paywall)
         try container.encodeIfPresent(self.tone?.rawValue, forKey: .tone)
     }
+
+    func resolved(settings: BaseApplicationSettings, appLanguage: String) -> ChatTranslationState? {
+        let fromLang = Translate.canonicalLanguageCode(self.fromLang)
+        guard settings.translateChats, !settings.canonicalDoNotTranslate.contains(fromLang) else {
+            return nil
+        }
+        let targetLanguage = Translate.canonicalLanguageCode(self.toLang ?? settings.translationTargetLanguage(appLanguage: appLanguage))
+        guard !fromLang.isEmpty, fromLang != targetLanguage else {
+            return nil
+        }
+        var state = self
+        state.fromLang = fromLang
+        state.toLang = targetLanguage
+        return state
+    }
 }
 
 
@@ -922,28 +937,17 @@ extension MessageTextEntityType {
 }
 
 public func chatTranslationState(context: any AccountContextProtocol, peerId: EnginePeer.Id) -> Signal<ChatTranslationState?, NoError> {
-    let baseLang = appAppearance.languageCode
-    return baseAppSettings(accountManager: context.sharedContext.accountManager)
-    |> mapToSignal { settings in
+    let appLanguage = appearanceSignal |> map { $0.languageCode } |> distinctUntilChanged
+    return combineLatest(queue: prepareQueue, baseAppSettings(accountManager: context.sharedContext.accountManager), appLanguage)
+    |> mapToSignal { settings, baseLang -> Signal<ChatTranslationState?, NoError> in
         if !settings.translateChats {
             return .single(nil)
         }
         
-        var dontTranslateLanguages: [String] = []
-        if !settings.doNotTranslate.isEmpty {
-            dontTranslateLanguages = Array(settings.doNotTranslate)
-        } else {
-            dontTranslateLanguages = [baseLang]
-        }
-        
         return cachedChatTranslationState(engine: context.engine, peerId: peerId)
-        |> mapToSignal { cached in
-            if let cached = cached, cached.baseLang == baseLang {
-                if !dontTranslateLanguages.contains(cached.fromLang) {
-                    return .single(cached)
-                } else {
-                    return .single(nil)
-                }
+        |> mapToSignal { cached -> Signal<ChatTranslationState?, NoError> in
+            if let cached = cached {
+                return .single(cached)
             } else {
                 return .single(nil)
                 |> then(
@@ -956,17 +960,16 @@ public func chatTranslationState(context: any AccountContextProtocol, peerId: En
                         if let fromLang = mostFrequentLanguage(in: messageHistoryView.entries.map(\.message), minimumCount: 5) {
                             let state = ChatTranslationState(baseLang: baseLang, fromLang: fromLang, toLang: nil, isEnabled: nil, paywall: false)
                             let _ = updateChatTranslationState(engine: context.engine, peerId: peerId, state: state).start()
-                            if !dontTranslateLanguages.contains(fromLang) {
-                                return state
-                            } else {
-                                return nil
-                            }
+                            return state
                         } else {
                             return nil
                         }
                     }
                 )
             }
+        }
+        |> map { state in
+            return state?.resolved(settings: settings, appLanguage: baseLang)
         }
     }
 }

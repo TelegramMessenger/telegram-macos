@@ -38,6 +38,7 @@ import Strings
 import InputView
 import HTMLBubbles
 import AppAnalytics
+import Translate
 
 private func chatAnalyticsEnqueueResult(_ ids: [MessageId?]) -> AnalyticsFlows.ChatMediaCompose.SubmissionResult? {
     guard !ids.isEmpty else { return nil }
@@ -7159,10 +7160,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }
         chatInteraction.doNotTranslate = { code in
             _ = updateBaseAppSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
-                var current = settings.doNotTranslate
-                if !current.contains(code) {
-                    current.insert(code)
-                }
+                var current = settings.canonicalDoNotTranslate
+                current.insert(Translate.canonicalLanguageCode(code))
                 return settings.withUpdatedDoNotTranslate(current)
             }).start()
         }

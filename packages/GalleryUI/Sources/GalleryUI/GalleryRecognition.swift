@@ -236,7 +236,7 @@ public final class GalleryRecognition {
         case let .finish(_, text, _):
             let text = text.map { $0.text }.joined(separator: "\n")
             let fromLang = Translate.detectLanguage(for: text)
-            let toLang = item.context.sharedContext.baseSettings.doNotTranslate.union([appAppearance.languageCode])
+            let toLang = item.context.sharedContext.baseSettings.effectiveDoNotTranslate(appLanguage: appAppearance.languageCode)
             
             if fromLang == nil || !toLang.contains(fromLang!) {
                 return true
@@ -263,7 +263,7 @@ public final class GalleryRecognition {
                 var entities: [MessageTextEntity] = []
                 var length = 0
                 var currentText: String = ""
-                let toLang = Translate.normalizeLanguageCode(appAppearance.languageCode)
+                let toLang = Translate.normalizeLanguageCode(to)
                 for text in text {
                     entities.append(.init(range: length ..< length + text.text.length, type: .BlockQuote(isCollapsed: false)))
                     currentText += text.text

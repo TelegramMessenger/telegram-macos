@@ -55,7 +55,7 @@ func chatTranslationSettingsMenu(chatInteraction: ChatInteraction, translate: Ch
         }
     })
 
-    let languageCode = Translate.normalizeLanguageCode(appAppearance.languageCode)
+    let languageCode = Translate.normalizeLanguageCode(chatInteraction.context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode))
     let codeIndex = codes.firstIndex(where: {
         $0.code.contains(languageCode)
     })

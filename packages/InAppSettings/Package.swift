@@ -22,6 +22,7 @@ let package = Package(
         .package(name: "Strings", path: "../Strings"),
         .package(name: "Localization", path: "../Localization"),
         .package(name: "ObjcUtils", path: "../ObjcUtils"),
+        .package(name: "Translate", path: "../Translate"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -34,6 +35,7 @@ let package = Package(
                            .product(name: "Strings", package: "Strings", condition: nil),
                            .product(name: "Localization", package: "Localization", condition: nil),
                            .product(name: "ObjcUtils", package: "ObjcUtils", condition: nil),
+                           .product(name: "Translate", package: "Translate", condition: nil),
                            .product(name: "TelegramCore", package: "TelegramCore", condition: nil)]),
     ]
 )

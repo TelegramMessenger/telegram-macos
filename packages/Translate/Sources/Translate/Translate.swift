@@ -34,11 +34,28 @@ public struct Translate {
         })
     }
 
+    public static func canonicalLanguageCode(_ code: String) -> String {
+        let components = code.replacingOccurrences(of: "_", with: "-").lowercased().components(separatedBy: "-")
+        if components == ["nb"] {
+            return "no"
+        }
+        guard components.first == "zh" else {
+            return code
+        }
+        if components.contains("hans") || components.contains("cn") {
+            return "zh-CN"
+        }
+        if components.contains("hant") || components.contains("tw") || components.contains("hk") || components.contains("mo") {
+            return "zh-TW"
+        }
+        return code
+    }
+    
     public static func normalizeLanguageCode(_ code: String) -> String {
+        var code = canonicalLanguageCode(code)
         if self.codes.contains(where: { $0.code.contains(code) }) {
             return code
         }
-        var code = code
         if code.contains("-") {
             code = code.components(separatedBy: "-").first ?? code
         }
@@ -311,7 +328,7 @@ public struct Translate {
 
             
             if let value = filteredLanguages.first?.key.rawValue {
-                return value
+                return canonicalLanguageCode(value)
             }
         }
         

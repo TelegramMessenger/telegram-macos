@@ -1451,11 +1451,11 @@ public class GalleryViewer: NSResponder {
                     }, itemImage: MenuAnimation.menu_copy.value))
                     
                     let fromLang = Translate.detectLanguage(for: text)
-                    let toLang = context.sharedContext.baseSettings.doNotTranslate.union([appAppearance.languageCode])
+                    let toLang = context.sharedContext.baseSettings.effectiveDoNotTranslate(appLanguage: appAppearance.languageCode)
                     
                     if fromLang == nil || !toLang.contains(fromLang!) {
                         menu.addItem(ContextMenuItem.init(strings().peerInfoTranslate, handler: {
-                            GalleryHooks.shared.showTranslate(context, fromLang, appAppearance.languageCode, text, window)
+                            GalleryHooks.shared.showTranslate(context, fromLang, context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), text, window)
                         }, itemImage: MenuAnimation.menu_translate.value))
                     }
                 }
@@ -1480,7 +1480,7 @@ public class GalleryViewer: NSResponder {
                     if recognition.canTranslate() {
                         let text: String = !recognition.hasTranslation() ? strings().galleryTranslate : strings().galleryHideTranslation
                         menu.addItem(ContextMenuItem.init(text, handler: { [weak recognition] in
-                            recognition?.toggleTranslate(to: appAppearance.languageCode)
+                            recognition?.toggleTranslate(to: context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode))
                         }, itemImage: MenuAnimation.menu_translate.value))
                     }
                 }

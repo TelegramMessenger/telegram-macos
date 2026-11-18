@@ -221,11 +221,11 @@ public class TextAndLabelItem: GeneralRowItem {
             
             if canTranslate, let context = context {
                 let fromLang = Translate.detectLanguage(for: text)
-                let toLang = context.sharedContext.baseSettings.doNotTranslate.union([appAppearance.languageCode])
+                let toLang = context.sharedContext.baseSettings.effectiveDoNotTranslate(appLanguage: appAppearance.languageCode)
                 
                 if fromLang == nil || !toLang.contains(fromLang!) {
                     items.append(ContextMenuItem.init(strings().peerInfoTranslate, handler: {
-                        PeerInfoNavigationHooks.shared.showTranslateModal(context, fromLang, appAppearance.languageCode, text)
+                        PeerInfoNavigationHooks.shared.showTranslateModal(context, fromLang, context.sharedContext.baseSettings.translationTargetLanguage(appLanguage: appAppearance.languageCode), text)
                     }, itemImage: MenuAnimation.menu_translate.value))
                 }
             }
