@@ -139,7 +139,8 @@ private final class TextField : NSTextField {
 
 public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     private let separator = View()
-    private let country: TextButton = TextButton()
+    private let country: TextView = TextView()
+    private var countryText: String = "-----"
     
     private let country_overlay: Control = Control()
     private let nextView = ImageView()
@@ -153,6 +154,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
             if !manager.list.isEmpty, selected == nil {
                 let code = NSLocale.current.regionCode ?? "US"
                 update(selected: manager.item(bySmallCountryName: code), update: true)
+            } else if let selected = selected {
+                update(selected: selected, update: false, updateCode: false)
             }
         }
     }
@@ -180,9 +183,11 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         addSubview(separator)
         layer?.cornerRadius = 10
         
-        country.set(text: "-----", for: .Normal)
-        country.disableActions()
-        _ = country.sizeToFit()
+        country.userInteractionEnabled = false
+        country.isSelectable = false
+        country.isEventLess = true
+        country.disableBackgroundDrawing = true
+        country.isAccessibilityDecorative = true
         addSubview(country)
         addSubview(nextView)
         addSubview(country_overlay)
@@ -229,7 +234,7 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
                 return nil
             }
             var items:[ContextMenuItem] = []
-            for country in manager.list where !country.hidden {
+            for country in manager.displayList where !country.hidden {
                 let item = ContextMenuItem(country.fullName, handler: { [weak self] in
                     self?.update(selected: country, update: true)
                 })
@@ -285,8 +290,6 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
 
         codeText.backgroundColor = .clear
         numberText.backgroundColor = .clear
-        country.style = ControlStyle(font: .medium(.title), foregroundColor: theme.colors.text, backgroundColor: theme.colors.grayBackground)
-        country.set(font: .normal(.header), for: .Normal)
         
         codeText.placeholderAttributedString = .initialize(string: strings().loginCodePlaceholder, color: theme.colors.grayText, font: .normal(.header))
         nextView.image = TelegramThemeHooks.shared.image(.iconGeneralNext).precomposed(theme.colors.border)
@@ -311,6 +314,9 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         numberText.setFrameOrigin(10 + codeText.frame.width + 10, frame.height - floor(frame.height / 2 - numberText.frame.height/2) + yNumber)
         placeholder.setFrameOrigin(NSMakePoint(10 + codeText.frame.width + 10 + 2, frame.height - floor(frame.height / 2 - placeholder.frame.height/2) + 2))
 
+        let countryLayout = TextViewLayout(.initialize(string: countryText, color: theme.colors.text, font: .normal(.header)), maximumNumberOfLines: 1, truncationType: .end)
+        countryLayout.measure(width: max(0, frame.width - 10 - 10 - nextView.frame.width - 10))
+        country.update(countryLayout)
         country.setFrameOrigin(NSMakePoint(10, 12))
         country_overlay.frame = NSMakeRect(0, 0, frame.width, frame.height / 2)
         nextView.setFrameOrigin(NSMakePoint(frame.width - 10 - nextView.frame.width, floor((frame.height / 2 - nextView.frame.height)/2)))
@@ -319,13 +325,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
     
     public func update(selected:Country?, update:Bool, updateCode:Bool = true) -> Void {
         self.selected = selected
-        if let selected = selected {
-            country.set(text: selected.emojiName , for: .Normal)
-        } else {
-            country.set(text: strings().loginInvalidCountryCode, for: .Normal)
-        }
-        country_overlay.setAccessibilityValue(selected?.emojiName ?? strings().loginInvalidCountryCode)
-        country.sizeToFit()
+        countryText = selected.flatMap(countryTitle) ?? strings().loginInvalidCountryCode
+        country_overlay.setAccessibilityValue(countryText)
         if updateCode {
             codeText.stringValue = selected != nil ? "+\(selected!.countryCodes[0].code)" : "+"
         }
