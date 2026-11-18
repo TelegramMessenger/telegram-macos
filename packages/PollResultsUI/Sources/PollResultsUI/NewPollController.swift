@@ -841,17 +841,19 @@ private func entries(_ state: NewPollState, arguments: Arguments, canBePublic: B
         ))
     }
 
-    settingRows.append(SettingRow(
-        identifier: _id_allow_adding_options,
-        name: strings().newPollAllowAddingOptions,
-        iconName: "Icon_Poll_plus",
-        iconColor: theme.colors.accent,
-        description: strings().newPollAllowAddingDesc,
-        isOn: state.allowAddingOptions,
-        enabled: true,
-        action: { arguments.toggleAllowAddingOptions() },
-        disabledAction: nil
-    ))
+    if canBePublic {
+        settingRows.append(SettingRow(
+            identifier: _id_allow_adding_options,
+            name: strings().newPollAllowAddingOptions,
+            iconName: "Icon_Poll_plus",
+            iconColor: theme.colors.accent,
+            description: strings().newPollAllowAddingDesc,
+            isOn: state.allowAddingOptions,
+            enabled: true,
+            action: { arguments.toggleAllowAddingOptions() },
+            disabledAction: nil
+        ))
+    }
 
     settingRows.append(SettingRow(
         identifier: _id_allow_revoting,
