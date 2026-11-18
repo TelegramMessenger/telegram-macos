@@ -61,5 +61,16 @@ let package = Package(
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
             path: "Sources/StarsUI"),
+        .testTarget(
+            name: "StarsUITests",
+            dependencies: [
+                "StarsUI",
+                .product(name: "TGUIKit", package: "TGUIKit"),
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "Postbox", package: "Postbox"),
+                .product(name: "Localization", package: "Localization"),
+                .product(name: "LocalAnimations", package: "LocalAnimations"),
+            ],
+            path: "Tests/StarsUITests"),
     ]
 )
