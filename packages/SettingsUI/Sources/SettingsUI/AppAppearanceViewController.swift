@@ -852,6 +852,7 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
         }
       
         view.button.set(image: theme.icons.chatActions, for: .Normal)
+        view.button.isHidden = theme.colors.parent == .system
         return view
         
     })
@@ -860,6 +861,7 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
     controller.updateRightBarView = { view in
         if let view = view as? ImageBarView {
             view.button.set(image: theme.icons.chatActions, for: .Normal)
+            view.button.isHidden = theme.colors.parent == .system
         }
     }
     
