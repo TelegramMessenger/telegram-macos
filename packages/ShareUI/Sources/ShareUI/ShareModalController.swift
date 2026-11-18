@@ -2185,7 +2185,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                 self.communityChildPeerIds[peerId] = childPeerIds
                 selectInteractions.refreshSelection(animated: true)
             }
-            self.genericView.appearCommunityChats(peers, interactions: selectInteractions, delegate: self, context: context, animated: animated, multipleSelection: self.share.multipleSelection)
+            self.genericView.appearCommunityChats(peers, interactions: selectInteractions, delegate: self, context: context, animated: animated, multipleSelection: selectInteractions.presentation.multipleSelection)
         }))
     }
 
@@ -2952,7 +2952,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
         }
         let context = share.context
         let origin = actionAnalyticsContext(peerId: peerId)
-        if share.multipleSelection, let threadId {
+        if share.multipleSelection || (share is ForwardMessagesObject && selectInteractions.presentation.multipleSelection), let threadId {
             recipientAction.start(context: origin, request: {
                 context.account.postbox.loadedPeerWithId(peerId)
             }, next: { [weak self] peer in
@@ -3043,7 +3043,7 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
                             let presentation = origin.beginPresentation()
                             defer { presentation.end() }
                             self.genericView.tokenizedView.removeAllFailed(animated: true)
-                            return self.performShare(to: Array(ids), threadId: nil, comment: input, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin, activation: activation).start(next: { result in
+                            return self.performShare(to: Array(ids), threadId: ids.count == 1 ? ids.first.flatMap { share.threadIds[$0] } : nil, comment: input, sendPaidMessageStars: sendPaidMessageStars, analyticsContext: origin, activation: activation).start(next: { result in
                                 subscriber.putNext(result)
                             }, error: { error in
                                 subscriber.putError(error)
