@@ -2126,9 +2126,11 @@ public class ChatListRowItem: TableRowItem {
             
             if let mainPeer = peer, let peerId = peerId, let peer = renderedPeer?.peers[peerId] {
                 
-                headGroup.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
-                    ChatListUIHooks.shared.openPeerInNewWindow(context, peerId)
-                }, itemImage: MenuAnimation.menu_open_with.value))
+                if !mode.savedMessages {
+                    headGroup.append(ContextMenuItem(strings().accountOpenInWindow, handler: {
+                        ChatListUIHooks.shared.openPeerInNewWindow(context, peerId)
+                    }, itemImage: MenuAnimation.menu_open_with.value))
+                }
                 
                 if peer._asPeer().isCommunity {
                     zeroGroup.append(ContextMenuItem(strings().chatListUngroup, handler: {
