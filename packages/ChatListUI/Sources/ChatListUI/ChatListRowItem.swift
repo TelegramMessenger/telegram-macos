@@ -1983,7 +1983,11 @@ public class ChatListRowItem: TableRowItem {
         
         let previewChat:()->Void = {
             if let peerId = peerId {
-                ChatListRowItem.previewChat(peerId: peerId, peer: peer, context: context)
+                if case let .savedMessages(threadId) = mode {
+                    ChatListRowItem.previewSavedChat(peerId: peerId, threadId: threadId, context: context)
+                } else {
+                    ChatListRowItem.previewChat(peerId: peerId, peer: peer, context: context)
+                }
             }
         }
         
@@ -2757,6 +2761,8 @@ public class ChatListRowItem: TableRowItem {
         if let peer = self.peer, !peer.hasSensitiveContent(platform: "ios", contentSettings: context.contentSettings) {
             if case let .topic(threadId, _) = mode {
                 ChatListRowItem.previewTopic(peerId: peerId, threadId: threadId, context: context)
+            } else if case let .savedMessages(threadId) = mode {
+                ChatListRowItem.previewSavedChat(peerId: peerId, threadId: threadId, context: context)
             } else {
                 ChatListRowItem.previewChat(peerId: peerId, peer: peer, context: context)
             }
@@ -2770,6 +2776,10 @@ public class ChatListRowItem: TableRowItem {
         }
 
         showPreview(context: context, chatLocation: .peer(peerId), holder: nil)
+    }
+
+    public static func previewSavedChat(peerId: PeerId, threadId: Int64, context: any AccountContextProtocol) {
+        showPreview(context: context, chatLocation: .makeSaved(peerId, threadId: threadId, isMonoforum: peerId != context.peerId), holder: nil)
     }
 
     public static func previewTopic(peerId: PeerId, threadId: Int64, context: any AccountContextProtocol) {
