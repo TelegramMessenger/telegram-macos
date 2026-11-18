@@ -8,7 +8,14 @@ import ChatUI
 final class ChatRemovalUndoView: Control {
     static let height: CGFloat = 44
 
-    private let visualEffect = NSVisualEffectView()
+    private let glassBackground = LiquidGlassView(
+        frame: .zero,
+        cornerRadius: ChatRemovalUndoView.height / 2,
+        hasShadow: false,
+        hasBorder: false,
+        forceAppearance: .forceDark,
+        customTint: NSColor(white: 0.20, alpha: 0.62)
+    )
     private let ringView = View(frame: NSMakeRect(0, 0, 30, 30))
     private let ringLayer = CAShapeLayer()
     private let secondsView = View(frame: NSMakeRect(0, 0, 30, 30))
@@ -21,17 +28,12 @@ final class ChatRemovalUndoView: Control {
 
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        addSubview(visualEffect)
+        layer?.masksToBounds = false
+        addSubview(glassBackground)
         addSubview(ringView)
         addSubview(secondsView)
         addSubview(textView)
         addSubview(undoButton)
-
-        visualEffect.material = .ultraDark
-        visualEffect.blendingMode = .withinWindow
-        visualEffect.state = .active
-
-        self.layer?.cornerRadius = 10
 
         let size = ringView.frame.size
         let lineWidth: CGFloat = 2
@@ -55,6 +57,11 @@ final class ChatRemovalUndoView: Control {
         undoButton.set(color: TelegramThemeHooks.shared.darkAppearance().colors.accent, for: .Normal)
         undoButton.set(background: .clear, for: .Normal)
         undoButton.set(text: strings().chatUndoManagerUndo, for: .Normal)
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            stretchReferenceView = glassBackground
+            undoButton.stretchTransformView = self
+            undoButton.stretchReferenceView = glassBackground
+        }
         _ = undoButton.sizeToFit(NSMakeSize(24, 0), NSMakeSize(0, ChatRemovalUndoView.height), thatFit: false)
     }
 
@@ -64,6 +71,16 @@ final class ChatRemovalUndoView: Control {
 
     deinit {
         timer?.invalidate()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let target = super.hitTest(point) else {
+            return nil
+        }
+        if target === undoButton || target.isDescendant(of: undoButton) {
+            return undoButton
+        }
+        return self
     }
 
     func update(toast: PendingChatRemovalToast, undo: @escaping () -> Void) {
@@ -160,7 +177,8 @@ final class ChatRemovalUndoView: Control {
 
     override func layout() {
         super.layout()
-        visualEffect.frame = bounds
+        glassBackground.frame = bounds
+        glassBackground.updateLayout(size: bounds.size, transition: .immediate)
         ringView.centerY(x: 8)
         secondsView.frame = ringView.frame
         undoButton.centerY(x: frame.width - undoButton.frame.width)
