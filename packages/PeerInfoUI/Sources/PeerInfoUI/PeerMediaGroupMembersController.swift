@@ -60,8 +60,9 @@ extension GroupInfoEntry : Equatable {
     }
 }
 
-private func groupPeersEntries<Context: AccountContextProtocol>(state: GroupPeersState, isEditing: Bool, viewAndStories: (PeerView, [PeerId: PeerStoryStats]), inputActivities: [PeerId: PeerInputActivity], memberListState: ChannelMemberListState, arguments: GroupPeersArguments<Context>) -> [InputDataEntry] {
+private func groupPeersEntries<Context: AccountContextProtocol>(state: GroupPeersState, isEditing: Bool, viewAndStories: (PeerView, [PeerId: PeerStoryStats]), inputActivities: [PeerId: PeerInputActivity], memberListState: ChannelMemberListState, arguments: GroupPeersArguments<Context>) -> (entries: [InputDataEntry], canEdit: Bool) {
     var entries: [InputDataEntry] = []
+    var canEdit = false
     
     var sectionId:Int32 = 0
     let index:Int32 = 0
@@ -256,10 +257,11 @@ private func groupPeersEntries<Context: AccountContextProtocol>(state: GroupPeer
                         }
                     }
                     
+                    let deletable = group.canRemoveParticipant(sortedParticipants[i]) || (sortedParticipants[i].invitedBy == arguments.context.peerId && sortedParticipants[i].peerId != arguments.context.peerId)
+                    canEdit = canEdit || (deletable && !disabledPeerIds.contains(peer.id))
                     let editing:ShortPeerDeleting?
-                    
+
                     if isEditing {
-                        let deletable:Bool = group.canRemoveParticipant(sortedParticipants[i]) || (sortedParticipants[i].invitedBy == arguments.context.peerId && sortedParticipants[i].peerId != arguments.context.peerId)
                         editing = ShortPeerDeleting(editable: deletable)
                     } else {
                         editing = nil
@@ -417,10 +419,11 @@ private func groupPeersEntries<Context: AccountContextProtocol>(state: GroupPeer
                     }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
                 }
                 
+                let deletable = channel.canRemoveParticipant(sortedParticipants[i].participant, accountId: arguments.context.account.peerId)
+                canEdit = canEdit || (deletable && !disabledPeerIds.contains(sortedParticipants[i].peer.id))
                 let editing:ShortPeerDeleting?
-                
-                if isEditing, let group = group as? TelegramChannel {
-                    let deletable:Bool = group.canRemoveParticipant(sortedParticipants[i].participant, accountId: arguments.context.account.peerId)
+
+                if isEditing {
                     editing = ShortPeerDeleting(editable: deletable)
                 } else {
                     editing = nil
@@ -491,10 +494,10 @@ private func groupPeersEntries<Context: AccountContextProtocol>(state: GroupPeer
     
     entries.append(.sectionId(sectionId, type: .normal))
     sectionId += 1
-    return entries
+    return (entries, canEdit)
 }
 
-func PeerMediaGroupMembersController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, editing: Signal<Bool, NoError>, analyticsContext: AnalyticsContext? = nil) -> InputDataController {
+func PeerMediaGroupMembersController<Context: AccountContextProtocol>(context: Context, peerId: PeerId, editing: Signal<Bool, NoError>, canEditUpdated: @escaping (Bool)->Void, analyticsContext: AnalyticsContext? = nil) -> InputDataController {
     let origin = Analytics.shared.captureContext(engine: context.engine, peerId: peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
     let presentation = origin.beginPresentation()
     defer { presentation.end() }
@@ -642,7 +645,10 @@ func PeerMediaGroupMembersController<Context: AccountContextProtocol>(context: C
     
     
     let dataSignal = origin.preservingPresentation(combineLatest(queue: prepareQueue, statePromise.get(), peerViewAndStories, channelMembersPromise.get(), inputActivity, editing)) |> map {
-        return InputDataSignalValue(entries: groupPeersEntries(state: $0, isEditing: $4, viewAndStories: $1, inputActivities: $3, memberListState: $2, arguments: arguments))
+        return groupPeersEntries(state: $0, isEditing: $4, viewAndStories: $1, inputActivities: $3, memberListState: $2, arguments: arguments)
+    } |> deliverOnMainQueue |> map { data in
+        canEditUpdated(data.canEdit)
+        return InputDataSignalValue(entries: data.entries)
     }
     
     let controller = InputDataController(dataSignal: dataSignal, title: "")

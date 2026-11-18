@@ -891,6 +891,7 @@
     private let listControllers:[PeerMediaListController<Context>]
     private var pollsController: InputDataController?
     private let members: ViewController
+    private var canEditMembers = false
     private let commonGroups: ViewController
     private let similarChannels: ViewController
     private let similarBots: ViewController
@@ -943,12 +944,17 @@
             let newValue = state
             
             if newValue != oldValue {
-                stories.toggleSelection()
-                archiveStories?.toggleSelection()
+                (currentController as? StoryMediaController<Context>)?.toggleSelection()
             }
-            
+            if newValue != .Edit {
+                editing.set(false)
+            }
+
             genericView.mainTable?.scroll(to: .upOffset(true, 0), completion: { [weak self] _ in
-                self?.editing.set(newValue == .Edit)
+                guard let self else {
+                    return
+                }
+                self.editing.set(self.state == .Edit && self.currentController === self.members)
             })
         }
     }
@@ -1011,7 +1017,10 @@
         }
         self.listControllers = listControllers
         
-        self.members = PeerMediaGroupMembersController(context: context, peerId: peerId, editing: editing.get(), analyticsContext: origin)
+        var canEditMembersUpdated: ((Bool)->Void)?
+        self.members = PeerMediaGroupMembersController(context: context, peerId: peerId, editing: editing.get(), canEditUpdated: { value in
+            canEditMembersUpdated?(value)
+        }, analyticsContext: origin)
         self.commonGroups = PeerInfoNavigationHooks.shared.makeGroupsInCommonControllerObserved(context, peerId, analyticsContext: origin)
         self.gifs = PeerMediaPhotosController(context, chatInteraction: interactions, threadInfo: threadInfo, peerId: peerId, tags: .gif)
         self.stories = StoryMediaController(context: context, peerId: peerId, listContext: storyListContext)
@@ -1021,6 +1030,9 @@
          
         super.init(context)
         self.inheritAnalyticsContext(origin)
+        canEditMembersUpdated = { [weak self] value in
+            self?.updateMembersEditingAvailability(value)
+        }
          
          
          
@@ -1150,10 +1162,57 @@
          return context.peerId == self.peerId && !isProfileIntended
      }
      
+     private var supportsMessageSelection: Bool {
+         return currentController is PeerMediaPhotosController<Context> || currentController is PeerMediaListController<Context>
+     }
+
+     private var supportsEditing: Bool {
+         return supportsMessageSelection || (currentController === members && canEditMembers) || currentController is StoryMediaController<Context>
+     }
+
+     private func updateMembersEditingAvailability(_ value: Bool) {
+         guard canEditMembers != value else {
+             return
+         }
+         canEditMembers = value
+         if currentController === members {
+             if !value, state != .Normal {
+                 update(with: .Normal)
+             }
+             requestUpdateRightBar()
+         }
+     }
+
+     public override func menuItems() -> [ContextMenuItem] {
+         if let items = currentController?.menuItems(), !items.isEmpty {
+             return items
+         }
+         guard supportsEditing else {
+             return []
+         }
+         return [ContextMenuItem(strings().chatContextEdit1, handler: { [weak self] in
+             self?.update(with: .Edit)
+         }, itemImage: MenuAnimation.menu_edit.value)]
+     }
+
      public override func requestUpdateRightBar() {
          super.requestUpdateRightBar()
-         editButton?.set(color: theme.colors.text, for: .Normal)
+         if let editButton {
+             editButton.set(color: theme.colors.text, for: .Normal)
+             stackedBar.set(hidden: state == .Normal && !menuItems().contains(where: { !$0.isSeparatorItem }), for: editButton)
+         }
          rightBarView?.needsLayout = true
+     }
+
+     private var directEditItem: ContextMenuItem? {
+         guard supportsEditing else {
+             return nil
+         }
+         let items = menuItems().filter { !$0.isSeparatorItem }
+         guard items.count == 1, let item = items.first, item.title == strings().chatContextEdit1, item.isEnabled, item.handler != nil, item.submenu == nil else {
+             return nil
+         }
+         return item
      }
 
      public override func updateEditStateTitles() {
@@ -1161,29 +1220,24 @@
          let pillHeight = StackedBarView.pillHeight
          switch state {
          case .Normal:
-             editButton.set(image: theme.icons.chatActions, for: .Normal)
+             let isDirectEdit = directEditItem != nil
+             editButton.set(image: isDirectEdit ? theme.icons.chatActionEdit.highlight(color: theme.colors.text) : theme.icons.chatActions, for: .Normal)
+             editButton.setAccessibilityLabel(isDirectEdit ? strings().chatContextEdit1 : strings().voiceOverCommonMore)
              editButton.set(text: "", for: .Normal)
              _ = editButton.sizeToFit(.zero, NSMakeSize(pillHeight, pillHeight), thatFit: true)
          case .Edit:
              editButton.removeImage(for: .Normal)
              editButton.set(text: doneString, for: .Normal)
+             editButton.setAccessibilityLabel(doneString)
              _ = editButton.sizeToFit(NSMakeSize(20, 0), NSMakeSize(.greatestFiniteMagnitude, pillHeight), thatFit: false)
          case .Some:
              editButton.removeImage(for: .Normal)
              editButton.set(text: someString, for: .Normal)
+             editButton.setAccessibilityLabel(someString)
              _ = editButton.sizeToFit(NSMakeSize(20, 0), NSMakeSize(.greatestFiniteMagnitude, pillHeight), thatFit: false)
          }
      }
 
-     public override func changeState() {
-         if state == .Normal {
-             editButton?.showContextMenu()
-         } else {
-             super.changeState()
-         }
-     }
-     
-     
      func setMode(_ mode: PeerMediaCollectionMode) {
          self.toggle(with: mode, animated: true)
      }
@@ -1204,15 +1258,37 @@
          }
          self.searchBarButton = searchBtn
 
-         editButton?.contextMenu = { [weak self] in
-             var items:[ContextMenuItem] = []
-             if let menuItems = self?.currentController?.menuItems(), !menuItems.isEmpty {
-                 items.append(ContextSeparatorItem())
-                 items.append(contentsOf: menuItems)
+         for controller in [stories, archiveStories].compactMap({ $0 }) {
+             controller.menuItemsUpdated = { [weak self, weak controller] in
+                 guard let self, let controller, self.currentController === controller else {
+                     return
+                 }
+                 self.requestUpdateRightBar()
+             }
+         }
+
+         editButton?.setSingle(handler: { [weak self] control in
+             guard let self else {
+                 return
+             }
+             if self.state == .Normal {
+                 if let item = self.directEditItem {
+                     item.handler?()
+                 } else {
+                     _ = control.accessibilityPerformShowMenu()
+                 }
              } else {
-                 items.append(ContextMenuItem(strings().chatContextEdit1, handler: { [weak self] in
-                     self?.update(with: .Edit)
-                 }, itemImage: MenuAnimation.menu_edit.value))
+                 self.changeState()
+             }
+         }, for: .Click)
+
+         editButton?.contextMenu = { [weak self] in
+             guard let self, self.state == .Normal else {
+                 return nil
+             }
+             let items = self.menuItems()
+             guard items.contains(where: { !$0.isSeparatorItem }) else {
+                 return nil
              }
              let menu = ContextMenu(betterInside: true)
              for item in items {
@@ -1327,7 +1403,7 @@
                     bar.updateLayout(size: bar.frame.size, transition: transition)
                 }
 
-                genericView.changeState(selectState: value.state == .selecting && self.mode != .members && self.mode != .stories && self.mode != .archiveStories, animated: animated)
+                genericView.changeState(selectState: value.state == .selecting && supportsMessageSelection, animated: animated)
             }
             
         }
@@ -2009,6 +2085,7 @@
      
      public override func viewDidResized(_ size: NSSize) {
          super.viewDidResized(size)
+         requestUpdateRightBar()
      }
     
     
@@ -2022,11 +2099,15 @@
     
     private func applyReadyController(mode:PeerMediaCollectionMode, animated:Bool) {
         let oldMode = self.mode
-        self.mode = mode
         let previous = self.currentController
-        
         let controller = self.controller(for: mode)
-        
+        if previous !== controller, state != .Normal || interactions.presentation.state == .selecting {
+            let sharesMessageSelection = supportsMessageSelection && (controller is PeerMediaPhotosController<Context> || controller is PeerMediaListController<Context>)
+            if !sharesMessageSelection {
+                update(with: .Normal)
+            }
+        }
+        self.mode = mode
         self.currentController = controller
         controller.viewWillAppear(animated)
         previous?.viewWillDisappear(animated)
@@ -2055,6 +2136,8 @@
         }
         
         genericView.updateMainView(with: controller.view, animated: animation)
+        genericView.changeState(selectState: state == .Edit && supportsMessageSelection, animated: animated)
+        requestUpdateRightBar()
         prepareNeighborTabs()
         controller.viewDidAppear(animated)
         previous?.viewDidDisappear(animated)
@@ -2450,8 +2533,14 @@
     }
     
     override public func update(with state:ViewControllerState) -> Void {
+        guard state == .Normal || supportsEditing else {
+            return
+        }
         super.update(with:state)
         interactions.update({state == .Normal ? $0.withoutSelectionState() : $0.withSelectionState()})
+        if genericView.mainView != nil {
+            genericView.changeState(selectState: state == .Edit && supportsMessageSelection, animated: true)
+        }
     }
     
     public override func escapeKeyAction() -> KeyHandlerResult {
