@@ -1871,16 +1871,17 @@ private func layoutBlockQuoteBlocksV2(
 }
 
 
-public func instantPageStringContainsRTL(_ string: String) -> Bool {
-    for scalar in string.unicodeScalars {
-        switch scalar.value {
-        case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x1_0800...0x1_0FFF, 0x1_E800...0x1_EFFF:
-            return true
-        default:
-            break
-        }
+private func instantPageScalarIsRTL(_ scalar: Unicode.Scalar) -> Bool {
+    switch scalar.value {
+    case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x1_0800...0x1_0FFF, 0x1_E800...0x1_EFFF:
+        return true
+    default:
+        return false
     }
-    return false
+}
+
+public func instantPageStringContainsRTL(_ string: String) -> Bool {
+    return string.unicodeScalars.contains(where: instantPageScalarIsRTL)
 }
 
 private func instantPageRichTextContainsRTL(_ text: RichText) -> Bool {
@@ -1892,6 +1893,73 @@ private func instantPageV2IsList(_ block: InstantPageBlock?) -> Bool {
         return true
     }
     return false
+}
+
+// The direction of the first letter, as in rule P2 of the Unicode bidi algorithm: punctuation,
+// digits and spaces are neutral. Swift exposes no bidi class, so "letter" is approximated by the
+// Alphabetic property. Returns nil when the text has no letter.
+private func instantPageFirstStrongDirectionIsRTL(_ string: String) -> Bool? {
+    guard let scalar = string.unicodeScalars.first(where: { $0.properties.isAlphabetic }) else {
+        return nil
+    }
+    return instantPageScalarIsRTL(scalar)
+}
+
+// The first letter of a list item made of blocks, in reading order, looking inside every block that
+// shows text: quotes, details, nested lists, tables and media captions. instantPageRichTextFromBlocks
+// only joins the plain text blocks, so an item that opens with a quote would read as having no text.
+private func instantPageFirstStrongDirectionIsRTL(in blocks: [InstantPageBlock]) -> Bool? {
+    func firstOf(_ texts: [RichText]) -> Bool? {
+        return texts.lazy.compactMap { instantPageFirstStrongDirectionIsRTL($0.plainText) }.first
+    }
+    func captionOf(_ caption: InstantPageCaption) -> Bool? {
+        return firstOf([caption.text, caption.credit])
+    }
+    for block in blocks {
+        let direction: Bool?
+        switch block {
+        case let .title(text), let .subtitle(text), let .header(text), let .subheader(text),
+             let .paragraph(text), let .footer(text), let .kicker(text), let .thinking(text),
+             let .heading(text, _), let .preformatted(text, _), let .authorDate(text, _):
+            direction = firstOf([text])
+        case let .blockQuote(children, caption, _):
+            direction = instantPageFirstStrongDirectionIsRTL(in: children) ?? firstOf([caption])
+        case let .pullQuote(text, caption):
+            direction = firstOf([text, caption])
+        case let .details(title, children, _):
+            direction = firstOf([title]) ?? instantPageFirstStrongDirectionIsRTL(in: children)
+        case let .list(items, _):
+            direction = items.lazy.compactMap { item -> Bool? in
+                switch item {
+                case let .text(text, _, _):
+                    return firstOf([text])
+                case let .blocks(children, _, _):
+                    return instantPageFirstStrongDirectionIsRTL(in: children)
+                case .unknown:
+                    return nil
+                }
+            }.first
+        case let .cover(child):
+            direction = instantPageFirstStrongDirectionIsRTL(in: [child])
+        case let .table(title, rows, _, _, _):
+            direction = firstOf([title] + rows.flatMap { $0.cells.compactMap { $0.text } })
+        case let .relatedArticles(title, _):
+            direction = firstOf([title])
+        case let .image(_, caption, _, _, _), let .video(_, caption, _, _, _), let .audio(_, caption),
+             let .document(_, caption), let .map(_, _, _, _, caption), let .webEmbed(_, _, _, caption, _, _, _):
+            direction = captionOf(caption)
+        case let .collage(children, caption), let .slideshow(children, caption):
+            direction = instantPageFirstStrongDirectionIsRTL(in: children) ?? captionOf(caption)
+        case let .postEmbed(_, _, _, _, _, children, caption):
+            direction = instantPageFirstStrongDirectionIsRTL(in: children) ?? captionOf(caption)
+        default:
+            direction = nil
+        }
+        if let direction {
+            return direction
+        }
+    }
+    return nil
 }
 
 private func layoutListV2(
@@ -1974,10 +2042,18 @@ private func layoutListV2(
         }
     }
 
-    let rtl = listItems.contains(where: { item in
-        if case let .text(text, _, _) = item { return instantPageRichTextContainsRTL(text) }
-        return false
-    })
+    // The list takes the direction of its first letter across items, like a paragraph does, so an
+    // Arabic comma or a quoted Hebrew word inside an English list doesn't flip the markers.
+    let rtl = context.rtl || (listItems.lazy.compactMap { item -> Bool? in
+        switch item {
+        case let .text(text, _, _):
+            return instantPageFirstStrongDirectionIsRTL(text.plainText)
+        case let .blocks(blocks, _, _):
+            return instantPageFirstStrongDirectionIsRTL(in: blocks)
+        case .unknown:
+            return nil
+        }
+    }.first ?? false)
     let markerWidth = max(markerColumnMinimumWidth, maxIndexWidth)
     let markerColumnWidth = markerWidth + markerSkip
     let singleDigitWidth = ceil(attributedStringForRichText(.plain("8."), styleStack: indexStack).size().width)
@@ -1991,6 +2067,15 @@ private func layoutListV2(
         border: context.theme.checklistBorderColor
     )
     let textBoundingWidth = boundingWidth - horizontalInset * 2.0 - markerColumnWidth
+    // Text items are fitted to their widest line and start at the column's left edge, so in RTL
+    // each block of an item is moved against the right edge, next to its marker.
+    let textColumnMaxX = textOriginX + textBoundingWidth
+    func movedToColumnEnd(_ laidOut: [InstantPageV2LaidOutItem]) -> [InstantPageV2LaidOutItem] {
+        guard rtl, let maxX = laidOut.map({ $0.frame.maxX }).max(), maxX < textColumnMaxX else {
+            return laidOut
+        }
+        return laidOut.map { $0.offsetBy(CGPoint(x: textColumnMaxX - maxX, y: 0.0)) }
+    }
 
     for (i, listItem) in listItems.enumerated() {
         if i != 0 {
@@ -2070,7 +2155,7 @@ private func layoutListV2(
                     spacing = spacingBetweenBlocks(upper: previousSubBlock, lower: effectiveSubBlock, fitToWidth: context.fitToWidth)
                 }
                 let offsetY = subContentHeight + spacing
-                let translated = subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) }
+                let translated = movedToColumnEnd(subItems.map { $0.offsetBy(CGPoint(x: textOriginX, y: contentHeight + offsetY)) })
 
                 // Only the first block can place the marker, and only when it opens with text: in an item
                 // that starts with a photo (even one with a caption), the marker stays at the item's top
@@ -2173,7 +2258,7 @@ private func layoutListV2(
             color: context.theme.textCategories.paragraph.color
         )))
         if let textItem = inlineTextItem {
-            items.append(.text(InstantPageV2TextItem(frame: textItem.frame, textItem: textItem)))
+            items.append(contentsOf: movedToColumnEnd([.text(InstantPageV2TextItem(frame: textItem.frame, textItem: textItem))]))
         }
         items.append(contentsOf: blockItems)
         contentHeight += itemContentHeight
