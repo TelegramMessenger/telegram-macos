@@ -181,12 +181,7 @@ extension DocumentCanvasView {
             if let quote = box as? BlockQuoteBox, !quote.collapsed {
                 return plainTextWithTableBoundaries(in: quote.children.boxes, from: lo, to: hi)
             }
-            return box.leafRegions().map { region -> String in
-                let a = max(lo, region.globalStart), b = min(hi, region.globalStart + region.length)
-                guard a < b else { return "" }
-                let text = region.layout.attributedString.string as NSString
-                return text.substring(with: NSRange(location: a - region.globalStart, length: b - a))
-            }.joined()
+            return plainTextWithQuoteBoundaries(in: box.leafRegions(), from: lo, to: hi)
         }.joined()
     }
 
@@ -200,6 +195,22 @@ extension DocumentCanvasView {
             }
             return selectedCells.joined(separator: "\t")
         }.joined(separator: "\n")
+    }
+
+    private func plainTextWithQuoteBoundaries(in regions: [LeafTextRegion], from lo: Int, to hi: Int) -> String {
+        var result = ""
+        var previous: TextNodeRef?
+        for region in regions {
+            let a = max(lo, region.globalStart), b = min(hi, region.globalStart + region.length)
+            guard a < b else { continue }
+            if case let .quoteAuthor(id) = region.ref, previous == .pullQuote(id) {
+                result += "\n"
+            }
+            let text = region.layout.attributedString.string as NSString
+            result += text.substring(with: NSRange(location: a - region.globalStart, length: b - a))
+            previous = region.ref
+        }
+        return result
     }
 
     /// Copy the current selection to the pasteboard: a rich `DocumentCodec` fragment (for attribute-

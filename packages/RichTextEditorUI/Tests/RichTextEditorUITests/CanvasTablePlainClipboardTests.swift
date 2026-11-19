@@ -228,6 +228,33 @@ final class CanvasTablePlainClipboardTests: XCTestCase {
         XCTAssertNil(pasteboard.richFragment)
     }
 
+    func testTableAndPullQuoteBoundariesCoexistInExpandedQuote() {
+        let quote = Block.pullQuote(PullQuote(id: BlockID("q"), runs: [TextRun(text: "Quote")], author: [TextRun(text: "Ada")]))
+        let (canvas, pasteboard) = canvas([
+            .blockQuote(BlockQuote(id: BlockID("outer"), children: [quote, table()], collapsed: false)),
+            .pullQuote(PullQuote(id: BlockID("after"), runs: [TextRun(text: "Other")], author: [TextRun(text: "Grace")]))
+        ])
+        let before = canvas.currentBlocks()
+        canvas.selectAllText()
+        canvas.copy(nil)
+        XCTAssertEqual(pasteboard.string, "Quote\nAda111\t333\n222\t444Other\nGrace")
+        XCTAssertEqual(canvas.currentBlocks(), before)
+    }
+
+    func testPartialSelectionAcrossTableAndPullQuotePreservesBothBoundaries() throws {
+        let (canvas, pasteboard) = canvas([
+            table(),
+            .pullQuote(PullQuote(id: BlockID("q"), runs: [TextRun(text: "Quote")], author: [TextRun(text: "Ada")]))
+        ])
+        let cell = try region(canvas, "r1c0p0")
+        let author = try XCTUnwrap(canvas.allLeafRegions().first { $0.ref == .quoteAuthor(BlockID("q")) })
+        for range in [(cell.globalStart + 1, author.globalStart + 2), (author.globalStart + 2, cell.globalStart + 1)] {
+            canvas.selectedGlobalRange = range
+            canvas.copy(nil)
+            XCTAssertEqual(pasteboard.string, "22\t444Quote\nAd")
+        }
+    }
+
     func testCollapsedSelectionDoesNotWritePasteboard() throws {
         let (canvas, pasteboard) = canvas([table()])
         let first = try region(canvas, "r0c0p0")
