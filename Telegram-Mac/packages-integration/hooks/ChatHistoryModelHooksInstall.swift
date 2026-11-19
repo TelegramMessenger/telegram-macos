@@ -18,11 +18,11 @@ func installChatHistoryModelHooks() {
             return
         }
         showAboutCocoonModal(context: context)
-    }, getChatInterfaceTempState: { context, peerId in
+    }, getChatInterfaceTempState: { context, peerId, threadId in
         guard let context = context as? AccountContext else {
             return nil
         }
-        return context.getChatInterfaceTempState(peerId)
+        return context.getChatInterfaceTempState(peerId, threadId: threadId)
     }, isLite: { key in
         return isLite(key)
     }, textInputStateContextQueryRange: { inputState, includeContext in
