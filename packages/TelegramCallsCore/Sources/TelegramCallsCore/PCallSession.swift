@@ -22,6 +22,11 @@ public enum PresentationCallConferenceState {
     case ready
 }
 
+public enum IncomingCallAudioInput {
+    case enabled
+    case disabled
+}
+
 public enum CallTone {
     case undefined
     case ringback
@@ -719,23 +724,36 @@ public class PCallSession {
         }
     }
     
-    public func acceptCallSession() {
-        let window = self.alertWindow
-        requestMicroAccessDisposable.set((requestMicrophonePermission() |> deliverOnMainQueue).start(next: { [weak self] access in
-            if access {
-                self?.acceptAfterAccess()
-            } else if let window {
-                CallsCoreHooks.shared.verifyAlert(window, strings().requestAccesErrorHaveNotAccessCall, strings().modalOK, "", strings().requestAccesErrorConirmSettings, { [weak self] optionSelected in
-                    if optionSelected {
-                        openSystemSettings(.microphone)
-                    }
-                    self?.drop(.hangUp)
-                })
-            } else {
-                self?.drop(.hangUp)
+    public func acceptCallSession(audioInput: IncomingCallAudioInput) {
+        switch audioInput {
+        case .disabled:
+            self.setIsMuted(true)
+            self.acceptAfterAccess()
+        case .enabled:
+            let window = self.alertWindow
+            requestMicroAccessDisposable.set((requestMicrophonePermission() |> deliverOnMainQueue).start(next: { [weak self] access in
+                if access {
+                    self?.acceptAfterAccess()
+                } else {
+                    self?.presentMicrophoneAccessAlert(window: window, completion: {
+                        self?.drop(.hangUp)
+                    })
+                }
+            }))
+        }
+    }
+
+    private func presentMicrophoneAccessAlert(window: Window?, completion: (() -> Void)? = nil) {
+        guard let window = window else {
+            completion?()
+            return
+        }
+        CallsCoreHooks.shared.verifyAlert(window, strings().requestAccesErrorHaveNotAccessCall, strings().modalOK, "", strings().requestAccesErrorConirmSettings, { optionSelected in
+            if optionSelected {
+                openSystemSettings(.microphone)
             }
-        }))
-        
+            completion?()
+        })
     }
     
     
@@ -755,8 +773,31 @@ public class PCallSession {
         self.setIsMuted(!self.isMuted)
     }
     
+    private var microphoneAccessGranted: Bool {
+        if #available(macOS 10.14, *) {
+            return AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        } else {
+            return true
+        }
+    }
+
     private func setIsMuted(_ isMuted: Bool) {
         assertOnMainThread()
+        if !isMuted && self.isMuted && !self.microphoneAccessGranted {
+            let window = self.alertWindow
+            requestMicroAccessDisposable.set((requestMicrophonePermission() |> deliverOnMainQueue).start(next: { [weak self] access in
+                if access {
+                    self?.applyIsMuted(false)
+                } else {
+                    self?.presentMicrophoneAccessAlert(window: window)
+                }
+            }))
+            return
+        }
+        self.applyIsMuted(isMuted)
+    }
+
+    private func applyIsMuted(_ isMuted: Bool) {
         self.isMuted = isMuted
         self.ongoingContext?.setIsMuted(isMuted)
         if let conferenceCall = self.conferenceCallImpl, self.conferenceStateValue == .preparing {

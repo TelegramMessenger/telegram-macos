@@ -217,9 +217,8 @@ public func callScreen(_ result:PCallResult, source: CallWindowSource? = nil) {
             compactIncomingCall = CompactIncomingCall(session: session, answer: { video, muted in
                 closeCompactIncomingCall()
                 if !video { session.disableVideo() }
-                if muted { session.mute() }
                 Analytics.shared.send(AnalyticsEvents.callAccept(video: video))
-                session.acceptCallSession()
+                session.acceptCallSession(audioInput: muted ? .disabled : .enabled)
                 showFullCallScreen(.success(session), source: source, activate: false)
             }, decline: decline, reply: { text in
                 _ = enqueueMessages(account: session.account, peerId: session.peerId, messages: [.message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).startStandalone()
@@ -349,7 +348,7 @@ private func showFullCallScreen(_ result: PCallResult, source: CallWindowSource?
             if let session {
                 Analytics.shared.send(AnalyticsEvents.callAccept(video: session.isVideo))
             }
-            session?.acceptCallSession()
+            session?.acceptCallSession(audioInput: .enabled)
         }, video: { [weak session] isIncoming in
             return session?.makeVideo(isIncoming: isIncoming).map { MetalVideoMakeSource(videoStreamSignal: $0) }
         }, nativeVideo: { [weak session] isIncoming, completion in

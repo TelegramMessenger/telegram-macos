@@ -190,7 +190,7 @@ final class CompactIncomingCall: NSObject, NSTextFieldDelegate {
         action.handler = main
         pill.addSubview(action)
         let arrow = IncomingCallButton(symbol: "chevron.down", label: label + "…", frame: NSMakeRect(49, 0, 29, 26))
-        (action.cell as? IncomingCallButtonCell)?.imageHorizontalOffset = (arrow.frame.midX - action.frame.width) / 2
+        (action.cell as? IncomingCallButtonCell)?.imageHorizontalOffset = (pill.frame.width - action.frame.width) / 2
         arrow.handler = { [weak arrow] in if let arrow { menu(arrow) } }
         pill.addSubview(arrow)
     }
