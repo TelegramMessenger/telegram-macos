@@ -897,7 +897,7 @@ public func breakChatInputText(_ text: NSAttributedString) -> [NSAttributedStrin
     }
 }
 
-private let markdownRegexFormat = "(^|\\s|\\n)(````?)([\\s\\S]+?)(````?)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
+private let markdownRegexFormat = "(^|\\s|\\n)((?>`{5,})|````?)([\\s\\S]+?)(\\2)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let markdownRegex = try? NSRegularExpression(pattern: markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
 
 public func convertMarkdownToAttributes(_ text: NSAttributedString) -> NSAttributedString {
