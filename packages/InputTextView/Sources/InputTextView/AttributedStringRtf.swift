@@ -38,18 +38,29 @@ public extension NSAttributedString {
                 }
             } else if let font = attr[.font] as? NSFont {
                 let newFont: NSFont
-                if font.fontDescriptor.symbolicTraits.contains(.bold) && font.fontDescriptor.symbolicTraits.contains(.italic) {
+                if font.fontDescriptor.symbolicTraits.contains(NSFontDescriptor.SymbolicTraits.monoSpace) {
+                    newFont = .menlo(theme.fontSize)
+                    modified.addAttribute(TextInputAttributes.monospace, value: true as NSNumber, range: range)
+                } else if font.fontDescriptor.symbolicTraits.contains(.bold) && font.fontDescriptor.symbolicTraits.contains(.italic) {
                     newFont = .boldItalic(theme.fontSize)
+                    modified.addAttribute(TextInputAttributes.bold, value: true as NSNumber, range: range)
+                    modified.addAttribute(TextInputAttributes.italic, value: true as NSNumber, range: range)
                 } else if font.fontDescriptor.symbolicTraits.contains(.bold) {
                     newFont = .bold(theme.fontSize)
+                    modified.addAttribute(TextInputAttributes.bold, value: true as NSNumber, range: range)
                 } else if font.fontDescriptor.symbolicTraits.contains(.italic) {
                     newFont = .italic(theme.fontSize)
-                } else if font.fontDescriptor.symbolicTraits.contains(NSFontDescriptor.SymbolicTraits.monoSpace) {
-                    newFont = .menlo(theme.fontSize)
+                    modified.addAttribute(TextInputAttributes.italic, value: true as NSNumber, range: range)
                 } else {
                     newFont = .normal(theme.fontSize)
                 }
                 modified.addAttribute(.font, value: newFont, range: range)
+            }
+            if attr[.link] == nil, let style = attr[.strikethroughStyle] as? Int, style != 0 {
+                modified.addAttribute(TextInputAttributes.strikethrough, value: true as NSNumber, range: range)
+            }
+            if attr[.link] == nil, let style = attr[.underlineStyle] as? Int, style != 0 {
+                modified.addAttribute(TextInputAttributes.underline, value: true as NSNumber, range: range)
             }
             for key in attr.keys {
                 switch key {
