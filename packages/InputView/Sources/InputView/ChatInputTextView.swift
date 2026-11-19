@@ -573,6 +573,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     
     public weak var customDelegate: ChatInputTextViewDelegate?
     private var quoteContinuation: (location: Int, quote: TextInputTextQuoteAttribute)?
+    private var enterEventDuringComposition: NSEvent?
     private var insertedText: String?
     
     private var initialTypingForegroundColor: Any?
@@ -1360,22 +1361,15 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         if let delegate = self.customDelegate {
             if delegate.inputViewIsEnabled(theEvent) {
 
-                if isEnterEvent(theEvent) && !self.hasMarkedText() {
-
-                    let result = delegate.inputViewProcessEnter(theEvent)
-
-                    if (!result) {
-                        if handleBulletListContinuation() {
-                            return
-                        }
-                        let quote = self.quoteToContinueOnNewLine()
-                        self.quoteContinuation = nil
-                        super.insertNewline(self)
-                        self.quoteContinuation = quote.map { (location: self.selectedRange().location, quote: $0) }
+                if isEnterEvent(theEvent) {
+                    if !self.hasMarkedText() {
+                        processEnter(theEvent, delegate: delegate)
                         return
                     }
-
-                    if result {
+                    if !theEvent.modifierFlags.contains(.command) {
+                        self.enterEventDuringComposition = theEvent
+                        super.keyDown(with: theEvent)
+                        self.enterEventDuringComposition = nil
                         return
                     }
                 } else if theEvent.keyCode == 53, delegate.inputViewMaybeClosed() {
@@ -1389,6 +1383,28 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         } else {
             super.keyDown(with: theEvent)
         }
+    }
+
+    public override func insertNewline(_ sender: Any?) {
+        if let theEvent = self.enterEventDuringComposition, let delegate = self.customDelegate, !self.hasMarkedText() {
+            self.enterEventDuringComposition = nil
+            processEnter(theEvent, delegate: delegate)
+            return
+        }
+        super.insertNewline(sender)
+    }
+
+    private func processEnter(_ theEvent: NSEvent, delegate: ChatInputTextViewDelegate) {
+        if delegate.inputViewProcessEnter(theEvent) {
+            return
+        }
+        if handleBulletListContinuation() {
+            return
+        }
+        let quote = self.quoteToContinueOnNewLine()
+        self.quoteContinuation = nil
+        super.insertNewline(self)
+        self.quoteContinuation = quote.map { (location: self.selectedRange().location, quote: $0) }
     }
 
     public override func moveLeft(_ sender: Any?) {
