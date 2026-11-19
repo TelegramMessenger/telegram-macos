@@ -237,9 +237,48 @@ private func composerEditorController(chatInteraction: ChatInteraction, initialD
 public func showRichTextEditor(chatInteraction: ChatInteraction, seeding document: Document) {
     let surrounding = consumeComposerTextForRichPaste(chatInteraction: chatInteraction)
     var seeded = document
-    seeded.blocks = surrounding.before + document.blocks + surrounding.after
+    seeded.blocks = richTextPasteBlocks(document.blocks, surrounding: surrounding, paragraph: {
+        if case let .paragraph(paragraph) = $0 { return paragraph }
+        return nil
+    }, makeParagraph: Block.paragraph)
     let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: seeded, initialDraft: nil, analyticsContext: Analytics.shared.unresolvedContext())
     showModal(with: controller, for: chatInteraction.interactionContext.window)
+}
+
+@available(macOS 12, *)
+private func richTextPasteBlocks<BlockType>(
+    _ fragment: [BlockType],
+    surrounding: (before: [BlockType], after: [BlockType]),
+    paragraph: (BlockType) -> ParagraphBlock?,
+    makeParagraph: (ParagraphBlock) -> BlockType
+) -> [BlockType] {
+    var before = surrounding.before[...]
+    var after = surrounding.after[...]
+    var blocks = fragment
+    guard !blocks.isEmpty else { return Array(before + after) }
+
+    if let head = before.last.flatMap(paragraph) {
+        if head.runs.isEmpty {
+            before = before.dropLast()
+        } else if let first = paragraph(blocks[0]) {
+            var merged = head
+            merged.runs += first.runs
+            blocks[0] = makeParagraph(merged)
+            before = before.dropLast()
+        }
+    }
+    if let tail = after.first.flatMap(paragraph) {
+        let lastIndex = blocks.count - 1
+        if tail.runs.isEmpty {
+            after = after.dropFirst()
+        } else if let last = paragraph(blocks[lastIndex]) {
+            var merged = fragment.count == 1 ? last : tail
+            merged.runs = last.runs + tail.runs
+            blocks[lastIndex] = makeParagraph(merged)
+            after = after.dropFirst()
+        }
+    }
+    return Array(before) + blocks + Array(after)
 }
 
 @available(macOS 12, *)
@@ -287,7 +326,11 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, refetching mess
         guard chatInteraction.presentation.interfaceState.editState?.message.id == editedMessageId else { return }
         var draft = richTextOutgoing(from: rich.instantPage)
         let surrounding = consumeComposerTextForRichPaste(chatInteraction: chatInteraction)
-        draft.blocks = outgoingBlocks(fromSelection: surrounding.before) + draft.blocks + outgoingBlocks(fromSelection: surrounding.after)
+        let outgoingSurrounding = (outgoingBlocks(fromSelection: surrounding.before), outgoingBlocks(fromSelection: surrounding.after))
+        draft.blocks = richTextPasteBlocks(draft.blocks, surrounding: outgoingSurrounding, paragraph: {
+            if case let .paragraph(paragraph) = $0 { return paragraph }
+            return nil
+        }, makeParagraph: RichTextOutgoingBlock.paragraph)
         let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: nil, initialDraft: draft, analyticsContext: origin)
         showModal(with: controller, for: context.window)
     })
