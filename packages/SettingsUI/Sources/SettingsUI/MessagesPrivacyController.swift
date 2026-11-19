@@ -382,6 +382,9 @@ public func MessagesPrivacyController<Context: AccountContextProtocol>(context: 
         if state.globalSettings != initialState.globalSettings {
             _ = context.engine.privacy.updateGlobalPrivacySettings(settings: state.globalSettings).start()
         }
+        if state.noPaidMessages != initialState.noPaidMessages {
+            _ = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: .noPaidMessages, settings: state.noPaidMessages).start()
+        }
     }
 
     return controller
