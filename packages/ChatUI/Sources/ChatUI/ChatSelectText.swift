@@ -671,7 +671,7 @@ public class ChatSelectText : NSObject {
                 
                 
                 if row != -1, let item = table.item(at: row) as? ChatRowItem, let view = item.view as? ChatRowView {
-                    if chatInteraction.presentation.state == .selecting || (theme.bubbled && !NSPointInRect(view.convert(event.locationInWindow, from: nil), view.bubbleFrame(item))) {
+                    if chatInteraction.presentation.state == .selecting || !theme.bubbled || !NSPointInRect(view.convert(event.locationInWindow, from: nil), view.bubbleFrame(item)) {
                         if self?.startMessageId == nil {
                             self?.startMessageId = item.message?.id
                         }
@@ -822,7 +822,12 @@ public class ChatSelectText : NSObject {
         let beginRow = table.row(at: beginInnerLocation)
         if  let view = table.item(at: beginRow).view as? ChatRowView, let item = view.item as? ChatRowItem, selectingText, table._mouseInside() {
             let rowPoint = view.convert(beginInnerLocation, from: table.documentView)
-            if (!NSPointInRect(rowPoint, view.bubbleFrame(item)) && theme.bubbled) {
+            let startedOutsideBubble = theme.bubbled && !NSPointInRect(rowPoint, view.bubbleFrame(item))
+            let crossedIntoAnotherMessage = !theme.bubbled && startIndex != endIndex
+            if startedOutsideBubble || crossedIntoAnotherMessage {
+                if crossedIntoAnotherMessage {
+                    selectManager.removeAll()
+                }
                 if startIndex != endIndex || abs(beginInnerLocation.y - endInnerLocation.y) > 10 {
                     for i in max(0,startIndex) ... min(endIndex,table.count - 1)  {
                         let item = table.item(at: i) as? ChatRowItem
