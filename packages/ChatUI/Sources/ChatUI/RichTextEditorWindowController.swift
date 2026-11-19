@@ -805,6 +805,21 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
 // MARK: - Coordinator (owns the persistent editor + toolbar, theme, spoiler dust)
 
 @available(macOS 12, *)
+extension ChatInteractiveContentView: RichTextMediaBlockResizing {
+    public func resizeMediaBlock(toWidth width: CGFloat, maxHeight: CGFloat) -> Bool {
+        guard let media = media, parent == nil, parameters?.forceSpoiler != true else { return false }
+        var size = RichTextEditorCoordinator.mediaContentSize(media: media, width: width)
+        size.height = min(size.height, maxHeight)
+        parameters?.makeLabelsForWidth(width)
+        cachesImageTransform = false
+        setContent(size: size, animated: false)
+        update(size: size)
+        layout()
+        return true
+    }
+}
+
+@available(macOS 12, *)
 public final class RichTextEditorCoordinator {
     public let editor: RichTextEditorView = { _ = _richTextEditorLocalizationSetup; return RichTextEditorView() }()
     public let toolbar: EditorToolbarView
@@ -1560,43 +1575,41 @@ public final class RichTextEditorCoordinator {
         }
     }
 
+    fileprivate static func mediaContentSize(media: Media, width: CGFloat) -> NSSize {
+        if let file = media as? TelegramMediaFile, file.isVideo,
+           let dimensions = file.dimensions?.size, dimensions.width > 0, dimensions.height > 0 {
+            return NSMakeSize(width, floor(width * dimensions.height / dimensions.width))
+        } else if media is TelegramMediaMap {
+            return NSMakeSize(width, floor(width * (120.0 / 320.0)))
+        } else if let image = media as? TelegramMediaImage,
+                  let dimensions = image.representations.last?.dimensions.size, dimensions.width > 0, dimensions.height > 0 {
+            return NSMakeSize(width, floor(width * dimensions.height / dimensions.width))
+        } else {
+            return ChatLayoutUtils.contentSize(for: media, with: width)
+        }
+    }
+
     /// Builds a chat content node for a local `Media`, exactly as `MediaPreviewRowItem` renders not-yet-
     /// sent media: a type-specific `ChatMediaLayoutParameters` via the `.layout(for:)` factory, sized by
     /// `ChatLayoutUtils.contentSize`, updated with `parent: nil`. Returned to the editor's media provider.
     public static func makeMediaContentView(media: Media, width: CGFloat, spoiler: Bool = false, context: any AccountContextProtocol, interaction: ChatInteraction) -> NSView {
         let parameters: ChatMediaLayoutParameters
-        let size: NSSize
+        let size = mediaContentSize(media: media, width: width)
         if let file = media as? TelegramMediaFile {
             parameters = ChatMediaLayoutParameters.layout(for: file, isWebpage: false, chatInteraction: interaction,
                                                           presentation: .make(theme: theme), automaticDownload: true,
                                                           isIncoming: false, autoplayMedia: AutoplayMediaPreferences.defaultSettings)
-            if file.isVideo, let dim = file.dimensions?.size, dim.width > 0, dim.height > 0 {
-                // Video fills the full (bled) content width, aspect-preserved — like a photo; the chat
-                // content node blurs to fill when the source doesn't fit. (file/audio render as × 40 rows.)
-                size = NSMakeSize(width, floor(width * dim.height / dim.width))
-            } else {
-                size = ChatLayoutUtils.contentSize(for: media, with: width)
-            }
         } else if let map = media as? TelegramMediaMap {
             // Full-width map snapshot (default 320:120 aspect), mirroring ChatRichTextRowItem's sizing —
             // contentSize gives a fixed 320×120, so size + imageSize are set to the full content width.
-            let mapSize = NSMakeSize(width, floor(width * (120.0 / 320.0)))
-            var pw = max(1, Int(mapSize.width * 2)); var ph = max(1, Int(mapSize.height * 2))
+            var pw = max(1, Int(size.width * 2)); var ph = max(1, Int(size.height * 2))
             let maxW = 1280
             if pw > maxW { ph = Int(CGFloat(ph) * CGFloat(maxW) / CGFloat(pw)); pw = maxW }
             let resource = MapSnapshotMediaResource(latitude: map.latitude, longitude: map.longitude, width: Int32(pw), height: Int32(ph), zoom: 15)
             parameters = ChatMediaMapLayoutParameters(map: map, resource: resource, presentation: .make(theme: theme),
-                                                      automaticDownload: true, execute: {}, imageSize: mapSize)
-            size = mapSize
-        } else if let image = media as? TelegramMediaImage,
-                  let dim = image.representations.last?.dimensions.size, dim.width > 0, dim.height > 0 {
-            // A photo fills the full (bled) content width, aspect-preserved — like video — so it stretches
-            // edge to edge instead of the aspect-fitted (often narrower) chat content size.
-            parameters = ChatMediaLayoutParameters(presentation: .make(theme: theme), media: media)
-            size = NSMakeSize(width, floor(width * dim.height / dim.width))
+                                                      automaticDownload: true, execute: {}, imageSize: size)
         } else {
             parameters = ChatMediaLayoutParameters(presentation: .make(theme: theme), media: media)
-            size = ChatLayoutUtils.contentSize(for: media, with: width)
         }
         parameters.makeLabelsForWidth(width)
         parameters.forceSpoiler = spoiler

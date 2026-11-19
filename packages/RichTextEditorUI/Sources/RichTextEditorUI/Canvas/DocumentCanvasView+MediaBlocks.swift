@@ -2,6 +2,11 @@
 import AppKit
 import RichTextEditorCore
 
+@available(macOS 12, *)
+public protocol RichTextMediaBlockResizing: AnyObject {
+    func resizeMediaBlock(toWidth width: CGFloat, maxHeight: CGFloat) -> Bool
+}
+
 /// Overlay that hosts the (interactive) media-block views. Unlike the emoji/spoiler overlays, a hit
 /// inside a hosted media view must REACH it (so the file/audio/map view handles clicks); a hit on an
 /// empty area passes THROUGH to the canvas so text editing still works. (`hitTest`'s `point` is in the
@@ -38,6 +43,8 @@ final class HostedMediaBlock {
     var interactionView: MediaInteractionOverlayView?
     var mediaID: String?
     var spoiler: Bool?
+    var kind: MediaKind?
+    var availableWidth: CGFloat?
     var mediaIDs: [String]?
     var spoilers: [Bool]?
     init(view: NSView, canvasFrame: CGRect) { self.view = view; self.canvasFrame = canvasFrame }
@@ -89,15 +96,29 @@ extension DocumentCanvasView {
             let bleed = box.mediaBleeds ? box.contentMargin : 0
             let contentWidth = box.frame.width + bleed * 2
             let hosted: HostedMediaBlock
-            if let h = mediaBlockViews[key] {
+            if let h = mediaBlockViews[key], h.mediaID == box.mediaID, h.spoiler == box.spoiler, h.kind == box.kind,
+               let availableWidth = h.availableWidth,
+               abs(availableWidth - contentWidth) < 0.5 ||
+                (h.view as? RichTextMediaBlockResizing)?.resizeMediaBlock(toWidth: contentWidth, maxHeight: CanvasMetrics.maxMediaHeight) == true {
+                if abs(availableWidth - contentWidth) >= 0.5 {
+                    h.availableWidth = contentWidth
+                }
                 hosted = h
-            } else if let v = mediaBlockViewProvider(box.kind.rawValue, box.mediaID, box.spoiler, contentWidth) {
+            } else {
+                if let old = mediaBlockViews.removeValue(forKey: key) {
+                    mediaBlockViewWillRemove?(old.view)
+                    old.interactionView?.removeFromSuperview()
+                    old.view.removeFromSuperview()
+                }
+                guard let v = mediaBlockViewProvider(box.kind.rawValue, box.mediaID, box.spoiler, contentWidth) else { continue }
                 let h = HostedMediaBlock(view: v, canvasFrame: .zero)
+                h.mediaID = box.mediaID
+                h.spoiler = box.spoiler
+                h.kind = box.kind
+                h.availableWidth = contentWidth
                 mediaBlockViews[key] = h
                 mediaBlockHost.addSubview(v)
                 hosted = h
-            } else {
-                continue
             }
             // The host sized the view (e.g. a file chip narrower than the column); keep its natural size,
             // left-aligned in the media area above the caption.

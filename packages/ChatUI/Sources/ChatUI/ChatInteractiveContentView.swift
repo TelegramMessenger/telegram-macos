@@ -423,6 +423,7 @@ public class ChatInteractiveContentView: ChatMediaContentView {
     public var squareCorners: Bool = false
 
     private var appliedCorners: ImageCorners?
+    var cachesImageTransform = true
 
     private func mediaCorners(_ positionFlags: LayoutPositionFlags?, _ parameters: ChatMediaLayoutParameters?) -> ImageCorners {
         return .chatMedia(positionFlags, bubble: parameters?.bubbleCorners(), inner: squareCorners ? 0 : .cornerRadius)
@@ -968,9 +969,13 @@ public class ChatInteractiveContentView: ChatMediaContentView {
         if let image = media as? TelegramMediaImage {
             dimensions = image.representationForDisplayAtSize(PixelDimensions(size))?.dimensions.size ?? size
         } else if let file = media as? TelegramMediaFile {
-            dimensions = file.dimensions?.size ?? size
+            if let image = file.videoCover {
+                dimensions = image.representationForDisplayAtSize(PixelDimensions(size))?.dimensions.size ?? size
+            } else {
+                dimensions = file.dimensions?.size ?? size
+            }
         }
-        
+
         let arguments = TransformImageArguments(corners: corners, imageSize: blurBackground ? dimensions.aspectFitted(size) : dimensions.aspectFilled(size), boundingSize: size, intrinsicInsets: NSEdgeInsets(), resizeMode: blurBackground ? .blurBackground : .none)
         
         self.image.set(arguments: arguments)
@@ -1190,8 +1195,9 @@ public class ChatInteractiveContentView: ChatMediaContentView {
             if let updateImageSignal = updateImageSignal {
                 self.image.ignoreFullyLoad = mediaUpdated
 
-                self.image.setSignal(updateImageSignal, animate: removeViewAnimated, cacheImage: { [weak media] result in
-                    if let media = media, !bypassSharedPreviewCache {
+                self.cachesImageTransform = true
+                self.image.setSignal(updateImageSignal, animate: removeViewAnimated, cacheImage: { [weak self, weak media] result in
+                    if let media = media, !bypassSharedPreviewCache, self?.cachesImageTransform == true {
                         cacheMedia(result, media: media, arguments: arguments, scale: System.backingScale, positionFlags: positionFlags)
                     }
                 }, isProtected: isProtected, alreadyRendered: alreadyRendered)
