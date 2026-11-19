@@ -252,17 +252,27 @@ extension DocumentCanvasView {
                 present.insert(key)
                 let width = box.canvasWidth
                 let hosted: HostedMediaBlock
-                if let h = mediaGroupTileViews[key], h.mediaIDs == box.mediaIDs { hosted = h }
-                else {
-                    if let old = mediaGroupTileViews.removeValue(forKey: key) {
+                if let h = mediaGroupTileViews[key], h.mediaIDs == box.mediaIDs, h.spoilers == box.spoilers,
+                   abs(h.canvasFrame.width - width) < 0.5 {
+                    hosted = h
+                } else {
+                    let old = mediaGroupTileViews[key]
+                    let view: NSView?
+                    if let provider = mediaGroupSliderUpdateProvider {
+                        view = provider(box.mediaIDs, box.spoilers, width, old?.view)
+                    } else {
+                        view = mediaGroupSliderProvider(box.mediaIDs, width)
+                    }
+                    if let old, old.view !== view {
                         mediaBlockViewWillRemove?(old.view)
                         old.view.removeFromSuperview()
                     }
-                    guard let view = mediaGroupSliderProvider(box.mediaIDs, width) else { continue }
-                    let h = HostedMediaBlock(view: view, canvasFrame: .zero)
+                    guard let view else { mediaGroupTileViews[key] = nil; continue }
+                    let h = old?.view === view ? old! : HostedMediaBlock(view: view, canvasFrame: .zero)
                     h.mediaIDs = box.mediaIDs
+                    h.spoilers = box.spoilers
                     mediaGroupTileViews[key] = h
-                    mediaBlockHost.addSubview(view)
+                    if view.superview !== mediaBlockHost { mediaBlockHost.addSubview(view) }
                     hosted = h
                 }
                 let viewH = hosted.view.frame.height

@@ -439,6 +439,10 @@ public final class RichTextEditorView: NSView {
     /// SIZED (frame height) to its content; the editor hosts it full-bleed and learns the height back.
     public func registerMediaGroupSliderProvider(_ provider: @escaping (_ mediaIDs: [String], _ width: CGFloat) -> NSView?) {
         canvas.mediaGroupSliderProvider = provider
+        canvas.mediaGroupSliderUpdateProvider = nil
+    }
+    public func registerMediaGroupSliderProvider(_ provider: @escaping (_ mediaIDs: [String], _ spoilers: [Bool], _ width: CGFloat, _ view: NSView?) -> NSView?) {
+        canvas.mediaGroupSliderUpdateProvider = provider
     }
     /// Provide the on-media overlay controls (pills) for collage/slider/single image·video blocks.
     public func registerMediaControlsProvider(_ provider: @escaping (MediaControlsContext) -> NSView?) {

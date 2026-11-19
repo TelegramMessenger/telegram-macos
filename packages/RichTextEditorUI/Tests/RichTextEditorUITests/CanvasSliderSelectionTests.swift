@@ -50,6 +50,39 @@ final class CanvasSliderSelectionTests: AppKitTestCase {
         XCTAssertNil(canvas.mediaTileIndex(forBlock: BlockID("slider"), controlIndex: 0))
     }
 
+    func testCurrentSlideSurvivesUpstreamSpoilerAndWidthUpdates() {
+        let canvas = DocumentCanvasView()
+        let view = SelectedSliderView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
+        view.currentMediaIndex = 2
+        var updates: [([String], [Bool], CGFloat)] = []
+        canvas.mediaGroupSliderUpdateProvider = { ids, spoilers, width, existing in
+            if let existing { XCTAssertTrue(existing === view) }
+            updates.append((ids, spoilers, width))
+            view.setFrameSize(CGSize(width: width, height: 180))
+            return view
+        }
+        let id = BlockID("slider")
+        canvas.setModelBlocks([.mediaGroup(MediaGroupBlock(id: id, kind: .slideshow, mediaIDs: ["a", "b", "c"]))], width: 320)
+        canvas.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+        canvas.layoutSubtreeIfNeeded()
+        XCTAssertEqual(canvas.mediaTileIndex(forBlock: id, controlIndex: 0), 2)
+        canvas.setMediaSpoiler(blockID: id, tileIndex: 2, spoiler: true)
+        XCTAssertEqual(updates.last?.1, [false, false, true])
+        XCTAssertEqual(canvas.mediaTileIndex(forBlock: id, controlIndex: 0), 2)
+        canvas.frame.size.width = 480
+        canvas.setParagraphsWidthIfNeeded(480)
+        canvas.layout()
+        XCTAssertEqual(updates.last?.2, 480)
+        XCTAssertTrue(canvas.mediaGroupTileViews["slider#slider"]?.view === view)
+        XCTAssertEqual(canvas.mediaTileIndex(forBlock: id, controlIndex: 0), 2)
+        canvas.replaceGroupMedia(groupID: id.rawValue, index: 2, newMediaID: "edited-c")
+        XCTAssertNil(canvas.mediaTileIndex(forBlock: id, controlIndex: 0))
+        canvas.syncMediaGroupViews()
+        XCTAssertEqual(updates.last?.0, ["a", "b", "edited-c"])
+        XCTAssertEqual(canvas.mediaTileIndex(forBlock: id, controlIndex: 0), 2)
+        XCTAssertEqual(canvas.mediaID(forBlock: id, tileIndex: 2), "edited-c")
+    }
+
     func test_collageAndSingleMediaKeepTheirControlIndex() {
         let canvas = DocumentCanvasView()
         canvas.setModelBlocks([

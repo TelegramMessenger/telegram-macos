@@ -1,6 +1,7 @@
 import Cocoa
 import ChatHistoryModel
 import ColorPalette
+import MessageUtils
 import Postbox
 import QrStudioUI
 import SettingsUI
@@ -183,11 +184,14 @@ final class QrStudioShareObject: ShareObject {
             let signals = peerIds.map { peerId -> Signal<[MessageId?], NoError> in
                 let threadId = threadIds[peerId] ?? threadId
                 let stars = sendPaidMessageStars[peerId]
-                let send = Sender.enqueue(media: media, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars)
-                if let comment, !comment.inputText.isEmpty {
-                    return Sender.enqueue(input: comment, context: context, peerId: peerId, replyId: nil, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars) |> then(send)
+                return context.account.postbox.transaction { $0.getPeer(peerId) } |> mapToSignal { peer -> Signal<[MessageId?], NoError> in
+                    let replyId = makeThreadReplySubject(peerId: peerId, threadId: threadId, isMonoforum: peer?.isMonoForum ?? false)
+                    let send = Sender.enqueue(media: media, context: context, peerId: peerId, replyId: replyId, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars)
+                    if let comment, !comment.inputText.isEmpty {
+                        return Sender.enqueue(input: comment, context: context, peerId: peerId, replyId: replyId, threadId: threadId, silent: silent, atDate: atDate, sendPaidMessageStars: stars) |> then(send)
+                    }
+                    return send
                 }
-                return send
             }
             return combineLatest(signals) |> take(1) |> ignoreValues
         }
