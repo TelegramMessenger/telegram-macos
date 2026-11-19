@@ -450,6 +450,10 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         return self.codeText.stringValue + numberText.stringValue
     }
     
+    public var hasNumber: Bool {
+        return !numberText.stringValue.isEmpty
+    }
+    
     public var firstResponder: NSResponder? {
         if window?.firstResponder != numberText.textView || window?.firstResponder != codeText.textView {
             if self.codeText.stringValue.isEmpty {
