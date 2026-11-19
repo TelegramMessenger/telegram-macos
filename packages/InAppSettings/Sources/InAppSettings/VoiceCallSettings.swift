@@ -69,6 +69,17 @@ public enum VoiceChatInputMode : Int32 {
     case pushToTalk = 2
 }
 
+public enum IncomingCallStyle: Int32, CaseIterable {
+    case classic = 0
+    case compact = 1
+}
+
+public enum IncomingCallMuteMode: Int32, CaseIterable {
+    case off = 0
+    case whileUsingMac = 1
+    case always = 2
+}
+
 public struct VoiceCallSettings: Codable, Equatable {
     
     
@@ -76,14 +87,16 @@ public struct VoiceCallSettings: Codable, Equatable {
         case camera = 0
     }
     
-    public let audioInputDeviceId: String?
-    public let cameraInputDeviceId: String?
-    public let audioOutputDeviceId: String?
-    public let mode: VoiceChatInputMode
-    public let pushToTalk: PushToTalkValue?
-    public let pushToTalkSoundEffects: Bool
-    public let noiseSuppression: Bool
+    public private(set) var audioInputDeviceId: String?
+    public private(set) var cameraInputDeviceId: String?
+    public private(set) var audioOutputDeviceId: String?
+    public private(set) var mode: VoiceChatInputMode
+    public private(set) var pushToTalk: PushToTalkValue?
+    public private(set) var pushToTalkSoundEffects: Bool
+    public private(set) var noiseSuppression: Bool
     public let tooltips:[Tooltip]
+    public var incomingCallStyle: IncomingCallStyle = .compact
+    public var incomingCallMuteMode: IncomingCallMuteMode = .whileUsingMac
     public static var defaultSettings: VoiceCallSettings {
         return VoiceCallSettings(audioInputDeviceId: nil, cameraInputDeviceId: nil, audioOutputDeviceId: nil, mode: .none, pushToTalk: nil, pushToTalkSoundEffects: false, noiseSuppression: true, tooltips: [.camera])
     }
@@ -111,6 +124,12 @@ public struct VoiceCallSettings: Codable, Equatable {
         self.pushToTalkSoundEffects = try container.decodeIfPresent(Bool.self, forKey: "se") ?? false
         self.noiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "ns") ?? false
         self.tooltips = try container.decode([Int32].self, forKey: "tt").compactMap { Tooltip(rawValue: $0) }
+        self.incomingCallStyle = IncomingCallStyle(rawValue: try container.decodeIfPresent(Int32.self, forKey: "incomingCallStyle") ?? IncomingCallStyle.compact.rawValue) ?? .compact
+        if let mode = try container.decodeIfPresent(Int32.self, forKey: "incomingCallMuteMode") {
+            self.incomingCallMuteMode = IncomingCallMuteMode(rawValue: mode) ?? .whileUsingMac
+        } else {
+            self.incomingCallMuteMode = (try container.decodeIfPresent(Bool.self, forKey: "silentCallsWhileActive") ?? true) ? .whileUsingMac : .off
+        }
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -145,33 +164,49 @@ public struct VoiceCallSettings: Codable, Equatable {
         
         try container.encode(noiseSuppression, forKey: "ns")
         try container.encode(self.tooltips.map { $0.rawValue }, forKey: "tt")
+        try container.encode(self.incomingCallStyle.rawValue, forKey: "incomingCallStyle")
+        try container.encode(self.incomingCallMuteMode.rawValue, forKey: "incomingCallMuteMode")
 
     }
     
     public func withUpdatedAudioInputDeviceId(_ audioInputDeviceId: String?) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: self.mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.audioInputDeviceId = audioInputDeviceId
+        return settings
     }
     public func withUpdatedCameraInputDeviceId(_ cameraInputDeviceId: String?) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: self.mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.cameraInputDeviceId = cameraInputDeviceId
+        return settings
     }
     public func withUpdatedAudioOutputDeviceId(_ audioOutputDeviceId: String?) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: audioOutputDeviceId, mode: self.mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.audioOutputDeviceId = audioOutputDeviceId
+        return settings
     }
     public func withUpdatedPushToTalk(_ pushToTalk: PushToTalkValue?) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: self.mode, pushToTalk: pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.pushToTalk = pushToTalk
+        return settings
     }
     public func withUpdatedMode(_ mode: VoiceChatInputMode) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.mode = mode
+        return settings
     }
     public func withUpdatedSoundEffects(_ pushToTalkSoundEffects: Bool) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: self.mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.pushToTalkSoundEffects = pushToTalkSoundEffects
+        return settings
     }
     
     public func withUpdatedNoiseSuppression(_ noiseSuppression: Bool) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: self.mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: noiseSuppression, tooltips: self.tooltips)
+        var settings = self
+        settings.noiseSuppression = noiseSuppression
+        return settings
     }
     public func withUpdatedVisualEffects(_ visualEffects: Bool) -> VoiceCallSettings {
-        return VoiceCallSettings(audioInputDeviceId: self.audioInputDeviceId, cameraInputDeviceId: self.cameraInputDeviceId, audioOutputDeviceId: self.audioOutputDeviceId, mode: self.mode, pushToTalk: self.pushToTalk, pushToTalkSoundEffects: self.pushToTalkSoundEffects, noiseSuppression: self.noiseSuppression, tooltips: tooltips)
+        return self
     }
 
 }

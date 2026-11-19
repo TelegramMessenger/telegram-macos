@@ -432,7 +432,7 @@ public final class PeerCallScreen : ViewController {
         self.previousState = state
     }
     
-    public func show(source: CallWindowSource? = nil, animated: Bool = false) {
+    public func show(source: CallWindowSource? = nil, animated: Bool = false, activate: Bool = true) {
         
         _ = disableScreenSleep()
         
@@ -443,11 +443,13 @@ public final class PeerCallScreen : ViewController {
         }
         
         if view.window !== screen {
-            self.animatesWindow = animated
+            self.animatesWindow = animated && activate
         }
         
         if !self.animatesWindow || view.window === screen {
-            if !screen.isOnActiveSpace {
+            if !activate {
+                self.screen.orderFrontRegardless()
+            } else if !screen.isOnActiveSpace {
                 self.screen.alphaValue = 0
                 self.screen.makeKeyAndOrderFront(self)
                 self.screen.orderFrontRegardless()

@@ -1701,6 +1701,8 @@ public final class L10n {
   public static var callHeaderEndCall: String  { return L10n.tr("Localizable", "CallHeader.EndCall") }
   /// Input Level
   public static var callSettingsInputLevel: String  { return L10n.tr("Localizable", "CallSettings.InputLevel") }
+  /// Silent Incoming Calls
+  public static var callSettingsMuteIncoming: String  { return L10n.tr("Localizable", "CallSettings.MuteIncoming") }
   /// Mute other sounds during calls
   public static var callSettingsMuteSound: String  { return L10n.tr("Localizable", "CallSettings.MuteSound") }
   /// Open System Preferences
@@ -1711,16 +1713,38 @@ public final class L10n {
   public static var callSettingsCameraTitle: String  { return L10n.tr("Localizable", "CallSettings.Camera.Title") }
   /// Default
   public static var callSettingsDeviceDefault: String  { return L10n.tr("Localizable", "CallSettings.Device.Default") }
+  /// Classic
+  public static var callSettingsIncomingStyleClassic: String  { return L10n.tr("Localizable", "CallSettings.IncomingStyle.Classic") }
+  /// Telegram comes into focus when you receive an incoming call.
+  public static var callSettingsIncomingStyleClassicInfo: String  { return L10n.tr("Localizable", "CallSettings.IncomingStyle.ClassicInfo") }
+  /// Compact
+  public static var callSettingsIncomingStyleCompact: String  { return L10n.tr("Localizable", "CallSettings.IncomingStyle.Compact") }
+  /// Incoming calls appear in a compact banner without taking focus from your current app.
+  public static var callSettingsIncomingStyleCompactInfo: String  { return L10n.tr("Localizable", "CallSettings.IncomingStyle.CompactInfo") }
+  /// INCOMING CALL STYLE
+  public static var callSettingsIncomingStyleTitle: String  { return L10n.tr("Localizable", "CallSettings.IncomingStyle.Title") }
   /// Input device
   public static var callSettingsInputText: String  { return L10n.tr("Localizable", "CallSettings.Input.Text") }
   /// MICROPHONE
   public static var callSettingsInputTitle: String  { return L10n.tr("Localizable", "CallSettings.Input.Title") }
+  /// Always
+  public static var callSettingsMuteIncomingAlways: String  { return L10n.tr("Localizable", "CallSettings.MuteIncoming.Always") }
+  /// Off
+  public static var callSettingsMuteIncomingOff: String  { return L10n.tr("Localizable", "CallSettings.MuteIncoming.Off") }
+  /// While Using Mac
+  public static var callSettingsMuteIncomingWhileUsingMac: String  { return L10n.tr("Localizable", "CallSettings.MuteIncoming.WhileUsingMac") }
   /// OTHER SETTINGS
   public static var callSettingsOtherSettingsTitle: String  { return L10n.tr("Localizable", "CallSettings.OtherSettings.Title") }
   /// Output device
   public static var callSettingsOutputText: String  { return L10n.tr("Localizable", "CallSettings.Output.Text") }
   /// SOUND
   public static var callSettingsOutputTitle: String  { return L10n.tr("Localizable", "CallSettings.Output.Title") }
+  /// Receive incoming calls without a ringtone.
+  public static var callSettingsSilentAlwaysInfo: String  { return L10n.tr("Localizable", "CallSettings.SilentAlways.Info") }
+  /// Incoming calls play a ringtone.
+  public static var callSettingsSilentOffInfo: String  { return L10n.tr("Localizable", "CallSettings.SilentOff.Info") }
+  /// Receive incoming calls without a ringtone while you are actively using your Mac.
+  public static var callSettingsSilentWhileActiveInfo: String  { return L10n.tr("Localizable", "CallSettings.SilentWhileActive.Info") }
   /// The deletion process was canceled for your account %@.
   public static func cancelResetAccountSuccess(_ p1: String) -> String {
     return L10n.tr("Localizable", "CancelResetAccount.Success", p1)
@@ -7265,6 +7289,26 @@ public final class L10n {
   public static var communityViewTitle: String  { return L10n.tr("Localizable", "CommunityView.Title") }
   /// Unmute
   public static var communityViewUnmute: String  { return L10n.tr("Localizable", "CommunityView.Unmute") }
+  /// Answer
+  public static var compactCallAnswer: String  { return L10n.tr("Localizable", "CompactCall.Answer") }
+  /// Answer without Mic
+  public static var compactCallAnswerWithoutMic: String  { return L10n.tr("Localizable", "CompactCall.AnswerWithoutMic") }
+  /// Answer without Video
+  public static var compactCallAnswerWithoutVideo: String  { return L10n.tr("Localizable", "CompactCall.AnswerWithoutVideo") }
+  /// Telegram Call
+  public static var compactCallAudio: String  { return L10n.tr("Localizable", "CompactCall.Audio") }
+  /// Cancel
+  public static var compactCallCancel: String  { return L10n.tr("Localizable", "CompactCall.Cancel") }
+  /// Decline
+  public static var compactCallDecline: String  { return L10n.tr("Localizable", "CompactCall.Decline") }
+  /// Message
+  public static var compactCallMessagePlaceholder: String  { return L10n.tr("Localizable", "CompactCall.MessagePlaceholder") }
+  /// Reply with Message…
+  public static var compactCallReplyWithMessage: String  { return L10n.tr("Localizable", "CompactCall.ReplyWithMessage") }
+  /// Send
+  public static var compactCallSend: String  { return L10n.tr("Localizable", "CompactCall.Send") }
+  /// Telegram Video
+  public static var compactCallVideo: String  { return L10n.tr("Localizable", "CompactCall.Video") }
   /// Create
   public static var composeCreate: String  { return L10n.tr("Localizable", "Compose.Create") }
   /// Next

@@ -18,6 +18,7 @@ import TelegramUtils
 import ColorPalette
 import TelegramIconsTheme
 import MessageUtils
+import InAppSettings
 
 
 private extension EngineCallList.Item {
@@ -296,13 +297,14 @@ public final class RecentCallsView: View {
     private let headerTitle = TextView()
     private let borderView = View()
     private let tableMaskLayer = CALayer()
+    fileprivate let menuButton = ImageButton()
     private let spaceHeight: CGFloat = 50
 
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         backgroundColor = .clear
         headerView.backgroundColor = .clear
-        headerView.isEventLess = true
+        headerView.isEventLess = false
         headerTitle.userInteractionEnabled = false
         headerTitle.isSelectable = false
 
@@ -319,6 +321,7 @@ public final class RecentCallsView: View {
         addSubview(tableView)
         headerView.addSubview(headerTitle)
         headerView.addSubview(borderView)
+        headerView.addSubview(menuButton)
         addSubview(headerView)
     }
 
@@ -328,9 +331,12 @@ public final class RecentCallsView: View {
 
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
+        let theme = theme as! TelegramPresentationTheme
         backgroundColor = .clear
         headerView.backgroundColor = .clear
         borderView.backgroundColor = theme.colors.border
+        menuButton.set(image: theme.icons.profile_more, for: .Normal)
+        menuButton.setAccessibilityLabel(strings().callSettingsMuteIncoming)
         let layout = TextViewLayout(.initialize(string: strings().recentCallsRecentCalls, color: theme.colors.text, font: .medium(.title)), maximumNumberOfLines: 1)
         layout.measure(width: .greatestFiniteMagnitude)
         headerTitle.update(layout)
@@ -342,6 +348,7 @@ public final class RecentCallsView: View {
         headerView.frame = NSMakeRect(0, 0, bounds.width, spaceHeight)
         headerTitle.centerX(y: floorToScreenPixels(System.backingScale, (spaceHeight - headerTitle.frame.height) / 2))
         borderView.frame = NSMakeRect(0, spaceHeight - .borderSize, bounds.width, .borderSize)
+        menuButton.frame = NSMakeRect(bounds.width - 44, 5, 40, 40)
 
         let tableHeight = tableView.frame.height
         if tableHeight > 0 {
@@ -363,6 +370,7 @@ public class RecentCallsViewController<Context: AccountContextProtocol>: Telegra
     private let againDisposable:MetaDisposable = MetaDisposable()
     private var first:Bool = false
     private let disposable = MetaDisposable()
+    private let muteMenuDisposable = MetaDisposable()
 
     public override var wantsContainerGlass: Bool {
         return false
@@ -398,6 +406,21 @@ public class RecentCallsViewController<Context: AccountContextProtocol>: Telegra
         let previous = self.previous
         let initialSize = self.atomicSize
         let context = self.context
+        genericView.menuButton.set(handler: { [weak self] control in
+            guard let self, let event = NSApp.currentEvent else { return }
+            self.muteMenuDisposable.set((voiceCallSettings(context.sharedContext.accountManager)
+            |> take(1)
+            |> deliverOnMainQueue).start(next: { [weak control] settings in
+                guard let control else { return }
+                let menu = ContextMenu()
+                let muteItem = ContextMenuItem(strings().callSettingsMuteIncoming)
+                let modes = ContextMenu()
+                modes.items = incomingCallMuteMenuItems(settings: settings, sharedContext: context.sharedContext)
+                muteItem.submenu = modes
+                menu.addItem(muteItem)
+                AppMenu.show(menu: menu, event: event, for: control)
+            }))
+        }, for: .Click)
 
         let updateState: ((RecentCallsControllerState) -> RecentCallsControllerState) -> Void = { [weak self] f in
             if let strongSelf = self {
@@ -507,6 +530,7 @@ public class RecentCallsViewController<Context: AccountContextProtocol>: Telegra
         callDisposable.dispose()
         againDisposable.dispose()
         disposable.dispose()
+        muteMenuDisposable.dispose()
     }
 }
 
