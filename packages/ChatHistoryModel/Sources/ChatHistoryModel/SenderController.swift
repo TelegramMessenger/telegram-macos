@@ -179,7 +179,7 @@ public class Sender: NSObject {
         
         
         if FastSettings.isPossibleReplaceEmojies {
-            let text = input.attributedString().stringEmojiReplacements
+            let text = input.attributedString().stringEmojiReplacements(skipping: input.literalRanges)
             if text != input.attributedString() {
                 input = ChatTextInputState(inputText: text.string, selectionRange: 0 ..< text.string.length, attributes: chatTextAttributes(from: text))
             }
