@@ -558,6 +558,7 @@ public class ChatSelectText : NSObject {
     private var deselect:Bool = false
     private var started:Bool = false
     private var startMessageId:MessageId? = nil
+    private var selectionBeforeDrag: Set<MessageId> = []
     private var lastPressureEventStage = 0
     private var inPressedState = false
     private var locationInWindow: NSPoint? = nil
@@ -641,6 +642,7 @@ public class ChatSelectText : NSObject {
             self?.inPressedState = false
             self?.isDragConfirmed = false
             self?.locationInWindow = event.locationInWindow
+            self?.selectionBeforeDrag = chatInteraction.presentation.selectionState?.selectedIds ?? []
 
             if let table = self?.table, let superview = table.superview, let documentView = table.documentView {
                 let point = superview.convert(event.locationInWindow, from: nil)
@@ -835,6 +837,7 @@ public class ChatSelectText : NSObject {
                             view.toggleSelected(deselect, in: window.mouseLocationOutsideOfEventStream)
                         }
                     }
+                    restoreSelectionOutside(startIndex: startIndex, endIndex: endIndex, chatInteraction: chatInteraction)
                 }
                 return
             }
@@ -1010,10 +1013,26 @@ public class ChatSelectText : NSObject {
                         view.toggleSelected(deselect, in: window.mouseLocationOutsideOfEventStream)
                     }
                 }
+                restoreSelectionOutside(startIndex: startIndex, endIndex: endIndex, chatInteraction: chatInteraction)
             }
             
         }
         
+    }
+
+    private func restoreSelectionOutside(startIndex: Int, endIndex: Int, chatInteraction: ChatInteraction) {
+        var idsInRange = Set<MessageId>()
+        for i in max(0, startIndex) ... min(endIndex, table.count - 1) {
+            if let item = table.item(at: i) as? ChatRowItem {
+                idsInRange.formUnion(item.messages.map { $0.id })
+            }
+        }
+        let selectionBeforeDrag = self.selectionBeforeDrag
+        chatInteraction.withToggledSelectedMessage({ current in
+            let selectedIds = current.selectionState?.selectedIds ?? []
+            let idsToRestore = selectedIds.symmetricDifference(selectionBeforeDrag).subtracting(idsInRange)
+            return idsToRestore.reduce(current, { $0.withToggledSelectedMessage($1) })
+        })
     }
     
     public func removeHandlers(for window:Window) {
