@@ -3913,6 +3913,10 @@ public final class InstantPageV2SlideshowView: View, HorizontalScrollConsuming {
     private var slideViews: [InstantPageV2SlideMediaView] = []
     private var currentKey: [Int] = []
     private var currentPage: Int = 0
+    public var currentMediaIndex: Int? {
+        guard self.slideViews.indices.contains(self.currentPage) else { return nil }
+        return self.slideViews[self.currentPage].media?.index
+    }
     private var scrollAxis: ScrollAxis?
     private var isDragging: Bool = false
     private var dragOffset: CGFloat = 0

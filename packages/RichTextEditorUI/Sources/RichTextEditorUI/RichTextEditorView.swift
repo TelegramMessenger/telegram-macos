@@ -481,6 +481,10 @@ public final class RichTextEditorView: NSView {
         canvas.mediaID(forBlock: BlockID(blockID), tileIndex: tileIndex)
     }
 
+    public func mediaTileIndex(forBlock blockID: String, controlIndex: Int) -> Int? {
+        canvas.mediaTileIndex(forBlock: BlockID(blockID), controlIndex: controlIndex)
+    }
+
     /// Whether the media (single block → `tileIndex == nil`, or a group tile) is a Telegram-style spoiler.
     public func isMediaSpoiler(blockID: String, tileIndex: Int?) -> Bool {
         canvas.isMediaSpoiler(blockID: BlockID(blockID), tileIndex: tileIndex)

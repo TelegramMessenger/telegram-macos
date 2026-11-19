@@ -214,6 +214,21 @@ extension DocumentCanvasView {
         needsLayout = true
     }
 
+    func mediaTileIndex(forBlock id: BlockID, controlIndex: Int) -> Int? {
+        guard let box = boxes.first(where: { $0.id == id }) else { return nil }
+        if let group = box as? MediaGroupBlockBox {
+            if group.kind == .slideshow {
+                guard controlIndex == 0,
+                      let hosted = mediaGroupTileViews["\(id.rawValue)#slider"], hosted.mediaIDs == group.mediaIDs,
+                      let index = (hosted.view as? MediaGroupSliderSelectionProviding)?.currentMediaIndex,
+                      group.mediaIDs.indices.contains(index) else { return nil }
+                return index
+            }
+            return group.mediaIDs.indices.contains(controlIndex) ? controlIndex : nil
+        }
+        return controlIndex == 0 && (box is MediaBlockBox || box is ImageBlockBox) ? 0 : nil
+    }
+
     /// Returns the media id for a block. For a group, `tileIndex` selects the tile; for a single
     /// image/video block, `tileIndex` is ignored. Returns nil if the block or index is not found.
     func mediaID(forBlock id: BlockID, tileIndex: Int?) -> String? {

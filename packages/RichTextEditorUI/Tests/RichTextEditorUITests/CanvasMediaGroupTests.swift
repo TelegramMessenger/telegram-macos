@@ -248,6 +248,29 @@ final class CanvasMediaGroupTests: AppKitTestCase {
         XCTAssertEqual((v.boxes[0] as! MediaGroupBlockBox).mediaIDs, ["a", "b"], "undo restores the original id")
     }
 
+    func test_sliderMediaMutation_rebuildsDisplayedMedia() {
+        let v = DocumentCanvasView()
+        let id = BlockID("slider-content")
+        var rendered: [[String]] = []
+        v.mediaGroupSliderProvider = { ids, width in
+            rendered.append(ids)
+            return NSView(frame: CGRect(x: 0, y: 0, width: width, height: 180))
+        }
+        v.setModelBlocks([.mediaGroup(MediaGroupBlock(id: id, kind: .slideshow, mediaIDs: ["a", "b", "c"]))], width: 320)
+        v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(rendered.last, ["a", "b", "c"])
+        v.replaceGroupMedia(groupID: id.rawValue, index: 1, newMediaID: "edited-b")
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(rendered.last, ["a", "edited-b", "c"])
+        v.removeCollageTile(group: id, index: 0)
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(rendered.last, ["edited-b", "c"])
+        v.addMediaToGroup(groupID: id, mediaIDs: ["d"])
+        v.layoutSubtreeIfNeeded()
+        XCTAssertEqual(rendered.last, ["edited-b", "c", "d"])
+    }
+
     func test_sliderSpoilerChange_reconcilesHostedPreview() {
         let v = DocumentCanvasView()
         let id = BlockID("slider-spoilers")

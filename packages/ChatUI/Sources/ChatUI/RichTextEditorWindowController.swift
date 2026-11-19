@@ -32,6 +32,9 @@ import InlineStickerLayer
 import InputView
 import AppAnalytics
 
+@available(macOS 12, *)
+extension InstantPageV2SlideshowView: MediaGroupSliderSelectionProviding {}
+
 /// Routes the editor package's built-in menu titles / placeholders through the app's localization.
 /// Lazily evaluated once (global `let`) the first time an editor is created.
 private let _richTextEditorLocalizationSetup: Void = {
@@ -2200,12 +2203,14 @@ public final class RichTextEditorCoordinator {
         let analyticsPresentation = origin.beginPresentation()
         defer { analyticsPresentation.end() }
         let isGroup = (ctx.kind == .collage || ctx.kind == .slider)
+        guard let tileIndex = editor.mediaTileIndex(forBlock: ctx.blockID, controlIndex: tileIndex) else { return }
         let tileArg: Int? = isGroup ? tileIndex : nil
-        let mediaID = editor.mediaID(forBlock: ctx.blockID, tileIndex: tileArg)
-        let isImage = mediaID.flatMap { cache.media[$0] as? TelegramMediaImage } != nil
-        let isVideo = (mediaID.flatMap { cache.media[$0] as? TelegramMediaFile })?.isVideo == true
+        guard let mediaID = editor.mediaID(forBlock: ctx.blockID, tileIndex: tileArg) else { return }
+        let isImage = cache.media[mediaID] is TelegramMediaImage
+        let isVideo = (cache.media[mediaID] as? TelegramMediaFile)?.isVideo == true
         var items: [ContextMenuItem] = []
-        if isImage, let mid = mediaID {
+        if isImage {
+            let mid = mediaID
             items.append(ContextMenuItem(strings().richTextEditorEdit, handler: {
                 presentMediaEditor(editor, ctx: ctx, tileIndex: tileIndex, isGroup: isGroup, mediaID: mid,
                                    accountContext: context, cache: cache, disposable: disposable, analyticsContext: analyticsContext)
@@ -2214,15 +2219,17 @@ public final class RichTextEditorCoordinator {
         if isImage || isVideo {
             let on = editor.isMediaSpoiler(blockID: ctx.blockID, tileIndex: tileArg)
             items.append(ContextMenuItem(on ? strings().previewSenderSpoilerTooltipDisable : strings().previewSenderSpoilerTooltipEnable, handler: {
+                guard editor.mediaID(forBlock: ctx.blockID, tileIndex: tileArg) == mediaID else { return }
                 editor.makeEditorFirstResponder()
                 editor.setMediaSpoiler(blockID: ctx.blockID, tileIndex: tileArg, spoiler: !on)
             }, state: on ? .on : nil, itemImage: (on ? MenuAnimation.menu_eye : MenuAnimation.menu_eye_slash).value))
         }
         items.append(ContextMenuItem(strings().richTextEditorReplace, handler: {
-            presentReplacePicker(editor, ctx: ctx, tileIndex: tileIndex, isGroup: isGroup,
+            presentReplacePicker(editor, ctx: ctx, tileIndex: tileIndex, isGroup: isGroup, originalMediaID: mediaID,
                                  accountContext: context, cache: cache, disposable: disposable, analyticsContext: analyticsContext)
         }, itemImage: MenuAnimation.menu_shared_media.value))
         items.append(ContextMenuItem(strings().richTextEditorDelete, handler: {
+            guard editor.mediaID(forBlock: ctx.blockID, tileIndex: tileArg) == mediaID else { return }
             if isGroup { editor.makeEditorFirstResponder(); editor.removeCollageTile(groupID: ctx.blockID, index: tileIndex) }
             else { editor.removeMediaBlock(blockID: ctx.blockID) }
         }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
@@ -2233,13 +2240,13 @@ public final class RichTextEditorCoordinator {
 
     /// Opens a single-file picker to replace one tile (or a single media block) with a new media asset.
     private static func presentReplacePicker(_ editor: RichTextEditorView, ctx: MediaControlsContext,
-                                             tileIndex: Int, isGroup: Bool, accountContext context: any AccountContextProtocol,
+                                             tileIndex: Int, isGroup: Bool, originalMediaID: String, accountContext context: any AccountContextProtocol,
                                              cache: MediaFileCache, disposable: MetaDisposable, analyticsContext: AnalyticsContext) {
         let origin = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext)
         let analyticsPresentation = origin.beginPresentation()
         defer { analyticsPresentation.end() }
         guard let window = editor.window,
-              let originalMediaID = editor.mediaID(forBlock: ctx.blockID, tileIndex: isGroup ? tileIndex : nil) else { return }
+              editor.mediaID(forBlock: ctx.blockID, tileIndex: isGroup ? tileIndex : nil) == originalMediaID else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image, .movie]
         panel.allowsMultipleSelection = false
@@ -2252,7 +2259,8 @@ public final class RichTextEditorCoordinator {
             let analyticsPresentation = current.beginPresentation()
             defer { analyticsPresentation.end() }
             Analytics.shared.screens.hideStandalone(owner: panel)
-            guard resp == .OK, let url = panel.url else { return }
+            guard resp == .OK, let url = panel.url,
+                  editor.mediaID(forBlock: ctx.blockID, tileIndex: isGroup ? tileIndex : nil) == originalMediaID else { return }
             disposable.set(current.preservingPresentation(Sender.generateMedia(for: MediaSenderContainer(path: url.path, isFile: false),
                                                   account: context.account, isSecretRelated: false)
                             |> deliverOnMainQueue).start(next: { [weak editor] media, _ in
