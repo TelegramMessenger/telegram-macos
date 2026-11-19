@@ -16,7 +16,7 @@ final class SendObservation {
     func complete(expectedCount: Int, resultCount: Int, acceptedCount: Int) {}
 }
 extension Sender {
-    static func enqueue(media: [Media], caption: ChatTextInputState, context: Account, peerId: PeerId, replyId: Int?, threadId: Int64?, isCollage: Bool, additionText: ChatTextInputState?, silent: Bool, atDate: Date?, repeatPeriod: Int32?, isSpoiler: Bool, customChatContents: Int?, messageEffect: AvailableMessageEffects.MessageEffect?, leadingText: Bool, sendPaidMessageStars: Int?, suggestPost: Int?, observedResult: @escaping (Int, [Int?]) -> Void) -> Signal<[Int?], NoError> {
+    static func enqueue(media: [Media], caption: ChatTextInputState, context: Account, peerId: PeerId, replyId: Int?, threadId: Int64?, isCollage: Bool, additionText: ChatTextInputState?, silent: Bool, atDate: Date?, repeatPeriod: Int32?, isSpoiler: Bool, customChatContents: Int?, messageEffect: AvailableMessageEffects.MessageEffect?, leadingText: Bool, sendPaidMessageStars: Int?, suggestPost: Int?, spoilerIndices: Set<Int>, observedResult: @escaping (Int, [Int?]) -> Void) -> Signal<[Int?], NoError> {
         destinations.append(peerId)
         onBuild?()
         return Signal { subscriber in
@@ -57,6 +57,7 @@ __MEDIA_ENTRY__
         let medias = [Media(index: part)]
         let caption = ChatTextInputState()
         let isCollage = false, silent = false, isSpoiler = false, leadingText = false
+        let spoilerIndices: Set<Int> = []
         let additionText: ChatTextInputState? = nil
         let customChatContents: Int? = nil
         let messageEffect: AvailableMessageEffects.MessageEffect? = nil
@@ -122,7 +123,7 @@ final class MultipartTests: XCTestCase {
                 XCTAssertTrue(received?.journey.discarded == true)
                 XCTAssertTrue(Analytics.activeContexts.contains { $0.isExcluded })
             }
-            chat.sendMediasWithAnalytics = { _, _, _, _, _, _, _, _, _, received, _ in
+            chat.sendMediasWithAnalytics = { _, _, _, _, _, _, _, _, _, received, _, _ in
                 calls += 1
                 XCTAssertTrue(received?.journey.discarded == true)
                 XCTAssertTrue(Analytics.activeContexts.contains { $0.isExcluded })
@@ -156,7 +157,7 @@ final class MultipartTests: XCTestCase {
         var calls = 0
         host.onEntry = { context, _, _ in calls += 1; XCTAssertTrue(context.isExcluded || context.scope == nil); XCTAssertTrue(task.discarded) }
         chat.sendMessageWithAnalytics?(false, nil, nil, submission, 0)
-        chat.sendMediasWithAnalytics?([], ChatTextInputState(), false, nil, false, nil, false, nil, false, submission, 1)
+        chat.sendMediasWithAnalytics?([], ChatTextInputState(), false, nil, false, nil, false, nil, false, submission, 1, [])
         XCTAssertEqual(calls, 2)
     }
     func testMediaApplyPreservesOriginalContextThroughConstructionAndResult() {
@@ -230,7 +231,7 @@ extension MultipartTests {
                 if text {
                     chat.sendMessageWithAnalytics?(false, nil, nil, submission, 0)
                 } else {
-                    chat.sendMediasWithAnalytics?([], ChatTextInputState(), false, nil, false, nil, false, nil, false, submission, 0)
+                    chat.sendMediasWithAnalytics?([], ChatTextInputState(), false, nil, false, nil, false, nil, false, submission, 0, [])
                 }
                 XCTAssertEqual(calls, 1)
             }

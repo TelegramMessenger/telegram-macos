@@ -7,6 +7,7 @@ import Postbox
 import ImageCanvasUI
 import TelegramTheme
 import Localization
+import LocalAnimations
 import TelegramContext
 import TelegramUtils
 import TelegramMediaUtils
@@ -31,8 +32,12 @@ class MediaPreviewRowItem: TableRowItem {
     fileprivate let theme: TelegramPresentationTheme
     fileprivate let payAmount: Int64?
     fileprivate let renderingPreview: CGImage?
-    init(_ initialSize: NSSize, media: Media, context: any AccountContextProtocol, theme: TelegramPresentationTheme, editedData: EditedImageData? = nil, isSpoiler: Bool, payAmount: Int64?, renderingPreview: CGImage? = nil, edit:@escaping()->Void = {}, paint:@escaping()->Void = {}, delete: (()->Void)? = nil) {
+    fileprivate let toggleSpoiler: (() -> Void)?
+    private let isSpoiler: Bool
+    init(_ initialSize: NSSize, media: Media, context: any AccountContextProtocol, theme: TelegramPresentationTheme, editedData: EditedImageData? = nil, isSpoiler: Bool, payAmount: Int64?, renderingPreview: CGImage? = nil, toggleSpoiler: (() -> Void)? = nil, edit:@escaping()->Void = {}, paint:@escaping()->Void = {}, delete: (()->Void)? = nil) {
         self.renderingPreview = renderingPreview
+        self.toggleSpoiler = toggleSpoiler
+        self.isSpoiler = isSpoiler
         self.edit = edit
         self.paint = paint
         self.delete = delete
@@ -114,8 +119,19 @@ class MediaPreviewRowItem: TableRowItem {
         return previewSenderAccessibilityLabel(for: media)
     }
 
+    override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
+        guard let toggleSpoiler else { return .single([]) }
+        return .single([ContextMenuItem(isSpoiler ? strings().previewSenderSpoilerTooltipDisable : strings().previewSenderSpoilerTooltipEnable, handler: toggleSpoiler, itemImage: MenuAnimation.menu_send_spoiler.value)])
+    }
+
     override var accessibilityCustomActions: [NSAccessibilityCustomAction]? {
         var actions: [NSAccessibilityCustomAction] = []
+        if let toggleSpoiler {
+            actions.append(NSAccessibilityCustomAction(name: isSpoiler ? strings().previewSenderSpoilerTooltipDisable : strings().previewSenderSpoilerTooltipEnable, handler: {
+                toggleSpoiler()
+                return true
+            }))
+        }
         if media is TelegramMediaImage {
             actions.append(NSAccessibilityCustomAction(name: strings().voiceOverCommonEdit, handler: { [weak self] in
                 self?.edit()

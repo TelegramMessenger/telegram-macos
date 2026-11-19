@@ -54,7 +54,7 @@ __BIND_PREVIEW__
 }
 func showModal(with preview: Preview, for window: Window) { StoryPreviews.onShow?(preview) }
 extension Sender {
-    static func enqueue(media: [Media], caption: ChatTextInputState, context: Account, peerId: PeerId, replyId: Int?, threadId: Int64?, replyStoryId: StoryReplyId?, isCollage: Bool, additionText: ChatTextInputState?, silent: Bool, atDate: Date?, isSpoiler: Bool, messageEffect: AvailableMessageEffects.MessageEffect?, leadingText: Bool, sendPaidMessageStars: StoryStars?, observedResult: @escaping (Int, [Int?]) -> Void) -> Signal<[Int?], NoError> {
+    static func enqueue(media: [Media], caption: ChatTextInputState, context: Account, peerId: PeerId, replyId: Int?, threadId: Int64?, replyStoryId: StoryReplyId?, isCollage: Bool, additionText: ChatTextInputState?, silent: Bool, atDate: Date?, isSpoiler: Bool, messageEffect: AvailableMessageEffects.MessageEffect?, leadingText: Bool, sendPaidMessageStars: StoryStars?, spoilerIndices: Set<Int>, observedResult: @escaping (Int, [Int?]) -> Void) -> Signal<[Int?], NoError> {
         onBuild?()
         StoryPreviews.batch = StoryBatchArguments(medias: media, caption: caption, additional: additionText, peer: peerId, story: replyStoryId, collage: isCollage, silent: silent, date: atDate, spoiler: isSpoiler, leading: leadingText, stars: sendPaidMessageStars?.value)
         return Signal { subscriber in

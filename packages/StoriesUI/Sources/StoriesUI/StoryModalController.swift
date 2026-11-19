@@ -3566,7 +3566,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
         chatInteraction.sendMedias = { [weak chatInteraction] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText in
             chatInteraction?.sendMediasObserved(medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText, submission: nil, part: 0)
         }
-        chatInteraction.sendMediasWithAnalytics = { [weak self] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText, submission, part in
+        chatInteraction.sendMediasWithAnalytics = { [weak self] medias, caption, isCollage, additionText, silent, atDate, isSpoiler, messageEffect, leadingText, submission, part, spoilerIndices in
             guard let self, !self.closed,
                   let peerId = self.interactions.presentation.entryId,
                   let id = self.interactions.presentation.storyId else {
@@ -3604,7 +3604,7 @@ public final class StoryModalController<Context: AccountContextProtocol> : Modal
             }
             beforeCompletion()
             let resultGroup = submission?.group(part: part, count: 1)
-            _ = analyticsContext.preservingPresentation(Sender.enqueue(media: medias, caption: caption, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate?.date, isSpoiler: isSpoiler, messageEffect: messageEffect, leadingText: leadingText, sendPaidMessageStars: slice?.additionalPeerData.paidMessage, observedResult: { expectedCount, ids in
+            _ = analyticsContext.preservingPresentation(Sender.enqueue(media: medias, caption: caption, context: context, peerId: peerId, replyId: nil, threadId: nil, replyStoryId: .init(peerId: peerId, id: id), isCollage: isCollage, additionText: additionText, silent: silent, atDate: atDate?.date, isSpoiler: isSpoiler, messageEffect: messageEffect, leadingText: leadingText, sendPaidMessageStars: slice?.additionalPeerData.paidMessage, spoilerIndices: spoilerIndices, observedResult: { expectedCount, ids in
                 resultGroup?.complete(index: 0, buildResult: {
                     guard expectedCount > 0, ids.count == expectedCount else { return nil }
                     let acceptedCount = ids.compactMap { $0 }.count

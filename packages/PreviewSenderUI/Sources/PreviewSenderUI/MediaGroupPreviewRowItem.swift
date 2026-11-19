@@ -13,6 +13,9 @@ import MessageUtils
 import InlineMediaGrid
 import AvatarEditorUI
 import ChatUI
+import ChatHistoryModel
+import Localization
+import LocalAnimations
 
 class MediaGroupPreviewRowItem: TableRowItem {
     fileprivate let context: any AccountContextProtocol
@@ -27,20 +30,26 @@ class MediaGroupPreviewRowItem: TableRowItem {
     fileprivate let delete:(URL)->Void
     fileprivate var parameters:[ChatMediaLayoutParameters]
     fileprivate let payAmount: Int64?
-    init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], isSpoiler: Bool, payAmount: Int64?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(URL, URL)->Void) {
+    private let toggleSpoiler: ((URL) -> Void)?
+    init(_ initialSize: NSSize, messages: [Message], urls: [URL], editedData: [URL : EditedImageData], renderingPreviews: [URL : CGImage] = [:], spoilers: [Bool], payAmount: Int64?, toggleSpoiler: ((URL) -> Void)?, edit: @escaping(URL)->Void, paint: @escaping(URL)->Void, delete:@escaping(URL)->Void, context: any AccountContextProtocol, reorder:@escaping(URL, URL)->Void) {
+        assert(messages.count == urls.count && messages.count == spoilers.count)
         layout = GroupedLayout(messages)
+        let attachments = Dictionary(uniqueKeysWithValues: messages.enumerated().map { index, message in
+            (message.id, (url: urls[index], spoiler: spoilers[index]))
+        })
         self.editedData = editedData
         self.renderingPreviews = renderingPreviews
         self.edit = edit
         self.paint = paint
         self.delete = delete
-        self.urls = urls
+        self.urls = layout.messages.map { attachments[$0.id]!.url }
         self.reorder = reorder
         self.context = context
         self.payAmount = payAmount
-        self.parameters = messages.map {
-            let param = ChatMediaLayoutParameters(presentation: .empty, media: $0.media[0])
-            param.forceSpoiler = isSpoiler || payAmount != nil
+        self.toggleSpoiler = toggleSpoiler
+        self.parameters = layout.messages.map { message in
+            let param = ChatMediaLayoutParameters(presentation: .empty, media: message.media[0])
+            param.forceSpoiler = attachments[message.id]!.spoiler || payAmount != nil
             return param
         }
         super.init(initialSize)
@@ -65,6 +74,20 @@ class MediaGroupPreviewRowItem: TableRowItem {
     
     override func viewClass() -> AnyClass {
         return MediaGroupPreviewRowView.self
+    }
+
+    override func menuItems(in location: NSPoint) -> Signal<[ContextMenuItem], NoError> {
+        guard let toggleSpoiler else { return .single([]) }
+        let offset = NSMakePoint((width - layout.dimensions.width) / 2, 6)
+        for index in 0 ..< layout.count {
+            if layout.frame(at: index).offsetBy(dx: offset.x, dy: offset.y).contains(location), Sender.canHaveSpoiler(layout.messages[index].media[0]) {
+                let url = urls[index]
+                return .single([ContextMenuItem(parameters[index].forceSpoiler ? strings().previewSenderSpoilerTooltipDisable : strings().previewSenderSpoilerTooltipEnable, handler: {
+                    toggleSpoiler(url)
+                }, itemImage: MenuAnimation.menu_send_spoiler.value)])
+            }
+        }
+        return .single([])
     }
 
     override var accessibilityLabel: String? {
@@ -357,16 +380,14 @@ class MediaGroupPreviewRowView : TableRowView, ModalPreviewRowViewProtocol {
                 self.editControl.isVideo = canEditPreviewVideo(item.layout.messages[i].media[0])
                 self.editControl.canEdit = item.layout.messages[i].media[0] is TelegramMediaImage || self.editControl.isVideo
                 
+                let url = item.urls[i]
                 self.editControl.set(edit: { [weak item] in
-                    guard let item = item else {return}
-                    item.edit(item.urls[i])
+                    item?.edit(url)
                 }, paint: { [weak item] in
-                    guard let item = item else {return}
-                    item.paint(item.urls[i])
+                    item?.paint(url)
                 }, delete: { [weak item] in
-                    guard let item = item else {return}
-                    item.delete(item.urls[i])
-                }, editedData: item.editedData[item.urls[i]])
+                    item?.delete(url)
+                }, editedData: item.editedData[url])
                 
                 self.editControl.setFrameOrigin(NSMakePoint(rect.maxX - editControl.frame.width - 5, rect.maxY - editControl.frame.height - 5))
                 found = true
