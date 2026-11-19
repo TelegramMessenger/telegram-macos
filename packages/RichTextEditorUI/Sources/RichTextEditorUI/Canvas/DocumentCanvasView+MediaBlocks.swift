@@ -45,6 +45,8 @@ final class HostedMediaBlock {
     var spoiler: Bool?
     var kind: MediaKind?
     var availableWidth: CGFloat?
+    var mediaIDs: [String]?
+    var spoilers: [Bool]?
     init(view: NSView, canvasFrame: CGRect) { self.view = view; self.canvasFrame = canvasFrame }
 }
 

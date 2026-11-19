@@ -455,7 +455,7 @@ public final class ChatReactionsLayout {
             }
             weak let weakSelf = self
             let message = self.message
-            let canDeleteReactions = canDeleteReactionsInChat(message: self.message)
+            let reactionValue = self.value.value
             let avatarDisposables = DisposableSet()
             self.avatarDisposable.set(avatarDisposables)
             let makeItem:(_ peer: Peer, _ readTimestamp: Int32?) -> ContextMenuItem = { peer, readTimestamp in
@@ -467,7 +467,7 @@ public final class ChatReactionsLayout {
                     let presentation = peerOrigin.beginPresentation()
                     defer { presentation.end() }
                     weakSelf?.openInfo(peer.id)
-                }, peer: peer, context: context, reaction: source, readTimestamp: readTimestamp, message: message, canDelete: canDeleteReactions, analyticsContext: peerOrigin)
+                }, peer: peer, context: context, reaction: source, readTimestamp: readTimestamp, message: message, reactionValue: reactionValue, analyticsContext: peerOrigin)
                 
                 let signal:Signal<(CGImage?, Bool), NoError>
                 signal = peerAvatarImage(account: account, photo: .peer(peer, peer.smallProfileImage, peer.namePeerColor, TelegramUtilsHooks.shared.peerLetters(peer), nil, nil), displayDimensions: NSMakeSize(18 * System.backingScale, 18 * System.backingScale), font: .avatar(13), genCap: true, synchronousLoad: false) |> deliverOnMainQueue

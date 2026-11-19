@@ -48,5 +48,15 @@ let package = Package(
                 .product(name: "Postbox", package: "Postbox", condition: nil),
             ] + deps.map { .product(name: $0.0, package: $0.0, condition: nil) },
             path: "Sources/PollResultsUI"),
+        .testTarget(
+            name: "PollResultsUITests",
+            dependencies: [
+                "PollResultsUI",
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "Postbox", package: "Postbox"),
+                .product(name: "InputView", package: "InputView"),
+                .product(name: "InputDataUI", package: "InputDataUI"),
+            ],
+            path: "Tests/PollResultsUITests"),
     ]
 )

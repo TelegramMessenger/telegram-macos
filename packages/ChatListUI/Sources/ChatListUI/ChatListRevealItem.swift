@@ -305,11 +305,7 @@ public final class ChatListRevealView : TableStickView {
         segmentView.resortHandler = { from, to in
             _ = context.engine.peers.updateChatListFiltersInteractively({ state in
                 var state = state
-                if context.isPremium {
-                    state.move(at: from, to: to)
-                } else {
-                    state.move(at: from - 1, to: to - 1)
-                }
+                state.move(at: from, to: to)
                 return state
             }).start()
         }

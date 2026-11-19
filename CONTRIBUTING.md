@@ -2,6 +2,14 @@
 
 Every pull request must use the [pull request template](.github/pull_request_template.md) and include the following information. Complete every section before requesting review.
 
+## Files allowed in contributor pull requests
+
+Pull requests from forks targeting `master` may change Swift and Objective-C sources and headers, raster images and TGS animations, localization files, property lists, and shared Xcode project and workspace metadata. Asset catalogs may also change their `Contents.json` files. All added or modified files must be regular, non-executable files. The policy checks the PR diff and the proposed merge result, including both paths of a rename and the paths of deleted files.
+
+Remove changes to scripts, PDF and SVG assets, compiled binaries, GitHub automation, or other files outside the allowlist before requesting review. The **Contributor PR files** status links to the workflow log, which lists the rejected paths. Review the contents of allowed files as part of the PR.
+
+After the workflow has posted a status on GitHub, require **Contributor PR files** from GitHub Actions in the `master` branch ruleset and enable **Require branches to be up to date before merging**. The status applies to the exact test merge. Update the PR branch or rerun the workflow if GitHub generates a new test merge without a status. In **Settings → Actions → General**, require workflow approval for all external contributors so changes from forks cannot run a workflow before maintainer approval.
+
 ## Accessibility
 
 Every new feature must include accessibility support and work with VoiceOver. Verify the feature with VoiceOver as part of testing, and describe the accessibility verification in the pull request.

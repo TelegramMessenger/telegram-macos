@@ -139,6 +139,12 @@ public class WPMediaContentView: WPContentView {
         contentNode?.updateMouse()
     }
     
+    static func giftBackgroundFrame(contentRect: NSRect, textFrame: NSRect) -> NSRect {
+        let frame = contentRect.insetBy(dx: 0, dy: 35).offsetBy(dx: -8, dy: -2)
+        let minY = max(frame.minY, textFrame.maxY + 6)
+        return NSMakeRect(frame.minX, minY, frame.width, max(0, frame.maxY - minY))
+    }
+
     public override func layout() {
         super.layout()
         if let contentNode = contentNode, let content = content as? WPMediaLayout {
@@ -152,7 +158,7 @@ public class WPMediaContentView: WPContentView {
             let rect = CGRect(origin: NSMakePoint(0, y), size: content.mediaSize)
             contentNode.frame = rect
             
-            giftView?.frame = content.contentRect.insetBy(dx: 0, dy: 35).offsetBy(dx: -8, dy: -2)
+            giftView?.frame = Self.giftBackgroundFrame(contentRect: content.contentRect, textFrame: textView.frame)
             
             if let giftView {
                 contentNode.frame = contentNode.frame.offsetBy(dx: 0, dy: -28)

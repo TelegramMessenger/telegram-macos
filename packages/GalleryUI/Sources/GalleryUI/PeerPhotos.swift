@@ -109,7 +109,7 @@ public func peerPhotosGalleryEntries(context: any AccountContextProtocol, peerId
         
         
         if let publicPhoto = publicPhoto, !isLoading {
-            entries.append(.photo(index: .max, stableId: publicPhoto.imageId, photo: publicPhoto, reference: publicPhoto.reference, peer: peer, message: nil, date: Date().timeIntervalSince1970, caption: strings().galleryPublicPhoto, publicPhoto: nil))
+            entries.append(.photo(index: .max, stableId: publicPhoto.imageId, photo: publicPhoto, reference: publicPhoto.reference, peer: peer, message: nil, date: 0, caption: strings().galleryPublicPhoto, publicPhoto: nil))
         }
         isLoading = false
         return (entries: entries, selected: currentIndex, publicPhoto: publicPhoto)
