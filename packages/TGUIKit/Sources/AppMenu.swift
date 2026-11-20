@@ -163,7 +163,7 @@ public final class AppMenu {
         AppMenuController.closeAll()
     }
 
-    public static func keepOpenOnNextMouseUp() {
-        AppMenuController.keepVisibleMenuOpenOnNextMouseUp()
+    public static func keepOpenOnNextMouseUp(for view: NSView) {
+        AppMenuController.keepMenuOpenOnNextMouseUp(containing: view)
     }
 }

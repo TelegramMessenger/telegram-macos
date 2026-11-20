@@ -233,6 +233,7 @@ private func entries(_ state: State, arguments: Arguments, mediaArguments: Enter
 
 public final class GifKeyboardView : View {
     public let tableView = TableView()
+    private let tableClip = PickerTableClip(frame: .zero)
     public let packsView = HorizontalTableView(frame: NSZeroRect)
     fileprivate var restrictedView:RestrictionWrappedView?
     private let borderView = View()
@@ -266,7 +267,6 @@ public final class GifKeyboardView : View {
             }
         }
     }
-    private let headerBlurFilter = PickerHeaderBlur()
     
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -278,7 +278,8 @@ public final class GifKeyboardView : View {
         self.tableView.getBackgroundColor = {
             .clear
         }
-        addSubview(self.tableView)
+        tableClip.addSubview(self.tableView)
+        addSubview(tableClip)
 
         searchFrost.wantsLayer = true
         searchFrost.material = .selection
@@ -349,24 +350,15 @@ public final class GifKeyboardView : View {
         transition.updateFrame(view: borderView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, .borderSize))
         borderView.isHidden = usesMenuPanel
 
-        let headerInset: CGFloat = usesMenuPanel && !TelegramUtilsHooks.shared.isLite(.blur) ? 46 : 0
-        let tableY = headerInset > 0 ? max(0, tabs.frame.maxY - headerInset) : tabs.frame.maxY
-        let topInset = headerInset > 0 ? tabs.frame.maxY - tableY : 0
-        if tableView.contentInsets.top != topInset {
-            var insets = tableView.contentInsets
-            insets.top = topInset
-            tableView.contentInsets = insets
-        }
 
-        let searchDest = max(0, min((tableView.firstItem?.frame.minY ?? 0) + (tableView.clipView.destination?.y ?? tableView.documentOffset.y) + topInset, 46))
+        let searchDest = max(0, min((tableView.firstItem?.frame.minY ?? 0) + (tableView.clipView.destination?.y ?? tableView.documentOffset.y), 46))
                 
         transition.updateFrame(view: searchContainer, frame: NSMakeRect(0, min(max(tabs.frame.maxY - searchDest, 0), tabs.frame.maxY), size.width, 46))
         transition.updateFrame(view: searchView, frame: searchContainer.focus(NSMakeSize(size.width - 16, 30)))
         transition.updateFrame(view: searchFrost, frame: searchView.frame)
         transition.updateFrame(view: searchBorder, frame: NSMakeRect(0, searchContainer.frame.height - .borderSize, size.width, .borderSize))
         
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tableY, size.width, headerInset > 0 ? size.height - tableY : size.height))
-        _ = headerBlurFilter.update(tableView, enabled: headerInset > 0, height: 46 - tableView.frame.minY)
+        tableClip.update(table: tableView, tableFrame: NSMakeRect(0, tabs.frame.maxY, size.width, size.height), coveredUntil: searchContainer.frame.maxY, size: size, transition: transition)
 
         transition.updateFrame(view: searchStatusView, frame: NSMakeRect(0, searchContainer.frame.maxY, size.width, max(0, size.height - searchContainer.frame.maxY - 56)))
 

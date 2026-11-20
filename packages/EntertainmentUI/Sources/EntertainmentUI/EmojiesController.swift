@@ -1,5 +1,4 @@
 import Foundation
-import CoreImage
 import TGUIKit
 import SwiftSignalKit
 import TelegramCore
@@ -1441,6 +1440,7 @@ public final class AnimatedEmojiesCategories : Control {
 
 public final class AnimatedEmojiesView : Control {
     public let tableView = TableView(frame: NSMakeRect(0, 0, 350, 350))
+    private let tableClip = PickerTableClip(frame: .zero)
     public let packsView = HorizontalTableView(frame: NSMakeRect(0, 0, 350, 46))
     private let borderView = View()
     private let tabs = View()
@@ -1455,8 +1455,6 @@ public final class AnimatedEmojiesView : Control {
     private let searchBackdrop = View()
     
     private let searchBorder = View()
-    private let headerBlur = PassthroughVisualEffectView()
-    private let headerBlurFilter = PickerHeaderBlur()
     private let searchStatusView = PanelSearchStatusView(frame: .zero)
     private var searchStatus: PanelSearchPresentation = .hidden
     
@@ -1531,11 +1529,8 @@ public final class AnimatedEmojiesView : Control {
         self.tableView.getBackgroundColor = {
             .clear
         }
-        addSubview(self.tableView)
-        headerBlur.blendingMode = .withinWindow
-        headerBlur.state = .active
-        headerBlur.material = .menu
-        addSubview(headerBlur)
+        tableClip.addSubview(self.tableView)
+        addSubview(tableClip)
         
         searchView.isLeftOrientated = true
         searchView.layer?.cornerRadius = 15
@@ -1614,24 +1609,15 @@ public final class AnimatedEmojiesView : Control {
         transition.updateFrame(view: tabs, frame: NSMakeRect(0, initial, size.width, 46))
         transition.updateFrame(view: packsView, frame: tabs.focus(NSMakeSize(size.width, 36)))
         transition.updateFrame(view: borderView, frame: NSMakeRect(0, tabs.frame.maxY, size.width, .borderSize))
-        let blursUnderHeader = usesPickerStyle && !TelegramUtilsHooks.shared.isLite(.blur)
-        let headerInset: CGFloat = blursUnderHeader ? 46 : 0
-        let tableY = headerInset > 0 ? max(0, tabs.frame.maxY - headerInset) : tabs.frame.maxY
-        let topInset = headerInset > 0 ? tabs.frame.maxY - tableY : 0
-        if tableView.contentInsets.top != topInset {
-            var insets = tableView.contentInsets
-            insets.top = topInset
-            tableView.contentInsets = insets
-        }
-        transition.updateFrame(view: tableView, frame: NSMakeRect(0, tableY, size.width, headerInset > 0 ? size.height - tableY : size.height - initial))
         
         transition.updateAlpha(view: borderView, alpha: inSearch || usesPickerStyle ? 0 : 1)
 
         
-        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y) + headerInset, 46))
+        let dest = max(0, min(tableView.rectOf(index: 0).minY + (tableView.clipView.destination?.y ?? tableView.documentOffset.y), 46))
 
         let searchDest = inSearch ? 0 : dest
         transition.updateFrame(view: searchContainer, frame: NSMakeRect(0, tabs.frame.maxY, size.width, 46 - min(searchDest, 46)))
+        tableClip.update(table: tableView, tableFrame: NSMakeRect(0, tabs.frame.maxY, size.width, size.height - initial), coveredUntil: searchContainer.frame.maxY, size: size, transition: transition)
 
         
         let searchInsideRect: CGRect = CGRect(origin: CGPoint(x: 0, y: searchContainer.frame.height - 46), size: NSMakeSize(size.width, 46))
@@ -1645,18 +1631,13 @@ public final class AnimatedEmojiesView : Control {
         transition.updateFrame(view: searchFrost, frame: searchView.frame)
         searchFrost.layer?.cornerRadius = 15
         transition.updateFrame(view: searchBorder, frame: NSMakeRect(0, searchContainer.frame.height - .borderSize, size.width, .borderSize))
-        let alpha: CGFloat = inSearch && tableView.documentOffset.y > -headerInset ? 1 : 0
+        let alpha: CGFloat = inSearch && tableView.documentOffset.y > 0 ? 1 : 0
         transition.updateAlpha(view: searchBorder, alpha: alpha)
         if isGlass {
             transition.updateAlpha(view: searchBackdrop, alpha: alpha)
         }
         transition.updateFrame(view: searchBackdrop, frame: searchInsideRect)
         
-        let blursTableContent = headerBlurFilter.update(tableView, enabled: blursUnderHeader, height: 46 - tableView.frame.minY)
-        headerBlur.isHidden = !blursUnderHeader || blursTableContent
-        if blursUnderHeader && !blursTableContent {
-            transition.updateFrame(view: headerBlur, frame: NSMakeRect(0, 0, size.width, 46))
-        }
         
         if let categories = categories {
             transition.updateFrame(view: categories, frame: categories.centerFrameY(x: searchInside.frame.width - categories.frame.width - searchView.frame.minX))
@@ -1686,7 +1667,6 @@ public final class AnimatedEmojiesView : Control {
         self.searchBorder.backgroundColor = mode.isTransparent ? .clear : isGlass ? theme.colors.grayIcon.withAlphaComponent(0.1) : theme.colors.border
         visualEffect.material = theme.colors.isDark ? .dark : .light
         visualEffect.isHidden = isGlass || mode.isTransparent
-        headerBlur.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         searchFrost.appearance = NSAppearance.themed(isDark: theme.colors.isDark)
         searchFrost.isHidden = !usesPickerStyle || TelegramUtilsHooks.shared.isLite(.blur)
         if let glassSurface {
@@ -1723,16 +1703,17 @@ public final class AnimatedEmojiesView : Control {
     public func updateSearchState(_ searchState: SearchState, animated: Bool) {
         
         if let window = _window, self.mode.isFocusSearch {
+            let ownerWindow = (window as? MenuPanelWindow)?.ownerWindow ?? context?.window
             switch searchState.state {
             case .Focus:
                 window._canBecomeKey = true
                 window.makeKey()
-                if window.isMainWindow, let chatWindow = context?.window, chatWindow !== window, chatWindow.isVisible, chatWindow.canBecomeMain {
-                    chatWindow.makeMain()
+                if window.isMainWindow, let ownerWindow, ownerWindow !== window, ownerWindow.isVisible, ownerWindow.canBecomeMain {
+                    ownerWindow.makeMain()
                 }
             case .None:
                 window._canBecomeKey = false
-                context?.window.makeKey()
+                ownerWindow?.makeKey()
                 if window is MenuPanelWindow, window.isVisible, window.canBecomeMain {
                     window.makeMain()
                 }
@@ -2060,15 +2041,7 @@ public final class AnimatedEmojiesView : Control {
             return nil
         }
         
-        var firstRow = tableView.visibleRows().location
-        let headerInset = tableView.contentInsets.top
-        if headerInset > 0 {
-            let row = tableView.row(at: NSMakePoint(1, tableView.documentOffset.y + headerInset + 1))
-            if row >= 0 {
-                firstRow = row
-            }
-        }
-        let stableId = tableView.item(at: max(1, min(firstRow, tableView.count - 1))).stableId
+        let stableId = tableView.item(at: max(1, tableView.visibleRows().location)).stableId
         var _stableId: AnyHashable?
         var _segment: EmojiSegment?
 
@@ -3223,12 +3196,6 @@ public extension MessageReaction.Reaction {
     }
 }
 
-private final class PassthroughVisualEffectView: NSVisualEffectView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
-    }
-}
-
 final class PickerFrostView: NSVisualEffectView {
     override var isEmphasized: Bool {
         get { false }
@@ -3236,54 +3203,19 @@ final class PickerFrostView: NSVisualEffectView {
     }
 }
 
-final class PickerHeaderBlur {
-    private var strip: PickerHeaderBlurStrip?
-
-    func update(_ view: NSView, enabled: Bool, height: CGFloat) -> Bool {
-        guard #available(macOS 26.0, *), enabled, let superview = view.superview else {
-            strip?.removeFromSuperview()
-            strip = nil
-            return false
-        }
-        let strip = self.strip ?? PickerHeaderBlurStrip(frame: .zero)
-        self.strip = strip
-        if strip.superview !== superview {
-            strip.removeFromSuperview()
-            superview.layerUsesCoreImageFilters = true
-            superview.addSubview(strip, positioned: .above, relativeTo: view)
-        }
-        let blurHeight = min(max(0, floor(height)), view.frame.height)
-        let y = superview.isFlipped ? view.frame.minY : view.frame.maxY - blurHeight
-        strip.frame = NSMakeRect(view.frame.minX, y, view.frame.width, blurHeight)
-        strip.isHidden = blurHeight <= 0
-        return true
-    }
-}
-
-private final class PickerHeaderBlurStrip: NSView {
-    override init(frame frameRect: NSRect) {
+final class PickerTableClip: View {
+    required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layerUsesCoreImageFilters = true
-        layer?.masksToBounds = true
-        var filters: [CIFilter] = []
-        if let clamp = CIFilter(name: "CIAffineClamp") {
-            clamp.setValue(NSAffineTransform(), forKey: kCIInputTransformKey)
-            filters.append(clamp)
-        }
-        if let blur = CIFilter(name: "CIGaussianBlur") {
-            blur.setDefaults()
-            blur.setValue(14, forKey: kCIInputRadiusKey)
-            filters.append(blur)
-        }
-        layer?.backgroundFilters = filters
+        self.layer?.masksToBounds = true
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
+    func update(table: NSView, tableFrame: NSRect, coveredUntil coverBottom: CGFloat, size: NSSize, transition: ContainedViewLayoutTransition) {
+        let top = min(max(coverBottom, tableFrame.minY), size.height)
+        transition.updateFrame(view: self, frame: NSMakeRect(0, top, size.width, size.height - top))
+        transition.updateFrame(view: table, frame: tableFrame.offsetBy(dx: 0, dy: -top))
     }
 }

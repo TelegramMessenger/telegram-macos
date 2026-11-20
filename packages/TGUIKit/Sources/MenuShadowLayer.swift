@@ -31,7 +31,15 @@ public final class MenuShadowLayer: CALayer {
         fatalError("init(coder:) has not been implemented")
     }
 
+    private var lastShape: CGPath?
+    private var lastBounds: CGRect = .null
+
     public func update(shape: CGPath, in bounds: CGRect) {
+        if bounds == lastBounds, let lastShape, lastShape == shape {
+            return
+        }
+        lastShape = shape
+        lastBounds = bounds
         let inset = MenuShadowLayer.inset
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -42,9 +50,10 @@ public final class MenuShadowLayer: CALayer {
         path.addPath(shape, transform: CGAffineTransform(translationX: inset - bounds.minX, y: inset - bounds.minY))
         cutout.path = path
         let inner = NSMakeRect(inset, inset, bounds.width, bounds.height)
+        let shadowPath = shape.copy(using: [CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)])
         for layer in [ambient, contact] {
             layer.frame = inner
-            layer.shadowPath = shape.copy(using: [CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)])
+            layer.shadowPath = shadowPath
         }
         CATransaction.commit()
     }

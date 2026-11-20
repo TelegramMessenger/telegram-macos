@@ -299,7 +299,7 @@ open class Popover: NSObject {
                                     }
                                 }
                             }
-                            strongSelf.background.layer?.shouldRasterize = !strongSelf.background.containsGlass
+                            strongSelf.background.layer?.shouldRasterize = !strongSelf.background.containsLiveBlur
                             if strongSelf.background.containsGlass {
                                 strongSelf.updateShadowPath(force: true)
                             }
@@ -464,7 +464,7 @@ open class Popover: NSObject {
         
         controller?.viewWillDisappear(true)
         if animates {
-            background.layer?.shouldRasterize = !background.containsGlass
+            background.layer?.shouldRasterize = !background.containsLiveBlur
             background.change(opacity: 0, animated: animates, duration: 0.15, completion: { [weak self] complete in
                 guard let `self` = self else {return}
                 if self === self.controller?.popover {
@@ -556,12 +556,19 @@ public func showPopover(for control:Control, with controller:ViewController, edg
 
 private extension NSView {
     var containsGlass: Bool {
+        if #available(macOS 26.0, *), self is NSGlassEffectView {
+            return true
+        }
+        return subviews.contains(where: { $0.containsGlass })
+    }
+
+    var containsLiveBlur: Bool {
         if self is NSVisualEffectView {
             return true
         }
         if #available(macOS 26.0, *), self is NSGlassEffectView {
             return true
         }
-        return subviews.contains(where: { $0.containsGlass })
+        return subviews.contains(where: { $0.containsLiveBlur })
     }
 }
