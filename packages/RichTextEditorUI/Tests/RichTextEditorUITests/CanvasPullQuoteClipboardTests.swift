@@ -53,7 +53,7 @@ final class CanvasPullQuoteClipboardTests: AppKitTestCase {
         XCTAssertEqual(quote.author.filter { $0.attributes.underline }.map(\.text).joined(), "Lovelace")
         XCTAssertTrue(quote.author.allSatisfy { !$0.attributes.bold && !$0.attributes.italic && $0.attributes.foreground == nil })
         XCTAssertNotEqual(quote.id, BlockID("q"))
-        XCTAssertEqual(pasteboard.string, "Quoted wordsAda Lovelace")
+        XCTAssertEqual(pasteboard.string, "Quoted words\nAda Lovelace")
 
         let destination = canvas([.paragraph(ParagraphBlock(id: BlockID("p")))], pasteboard: pasteboard)
         let before = destination.currentBlocks()
@@ -108,7 +108,7 @@ final class CanvasPullQuoteClipboardTests: AppKitTestCase {
         XCTAssertEqual(quote.text, "words")
         XCTAssertEqual(quote.author.map(\.text).joined(), "Ada Lov")
         XCTAssertEqual(quote.author.filter { $0.attributes.underline }.map(\.text).joined(), "Lov")
-        XCTAssertEqual(pasteboard.string, "wordsAda Lov")
+        XCTAssertEqual(pasteboard.string, "words\nAda Lov")
     }
 
     func test_selectionEndingAtAuthorStart_doesNotIncludeAuthor() throws {

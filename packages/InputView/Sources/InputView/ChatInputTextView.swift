@@ -573,6 +573,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     
     public weak var customDelegate: ChatInputTextViewDelegate?
     private var quoteContinuation: (location: Int, quote: TextInputTextQuoteAttribute)?
+    private var insertedText: String?
     
     private var initialTypingForegroundColor: Any?
     private var capturedInitialTypingForegroundColor: Bool = false
@@ -1441,7 +1442,9 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
                 self.typingAttributes = typingAttributes
             }
         }
+        self.insertedText = (string as? NSAttributedString)?.string ?? string as? String
         super.insertText(string, replacementRange: replacementRange)
+        self.insertedText = nil
     }
 
     private func handleBulletListContinuation() -> Bool {
@@ -1458,6 +1461,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
 
     func convertBulletMarkersIfNeeded() {
         guard isAutomaticBulletListEnabled else { return }
+        guard self.insertedText == " " else { return }
         guard let textStorage = self.textStorage else { return }
 
         let text = textStorage.string as NSString
@@ -1476,7 +1480,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
             let lineRange = text.lineRange(for: NSMakeRange(cursorPosition - 1, 0))
             let distanceFromLineStart = (cursorPosition - 2) - lineRange.location
 
-            if distanceFromLineStart == 0 {
+            if distanceFromLineStart == 0, !isInsideCode(textStorage, range: precedingRange) {
                 let attrs = textStorage.attributes(at: checkStart, effectiveRange: nil)
                 textStorage.beginEditing()
                 textStorage.replaceCharacters(in: precedingRange, with: NSAttributedString(string: "• ", attributes: attrs))
@@ -1487,6 +1491,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
 
     func convertDoubleDashIfNeeded() {
         guard isAutomaticDashConversionEnabled else { return }
+        guard self.insertedText == "-" else { return }
         guard let textStorage = self.textStorage else { return }
 
         let text = textStorage.string as NSString
@@ -1501,7 +1506,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
 
         let precedingText = text.substring(with: precedingRange)
 
-        if precedingText == "--" {
+        if precedingText == "--", !isInsideCode(textStorage, range: precedingRange) {
             let attrs = textStorage.attributes(at: checkStart, effectiveRange: nil)
             let was = NSAttributedString(attributedString: textStorage)
             let wasRange = self.selectedRange()

@@ -89,14 +89,19 @@ final class SidebarUITests: XCTestCase {
         XCTAssertEqual(sidebarFilterIncluding(.allChats, peerIds: [peer(1)], maximumPeers: 1, categoryForPeer: categoryForPeer), .allChats)
     }
 
-    func testExcludingPreservesExistingFlagsWhenNotSelected() {
-        let original = filter(include: [peer(1), peer(2)], read: true)
+    func testExcludeSelectionReplacesFlagsDeduplicatesAndRemovesOverlap() {
+        let original = filter(include: [peer(1), peer(2)], read: true, archived: true)
         let updated = sidebarFilterExcluding(original, peerIds: [peer(1), peer(1), category(.excludeMuted)], maximumPeers: 2, categoryForPeer: categoryForPeer)
         XCTAssertEqual(updated.data!.excludePeers, [peer(1)])
         XCTAssertEqual(updated.data!.includePeers.peers, [peer(2)])
-        XCTAssertTrue(updated.data!.excludeRead)
         XCTAssertTrue(updated.data!.excludeMuted)
+        XCTAssertFalse(updated.data!.excludeRead)
         XCTAssertFalse(updated.data!.excludeArchived)
+        let cleared = sidebarFilterExcluding(filter(muted: true, read: true, archived: true), peerIds: [], maximumPeers: 2, categoryForPeer: categoryForPeer)
+        XCTAssertFalse(cleared.data!.excludeMuted)
+        XCTAssertFalse(cleared.data!.excludeRead)
+        XCTAssertFalse(cleared.data!.excludeArchived)
+        XCTAssertEqual(sidebarFilterExcluding(.allChats, peerIds: [category(.excludeMuted)], maximumPeers: 2, categoryForPeer: categoryForPeer), .allChats)
     }
 
     func testMenuAddChatsRetainsOrderAndFixedHundredPeerLimit() {

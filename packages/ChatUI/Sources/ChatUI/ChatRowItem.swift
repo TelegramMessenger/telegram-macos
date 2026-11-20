@@ -417,7 +417,7 @@ public class ChatRowItem: TableRowItem {
     
     public var isSticker: Bool {
         let file = message?.anyMedia as? TelegramMediaFile
-        return file?.isStaticSticker == true || file?.isAnimatedSticker == true  || file?.isVideoSticker == true
+        return file?.isChatStaticSticker == true || file?.isAnimatedSticker == true  || file?.isVideoSticker == true
     }
     
 
@@ -1463,7 +1463,7 @@ public class ChatRowItem: TableRowItem {
             }
             
             if let file = media as? TelegramMediaFile {
-                if file.isStaticSticker {
+                if file.isChatStaticSticker {
                     return false
                 }
                 if file.isVideoSticker {
@@ -2026,7 +2026,7 @@ public class ChatRowItem: TableRowItem {
             
             if renderType == .bubble, let message = captionMessage, let media = message.anyMedia {
                 if let file = media as? TelegramMediaFile {
-                    if file.isStaticSticker || file.isAnimatedSticker || file.isVideoSticker  {
+                    if file.isChatStaticSticker || file.isAnimatedSticker || file.isVideoSticker  {
                         return renderType == .bubble
                     }
                     if file.isInstantVideo {
@@ -3052,7 +3052,7 @@ public class ChatRowItem: TableRowItem {
                         return ChatVideoMessageItem(initialSize, interaction, interaction.interactionContext,entry, theme: theme)
                     } else if file.isVideo && !file.isAnimated {
                         return ChatMediaItem(initialSize, interaction, interaction.interactionContext, entry, theme: theme)
-                    } else if file.isStaticSticker {
+                    } else if file.isChatStaticSticker {
                         return ChatMediaItem(initialSize, interaction, interaction.interactionContext, entry, theme: theme)
                     } else if file.isVoice {
                         return ChatVoiceRowItem(initialSize,interaction, interaction.interactionContext, entry, theme: theme)
@@ -4424,7 +4424,7 @@ public class ChatRowItem: TableRowItem {
                 let rect = NSMakeRect(0, 0, w_width, 40 + 20 + (aboveLayout != nil ? aboveLayout!.layoutSize.height + 4 : 0))
                 
                 
-                let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+                let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
                 panel._canBecomeMain = false
                 panel._canBecomeKey = false
                 panel.level = .popUpMenu
@@ -4434,6 +4434,7 @@ public class ChatRowItem: TableRowItem {
                 
 
                 let reveal:((ContextAddReactionsListView & StickerFramesCollector)->Void)?
+                let prepareReveal: (() -> Void)?
                 
                 
                 var selectedItems: [ChatHistoryEmojiSelectedItem] = []
@@ -4456,7 +4457,11 @@ public class ChatRowItem: TableRowItem {
                 let orderedTagItems: [RecentReactionItem]? = isTags ? reactions : nil
 
                 if accessToAll {
-                    reveal = { view in
+                    var preparedWindow: ChatHistoryReactionsWindow?
+                    let prepareWindow: () -> ChatHistoryReactionsWindow = {
+                        if let preparedWindow {
+                            return preparedWindow
+                        }
                         let react: (StickerPackItem, NSRect?, Bool) -> Void = { sticker, fromRect, isLarge in
                             let parsedFile = sticker.file._parse()
                             let value: UpdateMessageReaction
@@ -4497,12 +4502,19 @@ public class ChatRowItem: TableRowItem {
                         }, isTags ? nil : { sticker, fromRect in
                             react(sticker, fromRect, true)
                         })
-//                        let transition = ContainedViewLayoutTransition.animated(duration: 0.2, curve: .easeOut)
-//                        transition.updateFrame(view: view, frame: CGRect(origin: view.frame.origin, size: NSMakeSize(view.frame.width, 60)))
-//                        view.updateLayout(size: view.frame.size, transition: transition)
+                        preparedWindow = window
+                        return window
+                    }
+                    prepareReveal = {
+                        _ = prepareWindow()
+                    }
+                    reveal = { view in
+                        let window = prepareWindow()
+                        preparedWindow = nil
                         window.showChatHistoryReactions(view)
                     }
                 } else {
+                    prepareReveal = nil
                     reveal = nil
                 }
                 
@@ -4523,6 +4535,7 @@ public class ChatRowItem: TableRowItem {
                     guard isTags || canApplyReaction(value) else { return }
                     applyReaction(value.toUpdate(), fromRect, true)
                 }, canSendReactions: reactionPermission, radiusLayer: nil, revealReactions: reveal, aboveText: aboveLayout, message: message)
+                view.prepareReveal = prepareReveal
                 
                 
                 panel.contentView?.addSubview(view)

@@ -1397,7 +1397,7 @@ public class FoldingTextView : View {
                 let point = view.convert(point, from: self)
                 if let layout = block.currentLayout?.text {
                     let index = layout.findIndex(location: point)
-                    return index >= 0 && point.x < layout.lines[index].frame.maxX
+                    return index >= 0 && !layout.isOutsideText(point, line: index)
                 }
             }
         }

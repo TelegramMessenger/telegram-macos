@@ -45,6 +45,7 @@ enum SearchPeerFolderUpdate: Equatable {
     case updated(ChatListFilterData)
     case includeLimitReached
     case excludeLimitReached
+    case folderWouldBeEmpty
     case unchanged
 }
 
@@ -253,16 +254,17 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
         var folders: [ContextMenuItem] = []
         if peerId.namespace != Namespaces.Peer.SecretChat {
             for filter in filters.list {
-                guard filter.data != nil else { continue }
+                guard let data = filter.data else { continue }
                 let filterId = ChatListUIHooks.shared.chatListFilterId(filter)
-                folders.append(ContextMenuItem(filter.title, handler: {
+                let isIncluded = searchPeerFolderContains(filter, peer: peer, state: snapshot.folders)
+                let item = ContextMenuItem(filter.title, handler: {
                     let limit = context.isPremium ? context.premiumLimits.dialog_filters_chats_limit_premium : context.premiumLimits.dialog_filters_chats_limit_default
                     _ = (storePeer |> mapToSignal { _ in snapshotSignal } |> mapToSignal { current -> Signal<SearchPeerFolderUpdate, NoError> in
                         let result = Atomic<SearchPeerFolderUpdate>(value: .unchanged)
                         return context.engine.peers.updateChatListFiltersInteractively { list in
                             var list = list
                             if let index = list.firstIndex(where: { ChatListUIHooks.shared.chatListFilterId($0) == filterId }) {
-                                let update = searchPeerFolderUpdate(list[index], peer: current.peer, state: current.folders, limit: limit)
+                                let update = searchPeerFolderClickUpdate(list[index], peer: current.peer, state: current.folders, isIncluded: isIncluded, limit: limit)
                                 _ = result.swap(update)
                                 if case let .updated(data) = update {
                                     list[index] = list[index].withUpdatedData(data)
@@ -280,13 +282,28 @@ func searchPeerContextMenuItems(peer: Peer, context: any AccountContextProtocol,
                             }
                         case .excludeLimitReached:
                             alert(for: context.window, info: strings().chatListFilterExcludeLimitReachedNew(limit))
+                        case .folderWouldBeEmpty:
+                            alert(for: context.window, info: strings().chatListFilterErrorEmpty)
                         case .updated, .unchanged:
                             break
                         }
                     })
-                }, state: searchPeerFolderContains(filter, peer: peer, state: snapshot.folders) ? .on : nil))
+                }, state: isIncluded ? .on : nil)
+                item.isEnabled = !isIncluded || !data.categories.isEmpty || data.includePeers.peers.count > 1
+                folders.append(item)
             }
         }
         return searchPeerMenuItems(state: state, profileTitle: peer is TelegramUser ? strings().exportedInvitationContextOpenProfile : strings().chatContextPeerOpenInfo, actions: actions, readItem: readItem, folders: folders, remove: remove)
     }
+}
+
+func searchPeerFolderClickUpdate(_ filter: ChatListFilter, peer: Peer, state: SearchPeerFolderState, isIncluded: Bool, limit: Int) -> SearchPeerFolderUpdate {
+    guard searchPeerFolderContains(filter, peer: peer, state: state) == isIncluded else {
+        return .unchanged
+    }
+    let update = searchPeerFolderUpdate(filter, peer: peer, state: state, limit: limit)
+    if case let .updated(data) = update, data.categories.isEmpty, data.includePeers.peers.isEmpty {
+        return .folderWouldBeEmpty
+    }
+    return update
 }

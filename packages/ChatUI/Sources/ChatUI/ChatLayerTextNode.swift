@@ -609,7 +609,7 @@ final class ChatLayerTextNode: ChatLayerNode {
             suppressTextClick = suppressTextClick || layout.selectedRange.hasSelectText
             clearExternalSelection()
             let index = layout.findIndex(location: event.location)
-            guard onTextClick != nil || (index >= 0 && (event.location.x <= layout.lines[index].frame.maxX || !isSelectable)) else { return false }
+            guard onTextClick != nil || (index >= 0 && (!layout.isOutsideText(event.location, line: index) || !isSelectable)) else { return false }
             let formattedDate = hasFormattedDates ? layout.formattedDate(at: event.location)?.0 : nil
             guard isSelectable || onTextClick != nil || formattedDate != nil || layout.link(at: event.location) != nil else { return false }
             selectionStart = event.location
@@ -781,7 +781,7 @@ final class ChatLayerTextNode: ChatLayerNode {
         let cancelledVersion = previousState?.cancel()
         guard menuState === previousState, previousState?.version == cancelledVersion else { return true }
         if let layout = textLayout, let scene, !scene.isHiddenOrHasHiddenAncestor, isVisible, isEffectivelyEnabled, layout.mayItems, layer.bounds.contains(location) {
-            if !layout.selectedRange.hasSelectText && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
+            if (!layout.selectedRange.hasSelectText || layout.selectedRange.range.length == 0) && (!layout.alwaysStaticItems || layout.link(at: location) != nil) {
                 layout.selectWord(at: location)
             }
             self.selectionChanged()

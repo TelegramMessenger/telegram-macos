@@ -80,6 +80,30 @@ private func chatHistoryContains(_ message: Message, threadId: Int64?, tag: Hist
     }
 }
 
+private func chatHistoryCanSelect(_ message: Message) -> Bool {
+    guard let media = message.media.first else {
+        return true
+    }
+    if let action = media as? TelegramMediaAction {
+        switch action.action {
+        case .phoneCall, .conferenceCall:
+            return true
+        default:
+            return false
+        }
+    }
+    if let story = media as? TelegramMediaStory {
+        return !story.isMention
+    }
+    if media is TelegramMediaExpiredContent {
+        return false
+    }
+    if message.id.peerId.namespace != Namespaces.Peer.SecretChat, message.autoclearTimeout != nil, media is TelegramMediaImage || (media.isVideoFile && !media.isInstantVideo) {
+        return false
+    }
+    return true
+}
+
 private func chatHistoryKeepsReadState(peer: Peer?, chatLocation: ChatLocation) -> Bool {
     if case .thread = chatLocation {
         return true
@@ -3408,8 +3432,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
             }
             
-            if reply == nil, let threadId64 = threadId64(), !presentation.isMonoforum, threadId64 != Message.newTopicThreadId {
-                reply = .init(messageId: MessageId(peerId: makePeerId(), namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId64)), quote: nil, innerSubject: nil)
+            if reply == nil {
+                reply = makeThreadReplySubject(peerId: makePeerId(), threadId: threadId64(), isMonoforum: presentation.isMonoforum)
             }
             return reply
         }
@@ -5564,7 +5588,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 
                 let rect = NSMakeRect(0, 0, w_width, 40 + 20 + aboveLayout.layoutSize.height + 4)
                 
-                let panel = Window(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
+                let panel = MenuPanelWindow(contentRect: rect, styleMask: [.fullSizeContentView], backing: .buffered, defer: false)
                 panel._canBecomeMain = false
                 panel._canBecomeKey = false
                 panel.level = .popUpMenu
@@ -8736,7 +8760,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                                 let cloudId = MessageId(peerId: lastMessageId.peerId, namespace: cloudNamespace, id: id)
                                 let localId = MessageId(peerId: lastMessageId.peerId, namespace: localNamespace, id: id)
                                 let message = transaction.getMessage(cloudId) ?? transaction.getMessage(localId)
-                                if let message = message, chatHistoryContains(message, threadId: threadId, tag: tag) {
+                                if let message = message, chatHistoryContains(message, threadId: threadId, tag: tag), chatHistoryCanSelect(message) {
                                     if minId > maxId {
                                         messages.append(message)
                                     } else {
@@ -9322,7 +9346,11 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             }
         }
 
-        peerDisposable.set(combineLatest(queue: .mainQueue(), topPinnedMessage, peerView.get(), titlePeerView, availableGroupCall, attach, threadInfo, stateValue.get(), tagsAndFiles, getPeerView(peerId: context.peerId, postbox: context.account.postbox), savedChatsAsTopics, shortcuts, connectedBot, updaterPromise.get(), ApplicationSpecificNotice.playedMessageEffects(accountManager: context.sharedContext.accountManager), adMessages, context.starsContext.state, monoforumTopics.get()).start(next: { [weak self] pinnedMsg, postboxView, titlePeerView, groupCallData, attachItems, threadInfo, uiState, savedMessageTags, accountPeer, displaySavedChatsAsTopics, shortcuts, connectedBot, _, playedMessageEffects, adMessages, starsState, monoforumTopics in
+        let globalNotificationSettings: Signal<GlobalNotificationSettings, NoError> = context.account.postbox.preferencesView(keys: [PreferencesKeys.globalNotifications]) |> map { view in
+            return view.values[PreferencesKeys.globalNotifications]?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings
+        }
+
+        peerDisposable.set(combineLatest(queue: .mainQueue(), topPinnedMessage, peerView.get(), titlePeerView, availableGroupCall, attach, threadInfo, stateValue.get(), tagsAndFiles, getPeerView(peerId: context.peerId, postbox: context.account.postbox), savedChatsAsTopics, shortcuts, connectedBot, updaterPromise.get(), ApplicationSpecificNotice.playedMessageEffects(accountManager: context.sharedContext.accountManager), adMessages, context.starsContext.state, monoforumTopics.get(), globalNotificationSettings).start(next: { [weak self] pinnedMsg, postboxView, titlePeerView, groupCallData, attachItems, threadInfo, uiState, savedMessageTags, accountPeer, displaySavedChatsAsTopics, shortcuts, connectedBot, _, playedMessageEffects, adMessages, starsState, monoforumTopics, globalNotificationSettings in
             
             
             let firstTime = isFirst.swap(false)
@@ -9523,7 +9551,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                         }
                         
                         if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings {
-                            present = present.updatedNotificationSettings(notificationSettings)
+                            present = present.updatedNotificationSettings(notificationSettings, mutedByDefault: !globalNotificationSettings.postboxAccessor.defaultIncludePeer(peer))
                         }
                         present = present.withUpdatedPeerStatusSettings(contactStatus)
                         present = present.withUpdatedInviteRequestsPending(inviteRequestsPending)
@@ -9824,7 +9852,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
             guard let `self` = self else {return}
             let tableView = self.genericView.tableView
             let chatInteraction = self.chatInteraction
-            if self.mode.isThreadMode || self.mode.isTopicMode {
+            if self.mode.isThreadMode {
                 if let pinnedMessageId = chatInteraction.presentation.pinnedMessageId, position.visibleRows.location != NSNotFound {
                     var hidden: Bool = false
                     for row in position.visibleRows.min ..< position.visibleRows.max {
@@ -10933,9 +10961,10 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
 
                 if let notificationSettings = peerView.notificationSettings as? TelegramPeerNotificationSettings, !self.isAdChat {
                     if chatInteraction.peerId != context.peerId && chatSidebarKind(chatInteraction.presentation) == nil {
-                        items.append(ContextMenuItem(!notificationSettings.isMuted ? strings().chatContextEnableNotifications : strings().chatContextDisableNotifications, handler: { [weak self] in
-                            self?.chatInteraction.toggleNotifications(notificationSettings.isMuted)
-                        }, itemImage: notificationSettings.isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
+                        let isMuted = notificationSettings.isRemovedFromTotalUnreadCount(default: chatInteraction.presentation.mutedByDefault)
+                        items.append(ContextMenuItem(!isMuted ? strings().chatContextEnableNotifications : strings().chatContextDisableNotifications, handler: { [weak self] in
+                            self?.chatInteraction.toggleNotifications(isMuted)
+                        }, itemImage: isMuted ? MenuAnimation.menu_unmuted.value : MenuAnimation.menu_mute.value))
                     }
                 }
 
@@ -11690,7 +11719,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         guard !context.isFrozen, let kind = chatSidebarKind(state), let peerView = currentPeerView,
               let channel = peerViewMainPeer(peerView) as? TelegramChannel else { return [] }
         let peerId = channel.id
-        let isMuted = (peerView.notificationSettings as? TelegramPeerNotificationSettings)?.isMuted == true
+        let isMuted = (peerView.notificationSettings as? TelegramPeerNotificationSettings)?.isRemovedFromTotalUnreadCount(default: state.mutedByDefault) == true
         let actions = ForumSidebarMenuPolicy.actions(kind: kind, canCreateTopics: channel.hasPermission(.createTopics), canInviteMembers: channel.hasPermission(.inviteMembers))
         let items = actions.map { action -> ContextMenuItem in
             switch action {
@@ -11856,7 +11885,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
        
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let strongSelf = self, let window = strongSelf.window, !hasModals(window) {
+            if let strongSelf = self, let window = strongSelf.window, !hasModals(window), !strongSelf.isTextFocusOutsideInput {
                 let result:KeyHandlerResult = strongSelf.chatInteraction.presentation.effectiveInput.inputText.isEmpty && strongSelf.chatInteraction.presentation.state == .normal ? .invoked : .rejected
 
                 if result == .invoked {
@@ -11881,7 +11910,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let strongSelf = self, let window = strongSelf.window, !hasModals(window) {
+            if let strongSelf = self, let window = strongSelf.window, !hasModals(window), !strongSelf.isTextFocusOutsideInput {
                 let result:KeyHandlerResult = strongSelf.chatInteraction.presentation.effectiveInput.inputText.isEmpty ? .invoked : .invokeNext
                 
                 
@@ -11895,7 +11924,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }, with: self, for: .DownArrow, priority: .low)
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let `self` = self, let window = self.window, !hasModals(window), self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
+            if let `self` = self, let window = self.window, !hasModals(window), !self.isTextFocusOutsideInput, self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
                 var currentReplyId = self.chatInteraction.presentation.interfaceState.replyMessage
                 self.genericView.tableView.enumerateItems(with: { item in
                     if let item = item as? ChatRowItem, let message = item.message {
@@ -11923,7 +11952,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }, with: self, for: .UpArrow, priority: .low, modifierFlags: [.command])
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            if let `self` = self, let window = self.window, !hasModals(window), self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
+            if let `self` = self, let window = self.window, !hasModals(window), !self.isTextFocusOutsideInput, self.chatInteraction.presentation.interfaceState.editState == nil, self.chatInteraction.presentation.interfaceState.inputState.inputText.isEmpty {
                 var currentReplyId = self.chatInteraction.presentation.interfaceState.replyMessage
                 self.genericView.tableView.enumerateItems(reversed: true, with: { item in
                     if let item = item as? ChatRowItem, let message = item.message {
@@ -11952,7 +11981,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            guard let `self` = self, let window = self.window, !hasModals(window) else {return .rejected}
+            guard let `self` = self, let window = self.window, !hasModals(window), !self.isTextFocusOutsideInput else {return .rejected}
             
             if let selectionState = self.chatInteraction.presentation.selectionState, !selectionState.selectedIds.isEmpty {
                 self.chatInteraction.deleteSelectedMessages()
@@ -11963,7 +11992,7 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
         }, with: self, for: .Delete, priority: .low)
         
         self.context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
-            guard let `self` = self else {return .rejected}
+            guard let `self` = self, !self.isTextFocusOutsideInput else {return .rejected}
             
             if let selectionState = self.chatInteraction.presentation.selectionState, !selectionState.selectedIds.isEmpty {
                 self.chatInteraction.deleteSelectedMessages()
@@ -12223,6 +12252,13 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
     }
     
     
+    private var isTextFocusOutsideInput: Bool {
+        guard let responder = context.window.firstResponder as? NSTextView else {
+            return false
+        }
+        return responder !== genericView.inputView.textView.inputView
+    }
+
     func findAndSetEditableMessage() -> Bool {
         if self.previousView.with({ $0?.originalView?.laterId == nil }) {
             
