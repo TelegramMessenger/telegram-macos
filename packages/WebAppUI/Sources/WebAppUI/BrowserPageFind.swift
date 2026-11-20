@@ -83,8 +83,8 @@ final class BrowserPageFind {
             if #available(macOS 11.0, *) {
                 if action == .showFindInterface || container?.pageFindBar == nil {
                     showSearch()
-                } else if let query = container?.pageFindBar?.query, !query.isEmpty {
-                    search(query, backwards: action == .previousMatch)
+                } else {
+                    navigate(backwards: action == .previousMatch)
                 }
             } else {
                 finder.performAction(action)
@@ -103,9 +103,8 @@ final class BrowserPageFind {
         if container.pageFindBar == nil {
             let bar = PageFindBarView(frame: NSRect(x: 0, y: 0, width: webView?.frame.width ?? 0, height: 46))
             bar.queryUpdated = { [weak self] query in self?.search(query, backwards: false) }
-            bar.navigate = { [weak self, weak bar] backwards in
-                guard let query = bar?.query, !query.isEmpty else { return }
-                self?.search(query, backwards: backwards)
+            bar.navigate = { [weak self] backwards in
+                self?.navigate(backwards: backwards)
             }
             bar.close = { [weak self] in _ = self?.dismiss() }
             container.pageFindBar = bar
@@ -117,6 +116,13 @@ final class BrowserPageFind {
     private func search(_ query: String, backwards: Bool) {
         container?.pageFindBar?.updateResult(loading: !query.isEmpty)
         requests?.enqueue(query, backwards: backwards)
+    }
+
+    @available(macOS 11.0, *)
+    private func navigate(backwards: Bool) {
+        guard let query = container?.pageFindBar?.query, !query.isEmpty else { return }
+        container?.pageFindBar?.updateResult(loading: true)
+        requests?.navigate(backwards: backwards)
     }
 
     @discardableResult

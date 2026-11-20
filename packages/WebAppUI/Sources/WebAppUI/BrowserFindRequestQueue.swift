@@ -5,9 +5,12 @@ final class BrowserFindRequestQueue {
 
     private let search: Search
     var result: ((String, Bool) -> Void)?
+    private var query = ""
     private var generation = 0
     private var inFlight = false
-    private var pending: (query: String, backwards: Bool, generation: Int)?
+    private var isDraining = false
+    private var pending: [(query: String, backwards: Bool, generation: Int)] = []
+    private var nextIndex = 0
 
     init(search: @escaping Search) {
         self.search = search
@@ -15,20 +18,38 @@ final class BrowserFindRequestQueue {
 
     func enqueue(_ query: String, backwards: Bool) {
         generation += 1
-        pending = (query, backwards, generation)
+        self.query = query
+        pending = [(query, backwards, generation)]
+        nextIndex = 0
+        performPending()
+    }
+
+    func navigate(backwards: Bool) {
+        guard !query.isEmpty else { return }
+        pending.append((query, backwards, generation))
         performPending()
     }
 
     private func performPending() {
-        guard !inFlight, let request = pending else { return }
-        pending = nil
-        inFlight = true
-        search(request.query, request.backwards) { [self] found in
-            inFlight = false
-            if generation == request.generation {
-                result?(request.query, found)
+        guard !inFlight, !isDraining else { return }
+        isDraining = true
+        defer { isDraining = false }
+        while !inFlight {
+            guard nextIndex < pending.count else {
+                pending.removeAll(keepingCapacity: true)
+                nextIndex = 0
+                return
             }
-            performPending()
+            let request = pending[nextIndex]
+            nextIndex += 1
+            inFlight = true
+            search(request.query, request.backwards) { [self] found in
+                inFlight = false
+                if generation == request.generation, nextIndex == pending.count {
+                    result?(request.query, found)
+                }
+                performPending()
+            }
         }
     }
 }
