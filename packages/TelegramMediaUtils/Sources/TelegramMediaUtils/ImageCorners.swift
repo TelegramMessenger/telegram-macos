@@ -152,11 +152,29 @@ private func tailContext(_ tail: Tail, scale:CGFloat) -> DrawingContext {
 
 
 
-private enum ContinuousCornerPosition {
+private enum ContinuousCornerPosition: Hashable {
     case topLeft, topRight, bottomLeft, bottomRight
 }
 
+private struct ContinuousCornerKey: Hashable {
+    let position: ContinuousCornerPosition
+    let radius: CGFloat
+    let horizontal: CGFloat
+    let vertical: CGFloat
+    let scale: CGFloat
+}
+
+private let continuousCornerLock = NSLock()
+private var continuousCornerCache: [ContinuousCornerKey: DrawingContext] = [:]
+
 private func continuousCornerContext(_ position: ContinuousCornerPosition, radius: CGFloat, horizontal: CGFloat, vertical: CGFloat, scale: CGFloat) -> DrawingContext {
+    let key = ContinuousCornerKey(position: position, radius: radius, horizontal: horizontal, vertical: vertical, scale: scale)
+    continuousCornerLock.lock()
+    if let cached = continuousCornerCache[key] {
+        continuousCornerLock.unlock()
+        return cached
+    }
+    continuousCornerLock.unlock()
     let width = ((1.0 + horizontal) * radius).rounded(.up)
     let height = ((1.0 + vertical) * radius).rounded(.up)
     let context = DrawingContext(size: CGSize(width: width, height: height), scale: scale, clear: true)
@@ -177,6 +195,9 @@ private func continuousCornerContext(_ position: ContinuousCornerPosition, radiu
         c.addPath(CGPath.continuousRoundedRect(CGRect(origin: origin, size: CGSize(width: width * 2.0, height: height * 2.0)), topLeft: radius, topRight: radius, bottomLeft: radius, bottomRight: radius, horizontalSmoothing: horizontal, verticalSmoothing: vertical))
         c.fillPath()
     }
+    continuousCornerLock.lock()
+    continuousCornerCache[key] = context
+    continuousCornerLock.unlock()
     return context
 }
 

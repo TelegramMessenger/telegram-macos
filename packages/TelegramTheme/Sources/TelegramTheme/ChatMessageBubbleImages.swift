@@ -213,6 +213,7 @@ private struct MessageBubbleImageKey: Hashable {
 
 private let messageBubbleImageLock = NSLock()
 private var messageBubbleImageCache: [MessageBubbleImageKey: (CGImage, NSEdgeInsets)] = [:]
+private var messageBubbleImageCacheOrder: [MessageBubbleImageKey] = []
 // Each theme's bubble colors add a handful of entries; without a bound the cache grew for the whole
 // process lifetime across theme switches. A switch keeps the active theme's working set well under this.
 private let messageBubbleImageCacheLimit = 512
@@ -220,6 +221,7 @@ private let messageBubbleImageCacheLimit = 512
 public func clearMessageBubbleImageCache() {
     messageBubbleImageLock.lock()
     messageBubbleImageCache.removeAll(keepingCapacity: true)
+    messageBubbleImageCacheOrder.removeAll(keepingCapacity: true)
     messageBubbleImageLock.unlock()
 }
 
@@ -298,9 +300,14 @@ private func messageBubbleImageModern(incoming: Bool, fillColor: NSColor, fillAr
 
     messageBubbleImageLock.lock()
     if messageBubbleImageCache.count >= messageBubbleImageCacheLimit {
-        messageBubbleImageCache.removeAll(keepingCapacity: true)
+        let evictCount = max(1, messageBubbleImageCacheLimit / 8)
+        for key in messageBubbleImageCacheOrder.prefix(evictCount) {
+            messageBubbleImageCache.removeValue(forKey: key)
+        }
+        messageBubbleImageCacheOrder.removeFirst(min(evictCount, messageBubbleImageCacheOrder.count))
     }
     messageBubbleImageCache[key] = result
+    messageBubbleImageCacheOrder.append(key)
     messageBubbleImageLock.unlock()
 
     return result

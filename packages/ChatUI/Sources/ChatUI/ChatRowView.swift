@@ -750,6 +750,9 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         replyMarkupView?.backgroundColor = backdorColor
         bubbleView.fill = item.presentation.chat.bubbleBackgroundColor(item.isIncoming, item.hasBubble)
         updateWallpaperMaterial(item)
+        if let shareView {
+            updateShareGlass(item, control: shareView)
+        }
 
         if let control = channelCommentsBubbleControl {
             control.set(background: .clear, for: .Normal)
@@ -2016,20 +2019,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         control.autohighlight = false
         control.setAccessibilityLabel(item.hasSource ? strings().voiceOverChatGoToOriginalMessage : strings().voiceOverCommonShare)
 
-        if item.isBubbled, item.presentation.backgroundMode.hasWallpaper {
-            control.set(image: item.hasSource ? item.presentation.chat.chat_goto_message_bubble(theme: item.presentation) : item.presentation.chat.chat_share_bubble(theme: item.presentation), for: .Normal)
-            control.set(cornerRadius: .half, for: .Normal)
-            control.blurBackground = item.presentation.blurServiceColor
-            control.background = .clear
-        } else if item.presentation.backgroundMode.hasWallpaper {
-            control.set(image: item.hasSource ? item.presentation.chat.chat_goto_message_bubble(theme: item.presentation) : item.presentation.chat.chat_share_bubble(theme: item.presentation), for: .Normal)
-            control.backgroundColor = item.presentation.chatServiceItemColor
-            control.blurBackground = nil
-        } else {
-            control.set(image: item.hasSource ? item.presentation.icons.chat_goto_message : item.presentation.icons.chat_share_message, for: .Normal)
-            control.backgroundColor = .clear
-            control.blurBackground = nil
-        }
+        applyShareBaseAppearance(item, control: control)
         let size = NSMakeSize(26, 26)
         control.setFrameSize(NSMakeSize(floorToScreenPixels(backingScaleFactor, (size.width + 4) * 1.05), floorToScreenPixels(backingScaleFactor, (size.height + 4) * 1.05)))
         control.set(cornerRadius: .half, for: .Normal)
@@ -2058,6 +2048,7 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
             if existing != nil {
                 existing?.removeFromSuperlayer()
                 layer.borderWidth = 0
+                applyShareBaseAppearance(item, control: control)
             }
             return
         }
@@ -2093,6 +2084,23 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         ChatBubbleWallpaperMaterial.applyGlassMatrix(matrix, to: glass)
         let icon = item.hasSource ? item.presentation.chat.chat_goto_message_bubble(theme: item.presentation) : item.presentation.chat.chat_share_bubble(theme: item.presentation)
         control.set(image: ChatBubbleWallpaperMaterial.tinted(icon, ChatBubbleWallpaperMaterial.glassGlyphColor(dark: colors.isDark)), for: .Normal)
+    }
+
+    private func applyShareBaseAppearance(_ item: ChatRowItem, control: ImageButton) {
+        let image = item.hasSource ? item.presentation.chat.chat_goto_message_bubble(theme: item.presentation) : item.presentation.chat.chat_share_bubble(theme: item.presentation)
+        if item.isBubbled, item.presentation.backgroundMode.hasWallpaper {
+            control.set(image: image, for: .Normal)
+            control.blurBackground = item.presentation.blurServiceColor
+            control.background = .clear
+        } else if item.presentation.backgroundMode.hasWallpaper {
+            control.set(image: image, for: .Normal)
+            control.backgroundColor = item.presentation.chatServiceItemColor
+            control.blurBackground = nil
+        } else {
+            control.set(image: item.hasSource ? item.presentation.icons.chat_goto_message : item.presentation.icons.chat_share_message, for: .Normal)
+            control.backgroundColor = .clear
+            control.blurBackground = nil
+        }
     }
 
     public func fillReactions(_ item: ChatRowItem, animated: Bool) {
@@ -2840,7 +2848,12 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         updateSwipeLayout(transition)
 
         if let view = shareView {
-            transition.updateFrame(view: view, frame: CGRect(origin: shareViewPoint(item), size: view.frame.size))
+            let frame = CGRect(origin: shareViewPoint(item), size: view.frame.size)
+            let frameChanged = view.frame != frame
+            transition.updateFrame(view: view, frame: frame)
+            if frameChanged {
+                updateShareGlass(item, control: view)
+            }
         }
         
         if let view = reactionsView {
