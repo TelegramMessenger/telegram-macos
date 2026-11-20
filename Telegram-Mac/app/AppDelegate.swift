@@ -280,6 +280,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         TGUIKitAccessibility.isEnabled = FastSettings.accessibilityTreeEffective
+        System.windowMaterial = FastSettings.windowMaterial
         Analytics.shared.isEnabled = false
         analyticsLaunchStart = Analytics.shared.now
         AnalyticsLifecycle.install()
@@ -348,7 +349,6 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         let singleColumnThreshold: CGFloat = 650
         let chromeMode: Window.ChromeMode = window.frame.width < singleColumnThreshold ? .compact : .standard
         window.applyChrome(chromeMode)
-        window.applyCornerRadius(for: chromeMode)
 
 //        window.styleMask.insert(.unifiedTitleAndToolbar)
         //window.styleMask.insert(.borderless)

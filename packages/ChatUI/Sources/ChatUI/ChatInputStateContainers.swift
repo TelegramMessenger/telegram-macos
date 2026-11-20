@@ -96,7 +96,7 @@ public class ChatInputStateView: View {
     }
 
     public func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        let edge: CGFloat = 12
+        let edge: CGFloat = ChatInputView.inputEdgeInset
         let contentHeight = size.height - ChatInputView.inputBottomInset
         let containerFrame = NSMakeRect(edge, 0, size.width - edge * 2, contentHeight)
         transition.updateFrame(view: containerView, frame: containerFrame)
@@ -482,7 +482,7 @@ public final class ChatInputActionButtonView: ChatInputStateView {
     }
 
     public override func updateLayout(size: NSSize, transition: ContainedViewLayoutTransition) {
-        let edge: CGFloat = 10
+        let edge: CGFloat = ChatInputView.inputEdgeInset
         let contentHeight = size.height - ChatInputView.inputBottomInset
 
         if let view = leftAddition {

@@ -382,6 +382,20 @@ public class FastSettings {
             UserDefaults.standard.set(newValue, forKey: kIsMinimisizeType)
         }
     }
+    public static var windowMaterial: Bool {
+        get {
+            guard #available(macOS 26.0, *) else {
+                return false
+            }
+            return UserDefaults.standard.bool(forKey: "kWindowMaterial")
+        }
+        set {
+            guard #available(macOS 26.0, *) else {
+                return
+            }
+            UserDefaults.standard.set(newValue, forKey: "kWindowMaterial")
+        }
+    }
     public static var accessibilityTreeEnabled: Bool {
         get {
             return UserDefaults.standard.object(forKey: "kAccessibilityTreeEnabled") as? Bool ?? true

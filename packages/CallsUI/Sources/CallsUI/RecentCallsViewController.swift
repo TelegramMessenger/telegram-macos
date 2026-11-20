@@ -336,11 +336,21 @@ public final class RecentCallsView: View {
         headerTitle.update(layout)
     }
 
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if System.edgeToEdgeSidebar {
+            needsLayout = true
+        }
+    }
+
     public override func layout() {
         super.layout()
         tableView.frame = bounds
         headerView.frame = NSMakeRect(0, 0, bounds.width, spaceHeight)
         headerTitle.centerX(y: floorToScreenPixels(System.backingScale, (spaceHeight - headerTitle.frame.height) / 2))
+        if System.edgeToEdgeSidebar, let lightsY = headerView.trafficLightsCenterY, let capY = headerTitle.capCenterY {
+            headerTitle.setFrameOrigin(NSMakePoint(headerTitle.frame.minX, floorToScreenPixels(System.backingScale, lightsY - capY)))
+        }
         borderView.frame = NSMakeRect(0, spaceHeight - .borderSize, bounds.width, .borderSize)
 
         let tableHeight = tableView.frame.height

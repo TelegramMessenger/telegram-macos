@@ -258,6 +258,35 @@ enum ApplicationContextLaunchAction {
 
 let leftSidebarWidth: CGFloat = 90
 
+private final class NativeSidebarBackdrop {
+    let controller = NSSplitViewController()
+    private let sidebarItem: NSSplitViewItem
+
+    init() {
+        let sidebar = NSViewController()
+        sidebar.view = NSView()
+        let content = NSViewController()
+        content.view = NSView()
+        sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.canCollapse = false
+        let contentItem = NSSplitViewItem(viewController: content)
+        contentItem.minimumThickness = 1
+        controller.addSplitViewItem(sidebarItem)
+        controller.addSplitViewItem(contentItem)
+        controller.view.setAccessibilityElement(false)
+    }
+
+    func layout(in bounds: NSRect, sidebarWidth: CGFloat) {
+        let width = max(1, sidebarWidth)
+        controller.view.frame = NSMakeRect(0, 0, width + max(1, bounds.width - width), bounds.height)
+        if sidebarItem.minimumThickness != width || sidebarItem.maximumThickness != width {
+            sidebarItem.minimumThickness = width
+            sidebarItem.maximumThickness = width
+        }
+        controller.splitView.setPosition(width, ofDividerAt: 0)
+    }
+}
+
 private final class ApplicationContainerView: View {
     fileprivate let splitView: SplitView
     fileprivate let backgroundView: BackgroundView
@@ -278,6 +307,33 @@ private final class ApplicationContainerView: View {
     var backgroundMode: TableBackgroundMode {
         get { return backgroundView.backgroundMode }
         set { backgroundView.backgroundMode = newValue }
+    }
+
+    var backgroundLeadingInset: CGFloat = 0 {
+        didSet {
+            if backgroundLeadingInset != oldValue {
+                needsLayout = true
+            }
+        }
+    }
+
+    private var sidebarBackdrop: NativeSidebarBackdrop?
+
+    private func updateSidebarBackdrop() {
+        if System.windowMaterialActive, backgroundLeadingInset > 0 {
+            let backdrop: NativeSidebarBackdrop
+            if let current = sidebarBackdrop {
+                backdrop = current
+            } else {
+                backdrop = NativeSidebarBackdrop()
+                addSubview(backdrop.controller.view, positioned: .below, relativeTo: backgroundView)
+                sidebarBackdrop = backdrop
+            }
+            backdrop.layout(in: bounds, sidebarWidth: min(backgroundLeadingInset, bounds.width))
+        } else if let sidebarBackdrop {
+            sidebarBackdrop.controller.view.removeFromSuperview()
+            self.sidebarBackdrop = nil
+        }
     }
 
     required init?(coder decoder: NSCoder) {
@@ -308,8 +364,11 @@ private final class ApplicationContainerView: View {
     override func layout() {
         super.layout()
         matchSuperviewBounds()
-        backgroundView.frame = bounds
+        let leading = min(max(0, backgroundLeadingInset), bounds.width)
+        backgroundView.frame = NSMakeRect(leading, 0, bounds.width - leading, bounds.height)
+        backgroundView.isHidden = leading >= bounds.width
         splitView.frame = bounds
+        updateSidebarBackdrop()
     }
 }
 
@@ -420,6 +479,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         } else {
             view.backgroundMode = theme.controllerBackgroundMode
         }
+        updateBackgroundLeadingInset()
     }
     
     @available(macOS 10.15, *)
@@ -467,6 +527,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         
         
         rightController = MajorNavigationController(ChatController.self, emptyController, context.window);
+        rightController.usesWindowEdgeInsets = true
         rightController.set(header: NavigationHeader(52, initializer: { header, contextObject, view -> (NavigationHeaderView, CGFloat) in
             let newView = view ?? InlineAudioPlayerView(header)
             newView.update(with: contextObject)
@@ -596,6 +657,15 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
 
         self.view.splitView.delegate = self
         self.view.splitView.update(true)
+
+        for observed in [rightController.view, leftController.view] {
+            observed.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(updateBackgroundLeadingInset), name: NSView.frameDidChangeNotification, object: observed)
+        }
+        rightController.controllerDidChange = { [weak self] in
+            self?.updateBackgroundLeadingInset()
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(handleWindowMaterialChange), name: systemWindowMaterialDidChange, object: nil)
 
         NotificationCenter.default.addObserver(self, selector: #selector(handleFullScreenWillChange(_:)), name: NSWindow.willEnterFullScreenNotification, object: window)
         NotificationCenter.default.addObserver(self, selector: #selector(handleFullScreenWillChange(_:)), name: NSWindow.willExitFullScreenNotification, object: window)
@@ -1051,6 +1121,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 controller._frameRect = NSMakeRect(0, 0, leftSidebarWidth, window.frame.height)
                 controller.loadViewIfNeeded()
                 self.leftSidebarController = controller
+                updateBackgroundLeadingInset()
                 readySignal = controller.ready.get() |> take(1)
             }
             let enlarge: CGFloat
@@ -1267,9 +1338,10 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         switch state {
         case .single:
             let hasLeftSidebar = !(folders?.isEmpty ?? true) && (folders?.sidebar ?? false)
-            leftController.insets = hasLeftSidebar
+            leftController.insets = hasLeftSidebar && !System.edgeToEdgeSidebar
                 ? NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
                 : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+            leftController.genericView.showsTrailingSeparator = false
 
             if rightController.stackCount == 1, previousState != .none {
                 leftController.viewWillAppear(false)
@@ -1282,7 +1354,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
             }
         case .dual:
             rightController.empty = emptyController
-            leftController.insets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+            leftController.insets = MainController_View.splitInsets
+            leftController.genericView.showsTrailingSeparator = true
             let fixedCount = self.view.splitView.fixedControllerCount
             self.view.splitView.insertController(controller: leftController, proportion: SplitProportion(min: w, max: w), at: fixedCount)
             self.view.splitView.insertController(controller: rightController, proportion: rightProp, at: fixedCount + 1)
@@ -1292,7 +1365,8 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
                 self.view.splitView.mustMinimisize = true
             }
             rightController.empty = emptyController
-            leftController.insets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 0)
+            leftController.insets = MainController_View.splitInsets
+            leftController.genericView.showsTrailingSeparator = true
             let fixedCount = self.view.splitView.fixedControllerCount
             self.view.splitView.insertController(controller: leftController, proportion: SplitProportion(min: 90, max: 90), at: fixedCount)
             self.view.splitView.insertController(controller: rightController, proportion: rightProp, at: fixedCount + 1)
@@ -1303,6 +1377,60 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         updateMinMaxWindowSize(animated: false)
         context.layout = state
         applyWindowChrome(forState: state)
+        updateBackgroundLeadingInset()
+    }
+
+    @objc private func handleWindowMaterialChange() {
+        applyWindowMaterialBackground(window, theme: theme)
+        updateBackgroundLeadingInset()
+    }
+
+    @objc private func updateBackgroundLeadingInset() {
+        DispatchQueue.main.async { [weak self] in
+            self?.applyBackgroundLeadingInset()
+        }
+    }
+
+    private let rightColumnMask: CALayer = {
+        let layer = CALayer()
+        layer.backgroundColor = NSColor.black.cgColor
+        layer.disableActions()
+        return layer
+    }()
+
+    private func applyBackgroundLeadingInset() {
+        let active = System.windowMaterialActive
+        let overWallpaper = active && view.backgroundMode.hasWallpaper
+        let isSingle = view.splitView.state == .single && rightController.stackCount <= 1
+        var leading: CGFloat = 0
+        var maskInset: CGFloat?
+        if active, !overWallpaper {
+            if isSingle {
+                leading = view.bounds.width
+            } else if rightController.isLoaded(), let superview = rightController.view.superview {
+                leading = view.convert(rightController.view.frame, from: superview).minX + rightController.slotLeadingInset
+                maskInset = rightController.slotLeadingInset
+            }
+        }
+        view.backgroundLeadingInset = leading
+        leftController.genericView.materialOverWallpaper = overWallpaper
+        leftSidebarController?.genericView.materialOverWallpaper = overWallpaper
+
+        guard rightController.isLoaded() else {
+            return
+        }
+        if let maskInset, maskInset > 0 {
+            let bounds = rightController.view.bounds
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            rightColumnMask.frame = NSMakeRect(maskInset, 0, max(0, bounds.width - maskInset), bounds.height)
+            CATransaction.commit()
+            if rightController.view.layer?.mask !== rightColumnMask {
+                rightController.view.layer?.mask = rightColumnMask
+            }
+        } else if rightController.view.layer?.mask === rightColumnMask {
+            rightController.view.layer?.mask = nil
+        }
     }
     
 
@@ -1526,9 +1654,6 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
             pendingApplyWindowChrome = false
             applyWindowChrome(forState: self.view.splitView.state)
         }
-        if let mode = appliedChromeMode {
-            window.applyCornerRadius(for: mode)
-        }
     }
 
     private func applyWindowChrome(forState state: SplitViewState) {
@@ -1544,21 +1669,7 @@ final class AuthorizedApplicationContext: NSObject, SplitViewDelegate {
         appliedChromeMode = mode
         leftController.genericView.compactCorners = (mode == .compact)
         window.applyChrome(mode)
-        window.applyCornerRadius(for: mode)
         window.clampToScreen()
     }
 
-}
-
-extension Window {
-    func applyCornerRadius(for mode: Window.ChromeMode) {
-        if #available(macOS 27.0, *) {
-            let selector = Selector(("_setCornerRadius:"))
-            if self.responds(to: selector) {
-                typealias SetCornerRadius = @convention(c) (AnyObject, Selector, Double) -> Void
-                let radius: Double = mode == .standard && !isFullScreen ? 28 : 0
-                unsafeBitCast(self.method(for: selector), to: SetCornerRadius.self)(self, selector, radius)
-            }
-        }
-    }
 }
