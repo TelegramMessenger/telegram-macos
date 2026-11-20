@@ -127,10 +127,12 @@ public final class ReactionsWindowController : NSObject {
             morphAnimator?.invalidate()
             morphAnimator = nil
             isMorphing = false
+            applyMorph(bounds)
+            (contentView as? View)?.isDynamicContentLocked = false
             tintGlass?.removeFromSuperview()
             tintGlass = nil
             glassView?.alphaValue = 1
-            applyMorph(bounds)
+            refreshAnimatableContent(in: contentView)
             if glassView == nil {
                 let shadow = NSShadow()
                 shadow.shadowBlurRadius = 2
@@ -142,12 +144,24 @@ public final class ReactionsWindowController : NSObject {
             needsLayout = true
         }
 
+        private func refreshAnimatableContent(in view: NSView) {
+            if let table = view as? TableView {
+                table.enumerateVisibleViews(with: { $0.updateAnimatableContent() })
+                return
+            }
+            for subview in view.subviews {
+                refreshAnimatableContent(in: subview)
+            }
+        }
+
         var usesGlass: Bool {
             return glassView != nil
         }
 
         func initFake(_ bar: NSRect) {
             isMorphing = true
+            (contentView as? View)?.isDynamicContentLocked = true
+            refreshAnimatableContent(in: contentView)
             if #available(macOS 26.0, *), let glassView {
                 let tint = NSGlassEffectView(frame: .zero)
                 tint.style = .regular

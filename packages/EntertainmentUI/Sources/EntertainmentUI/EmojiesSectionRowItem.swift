@@ -600,6 +600,7 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
     private var reveal: TextButton?
     
     private var appearanceViews:[WeakReference<NSView>] = []
+    private var handoffKeys = Set<InlineStickerItemLayer.Key>()
     
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -860,6 +861,7 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
     }
     
     func animateAppearance(delay delay_t: Double, duration: Double, initialPlayers: [Int: LottiePlayerView]) {
+        handoffKeys.removeAll()
         var delay_t = delay_t
         let itemDelay = duration / Double(inlineStickerItemViews.count)
         for (key, value) in inlineStickerItemViews {
@@ -871,27 +873,47 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
             } else if let selected = selectedLayers[key] {
                 selected.animate(from: NSNumber(value: selected.frame.height / 2), to: NSNumber(value: 10), keyPath: "cornerRadius", timingFunction: .easeOut, duration: 0.2, forKey: "cornerRadius")
             }
-            if let view = initialPlayers[key.index], view.currentState == .playing {
+            if let view = initialPlayers[key.index] {
+                handoffKeys.insert(key)
                 view.frame = value.frame
                 value.superview?.addSubview(view)
-                value.stopped = true
-                value.reset()
                 value.opacity = 0
                 appearanceViews.append(.init(value: view))
-                view.contextAnimation?.triggerOn = (.last, { [weak view, weak value] in
-                    if let value = value {
-                        value.triggerNextState = { [weak value] _ in
+                if view.currentState == .playing {
+                    value.stopped = true
+                    value.reset()
+                    view.contextAnimation?.triggerOn = (.last, { [weak self, weak view, weak value] in
+                        guard let self, let value else {
                             view?.removeFromSuperview()
-                            value?.opacity = 1
+                            return
                         }
                         value.stopped = false
+                        self.updateAnimatableContent()
                         value.apply()
-                    } else {
-                        view?.removeFromSuperview()
-                    }
-                }, {})
+                        self.reveal(value, replacing: view)
+                    }, {})
+                } else {
+                    self.updateAnimatableContent()
+                    value.resumeIfNeeded()
+                    reveal(value, replacing: view)
+                }
             }
         }
+    }
+
+    private func reveal(_ value: InlineStickerItemLayer, replacing view: NSView?, attempts: Int = 60) {
+        if value.contents != nil || attempts == 0 {
+            view?.removeFromSuperview()
+            value.opacity = 1
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0, execute: { [weak self, weak value, weak view] in
+            guard let self, let value else {
+                view?.removeFromSuperview()
+                return
+            }
+            self.reveal(value, replacing: view, attempts: attempts - 1)
+        })
     }
 
     
@@ -1084,6 +1106,15 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
         
         self.updateInlineStickers(context: item.context, color: color, contentView: contentView, items: item.items, selected: item.selectedItems, animated: animated, uniqueGifts: item.uniqueGifts)
 
+        if !appearanceViews.isEmpty {
+            for value in inlineStickerItemViews.values where value.opacity == 0 {
+                value.opacity = 1
+                if value.stopped {
+                    value.stopped = false
+                    value.apply()
+                }
+            }
+        }
         while !appearanceViews.isEmpty {
             appearanceViews.removeLast().value?.removeFromSuperview()
         }
@@ -1091,8 +1122,23 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
     
    
     
+    private var dynamicContentLocked: Bool {
+        var currentView: NSView? = self.superview
+        while let view = currentView {
+            if let view = view as? View, view.isDynamicContentLocked {
+                return true
+            }
+            if let view = view as? TableRowView, view.isDynamicContentLocked {
+                return true
+            }
+            currentView = view.superview
+        }
+        return false
+    }
+
     override func updateAnimatableContent() -> Void {
-        for (_, value) in self.inlineStickerItemViews {
+        let dynamicContentLocked = self.dynamicContentLocked
+        for (key, value) in self.inlineStickerItemViews {
             if let superview = value.superview {
                 var isKeyWindow: Bool = false
                 if let window = self.window {
@@ -1103,9 +1149,14 @@ private final class EmojiesSectionRowView : TableRowView, ModalPreviewRowViewPro
                     }
                 }
                 let isVisible = NSIntersectsRect(value.frame, superview.visibleRect)
-                value.isVisibleForFetching = isVisible
-                value.isPlayable = isVisible && isKeyWindow
+                let isHandoff = dynamicContentLocked && handoffKeys.contains(key)
+                let isPlayable = isVisible && isKeyWindow && (!dynamicContentLocked || isHandoff)
+                value.isVisibleForFetching = isVisible && (!dynamicContentLocked || isHandoff)
+                value.isPlayable = isPlayable
             }
+        }
+        if !dynamicContentLocked {
+            handoffKeys.removeAll()
         }
     }
     
