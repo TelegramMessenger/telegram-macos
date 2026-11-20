@@ -532,8 +532,12 @@ extension DocumentCanvasView {
         if pos.box.textLength == 0 {
             if pos.box is CodeBlockBox {
                 makeCodeBlock()
-            } else if pos.box is PullQuoteBox {
-                makePullQuote()
+            } else if let quote = pos.box as? PullQuoteBox {
+                if quote.authorLength == 0 {
+                    makePullQuote()
+                } else {
+                    editing { insertParagraphAfterBlock(at: pos.index) }
+                }
             } else {
                 setParagraphStyle(.body)
             }
@@ -998,6 +1002,15 @@ extension DocumentCanvasView {
         }
         if selFrom == selTo, let img = imageBox(atGap: head), let i = boxIndex(of: img) {
             editing { insertParagraphBeforeImage(at: i, text: "") }
+            return
+        }
+        if let (region, _) = leafRegion(containingGlobal: selFrom), case .pullQuote = region.ref,
+           selTo <= region.globalStart + region.length {
+            if caretAtQuoteTrailingBlankLine() {
+                exitQuoteBelow()
+            } else {
+                commitText("\n")
+            }
             return
         }
         // Enter at the END of a heading starts a plain body paragraph — a heading is a one-line title, so

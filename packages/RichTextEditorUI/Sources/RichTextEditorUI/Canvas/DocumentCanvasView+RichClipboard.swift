@@ -19,6 +19,8 @@ extension DocumentCanvasView {
         if let subTable = structuralTableFragment() { return [subTable] }
         let lo = selFrom, hi = selTo
         guard lo < hi else { return [] }
+        if let (region, _) = leafRegion(containingGlobal: lo), case .quoteAuthor = region.ref,
+           hi <= region.globalStart + region.length { return [] }
         return slicedBlocks(from: boxes, lo: lo, hi: hi)
     }
 
@@ -60,11 +62,20 @@ extension DocumentCanvasView {
                                                   runs: [TextRun(text: sub)])))
                 }
             } else if let pq = box as? PullQuoteBox {
-                let bStart = box.textStart, bEnd = box.textStart + box.textLength
-                let a = max(lo, bStart), b = min(hi, bEnd)
-                if a < b, case let .pullQuote(model) = pq.currentBlock() {
+                let regions = pq.leafRegions()
+                guard let body = regions.first(where: { $0.ref == .pullQuote(pq.id) }),
+                      case let .pullQuote(model) = pq.currentBlock() else { continue }
+                let a = max(lo, body.globalStart), b = min(hi, body.globalStart + body.length)
+                let author = regions.first(where: { $0.ref == .quoteAuthor(pq.id) }).map { region in
+                    Self.sliceRuns(model.author, from: max(lo, region.globalStart) - region.globalStart,
+                                   to: min(hi, region.globalStart + region.length) - region.globalStart)
+                } ?? []
+                if a < b || (body.length == 0 && lo <= body.globalStart && body.globalStart < hi) {
                     result.append(.pullQuote(PullQuote(id: BlockID.generate(),
-                                                       runs: Self.sliceRuns(model.runs, from: a - bStart, to: b - bStart))))
+                                                       runs: Self.sliceRuns(model.runs, from: a - body.globalStart, to: b - body.globalStart),
+                                                       author: author)))
+                } else if !author.isEmpty {
+                    result.append(.paragraph(ParagraphBlock(id: BlockID.generate(), runs: author)))
                 }
             } else if let bq = box as? BlockQuoteBox, !bq.collapsed {
                 // Recurse into the quote's children; the covered portion copies as a quote container.
