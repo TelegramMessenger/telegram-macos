@@ -145,7 +145,7 @@ final class ChatLayerRowView: ChatLayerSceneView {
                 do { try root.setChildren(children) }
                 catch { assertionFailure("Invalid admin badge tree") }
             }
-            current.layer.backgroundColor = background.withAlphaComponent(0.2).cgColor
+            current.layer.backgroundColor = background.cgColor
             current.frame = backgroundFrame
             current.layer.cornerRadius = backgroundFrame.height / 2
         } else {

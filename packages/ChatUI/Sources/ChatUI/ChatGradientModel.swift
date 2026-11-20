@@ -58,6 +58,15 @@ final class ChatBubbleSliceLayer: SimpleLayer {
 public final class ChatMessageBubbleBackdrop: NSView {
     private var backgroundContent: SimpleLayer?
     private let borderLayer = ChatBubbleSliceLayer()
+    private var glassLayer: CALayer?
+    private var gradientImage: CGImage?
+    private var gradientPixels: (image: ObjectIdentifier, pixels: [UInt8], width: Int, height: Int)?
+    private var glassMatrix: [CGFloat]?
+    public var fill: NSColor = .clear {
+        didSet {
+            self.applyFill()
+        }
+    }
     private var maskLayer: ChatBubbleSliceLayer?
 
     private var lastUpdate: (rect: CGRect, containerSize: CGSize, rotated: Bool)?
@@ -100,8 +109,78 @@ public final class ChatMessageBubbleBackdrop: NSView {
             transition.updateFrame(layer: layer, frame: size.bounds)
         }
         transition.updateFrame(layer: borderLayer, frame: size.bounds)
+        if let glassLayer {
+            transition.updateFrame(layer: glassLayer, frame: size.bounds)
+        }
         self.currentSize = size
         self.applyImages()
+    }
+
+    public func gradientColor() -> NSColor? {
+        guard let content = self.backgroundContent, let image = self.gradientImage, let layer = self.layer, content.bounds.width > 0, content.bounds.height > 0 else {
+            return nil
+        }
+        let pixels: (image: ObjectIdentifier, pixels: [UInt8], width: Int, height: Int)
+        if let cached = self.gradientPixels, cached.image == ObjectIdentifier(image) {
+            pixels = cached
+        } else {
+            let width = max(1, min(image.width, 64)), height = max(1, min(image.height, 64))
+            var buffer = [UInt8](repeating: 0, count: width * height * 4)
+            let drawn = buffer.withUnsafeMutableBytes { raw -> Bool in
+                guard let context = CGContext(data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                    return false
+                }
+                context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                return true
+            }
+            guard drawn else {
+                return nil
+            }
+            pixels = (ObjectIdentifier(image), buffer, width, height)
+            self.gradientPixels = pixels
+        }
+        let point = layer.convert(CGPoint(x: self.bounds.midX, y: self.bounds.midY), to: content)
+        let fx = min(1, max(0, point.x / content.bounds.width))
+        let fy = min(1, max(0, point.y / content.bounds.height))
+        let column = min(pixels.width - 1, Int(fx * CGFloat(pixels.width)))
+        let row = min(pixels.height - 1, Int((1 - fy) * CGFloat(pixels.height)))
+        let offset = (row * pixels.width + column) * 4
+        return NSColor(srgbRed: CGFloat(pixels.pixels[offset]) / 255, green: CGFloat(pixels.pixels[offset + 1]) / 255, blue: CGFloat(pixels.pixels[offset + 2]) / 255, alpha: 1)
+    }
+
+    public func setWallpaperGlass(_ matrix: [CGFloat]?) {
+        guard let matrix else {
+            if let glassLayer {
+                glassLayer.removeFromSuperlayer()
+                self.glassLayer = nil
+                self.glassMatrix = nil
+            }
+            self.backgroundContent?.isHidden = false
+            self.applyFill()
+            return
+        }
+        let glass: CALayer
+        if let current = self.glassLayer {
+            glass = current
+        } else {
+            guard let created = ChatBubbleWallpaperMaterial.makeGlassLayer() else {
+                return
+            }
+            created.frame = self.bounds
+            self.layer?.insertSublayer(created, at: 0)
+            self.glassLayer = created
+            glass = created
+        }
+        if self.glassMatrix != matrix {
+            self.glassMatrix = matrix
+            ChatBubbleWallpaperMaterial.applyGlassMatrix(matrix, to: glass)
+        }
+        self.backgroundContent?.isHidden = true
+        self.applyFill()
+    }
+
+    private func applyFill() {
+        self.layer?.backgroundColor = self.glassLayer == nil ? self.fill.cgColor : .clear
     }
 
     /// Bands of the bubble to erase, in this view's coordinates. Empty — the overwhelmingly common case
@@ -146,6 +225,9 @@ public final class ChatMessageBubbleBackdrop: NSView {
         self.borderData = border
         self.appliedCut = nil
         if image == nil {
+            self.setWallpaperGlass(nil)
+        }
+        if image == nil {
             if let layer = self.backgroundContent {
                 performSublayerRemoval(layer, animated: false)
             }
@@ -158,10 +240,12 @@ public final class ChatMessageBubbleBackdrop: NSView {
                 current = SimpleLayer()
                 current.anchorPoint = .zero
                 self.backgroundContent = current
+                current.isHidden = self.glassLayer != nil
                 self.layer?.insertSublayer(current, below: self.borderLayer)
             }
             current.contents = background
         }
+        self.gradientImage = image == nil ? nil : background
 
         self.applyImages()
     }

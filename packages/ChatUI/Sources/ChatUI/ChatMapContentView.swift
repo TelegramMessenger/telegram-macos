@@ -60,7 +60,7 @@ public class ChatMapContentView: ChatMediaContentView {
         
         if let positionFlags = positionFlags {
             let maskLayer: CAShapeLayer = CAShapeLayer()
-            maskLayer.path = CGPath.bubbleCorners(size: frame.size, corners: .chatMedia(positionFlags, bubble: parameters?.bubbleCorners()))
+            maskLayer.path = CGPath.bubbleCorners(size: frame.size, corners: .chatMedia(positionFlags, bubble: parameters?.bubbleCorners(), flat: parameters?.flatSides ?? []))
             layer?.mask = maskLayer
         } else {
             layer?.mask = nil

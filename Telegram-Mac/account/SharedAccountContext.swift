@@ -13,6 +13,7 @@ import TelegramContextShare
 #else
 import PrivateCallScreen
 import TelegramContext
+import TelegramTheme
 #endif
 
 
@@ -87,7 +88,11 @@ class SharedAccountContext {
     private(set) var batteryLevel: Double = 100 {
         didSet {
             #if !SHARE
+            let liquidGlassBefore = System.liquidGlass
             syncLiquidGlassWithLite()
+            if System.liquidGlass != liquidGlassBefore {
+                telegramUpdateTheme(theme.new(), animated: false)
+            }
             #endif
         }
     }

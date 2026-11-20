@@ -716,6 +716,7 @@ public class ChatGroupedView : ChatRowView , ModalPreviewRowViewProtocol {
                     positionFlags.remove(.top)
                 }
             }
+            item.parameters[i].flatSides = item.isBubbled ? [.top, .bottom] : []
 
             
             contents[i].update(with: item.layout.messages[i].media[0], size: item.layout.frame(at: i).size, context: item.context, parent: item.layout.messages[i], table: item.table, parameters: item.parameters[i], animated: animated, positionFlags: positionFlags, approximateSynchronousValue: approximateSynchronousValue)
@@ -1053,7 +1054,7 @@ public class ChatGroupedView : ChatRowView , ModalPreviewRowViewProtocol {
                         }
                     }
 
-                    selectionBackground.corners = .chatMedia(positionFlags, bubble: item.mediaBubbleCorners(inset: item.mediaBubbleCornerInset), inner: positionFlags.isEmpty ? 0 : .cornerRadius)
+                    selectionBackground.corners = .chatMedia(positionFlags, bubble: item.mediaBubbleCorners(inset: item.mediaBubbleCornerInset), inner: positionFlags.isEmpty ? 0 : .cornerRadius, flat: item.isBubbled ? [.top, .bottom] : [])
                     data.superview.addSubview(selectionBackground)
                                         
                     let animation: CABasicAnimation = makeSpringAnimation("opacity")
@@ -1112,7 +1113,7 @@ public class ChatGroupedView : ChatRowView , ModalPreviewRowViewProtocol {
                 }
             }
             
-            selectionBackground.corners = .chatMedia(positionFlags, bubble: item.mediaBubbleCorners(inset: item.mediaBubbleCornerInset), inner: positionFlags.isEmpty ? 0 : .cornerRadius)
+            selectionBackground.corners = .chatMedia(positionFlags, bubble: item.mediaBubbleCorners(inset: item.mediaBubbleCornerInset), inner: positionFlags.isEmpty ? 0 : .cornerRadius, flat: item.isBubbled ? [.top, .bottom] : [])
             data.superview.addSubview(selectionBackground)
             
             self.selectionBackground = selectionBackground

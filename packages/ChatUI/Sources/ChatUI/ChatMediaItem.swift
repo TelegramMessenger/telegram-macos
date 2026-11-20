@@ -388,6 +388,7 @@ public class ChatMediaItem: ChatRowItem {
                 positionFlags.insert(.right)
             }
             self.positionFlags = positionFlags
+            self.parameters?.flatSides = LayoutPositionFlags([.top, .bottom]).subtracting(positionFlags)
         }
 
     }

@@ -779,7 +779,11 @@ public class ChatAccessoryView : Button {
         if let model = model {
             switch model.modelType {
             case .modern:
-                self.backgroundView.backgroundColor = model.presentation.colors.main.withAlphaComponent(0.1).cgColor
+                if model.presentation.frosted {
+                    self.backgroundView.backgroundColor = model.presentation.colors.main.withAlphaComponent(0.28).cgColor
+                } else {
+                    self.backgroundView.backgroundColor = model.presentation.colors.main.withAlphaComponent(0.1).cgColor
+                }
             case .classic:
                 self.backgroundView.backgroundColor = model.presentation.background.cgColor
             }
@@ -913,7 +917,8 @@ public struct ChatAccessoryPresentation {
     public let pattern: Int64?
     public let giftEmojiFileId: Int64?
     public let app: TelegramPresentationTheme
-    public init(background: NSColor, colors: PeerNameColors.Colors, enabledText: NSColor, disabledText: NSColor, quoteIcon: CGImage, pattern: Int64?, giftEmojiFileId: Int64?, app: TelegramPresentationTheme) {
+    public let frosted: Bool
+    public init(background: NSColor, colors: PeerNameColors.Colors, enabledText: NSColor, disabledText: NSColor, quoteIcon: CGImage, pattern: Int64?, giftEmojiFileId: Int64?, app: TelegramPresentationTheme, frosted: Bool = false) {
         self.background = background
         self.colors = colors
         self.enabledText = enabledText
@@ -922,9 +927,10 @@ public struct ChatAccessoryPresentation {
         self.pattern = pattern
         self.giftEmojiFileId = giftEmojiFileId
         self.app = app
+        self.frosted = frosted
     }
     public func withUpdatedBackground(_ backgroundColor: NSColor) -> ChatAccessoryPresentation {
-        return ChatAccessoryPresentation(background: backgroundColor, colors: self.colors, enabledText: self.enabledText, disabledText: self.disabledText, quoteIcon: self.quoteIcon, pattern: self.pattern, giftEmojiFileId: self.giftEmojiFileId, app: self.app)
+        return ChatAccessoryPresentation(background: backgroundColor, colors: self.colors, enabledText: self.enabledText, disabledText: self.disabledText, quoteIcon: self.quoteIcon, pattern: self.pattern, giftEmojiFileId: self.giftEmojiFileId, app: self.app, frosted: self.frosted)
     }
 }
 

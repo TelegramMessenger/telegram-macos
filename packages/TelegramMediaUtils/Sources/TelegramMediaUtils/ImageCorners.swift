@@ -152,9 +152,90 @@ private func tailContext(_ tail: Tail, scale:CGFloat) -> DrawingContext {
 
 
 
+private enum ContinuousCornerPosition: Hashable {
+    case topLeft, topRight, bottomLeft, bottomRight
+}
+
+private struct ContinuousCornerKey: Hashable {
+    let position: ContinuousCornerPosition
+    let radius: CGFloat
+    let horizontal: CGFloat
+    let vertical: CGFloat
+    let scale: CGFloat
+}
+
+private let continuousCornerLock = NSLock()
+private var continuousCornerCache: [ContinuousCornerKey: DrawingContext] = [:]
+
+private func continuousCornerContext(_ position: ContinuousCornerPosition, radius: CGFloat, horizontal: CGFloat, vertical: CGFloat, scale: CGFloat) -> DrawingContext {
+    let key = ContinuousCornerKey(position: position, radius: radius, horizontal: horizontal, vertical: vertical, scale: scale)
+    continuousCornerLock.lock()
+    if let cached = continuousCornerCache[key] {
+        continuousCornerLock.unlock()
+        return cached
+    }
+    continuousCornerLock.unlock()
+    let width = ((1.0 + horizontal) * radius).rounded(.up)
+    let height = ((1.0 + vertical) * radius).rounded(.up)
+    let context = DrawingContext(size: CGSize(width: width, height: height), scale: scale, clear: true)
+    context.withContext { c in
+        c.setBlendMode(.copy)
+        c.setFillColor(NSColor.black.cgColor)
+        let origin: CGPoint
+        switch position {
+        case .topLeft:
+            origin = CGPoint(x: 0.0, y: -height)
+        case .topRight:
+            origin = CGPoint(x: -width, y: -height)
+        case .bottomLeft:
+            origin = CGPoint()
+        case .bottomRight:
+            origin = CGPoint(x: -width, y: 0.0)
+        }
+        c.addPath(CGPath.continuousRoundedRect(CGRect(origin: origin, size: CGSize(width: width * 2.0, height: height * 2.0)), topLeft: radius, topRight: radius, bottomLeft: radius, bottomRight: radius, horizontalSmoothing: horizontal, verticalSmoothing: vertical))
+        c.fillPath()
+    }
+    continuousCornerLock.lock()
+    continuousCornerCache[key] = context
+    continuousCornerLock.unlock()
+    return context
+}
+
+private func addContinuousCorners(_ context: DrawingContext, corners: ImageCorners, drawingRect: CGRect, scale: CGFloat) {
+    let topLeft = corners.topLeft.corner, topRight = corners.topRight.corner
+    let bottomLeft = corners.bottomLeft.corner, bottomRight = corners.bottomRight.corner
+    let smoothing = continuousCornerSideSmoothing(size: drawingRect.size, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, limit: corners.smoothing)
+    func width(_ radius: CGFloat) -> CGFloat {
+        return ((1.0 + smoothing.horizontal) * radius).rounded(.up)
+    }
+    func height(_ radius: CGFloat) -> CGFloat {
+        return ((1.0 + smoothing.vertical) * radius).rounded(.up)
+    }
+    func corner(_ position: ContinuousCornerPosition, _ radius: CGFloat) -> DrawingContext {
+        return continuousCornerContext(position, radius: radius, horizontal: smoothing.horizontal, vertical: smoothing.vertical, scale: scale)
+    }
+    if topLeft > CGFloat.ulpOfOne {
+        context.blt(corner(.topLeft, topLeft), at: CGPoint(x: drawingRect.minX, y: drawingRect.minY))
+    }
+    if topRight > CGFloat.ulpOfOne {
+        context.blt(corner(.topRight, topRight), at: CGPoint(x: drawingRect.maxX - width(topRight), y: drawingRect.minY))
+    }
+    if bottomLeft > CGFloat.ulpOfOne {
+        context.blt(corner(.bottomLeft, bottomLeft), at: CGPoint(x: drawingRect.minX, y: drawingRect.maxY - height(bottomLeft)))
+    }
+    if bottomRight > CGFloat.ulpOfOne {
+        context.blt(corner(.bottomRight, bottomRight), at: CGPoint(x: drawingRect.maxX - width(bottomRight), y: drawingRect.maxY - height(bottomRight)))
+    }
+}
+
 public func addCorners(_ context: DrawingContext, arguments: TransformImageArguments, scale:CGFloat) {
     let corners = arguments.corners
     let drawingRect = arguments.drawingRect
+    
+    if corners.smoothing > 0 {
+        addContinuousCorners(context, corners: corners, drawingRect: drawingRect, scale: scale)
+        return
+    }
     
     if case let .Corner(radius) = corners.topLeft, radius > CGFloat.ulpOfOne {
         let corner = cornerContext(.TopLeft(Int(radius)), scale:scale)
