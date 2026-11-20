@@ -107,6 +107,40 @@ final class Auth_PhoneInputPasteTests: XCTestCase {
         assertUKNumber(input)
     }
     
+    private func assertUSNumber(_ input: Auth_PhoneInput, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(input.codeText.stringValue, "+1", file: file, line: line)
+        XCTAssertEqual(input.numberText.stringValue, "202 555 0123", file: file, line: line)
+        XCTAssertEqual(input.selected?.id, "US", file: file, line: line)
+        XCTAssertEqual(digits(input.readyValue), "12025550123", file: file, line: line)
+    }
+    
+    private func assertPasteUndoesAndRedoes(into field: (Auth_PhoneInput) -> NSTextField) throws {
+        let input = makeInput()
+        enterUSNumber(input)
+        try insert("+44 7700 900123", into: field(input))
+        assertUKNumber(input)
+        
+        let undoManager = try XCTUnwrap(window?.undoManager)
+        XCTAssertTrue(undoManager.canUndo)
+        undoManager.undo()
+        assertUSNumber(input)
+        
+        XCTAssertTrue(undoManager.canRedo)
+        undoManager.redo()
+        assertUKNumber(input)
+        
+        undoManager.undo()
+        assertUSNumber(input)
+    }
+    
+    func testPasteIntoNumberFieldCanBeUndone() throws {
+        try assertPasteUndoesAndRedoes(into: { $0.numberText })
+    }
+    
+    func testPasteIntoCodeFieldCanBeUndone() throws {
+        try assertPasteUndoesAndRedoes(into: { $0.codeText })
+    }
+    
     func testPastedCallingCodeKeepsNumber() throws {
         let input = makeInput()
         enterUSNumber(input)

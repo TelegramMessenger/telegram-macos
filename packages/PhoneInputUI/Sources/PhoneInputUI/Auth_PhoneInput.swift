@@ -453,6 +453,8 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         guard isInternational || (field == codeText && digits.count > 4) else {
             return true
         }
+        let undoManager = field.currentEditor()?.undoManager ?? window?.undoManager
+        let previous = inputState
         hasChanges = true
         if digits.count > 4 {
             numberText.stringValue = ""
@@ -462,7 +464,40 @@ public final class Auth_PhoneInput: View, NSTextFieldDelegate {
         codeText.setCursorToEnd()
         controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: codeText, userInfo: nil))
         updatePhoneNumber?(codeText.stringValue + numberText.stringValue)
+        if let undoManager = undoManager {
+            undoManager.beginUndoGrouping()
+            undoManager.registerUndo(withTarget: self, handler: { target in
+                target.restore(previous, focus: field, undoManager: undoManager)
+            })
+            undoManager.endUndoGrouping()
+        }
         return false
+    }
+    
+    private struct InputState {
+        let code: String
+        let number: String
+        let selected: Country?
+        let selectedCode: Country.CountryCode?
+    }
+    
+    private var inputState: InputState {
+        return InputState(code: codeText.stringValue, number: numberText.stringValue, selected: selected, selectedCode: selectedCode)
+    }
+    
+    private func restore(_ state: InputState, focus field: PhoneInputTextField, undoManager: UndoManager) {
+        let current = inputState
+        undoManager.registerUndo(withTarget: self, handler: { target in
+            target.restore(current, focus: field, undoManager: undoManager)
+        })
+        hasChanges = true
+        codeText.stringValue = state.code
+        numberText.stringValue = state.number
+        update(selected: state.selected, update: true, updateCode: false, code: state.selectedCode)
+        window?.makeFirstResponder(field)
+        field.setCursorToEnd()
+        updatePlaceholder()
+        updatePhoneNumber?(numberText.stringValue)
     }
     
     public func controlTextDidChange(_ obj: Notification) {
