@@ -1028,10 +1028,13 @@ public class ChatSelectText : NSObject {
             }
         }
         let selectionBeforeDrag = self.selectionBeforeDrag
-        chatInteraction.withToggledSelectedMessage({ current in
+        chatInteraction.update({ current in
             let selectedIds = current.selectionState?.selectedIds ?? []
             let idsToRestore = selectedIds.symmetricDifference(selectionBeforeDrag).subtracting(idsInRange)
-            return idsToRestore.reduce(current, { $0.withToggledSelectedMessage($1) })
+            if idsToRestore.isEmpty {
+                return current
+            }
+            return current.withUpdatedSelectedMessages(selectedIds.symmetricDifference(idsToRestore))
         })
     }
     
