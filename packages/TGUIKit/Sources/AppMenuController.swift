@@ -1123,7 +1123,9 @@ final class AppMenuController : NSObject  {
             let viewSize = view.frame.size
             var rect = NSMakeRect(rect.maxX - width + 40, rect.maxY - 25 - extra, width, window.frame.height + extra)
             let hostFrame = host.frame
+            rect.size.width = min(rect.width, hostFrame.width)
             rect.origin.x = max(hostFrame.minX, min(rect.minX, hostFrame.maxX - rect.width))
+            rect.origin.y = max(hostFrame.minY, min(rect.minY, hostFrame.maxY - rect.height))
             
             let container = FlippableView(frame: host.convertFromScreen(rect))
             container.backgroundColor = .clear

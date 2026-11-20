@@ -141,6 +141,7 @@ public final class EntertainmentView : View {
         self.tabs.usesMenuMaterial = !TelegramUtilsHooks.shared.isLite(.blur)
 
         self.glassSettingObserver = NotificationCenter.default.addObserver(forName: systemLiquidGlassDidChange, object: nil, queue: .main) { [weak self] _ in
+            self?.tabs.usesMenuMaterial = !TelegramUtilsHooks.shared.isLite(.blur)
             self?.installMenuBackground(retheme: true)
         }
 

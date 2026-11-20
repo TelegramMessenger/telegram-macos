@@ -113,7 +113,13 @@ public struct System {
     /// the lite-mode "Blur Effects" toggle — when both `liquidGlass` and
     /// `blurEnabled` are false, `LiquidGlassView` renders a plain solid
     /// background instead.
-    public static var blurEnabled: Bool = true
+    public static var blurEnabled: Bool = true {
+        didSet {
+            if blurEnabled != oldValue {
+                NotificationCenter.default.post(name: systemLiquidGlassDidChange, object: nil)
+            }
+        }
+    }
 
 }
 
