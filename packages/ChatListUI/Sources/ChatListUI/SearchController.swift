@@ -1899,6 +1899,11 @@ public class SearchController<Context: AccountContextProtocol>: GenericViewContr
                 return .rejected
             }
             
+            let hasMarkedText = (self.window?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+            if hasMarkedText {
+                return .invokeNext
+            }
+            
             guard self.hasResultsForScope else {
                 return .invoked
             }

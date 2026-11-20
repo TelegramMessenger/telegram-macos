@@ -1025,7 +1025,8 @@ public class PeerInfoController<Context: AccountContextProtocol>: EditableViewCo
     
     public override func returnKeyAction() -> KeyHandlerResult {
         if let currentEvent = NSApp.currentEvent, state == .Edit {
-            if FastSettings.checkSendingAbility(for: currentEvent) {
+            let hasMarkedText = (window?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+            if FastSettings.checkSendingAbility(for: currentEvent), !hasMarkedText {
                 changeState()
                 return .invoked
             }

@@ -1084,6 +1084,10 @@ public class InputDataController: GenericViewController<InputDataView> {
     
     public override func returnKeyAction() -> KeyHandlerResult {
         if let event = NSApp.currentEvent {
+            let hasMarkedText = (window?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+            if hasMarkedText {
+                return .invokeNext
+            }
             switch returnKeyInvocation(self.currentFirstResponderIdentifier, event) {
             case .default:
                 if event.type != .keyDown || InputDataUIHooks.shared.checkSendingAbility(event) {

@@ -446,6 +446,10 @@ public class InputContextViewController : GenericViewController<InputContextView
                 if strongSelf.context.isInGlobalSearch {
                     return .rejected
                 }
+                let hasMarkedText = (strongSelf.context.window.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+                if hasMarkedText {
+                    return .invokeNext
+                }
                 return strongSelf.invoke()
             }
             return .invokeNext

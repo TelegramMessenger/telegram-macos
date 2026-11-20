@@ -554,6 +554,10 @@ public class QuickSwitcherModalController: ModalViewController, TableViewDelegat
     }
     
     public override func returnKeyAction() -> KeyHandlerResult {
+        let hasMarkedText = genericView.searchView.input.hasMarkedText()
+        if hasMarkedText {
+            return .invokeNext
+        }
         if genericView.inForumMode, let forumPeerId = self.forumPeerId {
             if let selectedItem = genericView.forumTopicsView?.selectedItem() as? QuickSwitcherTopicRowItem, let threadId = selectedItem.threadId {
                 _ = QuickSwitcherHooks.shared.openForumTopic(threadId, forumPeerId, context, true)

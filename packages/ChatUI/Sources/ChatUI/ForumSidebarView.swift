@@ -180,6 +180,10 @@ final class ForumSidebarView: View {
         return true
     }
 
+    var searchInputHasMarkedText: Bool {
+        return searchView.input.hasMarkedText()
+    }
+
     func activateSearchResult() -> Bool {
         guard searchView.state == .Focus, window?.firstResponder === searchView.input else { return false }
         rowsContent?.selectSearchResult()
@@ -283,8 +287,12 @@ final class ForumSidebarController: GenericViewController<ForumSidebarView>, Tra
             self.genericView.focusSearch()
             return .invoked
         }, with: self, for: .K, priority: .high, modifierFlags: [.command])
-        context.window.set(handler: { [weak self] _ in
+        context.window.set(handler: { [weak self] _ -> KeyHandlerResult in
             guard let self, !hasModals(self.context.window), !contextMenuOnScreen() else { return .rejected }
+            let hasMarkedText = self.genericView.searchInputHasMarkedText
+            if hasMarkedText {
+                return .invokeNext
+            }
             return self.genericView.activateSearchResult() ? .invoked : .rejected
         }, with: self, for: .Return, priority: .modal, modifierFlags: [])
     }
