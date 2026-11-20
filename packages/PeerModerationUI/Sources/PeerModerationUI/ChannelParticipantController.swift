@@ -113,6 +113,8 @@ private final class TagPreviewRowView: GeneralContainableRowView {
     private let backgroundView: BackgroundView
     private let itemsView = View()
 
+    private var itemRowView: TableRowView?
+
     required init(frame frameRect: NSRect) {
         backgroundView = BackgroundView(frame: NSMakeRect(0, 0, frameRect.width, frameRect.height))
         backgroundView.useSharedAnimationPhase = false
@@ -133,13 +135,14 @@ private final class TagPreviewRowView: GeneralContainableRowView {
 
         guard let item = item as? TagPreviewRowItem else { return }
 
-        self.itemsView.removeAllSubviews()
+        itemRowView?.removeFromSuperview()
 
         let y: CGFloat = item.viewType.innerInset.top
         let vz = item.chatItem.viewClass() as! TableRowView.Type
         let view = vz.init(frame: NSMakeRect(0, y, self.backgroundView.frame.width, item.chatItem.height))
         view.set(item: item.chatItem, animated: false)
         self.itemsView.addSubview(view)
+        itemRowView = view
 
         if let view = view as? ChatRowView {
             view.updateBackground(animated: false, item: view.item, rotated: true)
@@ -155,6 +158,10 @@ private final class TagPreviewRowView: GeneralContainableRowView {
         super.updateLayout(size: size, transition: transition)
         self.backgroundView.frame = containerView.bounds
         itemsView.frame = backgroundView.bounds
+        if let item = item as? TagPreviewRowItem {
+            let y: CGFloat = item.viewType.innerInset.top
+            itemRowView?.frame = CGRectMake(0, y, backgroundView.bounds.width, item.chatItem.height)
+        }
     }
 }
 
