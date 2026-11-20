@@ -60,7 +60,15 @@ open class InstantViewInBrowser<Context: AccountContextProtocol> : TelegramGener
     }
     
     public func reloadPage() {
-        
+
+    }
+
+    public func performFindAction(_ action: NSTextFinder.Action) -> Bool {
+        return page.performFindAction(action)
+    }
+
+    public func dismissFindInterface() -> Bool {
+        return page.dismissFindInterface()
     }
     
     public var externalState: Signal<WebpageModalState, NoError> {
@@ -160,22 +168,29 @@ open class InstantViewInBrowser<Context: AccountContextProtocol> : TelegramGener
         navigation.controller.viewWillAppear(animated)
     }
     
+    private var hasEditableResponder: Bool {
+        return (window?.firstResponder as? NSTextView)?.isEditable == true
+    }
+
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
         navigation.controller.viewDidAppear(animated)
         
         window?.set(handler: { [weak self] _ in
+            guard self?.hasEditableResponder != true else { return .invokeNext }
             self?.page.scrollPage(direction: .up)
             return .invoked
         }, with: self, for: .UpArrow, priority: .medium)
         
         window?.set(handler: { [weak self] _ in
+            guard self?.hasEditableResponder != true else { return .invokeNext }
             self?.page.scrollPage(direction: .down)
             return .invoked
         }, with: self, for: .DownArrow, priority: .medium)
 
         let spaceScrollDownKeyboardHandler:(NSEvent)->KeyHandlerResult = { [weak self] _ in
+            guard self?.hasEditableResponder != true else { return .invokeNext }
             if let window = self?.window {
                 if !window.styleMask.contains(.fullScreen) {
                     self?.page.scrollPage(direction: .down)
@@ -187,6 +202,7 @@ open class InstantViewInBrowser<Context: AccountContextProtocol> : TelegramGener
         window?.set(handler: spaceScrollDownKeyboardHandler, with: self, for: .Space, priority: .low)
         
         let spaceScrollUpKeyboardHandler:(NSEvent)->KeyHandlerResult = { [weak self, weak page] _ in
+            guard self?.hasEditableResponder != true else { return .invokeNext }
             if let window = self?.window {
                 if !window.styleMask.contains(.fullScreen) {
                     page?.scrollPage(direction: .up)
@@ -199,6 +215,9 @@ open class InstantViewInBrowser<Context: AccountContextProtocol> : TelegramGener
         window?.set(handler: spaceScrollUpKeyboardHandler, with: self, for: .Space, priority: .medium, modifierFlags: [.shift])
         
         window?.set(handler: { [weak self] _ in
+            if self?.page.dismissFindInterface() == true {
+                return .invoked
+            }
             let isBackButton = self?.stateValue.with { $0.isBackButton } ?? false
             if isBackButton {
                 self?.backButtonPressed()

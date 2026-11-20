@@ -49,6 +49,8 @@ import PerfLab
 #endif
 import SettingsUI
 import HTMLBubbles
+import WebAppUI
+import InstantPageUI
 
 //#if BETA || DEBUG
 //import Firebase
@@ -1735,6 +1737,13 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
     }
     @IBAction func globalSearch(_ sender: Any) {
+        if let browser = NSApp.keyWindow as? WebappBrowser {
+            browser.performPageFindAction(.showFindInterface)
+            return
+        }
+        if let window = NSApp.keyWindow, instantPagePerformFindAction(in: window, action: .showFindInterface) {
+            return
+        }
         if let context = contextValue?.context {
             if NSApp.currentEvent?.type == .keyDown {
                 Analytics.shared.send(AnalyticsEvents.shortcutUse(shortcut: .globalSearch))

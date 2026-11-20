@@ -177,8 +177,8 @@ public class InstantPageSelectText : NSObject {
             let isInDocument = self?.scroll.documentView?.isInnerView(window?.contentView?.hitTest(event.locationInWindow)) ?? false
             
             self?.started = false
-            _ = window?.makeFirstResponder(nil)
             if isInDocument {
+                _ = window?.makeFirstResponder(nil)
                 if let scroll = self?.scroll, let superview = scroll.superview, let documentView = scroll.documentView, let window = window {
                     let point = superview.convert(window.mouseLocationOutsideOfEventStream, from: nil)
                     let documentPoint = documentView.convert(window.mouseLocationOutsideOfEventStream, from: nil)

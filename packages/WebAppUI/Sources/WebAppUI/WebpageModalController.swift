@@ -3149,6 +3149,10 @@ public class WebpageModalController: ModalViewController, WKNavigationDelegate, 
     }
     
     
+    public var findWebView: WKWebView? {
+        return isLoaded() ? genericView._holder : nil
+    }
+
     public override var canBecomeResponder: Bool {
         return true
     }

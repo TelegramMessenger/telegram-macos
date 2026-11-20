@@ -426,6 +426,22 @@ public final class InstantPageTextItem: InstantPageItem {
         return frameForLine(line, boundingWidth: self.frame.size.width, alignment: self.alignment)
     }
 
+    func findText(location: @escaping () -> (view: NSView, origin: CGPoint)?, scrollToVisible: @escaping (CGRect) -> Void) -> InstantPageFindText {
+        var excludedRanges: [NSRange] = []
+        attributedString.enumerateAttributes(in: NSRange(location: 0, length: attributedString.length), options: []) { attributes, range, _ in
+            if (!isSpoilerRevealed && attributes[TextInputAttributes.spoiler] as? Bool == true) || attributes[.attachment] != nil || attributes[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] != nil {
+                excludedRanges.append(range)
+            }
+        }
+        for line in lines {
+            excludedRanges.append(contentsOf: line.emojiItems.map { $0.range })
+            excludedRanges.append(contentsOf: line.imageItems.map { $0.range })
+            excludedRanges.append(contentsOf: line.formulaItems.map { $0.range })
+            excludedRanges.append(contentsOf: line.buttonItems.map { $0.range })
+        }
+        return InstantPageFindText(attributedString: attributedString, lines: lines.map { InstantPageFindLine(line: $0.line, range: $0.range, frame: alignedLineFrame($0)) }, excludedRanges: excludedRanges, location: location, scrollToVisible: scrollToVisible)
+    }
+
     /// The complete horizontal extent painted for a line. CoreText owns the text frame, while inline
     /// button pills are drawn separately from attachment frames and can extend beyond the typographic
     /// bounds CoreText reports. Consumers that size or clip the containing bubble must use this frame.

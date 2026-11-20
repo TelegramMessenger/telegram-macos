@@ -332,18 +332,47 @@ class InstantViewController : GenericViewController<InstantWindowContentView> {
             return .invoked
         }
         
-        __window.set(handler: { [weak page] _ in
-            page?.scrollPage(direction: .up)
+        __window.set(handler: { [weak self] event in
+            guard event.modifierFlags.intersection([.command, .shift, .option, .control]) == [.command] else {
+                return .rejected
+            }
+            return (self?.navigation.controller as? InstantPageViewController)?.performFindAction(.showFindInterface) == true ? .invoked : .rejected
+        }, with: self, for: .F, priority: .modal, modifierFlags: [.command])
+
+        __window.set(handler: { [weak self] event in
+            let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+            guard flags == [.command] || flags == [.command, .shift] else {
+                return .rejected
+            }
+            return (self?.navigation.controller as? InstantPageViewController)?.performFindAction(flags.contains(.shift) ? .previousMatch : .nextMatch) == true ? .invoked : .rejected
+        }, with: self, for: .G, priority: .modal, modifierFlags: [.command])
+
+        __window.set(handler: { [weak self] _ in
+            if self?.isEditingFindText == true {
+                return .invokeNext
+            }
+            (self?.navigation.controller as? InstantPageViewController)?.scrollPage(direction: .up)
             return .invoked
         }, with: self, for: .UpArrow, priority: .medium)
-        
-        __window.set(handler: { [weak page] _ in
-            page?.scrollPage(direction: .down)
+
+        __window.set(handler: { [weak self] _ in
+            if self?.isEditingFindText == true {
+                return .invokeNext
+            }
+            (self?.navigation.controller as? InstantPageViewController)?.scrollPage(direction: .down)
             return .invoked
         }, with: self, for: .DownArrow, priority: .medium)
 
-        
+        __window.set(handler: { [weak self] event in
+            guard let self = self, event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty, self.__window.sheets.isEmpty, !hasModals(self.__window) else {
+                return .rejected
+            }
+            return (self.navigation.controller as? InstantPageViewController)?.dismissFindInterface() == true ? .invoked : .rejected
+        }, with: self, for: .Escape, priority: .modal)
         __window.set(handler: closeKeyboardHandler, with: self, for: .Escape)
+        __window.set(handler: { [weak self] _ in
+            return self?.isEditingFindText == true ? .invokeNext : .rejected
+        }, with: self, for: .Space, priority: .modal)
 		if FastSettings.instantViewScrollBySpace {
 			let spaceScrollDownKeyboardHandler:(NSEvent)->KeyHandlerResult = { [weak self, weak page] _ in
 				if let window = self?._window {
@@ -377,6 +406,10 @@ class InstantViewController : GenericViewController<InstantWindowContentView> {
         }
     }
     
+    private var isEditingFindText: Bool {
+        return (navigation.controller as? InstantPageViewController)?.isEditingFindText == true
+    }
+
     private var titleView: NSView? {
         if let windowView = __window.contentView?.superview {
             return ObjcUtils.findElements(byClass: "NSTitlebarContainerView", in: windowView).first
@@ -524,6 +557,16 @@ public func showInstantPage(_ page: InstantPageViewController) {
         instantController = InstantViewController(page: page, context: page.context)
         instantController?.show()
     }
+}
+
+@discardableResult public func instantPagePerformFindAction(in window: NSWindow, action: NSTextFinder.Action) -> Bool {
+    guard let controller = instantController, controller.__window === window, let page = controller.navigation.controller as? InstantPageViewController else {
+        return false
+    }
+    guard window.sheets.isEmpty, !hasModals(controller.__window) else {
+        return true
+    }
+    return page.performFindAction(action)
 }
 
 public func closeInstantView() {

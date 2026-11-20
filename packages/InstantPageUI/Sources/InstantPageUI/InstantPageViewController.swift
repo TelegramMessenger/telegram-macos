@@ -18,6 +18,24 @@ import TelegramMediaUtils
 import TelegramMedia
 import ChatModeTypes
 
+func instantPageFindFrameForItem(_ item: InstantPageItem, in items: [InstantPageItem]) -> CGRect {
+    func detailsHeight(_ item: InstantPageDetailsItem) -> CGFloat {
+        guard item.initiallyExpanded else { return item.titleHeight }
+        return item.items.reduce(item.frame.height) { height, child in
+            guard let child = child as? InstantPageDetailsItem else { return height }
+            return height + detailsHeight(child) - child.frame.height
+        }
+    }
+    var frame = item.frame
+    for case let details as InstantPageDetailsItem in items where details.frame.maxY <= item.frame.minY {
+        frame.origin.y += detailsHeight(details) - details.frame.height
+    }
+    if let details = item as? InstantPageDetailsItem {
+        frame.size.height = detailsHeight(details)
+    }
+    return frame
+}
+
 public class InstantPageViewController: GenericViewController<ScrollView> {
     public let context: (any AccountContextProtocol)
     
@@ -40,6 +58,193 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
     public var isDeceleratingBecauseOfDragging = false
     
     private var selectManager: InstantPageSelectText?
+    private var textFinder: InstantPageTextFinder?
+    private var findTextSpoilers: [(item: InstantPageTextItem, revealed: Bool)] = []
+    private let findHighlights = InstantPageFindHighlights()
+    private var pageFindBar: PageFindBarView?
+
+    public override func initializer() -> ScrollView {
+        return InstantPageFindScrollView(frame: initializationRect)
+    }
+
+    public var isFindInterfaceVisible: Bool {
+        return pageFindBar != nil
+    }
+
+    var isEditingFindText: Bool {
+        return pageFindBar?.containsResponder(view.window?.firstResponder) == true
+    }
+
+    @discardableResult public func performFindAction(_ action: NSTextFinder.Action) -> Bool {
+        guard isLoaded(), window?.sheets.isEmpty != false, window.map({ !hasModals($0) }) != false else {
+            return false
+        }
+        switch action {
+        case .showFindInterface, .nextMatch, .previousMatch:
+            break
+        case .hideFindInterface:
+            return dismissFindInterface()
+        default:
+            return false
+        }
+        if textFinder == nil {
+            textFinder = InstantPageTextFinder(scrollView: genericView, indicatorColor: { theme.colors.blackTransparent.withAlphaComponent(1) })
+            textFinder?.resultsUpdated = { [weak self] in self?.updateFindResults() }
+            updateFindText()
+        }
+        updateFindTextVisibility()
+        if action == .showFindInterface || pageFindBar == nil {
+            if pageFindBar == nil {
+                let bar = PageFindBarView(frame: NSRect(x: 0, y: 0, width: view.frame.width, height: 46))
+                bar.queryUpdated = { [weak self] query in
+                    self?.updateFindTextVisibility()
+                    self?.textFinder?.search(query)
+                }
+                bar.navigate = { [weak self] backwards in
+                    self?.updateFindTextVisibility()
+                    self?.textFinder?.navigate(backwards: backwards)
+                }
+                bar.close = { [weak self] in _ = self?.dismissFindInterface() }
+                pageFindBar = bar
+                (genericView as? InstantPageFindScrollView)?.pageFindBar = bar
+                updateVisibleItems(visibleBounds: genericView.contentView.bounds, animated: false)
+            }
+            pageFindBar?.focus()
+        } else {
+            textFinder?.navigate(backwards: action == .previousMatch)
+        }
+        updateFindResults()
+        return true
+    }
+
+    private func updateFindResults() {
+        guard let textFinder, let pageFindBar else {
+            findHighlights.update([])
+            return
+        }
+        pageFindBar.updateResult(index: textFinder.matchIndex, count: textFinder.matches.count)
+        findHighlights.update(textFinder.highlights())
+    }
+
+    @discardableResult public func dismissFindInterface() -> Bool {
+        guard let pageFindBar else { return false }
+        let restoreFocus = pageFindBar.containsResponder(view.window?.firstResponder)
+        self.pageFindBar = nil
+        (genericView as? InstantPageFindScrollView)?.pageFindBar = nil
+        textFinder?.search("")
+        findHighlights.update([])
+        if restoreFocus {
+            view.window?.makeFirstResponder(genericView)
+        }
+        updateVisibleItems(visibleBounds: genericView.contentView.bounds, animated: false)
+        return true
+    }
+
+    private func scrollFindRect(_ rect: CGRect, in view: NSView) {
+        view.scrollToVisible(rect)
+        documentView.scrollToVisible(documentView.convert(rect, from: view))
+        updateVisibleItems(visibleBounds: genericView.contentView.bounds, animated: false)
+        documentView.layoutSubtreeIfNeeded()
+    }
+
+    private func findScrollableView(_ item: InstantPageTableItem, in view: NSView) -> InstantPageScrollableView? {
+        for subview in view.subviews {
+            if let subview = subview as? InstantPageScrollableView, subview.item === item {
+                return subview
+            }
+            if let subview = subview as? InstantPageDetailsView, let result = findScrollableView(item, in: subview.contentView) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    private func findTexts(items: [InstantPageItem], location: @escaping () -> (view: NSView, origin: CGPoint)?, frameForItem: @escaping (InstantPageItem) -> CGRect, detailsView: @escaping (InstantPageDetailsItem) -> InstantPageDetailsView?, isExpanded: (InstantPageDetailsItem) -> Bool) -> [InstantPageFindText] {
+        var texts: [InstantPageFindText] = []
+        for item in items {
+            if let item = item as? InstantPageTextItem {
+                findTextSpoilers.append((item, item.isSpoilerRevealed))
+                texts.append(item.findText(location: {
+                    guard let location = location() else { return nil }
+                    let frame = frameForItem(item)
+                    return (location.view, CGPoint(x: location.origin.x + frame.minX, y: location.origin.y + frame.minY))
+                }, scrollToVisible: { [weak self] rect in
+                    for _ in 0 ..< 2 {
+                        guard let location = location() else { return }
+                        let frame = frameForItem(item)
+                        self?.scrollFindRect(rect.offsetBy(dx: location.origin.x + frame.minX, dy: location.origin.y + frame.minY), in: location.view)
+                    }
+                }))
+            } else if let table = item as? InstantPageTableItem {
+                for case let item as InstantPageTextItem in table.itemsIn(CGRect(origin: .zero, size: table.contentSize)) {
+                    findTextSpoilers.append((item, item.isSpoilerRevealed))
+                    let origin = table.itemFrameSkipCells(item, effectiveRect: .zero).origin
+                    texts.append(item.findText(location: { [weak self] in
+                        guard let self = self, let location = location() else { return nil }
+                        if let tableView = self.findScrollableView(table, in: location.view) {
+                            return (tableView.containerView, origin)
+                        }
+                        let frame = frameForItem(table)
+                        return (location.view, CGPoint(x: location.origin.x + frame.minX + origin.x, y: location.origin.y + frame.minY + origin.y))
+                    }, scrollToVisible: { [weak self] rect in
+                        guard let self = self, let parent = location() else { return }
+                        self.scrollFindRect(frameForItem(table).offsetBy(dx: parent.origin.x, dy: parent.origin.y), in: parent.view)
+                        if let parent = location(), let tableView = self.findScrollableView(table, in: parent.view) {
+                            self.scrollFindRect(rect.offsetBy(dx: origin.x, dy: origin.y), in: tableView.containerView)
+                        }
+                    }))
+                }
+            } else if let item = item as? InstantPageDetailsItem {
+                let titleLocation: () -> (view: NSView, origin: CGPoint)? = {
+                    if let details = detailsView(item) {
+                        return (details, .zero)
+                    }
+                    guard let location = location() else { return nil }
+                    let frame = frameForItem(item)
+                    return (location.view, CGPoint(x: location.origin.x + frame.minX, y: location.origin.y + frame.minY))
+                }
+                texts.append(contentsOf: findTexts(items: item.titleItems, location: titleLocation, frameForItem: { $0.frame }, detailsView: { _ in nil }, isExpanded: { _ in false }))
+                if isExpanded(item) {
+                    texts.append(contentsOf: findTexts(items: item.items, location: {
+                        if let details = detailsView(item) {
+                            return (details.contentView, .zero)
+                        }
+                        guard let location = titleLocation() else { return nil }
+                        return (location.view, CGPoint(x: location.origin.x, y: location.origin.y + item.titleHeight))
+                    }, frameForItem: { child in
+                        return detailsView(item)?.contentView.effectiveFrameForItem(child) ?? instantPageFindFrameForItem(child, in: item.items)
+                    }, detailsView: { child in
+                        return detailsView(item)?.contentView.viewForDetailsItem(child)
+                    }, isExpanded: { child in
+                        return detailsView(item)?.contentView.isExpandedItem(child) ?? child.initiallyExpanded
+                    }))
+                }
+            }
+        }
+        return texts
+    }
+
+    private func updateFindText() {
+        guard let textFinder = textFinder else { return }
+        documentView.layoutSubtreeIfNeeded()
+        findTextSpoilers.removeAll()
+        textFinder.update(findTexts(items: currentLayout?.items ?? [], location: { [weak self] in
+            guard let self = self else { return nil }
+            return (self.documentView, .zero)
+        }, frameForItem: { [weak self] item in
+            return self?.effectiveFrameForItem(item) ?? item.frame
+        }, detailsView: { [weak self] item in
+            return self?.viewForDetailsItem(item)
+        }, isExpanded: { [weak self] item in
+            return self?.isExpandedItem(item) ?? item.initiallyExpanded
+        }))
+    }
+
+    private func updateFindTextVisibility() {
+        if findTextSpoilers.contains(where: { $0.item.isSpoilerRevealed != $0.revealed }) {
+            updateFindText()
+        }
+    }
     
     private let joinDisposable = MetaDisposable()
     private let mediaDisposable = MetaDisposable()
@@ -106,6 +311,8 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
     
     public override func updateLocalizationAndTheme(theme: PresentationTheme) {
         super.updateLocalizationAndTheme(theme: theme)
+        pageFindBar?.updateLocalizationAndTheme(theme: theme)
+        updateFindResults()
     }
     
     public var currentState: InstantPageStoredState {
@@ -153,6 +360,7 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
 
     
     private func updateLayout() {
+        textFinder?.invalidate()
         let currentLayout = instantPageLayoutForWebPage(webPage, boundingWidth: frame.width, safeInset: 0, theme: instantPageThemeForType(theme.insantPageThemeType, settings: appearance), webEmbedHeights: self.currentWebEmbedHeights)
         
         updateInteractions()
@@ -234,6 +442,7 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
     public func reloadData() {
         updateLayout()
         self.containerLayoutUpdated(animated: false)
+        updateFindText()
     }
     
     public func isExpandedItem(_ item: InstantPageDetailsItem) -> Bool {
@@ -260,7 +469,9 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
         if let window = window, let layout = currentLayout, let instantPage = instantPage {
             selectManager?.initializeHandlers(for: window, instantLayout: layout, instantPage: instantPage, context: context, updateLayout: { [weak self] in
                 guard let `self` = self else {return}
-                
+
+                self.textFinder?.finder.cancelFindIndicator()
+                self.updateFindTextVisibility()
                 self.updateVisibleItems(visibleBounds: self.genericView.contentView.bounds, animated: false)
             }, openUrl: { [weak self] url in
                 self?.openUrl(url)
@@ -599,13 +810,15 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
     
     
     private func updateDetailsExpanded(_ index: Int, _ expanded: Bool, animated: Bool = true) {
+        textFinder?.invalidate()
         if var currentExpandedDetails = self.currentExpandedDetails {
             currentExpandedDetails[index] = expanded
             self.currentExpandedDetails = currentExpandedDetails
         }
         self.updateVisibleItems(visibleBounds: self.genericView.contentView.bounds, animated: animated)
+        updateFindText()
     }
-    
+
     public func updateVisibleItems(visibleBounds: CGRect, animated: Bool = false) {
 
         
@@ -715,7 +928,9 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
                         if let itemView = itemView as? InstantPageDetailsView {
                             itemView.requestLayoutUpdate = { [weak self] animated in
                                 if let strongSelf = self {
+                                    strongSelf.textFinder?.invalidate()
                                     strongSelf.updateVisibleItems(visibleBounds: strongSelf.genericView.contentView.bounds, animated: animated)
+                                    strongSelf.updateFindText()
                                 }
                             }
                             
@@ -815,12 +1030,16 @@ public class InstantPageViewController: GenericViewController<ScrollView> {
         for index in removeItemIndices {
             self.visibleItemsWithViews.removeValue(forKey: index)
         }
-        
+        if pageFindBar != nil {
+            findHighlights.update(textFinder?.highlights() ?? [])
+        }
     }
     
     
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        dismissFindInterface()
+        textFinder?.finder.cancelFindIndicator()
         if let window = window {
             selectManager?.removeHandlers(for: window)
         }
