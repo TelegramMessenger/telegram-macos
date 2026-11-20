@@ -1993,6 +1993,7 @@
 		10DFF25C8A724E5ABFCBA9C8 /* StatisticsHooksInstall.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = StatisticsHooksInstall.swift; sourceTree = "<group>"; };
 		EA04BF2CF4EA404F84429B5F /* GlobalAutoremoveHooksInstall.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GlobalAutoremoveHooksInstall.swift; sourceTree = "<group>"; };
 		A827B6990192459DB25F6F99 /* DataUsageUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DataUsageUI; path = packages/DataUsageUI; sourceTree = "<group>"; };
+		5E2B7C4A9D1F4E3B8A6C0D21 /* PhoneInputUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PhoneInputUI; path = packages/PhoneInputUI; sourceTree = "<group>"; };
 		A19BAAEB6EBF40FB959381C9 /* PollResultsUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PollResultsUI; path = packages/PollResultsUI; sourceTree = "<group>"; };
 		953824681CBF476B8C6CF677 /* PollResultsHooksInstall.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PollResultsHooksInstall.swift; sourceTree = "<group>"; };
 		114752829DC048D3930E1F02 /* PasskeysUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PasskeysUI; path = packages/PasskeysUI; sourceTree = "<group>"; };
@@ -2772,6 +2773,7 @@
 				114752829DC048D3930E1F02 /* PasskeysUI */,
 				A19BAAEB6EBF40FB959381C9 /* PollResultsUI */,
 				A827B6990192459DB25F6F99 /* DataUsageUI */,
+				5E2B7C4A9D1F4E3B8A6C0D21 /* PhoneInputUI */,
 				46560A49C12C4555A5CA1C7B /* StatisticsUI */,
 				4BE3418BAB4E4B709EDBA013 /* AddTonBalanceUI */,
 				4DB610A299E3416B8BC2D01C /* GigagroupUI */,
