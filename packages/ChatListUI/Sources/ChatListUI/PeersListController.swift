@@ -3391,7 +3391,8 @@ open class PeersListController<Context: AccountContextProtocol>: TelegramGeneric
     }
     
     open override func returnKeyAction() -> KeyHandlerResult {
-        if let highlighted = genericView.tableView.highlightedItem() {
+        let hasMarkedText = genericView.searchView.input.hasMarkedText()
+        if let highlighted = genericView.tableView.highlightedItem(), !hasMarkedText {
             _ = genericView.tableView.select(item: highlighted)
             return .invoked
         }

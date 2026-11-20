@@ -2793,6 +2793,10 @@ public class ShareModalController: ModalViewController, Notifable, TableViewDele
     }
     
     public override func returnKeyAction() -> KeyHandlerResult {
+        let hasMarkedText = (window?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+        if hasMarkedText {
+            return .invokeNext
+        }
         if let event = NSApp.currentEvent, !FastSettings.checkSendingAbility(for: event) {
             return .rejected
         }

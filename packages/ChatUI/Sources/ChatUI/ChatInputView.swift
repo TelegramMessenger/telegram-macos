@@ -1022,7 +1022,8 @@ public class ChatInputView: View, Notifable {
             // ⌘-Enter — which the editor never receives as `insertNewline` — still sends.
             window.set(handler: { [weak self] event -> KeyHandlerResult in
                 guard let self = self, self.chatInteraction.richTextDraft != nil else { return .rejected }
-                if FastSettings.checkSendingAbility(for: event) {
+                let hasMarkedText = (self.window?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+                if FastSettings.checkSendingAbility(for: event), !hasMarkedText {
                     self.chatInteraction.sendMessage(false, nil, self.chatInteraction.presentation.messageEffect)
                     return .invoked
                 }
@@ -1041,7 +1042,8 @@ public class ChatInputView: View, Notifable {
             // Enter sends (honoring the Enter / ⌘-Enter send preference).
             window.set(handler: { [weak self] event -> KeyHandlerResult in
                 guard let self = self, self.chatInteraction.richTextDraft != nil else { return .rejected }
-                if FastSettings.checkSendingAbility(for: event) {
+                let hasMarkedText = (self.window?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+                if FastSettings.checkSendingAbility(for: event), !hasMarkedText {
                     self.chatInteraction.sendMessage(false, nil, self.chatInteraction.presentation.messageEffect)
                     return .invoked
                 }
