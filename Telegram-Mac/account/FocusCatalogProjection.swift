@@ -41,15 +41,19 @@ func focusAccountCatalog(transaction: Transaction, accountId: Int64, filters: [C
     let chats = peers.values.map { entry in
         FocusCatalogChat(id: FocusChatIdentifier(accountId: accountId, peerId: entry.peer.id.toInt64()), title: focusCatalogTitle(entry.peer), isArchived: entry.groupId == Namespaces.PeerGroup.archive, telegramChatId: focusTelegramChatId(entry.peer.id))
     }.sorted { $0.id.peerId < $1.id.peerId }
-    let globalSettings = transaction.getGlobalNotificationSettings()
-    let folderStates = filters.isEmpty ? [] : peers.values.map { entry in
-        FocusFolderChatState(transaction: transaction, peer: entry.peer, groupId: entry.groupId, globalSettings: globalSettings)
-    }
+    lazy var folderStates: [FocusFolderChatState] = {
+        let globalSettings = transaction.getGlobalNotificationSettings()
+        return peers.values.map { entry in
+            FocusFolderChatState(transaction: transaction, peer: entry.peer, groupId: entry.groupId, globalSettings: globalSettings)
+        }
+    }()
     let folders = filters.map { filter -> FocusCatalogFolder in
-        let predicate = chatListFilterPredicate(for: filter, communityCategories: communityCategories)
-        var peerIds = Set<Int64>()
-        for state in folderStates where state.belongs(to: predicate, transaction: transaction) {
-            peerIds.insert(state.peer.id.toInt64())
+        let peerIds: Set<Int64>
+        if let predicate = chatListFilterPredicate(for: filter, communityCategories: communityCategories) {
+            let members = folderStates.lazy.filter { $0.belongs(to: predicate, transaction: transaction) }
+            peerIds = Set(members.map { $0.peer.id.toInt64() })
+        } else {
+            peerIds = Set(chats.lazy.map { $0.id.peerId })
         }
         return FocusCatalogFolder(id: FocusFolderIdentifier(accountId: accountId, folderId: filter.id), title: filter.title, peerIds: peerIds)
     }.sorted { $0.id.folderId < $1.id.folderId }

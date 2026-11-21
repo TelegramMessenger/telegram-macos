@@ -141,6 +141,7 @@ final class Transaction {
     var mentionCount: Int32 = 0
     var pendingMentionCount: Int32 = 0
     private(set) var requestedPeers: [PeerId] = []
+    private(set) var folderStateReads = 0
 
     init(peer: Peer) { self.peer = peer }
 
@@ -166,6 +167,7 @@ final class Transaction {
     }
 
     func isChatListPeerUnread(_ peer: Peer) -> Bool {
+        folderStateReads += 1
         if let forumUnreadCount, !displayForumAsRegularChat {
             return forumUnreadCount > 0
         }
@@ -178,14 +180,17 @@ final class Transaction {
     }
 
     func isPeerContact(peerId: PeerId) -> Bool {
+        folderStateReads += 1
         return contactPeerIds.contains(peerId)
     }
 
     func getGlobalNotificationSettings() -> PostboxGlobalNotificationSettings {
-        PostboxGlobalNotificationSettings(defaultIncludePeer: { _ in !self.globallyMuted })
+        folderStateReads += 1
+        return PostboxGlobalNotificationSettings(defaultIncludePeer: { _ in !self.globallyMuted })
     }
 
     func getPeerNotificationSettings(id: PeerId) -> PeerNotificationSettings? {
+        folderStateReads += 1
         return mutedPeers[id].map(TestNotificationSettings.init)
     }
 
@@ -319,7 +324,32 @@ private enum Tests {
         print("PASS catalog and delivery agree for secret chat includes, exclusions, pins and archive changes without loading the associated user")
     }
 
+    static func testCatalogFolderStateReads() {
+        let transaction = Transaction(peer: peer)
+        transaction.groupId = Namespaces.PeerGroup.archive
+        let allChats = ChatListFilter(id: 0, title: "All Chats", data: nil)
+        var unreadData = ChatListFilterData()
+        unreadData.excludeRead = true
+        let unread = ChatListFilter(id: 1, title: "Unread", data: unreadData)
+        func folders(_ filters: [ChatListFilter]) -> [Set<Int64>] {
+            focusAccountCatalog(transaction: transaction, accountId: account, filters: filters, communityCategories: [:]).folders.map { $0.peerIds }
+        }
+        let members: Set<Int64> = [peer.id.toInt64()]
+        precondition(folders([]).isEmpty)
+        precondition(folders([allChats]) == [members])
+        precondition(transaction.folderStateReads == 0)
+        precondition(folders([unread]) == [[]])
+        let dynamicReads = transaction.folderStateReads
+        precondition(dynamicReads > 0)
+        precondition(folders([unread, allChats]) == [members, []])
+        precondition(transaction.folderStateReads == 2 * dynamicReads)
+        transaction.isUnread = true
+        precondition(folders([allChats, unread]) == [members, members])
+        print("PASS All Chats includes archived peers without folder-state reads and preserves live unread membership")
+    }
+
     static func main() {
+        testCatalogFolderStateReads()
         let transaction = Transaction(peer: peer)
         var unreadFolder = ChatListFilterData()
         unreadFolder.excludeRead = true
