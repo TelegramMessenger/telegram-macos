@@ -209,9 +209,9 @@ getters recheck access, including for objects created before locking. Configurat
 restoration, notification predicates and intent execution remain available in the
 background; locking does not disable a saved Focus rule or change notification
 fallback behavior. This gate protects the extension's catalogue interface, not
-the shared file against another process with App Group access. It cannot revoke
-text already copied into System Settings' own rendering cache; that behavior
-requires an installed, signed application check with the editor open.
+the shared file against another process with App Group access. On macOS 26.7.2, System Settings still displayed a chat
+name and Telegram IDs in an open picker ten seconds after the test host locked. Close the picker to remove the row from view. The extension checks access
+again on the next catalogue request.
 
 While the filter is unavailable, new notifications carry a neutral criterion that
 also passes the last predicate installed by the extension. Otherwise, notification
@@ -328,6 +328,6 @@ Validation in the Linux maintenance environment: the preparation patch applied, 
 
 The remaining requests in review comment https://github.com/TelegramMessenger/telegram-macos/pull/128#issuecomment-6819660757 are not resolved by this change:
 
-- Passcode-aware catalogue access and neutral saved-selection resolution are implemented. A native test must still cover locking while System Settings already holds entity names; hiding only subsequent query results cannot establish that cached names are cleared. Verify sandbox admission with the host Info.plist inaccessible, recovery from verification failures, and separate copies/channels on the signed build.
+- Passcode-aware catalogue access and neutral saved-selection resolution are implemented. The System Settings UI test reproduces the retained row on macOS 26.7.2. Repeat it with a signed release build of Telegram. Verify sandbox admission with the host Info.plist inaccessible, recovery from verification failures, and separate copies/channels on the signed build.
 - Actual CPU, memory and update latency of catalog scanning must be measured against a large signed-in account. This environment has neither a running macOS Telegram instance nor such an account, so no performance measurements have been claimed.
 - Configuration read failure deliberately retains the user-selected behavior: use ordinary Telegram/macOS notification settings with a visible warning until the filter can be restored. This behavior was not changed to match the reviewer's alternative suggestion.

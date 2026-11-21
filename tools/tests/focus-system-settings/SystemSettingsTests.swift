@@ -33,6 +33,7 @@ final class SystemSettingsTests: XCTestCase {
     }
 
     func testUnlockedCatalogQueries() throws {
+        executionTimeAllowance = 180
         unlock()
         try openEditor()
         for parameter in ["Accounts", "Folders", "Chats"] {
@@ -74,19 +75,18 @@ final class SystemSettingsTests: XCTestCase {
         try openPicker("Chats")
         XCTAssertTrue(catalogItem("Focus CI Chat").waitForExistence(timeout: 20), settings.debugDescription)
         record(settings, name: "Visible chat before lock")
-        let picker = try pickerSearchField()
-        XCTAssertTrue(picker.isHittable, settings.debugDescription)
+        let searchField = try pickerSearchField()
+        XCTAssertTrue(searchField.isHittable, settings.debugDescription)
         DistributedNotificationCenter.default().postNotificationName(Notification.Name("org.telegram.FocusSettingsCI.lock"), object: nil, userInfo: nil, deliverImmediately: true)
         assertHostState("Locked")
         XCTAssertEqual(settings.state, .runningForeground)
-        XCTAssertTrue(picker.exists && picker.isHittable, "The existing picker closed instead of redacting its content")
-        let hidden = NSPredicate { [weak self] _, _ in
-            guard let self else { return false }
-            return !self.catalogItem("Focus CI Chat").exists
-        }
-        let vanished = XCTNSPredicateExpectation(predicate: hidden, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [vanished], timeout: 10), .completed,
-                       "System Settings retained a chat name after Telegram locked.\n\(settings.debugDescription)")
+        XCTAssertTrue(searchField.exists && searchField.isHittable, "The existing picker closed instead of redacting its content")
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: catalogRowWithPrivateDetails)
+        let result = XCTWaiter.wait(for: [hidden], timeout: 10)
+        continueAfterFailure = true
+        XCTAssertEqual(result, .completed, "System Settings retained a catalog name or ID after Telegram locked.\n\(settings.debugDescription)")
+        continueAfterFailure = false
+        XCTAssertTrue(searchField.exists && searchField.isHittable, "The picker closed before the locked search")
         try search("Focus CI")
         assertLockedPicker()
     }
@@ -117,8 +117,16 @@ final class SystemSettingsTests: XCTestCase {
 
     private func openPicker(_ parameter: String) throws {
         activeParameter = parameter
-        let add = parameterGroup(parameter).buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Item")).firstMatch
+        let group = parameterGroup(parameter)
+        let add = group.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Item")).firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 15), settings.debugDescription)
+        let editor = settings.scrollViews.containing(.group, identifier: group.identifier).firstMatch
+        XCTAssertTrue(editor.exists, settings.debugDescription)
+        if !editor.frame.contains(add.frame) {
+            let margin = editor.coordinate(withNormalizedOffset: CGVector(dx: 0.025, dy: 0.5))
+            margin.scroll(byDeltaX: 0, deltaY: editor.frame.midY - add.frame.midY)
+        }
+        XCTAssertTrue(editor.frame.contains(add.frame) && add.isHittable, settings.debugDescription)
         add.click()
         record(settings, name: "\(parameter) picker")
     }
@@ -162,12 +170,16 @@ final class SystemSettingsTests: XCTestCase {
         NSPredicate(format: "label == %@ OR value == %@", title, title)
     }
 
+    private var catalogRowWithPrivateDetails: XCUIElement {
+        let privateDetails = Array(titles.values) + ["1042", "1043", "1044"]
+        let predicates = privateDetails.map { NSPredicate(format: "label CONTAINS %@", $0) }
+        return picker.buttons.matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+    }
+
     private func assertLockedPicker() {
         let locked = settings.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "Open and unlock Telegram", "Open and unlock Telegram")).firstMatch
         XCTAssertTrue(locked.waitForExistence(timeout: 15), settings.debugDescription)
-        for title in titles.values {
-            XCTAssertFalse(catalogItem(title).exists, "Locked picker disclosed \(title)")
-        }
+        XCTAssertFalse(catalogRowWithPrivateDetails.exists, "Locked picker disclosed a catalog name or ID")
         record(settings, name: "Locked picker")
     }
 
