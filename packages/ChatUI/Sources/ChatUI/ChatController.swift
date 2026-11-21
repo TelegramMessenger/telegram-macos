@@ -3432,8 +3432,8 @@ open class ChatController<Context: AccountContextProtocol>: TelegramGenericViewC
                 }
             }
             
-            if reply == nil, let threadId64 = threadId64(), !presentation.isMonoforum, threadId64 != Message.newTopicThreadId {
-                reply = .init(messageId: MessageId(peerId: makePeerId(), namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId64)), quote: nil, innerSubject: nil)
+            if reply == nil {
+                reply = makeThreadReplySubject(peerId: makePeerId(), threadId: threadId64(), isMonoforum: presentation.isMonoforum)
             }
             return reply
         }
