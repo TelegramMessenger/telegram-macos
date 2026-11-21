@@ -24,16 +24,18 @@ public class ChatListEmptyRowItem: TableRowItem {
     public let peer: Peer?
     public let layoutState: SplitViewState
     public let hideContent: Bool
+    public let hiddenByFocus: Bool
     public let openFilterSettings: (ChatListFilter)->Void
     public let createTopic:()->Void
     public let switchOffForum:()->Void
-    public init(_ initialSize: NSSize, stableId: AnyHashable, filter: ChatListFilter, mode: PeerListMode, peer: Peer?, layoutState: SplitViewState, hideContent: Bool = false, context: any AccountContextProtocol, openFilterSettings: @escaping(ChatListFilter)->Void, createTopic:@escaping()->Void, switchOffForum:@escaping()->Void) {
+    public init(_ initialSize: NSSize, stableId: AnyHashable, filter: ChatListFilter, mode: PeerListMode, peer: Peer?, layoutState: SplitViewState, hideContent: Bool = false, hiddenByFocus: Bool = false, context: any AccountContextProtocol, openFilterSettings: @escaping(ChatListFilter)->Void, createTopic:@escaping()->Void, switchOffForum:@escaping()->Void) {
         self.context = context
         self.filter = filter
         self.mode = mode
         self.peer = peer
         self.layoutState = layoutState
         self.hideContent = hideContent
+        self.hiddenByFocus = hiddenByFocus
         self.createTopic = createTopic
         self.switchOffForum = switchOffForum
         self._stableId = stableId
@@ -53,20 +55,21 @@ public class ChatListEmptyRowItem: TableRowItem {
         return ChatListEmptyRowView.self
     }
     
+    var text: String {
+        if case .filter = filter {
+            return hiddenByFocus ? chatListFocusEmptyText() : strings().chatListFilterEmpty
+        }
+        switch mode {
+        case .forum:
+            return strings().chatListEmptyForum
+        default:
+            return strings().chatListEmptyText
+        }
+    }
+
     public override var accessibilityLabel: String? {
         if shouldHideContent {
             return nil
-        }
-        let text: String
-        if case .filter = filter {
-            text = strings().chatListFilterEmpty
-        } else {
-            switch mode {
-            case .forum:
-                text = strings().chatListEmptyForum
-            default:
-                text = strings().chatListEmptyText
-            }
         }
         return parseMarkdownIntoAttributedString(text, attributes: MarkdownAttributes(body: MarkdownAttributeSet(font: .normal(.title), textColor: theme.colors.text), bold: MarkdownAttributeSet(font: .medium(.title), textColor: theme.colors.text), link: MarkdownAttributeSet(font: .normal(.title), textColor: theme.colors.link), linkAttribute: { _ in
             return nil
@@ -225,20 +228,7 @@ private class ChatListEmptyRowView : TableRowView {
         }
         
         
-        let text: String
-        if case .filter = item.filter {
-            text = strings().chatListFilterEmpty
-        } else {
-            switch item.mode {
-            case .forum:
-                text = strings().chatListEmptyForum
-            default:
-                text = strings().chatListEmptyText
-            }
-        }
-
-        
-        let attr = parseMarkdownIntoAttributedString(text, attributes: MarkdownAttributes(body: MarkdownAttributeSet(font: .normal(.title), textColor: theme.colors.text), bold: MarkdownAttributeSet(font: .medium(.title), textColor: theme.colors.text), link: MarkdownAttributeSet(font: .normal(.title), textColor: theme.colors.link), linkAttribute: { [weak item] contents in
+        let attr = parseMarkdownIntoAttributedString(item.text, attributes: MarkdownAttributes(body: MarkdownAttributeSet(font: .normal(.title), textColor: theme.colors.text), bold: MarkdownAttributeSet(font: .medium(.title), textColor: theme.colors.text), link: MarkdownAttributeSet(font: .normal(.title), textColor: theme.colors.link), linkAttribute: { [weak item] contents in
             return (NSAttributedString.Key.link.rawValue, LinkHooks.shared.callbackLink(contents, { [weak item] value in
                 if value == "filter", let filter = item?.filter {
                     item?.openFilterSettings(filter)
