@@ -383,7 +383,7 @@ public func ThemePreviewModalController(context: any AccountContextProtocol, sou
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
 
-    let controller = InputDataController(dataSignal: signal, title: "")
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: "")
     controller.analyticsScreen = .settingsAppearanceThemePreview
     controller.bar = .init(height: 0)
 

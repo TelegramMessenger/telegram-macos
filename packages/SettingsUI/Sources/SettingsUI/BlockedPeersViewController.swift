@@ -211,7 +211,7 @@ private func blockedPeersControllerEntries(state: BlockedPeersEditingState, bloc
 fileprivate func prepareTransition(left:[AppearanceWrapperEntry<BlockedPeerEntry>], right: [AppearanceWrapperEntry<BlockedPeerEntry>], initialSize:NSSize, arguments:BlockedPeerControllerArguments) -> TableUpdateTransition {
     
     let (removed, inserted, updated) = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
-        return entry.entry.item(arguments, initialSize: initialSize)
+        return entry.entry.item(arguments, initialSize: initialSize).settingsRow()
     }
     
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true, grouping: false)

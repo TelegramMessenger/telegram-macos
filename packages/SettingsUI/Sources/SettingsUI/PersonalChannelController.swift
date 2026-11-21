@@ -244,7 +244,7 @@ public func PersonalChannelController(context: any AccountContextProtocol) -> In
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: " ")
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: " ")
     controller.analyticsScreen = .settingsAccountPersonalChannel
     
     controller.onDeinit = {

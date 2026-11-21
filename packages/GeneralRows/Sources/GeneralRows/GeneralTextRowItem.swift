@@ -149,6 +149,38 @@ open class GeneralTextRowItem: GeneralRowItem {
     
     
     
+    open override var inset: NSEdgeInsets {
+        if settingsPresentation != nil {
+            return NSEdgeInsets(left: super.inset.left, right: super.inset.right)
+        }
+        return super.inset
+    }
+
+    @discardableResult
+    open override func withSettingsLayout(_ presentation: SettingsRowPresentation = .content) -> Self {
+        let isHeader = viewType.innerInset.top == 0 && viewType.innerInset.bottom > 0
+        super.withSettingsLayout(presentation)
+        guard settingsPresentation != nil else { return self }
+        setSettingsInsets(NSEdgeInsets(top: isHeader ? 0 : 6, left: SettingsRowMetrics.contentInset, bottom: isHeader ? 6 : 0, right: SettingsRowMetrics.contentInset))
+        let text = NSMutableAttributedString(attributedString: layout.attributedString)
+        if isHeader {
+            let string = text.string
+            if string.rangeOfCharacter(from: .lowercaseLetters) == nil {
+                text.replaceCharacters(in: text.range, with: string.settingsTitleCase)
+            }
+            text.addAttribute(.foregroundColor, value: theme.colors.text, range: text.range)
+        }
+        text.enumerateAttribute(.font, in: text.range) { value, range, _ in
+            let font = value as? NSFont ?? .normal(SettingsRowMetrics.subtitleSize)
+            text.addAttribute(.font, value: isHeader ? NSFont.bold(SettingsRowMetrics.titleSize) : NSFontManager.shared.convert(font, toSize: SettingsRowMetrics.subtitleSize), range: range)
+        }
+        let interactions = layout.interactions
+        layout = TextViewLayout(text, alignment: alignment)
+        layout.interactions = interactions
+        _ = makeSize(width, oldWidth: 0)
+        return self
+    }
+
     open override var height: CGFloat {
         if _height > 0 {
             return _height

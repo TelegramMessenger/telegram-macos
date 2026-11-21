@@ -264,6 +264,7 @@ class StorageUsageBlockControllerView : View {
        segmentPanelView = SegmentContainerView(frame: NSMakeRect(0, 0, frameRect.width, SegmentContainerView.height))
        super.init(frame: frameRect)
        addSubview(contentContainerView)
+       contentContainerView.settingsCornerRadius = SettingsRowMetrics.cardCornerRadius
        addSubview(segmentPanelView)
        updateLocalizationAndTheme(theme: theme)
        layout()

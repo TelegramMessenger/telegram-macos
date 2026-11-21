@@ -336,7 +336,7 @@ public func networkUsageStatsController(context: any AccountContextProtocol) -> 
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: strings().networkUsageNetworkUsage, removeAfterDisappear: true, hasDone: false, identifier: "networkUsage")
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().networkUsageNetworkUsage, removeAfterDisappear: true, hasDone: false, identifier: "networkUsage")
     controller.analyticsScreen = .settingsNetworkUsage
     
     actionDisposable.add(promise.get().start(next: { value in

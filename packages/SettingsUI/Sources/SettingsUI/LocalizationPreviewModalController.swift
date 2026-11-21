@@ -86,7 +86,7 @@ public func LocalizationPreviewModalController(_ context: any AccountContextProt
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
 
-    let controller = InputDataController(dataSignal: signal, title: strings().applyLanguageChangeLanguageTitle, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().applyLanguageChangeLanguageTitle, hasDone: false)
     controller.analyticsScreen = .settingsLanguagePreview
 
     controller.onDeinit = {

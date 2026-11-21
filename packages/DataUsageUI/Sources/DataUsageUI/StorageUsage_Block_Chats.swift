@@ -89,7 +89,7 @@ private func entries(_ state: StorageUsageUIState, arguments: Arguments) -> [Inp
                 type = .plain
             }
             
-            return ShortPeerRowItem(initialSize, peer: item.peer.peer, account: arguments.context.account, context: arguments.context, stableId: stableId, height: 42, photoSize: NSMakeSize(30, 30), isLookSavedMessage: true, inset: NSEdgeInsets(), interactionType: type, generalType: .context(item.count), viewType: item.viewType, action: {
+            return ShortPeerRowItem(initialSize, peer: item.peer.peer, account: arguments.context.account, context: arguments.context, stableId: stableId, height: 30 + SettingsRowMetrics.contentInset * 2, photoSize: NSMakeSize(30, 30), titleStyle: ControlStyle(font: .normal(SettingsRowMetrics.titleSize), foregroundColor: theme.colors.text, highlightColor: .white), isLookSavedMessage: true, inset: NSEdgeInsets(), interactionType: type, generalType: .context(item.count), viewType: item.viewType, action: {
                 arguments.open(item.peer.peer.id)
             }, contextMenuItems: {
                 
@@ -155,7 +155,7 @@ func StorageUsage_Block_Chats<Context: AccountContextProtocol>(context: Context,
         return InputDataSignalValue(entries: entries(state, arguments: arguments), grouping: false, animateEverything: true)
     }
     
-    let controller = InputDataController(dataSignal: signal, title: "")
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: "")
     controller.bar = .init(height: 0)
     
     controller.onDeinit = {

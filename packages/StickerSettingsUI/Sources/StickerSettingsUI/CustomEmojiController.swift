@@ -152,7 +152,7 @@ public func CustomEmojiController(context: any AccountContextProtocol) -> InputD
         return InputDataSignalValue(entries: entries(state, arguments: arguments))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: strings().installedStickersCustomEmoji, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().installedStickersCustomEmoji, hasDone: false)
     controller.analyticsScreen = .settingsStickersEmojiCustomEmoji
     
     controller.onDeinit = {

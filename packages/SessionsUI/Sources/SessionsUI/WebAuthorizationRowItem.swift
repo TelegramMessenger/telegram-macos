@@ -164,6 +164,8 @@ private class WebAuthorizationRowView : TableRowView, ViewDisplayDelegate {
     }
     
     public override func set(item: TableRowItem, animated: Bool) {
+    
+        containerView.applySettingsCorners(item)
         super.set(item: item, animated: animated)
         
         guard let item = item as? WebAuthorizationRowItem else {return}

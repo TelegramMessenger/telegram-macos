@@ -512,7 +512,7 @@ private func entries(state: State, data: DataAndStorageData, proxy: ProxySetting
 
 private func prepareTransition(left:[AppearanceWrapperEntry<DataAndStorageEntry>], right: [AppearanceWrapperEntry<DataAndStorageEntry>], initialSize: NSSize, arguments: DataAndStorageControllerArguments) -> TableUpdateTransition {
     let (removed, inserted, updated) = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
-        return entry.entry.item(arguments, initialSize: initialSize)
+        return entry.entry.item(arguments, initialSize: initialSize).settingsRow()
     }
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
 }

@@ -453,6 +453,7 @@ final class MenuView: Control, TableViewDelegate {
 }
 
 final class AppMenuController : NSObject  {
+    static let popUpTextInset: CGFloat = 15
     let menu:ContextMenu
     var parent: Window?
     let presentation: AppMenu.Presentation
@@ -1115,6 +1116,15 @@ final class AppMenuController : NSObject  {
         rect = adjust(rect)
         
         view.setScreenFrame(rect)
+        if let popUpAnchor = menu.popUpAnchor, let host = view.host {
+            view.layoutSubtreeIfNeeded()
+            let table = view.view.tableView
+            let rowRect = host.convertToScreen(table.tableView.convert(table.rectOf(index: (menu.popUpSelectedIndex ?? 0) + 1), to: nil))
+            rect.origin.x += popUpAnchor.minX - (rowRect.minX + AppMenuController.popUpTextInset)
+            rect.origin.y += popUpAnchor.midY - rowRect.midY
+            rect = adjust(rect)
+            view.setScreenFrame(rect)
+        }
         view.isHidden = false
         self.host?.rootView = view.view
         showHost()

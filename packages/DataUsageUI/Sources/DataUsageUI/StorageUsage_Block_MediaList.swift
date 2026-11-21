@@ -300,7 +300,7 @@ func StorageUsage_Block_MediaList<Context: AccountContextProtocol>(context: Cont
         return InputDataSignalValue(entries: entries(state, arguments: arguments), grouping: false, animateEverything: true)
     }
     
-    let controller = InputDataController(dataSignal: signal, title: " ")
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: " ")
     controller.bar = .init(height: 0)
 
     controller.didLoad = { controller, _ in

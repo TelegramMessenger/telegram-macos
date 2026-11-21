@@ -139,7 +139,7 @@ private final class MicrophonePreviewRowView : GeneralContainableRowView {
         view.powerLevel = item.powerLevel
         needsLayout = true
         
-        let layout = TextViewLayout(.initialize(string: strings().callSettingsInputLevel, color: item.customTheme?.textColor ?? theme.colors.text, font: .normal(.title)))
+        let layout = TextViewLayout(.initialize(string: strings().callSettingsInputLevel, color: item.customTheme?.textColor ?? theme.colors.text, font: item.settingsPresentation != nil ? .normal(SettingsRowMetrics.titleSize) : .normal(.title)))
         layout.measure(width: 200)
         title.update(layout)
     }

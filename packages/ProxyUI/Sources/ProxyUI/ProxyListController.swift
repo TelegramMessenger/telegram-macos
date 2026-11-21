@@ -245,7 +245,7 @@ public func proxyListController(accountManager: AccountManager<TelegramAccountMa
         updateDisposable.set(updateProxySettingsInteractively(accountManager: accountManager, {$0.withUpdatedUseForCalls(enable)}).start())
     })
     
-    let controller = InputDataController(dataSignal: combineLatest(queue: prepareQueue, statePromise.get(), network.connectionStatus, statuses.statuses(), appearanceSignal) |> map {proxyListSettingsEntries($0.0, status: $0.1, statuses: $0.2, arguments: arguments, showUseCalls: showUseCalls)} |> map { InputDataSignalValue(entries: $0) }, title: strings().proxySettingsTitle, validateData: {
+    let controller = InputDataController(settingsLayout: true, dataSignal: combineLatest(queue: prepareQueue, statePromise.get(), network.connectionStatus, statuses.statuses(), appearanceSignal) |> map {proxyListSettingsEntries($0.0, status: $0.1, statuses: $0.2, arguments: arguments, showUseCalls: showUseCalls)} |> map { InputDataSignalValue(entries: $0) }, title: strings().proxySettingsTitle, validateData: {
         data in
         
         if data[_p_id_add] != nil {
@@ -307,7 +307,7 @@ public func addProxyController(accountManager: AccountManager<TelegramAccountMan
         title = strings().proxySettingsWEB
     }
     
-    let controller = InputDataController(dataSignal: combineLatest(statePromise.get() |> deliverOnPrepareQueue, appearanceSignal |> deliverOnPrepareQueue) |> map { state, _ in
+    let controller = InputDataController(settingsLayout: true, dataSignal: combineLatest(statePromise.get() |> deliverOnPrepareQueue, appearanceSignal |> deliverOnPrepareQueue) |> map { state, _ in
         return addProxySettingsEntries(state: state, updateType: { type in
             updateState { current in
                 switch type {

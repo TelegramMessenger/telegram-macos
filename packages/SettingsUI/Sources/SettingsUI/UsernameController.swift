@@ -211,7 +211,7 @@ public func UsernameController(_ context: (any AccountContextProtocol)) -> Input
         return InputDataSignalValue(entries: entries(state, arguments: arguments), animated: !nextTransactionNonAnimated.swap(false))
     }
     
-    let controller = InputDataController(dataSignal: signal, title: strings().telegramUsernameSettingsViewController)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().telegramUsernameSettingsViewController)
     controller.analyticsScreen = .settingsAccountUsername
     
     controller.updateDatas = { data in

@@ -693,7 +693,7 @@ public func EditAccountInfoController<Context: AccountContextProtocol>(context: 
         f(SettingsNavigationHooks.shared.makeBusinessChatbotController(context))
     })
     
-    let controller = InputDataController(dataSignal: combineLatest(state.get() |> deliverOnPrepareQueue, appearanceSignal |> deliverOnPrepareQueue, context.sharedContext.activeAccountsWithInfo, context
+    let controller = InputDataController(settingsLayout: true, dataSignal: combineLatest(state.get() |> deliverOnPrepareQueue, appearanceSignal |> deliverOnPrepareQueue, context.sharedContext.activeAccountsWithInfo, context
         .privacy) |> map {
             editInfoEntries(state: $0.0, arguments: arguments, activeAccounts: $0.2.accounts, privacy: $0.3, updateState: updateState)
     } |> map { InputDataSignalValue(entries: $0) }, title: strings().editAccountTitle, validateData: { data -> InputDataValidation in

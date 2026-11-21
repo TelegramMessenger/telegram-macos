@@ -35,6 +35,12 @@ struct SetupPasswordConfiguration {
     }
 }
 
+private final class SettingsAccountRowItem: ShortPeerRowItem {
+    override func textInset(_ status: Bool) -> CGFloat {
+        return super.textInset(status) - min(10, viewType.innerInset.left) + SettingsRowMetrics.sidebarIconGap
+    }
+}
+
 private final class AccountSearchBarView: View {
     fileprivate let searchView = SearchView(frame: NSMakeRect(0, 0, 100, 30))
     
@@ -312,7 +318,7 @@ private enum AccountInfoEntry<Context: AccountContextProtocol> : TableItemListNo
     func item(_ arguments: AccountInfoArguments<Context>, initialSize: NSSize) -> TableRowItem {
         switch self {
         case let .info(_, viewType, peer, storyStats):
-            return AccountInfoItem(initialSize, stableId: stableId, viewType: viewType, inset: NSEdgeInsets(left: 12, right: 12), context: arguments.context, peer: peer.peer as! TelegramUser, storyStats: storyStats, action: {
+            return AccountInfoItem(initialSize, stableId: stableId, viewType: viewType, inset: NSEdgeInsets(left: 12, right: 12), context: arguments.context, peer: peer.peer as! TelegramUser, storyStats: storyStats, compact: true, action: {
                 let first: Atomic<Bool> = Atomic(value: true)
                 EditAccountInfoController(context: arguments.context, f: { controller in
                     arguments.presentController(controller, first.swap(false))
@@ -337,7 +343,7 @@ private enum AccountInfoEntry<Context: AccountContextProtocol> : TableItemListNo
                 arguments.set2Fa(privacy)
             }, thumb: GeneralThumbAdditional(thumb: icon, textInset: 35, thumbInset: 0), inset:NSEdgeInsets(left: 12, right: 12), customTheme: .initialize(theme, background: .clear))
         case let .accountRecord(_, viewType, info):
-            return ShortPeerRowItem(initialSize, peer: info.peer, account: info.account, context: nil, height: 42, photoSize: NSMakeSize(28, 28), titleStyle: ControlStyle(font: .normal(.title), foregroundColor: theme.colors.text, highlightColor: theme.colors.underSelectedColor), inset: NSEdgeInsets(left: 12, right: 12), viewType: viewType, action: {
+            return SettingsAccountRowItem(initialSize, peer: info.peer, account: info.account, context: nil, height: SettingsRowMetrics.sidebarHeight, photoSize: NSMakeSize(20, 20), titleStyle: ControlStyle(font: .normal(SettingsRowMetrics.titleSize), foregroundColor: theme.colors.text, highlightColor: theme.colors.underSelectedColor), inset: NSEdgeInsets(left: SettingsRowMetrics.sidebarInset, right: SettingsRowMetrics.sidebarInset), viewType: viewType.withUpdatedInsets(NSEdgeInsets(left: SettingsRowMetrics.sidebarContentInset, right: SettingsRowMetrics.sidebarContentInset)), action: {
                 arguments.context.sharedContext.switchToAccount(id: info.account.id, action: nil)
             }, contextMenuItems: {
                 
@@ -356,11 +362,11 @@ private enum AccountInfoEntry<Context: AccountContextProtocol> : TableItemListNo
                 }, itemMode: .destruct, itemImage: MenuAnimation.menu_delete.value))
                 
                 return .single(items)
-            }, alwaysHighlight: true, badgeNode: SettingsHooks.shared.makeAccountBadgeNode(info.account, arguments.context), compactText: true, highlightVerified: true)
+            }, alwaysHighlight: true, badgeNode: SettingsHooks.shared.makeAccountBadgeNode(info.account, arguments.context), compactText: true, highlightVerified: true, customTheme: .initialize(theme, background: .clear))
         case let .addAccount(_, accounts, viewType):
-            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().accountSettingsAddAccount, nameStyle: ControlStyle(font: .normal(.title), foregroundColor: theme.colors.accentIcon), type: .none, viewType: viewType, action: {
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().accountSettingsAddAccount, icon: sidebarAddAccountIcon(), type: .none, viewType: viewType, action: {
                 arguments.addAccount(accounts)
-            }, thumb: GeneralThumbAdditional(thumb: theme.icons.account_add_account, textInset: 35, thumbInset: 0), inset:NSEdgeInsets(left: 12, right: 12), customTheme: .initialize(theme, background: .clear))
+            }, inset:NSEdgeInsets(left: 12, right: 12), customTheme: .initialize(theme, background: .clear))
         case let .general(_, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().accountSettingsGeneral, icon: theme.icons.settingsGeneral, activeIcon: theme.icons.settingsGeneralActive, type: .next, viewType: viewType, action: {
                 arguments.presentController(GeneralSettingsViewController(arguments.context), true)
@@ -539,14 +545,6 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
        
     }
     
-    if let peer = peerViewMainPeer(peerView) {
-        if context.isPremium {
-            entries.append(.setStatus(index: index, viewType: .singleItem, PeerEquatable(peer)))
-            index += 1
-        }
-        entries.append(.setProfileColor(index: index, viewType: .singleItem, PeerEquatable(peer)))
-        index += 1
-    }
     
     
     var has2fa = has2fa
@@ -618,9 +616,6 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
         }
     }
 
-    entries.append(.whiteSpace(index: index, height: 10))
-    index += 1
-
     for bot in attachMenuBots {
         if #available(macOS 10.15, *), SettingsHooks.shared.walletHooks.hasWallet(context), context.account.testingEnvironment, bot.peer.addressName?.lowercased() == "wallet" {
             continue
@@ -646,10 +641,9 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
         entries.append(.proxy(index: index, viewType: .singleItem, status: status))
         index += 1
         
+        entries.append(.whiteSpace(index: index, height: 10))
+        index += 1
     }
-    
-    entries.append(.whiteSpace(index: index, height: 10))
-    index += 1
     
     entries.append(.general(index: index, viewType: .singleItem))
     index += 1
@@ -679,14 +673,14 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
     }
    
 
-    entries.append(.whiteSpace(index: index, height: 20))
+    entries.append(.whiteSpace(index: index, height: SettingsRowMetrics.cardGap))
     index += 1
     
     if let peer = peerViewMainPeer(peerView) as? TelegramUser, passportVisible {
         entries.append(.passport(index: index, viewType: .singleItem, peer: PeerEquatable(peer)))
         index += 1
         
-        entries.append(.whiteSpace(index: index, height: 20))
+        entries.append(.whiteSpace(index: index, height: SettingsRowMetrics.cardGap))
         index += 1
     }
     
@@ -713,7 +707,7 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
         entries.append(.giftPremium(index: index, viewType: .singleItem))
         index += 1
         
-        entries.append(.whiteSpace(index: index, height: 20))
+        entries.append(.whiteSpace(index: index, height: SettingsRowMetrics.cardGap))
         index += 1
     }
    
@@ -723,13 +717,13 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
     entries.append(.ask(index: index, viewType: .singleItem))
     index += 1
     
-    entries.append(.whiteSpace(index: index, height: 20))
+    entries.append(.whiteSpace(index: index, height: SettingsRowMetrics.cardGap))
     index += 1
     
     entries.append(.about(index: index, viewType: .singleItem))
     index += 1
     
-    entries.append(.whiteSpace(index: index, height: 20))
+    entries.append(.whiteSpace(index: index, height: SettingsRowMetrics.cardGap))
     index += 1
     
     return entries
@@ -737,7 +731,11 @@ private func accountInfoEntries<Context: AccountContextProtocol>(peerView:PeerVi
 
 private func prepareEntries<Context: AccountContextProtocol>(left: [AppearanceWrapperEntry<AccountInfoEntry<Context>>], right: [AppearanceWrapperEntry<AccountInfoEntry<Context>>], arguments: AccountInfoArguments<Context>, initialSize: NSSize) -> TableUpdateTransition {
     let (removed, inserted, updated)  = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
-        return entry.entry.item(arguments, initialSize: initialSize)
+        let item = entry.entry.item(arguments, initialSize: initialSize)
+        if item is GeneralInteractedRowItem || item is SettingsAccountRowItem || item is AccountInfoItem {
+            return item.settingsRow(.sidebar)
+        }
+        return item
     }
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
 }
@@ -772,6 +770,7 @@ public final class AccountControllerView : Control {
         textView.isSelectable = false
 
         statusContainer.addSubview(edit)
+        edit.isHidden = true
         statusContainer.addSubview(textView)
         edit.scaleOnClick = true
         qrCode.scaleOnClick = true
@@ -1045,6 +1044,7 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
         let arguments = AccountInfoArguments(context: context, storyList: PeerStoryListContext(account: context.account, peerId: context.peerId, isArchived: false, folderId: nil), presentController: { [weak self] controller, main in
             guard let navigation = self?.navigation as? MajorNavigationController else {return}
             guard let singleLayout = self?.context.layout else {return}
+            controller.isSettingsScreen = true
             navigation.push(controller, !main || singleLayout == .single, clearStack: main)
         }, openFaq: {
             SettingsHooks.shared.openFaq(context)
@@ -1421,3 +1421,20 @@ open class AccountViewController<Context: AccountContextProtocol> : TelegramGene
 
 }
 
+
+
+private func sidebarAddAccountIcon() -> CGImage {
+    return generateImage(NSMakeSize(20, 20), rotatedContext: { size, ctx in
+        ctx.clear(CGRect(origin: .zero, size: size))
+        ctx.setFillColor(theme.colors.text.withAlphaComponent(0.12).cgColor)
+        ctx.fillEllipse(in: CGRect(origin: .zero, size: size))
+        ctx.setStrokeColor(theme.colors.text.withAlphaComponent(0.75).cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: 10, y: 6))
+        ctx.addLine(to: CGPoint(x: 10, y: 14))
+        ctx.move(to: CGPoint(x: 6, y: 10))
+        ctx.addLine(to: CGPoint(x: 14, y: 10))
+        ctx.strokePath()
+    })!
+}

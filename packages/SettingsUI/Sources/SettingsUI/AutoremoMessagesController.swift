@@ -158,7 +158,7 @@ public func AutoremoveMessagesController(context: any AccountContextProtocol, pe
         return InputDataSignalValue(entries: entries(state, arguments: arguments, onlyDelete: onlyDelete))
     }
 
-    let controller = InputDataController(dataSignal: signal, title: onlyDelete ? strings().autoremoveMessagesTitleDeleteOnly : strings().autoremoveMessagesTitle, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: onlyDelete ? strings().autoremoveMessagesTitleDeleteOnly : strings().autoremoveMessagesTitle, hasDone: false)
     controller.analyticsScreen = .chatAutoDelete
 
 

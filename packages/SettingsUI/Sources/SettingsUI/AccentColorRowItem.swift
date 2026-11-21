@@ -224,6 +224,8 @@ public final class AccentColorRowView : TableRowView {
     private let selectedImageView = ImageView()
     
     public override func set(item: TableRowItem, animated: Bool = false) {
+    
+        containerView.applySettingsCorners(item)
         super.set(item: item, animated: animated)
         
         documentView.removeAllSubviews()

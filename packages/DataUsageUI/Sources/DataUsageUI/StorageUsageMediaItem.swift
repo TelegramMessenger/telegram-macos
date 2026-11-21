@@ -310,8 +310,8 @@ public final class StorageUsageMediaItemView : GeneralContainableRowView, APDele
             if let view = self.selection {
                 current = view
             } else {
-                let unselected: CGImage = item.customTheme?.unselectedImage ?? theme.icons.chatToggleUnselected
-                let selected: CGImage = item.customTheme?.selectedImage ?? theme.icons.chatToggleSelected
+                let unselected: CGImage = item.customTheme?.unselectedImage ?? SettingsCheckbox.unselected
+                let selected: CGImage = item.customTheme?.selectedImage ?? SettingsCheckbox.selected()
                 current = SelectingControl(unselectedImage: unselected, selectedImage: selected)
                 self.selection = current
                 

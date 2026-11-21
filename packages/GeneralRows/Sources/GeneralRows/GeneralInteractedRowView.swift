@@ -60,6 +60,7 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                     switchView = SwitchView()
                     containerView.addSubview(switchView!)
                 }
+                switchView?.setFrameSize(item.settingsPresentation != nil ? NSMakeSize(36, 36 * SwitchView.preferredSize.height / SwitchView.preferredSize.width) : SwitchView.preferredSize)
                 switchView?.autoswitch = item.autoswitch
                 switchView?.presentation = item.switchAppearance
                 switchView?.setIsOn(stateback,animated:animated)
@@ -77,10 +78,17 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 switchView?.removeFromSuperview()
                 switchView = nil
             }
+            var leftSelection: (value: Bool, radio: Bool)?
             if case let .selectableLeft(value) = item.type {
+                leftSelection = (value, false)
+            } else if item.settingsPresentation != nil, case let .selectable(value) = item.type {
+                leftSelection = (value, true)
+            }
+            if let (value, radio) = leftSelection {
                 
-                let unselected: CGImage = item.customTheme?.unselectedImage ?? theme.icons.chatToggleUnselected
-                let selected: CGImage = item.customTheme?.selectedImage ?? theme.icons.chatToggleSelected
+                let settingsCheckbox = item.settingsPresentation != nil && item.customTheme == nil
+                let unselected: CGImage = radio ? SettingsRadio.unselected : settingsCheckbox ? SettingsCheckbox.unselected : (item.customTheme?.unselectedImage ?? theme.icons.chatToggleUnselected)
+                let selected: CGImage = radio ? SettingsRadio.selected : settingsCheckbox ? SettingsCheckbox.selected() : (item.customTheme?.selectedImage ?? theme.icons.chatToggleSelected)
 
                 let current: SelectingControl
                 if let view = self.selectLeftControl {
@@ -100,7 +108,7 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 }
                 current.update(unselectedImage: unselected, selectedImage: selected, selected: value, animated: animated)
                 
-                current.userInteractionEnabled = item.switchAction != nil
+                current.userInteractionEnabled = !radio && item.switchAction != nil
                 
                 
                 current.layer?.opacity = item.enabled ? 1 : 0.7
@@ -140,12 +148,14 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 let textColor: NSColor
                 if case let .contextColored(_, color) = item.type {
                     textColor = color
+                } else if item.settingsPresentation != nil, item.showsPopUpIndicator || { if case .contextSelector = item.type { return true } else { return false } }() {
+                    textColor = item.customTheme?.textColor ?? theme.colors.text
                 } else {
                     textColor = item.customTheme?.grayTextColor ?? theme.colors.grayText
                 }
                 let underselect = item.customTheme?.underSelectedColor ?? theme.colors.underSelectedColor
 
-                let layout = item.isSelected ? nil : TextViewLayout(.initialize(string: value, color: isSelect ? underselect : textColor, font: .normal(.title)), maximumNumberOfLines: 1)
+                let layout = item.isSelected && item.settingsPresentation == nil ? nil : TextViewLayout(.initialize(string: value, color: isSelect ? underselect : textColor, font: .normal(item.settingsPresentation != nil ? SettingsRowMetrics.titleSize : .title)), maximumNumberOfLines: 1)
 
                 textView?.set(layout: layout)
                 secondaryTextView?.removeFromSuperview()
@@ -180,8 +190,8 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 let grayText = item.customTheme?.grayTextColor ?? theme.colors.grayText
                 let underselect = item.customTheme?.underSelectedColor ?? theme.colors.underSelectedColor
 
-                let primaryLayout = item.isSelected ? nil : TextViewLayout(.initialize(string: primary, color: isSelect ? underselect : textColor, font: .normal(.title)), maximumNumberOfLines: 1, alignment: .right)
-                let secondaryLayout = item.isSelected ? nil : TextViewLayout(.initialize(string: secondary, color: isSelect ? underselect : grayText, font: .normal(.text)), maximumNumberOfLines: 1, alignment: .right)
+                let primaryLayout = item.isSelected && item.settingsPresentation == nil ? nil : TextViewLayout(.initialize(string: primary, color: isSelect ? underselect : textColor, font: .normal(item.settingsPresentation != nil ? SettingsRowMetrics.titleSize : .title)), maximumNumberOfLines: 1, alignment: .right)
+                let secondaryLayout = item.isSelected && item.settingsPresentation == nil ? nil : TextViewLayout(.initialize(string: secondary, color: isSelect ? underselect : grayText, font: .normal(.text)), maximumNumberOfLines: 1, alignment: .right)
 
                 textView?.set(layout: primaryLayout)
                 secondaryTextView?.set(layout: secondaryLayout)
@@ -210,7 +220,7 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
             }
             textView?.backgroundColor = backdorColor
             
-            if case let .selectable(value) = item.type {
+            if case let .selectable(value) = item.type, item.settingsPresentation == nil {
                 nextView.isHidden = !value
                 
                 nextImage = GeneralRowsHooks.shared.checkSelectedImage(item.customTheme?.accentColor ?? theme.colors.accent, item.customTheme?.underSelectedColor ?? theme.colors.underSelectedColor)
@@ -244,10 +254,20 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 nextView.isHidden = false
                                 
                 let color = (item.customTheme?.grayTextColor ?? theme.colors.grayText).withAlphaComponent(0.5)
-                nextImage = item.isSelected ? nil : TelegramThemeHooks.shared.image(.iconGeneralNext).precomposed(color)
-                nextView.frame.size = nextImage?.backingSize ?? nextView.frame.size
+                if case .contextSelector = item.type, item.settingsPresentation != nil {
+                    nextImage = SettingsPopUpIndicator.image
+                    nextView.frame.size = NSMakeSize(SettingsPopUpIndicator.size, SettingsPopUpIndicator.size)
+                } else {
+                    nextImage = item.isSelected ? nil : TelegramThemeHooks.shared.image(.iconGeneralNext).precomposed(color)
+                    nextView.frame.size = nextImage?.backingSize ?? nextView.frame.size
+                }
             }
             
+            if item.showsPopUpIndicator, item.settingsPresentation != nil {
+                nextView.isHidden = false
+                nextImage = SettingsPopUpIndicator.image
+                nextView.frame.size = NSMakeSize(SettingsPopUpIndicator.size, SettingsPopUpIndicator.size)
+            }
             nextView.opacity = item.enabled ? 1.0 : 0.7
             
             switch item.viewType {
@@ -284,6 +304,9 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 performSubviewRemoval(view, animated: animated)
                 self.rightIconView = nil
             }
+        }
+        if let item = item as? GeneralInteractedRowItem, item.settingsPresentation == .sidebar {
+            nextView.isHidden = true
         }
         super.set(item: item, animated: animated)
         
@@ -354,6 +377,9 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
     private var textXAdditional: CGFloat {
         var textXAdditional:CGFloat = 0
         guard let item = item as? GeneralInteractedRowItem else {return 0}
+        if let inset = item.settingsTextInset {
+            return inset + (selectLeftControl != nil ? (item.settingsPresentation != nil ? SettingsCheckbox.size + 8 : 38) : 0)
+        }
         let t = item.isSelected ? item.activeThumb : item.thumb
         if let thumb = t {
             if let textInset = thumb.textInset {
@@ -363,7 +389,7 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
             }
         }
         if let _ = self.selectLeftControl {
-            textXAdditional += 24 + 14
+            textXAdditional += item.settingsPresentation != nil ? SettingsCheckbox.size + 8 : 24 + 14
         }
         return textXAdditional
     }
@@ -396,13 +422,13 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                     ctx.setFillColor(stateback.cgColor)
                     ctx.fillEllipse(in: NSMakeRect(containerView.frame.width - 14 - item.inset.right - 16, floorToScreenPixels(backingScaleFactor, (frame.height - 14) / 2), 14, 14))
                 }
-            case let .modern(position, insets):
+            case let .modern(_, insets):
                 let t = item.isSelected ? item.activeThumb : item.thumb
                 if let thumb = t {
-                    let f = focus(thumb.thumb.systemSize)
+                    let f = focus(item.settingsIconSize ?? thumb.thumb.systemSize)
                     
                     let icon = thumb.thumb
-                    var x: CGFloat = insets.left + (thumb.thumbInset ?? 0)
+                    var x: CGFloat = insets.left + (item.settingsPresentation != nil ? 0 : (thumb.thumbInset ?? 0))
                     if case .selectableLeft = item.type {
                         x += 35
                     } else {
@@ -412,9 +438,11 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                     ctx.draw(icon, in: NSMakeRect(x, f.minY, f.width, f.height))
                 }
                 
-                if position.border, !isSelect && !self.isResorting  {
+                let hasBorder = item.settingsPresentation != nil ? item.hasBorder : item.viewType.position.border
+                if hasBorder, item.settingsPresentation != .sidebar, !isSelect && !self.isResorting {
                     ctx.setFillColor(borderColor.cgColor)
-                    ctx.fill(NSMakeRect(textXAdditional + insets.left, containerView.frame.height - .borderSize, containerView.frame.width - (insets.left + insets.right + textXAdditional), .borderSize))
+                    let separatorInset = item.settingsPresentation != nil ? 0 : textXAdditional
+                    ctx.fill(NSMakeRect(separatorInset + insets.left, containerView.frame.height - .borderSize, containerView.frame.width - (insets.left + insets.right + separatorInset), .borderSize))
                 }
                 
                 let nameLayout = (item.isSelected ? item.nameLayoutSelected : item.nameLayout)
@@ -427,6 +455,9 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                     textRect.origin.y = 5
                 }
                                 
+                if item.settingsPresentation != nil {
+                    textRect.origin.y = item.settingsTitleY
+                }
                 if let afterNameImage = item.afterNameImage {
                     ctx.draw(afterNameImage, in: CGRect(x: textRect.maxX + 8, y: textRect.minY, width: afterNameImage.systemSize.width, height: afterNameImage.systemSize.height))
                 }
@@ -522,6 +553,14 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
 
                         for item in items {
                             menu.addItem(item)
+                        }
+                        if item.settingsPresentation != nil, case let .contextSelector(value, _) = item.type, let window = textView.window {
+                            let selected = items.firstIndex(where: { $0.title == value })
+                            for (index, menuItem) in items.enumerated() {
+                                menuItem.state = index == selected ? .on : .off
+                            }
+                            menu.popUpSelectedIndex = selected
+                            menu.popUpAnchor = window.convertToScreen(textView.convert(textView.bounds, to: nil))
                         }
                         AppMenu.show(menu: menu, event: event, for: textView)
                     }
@@ -657,11 +696,17 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                     textRect.origin.y = 5 - balancedOffset
                 }
                 
+                if item.settingsPresentation != nil {
+                    textRect.origin.y = item.settingsTitleY
+                    descriptionView?.setFrameOrigin(innerInsets.left + textXAdditional, textRect.maxY + SettingsRowMetrics.subtitleGap)
+                }
                 nameView.setFrameOrigin(textRect.origin)
 
                 
                 if let textView = textView {
-                    let width:CGFloat = containerView.frame.width - item.nameLayout.layoutSize.width - innerInsets.right - insets.left - 10
+                    let width:CGFloat = item.settingsPresentation != nil
+                        ? max(0, containerView.frame.width - item.nameLayout.layoutSize.width - innerInsets.right - innerInsets.left - textXAdditional - nextInset - 10)
+                        : containerView.frame.width - item.nameLayout.layoutSize.width - innerInsets.right - insets.left - 10
                     textView.textLayout?.measure(width: width)
                     textView.update(textView.textLayout)
                     if let secondaryTextView = secondaryTextView {
@@ -699,6 +744,16 @@ open class GeneralInteractedRowView: GeneralContainableRowView, ViewDisplayDeleg
                 
                 if let imageView = self.rightIconView {
                     imageView.centerY(x: containerView.frame.width - imageView.frame.width - nextInset - 10)
+                }
+                if item.settingsPresentation != nil {
+                    switchView?.centerY(x: containerView.frame.width - innerInsets.right - (switchView?.frame.width ?? 0))
+                    if secondaryTextView == nil, let textView = textView {
+                        textView.centerY(x: textView.frame.minX)
+                    }
+                    nextView.frame.origin.y = round((containerView.frame.height - nextView.frame.height) / 2)
+                    if item.settingsPresentation == .sidebar {
+                        nextView.isHidden = true
+                    }
                 }
             }
         }

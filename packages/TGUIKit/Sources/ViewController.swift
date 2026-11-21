@@ -469,6 +469,10 @@ public enum ViewControllerLifecycleHooks {
 open class ViewController : NSObject {
     
     public var analyticsScreenId: String?
+    public var isSettingsScreen: Bool = false
+    open var acceptsSettingsLayout: Bool {
+        return false
+    }
     public var analyticsPeerType: String?
     
     public struct StakeSettings {

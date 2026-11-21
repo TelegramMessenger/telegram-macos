@@ -9269,6 +9269,22 @@ public final class L10n {
   public static var generalSettingsForceTouchPreviewMedia: String  { return L10n.tr("Localizable", "GeneralSettings.ForceTouch.PreviewMedia") }
   /// Add Reaction
   public static var generalSettingsForceTouchReact: String  { return L10n.tr("Localizable", "GeneralSettings.ForceTouch.React") }
+  /// Messages
+  public static var generalSettingsViewControllerMessagesHeader: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.MessagesHeader") }
+  /// Force Click on a message
+  public static var generalSettingsViewControllerForceClick: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.ForceClick") }
+  /// Reply
+  public static var generalSettingsViewControllerForceClickReply: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.ForceClickReply") }
+  /// Edit
+  public static var generalSettingsViewControllerForceClickEdit: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.ForceClickEdit") }
+  /// Forward
+  public static var generalSettingsViewControllerForceClickForward: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.ForceClickForward") }
+  /// Send message with
+  public static var generalSettingsViewControllerSendWith: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.SendWith") }
+  /// Return
+  public static var generalSettingsViewControllerSendWithReturn: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.SendWithReturn") }
+  /// ⌘ Return
+  public static var generalSettingsViewControllerSendWithCmdReturn: String  { return L10n.tr("Localizable", "GeneralSettings.ViewController.SendWithCmdReturn") }
   /// Reply to Message
   public static var generalSettingsForceTouchReply: String  { return L10n.tr("Localizable", "GeneralSettings.ForceTouch.Reply") }
   /// Scroll With Spacebar
@@ -10711,6 +10727,14 @@ public final class L10n {
   }
   /// Power saving mode can be turned on automatically based on battery level.
   public static var liteModeLowPowerInfoFull: String  { return L10n.tr("Localizable", "LiteMode.LowPower.InfoFull") }
+  /// Turn on automatically
+  public static var liteModeControllerTurnOnAutomatically: String  { return L10n.tr("Localizable", "LiteMode.Controller.TurnOnAutomatically") }
+  /// Off
+  public static var liteModeControllerOff: String  { return L10n.tr("Localizable", "LiteMode.Controller.Off") }
+  /// When your battery is below %1$@
+  public static func liteModeControllerBatteryBelow(_ p1: String) -> String {
+    return L10n.tr("Localizable", "LiteMode.Controller.BatteryBelow", p1)
+  }
   /// Allow Comments
   public static var liveStreamAllowComments: String  { return L10n.tr("Localizable", "LiveStream.AllowComments") }
   /// Allow Screenshots
@@ -17849,6 +17873,10 @@ public final class L10n {
   public static var storageUsageClear: String  { return L10n.tr("Localizable", "StorageUsage.Clear") }
   /// Clear
   public static var storageUsageClearDisabled: String  { return L10n.tr("Localizable", "StorageUsage.ClearDisabled") }
+  /// %1$@ selected
+  public static func storageUsageClearButtonItemSelected(_ p1: String) -> String {
+    return L10n.tr("Localizable", "StorageUsage.ClearButtonItem.Selected", p1)
+  }
   /// Storage Cleared
   public static var storageUsageCleared: String  { return L10n.tr("Localizable", "StorageUsage.Cleared") }
   /// %@ freed on your Device!

@@ -112,7 +112,7 @@ private final class StorageUsageCategoryView : GeneralContainableRowView {
     private let nameTextView = TextView()
     private let subTextView = TextView()
     private var subImageView: ImageView?
-    private let selectionView: SelectingControl = SelectingControl(unselectedImage: theme.icons.chatToggleUnselected, selectedImage: theme.icons.chatToggleSelected)
+    private let selectionView: SelectingControl = SelectingControl(unselectedImage: SettingsCheckbox.unselected, selectedImage: SettingsCheckbox.selected())
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         
@@ -214,9 +214,7 @@ private final class StorageUsageCategoryView : GeneralContainableRowView {
         nameTextView.update(item.nameLayout)
         subTextView.update(item.subLayout)
         
-        let selected = generateChatGroupToggleSelected(foregroundColor: item.color, backgroundColor: NSColor.white)
-        
-        selectionView.update(unselectedImage: theme.icons.chatToggleUnselected, selectedImage: selected, selected: item.selected, animated: animated)
+        selectionView.update(unselectedImage: SettingsCheckbox.unselected, selectedImage: SettingsCheckbox.selected(item.color), selected: item.selected, animated: animated)
         
         let concealed_img: CGImage = theme.icons.general_chevron_down
         let revealed_img: CGImage = theme.icons.general_chevron_up

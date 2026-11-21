@@ -472,9 +472,11 @@ private enum PrivacyAndSecurityEntry: Comparable, Identifiable {
         case .accountHeader:
             return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().privacySettingsDeleteAccountHeader, viewType: .textTopItem)
         case let .accountTimeout(_, text, viewType):
-            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().privacySettingsDeleteAccount, type: .context(text), viewType: viewType, action: {
+            let item = GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().privacySettingsDeleteAccount, type: .context(text), viewType: viewType, action: {
                 arguments.setupAccountAutoremove()
             })
+            item.showsPopUpIndicator = true
+            return item
         case .accountInfo:
             return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().privacySettingsDeleteAccountDescription, viewType: .textBottomItem)
         case .proxyHeader:
@@ -587,7 +589,7 @@ private struct PrivacyAndSecurityControllerState: Equatable {
 fileprivate func prepareTransition(left:[AppearanceWrapperEntry<PrivacyAndSecurityEntry>], right: [AppearanceWrapperEntry<PrivacyAndSecurityEntry>], initialSize:NSSize, arguments:PrivacyAndSecurityControllerArguments) -> TableUpdateTransition {
 
     let (removed, inserted, updated) = proccessEntriesWithoutReverse(left, right: right) { entry -> TableRowItem in
-        return entry.entry.item(arguments, initialSize: initialSize)
+        return entry.entry.item(arguments, initialSize: initialSize).settingsRow()
     }
 
     return TableUpdateTransition(deleted: removed, inserted: inserted, updated: updated, animated: true)
@@ -1114,7 +1116,7 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
                     |> take(1)
                     |> deliverOnMainQueue
                 updateAccountTimeoutDisposable.set(signal.start(next: { [weak updateAccountTimeoutDisposable, weak strongSelf] privacySettingsValue in
-                    if let _ = privacySettingsValue, let strongSelf = strongSelf {
+                    if let privacySettingsValue = privacySettingsValue, let strongSelf = strongSelf {
 
                         let timeoutAction: (Int32) -> Void = { timeout in
                             if let updateAccountTimeoutDisposable = updateAccountTimeoutDisposable {
@@ -1175,6 +1177,15 @@ open class PrivacyAndSecurityViewController<Context: AccountContextProtocol>: Ta
                                     let menu = ContextMenu()
                                     for item in items {
                                         menu.addItem(item)
+                                    }
+                                    let current = privacySettingsValue.accountRemovalTimeout
+                                    let selected = timeoutValues.indices.min(by: { abs(timeoutValues[$0] - current) < abs(timeoutValues[$1] - current) })
+                                    for (index, item) in items.enumerated() {
+                                        item.state = index == selected ? .on : .off
+                                    }
+                                    if let window = view.window {
+                                        menu.popUpSelectedIndex = selected
+                                        menu.popUpAnchor = window.convertToScreen(view.convert(view.bounds, to: nil))
                                     }
                                     let value = AppMenu(menu: menu)
                                     value.show(event: event, view: view)

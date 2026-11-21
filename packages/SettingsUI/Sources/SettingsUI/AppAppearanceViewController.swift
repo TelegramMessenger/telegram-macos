@@ -805,7 +805,7 @@ public func AppAppearanceViewController(context: any AccountContextProtocol, foc
     
     
     
-    let controller = InputDataController(dataSignal: signal, title: strings().telegramAppearanceViewController, removeAfterDisappear:false, identifier: "app_appearance", customRightButton: { controller in
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().telegramAppearanceViewController, removeAfterDisappear:false, identifier: "app_appearance", customRightButton: { controller in
         
         let view = ImageBarView(controller: controller, theme.icons.chatActions)
         

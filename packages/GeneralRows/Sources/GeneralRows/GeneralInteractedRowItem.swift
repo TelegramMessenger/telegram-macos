@@ -26,12 +26,13 @@ public struct GeneralThumbAdditional {
 
 open class GeneralInteractedRowItem: GeneralRowItem {
         
-    public let nameLayout: TextViewLayout
-    public let nameLayoutSelected: TextViewLayout
+    public private(set) var nameLayout: TextViewLayout
+    public private(set) var nameLayoutSelected: TextViewLayout
     public let name:String
     public let nameAttributed: NSAttributedString?
     public var descLayout:TextViewLayout?
     public var balancedDescriptionLayout: Bool = false
+    public var showsPopUpIndicator: Bool = false
     public var nameStyle:ControlStyle
     public let thumb:GeneralThumbAdditional?
     public let activeThumb:GeneralThumbAdditional?
@@ -42,7 +43,81 @@ open class GeneralInteractedRowItem: GeneralRowItem {
     
     public let disabledAction:(()->Void)?
     
+    public var settingsIconSize: NSSize? {
+        guard let presentation = settingsPresentation, thumb != nil else { return nil }
+        let size = SettingsRowMetrics.iconSize(presentation: presentation)
+        return NSMakeSize(size, size)
+    }
+
+    public var settingsTextInset: CGFloat? {
+        guard let presentation = settingsPresentation else { return nil }
+        return SettingsRowMetrics.textInset(presentation: presentation, hasIcon: thumb != nil)
+    }
+
+    public var settingsTitleY: CGFloat {
+        let descriptionHeight = descLayout?.layoutSize.height ?? 0
+        let contentHeight = nameLayout.layoutSize.height + (descriptionHeight > 0 ? SettingsRowMetrics.subtitleGap + descriptionHeight : 0)
+        return floor((height - contentHeight) / 2)
+    }
+
+    @discardableResult
+    open override func withSettingsLayout(_ presentation: SettingsRowPresentation = .content) -> Self {
+        super.withSettingsLayout(presentation)
+        guard settingsPresentation != nil else { return self }
+        let titleFont: NSFont = descLayout != nil ? .medium(SettingsRowMetrics.titleSize) : .normal(SettingsRowMetrics.titleSize)
+        if nameAttributed == nil {
+            nameLayout = TextViewLayout(.initialize(string: name, color: enabled ? nameStyle.foregroundColor : theme.colors.grayText, font: titleFont), maximumNumberOfLines: 1)
+            nameLayoutSelected = TextViewLayout(.initialize(string: name, color: theme.colors.underSelectedColor, font: presentation == .sidebar ? .semibold(SettingsRowMetrics.titleSize) : titleFont), maximumNumberOfLines: 1)
+        }
+        if let description = descLayout {
+            let text = NSMutableAttributedString(attributedString: description.attributedString)
+            text.addAttribute(.font, value: NSFont.normal(SettingsRowMetrics.subtitleSize), range: text.range)
+            text.addAttribute(.foregroundColor, value: customTheme?.grayTextColor ?? theme.colors.grayText, range: text.range)
+            descLayout = TextViewLayout(text, maximumNumberOfLines: 0)
+        }
+        _ = makeSize(width, oldWidth: 0)
+        return self
+    }
+
     public var nameWidth:CGFloat {
+        if settingsPresentation != nil {
+            let insets = viewType.innerInset
+            var available = blockWidth - insets.left - insets.right - (settingsTextInset ?? 0)
+            let context: String?
+            var accessoryWidth: CGFloat = 0
+            switch type {
+            case .switchable:
+                accessoryWidth = 46
+                context = nil
+            case let .nextContext(value):
+                accessoryWidth = settingsPresentation == .sidebar ? 0 : 20
+                context = value
+            case let .context(value), let .contextColored(value, _), let .contextSelector(value, _):
+                context = value
+            case let .imageContext(_, value):
+                accessoryWidth = 30
+                context = value
+            case let .twoLinesContext(first, second):
+                context = first.count > second.count ? first : second
+            case .next:
+                accessoryWidth = settingsPresentation == .sidebar ? 0 : 20
+                context = nil
+            case .none:
+                context = nil
+            case .selectableLeft:
+                accessoryWidth = 38
+                context = nil
+            default:
+                accessoryWidth = 30
+                context = nil
+            }
+            if let context, !context.isEmpty {
+                let contextWidth = NSAttributedString.initialize(string: context, font: .normal(SettingsRowMetrics.titleSize)).size().width
+                accessoryWidth += min(available * 0.4, contextWidth) + SettingsRowMetrics.iconGap
+            }
+            available -= accessoryWidth
+            return max(1, available)
+        }
         switch self.viewType {
         case .legacy:
             var width = self.size.width - (inset.left + inset.right)
@@ -59,7 +134,7 @@ open class GeneralInteractedRowItem: GeneralRowItem {
                 break
             }
             if let thumb = thumb {
-                width -= thumb.thumb.systemSize.width + 20
+                width -= settingsTextInset ?? (thumb.thumb.systemSize.width + 20)
             }
             return width
         case let .modern(_, insets):
@@ -77,7 +152,7 @@ open class GeneralInteractedRowItem: GeneralRowItem {
                 break
             }
             if let thumb = thumb {
-                width -= thumb.thumb.systemSize.width + 20
+                width -= settingsTextInset ?? (thumb.thumb.systemSize.width + 20)
             }
             return width
         }
@@ -136,7 +211,9 @@ open class GeneralInteractedRowItem: GeneralRowItem {
     }
     
     open override var height: CGFloat {
-
+        if let presentation = settingsPresentation {
+            return super.height + SettingsRowMetrics.height(presentation: presentation, hasIcon: thumb != nil, titleHeight: nameLayout.layoutSize.height, subtitleHeight: descLayout?.layoutSize.height ?? 0)
+        }
         switch viewType {
         case .legacy:
             let height: CGFloat = super.height + 40
@@ -169,10 +246,9 @@ open class GeneralInteractedRowItem: GeneralRowItem {
         let result = super.makeSize(width, oldWidth: oldWidth)
                 
 
-        nameLayout.measure(width: nameWidth)
-        nameLayoutSelected.measure(width: nameWidth)
-        
-        descLayout?.measure(width: nameWidth)
+        nameLayout.measure(width: max(1, nameWidth))
+        nameLayoutSelected.measure(width: max(1, nameWidth))
+        descLayout?.measure(width: max(1, nameWidth))
         
         return result
     }

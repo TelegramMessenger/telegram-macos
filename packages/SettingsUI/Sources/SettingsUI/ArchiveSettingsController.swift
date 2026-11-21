@@ -156,7 +156,7 @@ public func ArchiveSettingsController(context: any AccountContextProtocol, priva
         }
         update(privacy.globalSettings)
     }))
-    let controller = InputDataController(dataSignal: signal, title: strings().archiveTitle, hasDone: false)
+    let controller = InputDataController(settingsLayout: true, dataSignal: signal, title: strings().archiveTitle, hasDone: false)
     controller.analyticsScreen = .settingsPrivacyArchive
     
     controller.onDeinit = {

@@ -246,7 +246,7 @@ final class LensSurface {
                 original.layer.bounds = source.bounds
                 original.layer.contentsScale = scale
             }
-            let magnification = 1 + 0.1 * progress
+            let magnification = source.magnifies ? 1 + 0.1 * progress : 1
             let position = CGPoint(x: source.magnificationCenter.x + (source.frame.midX - source.magnificationCenter.x) * magnification - frame.minX, y: source.magnificationCenter.y + (source.frame.midY - source.magnificationCenter.y) * magnification - frame.minY)
             animation.update(portal.layer, key: "bounds", value: NSValue(rect: source.bounds))
             animation.update(portal.layer, key: "position", value: NSValue(point: position))

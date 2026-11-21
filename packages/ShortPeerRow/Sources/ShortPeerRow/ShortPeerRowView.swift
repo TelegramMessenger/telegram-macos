@@ -732,6 +732,8 @@ open class ShortPeerRowView: TableRowView, Notifable, ViewDisplayDelegate {
     }
 
     open override func set(item:TableRowItem, animated:Bool = false) {
+
+        containerView.applySettingsCorners(item)
         
         let previousType = (self.item as? ShortPeerRowItem)?.interactionType ?? .plain
 

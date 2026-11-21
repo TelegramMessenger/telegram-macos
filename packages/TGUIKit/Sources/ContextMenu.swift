@@ -166,6 +166,8 @@ public final class ContextMenu : NSMenu, NSMenuDelegate {
     }
     
     public var topWindow: Window?
+    public var popUpAnchor: NSRect?
+    public var popUpSelectedIndex: Int?
     public var closeOutside: Bool = true
     
     public var name: String = ""

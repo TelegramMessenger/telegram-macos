@@ -318,7 +318,7 @@ public func ChatListFiltersListController(context: any AccountContextProtocol, e
     }
 
 
-    let controller = InputDataController(dataSignal: dataSignal, title: strings().chatListFilterListTitle, removeAfterDisappear: false, hasDone: false, identifier: "filters")
+    let controller = InputDataController(settingsLayout: true, dataSignal: dataSignal, title: strings().chatListFilterListTitle, removeAfterDisappear: false, hasDone: false, identifier: "filters")
     controller.analyticsScreen = .settingsFolders
 
 
