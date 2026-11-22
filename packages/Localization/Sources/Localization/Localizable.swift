@@ -669,8 +669,8 @@ public final class L10n {
   public static var appearanceConfirmRemoveText: String  { return L10n.tr("Localizable", "Appearance.Confirm.RemoveText") }
   /// Theme
   public static var appearanceConfirmRemoveTitle: String  { return L10n.tr("Localizable", "Appearance.Confirm.RemoveTitle") }
-  /// The file size must not exceed 10MB and the image dimensions must not exceed 500x500px.
-  public static var appearanceCustomBackgroundFileError: String  { return L10n.tr("Localizable", "Appearance.CustomBackground.FileError") }
+  /// This image can't be used as a wallpaper. Choose an image larger than 500×500 pixels.
+  public static var appearanceCustomBackgroundImageError: String  { return L10n.tr("Localizable", "Appearance.CustomBackground.ImageError") }
   /// Subscribe to **Telegram Premium** to unlock a wider range of app Icons.
   public static var appearanceDockIconPremium: String  { return L10n.tr("Localizable", "Appearance.DockIcon.Premium") }
   /// Auto-Night Mode

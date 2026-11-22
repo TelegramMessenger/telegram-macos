@@ -394,34 +394,7 @@ public func ChannelWallpapersController(context: any AccountContextProtocol, pee
     }, custom: {
         filePanel(with: photoExts, allowMultiple: false, for: context.window, completion: { paths in
             if let path = paths?.first {
-                let size = fs(path)
-                if let size = size, size < 10 * 1024 * 1024, let image = NSImage(contentsOf: URL(fileURLWithPath: path))?.cgImage(forProposedRect: nil, context: nil, hints: nil), image.size.width > 500 && image.size.height > 500 {
-                    
-                    let options = NSMutableDictionary()
-                    options.setValue(90 as NSNumber, forKey: kCGImageDestinationImageMaxPixelSize as String)
-                    var representations: [TelegramMediaImageRepresentation] = []
-                    let colorQuality: Float = 0.1
-                    options.setObject(colorQuality as NSNumber, forKey: kCGImageDestinationLossyCompressionQuality as NSString)
-                    let mutableData: CFMutableData = NSMutableData() as CFMutableData
-                    
-                    if let colorDestination = CGImageDestinationCreateWithData(mutableData, kUTTypeJPEG, 1, nil) {
-                        CGImageDestinationAddImage(colorDestination, image, options as CFDictionary)
-                        if CGImageDestinationFinalize(colorDestination) {
-                            let thumdResource = LocalFileMediaResource(fileId: arc4random64())
-                            context.account.postbox.mediaBox.storeResourceData(thumdResource.id, data: mutableData as Data)
-                            representations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(image.size.aspectFitted(NSMakeSize(90, 90))), resource: thumdResource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false))
-                        }
-                    }
-                    
-                    let data = try? Data(contentsOf: URL(fileURLWithPath: path))
-                    guard let data = data else {
-                        return
-                    }
-                    let resource = LocalFileMediaResource(fileId: arc4random64(), size: Int64(data.count))
-                    context.account.postbox.mediaBox.storeResourceData(resource.id, data: data)
-                    
-                    representations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(image.size), resource: resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false))
-                    
+                if let representations = customWallpaperRepresentations(path: path, postbox: context.account.postbox) {
                     showModal(with: WallpaperPreviewController(context, wallpaper: .image(representations, settings: WallpaperSettings()), source: .custom(stateValue.with { $0.selected?.wallpaper }), onComplete: { wallpaper in
                         
                         
@@ -451,7 +424,7 @@ public func ChannelWallpapersController(context: any AccountContextProtocol, pee
                     }), for: context.window)
                     
                 } else {
-                    alert(for: context.window, header: appName, info: strings().appearanceCustomBackgroundFileError)
+                    alert(for: context.window, header: appName, info: strings().appearanceCustomBackgroundImageError)
                 }
             }
         })

@@ -215,12 +215,14 @@ private final class WallpaperPreviewView: View {
     fileprivate var ready:(()->Void)? = nil
 
     private(set) var wallpaper: Wallpaper
+    private let source: WallpaperSource
     
     
     
     public required init(frame frameRect: NSRect, source: WallpaperSource, context: any AccountContextProtocol, wallpaper: Wallpaper) {
         self.context = context
         self.wallpaper = wallpaper
+        self.source = source
         self.tableView = TableView(frame: NSMakeRect(0, 0, frameRect.width, frameRect.height), isFlipped: false, drawBorder: false)
         self.documentView = tableView.documentView!
         self.patternsController = WallpaperPatternPreviewController(context: context)
@@ -527,7 +529,17 @@ private final class WallpaperPreviewView: View {
         self.updateLayout(size: self.frame.size, transition: .immediate)
     }
     
+    private var keepsImageAspect: Bool {
+        if case .image = wallpaper {
+            return source.keepsImageAspect
+        }
+        return false
+    }
+    
     public var croppedRect: NSRect {
+        if keepsImageAspect {
+            return imageSize.bounds
+        }
         let fittedSize = WallpaperDimensions.aspectFitted(imageSize)
         return imageSize.bounds.focus(fittedSize)
     }
@@ -868,7 +880,7 @@ private final class WallpaperPreviewView: View {
             patternCheckbox.isHidden = true
             rotateColors.isHidden = true
             let dimensions = largestImageRepresentation(representations)!.dimensions.size
-            let boundingSize = dimensions.fitted(maximumSize)
+            let boundingSize = dimensions.fitted(keepsImageAspect ? WallpaperPreviewImageBoundingSize : maximumSize)
             self.imageSize = dimensions
             
             loadImage(chatWallpaper(account: context.account, representations: representations, mode: .screen, isPattern: false, autoFetchFullSize: true, scale: backingScaleFactor, isBlurred: settings.blur, synchronousLoad: synchronousLoad, drawPatternOnly: true), palette: theme.colors, boundingSize: boundingSize, isPattern: false)
@@ -1005,6 +1017,8 @@ private final class WallpaperPreviewView: View {
     }
 }
 
+private let WallpaperPreviewImageBoundingSize = NSMakeSize(max(WallpaperDimensions.width, WallpaperDimensions.height), max(WallpaperDimensions.width, WallpaperDimensions.height))
+
 public enum WallpaperSource {
     case link(TelegramWallpaper)
     case chat(Peer, TelegramWallpaper?)
@@ -1020,6 +1034,15 @@ public enum WallpaperSource {
             return messageId.peerId
         default:
             return nil
+        }
+    }
+    
+    fileprivate var keepsImageAspect: Bool {
+        switch self {
+        case .none, .gallery, .link:
+            return true
+        case .chat, .message, .custom:
+            return false
         }
     }
     
@@ -1041,7 +1064,7 @@ public enum WallpaperSource {
     }
 }
 
-private func cropWallpaperImage(_ image: CGImage, dimensions: NSSize, rect: NSRect, magnify: CGFloat, settings: WallpaperSettings?) -> CGImage {
+private func cropWallpaperImage(_ image: CGImage, dimensions: NSSize, rect: NSRect, magnify: CGFloat, settings: WallpaperSettings?, outputSize: NSSize) -> CGImage {
     let fittedSize = NSMakeSize(dimensions.width * magnify, dimensions.height * magnify)//WallpaperDimensions.aspectFitted(representation.dimensions)
     
     let image = generateImage(rect.size, contextGenerator: { size, ctx in
@@ -1052,7 +1075,7 @@ private func cropWallpaperImage(_ image: CGImage, dimensions: NSSize, rect: NSRe
         ctx.draw(image, in: imageRect)
     }, opaque: false, scale: 1.0)!
     
-    let fitted = WallpaperDimensions.aspectFitted(dimensions)
+    let fitted = outputSize
     
     return generateImage(fitted, contextGenerator: { size, ctx in
         let imageRect = NSMakeRect(0, 0, fitted.width, fitted.height)
@@ -1099,7 +1122,8 @@ private func cropWallpaperIfNeeded(_ wallpaper: Wallpaper, account: Account, rec
                 let path = account.postbox.mediaBox.resourcePath(representation.resource)
                 if let image = NSImage(contentsOfFile: path)?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                     
-                    let fittedImage = cropWallpaperImage(image, dimensions: representation.dimensions.size, rect: rect, magnify: magnify, settings: nil)
+                    let fittedDimensions = rect.size.fitted(NSMakeSize(customWallpaperMaxPixelSide, customWallpaperMaxPixelSide))
+                    let fittedImage = cropWallpaperImage(image, dimensions: representation.dimensions.size, rect: rect, magnify: magnify, settings: nil, outputSize: fittedDimensions)
 
                     let options = NSMutableDictionary()
                     options.setValue(90 as NSNumber, forKey: kCGImageDestinationImageMaxPixelSize as String)
@@ -1116,8 +1140,6 @@ private func cropWallpaperIfNeeded(_ wallpaper: Wallpaper, account: Account, rec
                             result.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(fittedImage.backingSize.aspectFitted(NSMakeSize(90, 90))), resource: thumdResource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false))
                         }
                     }
-                    
-                    let fittedDimensions = WallpaperDimensions.aspectFitted(representation.dimensions.size)
                     
                      disposable.set(putToTemp(image: NSImage(cgImage: fittedImage, size: fittedDimensions), compress: false).start(next: { path in
                          
@@ -1240,7 +1262,7 @@ private func cropWallpaperIfNeeded(_ wallpaper: Wallpaper, account: Account, rec
                 subscriber.putCompletion()
             } else {
                 if let path = account.postbox.mediaBox.completedResourcePath(file.resource), let image = NSImage(contentsOfFile: path)?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                    let fittedImage = cropWallpaperImage(image, dimensions: dimensions, rect: rect, magnify: magnify, settings: isPattern ? settings : nil)
+                    let fittedImage = cropWallpaperImage(image, dimensions: dimensions, rect: rect, magnify: magnify, settings: isPattern ? settings : nil, outputSize: WallpaperDimensions.aspectFitted(dimensions))
                     
                     let options = NSMutableDictionary()
                     options.setValue(90 as NSNumber, forKey: kCGImageDestinationImageMaxPixelSize as String)
@@ -1432,7 +1454,12 @@ public func WallpaperPreviewController(_ context: any AccountContextProtocol, wa
     }
 
     let chatSize = NSMakeSize(context.bindings.rootNavigation().frame.width, min(500, context.window.frame.height - 150))
-    let modalSize = WallpaperDimensions.aspectFitted(chatSize)
+    let modalSize: NSSize
+    if source.keepsImageAspect, case let .image(representations, _) = initialWallpaper, let dimensions = largestImageRepresentation(representations)?.dimensions.size, dimensions.width * WallpaperDimensions.height > dimensions.height * WallpaperDimensions.width {
+        modalSize = dimensions.aspectFitted(chatSize)
+    } else {
+        modalSize = WallpaperDimensions.aspectFitted(chatSize)
+    }
 
     let previewView = WallpaperPreviewView(frame: NSMakeRect(0, 0, modalSize.width, modalSize.height), source: source, context: context, wallpaper: initialWallpaper)
 
