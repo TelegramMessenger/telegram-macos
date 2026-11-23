@@ -846,7 +846,11 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
     }
     
     public func setAttributedString(_ attributedString: NSAttributedString) {
+        let previous = self.customTextStorage.string
         self.customTextStorage.setAttributedString(attributedString)
+        if previous != attributedString.string {
+            self.inputContext?.discardMarkedText()
+        }
     }
     
     
@@ -1322,6 +1326,7 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         }
         self.textStorage?.setAttributedString(item.be)
         self.setSelectedRange(item.beRange)
+        self.discardInputMethodStateIfTextChanged(from: item.was, to: item.be)
         self.shouldUpdateLayout?()
         self.updateTextContainerInset()
     }
@@ -1333,8 +1338,15 @@ public final class InputTextView: BaseTextView, NSLayoutManagerDelegate, NSTextS
         }
         self.textStorage?.setAttributedString(item.was)
         self.setSelectedRange(item.wasRange)
+        self.discardInputMethodStateIfTextChanged(from: item.be, to: item.was)
         self.shouldUpdateLayout?()
         self.updateTextContainerInset()
+    }
+
+    private func discardInputMethodStateIfTextChanged(from: NSAttributedString, to: NSAttributedString) {
+        if from.string != to.string {
+            self.inputContext?.discardMarkedText()
+        }
     }
     
     public override func draw(_ dirtyRect: NSRect) {
