@@ -335,9 +335,14 @@ private func consumeComposerTextForRichPaste(chatInteraction: ChatInteraction) -
 public func showRichTextEditor(chatInteraction: ChatInteraction, refetching messageId: MessageId) {
     let analyticsContext = chatInteraction.captureAnalyticsContext(sourcePeerId: messageId.peerId)
     let context = chatInteraction.interactionContext
+    // The message is fetched asynchronously, so the edit session may have ended (or moved to another
+    // message) in the meantime — the surrounding text and the edited message must both come from the
+    // session that is open NOW.
+    let editedMessageId = chatInteraction.presentation.interfaceState.editState?.message.id
     _ = analyticsContext.preservingPresentation(context.account.postbox.messagesAtIds([messageId]) |> deliverOnMainQueue).start(next: { messages in
         guard let message = messages.first, message.id == messageId,
               let rich = message.attributes.compactMap({ $0 as? RichTextMessageAttribute }).first else { return }
+        guard chatInteraction.presentation.interfaceState.editState?.message.id == editedMessageId else { return }
         let origin = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : chatInteraction.captureAnalyticsContext(inherited: analyticsContext).restricting(peerId: message.id.peerId)
         let analyticsPresentation = origin.beginPresentation()
         defer { analyticsPresentation.end() }
