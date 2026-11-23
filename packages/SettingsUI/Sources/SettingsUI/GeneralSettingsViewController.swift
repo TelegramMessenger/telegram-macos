@@ -37,6 +37,7 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
     case showCallsTab(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case showContactsTab(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case enableRFTCopy(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
+    case openRichEditorOnPaste(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case sendLargePhotos(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case acceptSecretChats(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
     case forceTouchReply(sectionId:Int, enabled: Bool, viewType: GeneralViewType)
@@ -202,6 +203,10 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsCopyRTF, type: .switchable(enabled), viewType: viewType, action: {
                 arguments.toggleRTFEnabled(!enabled)
             })
+        case let .openRichEditorOnPaste(sectionId: _, enabled, viewType):
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsOpenRichEditorOnPaste, type: .switchable(enabled), viewType: viewType, action: {
+                arguments.toggleOpenRichEditorOnPaste(!enabled)
+            })
         case let .sendLargePhotos(sectionId: _, enabled, viewType):
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().generalSettingsSendLargePhotos, type: .switchable(enabled), viewType: viewType, action: {
                 arguments.toggleLargePhotos(!enabled)
@@ -294,6 +299,7 @@ private final class GeneralSettingsArguments {
     public let toggleBigEmoji: (Bool) -> Void
     public let toggleStatusBar: (Bool) -> Void
     public let toggleRTFEnabled: (Bool) -> Void
+    public let toggleOpenRichEditorOnPaste: (Bool) -> Void
     public let toggleLargePhotos: (Bool) -> Void
     public let acceptSecretChats:(Bool)->Void
     public let toggleWorkMode:(Bool)->Void
@@ -303,7 +309,7 @@ private final class GeneralSettingsArguments {
     public let toggleSpellingKey:(String)->Void
     public let showProfileId:()->Void
     public let togglePreviewChat:()->Void
-    public init(context:any AccountContextProtocol, toggleCallsTab:@escaping(Bool)-> Void, toggleContactsTab:@escaping(Bool)-> Void, toggleInAppKeys: @escaping(Bool) -> Void, toggleInput: @escaping(SendingType)-> Void, toggleInAppSounds: @escaping (Bool) -> Void, toggleEmojiReplacements:@escaping(Bool) -> Void, toggleForceTouchAction: @escaping(ForceTouchAction)->Void, toggleInstantViewScrollBySpace: @escaping(Bool)->Void, toggleAutoplayGifs:@escaping(Bool) -> Void, toggleEmojiPrediction: @escaping(Bool) -> Void, toggleBigEmoji: @escaping(Bool) -> Void, toggleStatusBar: @escaping(Bool) -> Void, toggleRTFEnabled: @escaping(Bool)->Void, toggleLargePhotos: @escaping(Bool) -> Void, acceptSecretChats: @escaping(Bool)->Void, toggleWorkMode:@escaping(Bool)->Void, openShortcuts: @escaping()->Void, callSettings: @escaping() ->Void, openLiteMode: @escaping()->Void, toggleSpellingKey:@escaping(String)->Void, showProfileId:@escaping()->Void, togglePreviewChat:@escaping()->Void) {
+    public init(context:any AccountContextProtocol, toggleCallsTab:@escaping(Bool)-> Void, toggleContactsTab:@escaping(Bool)-> Void, toggleInAppKeys: @escaping(Bool) -> Void, toggleInput: @escaping(SendingType)-> Void, toggleInAppSounds: @escaping (Bool) -> Void, toggleEmojiReplacements:@escaping(Bool) -> Void, toggleForceTouchAction: @escaping(ForceTouchAction)->Void, toggleInstantViewScrollBySpace: @escaping(Bool)->Void, toggleAutoplayGifs:@escaping(Bool) -> Void, toggleEmojiPrediction: @escaping(Bool) -> Void, toggleBigEmoji: @escaping(Bool) -> Void, toggleStatusBar: @escaping(Bool) -> Void, toggleRTFEnabled: @escaping(Bool)->Void, toggleOpenRichEditorOnPaste: @escaping(Bool)->Void, toggleLargePhotos: @escaping(Bool) -> Void, acceptSecretChats: @escaping(Bool)->Void, toggleWorkMode:@escaping(Bool)->Void, openShortcuts: @escaping()->Void, callSettings: @escaping() ->Void, openLiteMode: @escaping()->Void, toggleSpellingKey:@escaping(String)->Void, showProfileId:@escaping()->Void, togglePreviewChat:@escaping()->Void) {
         self.context = context
         self.toggleCallsTab = toggleCallsTab
         self.toggleContactsTab = toggleContactsTab
@@ -318,6 +324,7 @@ private final class GeneralSettingsArguments {
         self.toggleBigEmoji = toggleBigEmoji
         self.toggleStatusBar = toggleStatusBar
         self.toggleRTFEnabled = toggleRTFEnabled
+        self.toggleOpenRichEditorOnPaste = toggleOpenRichEditorOnPaste
         self.acceptSecretChats = acceptSecretChats
         self.toggleWorkMode = toggleWorkMode
         self.openShortcuts = openShortcuts
@@ -402,6 +409,7 @@ private func generalSettingsEntries(arguments:GeneralSettingsArguments, baseSett
     entries.append(.header(sectionId: sectionId, uniqueId: headerUnique, text: strings().generalSettingsAdvancedHeader))
     headerUnique -= 1
     entries.append(.enableRFTCopy(sectionId: sectionId, enabled: FastSettings.enableRTF, viewType: .firstItem))
+    entries.append(.openRichEditorOnPaste(sectionId: sectionId, enabled: FastSettings.openRichEditorOnPaste, viewType: .innerItem))
     entries.append(.sendLargePhotos(sectionId: sectionId, enabled: FastSettings.sendLargePhotos, viewType: .lastItem))
     
     entries.append(.section(sectionId: sectionId))
@@ -516,6 +524,8 @@ open class GeneralSettingsViewController<Context: AccountContextProtocol>: Table
             }).start()
         }, toggleRTFEnabled: { enable in
             FastSettings.enableRTF = enable
+        }, toggleOpenRichEditorOnPaste: { enable in
+            FastSettings.openRichEditorOnPaste = enable
         }, toggleLargePhotos: { enable in
             FastSettings.sendLargePhotos(enable)
         }, acceptSecretChats: { enable in

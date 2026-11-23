@@ -142,6 +142,7 @@ public class FastSettings {
     private static let kAutomaticallyPlayGifs = "kAutomaticallyPlayGifs"
     private static let kArchiveIsHidden = "kArchiveIsHidden"
     private static let kRTFEnable = "kRTFEnable";
+    private static let kOpenRichEditorOnPaste = "kOpenRichEditorOnPaste"
     private static let kNeedShowChannelIntro = "kNeedShowChannelIntro"
     
     private static let kNoticeAdChannel = "kNoticeAdChannel"
@@ -463,6 +464,23 @@ public class FastSettings {
         }
         get {
              return !UserDefaults.standard.bool(forKey: kRTFEnable)
+        }
+    }
+
+    /// Whether pasting rich content into the composer opens the rich text editor.
+    ///
+    /// When off, the pasted rich content is inserted into the composer as text (keeping the inline
+    /// formatting it can be expressed with) instead of taking over the composer with the editor.
+    public static var openRichEditorOnPaste: Bool {
+        set {
+            UserDefaults.standard.setValue(newValue, forKey: kOpenRichEditorOnPaste)
+            UserDefaults.standard.synchronize()
+        }
+        get {
+            if UserDefaults.standard.value(forKey: kOpenRichEditorOnPaste) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: kOpenRichEditorOnPaste)
         }
     }
     

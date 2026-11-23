@@ -604,6 +604,13 @@ public func coreBlocks(fromOutgoing blocks: [RichTextOutgoingBlock]) -> [Block] 
 /// its text-based preview.
 public func richTextPlainPreview(from page: InstantPage) -> (text: String, entities: [MessageTextEntity]) {
     let (blocks, media) = richTextOutgoing(from: page)
+    return richTextPlainPreview(from: blocks, media: media)
+}
+
+/// Best-effort plain preview of editor blocks: real text+entities when the content is
+/// entity-expressible, otherwise a flattened text rendering (headings/lists as lines, tables as
+/// tab-separated rows, code as a `pre` entity).
+public func richTextPlainPreview(from blocks: [RichTextOutgoingBlock], media: [String: Media]) -> (text: String, entities: [MessageTextEntity]) {
     switch composeRichMessage(from: blocks, media: media) {
     case let .plain(text, entities):
         return (text, entities)

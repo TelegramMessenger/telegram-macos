@@ -9199,6 +9199,7 @@ public final class L10n {
   public static var generalSettingsChatBackground: String  { return L10n.tr("Localizable", "GeneralSettings.ChatBackground") }
   /// Copy Text Formatting
   public static var generalSettingsCopyRTF: String  { return L10n.tr("Localizable", "GeneralSettings.CopyRTF") }
+  public static var generalSettingsOpenRichEditorOnPaste: String  { return L10n.tr("Localizable", "GeneralSettings.OpenRichEditorOnPaste") }
   /// Dark Mode
   public static var generalSettingsDarkMode: String  { return L10n.tr("Localizable", "GeneralSettings.DarkMode") }
   /// EMOJI

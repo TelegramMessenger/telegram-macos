@@ -1,5 +1,7 @@
 import Foundation
 import RichTextEditorCore
+import InputView
+import TelegramCore
 
 /// Merging a pasted rich fragment into the text that already sits in the composer.
 ///
@@ -86,4 +88,15 @@ public enum RichTextComposerPasteMerge {
 
         return head + blocks + tail
     }
+}
+
+/// The plain-text form of a pasted rich fragment, for inserting it into the composer without
+/// opening the rich editor.
+///
+/// A fragment that can be expressed as text + message entities keeps its inline formatting
+/// (bold, italic, code, quotes, links); a structural one (a table, a heading, a formula) is
+/// flattened to its text rendering, the same one the rich editor's plain preview shows.
+public func richTextPastePlainContent(_ document: Document) -> (text: String, entities: [MessageTextEntity]) {
+    let blocks = outgoingBlocks(fromSelection: document.blocks)
+    return richTextPlainPreview(from: blocks, media: [:])
 }
