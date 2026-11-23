@@ -105,6 +105,8 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
             return 25
         case .previewChatsInfo:
             return 26
+        case .openRichEditorOnPaste:
+            return 27
         case let .section(id):
             return (id + 1) * 1000 - id
         }
@@ -125,6 +127,8 @@ private enum GeneralSettingsEntry : Comparable, Identifiable {
         case let .showCallsTab(sectionId, _, _), let .showContactsTab(sectionId, _, _):
             return (sectionId * 1000) + stableId
         case let .enableRFTCopy(sectionId, _, _):
+            return (sectionId * 1000) + stableId
+        case let .openRichEditorOnPaste(sectionId, _, _):
             return (sectionId * 1000) + stableId
         case let .sendLargePhotos(sectionId, _, _):
             return (sectionId * 1000) + stableId
