@@ -252,7 +252,7 @@ private func editingComposerEditorController(chatInteraction: ChatInteraction, m
     let context = chatInteraction.interactionContext
     let messageId = message.id
     let scheduleInfo: OutgoingScheduleInfoMessageAttribute? = message.isScheduledMessage
-        ? OutgoingScheduleInfoMessageAttribute(scheduleTime: message.scheduleTime, repeatPeriod: message.scheduleRepeatPeriod)
+        ? OutgoingScheduleInfoMessageAttribute(scheduleTime: message.scheduleTime ?? message.timestamp, repeatPeriod: message.scheduleRepeatPeriod)
         : nil
     let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, isEditing: true, preserveTrailingWhitespace: preserveTrailingWhitespace, onDeleteMessage: { [weak chatInteraction] in
         guard let chatInteraction else { return }
