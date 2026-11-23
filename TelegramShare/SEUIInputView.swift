@@ -9,6 +9,7 @@ import ObjcUtils
 
 private let se_markdownRegexFormat = "(^|\\s|\\n)((?>`{5,})|````?)([\\s\\S]+?)(\\2)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let se_markdownRegex = try? NSRegularExpression(pattern: se_markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
+private let se_codeLanguageCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+#-._"))
 
 
 private extension SE_TextInputAttribute {
@@ -375,8 +376,8 @@ final class SE_TextInputState: Equatable {
                         let newLineRange = text.nsstring.range(of: "\n")
                         if newLineRange.location != 0 && newLineRange.location != NSNotFound {
                             let lang = text.nsstring.substring(with: NSMakeRange(0, newLineRange.location))
-                            let test = lang.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                            if test.length == lang.length {
+                            let code = text.nsstring.substring(from: newLineRange.location)
+                            if lang.rangeOfCharacter(from: se_codeLanguageCharacters.inverted) == nil, !code.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                                 language = lang
                                 offsetRanges.append(NSMakeRange(matchIndex + newLineRange.location, lang.length))
                                 text = String(text.nsstring.substring(with: NSMakeRange(newLineRange.location, text.length - newLineRange.location)))

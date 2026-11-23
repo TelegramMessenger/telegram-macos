@@ -37,6 +37,7 @@ private func concatAttributes(_ attributes: [ChatTextInputAttribute]) -> [ChatTe
 
 private let markdownRegexFormat = "(^|\\s|\\n)((?>`{5,})|````?)([\\s\\S]+?)(\\2)([\\s\\n\\.,:?!;]|$)|(^|\\s)(`|\\*\\*|__|~~|\\|\\|)([^\\n]+?)\\7([\\s\\.,:?!;]|$)"
 private let markdownRegex = try? NSRegularExpression(pattern: markdownRegexFormat, options: [.caseInsensitive, .anchorsMatchLines])
+private let codeLanguageCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+#-._"))
 
 
 
@@ -718,8 +719,8 @@ public final class ChatTextInputState: Codable, Equatable {
                         let newLineRange = text.nsstring.range(of: "\n")
                         if newLineRange.location != 0 && newLineRange.location != NSNotFound {
                             let lang = text.nsstring.substring(with: NSMakeRange(0, newLineRange.location))
-                            let test = lang.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                            if test.length == lang.length, lang.unicodeScalars.first != "`" {
+                            let code = text.nsstring.substring(from: newLineRange.location)
+                            if lang.rangeOfCharacter(from: codeLanguageCharacters.inverted) == nil, !code.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                                 language = lang
                                 offsetRanges.append(NSMakeRange(matchIndex + newLineRange.location, lang.length))
                                 text = String(text.nsstring.substring(with: NSMakeRange(newLineRange.location, text.length - newLineRange.location)))
