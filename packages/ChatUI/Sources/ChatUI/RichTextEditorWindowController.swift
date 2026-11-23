@@ -188,11 +188,11 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, morphSource: ((
 // Builds a composer-style editor controller seeded with an explicit document OR a media-bearing draft,
 // with the shared enqueue-on-send / draft-on-cancel behavior of the attach-menu entry.
 @available(macOS 12, *)
-private func composerEditorController(chatInteraction: ChatInteraction, initialDocument: Document?, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])?, analyticsContext: AnalyticsContext) -> InputDataModalController {
+private func composerEditorController(chatInteraction: ChatInteraction, initialDocument: Document?, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])?, preserveTrailingWhitespace: Bool = false, analyticsContext: AnalyticsContext) -> InputDataModalController {
     let context = chatInteraction.interactionContext
     let flushDraft = ActionBox()
     chatInteraction.storePendingRichTextEditorDraft = { flushDraft.action?() }
-    let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, requestScheduleDate: richTextScheduleRequest(chatInteraction: chatInteraction, analyticsContext: analyticsContext), sendMenuItems: richTextSendMenuItems(chatInteraction: chatInteraction, analyticsContext: analyticsContext), onCancel: { composed in
+    let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, preserveTrailingWhitespace: preserveTrailingWhitespace, requestScheduleDate: richTextScheduleRequest(chatInteraction: chatInteraction, analyticsContext: analyticsContext), sendMenuItems: richTextSendMenuItems(chatInteraction: chatInteraction, analyticsContext: analyticsContext), onCancel: { composed in
         chatInteraction.storePendingRichTextEditorDraft = nil
         let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
         let analyticsPresentation = origin.beginPresentation()
@@ -229,8 +229,38 @@ private func composerEditorController(chatInteraction: ChatInteraction, initialD
 // Opens the editor seeded with an explicit document (e.g. text/formula pasted from a rendered rich message).
 @available(macOS 12, *)
 public func showRichTextEditor(chatInteraction: ChatInteraction, seeding document: Document) {
-    let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: document, initialDraft: nil, analyticsContext: Analytics.shared.unresolvedContext())
+    let seeded = composerPasteSeededDocument(chatInteraction: chatInteraction, fragment: document)
+    let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: seeded, initialDraft: nil, preserveTrailingWhitespace: true, analyticsContext: Analytics.shared.unresolvedContext())
     showModal(with: controller, for: chatInteraction.interactionContext.window)
+}
+
+/// Builds the document the editor opens with when a rich fragment is pasted into the composer.
+///
+/// The editor takes over the WHOLE composer content: the text around the caret is spliced around
+/// the fragment and the composer is cleared, so closing the editor hands the text back instead of
+/// replacing it with the fragment alone (see `composerEditorController`'s `onCancel`).
+///
+/// While editing an existing message the composer text belongs to that message, so it is NOT
+/// consumed — the edit session keeps its own draft handling.
+@available(macOS 12, *)
+private func composerPasteSeededDocument(chatInteraction: ChatInteraction, fragment: Document) -> Document {
+    guard chatInteraction.presentation.interfaceState.editState == nil else {
+        return fragment
+    }
+    let inputState = chatInteraction.presentation.effectiveInput
+    guard !inputState.inputText.isEmpty else {
+        return fragment
+    }
+    let surrounding = RichTextComposerPasteMerge.surroundingBlocks(inputState)
+    chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
+    var seeded = fragment
+    seeded.blocks = RichTextComposerPasteMerge.merge(fragment: fragment.blocks, before: surrounding.before, after: surrounding.after, paragraph: { block in
+        if case let .paragraph(paragraph) = block {
+            return paragraph
+        }
+        return nil
+    }, makeParagraph: { .paragraph($0) })
+    return seeded
 }
 
 // Opens the editor with the FULL content of a rich-text message (refetched by id) — used when pasting a
@@ -246,7 +276,25 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, refetching mess
         let analyticsPresentation = origin.beginPresentation()
         defer { analyticsPresentation.end() }
         let draft = richTextOutgoing(from: rich.instantPage)
-        let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: nil, initialDraft: draft, analyticsContext: origin)
+        // The composer's text around the caret belongs around the refetched message, and is consumed
+        // only now — when the editor actually opens — so text typed while the message was loading
+        // is not swallowed.
+        var seeded = draft
+        if chatInteraction.presentation.interfaceState.editState == nil {
+            let inputState = chatInteraction.presentation.effectiveInput
+            if !inputState.inputText.isEmpty {
+                let surrounding = RichTextComposerPasteMerge.surroundingBlocks(inputState)
+                let outgoingSurrounding = (outgoingBlocks(fromSelection: surrounding.before), outgoingBlocks(fromSelection: surrounding.after))
+                seeded.blocks = RichTextComposerPasteMerge.merge(fragment: draft.blocks, before: outgoingSurrounding.0, after: outgoingSurrounding.1, paragraph: { block in
+                    if case let .paragraph(paragraph) = block {
+                        return paragraph
+                    }
+                    return nil
+                }, makeParagraph: { .paragraph($0) })
+                chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
+            }
+        }
+        let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: nil, initialDraft: seeded, preserveTrailingWhitespace: true, analyticsContext: origin)
         showModal(with: controller, for: context.window)
     })
 }
@@ -336,7 +384,7 @@ private func richTextEditorEntries(_ state: RichTextEditorState, coordinator: Ri
 }
 
 @available(macOS 12, *)
-public func RichTextEditorController(context: any AccountContextProtocol, initialDocument: Document? = nil, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])? = nil, isEditing: Bool = false, requestScheduleDate: ((@escaping (Date, Int32?) -> Void) -> Void)? = nil, sendMenuItems: ((@escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]?)? = nil, onDeleteMessage: (() -> Void)? = nil, onCancel: ((ComposedRichMessage) -> Void)? = nil, autosaveDraft: ((InstantPage?) -> Void)? = nil, flushDraft: ActionBox? = nil, analyticsContext: AnalyticsContext? = nil, send: @escaping (_ text: String, _ attributes: [MessageAttribute]) -> Void) -> InputDataModalController {
+public func RichTextEditorController(context: any AccountContextProtocol, initialDocument: Document? = nil, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])? = nil, isEditing: Bool = false, preserveTrailingWhitespace: Bool = false, requestScheduleDate: ((@escaping (Date, Int32?) -> Void) -> Void)? = nil, sendMenuItems: ((@escaping (Bool, ChatInteraction.Schedule?) -> Void) -> [ContextMenuItem]?)? = nil, onDeleteMessage: (() -> Void)? = nil, onCancel: ((ComposedRichMessage) -> Void)? = nil, autosaveDraft: ((InstantPage?) -> Void)? = nil, flushDraft: ActionBox? = nil, analyticsContext: AnalyticsContext? = nil, send: @escaping (_ text: String, _ attributes: [MessageAttribute]) -> Void) -> InputDataModalController {
     let analyticsContext = Analytics.shared.captureContext(engine: context.engine, peerId: context.peerId, inherited: analyticsContext ?? Analytics.shared.unresolvedContext())
     let analyticsPresentation = analyticsContext.beginPresentation()
     defer { analyticsPresentation.end() }
@@ -369,13 +417,13 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
         let outgoing = coordinator.editor.outgoingBlocks()
         // Emptied content (e.g. an empty heading/table shell left after deleting all text) never gates.
         guard richTextOutgoingHasContent(outgoing) else { return false }
-        if case .rich = composeRichMessage(from: outgoing, media: coordinator.pickedMedia) {
+        if case .rich = composeRichMessage(from: outgoing, media: coordinator.pickedMedia, preserveTrailingWhitespace: preserveTrailingWhitespace) {
             return true
         }
         return false
     }
     let autosaveDisposable = MetaDisposable()
-    var lastAutosavedPage: InstantPage? = initialDraft.flatMap { richTextInstantPage(from: $0.blocks, media: $0.media) }
+    var lastAutosavedPage: InstantPage? = initialDraft.flatMap { richTextInstantPage(from: $0.blocks, media: $0.media, preserveTrailingWhitespace: preserveTrailingWhitespace) }
     var awaitsInitialDraft = initialDraft != nil
     let storeDraftNow: () -> Void = { [weak coordinator] in
         autosaveDisposable.set(nil)
@@ -383,7 +431,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
             return
         }
         let outgoing = coordinator.editor.outgoingBlocks()
-        let page = richTextOutgoingHasContent(outgoing) ? richTextInstantPage(from: outgoing, media: coordinator.pickedMedia) : nil
+        let page = richTextOutgoingHasContent(outgoing) ? richTextInstantPage(from: outgoing, media: coordinator.pickedMedia, preserveTrailingWhitespace: preserveTrailingWhitespace) : nil
         guard page != lastAutosavedPage else {
             return
         }
@@ -577,7 +625,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
             let outgoing = coordinator.editor.outgoingBlocks()
             let composed: ComposedRichMessage = (discardPremiumFormatting || !richTextOutgoingHasContent(outgoing))
                 ? .empty
-                : composeRichMessage(from: outgoing, media: coordinator.pickedMedia)
+                : composeRichMessage(from: outgoing, media: coordinator.pickedMedia, preserveTrailingWhitespace: preserveTrailingWhitespace)
             onCancel?(composed)
         }
     }
@@ -736,7 +784,7 @@ public func RichTextEditorController(context: any AccountContextProtocol, initia
             showModalText(for: context.window, text: strings().richTextEditorWindowEmptyMessage)
             return
         }
-        let composed = composeRichMessage(from: outgoing, media: coordinator.pickedMedia)
+        let composed = composeRichMessage(from: outgoing, media: coordinator.pickedMedia, preserveTrailingWhitespace: preserveTrailingWhitespace)
         if case let .rich(instantPage) = composed, !context.isPremium {
             let confirmationPresentation = origin.beginPresentation()
             verifyAlert(for: context.window,

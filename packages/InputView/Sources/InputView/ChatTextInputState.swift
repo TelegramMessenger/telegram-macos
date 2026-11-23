@@ -646,12 +646,22 @@ public final class ChatTextInputState: Codable, Equatable {
 
 
     public func subInputState(from range: NSRange) -> ChatTextInputState {
+        return subInputState(from: range, trimWhitespace: true)
+    }
+
+    /// The state for the given range of this state.
+    ///
+    /// `trimWhitespace` controls whether the leading/trailing whitespace of the range is stripped.
+    /// Pass `false` when the range's whitespace is meaningful — a paste at the caret must not eat
+    /// the spaces around it ("hello | world" would become "helloworld").
+    public func subInputState(from range: NSRange, trimWhitespace: Bool) -> ChatTextInputState {
 //        let subText = convertMarkdownToAttributes(attributedString().attributedSubstring(from: range)).trimmed
 //        let attributes = chatTextAttributes(from: subText)
 
 
 
-        let subText = attributedString().attributedSubstring(from: range).trimmed
+        let substring = attributedString().attributedSubstring(from: range)
+        let subText = trimWhitespace ? substring.trimmed : substring
 
         let parsedAttributes = chatTextAttributes(from: subText)
         let hasExcludedAnalytics = parsedAttributes.contains { attribute in
@@ -838,40 +848,42 @@ public final class ChatTextInputState: Codable, Equatable {
 
         let charset = CharacterSet.whitespacesAndNewlines
 
-        while !appliedText.isEmpty, let range = appliedText.rangeOfCharacter(from: charset), range.lowerBound == appliedText.startIndex {
+        if trimWhitespace {
+            while !appliedText.isEmpty, let range = appliedText.rangeOfCharacter(from: charset), range.lowerBound == appliedText.startIndex {
 
-            let oldLength = appliedText.length
-            appliedText.removeSubrange(range)
-            let newLength = appliedText.length
+                let oldLength = appliedText.length
+                appliedText.removeSubrange(range)
+                let newLength = appliedText.length
 
-            let symbolLength = oldLength - newLength
+                let symbolLength = oldLength - newLength
 
-            for (i, attr) in attributes.enumerated() {
-                let updated: ChatTextInputAttribute
-                if attr.range.lowerBound == 0 {
-                    updated = attr.updateRange(0 ..< max(attr.range.upperBound - symbolLength, 0))
-                } else {
-                    updated = attr.updateRange(attr.range.lowerBound - symbolLength ..< max(attr.range.upperBound - symbolLength, attr.range.lowerBound - symbolLength))
-                }
-                attributes[i] = updated
-            }
-        }
-
-
-
-        while !appliedText.isEmpty, let range = appliedText.rangeOfCharacter(from: charset, options: [], range: appliedText.index(before: appliedText.endIndex) ..< appliedText.endIndex), range.upperBound == appliedText.endIndex {
-
-            let oldLength = appliedText.length
-            appliedText.removeSubrange(range)
-            let newLength = appliedText.length
-
-            let symbolLength = oldLength - newLength
-
-            for (i, attr) in attributes.enumerated() {
-                if attr.range.upperBound == oldLength {
+                for (i, attr) in attributes.enumerated() {
                     let updated: ChatTextInputAttribute
-                    updated = attr.updateRange(attr.range.lowerBound ..< max(attr.range.upperBound - symbolLength, attr.range.lowerBound))
+                    if attr.range.lowerBound == 0 {
+                        updated = attr.updateRange(0 ..< max(attr.range.upperBound - symbolLength, 0))
+                    } else {
+                        updated = attr.updateRange(attr.range.lowerBound - symbolLength ..< max(attr.range.upperBound - symbolLength, attr.range.lowerBound - symbolLength))
+                    }
                     attributes[i] = updated
+                }
+            }
+
+
+
+            while !appliedText.isEmpty, let range = appliedText.rangeOfCharacter(from: charset, options: [], range: appliedText.index(before: appliedText.endIndex) ..< appliedText.endIndex), range.upperBound == appliedText.endIndex {
+
+                let oldLength = appliedText.length
+                appliedText.removeSubrange(range)
+                let newLength = appliedText.length
+
+                let symbolLength = oldLength - newLength
+
+                for (i, attr) in attributes.enumerated() {
+                    if attr.range.upperBound == oldLength {
+                        let updated: ChatTextInputAttribute
+                        updated = attr.updateRange(attr.range.lowerBound ..< max(attr.range.upperBound - symbolLength, attr.range.lowerBound))
+                        attributes[i] = updated
+                    }
                 }
             }
         }
