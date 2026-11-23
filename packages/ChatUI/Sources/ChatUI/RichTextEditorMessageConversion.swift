@@ -546,8 +546,13 @@ public func richTextOutgoing(from page: InstantPage) -> (blocks: [RichTextOutgoi
 }
 
 /// Serialize the editor's `outgoingBlocks()` + media cache into a `ComposedRichMessage`.
-public func composeRichMessage(from blocks: [RichTextOutgoingBlock], media: [String: Media]) -> ComposedRichMessage {
-    let normalized = trimmedTrailingEmpty(normalizedBlocks(blocks, media: media))
+///
+/// `preserveTrailingWhitespace` keeps trailing blank paragraphs. It is needed when the content was
+/// seeded from the composer: the composer's trailing blank line is content the user typed, and
+/// trimming it would silently drop it when the editor hands the content back.
+public func composeRichMessage(from blocks: [RichTextOutgoingBlock], media: [String: Media], preserveTrailingWhitespace: Bool = false) -> ComposedRichMessage {
+    let resolved = normalizedBlocks(blocks, media: media)
+    let normalized = preserveTrailingWhitespace ? resolved : trimmedTrailingEmpty(resolved)
     if normalized.isEmpty {
         return .empty
     }
@@ -564,8 +569,9 @@ public func composeRichMessage(from blocks: [RichTextOutgoingBlock], media: [Str
 
 /// Serialize the editor's content into an `InstantPage` unconditionally (the AI-compose request format),
 /// even when the content is entity-expressible. nil when there is no sendable content.
-public func richTextInstantPage(from blocks: [RichTextOutgoingBlock], media: [String: Media]) -> InstantPage? {
-    let normalized = trimmedTrailingEmpty(normalizedBlocks(blocks, media: media))
+public func richTextInstantPage(from blocks: [RichTextOutgoingBlock], media: [String: Media], preserveTrailingWhitespace: Bool = false) -> InstantPage? {
+    let resolved = normalizedBlocks(blocks, media: media)
+    let normalized = preserveTrailingWhitespace ? resolved : trimmedTrailingEmpty(resolved)
     guard !normalized.isEmpty else { return nil }
     return buildInstantPage(from: normalized, media: media)
 }
