@@ -109,4 +109,38 @@ final class ChatRichPasteComposerMergeTests: XCTestCase {
         let merged = merge(fragment: [paragraph("X")], before: [paragraph("head ")], after: [])
         XCTAssertEqual(plainText(merged), "head X")
     }
+
+    // MARK: - Editing an existing message
+
+    /// While editing a message the composer text belongs to that message, so the surrounding text is
+    /// still handed to the editor — the pasted fragment lands INSIDE the edited message instead of
+    /// replacing it.
+    func testSurroundingTextOfTheEditedMessageIsPreserved() {
+        let merged = merge(
+            fragment: [paragraph("X")],
+            before: [paragraph("hello ")],
+            after: [paragraph(" world")])
+        XCTAssertEqual(plainText(merged), "hello X world")
+    }
+
+    // MARK: - Whitespace around the caret
+
+    /// The spaces around the caret belong to the user's text — trimming them would turn
+    /// "hello | world" into "helloworld".
+    func testSpacesAroundTheCaretArePreserved() {
+        let merged = merge(
+            fragment: [paragraph("X")],
+            before: [paragraph("hello ")],
+            after: [paragraph(" world")])
+        XCTAssertEqual(plainText(merged), "hello X world")
+    }
+
+    /// A blank line the user typed before the caret is a paragraph break, not something to trim.
+    func testBlankLineBeforeTheCaretIsPreserved() {
+        let merged = merge(
+            fragment: [paragraph("X")],
+            before: [paragraph("first\n\n")],
+            after: [])
+        XCTAssertEqual(plainText(merged), "first\n\nX")
+    }
 }

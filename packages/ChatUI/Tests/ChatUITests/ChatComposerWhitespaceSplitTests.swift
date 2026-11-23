@@ -1,5 +1,6 @@
 import XCTest
 import InputView
+import RichTextEditorCore
 @testable import ChatUI
 
 /// The composer text split around the caret when a rich fragment is pasted.
@@ -37,5 +38,41 @@ final class ChatComposerWhitespaceSplitTests: XCTestCase {
         XCTAssertEqual(head.inputText, "hello ")
         XCTAssertEqual(tail.inputText, " world")
         XCTAssertEqual(head.inputText + tail.inputText, "hello  world", "splitting the composer text at the caret must not lose any of it")
+    }
+
+    // MARK: - The rich-paste split
+
+    /// The split the rich paste uses: the text around the caret, with its whitespace intact.
+    func testSurroundingBlocksKeepTheWhitespaceAroundTheCaret() {
+        let full = "hello  world"
+        let caret = 6 // after "hello "
+        let surrounding = RichTextComposerPasteMerge.surroundingBlocks(state(full, selection: caret ..< caret))
+        XCTAssertEqual(text(surrounding.before), "hello ")
+        XCTAssertEqual(text(surrounding.after), " world")
+    }
+
+    /// A selection is replaced by the paste, exactly like a normal paste: only the text outside the
+    /// selected range is kept.
+    func testSurroundingBlocksReplaceTheSelectedRange() {
+        let full = "hello world"
+        let surrounding = RichTextComposerPasteMerge.surroundingBlocks(state(full, selection: 6 ..< 11))
+        XCTAssertEqual(text(surrounding.before), "hello ")
+        XCTAssertEqual(text(surrounding.after), "", "the selected range is replaced, not kept")
+    }
+
+    /// An empty composer contributes nothing around the fragment.
+    func testSurroundingBlocksOfAnEmptyComposerAreEmpty() {
+        let surrounding = RichTextComposerPasteMerge.surroundingBlocks(state("", selection: 0 ..< 0))
+        XCTAssertTrue(surrounding.before.isEmpty)
+        XCTAssertTrue(surrounding.after.isEmpty)
+    }
+
+    private func text(_ blocks: [Block]) -> String {
+        return blocks.compactMap { block -> String? in
+            if case let .paragraph(paragraph) = block {
+                return paragraph.runs.map(\.text).joined()
+            }
+            return nil
+        }.joined(separator: "\n")
     }
 }

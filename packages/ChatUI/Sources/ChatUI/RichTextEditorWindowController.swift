@@ -230,8 +230,57 @@ private func composerEditorController(chatInteraction: ChatInteraction, initialD
 @available(macOS 12, *)
 public func showRichTextEditor(chatInteraction: ChatInteraction, seeding document: Document) {
     let seeded = composerPasteSeededDocument(chatInteraction: chatInteraction, fragment: document)
+    // A paste made while editing a message belongs to that edit session: the editor must edit that
+    // message, not post a new one.
+    if let editState = chatInteraction.presentation.interfaceState.editState {
+        let controller = editingComposerEditorController(chatInteraction: chatInteraction, message: editState.message, initialDocument: seeded, initialDraft: nil, preserveTrailingWhitespace: true, analyticsContext: Analytics.shared.unresolvedContext())
+        showModal(with: controller, for: chatInteraction.interactionContext.window)
+        return
+    }
     let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: seeded, initialDraft: nil, preserveTrailingWhitespace: true, analyticsContext: Analytics.shared.unresolvedContext())
     showModal(with: controller, for: chatInteraction.interactionContext.window)
+}
+
+// Builds a composer-style editor controller that EDITS a message instead of posting a new one.
+//
+// A rich paste made while a message is being edited belongs to that edit session: sending must
+// edit the message, not post a second one. The composer controller cannot do that — it enqueues a
+// new message and, on cancel, writes the composed text back into the composer, which in edit mode
+// replaces the message being edited.
+@available(macOS 12, *)
+private func editingComposerEditorController(chatInteraction: ChatInteraction, message: Message, initialDocument: Document?, initialDraft: (blocks: [RichTextOutgoingBlock], media: [String: Media])?, preserveTrailingWhitespace: Bool = false, analyticsContext: AnalyticsContext) -> InputDataModalController {
+    let context = chatInteraction.interactionContext
+    let messageId = message.id
+    let scheduleInfo: OutgoingScheduleInfoMessageAttribute? = message.isScheduledMessage
+        ? OutgoingScheduleInfoMessageAttribute(scheduleTime: message.scheduleTime, repeatPeriod: message.scheduleRepeatPeriod)
+        : nil
+    let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, isEditing: true, preserveTrailingWhitespace: preserveTrailingWhitespace, onDeleteMessage: { [weak chatInteraction] in
+        guard let chatInteraction else { return }
+        let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
+        let analyticsPresentation = origin.beginPresentation()
+        defer { analyticsPresentation.end() }
+        chatInteraction.deleteMessages([messageId], nil)
+    }, analyticsContext: analyticsContext, send: { text, attributes in
+        let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
+        let analyticsPresentation = origin.beginPresentation()
+        defer { analyticsPresentation.end() }
+        let entities = attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.first
+        let richText = attributes.compactMap { $0 as? RichTextMessageAttribute }.first
+        _ = origin.preservingPresentation(context.engine.messages.requestEditMessage(messageId: messageId, text: text, media: .keep, entities: entities, richText: richText, inlineStickers: [:], scheduleInfoAttribute: scheduleInfo) |> deliverOnMainQueue).start(next: { progress in
+            if case .done(true) = progress {
+                // The edit landed — leave the edit session, so the composer returns to its normal
+                // state instead of staying on the message that was just edited.
+                chatInteraction.update { current in
+                    guard current.interfaceState.editState?.message.id == messageId else { return current }
+                    return current.updatedInterfaceState { $0.withoutEditMessage() }
+                }
+            }
+        }, error: { _ in
+            showModalText(for: context.window, text: strings().unknownError)
+        })
+    })
+    controller.analyticsContext = analyticsContext
+    return controller
 }
 
 /// Builds the document the editor opens with when a rich fragment is pasted into the composer.
@@ -239,20 +288,12 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, seeding documen
 /// The editor takes over the WHOLE composer content: the text around the caret is spliced around
 /// the fragment and the composer is cleared, so closing the editor hands the text back instead of
 /// replacing it with the fragment alone (see `composerEditorController`'s `onCancel`).
-///
-/// While editing an existing message the composer text belongs to that message, so it is NOT
-/// consumed — the edit session keeps its own draft handling.
 @available(macOS 12, *)
 private func composerPasteSeededDocument(chatInteraction: ChatInteraction, fragment: Document) -> Document {
-    guard chatInteraction.presentation.interfaceState.editState == nil else {
+    let surrounding = consumeComposerTextForRichPaste(chatInteraction: chatInteraction)
+    guard !surrounding.before.isEmpty || !surrounding.after.isEmpty else {
         return fragment
     }
-    let inputState = chatInteraction.presentation.effectiveInput
-    guard !inputState.inputText.isEmpty else {
-        return fragment
-    }
-    let surrounding = RichTextComposerPasteMerge.surroundingBlocks(inputState)
-    chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
     var seeded = fragment
     seeded.blocks = RichTextComposerPasteMerge.merge(fragment: fragment.blocks, before: surrounding.before, after: surrounding.after, paragraph: { block in
         if case let .paragraph(paragraph) = block {
@@ -261,6 +302,31 @@ private func composerPasteSeededDocument(chatInteraction: ChatInteraction, fragm
         return nil
     }, makeParagraph: { .paragraph($0) })
     return seeded
+}
+
+/// The composer's text around the caret, as editor blocks, consumed from the composer.
+///
+/// The composer text is cleared, because the editor takes it over: closing the editor writes the
+/// composed text back (see `composerEditorController`'s `onCancel`).
+///
+/// While a message is being edited the composer text belongs to THAT message — it is not cleared,
+/// because the edit session keeps its own draft, and clearing it would wipe the edited message's
+/// text. The surrounding text is still handed to the editor, so the pasted fragment lands inside
+/// the message being edited rather than replacing it.
+@available(macOS 12, *)
+private func consumeComposerTextForRichPaste(chatInteraction: ChatInteraction) -> (before: [Block], after: [Block]) {
+    let isEditing = chatInteraction.presentation.interfaceState.editState != nil
+    // A structural rich draft (the preview shown above the input) already holds the composer's
+    // content — the plain text next to it is not the whole story, so it is left alone.
+    guard isEditing || chatInteraction.richTextDraft == nil else {
+        return ([], [])
+    }
+    let inputState = chatInteraction.presentation.effectiveInput
+    let surrounding = RichTextComposerPasteMerge.surroundingBlocks(inputState)
+    if !isEditing, !inputState.inputText.isEmpty {
+        chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
+    }
+    return surrounding
 }
 
 // Opens the editor with the FULL content of a rich-text message (refetched by id) — used when pasting a
@@ -280,21 +346,24 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, refetching mess
         // only now — when the editor actually opens — so text typed while the message was loading
         // is not swallowed.
         var seeded = draft
-        if chatInteraction.presentation.interfaceState.editState == nil {
-            let inputState = chatInteraction.presentation.effectiveInput
-            if !inputState.inputText.isEmpty {
-                let surrounding = RichTextComposerPasteMerge.surroundingBlocks(inputState)
-                let outgoingSurrounding = (outgoingBlocks(fromSelection: surrounding.before), outgoingBlocks(fromSelection: surrounding.after))
-                seeded.blocks = RichTextComposerPasteMerge.merge(fragment: draft.blocks, before: outgoingSurrounding.0, after: outgoingSurrounding.1, paragraph: { block in
-                    if case let .paragraph(paragraph) = block {
-                        return paragraph
-                    }
-                    return nil
-                }, makeParagraph: { .paragraph($0) })
-                chatInteraction.update { $0.updatedInterfaceState { $0.withUpdatedInputState(ChatTextInputState()) } }
-            }
+        let surrounding = consumeComposerTextForRichPaste(chatInteraction: chatInteraction)
+        if !surrounding.before.isEmpty || !surrounding.after.isEmpty {
+            let outgoingSurrounding = (outgoingBlocks(fromSelection: surrounding.before), outgoingBlocks(fromSelection: surrounding.after))
+            seeded.blocks = RichTextComposerPasteMerge.merge(fragment: draft.blocks, before: outgoingSurrounding.0, after: outgoingSurrounding.1, paragraph: { block in
+                if case let .paragraph(paragraph) = block {
+                    return paragraph
+                }
+                return nil
+            }, makeParagraph: { .paragraph($0) })
         }
-        let controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: nil, initialDraft: seeded, preserveTrailingWhitespace: true, analyticsContext: origin)
+        let controller: InputDataModalController
+        if let editState = chatInteraction.presentation.interfaceState.editState {
+            // Editing a message: the pasted rich message becomes the edited message's content, so
+            // the editor edits that message instead of posting a new one.
+            controller = editingComposerEditorController(chatInteraction: chatInteraction, message: editState.message, initialDocument: nil, initialDraft: seeded, preserveTrailingWhitespace: true, analyticsContext: origin)
+        } else {
+            controller = composerEditorController(chatInteraction: chatInteraction, initialDocument: nil, initialDraft: seeded, preserveTrailingWhitespace: true, analyticsContext: origin)
+        }
         showModal(with: controller, for: context.window)
     })
 }
@@ -303,10 +372,6 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, refetching mess
 public func showRichTextEditor(chatInteraction: ChatInteraction, editing message: Message) {
     let analyticsContext = message.containsSecretMedia ? Analytics.shared.unresolvedContext() : chatInteraction.captureAnalyticsContext(sourcePeerId: message.id.peerId)
     let context = chatInteraction.interactionContext
-    let messageId = message.id
-    let scheduleInfo: OutgoingScheduleInfoMessageAttribute? = message.isScheduledMessage
-        ? OutgoingScheduleInfoMessageAttribute(scheduleTime: message.scheduleTime ?? message.timestamp, repeatPeriod: message.scheduleRepeatPeriod)
-        : nil
     // A rich message keeps its content (incl. media) in an InstantPage — seed media-preserving so photos /
     // files / tables come back into the editor. Plain messages seed as a text+entities document.
     var initialDocument: Document?
@@ -316,23 +381,7 @@ public func showRichTextEditor(chatInteraction: ChatInteraction, editing message
     } else {
         initialDocument = richTextDocument(from: message)
     }
-    let controller = RichTextEditorController(context: context, initialDocument: initialDocument, initialDraft: initialDraft, isEditing: true, onDeleteMessage: { [weak chatInteraction] in
-        guard let chatInteraction else { return }
-        let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
-        let analyticsPresentation = origin.beginPresentation()
-        defer { analyticsPresentation.end() }
-        chatInteraction.deleteMessages([messageId], nil)
-    }, analyticsContext: analyticsContext, send: { text, attributes in
-        let origin = chatInteraction.captureAnalyticsContext(inherited: analyticsContext)
-        let analyticsPresentation = origin.beginPresentation()
-        defer { analyticsPresentation.end() }
-        let entities = attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.first
-        let richText = attributes.compactMap { $0 as? RichTextMessageAttribute }.first
-        _ = origin.preservingPresentation(context.engine.messages.requestEditMessage(messageId: messageId, text: text, media: .keep, entities: entities, richText: richText, inlineStickers: [:], scheduleInfoAttribute: scheduleInfo) |> deliverOnMainQueue).start(error: { _ in
-            showModalText(for: context.window, text: strings().unknownError)
-        })
-    })
-    controller.analyticsContext = analyticsContext
+    let controller = editingComposerEditorController(chatInteraction: chatInteraction, message: message, initialDocument: initialDocument, initialDraft: initialDraft, analyticsContext: analyticsContext)
     showModal(with: controller, for: context.window)
 }
 
