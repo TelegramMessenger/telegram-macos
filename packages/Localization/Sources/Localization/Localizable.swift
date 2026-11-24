@@ -9231,6 +9231,8 @@ public final class L10n {
   public static var generalSettingsMediaKeysForInAppPlayer: String  { return L10n.tr("Localizable", "GeneralSettings.MediaKeysForInAppPlayer") }
   /// Reopen Last Chat On Launch
   public static var generalSettingsOpenLatestChatOnLaunch: String  { return L10n.tr("Localizable", "GeneralSettings.OpenLatestChatOnLaunch") }
+  /// Open Rich Text Editor on Paste
+  public static var generalSettingsOpenRichEditorOnPaste: String  { return L10n.tr("Localizable", "GeneralSettings.OpenRichEditorOnPaste") }
   /// Send with ⌘ + Enter
   public static var generalSettingsSendByCmdEnter: String  { return L10n.tr("Localizable", "GeneralSettings.SendByCmdEnter") }
   /// Send with Enter

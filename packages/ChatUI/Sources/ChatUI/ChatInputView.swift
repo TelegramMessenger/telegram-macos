@@ -2332,7 +2332,23 @@ public class ChatInputView: View, Notifable {
     public func copyAttributedString(_ attributedString: NSAttributedString!) -> Bool {
         return LinkHooks.shared.globalLinkExecutor().copyAttributedString(attributedString)
     }
-    
+
+    /// Inserts a pasted rich fragment into the composer as text, without opening the rich editor.
+    ///
+    /// The fragment keeps the inline formatting it can be expressed with (bold, italic, code,
+    /// quotes, links); a structural fragment (a table, a heading, a formula) is flattened to its
+    /// text rendering. Returns false when there is nothing to insert.
+    private func pasteRichContentInline(_ document: Document, interaction: ChatInteraction) -> Bool {
+        let plain = richTextPastePlainContent(document)
+        guard !plain.text.isEmpty else {
+            return false
+        }
+        let attributes = chatTextAttributes(from: TextEntitiesMessageAttribute(entities: plain.entities))
+        let state = ChatTextInputState(inputText: plain.text, selectionRange: plain.text.length ..< plain.text.length, attributes: attributes)
+        interaction.appendText(state.makeAttributeString())
+        return true
+    }
+
     public func processPaste(_ pasteboard: NSPasteboard) -> Bool {
         let analyticsContext = chatInteraction.captureAnalyticsContext()
         
@@ -2362,6 +2378,9 @@ public class ChatInputView: View, Notifable {
             }
             if #available(macOS 12, *), interaction.interactionContext.appConfiguration.isRichTextEditorEnabled, let data = pasteboard.data(forType: .kRichTextMessage),
                let document = try? JSONDecoder().decode(Document.self, from: data) {
+                if !FastSettings.openRichEditorOnPaste, pasteRichContentInline(document, interaction: interaction) {
+                    return true
+                }
                 showRichTextEditor(chatInteraction: interaction, seeding: document)
                 return true
             }
@@ -2369,6 +2388,9 @@ public class ChatInputView: View, Notifable {
             // same JSON `Document` payload under the editor's own pasteboard type.
             if #available(macOS 12, *), interaction.interactionContext.appConfiguration.isRichTextEditorEnabled, let data = pasteboard.data(forType: .richTextEditorFragment),
                let document = try? JSONDecoder().decode(Document.self, from: data), !document.blocks.isEmpty {
+                if !FastSettings.openRichEditorOnPaste, pasteRichContentInline(document, interaction: interaction) {
+                    return true
+                }
                 showRichTextEditor(chatInteraction: interaction, seeding: document)
                 return true
             }
