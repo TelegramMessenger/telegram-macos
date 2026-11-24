@@ -7731,6 +7731,10 @@ public final class L10n {
   public static var darkModeConfirmNightModeOK: String  { return L10n.tr("Localizable", "DarkMode.Confirm.NightMode.OK") }
   /// You have enabled auto-night mode. If you want to change dark mode settings, you'll need to disable it first.
   public static var darkModeConfirmNightModeText: String  { return L10n.tr("Localizable", "DarkMode.Confirm.NightMode.Text") }
+  /// Auto-Save Files
+  public static var dataAndStorageAutoSaveFiles: String  { return L10n.tr("Localizable", "DataAndStorage.AutoSaveFiles") }
+  /// Copy every file you download to the Download Folder. When off, files stay in Telegram and open in Quick Look. Click Save on a file to keep a copy.
+  public static var dataAndStorageAutoSaveFilesDesc: String  { return L10n.tr("Localizable", "DataAndStorage.AutoSaveFiles.Desc") }
   /// Auto-Download Media
   public static var dataAndStorageAutomaticDownload: String  { return L10n.tr("Localizable", "DataAndStorage.AutomaticDownload") }
   /// Download Folder
@@ -11341,8 +11345,12 @@ public final class L10n {
   }
   /// Show in Finder
   public static var messagesFileStateLocal: String  { return L10n.tr("Localizable", "Messages.File.State.Local") }
+  /// Save
+  public static var messagesFileStateSave: String  { return L10n.tr("Localizable", "Messages.File.State.Save") }
   /// Download
   public static var messagesFileStateRemote: String  { return L10n.tr("Localizable", "Messages.File.State.Remote") }
+  /// File saved to your Download Folder.
+  public static var messagesFileSavedToDownloadFolder: String  { return L10n.tr("Localizable", "Messages.File.SavedToDownloadFolder") }
   /// Send Anonymously...
   public static var messagesPlaceholderAnonymous: String  { return L10n.tr("Localizable", "Messages.Placeholder.Anonymous") }
   /// Broadcast a message…

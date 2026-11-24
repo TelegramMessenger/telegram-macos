@@ -150,19 +150,21 @@ private final class DataAndStorageControllerArguments {
     public let toggleAutomaticDownload:(Bool) -> Void
     public let resetDownloadSettings:()->Void
     public let selectDownloadFolder: ()->Void
+    public let toggleAutoSaveFiles:(Bool) -> Void
     public let toggleAutoplayGifs:(Bool) -> Void
     public let toggleAutoplayVideos:(Bool) -> Void
     public let toggleAutoplaySoundOnHover:(Bool) -> Void
     public let openProxySettings:()->Void
     public let toggleSensitiveContent:(Bool)->Void
     public let openExportTelegramData:()->Void
-    public init(openStorageUsage: @escaping () -> Void, openNetworkUsage: @escaping () -> Void, openCategorySettings: @escaping(AutomaticMediaDownloadCategoryPeers, String) -> Void, toggleAutomaticDownload:@escaping(Bool) -> Void, resetDownloadSettings:@escaping()->Void, selectDownloadFolder: @escaping() -> Void, toggleAutoplayGifs: @escaping(Bool) -> Void, toggleAutoplayVideos:@escaping(Bool) -> Void, toggleAutoplaySoundOnHover:@escaping(Bool) -> Void, openProxySettings: @escaping()->Void, toggleSensitiveContent:@escaping(Bool)->Void, openExportTelegramData:@escaping()->Void) {
+    public init(openStorageUsage: @escaping () -> Void, openNetworkUsage: @escaping () -> Void, openCategorySettings: @escaping(AutomaticMediaDownloadCategoryPeers, String) -> Void, toggleAutomaticDownload:@escaping(Bool) -> Void, resetDownloadSettings:@escaping()->Void, selectDownloadFolder: @escaping() -> Void, toggleAutoSaveFiles: @escaping(Bool) -> Void, toggleAutoplayGifs: @escaping(Bool) -> Void, toggleAutoplayVideos:@escaping(Bool) -> Void, toggleAutoplaySoundOnHover:@escaping(Bool) -> Void, openProxySettings: @escaping()->Void, toggleSensitiveContent:@escaping(Bool)->Void, openExportTelegramData:@escaping()->Void) {
         self.openStorageUsage = openStorageUsage
         self.openNetworkUsage = openNetworkUsage
         self.openCategorySettings = openCategorySettings
         self.toggleAutomaticDownload = toggleAutomaticDownload
         self.resetDownloadSettings = resetDownloadSettings
         self.selectDownloadFolder = selectDownloadFolder
+        self.toggleAutoSaveFiles = toggleAutoSaveFiles
         self.toggleAutoplayGifs = toggleAutoplayGifs
         self.toggleAutoplayVideos = toggleAutoplayVideos
         self.toggleAutoplaySoundOnHover = toggleAutoplaySoundOnHover
@@ -192,6 +194,8 @@ private enum DataAndStorageEntry: TableItemListNodeEntry {
     case soundOnHoverDesc(Int32, viewType: GeneralViewType)
     case resetDownloadSettings(Int32, Bool, viewType: GeneralViewType)
     case downloadFolder(Int32, String, viewType: GeneralViewType)
+    case autoSaveFiles(Int32, Bool, viewType: GeneralViewType)
+    case autoSaveFilesDesc(Int32, viewType: GeneralViewType)
     case sensitiveContent(Int32, Bool, viewType: GeneralViewType)
     case sensitiveContentInfo(Int32, viewType: GeneralViewType)
     case proxyHeader(Int32)
@@ -248,6 +252,10 @@ private enum DataAndStorageEntry: TableItemListNodeEntry {
             return 21
         case .exportDataInfo:
             return 22
+        case .autoSaveFiles:
+            return 23
+        case .autoSaveFilesDesc:
+            return 24
         case let .sectionId(sectionId):
             return (sectionId + 1) * 1000 - sectionId
         }
@@ -288,6 +296,10 @@ private enum DataAndStorageEntry: TableItemListNodeEntry {
         case let .soundOnHoverDesc(sectionId, _):
             return (sectionId * 1000) + stableId
         case let .downloadFolder(sectionId, _, _):
+            return (sectionId * 1000) + stableId
+        case let .autoSaveFiles(sectionId, _, _):
+            return (sectionId * 1000) + stableId
+        case let .autoSaveFilesDesc(sectionId, _):
             return (sectionId * 1000) + stableId
         case let .sensitiveContent(sectionId, _, _):
             return (sectionId * 1000) + stableId
@@ -371,6 +383,12 @@ private enum DataAndStorageEntry: TableItemListNodeEntry {
             return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().dataAndStorageDownloadFolder, type: .nextContext(path), viewType: viewType, action: {
                 arguments.selectDownloadFolder()
             })
+        case let .autoSaveFiles(_, value, viewType):
+            return GeneralInteractedRowItem(initialSize, stableId: stableId, name: strings().dataAndStorageAutoSaveFiles, type: .switchable(value), viewType: viewType, action: {
+                arguments.toggleAutoSaveFiles(!value)
+            })
+        case let .autoSaveFilesDesc(_, viewType):
+            return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().dataAndStorageAutoSaveFilesDesc, viewType: viewType)
         case let .autoplayHeader(_, viewType):
             return GeneralTextRowItem(initialSize, stableId: stableId, text: strings().dataAndStorageAutoplayHeader, viewType: viewType)
         case let .autoplayGifs(_, value, viewType):
@@ -456,7 +474,9 @@ private func entries(state: State, data: DataAndStorageData, proxy: ProxySetting
     entries.append(.sectionId(sectionId))
     sectionId += 1
     
-    entries.append(.downloadFolder(sectionId, data.automaticMediaDownloadSettings.downloadFolder, viewType: .singleItem))
+    entries.append(.downloadFolder(sectionId, data.automaticMediaDownloadSettings.downloadFolder, viewType: .firstItem))
+    entries.append(.autoSaveFiles(sectionId, data.automaticMediaDownloadSettings.saveFilesToDownloadFolder, viewType: .lastItem))
+    entries.append(.autoSaveFilesDesc(sectionId, viewType: .textBottomItem))
 
     
     entries.append(.sectionId(sectionId))
@@ -658,6 +678,10 @@ open class DataAndStorageViewController<Context: AccountContextProtocol>: TableV
                 }).start()
             })
             
+        }, toggleAutoSaveFiles: { enabled in
+            _ = updateMediaDownloadSettingsInteractively(postbox: context.account.postbox, { current -> AutomaticMediaDownloadSettings in
+                return current.withUpdatedSaveFilesToDownloadFolder(enabled)
+            }).start()
         }, toggleAutoplayGifs: { enable in
             _ = updateAutoplayMediaSettingsInteractively(postbox: context.account.postbox, {
                 return $0.withUpdatedAutoplayGifs(enable)

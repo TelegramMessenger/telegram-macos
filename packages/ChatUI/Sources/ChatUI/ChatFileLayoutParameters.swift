@@ -21,12 +21,15 @@ public class ChatFileLayoutParameters : ChatMediaGalleryParameters {
     public let hasThumb:Bool
     public let fileName:String
     public let finderLayout: TextViewLayout
+    public let saveLayout: TextViewLayout
+    public let hasFileAction: Bool
     public let downloadLayout: TextViewLayout
     public let uploadingLayout: TextViewLayout
     public let downloadingLayout: TextViewLayout
     public init(fileName:String, hasThumb: Bool, presentation: ChatMediaPresentation, media: Media, automaticDownload: Bool, isIncoming: Bool, autoplayMedia: AutoplayMediaPreferences, isChatRelated: Bool = false, isCopyProtected: Bool) {
         self.fileName = fileName
         self.hasThumb = hasThumb
+        self.hasFileAction = (!((media as? TelegramMediaFile)?.resource is LocalFileReferenceMediaResource) || isChatRelated) && !isCopyProtected
         
         let file = media as! TelegramMediaFile
         
@@ -46,6 +49,17 @@ public class ChatFileLayoutParameters : ChatMediaGalleryParameters {
             }
         }
         finderLayout = TextViewLayout(attr, maximumNumberOfLines: 1, alwaysStaticItems: true)
+
+        attr = NSMutableAttributedString()
+        let _ = attr.append(string: .prettySized(with: file.elapsedSize), color: presentation.grayText, font: .normalMonospaced(.text))
+        if !(file.resource is LocalFileReferenceMediaResource) || isChatRelated  {
+            if !isCopyProtected {
+                let _ = attr.append(string: " - ", color: presentation.grayText, font: .normal(.text))
+                let range = attr.append(string: strings().messagesFileStateSave, color: theme.bubbled && !isIncoming ? presentation.grayText : presentation.link, font: .medium(FontSize.text))
+                attr.addAttribute(NSAttributedString.Key.link, value: "chat://file/save", range: range)
+            }
+        }
+        saveLayout = TextViewLayout(attr, maximumNumberOfLines: 1, alwaysStaticItems: true)
         
         attr = NSMutableAttributedString()
         let _ = attr.append(string: .prettySized(with: file.elapsedSize), color: presentation.grayText, font: .normalMonospaced(.text))
@@ -69,6 +83,7 @@ public class ChatFileLayoutParameters : ChatMediaGalleryParameters {
         
         downloadLayout.measure(width: width - (hasThumb ? 80 : 50))
         finderLayout.measure(width: width - (hasThumb ? 80 : 50))
+        saveLayout.measure(width: width - (hasThumb ? 80 : 50))
         
         return max(downloadLayout.layoutSize.width, uploadingLayout.layoutSize.width, finderLayout.layoutSize.width, downloadingLayout.layoutSize.width, self.name!.0.size.width) + (hasThumb ? 80 : 50)
 

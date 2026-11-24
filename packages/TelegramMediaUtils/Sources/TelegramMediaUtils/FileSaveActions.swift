@@ -212,6 +212,23 @@ private func saveMediaAs(resource: MediaResource, reference: AnyMediaReference, 
     }
 }
 
+public func saveToDownloadFolder(_ file: TelegramMediaFile, messageId: MessageId?, account: Account, window: Window) {
+    _ = (copyToDownloads(file, postbox: account.postbox) |> deliverOnMainQueue).start(next: { path in
+        guard path != nil else {
+            showModalText(for: window, text: strings().unknownError)
+            return
+        }
+        if let messageId = messageId {
+            let item = RecentDownloadItem(messageId: messageId, resourceId: file.resource.id.stringRepresentation, timestamp: Int32(Date().timeIntervalSince1970), isSeen: false)
+            _ = addRecentDownloadItem(postbox: account.postbox, item: item).start()
+        } else {
+            showModalText(for: window, text: strings().messagesFileSavedToDownloadFolder, button: strings().messagesFileStateLocal, callback: { _ in
+                showInFinder(file, account: account)
+            })
+        }
+    })
+}
+
 public func showInFinder(_ file:TelegramMediaFile, account:Account)  {
     let path = downloadFilePath(file, account.postbox) |> deliverOnMainQueue
     

@@ -58,6 +58,10 @@ public class ChatFileContentView: ChatMediaContentView {
                 if let context = self?.context, let file = self?.media as? TelegramMediaFile {
                     showInFinder(file, account: context.account)
                 }
+            } else if let link = link as? String, link.hasSuffix("save") {
+                if let context = self?.context, let file = self?.media as? TelegramMediaFile {
+                    saveToDownloadFolder(file, messageId: self?.parent?.id, account: context.account, window: context.window)
+                }
             }
         }
     }
@@ -119,7 +123,27 @@ public class ChatFileContentView: ChatMediaContentView {
         fetchDisposable.dispose()
     }
     
-    public func actionLayout(status:MediaResourceStatus, archiveStatus: ArchiveStatus?, file:TelegramMediaFile, presentation: ChatMediaPresentation, paremeters: ChatFileLayoutParameters?) -> TextViewLayout? {
+    public private(set) var needsManualSave: Bool = false
+
+    public func accessibilityFileAction() -> NSAccessibilityCustomAction? {
+        guard case .Local = fetchStatus, let context = self.context, let file = self.media as? TelegramMediaFile, (parameters as? ChatFileLayoutParameters)?.hasFileAction == true else {
+            return nil
+        }
+        let messageId = self.parent?.id
+        if needsManualSave {
+            return NSAccessibilityCustomAction(name: strings().messagesFileStateSave, handler: {
+                saveToDownloadFolder(file, messageId: messageId, account: context.account, window: context.window)
+                return true
+            })
+        } else {
+            return NSAccessibilityCustomAction(name: strings().messagesFileStateLocal, handler: {
+                showInFinder(file, account: context.account)
+                return true
+            })
+        }
+    }
+
+    public func actionLayout(status:MediaResourceStatus, archiveStatus: ArchiveStatus?, needsManualSave: Bool, file:TelegramMediaFile, presentation: ChatMediaPresentation, paremeters: ChatFileLayoutParameters?) -> TextViewLayout? {
         let attr:NSMutableAttributedString = NSMutableAttributedString()
         if let archiveStatus = archiveStatus {
             switch archiveStatus {
@@ -191,7 +215,7 @@ public class ChatFileContentView: ChatMediaContentView {
                 layout.measure()
                 return layout
             }
-            return paremeters?.finderLayout
+            return needsManualSave ? paremeters?.saveLayout : paremeters?.finderLayout
         case .Remote:
             return paremeters?.downloadLayout
         }
@@ -294,13 +318,15 @@ public class ChatFileContentView: ChatMediaContentView {
         }
                 
         if let updatedStatusSignal = updatedStatusSignal {
-            self.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).start(next: { [weak self, weak file] status, archiveStatus in
+            self.statusDisposable.set((combineLatest(updatedStatusSignal, fileNeedsManualSave(file, postbox: context.account.postbox)) |> deliverOnMainQueue).start(next: { [weak self, weak file] value, needsManualSave in
                 guard let `self` = self, let file = file else { return }
+                let (status, archiveStatus) = value
+                self.needsManualSave = needsManualSave
                 self.fetchStatus = status
 
                 let animateStatus = self.statusChangeIsAnimatable
                 
-                let layout = self.actionLayout(status: status, archiveStatus: archiveStatus, file: file, presentation: presentation, paremeters: parameters)
+                let layout = self.actionLayout(status: status, archiveStatus: archiveStatus, needsManualSave: needsManualSave, file: file, presentation: presentation, paremeters: parameters)
                 if !self.actionText.isEqual(to: layout) {
                     layout?.interactions = self.actionInteractions
                     self.actionText.update(layout)
