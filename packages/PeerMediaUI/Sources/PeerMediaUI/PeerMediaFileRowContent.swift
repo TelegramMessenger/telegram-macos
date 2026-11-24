@@ -23,6 +23,8 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
     public private(set) var nameLayout:TextViewLayout
     public private(set) var actionLayout:TextViewLayout
     public private(set) var actionLayoutLocal:TextViewLayout
+    public private(set) var actionLayoutSave:TextViewLayout
+    public let isCopyProtected: Bool
     public private(set) var iconArguments:TransformImageArguments?
     public private(set) var icon:TelegramMediaImage?
     public private(set) var docIcon:CGImage?
@@ -52,6 +54,16 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
         }), for: range)
         actionLayoutLocal = TextViewLayout(localAction, maximumNumberOfLines: 1, truncationType: .end, alwaysStaticItems: true)
         actionLayoutLocal.interactions = LinkHooks.shared.globalLinkExecutor()
+
+        self.isCopyProtected = message.isCopyProtected() || message.peers[message.id.peerId]?.isCopyProtected(cachedData: interface.presentation.cachedData) == true
+
+        let saveAction = NSMutableAttributedString()
+        let saveRange = saveAction.append(string: strings().messagesFileStateSave, color: theme.colors.link, font: .normal(.text))
+        saveAction.add(link: LinkHooks.shared.callbackLink("save", { _ in
+            saveToDownloadFolder(file, messageId: message.id, account: interface.interactionContext.account, window: interface.interactionContext.window)
+        }), for: saveRange)
+        actionLayoutSave = TextViewLayout(saveAction, maximumNumberOfLines: 1, truncationType: .end, alwaysStaticItems: true)
+        actionLayoutSave.interactions = LinkHooks.shared.globalLinkExecutor()
         
         let iconImageRepresentation:TelegramMediaImageRepresentation? = firstImageRepresentation(file.previewRepresentations)
         
@@ -84,6 +96,7 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
         nameLayout.measure(width: self.blockWidth - contentInset.left - contentInset.right - self.viewType.innerInset.left - self.viewType.innerInset.right)
         actionLayout.measure(width: self.blockWidth - contentInset.left - contentInset.right - self.viewType.innerInset.left - self.viewType.innerInset.right)
         actionLayoutLocal.measure(width: self.blockWidth - contentInset.left - contentInset.right - self.viewType.innerInset.left - self.viewType.innerInset.right)
+        actionLayoutSave.measure(width: self.blockWidth - contentInset.left - contentInset.right - self.viewType.innerInset.left - self.viewType.innerInset.right)
         return success
     }
     
@@ -101,6 +114,25 @@ public class PeerMediaFileRowItem: PeerMediaRowItem {
 
     public override var accessibilityIncludesChildren: Bool {
         return false
+    }
+
+    public override var accessibilityCustomActions: [NSAccessibilityCustomAction]? {
+        guard interface.presentation.state != .selecting, !isCopyProtected, let file = self.file, let view = view as? PeerMediaFileRowView, case .Local = view.fetchStatus else {
+            return nil
+        }
+        let context = interface.interactionContext
+        let messageId = message.id
+        if view.needsManualSave {
+            return [NSAccessibilityCustomAction(name: strings().messagesFileStateSave, handler: {
+                saveToDownloadFolder(file, messageId: messageId, account: context.account, window: context.window)
+                return true
+            })]
+        } else {
+            return [NSAccessibilityCustomAction(name: strings().messagesFileStateLocal, handler: {
+                showInFinder(file, account: context.account)
+                return true
+            })]
+        }
     }
 
     public override func accessibilityPerformPress() -> Bool {
@@ -127,7 +159,8 @@ public class PeerMediaFileRowView : PeerMediaRowView {
     
     private let statusDisposable = MetaDisposable()
     private let fetchControls = Atomic<FetchControls?>(value: nil)
-    private var fetchStatus: MediaResourceStatus?
+    fileprivate(set) var fetchStatus: MediaResourceStatus?
+    fileprivate(set) var needsManualSave: Bool = false
     private let fetchDisposable = MetaDisposable()
     
     public required init(frame frameRect: NSRect) {
@@ -318,12 +351,12 @@ public class PeerMediaFileRowView : PeerMediaRowView {
             }
             
             
-            var updatedStatusSignal: Signal<MediaResourceStatus, NoError>?
+            var updatedStatusSignal: Signal<(MediaResourceStatus, Bool), NoError>?
             var updatedFetchControls: FetchControls?
             
             let context = item.interface.interactionContext
             if let file = item.file {
-                updatedStatusSignal = chatMessageFileStatus(context: context, message: item.message, file: file, approximateSynchronousValue: false)
+                updatedStatusSignal = combineLatest(chatMessageFileStatus(context: context, message: item.message, file: file, approximateSynchronousValue: false), fileNeedsManualSave(file, postbox: context.account.postbox))
                 updatedFetchControls = FetchControls(fetch: { [weak self] in
                     self?.executeInteraction(true)
                 })
@@ -332,9 +365,10 @@ public class PeerMediaFileRowView : PeerMediaRowView {
             let animated:Atomic<Bool> = Atomic(value:false)
             
             if let updatedStatusSignal = updatedStatusSignal {
-                self.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).start(next: { [weak self] status in
+                self.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).start(next: { [weak self] status, needsManualSave in
                     if let strongSelf = self {
                         strongSelf.fetchStatus = status
+                        strongSelf.needsManualSave = needsManualSave
                         if case .Local = status {
                             strongSelf.actionView.userInteractionEnabled = (strongSelf.item as? PeerMediaRowItem)?.interface.presentation.state != .selecting
                         } else {
@@ -394,7 +428,7 @@ public class PeerMediaFileRowView : PeerMediaRowView {
                         switch status {
                         case .Local:
                             deinitDownloadControls()
-                            strongSelf.actionView.update(item.actionLayoutLocal)
+                            strongSelf.actionView.update(needsManualSave && !item.isCopyProtected ? item.actionLayoutSave : item.actionLayoutLocal)
                         case .Remote, .Paused:
                             deinitProgressControl()
                             initStatusControlIfNeeded()

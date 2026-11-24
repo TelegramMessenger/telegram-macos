@@ -34,6 +34,16 @@ public class ChatFileMediaItem: ChatMediaItem {
         
     }
     
+    public override var accessibilityCustomActions: [NSAccessibilityCustomAction]? {
+        guard var actions = super.accessibilityCustomActions else {
+            return nil
+        }
+        if let action = ((self.view as? ChatMediaView)?.contentNode as? ChatFileContentView)?.accessibilityFileAction() {
+            actions.insert(action, at: 0)
+        }
+        return actions
+    }
+
     public override func makeContentSize(_ width: CGFloat) -> NSSize {
         
         var width = width

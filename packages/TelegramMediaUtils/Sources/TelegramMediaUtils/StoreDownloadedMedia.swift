@@ -27,17 +27,21 @@ private final class DownloadedMediaStoreContext {
         if let resource = resource {
             self.disposable = (storeSettings
             |> map { storeSettings -> Bool in
-                return true
+                return storeSettings.saveFilesToDownloadFolder
             }
             |> take(1)
-            |> mapToSignal { store -> Signal<MediaResourceData, NoError> in
+            |> mapToSignal { store -> Signal<MediaResourceData?, NoError> in
                 if !store {
-                    return .complete()
+                    return .single(nil)
                 } else {
-                    return postbox.mediaBox.resourceData(resource)
+                    return postbox.mediaBox.resourceData(resource) |> map(Optional.init)
                 }
             }
             |> deliverOn(queue)).start(next: { data in
+                guard let data = data else {
+                    completed()
+                    return
+                }
                 if !data.complete {
                     return
                 }

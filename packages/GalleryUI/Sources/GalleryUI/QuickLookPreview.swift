@@ -111,7 +111,7 @@ public class QuickLookPreview : NSObject, QLPreviewPanelDelegate, QLPreviewPanel
             
             
             
-            signal = copyToDownloads(file, postbox: context.account.postbox) |> map { path in
+            signal = quickLookFilePath(file, postbox: context.account.postbox) |> map { path in
                 if let path = path {
                     return (Optional(path.nsstring.deletingPathExtension), Optional(path.nsstring.pathExtension))
                 } else {
