@@ -9199,7 +9199,6 @@ public final class L10n {
   public static var generalSettingsChatBackground: String  { return L10n.tr("Localizable", "GeneralSettings.ChatBackground") }
   /// Copy Text Formatting
   public static var generalSettingsCopyRTF: String  { return L10n.tr("Localizable", "GeneralSettings.CopyRTF") }
-  public static var generalSettingsOpenRichEditorOnPaste: String  { return L10n.tr("Localizable", "GeneralSettings.OpenRichEditorOnPaste") }
   /// Dark Mode
   public static var generalSettingsDarkMode: String  { return L10n.tr("Localizable", "GeneralSettings.DarkMode") }
   /// EMOJI
@@ -9232,6 +9231,8 @@ public final class L10n {
   public static var generalSettingsMediaKeysForInAppPlayer: String  { return L10n.tr("Localizable", "GeneralSettings.MediaKeysForInAppPlayer") }
   /// Reopen Last Chat On Launch
   public static var generalSettingsOpenLatestChatOnLaunch: String  { return L10n.tr("Localizable", "GeneralSettings.OpenLatestChatOnLaunch") }
+  /// Open Rich Text Editor on Paste
+  public static var generalSettingsOpenRichEditorOnPaste: String  { return L10n.tr("Localizable", "GeneralSettings.OpenRichEditorOnPaste") }
   /// Send with ⌘ + Enter
   public static var generalSettingsSendByCmdEnter: String  { return L10n.tr("Localizable", "GeneralSettings.SendByCmdEnter") }
   /// Send with Enter
