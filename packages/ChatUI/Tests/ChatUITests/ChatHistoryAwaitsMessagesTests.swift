@@ -3,6 +3,7 @@ import Postbox
 import TelegramCore
 import TelegramContext
 import ChatHistoryModel
+@testable import ChatUI
 
 final class ChatHistoryAwaitsMessagesTests: XCTestCase {
     private let peerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(100))
@@ -11,8 +12,24 @@ final class ChatHistoryAwaitsMessagesTests: XCTestCase {
         return .thread(ChatReplyThreadMessage(peerId: peerId, threadId: 1, channelMessageId: nil, isChannelPost: false, isForumPost: forum, isMonoforumPost: false, maxMessage: nil, maxReadIncomingMessageId: nil, maxReadOutgoingMessageId: nil, unreadCount: 0, initialFilledHoles: IndexSet(), initialAnchor: .automatic, isNotAvailable: false))
     }
 
-    private func message(_ action: TelegramMediaActionType? = nil) -> Message {
-        return Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: 1), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: 1, timestamp: 0, flags: [.Incoming], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: nil, text: action == nil ? "Message" : "", attributes: [], media: action.map { [TelegramMediaAction(action: $0)] } ?? [], peers: SimpleDictionary(), associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:])
+    private func message(_ action: TelegramMediaActionType? = nil, replyingTo target: Message? = nil) -> Message {
+        var associated = SimpleDictionary<MessageId, Message>()
+        if let target {
+            associated[target.id] = target
+        }
+        let id: Int32 = target == nil ? 1 : 2
+        return Message(stableId: UInt32(id), stableVersion: 0, id: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: id), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: 1, timestamp: 0, flags: [.Incoming], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: nil, text: action == nil ? "Message" : "", attributes: [], media: action.map { [TelegramMediaAction(action: $0)] } ?? [], peers: SimpleDictionary(), associatedMessages: associated, associatedMessageIds: target.map { [$0.id] } ?? [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:])
+    }
+
+    func testOverviewHidesImplicitTopicCreationRepliesAndPreservesQuotes() {
+        let root = message(.topicCreated(title: "Topic", iconColor: 0, iconFileId: nil))
+        let reply = message(replyingTo: root)
+        let implicit = ReplyMessageAttribute(messageId: root.id, threadMessageId: nil, quote: nil, isQuote: false, innerSubject: nil)
+        let quoted = ReplyMessageAttribute(messageId: root.id, threadMessageId: nil, quote: nil, isQuote: true, innerSubject: nil)
+        XCTAssertTrue(ChatRowItem.hidesReply(to: implicit, in: reply, threadId: nil))
+        XCTAssertFalse(ChatRowItem.hidesReply(to: quoted, in: reply, threadId: nil))
+        XCTAssertFalse(ChatRowItem.hidesReply(to: implicit, in: message(replyingTo: message()), threadId: nil))
+        XCTAssertFalse(ChatRowItem.hidesReply(to: implicit, in: message(), threadId: nil))
     }
 
     private func view(_ messages: [Message], loading: Bool = false, earlier: Bool = false, later: Bool = false) -> MessageHistoryView {
